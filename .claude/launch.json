@@ -9,6 +9,122 @@
         "dev"
       ],
       "port": 3000
+    },
+    {
+      "name": "theorem-ui-3001",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "--bun",
+        "vite",
+        "dev",
+        "--port",
+        "3001",
+        "--strictPort"
+      ],
+      "port": 3001
+    },
+    {
+      "name": "vault-workspace-view",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": [
+        "--cwd",
+        "/Volumes/SSD Samsung/var-18/Theorem ui/vault-workspace-view",
+        "--bun",
+        "vite",
+        "dev",
+        "--port",
+        "3010"
+      ],
+      "port": 3010
+    },
+    {
+      "name": "vault-worktree-local-files-api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Volumes/SSD Samsung/var-18/Theorem ui/vault-workspace-view' && THEOREM_API_URL=http://127.0.0.1:8380 THEOREM_API_TOKEN=local-dev exec bun --bun vite dev --port 3102 --strictPort"
+      ],
+      "port": 3102
+    },
+    {
+      "name": "canvas-verify",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-travisgilbert-Theorem-ui/68ec94ad-a0f6-437f-ad9a-9c99d4df8b2c/scratchpad/run-ui.sh"
+      ],
+      "port": 3102
+    },
+    {
+      "name": "canvas-stable",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "/private/tmp/claude-501/-Users-travisgilbert-Theorem-ui/68ec94ad-a0f6-437f-ad9a-9c99d4df8b2c/scratchpad/run-stable.sh"
+      ],
+      "port": 3103
+    },
+    {
+      "name": "site",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd site && exec bun run dev"
+      ],
+      "port": 3100
+    },
+    {
+      "name": "film-studio",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd site/film && exec bunx remotion studio --no-open --port 3200"
+      ],
+      "port": 3200
+    },
+    {
+      "name": "site-preview",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd site && bun run build --mode preview && exec bunx wrangler dev --config wrangler.jsonc --port 8799"
+      ],
+      "port": 8799
+    },
+    {
+      "name": "theo-workbench-ui",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Users/travisgilbert/Theorem ui/.claude/worktrees/theo-workbench' && exec bun --bun vite dev --port 3010 --strictPort"
+      ],
+      "port": 3010
+    },
+    {
+      "name": "ui-refresh",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Users/travisgilbert/Theorem ui/.claude/worktrees/ui-refresh' && sh terminal/build.sh && exec node node_modules/vite/bin/vite.js dev --port 3011 --strictPort"
+      ],
+      "port": 3011
+    },
+    {
+      "name": "connected-workspace",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Users/travisgilbert/Theorem ui/.claude/worktrees/connected-workspace' && exec node node_modules/vite/bin/vite.js dev --port 3012 --strictPort"
+      ],
+      "port": 3012
+    },
+    {
+      "name": "connected-workspace-stack",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "cd '/Users/travisgilbert/Theorem ui/.claude/worktrees/connected-workspace' && unset PORT && E2E_DATA_DIR=\"$HOME/.theorem/e2e-connected-workspace\" E2E_SERVER_BIN='/private/tmp/claude-501/-Users-travisgilbert--claude-spares-spare-uMCxCJ/81bd0460-a864-44ec-bbe0-40ab95ebf2af/scratchpad/bin/rustyred-thg-server' RUSTYWEB_SEARCH_PROVIDERS=offline RUSTYWEB_OFFLINE_SEARCH_MANIFEST='/private/tmp/claude-501/-Users-travisgilbert--claude-spares-spare-uMCxCJ/81bd0460-a864-44ec-bbe0-40ab95ebf2af/scratchpad/offline.jsonl' exec bun run e2e:stack"
+      ],
+      "port": 3102,
+      "url": "http://localhost:3102"
     }
   ]
 }
