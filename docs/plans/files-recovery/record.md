@@ -213,3 +213,16 @@ The referenced integration chat separately owns its live store/frontend
 release. This chat has not deployed production. The backend candidate still
 requires its own packaged Linux runtime and fresh restored-journal checks;
 final signed-in theorem.rs Files acceptance remains open.
+
+## Unchanged-source rendered rerun
+
+Documentation-only head `7f4306ca` initially failed one reflow oracle in
+Composer run `43592461224`: the 200% root-text step observed 16px instead of
+32px. Viewport width, prose and draft contents remained correct. Its JSON,
+screenshots and Vite log are retained under
+`pr1066-worker-evidence/ui-composer/doc-head-reflow-43592461224/`.
+A single rerun of that job passed all nine rendered suites, without any
+source or assertion change. The cause of the intermittent result remains
+unproven; this was not a Files runtime repair. The successful attempt-2 log
+`ui-composer-7f4306ca-attempt2.log` has SHA-256
+`7e6e33dc4da75f9a60fe06a2ee75ef5a5bf109cb698537188327fc2bb218c943`.
