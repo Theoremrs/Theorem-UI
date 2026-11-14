@@ -102,12 +102,27 @@ Sessions, Graph and Context as tabs).
     working-looking placeholders).
 - The phone header, the dock tab and the breadcrumb name the project while its
   page is open.
-- **Apps and outputs live in the dock's side group**, not on the page
-  (`src/components/shell/outputs-panel.tsx`). The panel shows what the open
-  page made: a project's outputs on its page, a chat's own artifacts in a
-  chat. Opening a project page adds it to the side group as a tab behind
-  whatever that group is showing, or as a column beside the page when there
-  is none. The panels menu has "Apps and outputs" to bring it forward.
+- **Apps and outputs live in the right-hand drawer**, not on the page
+  (`src/components/shell/outputs-drawer.tsx`). It is the same Base UI Drawer
+  as the side terminal (coss ui's Drawer wraps it), sharing its one slot, so
+  one or the other is open. It lies over the page instead of taking its
+  width, has no tabs, and shows what the open page made as thumbnails
+  (`src/components/artifacts/output-tile.tsx`):
+  - in a chat, each artifact's latest revision: an App drawn live at a
+    quarter of its size (its poster off screen), a document or code as its
+    opening lines;
+  - on a project page, the project's outputs. These carry no picture yet
+    (`ProjectOutput` has ids, kind and revision counts only), so each tile
+    shows its kind's mark until Theorem serves a poster.
+  - The apps button in the dock's header opens and closes it; Escape and its
+    close button close it; opening an output closes it.
+- **Widths:** the sidebar's default is 248px (from 280; a panel left at an
+  old default takes the new one, a dragged one keeps its width). The project
+  page lays its context column beside the composer only when the page itself
+  is at least 54rem wide (a container query), so a column open beside the
+  page stacks the context beneath instead of squeezing the composer. A
+  chat's composer is unchanged: the design oracle holds it to the message
+  column's measure.
 
 ### Session graph (§9)
 

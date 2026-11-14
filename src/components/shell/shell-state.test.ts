@@ -49,3 +49,19 @@ test('a panel left at the old default width takes the new one, and a dragged wid
   expect(useShell.getState().panelWidth).toBe(320)
   localStorage.removeItem('theorem-ui:shell')
 })
+
+test('a panel left at the version 7 default of 280 takes the narrower one', async () => {
+  const saved = (panelWidth: number) =>
+    localStorage.setItem(
+      'theorem-ui:shell',
+      JSON.stringify({ state: { panelWidth }, version: 7 }),
+    )
+  saved(280)
+  await useShell.persist.rehydrate()
+  expect(useShell.getState().panelWidth).toBe(PANEL_WIDTH.default)
+  expect(PANEL_WIDTH.default).toBeLessThan(280)
+  saved(300)
+  await useShell.persist.rehydrate()
+  expect(useShell.getState().panelWidth).toBe(300)
+  localStorage.removeItem('theorem-ui:shell')
+})

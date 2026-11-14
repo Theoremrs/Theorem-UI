@@ -9,7 +9,6 @@ import { Icon } from '@/components/icons'
 import { ProjectGlyph } from '@/components/organize/glyphs'
 import { ProjectStateDialog } from '@/components/organize/project-state-dialog'
 import { useProjects } from '@/components/shell/projects'
-import { useOutputsDock } from '@/components/shell/outputs-panel'
 import { useShell } from '@/components/shell/shell-state'
 import { Button } from '@/components/ui/button'
 import { lastMoved, useOrganization } from '@/lib/theorem/organization'
@@ -121,12 +120,6 @@ export function ProjectHome({ projectId }: { projectId: string }) {
   useEffect(() => {
     useShell.getState().setProjectId(projectId)
   }, [projectId])
-  // The project's apps and outputs stand in the dock's side group, beside its page.
-  const openOutputs = useOutputsDock((s) => s.open)
-  useEffect(() => {
-    openOutputs?.()
-  }, [openOutputs, projectId])
-
   const project = organization?.projects.find((p) => p.projectId === projectId)
   const record = records.find((p) => p.projectId === projectId)
   const threads = useMemo(
@@ -162,8 +155,8 @@ export function ProjectHome({ projectId }: { projectId: string }) {
   const instructions = record?.instructions ?? ''
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8">
+    <div className="@container h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-4 py-8 sm:px-8">
         <header className="flex flex-wrap items-start gap-3">
           <ProjectGlyph aria-hidden className="mt-1 size-6 shrink-0" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -203,7 +196,7 @@ export function ProjectHome({ projectId }: { projectId: string }) {
           </div>
         </header>
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="grid gap-8 @min-[54rem]:grid-cols-[minmax(0,1fr)_18rem]">
           <div className="flex min-w-0 flex-col gap-8">
             {/* The face perches on the composer's top edge, so the space above it stays clear. */}
             <section

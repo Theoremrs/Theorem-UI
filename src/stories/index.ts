@@ -52,7 +52,8 @@ export const STORIES: readonly StoryMeta[] = [
     region: [59, 0, 354, 1064],
     threadId: 'thread-app-gallery',
   },
-  { id: 'project-home', title: 'Project home (?view=graph&lens=membership opens a tab)', lane: 'original', viewport: { width: 1440, height: 900 } },
+  { id: 'project-home', title: 'Project home: composer, sessions and context on one page', lane: 'original', viewport: { width: 1440, height: 900 } },
+  { id: 'outputs-drawer', title: 'Apps and outputs drawer: a chat\'s artifacts as thumbnails', lane: 'original', viewport: { width: 1440, height: 900 } },
   {
     id: 'librarian-footer',
     title: 'Librarian footer',
