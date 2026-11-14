@@ -1,6 +1,6 @@
-# Projects sidebar, project home and session graph
+# Projects sidebar, project page and session graph
 
-The sidebar lists sessions, not conversation branches. Projects open to a home
+The sidebar lists sessions, not conversation branches. Projects open to a page
 of their own. Each project has a graph that shows how its sessions relate.
 
 The governing spec is `THEOREM-PROJECTS-SIDEBAR-AND-SESSION-GRAPH-SPEC.md`,
@@ -78,31 +78,35 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
   file). People can add their own from the row menu, and a type grants no
   capability (AUTH-04).
 
-### Project home (§7, §8)
+### Project page (§7, §8)
 
 Route `/projects/$projectId`, `src/components/projects/project-home.tsx`.
-`ModeView` shows it in place of the conversation, which stays mounted.
+`ModeView` shows it in place of the conversation, which stays mounted. It is
+one page with no tabs (the owner's review on 2026-11-14 removed Overview,
+Sessions, Graph and Context as tabs).
 
 - **Header:** folder mark, title, session count, last moved, Pin and Edit.
   Edit sets the title and instructions through `chat.projects.update`.
-- **Overview:**
-  - the real composer, which files the new session in this project through
-    the shell's project;
-  - recent sessions with their provenance;
-  - beside them: instructions, Where it stands, and Apps and outputs (moved
-    here from the sidebar).
-- **Sessions:** every session in the project, with type filter chips when
-  there is more than one type.
-- **Graph:** the session graph scoped to the project. Its lens is in the URL
-  as `?lens`.
-- **Context:**
-  - instructions, Where it stands, and outputs;
-  - Documents, Repositories, Links, and Databases and servers, each labelled
-    "Not served yet" (§8: no working-looking placeholders).
+- **Left column:**
+  - the real composer near the top, which files the new session in this
+    project through the shell's project;
+  - the project's sessions below it, newest first, with their provenance.
+    Eight show at first; "Show all" lists the rest in place.
+- **Right column, the project's context:**
+  - Instructions and Where it stands, each with Edit;
+  - Apps and outputs (moved here from the sidebar);
+  - Knowledge and connections: Documents, Repositories, Links, and
+    Databases and servers, each labelled "Not served yet" (§8: no
+    working-looking placeholders).
 - The phone header, the dock tab and the breadcrumb name the project while its
-  home is open.
+  page is open.
 
 ### Session graph (§9)
+
+The graph no longer sits on the project page. It moves to the Canvas mode
+(the programmable graph surface), opened from a project's or a session's
+menu; that change follows. What is described below is the projection and
+layout it reuses.
 
 - **Projection:** `src/lib/theorem/session-graph.ts` computes P(records, lens,
   scope). It is a pure function and writes nothing (VIEW-01).
@@ -135,7 +139,6 @@ Route `/projects/$projectId`, `src/components/projects/project-home.tsx`.
 | Renderer | React Flow 12 (already a dependency) | Accessible nodes, panning and zooming, and custom edges. gpucanvas would only pay off at node counts a project does not reach. |
 | Pins | Per browser, in zustand persist | Theorem has no per-user pin route yet. The UI says pins are kept in this browser. |
 | Unserved lenses | Present, and labelled with the reason | A lens that draws something made up would break VIEW-03. |
-| Project-home tabs | URL search (`?view`, `?lens`) | Links and reloads keep the tab. |
 
 ## Not in this change
 

@@ -72,7 +72,7 @@
     },
     {
       "id": "project-home",
-      "requirement": "Project navigation, scoped composer, recent sessions, project editing, context and connection summaries (slice B)",
+      "requirement": "Project navigation, scoped composer, sessions, project editing, context and connection summaries on one page (slice B)",
       "status": "partial",
       "evidence": [
         "src/components/projects/project-home.tsx, project-edit-dialog.tsx, project-outputs.tsx",

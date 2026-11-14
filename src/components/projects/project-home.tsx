@@ -1,11 +1,10 @@
-// SOURCING: coss ui tabs over Base UI, the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router search for the tab and the lens, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records, lib/theorem/session-graph for the graph. The layout (a header, a composer, recent sessions, and the project's instructions and knowledge beside them) follows Claude's project page on Mobbin; docs/plans/projects-sidebar-and-session-graph.md §7.
-import { Link, useNavigate, useParams, useSearch } from '@tanstack/react-router'
+// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, and the project's context beside them) follows Claude's project page on Mobbin; docs/plans/projects-sidebar-and-session-graph.md §7.
+import { Link, useParams } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Database, FileText, FolderGit2, Link2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Composer } from '@/components/chat/composer'
-import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/coss/tabs'
 import { Icon } from '@/components/icons'
 import { ProjectGlyph, SessionGlyph } from '@/components/organize/glyphs'
 import { ProjectStateDialog } from '@/components/organize/project-state-dialog'
@@ -14,29 +13,12 @@ import { useShell } from '@/components/shell/shell-state'
 import { Button } from '@/components/ui/button'
 import { lastMoved, useOrganization } from '@/lib/theorem/organization'
 import type { ThreadEntry } from '@/lib/theorem/organization'
-import { PROJECT_VIEWS } from '@/lib/theorem/project-views'
-import type { ProjectView } from '@/lib/theorem/project-views'
-import { projectGraph } from '@/lib/theorem/session-graph'
-import type { GraphLens } from '@/lib/theorem/session-graph'
-import {
-  allTypes,
-  isPinned,
-  typeOf,
-  useSidebarPrefs,
-} from '@/lib/theorem/sidebar-prefs'
+import { isPinned, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
 import { ProjectEditDialog } from './project-edit-dialog'
 import { ProjectOutputs } from './project-outputs'
-import { SessionGraphView } from './session-graph'
 
-const VIEW_LABEL: Readonly<Record<ProjectView, string>> = {
-  overview: 'Overview',
-  sessions: 'Sessions',
-  graph: 'Graph',
-  context: 'Context',
-}
-
-const RECENT = 6
+const RECENT = 8
 
 const ago = (atMs: number) =>
   Date.now() - atMs < 60_000
@@ -134,9 +116,9 @@ const NOT_SERVED = [
 
 function NotServedList() {
   return (
-    <ul className="flex flex-col divide-y divide-separator rounded-xl ring-1 ring-separator">
+    <ul className="flex flex-col gap-3">
       {NOT_SERVED.map(({ Mark, label, detail }) => (
-        <li key={label} className="flex items-start gap-3 px-4 py-3">
+        <li key={label} className="flex items-start gap-3">
           <Mark
             aria-hidden
             strokeWidth={1.75}
@@ -166,24 +148,18 @@ export function useProjectHomeTitle() {
 }
 
 /**
- * A project's home: what it is, a composer that starts a session in it, its
- * sessions, a graph of how they relate, and the context its sessions share.
+ * A project's page, as one page: what it is, a composer that starts a session
+ * in it, its sessions below, and beside them the context its sessions share.
  */
 export function ProjectHome({ projectId }: { projectId: string }) {
   const { data: organization, isPending } = useOrganization()
   const { data: records = [] } = useProjects()
-  const search = useSearch({ from: '/_chat/projects/$projectId' })
-  const navigate = useNavigate()
-  const view = search.view ?? 'overview'
-  const lens = search.lens ?? 'lineage'
   const [editing, setEditing] = useState(false)
   const [editingState, setEditingState] = useState(false)
-  const [typeFilter, setTypeFilter] = useState<string>()
+  const [showAll, setShowAll] = useState(false)
   const pin = { kind: 'project', id: projectId } as const
   const pinned = useSidebarPrefs((s) => isPinned(s.pins, pin))
   const togglePin = useSidebarPrefs((s) => s.togglePin)
-  const chosen = useSidebarPrefs((s) => s.sessionTypes)
-  const custom = useSidebarPrefs((s) => s.customTypes)
 
   // The composer files its new session in the project the shell names.
   useEffect(() => {
@@ -209,24 +185,6 @@ export function ProjectHome({ projectId }: { projectId: string }) {
       ),
     [organization],
   )
-  const graph = useMemo(
-    () =>
-      projectGraph(
-        lens,
-        organization?.threads ?? [],
-        organization?.projects ?? [],
-        projectId,
-      ),
-    [lens, organization, projectId],
-  )
-
-  const show = (next: { view?: ProjectView; lens?: GraphLens }) =>
-    void navigate({
-      to: '/projects/$projectId',
-      params: { projectId },
-      search: { ...search, ...next },
-      replace: true,
-    })
 
   if (isPending)
     return <div className="p-10 text-sm text-ink-muted">Loading project…</div>
@@ -241,69 +199,11 @@ export function ProjectHome({ projectId }: { projectId: string }) {
     )
 
   const instructions = record?.instructions ?? ''
-  const types = allTypes(custom)
-  const typesHere = types.filter((type) =>
-    threads.some((t) => typeOf(t.threadId, chosen, custom).id === type.id),
-  )
-  const listed = typeFilter
-    ? threads.filter(
-        (t) => typeOf(t.threadId, chosen, custom).id === typeFilter,
-      )
-    : threads
-
-  const instructionsCard = (
-    <Section
-      title="Instructions"
-      action={
-        <Button variant="ghost" size="sm" onClick={() => setEditing(true)}>
-          Edit
-        </Button>
-      }
-    >
-      {instructions.trim() ? (
-        <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
-          {instructions}
-        </p>
-      ) : (
-        <p className="text-sm text-ink-muted">
-          None yet. Instructions are given to every session started here.
-        </p>
-      )}
-    </Section>
-  )
-  const standsCard = organization?.served && (
-    <Section
-      title="Where it stands"
-      action={
-        <Button variant="ghost" size="sm" onClick={() => setEditingState(true)}>
-          Edit
-        </Button>
-      }
-    >
-      {project.state ? (
-        <>
-          <p className="text-sm whitespace-pre-wrap text-ink">
-            {project.state.text}
-          </p>
-          <p className="text-xs text-ink-muted">
-            {project.state.by === 'librarian' ? 'The Librarian' : 'You'},{' '}
-            {ago(project.state.atMs)}
-          </p>
-        </>
-      ) : (
-        <p className="text-sm text-ink-muted">Not written yet.</p>
-      )}
-    </Section>
-  )
+  const listed = showAll ? threads : threads.slice(0, RECENT)
 
   return (
     <div className="h-full overflow-y-auto">
-      <div
-        className={cn(
-          'mx-auto flex w-full flex-col gap-6 px-4 py-8 sm:px-8',
-          view === 'graph' ? 'max-w-6xl' : 'max-w-5xl',
-        )}
-      >
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 sm:px-8">
         <header className="flex flex-wrap items-start gap-3">
           <ProjectGlyph aria-hidden className="mt-1 size-6 shrink-0" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -343,142 +243,113 @@ export function ProjectHome({ projectId }: { projectId: string }) {
           </div>
         </header>
 
-        <Tabs
-          value={view}
-          onValueChange={(next) => show({ view: next as ProjectView })}
-          className="gap-6"
-        >
-          <TabsList
-            variant="underline"
-            className="w-full justify-start border-b border-separator"
-          >
-            {PROJECT_VIEWS.map((v) => (
-              <TabsTab key={v} value={v} className="grow-0 px-3">
-                {VIEW_LABEL[v]}
-              </TabsTab>
-            ))}
-          </TabsList>
-
-          <TabsPanel value="overview">
-            <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_18rem]">
-              <div className="flex min-w-0 flex-col gap-8">
-                {/* The face perches on the composer's top edge, so the space above it stays clear. */}
-                <section
-                  aria-label={`Start a session in ${project.title}`}
-                  className="pt-6"
-                >
-                  <Composer autoFocus={false} />
-                </section>
-                <Section
-                  title="Recent sessions"
-                  action={
-                    threads.length > RECENT && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => show({ view: 'sessions' })}
-                      >
-                        All {threads.length}
-                      </Button>
-                    )
-                  }
-                >
-                  {threads.length ? (
-                    <ul className="-mx-3 flex flex-col">
-                      {threads.slice(0, RECENT).map((t) => (
-                        <SessionLine
-                          key={t.threadId}
-                          thread={t}
-                          titles={titles}
-                        />
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-sm text-ink-muted">
-                      No sessions yet. Start one above.
-                    </p>
-                  )}
-                </Section>
-              </div>
-              <aside className="flex flex-col gap-8">
-                {instructionsCard}
-                {standsCard}
-                {organization?.served && (
-                  <Section title="Apps and outputs">
-                    <ProjectOutputs projectId={projectId} limit={5} />
-                  </Section>
-                )}
-              </aside>
-            </div>
-          </TabsPanel>
-
-          <TabsPanel value="sessions">
-            <div className="flex flex-col gap-4">
-              {typesHere.length > 1 && (
-                <div
-                  role="radiogroup"
-                  aria-label="Session type"
-                  className="flex flex-wrap gap-1"
-                >
-                  {[{ id: undefined, label: 'All' }, ...typesHere].map(
-                    (type) => (
-                      <button
-                        key={type.id ?? 'all'}
-                        type="button"
-                        role="radio"
-                        aria-checked={typeFilter === type.id}
-                        onClick={() => setTypeFilter(type.id)}
-                        className={cn(
-                          'rounded-full px-3 py-1 text-sm text-ink-muted ring-1 ring-separator hover:text-ink',
-                          typeFilter === type.id &&
-                            'bg-selected text-ink ring-focus',
-                        )}
-                      >
-                        {type.label}
-                      </button>
-                    ),
-                  )}
-                </div>
-              )}
-              {listed.length ? (
+        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="flex min-w-0 flex-col gap-8">
+            {/* The face perches on the composer's top edge, so the space above it stays clear. */}
+            <section
+              aria-label={`Start a session in ${project.title}`}
+              className="pt-6"
+            >
+              <Composer autoFocus={false} />
+            </section>
+            <Section
+              title="Sessions"
+              action={
+                threads.length > RECENT && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    aria-expanded={showAll}
+                    onClick={() => setShowAll((all) => !all)}
+                  >
+                    {showAll ? 'Show fewer' : `Show all ${threads.length}`}
+                  </Button>
+                )
+              }
+            >
+              {threads.length ? (
                 <ul className="-mx-3 flex flex-col">
                   {listed.map((t) => (
                     <SessionLine key={t.threadId} thread={t} titles={titles} />
                   ))}
                 </ul>
               ) : (
-                <p className="text-sm text-ink-muted">No sessions here.</p>
+                <p className="text-sm text-ink-muted">
+                  No sessions yet. Start one above.
+                </p>
               )}
-            </div>
-          </TabsPanel>
+            </Section>
+          </div>
 
-          <TabsPanel value="graph" className="h-[min(70dvh,44rem)]">
-            <SessionGraphView
-              graph={graph}
-              lens={lens}
-              onLens={(next) => show({ lens: next })}
-            />
-          </TabsPanel>
-
-          <TabsPanel value="context">
-            <div className="grid gap-8 lg:grid-cols-2">
-              <div className="flex flex-col gap-8">
-                {instructionsCard}
-                {standsCard}
-              </div>
-              <div className="flex flex-col gap-8">
-                {organization?.served && (
-                  <Section title="Apps and outputs">
-                    <ProjectOutputs projectId={projectId} />
-                  </Section>
+          <aside
+            aria-label="Project context"
+            className="flex flex-col divide-y divide-separator self-start rounded-xl ring-1 ring-separator"
+          >
+            <Section
+              title="Instructions"
+              className="p-4"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </Button>
+              }
+            >
+              {instructions.trim() ? (
+                <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
+                  {instructions}
+                </p>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  None yet. Instructions are given to every session started
+                  here.
+                </p>
+              )}
+            </Section>
+            {organization?.served && (
+              <Section
+                title="Where it stands"
+                className="p-4"
+                action={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setEditingState(true)}
+                  >
+                    Edit
+                  </Button>
+                }
+              >
+                {project.state ? (
+                  <>
+                    <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
+                      {project.state.text}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {project.state.by === 'librarian'
+                        ? 'The Librarian'
+                        : 'You'}
+                      , {ago(project.state.atMs)}
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-ink-muted">Not written yet.</p>
                 )}
-                <Section title="Knowledge and connections">
-                  <NotServedList />
-                </Section>
-              </div>
-            </div>
-          </TabsPanel>
-        </Tabs>
+              </Section>
+            )}
+            {organization?.served && (
+              <Section title="Apps and outputs" className="p-4">
+                <ProjectOutputs projectId={projectId} limit={5} />
+              </Section>
+            )}
+            <Section title="Knowledge and connections" className="p-4">
+              <NotServedList />
+            </Section>
+          </aside>
+        </div>
       </div>
       <ProjectEditDialog
         projectId={projectId}
