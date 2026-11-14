@@ -38,6 +38,12 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
 - A graph screenshot the owner shared. They liked the workflow it showed, not
   its look.
 - The design-oracles skill for type scale and spacing.
+- The ChatGPT and Codex sidebars, from screenshots the owner shared on
+  2026-11-14. These supersede the Mobbin sidebars on rhythm. The owner asked
+  for their spacing, type weights, icon size and colour relationships, not
+  their particular choices about bold headings.
+- The owner's Streamline Ultimate file marks, also from 2026-11-14, used for
+  session state and type.
 
 ## What changed
 
@@ -58,13 +64,25 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
 
 `src/components/organize/organized-panel.tsx`
 
-- **Section order:** Search (with its shortcut), a lighter New thread, Pinned,
+- **Section order:** a search button in the header (it opens the command
+  palette; its tooltip shows the shortcut), a lighter New thread, Pinned,
   Projects, Chats, and the Librarian at the foot. Attention Worthy, Running,
   Needs You and Later are gone.
-- **Headings** use a new appearance recipe, `ui.group`: 600 weight,
-  15px/20px. That is one step above the 14px row labels, and it goes through
-  the appearance policy rather than a local override (TYPE-01).
-- **Rows** are 32px tall on a 33px pitch.
+- **Rhythm** follows the ChatGPT and Codex sidebars. The rules are in
+  `src/components/shell/chat-shell.css` and are scoped to the panel.
+
+  | Part | Before | Now | Reference |
+  | --- | --- | --- | --- |
+  | Row height | 32px, 1px gap | 28px, rows touch | ~27pt |
+  | Row marks | 16px | 14px | ~12pt glyph |
+  | Section label | 15px/600, full ink | 14px/500 (`ui.section`), muted ink | row size, quieter ink |
+  | Space above a section | 16px + the label's 32px | 12–16px + a 28px label | ~13pt + one row |
+  | Row's trailing end | relative time, or a Review badge | spinner when running, dot when it needs you, nothing at rest | the same |
+
+  The time a session last moved is now in the row's tooltip. Touch density
+  and coarse pointers keep their 44px rows.
+- **Headings** keep the appearance recipes rather than a local override
+  (TYPE-01). They moved from `ui.group` to `ui.section`.
 - **A project row is two controls:**
   - its title links to the project's home;
   - its folder is the disclosure, and turns into a chevron on hover or focus
@@ -73,10 +91,22 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
   placement lock, which is now labelled "Keep in…". Pins live in
   `src/lib/theorem/sidebar-prefs.ts` and are stored per browser, and the
   empty Pinned section says so.
-- **Session types** (§5.4) change only how a session looks. The built-ins are
-  Conversation (file), Coding (terminal file) and Agent task (checklist
-  file). People can add their own from the row menu, and a type grants no
+- **Session types** (§5.4) change only how a session looks. The built-ins are:
+  - Conversation (Streamline text file);
+  - Coding (code file);
+  - Agent task (checklist file);
+  - Image or design (image file).
+
+  People can add their own from the row menu, and a type grants no
   capability (AUTH-04).
+- **Session state outranks type** in a row's mark, strongest first:
+  1. the four-pages mark when other sessions were forked from this one;
+  2. the doubled page for a continuation;
+  3. the empty page for a session with no message yet.
+
+  New thread rows use the edit mark. The add and second double marks are
+  traced but not yet used. `src/components/organize/glyphs.tsx` holds the
+  logic; `glyphs.test.ts` covers the order.
 
 ### Project page (§7, §8)
 

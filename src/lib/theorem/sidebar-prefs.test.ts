@@ -43,11 +43,14 @@ describe('session types', () => {
     expect(typeOf('t', { t: 'research' }, [mine]).mark).toBe('research')
   })
 
-  test('the built-in defaults are files: document, terminal, checklist', () => {
+  // The owner's review on 2026-11-14 gave coding the code file and added an
+  // image or design type; every built-in is still a file.
+  test('the built-in defaults are files: document, code, checklist, image', () => {
     expect(BUILT_IN_TYPES.map((type) => type.mark)).toEqual([
       'document',
-      'terminal-file',
+      'code-file',
       'checklist-file',
+      'image-file',
     ])
   })
 

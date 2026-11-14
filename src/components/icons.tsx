@@ -409,6 +409,23 @@ const ToolRunning = painted(CONTROL_LAYERS.toolRunning, 45, true)
 const ToolDone = painted(CONTROL_LAYERS.toolDone, 135, true)
 const Memory = painted(CONTROL_LAYERS.memory, 180, true)
 const Approval = painted(CONTROL_LAYERS.approval, 0, true)
+/** The sidebar's search, the coloured magnifier of the owner's sidebar reference. */
+const SearchMark = painted(CONTROL_LAYERS.search, 180, true)
+/**
+ * Session marks (components/organize/glyphs): a session's type, and the
+ * states that outrank it. Forks and continuations sit a turn from the rest
+ * so a session others came from reads apart.
+ */
+const SessionText = painted(CONTROL_LAYERS.fileText, 180, true)
+const SessionCode = painted(CONTROL_LAYERS.fileCode, 180, true)
+const SessionCheck = painted(CONTROL_LAYERS.fileCheck, 135, true)
+const SessionImage = painted(CONTROL_LAYERS.imageFileEdit, 180, true)
+const SessionForked = painted(CONTROL_LAYERS.fileModule, 45, true)
+const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
+const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
+const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
+const SessionDraft = painted(CONTROL_LAYERS.fileEdit, 45, true)
+const SessionAdd = painted(CONTROL_LAYERS.fileAdd, 45, true)
 
 export const Icon = {
   Group: SquareDashed,
@@ -443,6 +460,17 @@ export const Icon = {
   Calendar,
   Chat,
   ChatSearch,
+  SearchMark,
+  SessionText,
+  SessionCode,
+  SessionCheck,
+  SessionImage,
+  SessionForked,
+  SessionContinued,
+  SessionPair,
+  SessionEmpty,
+  SessionDraft,
+  SessionAdd,
   Check,
   ChevronDown,
   ChevronLeft,

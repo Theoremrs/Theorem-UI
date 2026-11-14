@@ -11,7 +11,6 @@ import {
   TreeGuide,
   originLabel,
 } from '@/components/assistant-ui/elements/thread-list.aui'
-import { Badge } from '@/components/coss/badge'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -80,7 +79,11 @@ const wakeLabel = (later: Later, views: OrganizedViews) => {
   return format(at, 'MMM d')
 }
 
-/** The row's compact status, or when it last heard a message. Its width is the only thing that changes when it does. */
+/**
+ * The row's trailing mark, as the owner's sidebar reference draws it: a dot
+ * when it needs someone, a spinner while it runs, nothing at rest. When it
+ * last moved is in the row's tooltip, not its line.
+ */
 function StatusMark({
   thread,
   running,
@@ -100,51 +103,38 @@ function StatusMark({
         {hint}
       </span>
     )
-  if (reason?.kind === 'failed')
-    return (
-      <span className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible">
-        <span aria-hidden className="size-2 rounded-full bg-attention" />
-        <span className="sr-only">, failed</span>
-      </span>
-    )
   if (reason)
     return (
-      <Badge
-        data-appearance-recipe="metadata"
-        className="bg-hover text-ink-muted group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
+      <span
+        title={reason.kind === 'failed' ? 'Failed' : attentionLabel(reason)}
+        className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
       >
-        {attentionLabel(reason)}
-      </Badge>
+        <span aria-hidden className="size-2 rounded-full bg-attention" />
+        <span className="sr-only">
+          , {reason.kind === 'failed' ? 'failed' : attentionLabel(reason)}
+        </span>
+      </span>
     )
   if (running)
     return (
-      <span className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible">
+      <span
+        title="Running"
+        className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
+      >
         <span
           aria-hidden
-          className="size-1.5 animate-pulse rounded-full bg-teal motion-reduce:animate-none dark:bg-teal-ink"
+          className="size-3 animate-spin rounded-full border-[1.5px] border-ink-faint border-t-ink-muted motion-reduce:animate-none"
         />
         <span className="sr-only">, running</span>
       </span>
     )
-  const at = thread.lastMessageAtMs ?? thread.createdAtMs
-  return <Age at={at} />
+  return null
 }
 
-function Age({ at }: { at: number }) {
+/** When a session last moved, as its row's tooltip says it. */
+function useMovedLabel(at: number) {
   const { readAtMs } = useTree()
-  return (
-    <time
-      data-appearance-recipe="metadata"
-      dateTime={new Date(at).toISOString()}
-      title={format(at, 'PPp')}
-      className="shrink-0 text-ink-muted tabular-nums group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
-    >
-      {intlFormatDistance(at, Math.max(at, readAtMs), {
-        style: 'narrow',
-        numeric: 'always',
-      })}
-    </time>
-  )
+  return `${intlFormatDistance(at, Math.max(at, readAtMs), { numeric: 'always' })} · ${format(at, 'PPp')}`
 }
 
 export function RenameField({
@@ -222,6 +212,7 @@ export function ThreadRow({
   const isOpen = openId === thread.threadId
   const openHere = useAuiState((s) => s.thread.isRunning)
   const running = thread.attention.running || (isOpen && openHere)
+  const moved = useMovedLabel(thread.lastMessageAtMs ?? thread.createdAtMs)
 
   const ref = useRef<HTMLLIElement>(null)
   const seen = useSeen(ref)
@@ -346,7 +337,7 @@ export function ThreadRow({
                   'primary',
                   current ? 'selected' : 'navigation',
                 )}
-                title={thread.summary?.text ?? title}
+                title={`${thread.summary?.text ?? title}\n${moved}`}
                 className={cn(
                   'h-8 w-full translate-x-0 pe-1 data-[organize-row=also]:bg-hover sm:h-8',
                   'relative z-[1] hover:bg-hover',

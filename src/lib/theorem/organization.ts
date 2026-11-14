@@ -326,6 +326,8 @@ export type OrganizedViews = {
   projects: Array<{ project: ProjectEntry; threads: ThreadEntry[] }>
   unsorted: ThreadEntry[]
   byId: ReadonlyMap<string, ThreadEntry>
+  /** Sessions that others were forked from. */
+  forkedFrom: ReadonlySet<string>
 }
 
 /**
@@ -359,6 +361,11 @@ export function organizedViews(
       })),
     unsorted: threads.filter((thread) => thread.memberships.length === 0),
     byId: new Map(threads.map((thread) => [thread.threadId, thread])),
+    forkedFrom: new Set(
+      organization.threads.flatMap((thread) =>
+        thread.origin?.kind === 'forked' ? [thread.origin.threadId] : [],
+      ),
+    ),
   }
 }
 

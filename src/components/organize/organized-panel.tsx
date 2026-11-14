@@ -1,4 +1,4 @@
-// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant and command palette, useGlideHighlight from components/motion, lib/theorem/organization. coss ui kbd for the search shortcut, lib/theorem/sidebar-prefs for pins. The shape (Search, New thread, Pinned, Projects, Chats, the Librarian below) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
+// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant and command palette, useGlideHighlight from components/motion, lib/theorem/organization. the assistant-ui tooltip icon button for search in the header, lib/theorem/sidebar-prefs for pins. The shape (search in the header, New thread, Pinned, Projects, Chats, the Librarian below; rows, marks and labels after the ChatGPT and Codex sidebars the owner's review on 2026-11-14 named) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useAuiState } from '@assistant-ui/react'
 import {
@@ -42,7 +42,7 @@ import {
   CollapsibleTrigger,
 } from '@/components/coss/collapsible'
 import { Input } from '@/components/coss/input'
-import { Kbd } from '@/components/coss/kbd'
+import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import {
   Menu,
   MenuItem,
@@ -140,10 +140,11 @@ function takes(active: Active | null, projectId: string | null) {
 const dropRing = 'rounded-lg bg-selected/50 outline-1 outline-focus'
 
 /**
- * A group's name: a step above the 14px rows in size and weight, in full ink,
- * with the space above the group setting it apart instead of a rule.
+ * A group's name: the rows' own size a step heavier, in the quieter ink, with
+ * the space above the group setting it apart instead of a rule (the sidebar
+ * rhythm in chat-shell.css).
  */
-const HEADING = 'h-8 px-2 text-ink'
+const HEADING = 'px-2'
 /** The group gap comes from the navigation's spacing role, not each group. */
 const GROUP = 'p-0'
 
@@ -202,11 +203,12 @@ function StartingRow() {
     <SidebarMenuSubItem className={TREE_TICK}>
       <SidebarMenuSubButton
         data-organize-row="primary"
+        data-appearance-recipe="ui.label"
         aria-current
         className="relative z-[1] w-full translate-x-0"
         render={<button type="button" onClick={() => void focusComposer()} />}
       >
-        <Icon.NewChat aria-hidden />
+        <Icon.SessionDraft aria-hidden />
         <span className="min-w-0 flex-1 truncate text-start">New thread</span>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
@@ -250,6 +252,7 @@ function ThreadRows({
       {hidden > 0 && (
         <SidebarMenuSubItem className={TREE_TICK}>
           <SidebarMenuSubButton
+            data-appearance-recipe="ui.label"
             className="w-full translate-x-0 text-ink-muted"
             render={<button type="button" onClick={() => setShowAll(true)} />}
           >
@@ -526,7 +529,7 @@ function PinnedGroup({
     <Collapsible open={open} onOpenChange={setOpen}>
       <SidebarGroup className={GROUP}>
         <SidebarGroupLabel
-          data-appearance-recipe="ui.group"
+          data-appearance-recipe="ui.section"
           className={HEADING}
           render={
             <CollapsibleTrigger className="w-full justify-start gap-1 hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus" />
@@ -657,7 +660,7 @@ function ChatsGroup({
   const accepting = isOver && takes(active, null)
   return (
     <SidebarGroup ref={setNodeRef} className={cn(GROUP, accepting && dropRing)}>
-      <SidebarGroupLabel data-appearance-recipe="ui.group" className={HEADING}>
+      <SidebarGroupLabel data-appearance-recipe="ui.section" className={HEADING}>
         Chats
       </SidebarGroupLabel>
       {/* The rows a project nests, here at the top level: no guide line, no ticks. */}
@@ -685,7 +688,7 @@ function WorkspaceHeader({
   const control = useLibrarianControl()
   const librarian = organization?.served ? organization.librarian : undefined
   return (
-    <div className="flex h-14 shrink-0 items-center px-1.5">
+    <div className="flex h-14 shrink-0 items-center gap-1 px-1.5">
       <Menu>
         <MenuTrigger
           render={
@@ -696,7 +699,7 @@ function WorkspaceHeader({
           }
         >
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-            <span className="truncate text-lg leading-tight font-bold">
+            <span className="truncate text-[1.0625rem] leading-tight font-semibold">
               Theorem
             </span>
             <span className="truncate text-xs leading-tight text-ink-faint-sheet">
@@ -727,6 +730,13 @@ function WorkspaceHeader({
           </MenuLinkItem>
         </MenuPopup>
       </Menu>
+      <TooltipIconButton
+        tooltip={`Search ${SEARCH_SHORTCUT}`}
+        onClick={() => useCommandPalette.getState().setOpen(true)}
+        className="size-8 shrink-0 p-2 text-ink-muted hover:bg-hover hover:text-ink"
+      >
+        <Icon.SearchMark className="size-4" />
+      </TooltipIconButton>
     </div>
   )
 }
@@ -742,7 +752,7 @@ function useFreshAfterRuns(known: (threadId: string) => boolean) {
   }, [client, running, missing])
 }
 
-/** Chat's panel: Search and New thread, the person's pins, a stable project tree and the chats outside it, the Librarian below. */
+/** Chat's panel: search in its header, New thread, the person's pins, a stable project tree and the chats outside it, the Librarian below. */
 export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
   const { data, error, isPending, dataUpdatedAt } = useOrganization()
   const navigate = useNavigate()
@@ -874,27 +884,14 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
         organization={data}
         onNewProject={() => setCreating(true)}
       />
-      <SidebarMenu className="shrink-0 gap-px px-2 pb-1">
-        <SidebarMenuItem>
-          <SidebarMenuButton
-            data-appearance-recipe="ui.label"
-            className="hover:bg-hover"
-            onClick={() => useCommandPalette.getState().setOpen(true)}
-          >
-            <Icon.Search aria-hidden />
-            <span className="min-w-0 flex-1 truncate">Search</span>
-            <Kbd className="bg-transparent text-ink-faint">
-              {SEARCH_SHORTCUT}
-            </Kbd>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
+      <SidebarMenu className="shrink-0 px-2 pb-1">
         <SidebarMenuItem>
           <SidebarMenuButton
             data-appearance-recipe="ui.label"
             className="text-ink-muted hover:bg-hover hover:text-ink"
             onClick={() => newThread()}
           >
-            <Icon.NewChat aria-hidden />
+            <Icon.SessionDraft aria-hidden />
             <span className="min-w-0 flex-1 truncate">New thread</span>
           </SidebarMenuButton>
         </SidebarMenuItem>
@@ -932,7 +929,7 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
               <PinnedGroup projects={data?.projects ?? []} byId={views.byId} />
               <SidebarGroup className={GROUP}>
                 <SidebarGroupLabel
-                  data-appearance-recipe="ui.group"
+                  data-appearance-recipe="ui.section"
                   className={HEADING}
                 >
                   Projects

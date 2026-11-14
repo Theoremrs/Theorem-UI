@@ -26,6 +26,7 @@ export const TYPE_MARKS = [
   'checklist-file',
   'code-file',
   'cog-file',
+  'image-file',
   'chat',
   'graph',
   'research',
@@ -54,7 +55,7 @@ export const BUILT_IN_TYPES: readonly SessionType[] = [
   {
     id: 'coding',
     label: 'Coding',
-    mark: 'terminal-file',
+    mark: 'code-file',
     description: 'Work on code in a repository.',
     builtIn: true,
   },
@@ -64,6 +65,13 @@ export const BUILT_IN_TYPES: readonly SessionType[] = [
     mark: 'checklist-file',
     description:
       'Work the life agent carries out. Naming it so grants nothing.',
+    builtIn: true,
+  },
+  {
+    id: 'design',
+    label: 'Image or design',
+    mark: 'image-file',
+    description: 'Make or change images, layouts and visual design.',
     builtIn: true,
   },
 ]
