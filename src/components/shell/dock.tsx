@@ -61,6 +61,11 @@ import {
 } from './modes'
 import type { ShellMode } from './modes'
 import { openBeside } from './open-beside'
+import {
+  OUTPUTS_PANEL,
+  OutputsDockPanel,
+  useOutputsDock,
+} from './outputs-panel'
 import { useShell } from './shell-state'
 import { menuItem, menuPopup } from './sidebar'
 import { adaptDock } from './responsive-dock'
@@ -97,6 +102,7 @@ const isReviewPanel = (panelId: string) => panelId.startsWith(REVIEW)
 
 /** Panels that open beside the conversation and share its side group. */
 const isSidePanel = (panelId: string) =>
+  panelId === OUTPUTS_PANEL ||
   Boolean(artifactIdOf(panelId)) ||
   isFilePanel(panelId) ||
   isDelegationPanel(panelId)
@@ -321,6 +327,7 @@ const components = {
   file: FileDockPanel,
   delegation: DelegationDockPanel,
   review: ReviewDockPanel,
+  [OUTPUTS_PANEL]: OutputsDockPanel,
 }
 
 const tabComponents = {
@@ -448,6 +455,10 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 )}
               </Menu.Group>
               <Menu.Separator className="my-1 h-px bg-separator" />
+              <Menu.Item className={menuItem} onClick={() => openOutputs(api)}>
+                <Icon.Apps className="size-4 text-ink-muted" />
+                Apps and outputs
+              </Menu.Item>
               <Menu.Item
                 className={menuItem}
                 onClick={() => useShell.getState().setSideDrawer('terminal')}
@@ -530,6 +541,38 @@ function openSide(
     return
   }
   openBeside(api, sized, THREAD, 0.55)
+}
+/**
+ * The open page's apps and outputs, in the side group its artifacts and
+ * reviews open in. A side group that is already showing something keeps
+ * showing it: the outputs join it as a tab behind. `focus` brings an open
+ * outputs panel to the front, as the panels menu asks.
+ */
+function openOutputs(api: DockviewApi, focus = true) {
+  const existing = api.getPanel(OUTPUTS_PANEL)
+  if (existing) {
+    if (focus) existing.api.setActive()
+    return
+  }
+  const options = {
+    id: OUTPUTS_PANEL,
+    component: OUTPUTS_PANEL,
+    params: {},
+    title: 'Apps and outputs',
+    minimumWidth: 400,
+  }
+  const side = api.panels.find(
+    (panel) => panel.id !== THREAD && panel.api.location.type === 'grid',
+  )
+  if (side) {
+    api.addPanel({
+      ...options,
+      position: { referenceGroup: side.group },
+      inactive: !focus,
+    })
+    return
+  }
+  openBeside(api, options, THREAD, 0.3)
 }
 function openArtifact(api: DockviewApi, artifactId: string) {
   openSide(api, {
@@ -740,6 +783,7 @@ export function DockShell({
       },
     })
     useFileDock.setState({ open: (path) => openFile(dock, projectId, path) })
+    useOutputsDock.setState({ open: () => openOutputs(dock, false) })
     useDelegationDock.setState({
       open: (delegationId, title) => openDelegation(dock, delegationId, title),
     })
@@ -770,6 +814,7 @@ export function DockShell({
       useNoteView.setState({ dock: undefined })
       useWorkspaceFileView.setState({ dock: undefined })
       useFileDock.setState({ open: undefined })
+      useOutputsDock.setState({ open: undefined })
       useDelegationDock.setState({ open: undefined })
       useReviewDock.setState({ open: undefined, close: undefined })
     }

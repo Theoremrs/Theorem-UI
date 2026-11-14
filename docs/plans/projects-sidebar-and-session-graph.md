@@ -90,16 +90,24 @@ Sessions, Graph and Context as tabs).
 - **Left column:**
   - the real composer near the top, which files the new session in this
     project through the shell's project;
-  - the project's sessions below it, newest first, with their provenance.
-    Eight show at first; "Show all" lists the rest in place.
+  - the project's sessions below it (`project-sessions.tsx`), all of them,
+    newest first, with their provenance and no heading. A Search button
+    opens a fuzzy search, and Filter narrows by type, status (Running, Needs
+    you, Idle) and origin (Started here, Forked, Continued), with counts.
+    It runs on the app's TanStack Table v9 kit (`useAppTable`).
 - **Right column, the project's context:**
   - Instructions and Where it stands, each with Edit;
-  - Apps and outputs (moved here from the sidebar);
   - Knowledge and connections: Documents, Repositories, Links, and
     Databases and servers, each labelled "Not served yet" (§8: no
     working-looking placeholders).
 - The phone header, the dock tab and the breadcrumb name the project while its
   page is open.
+- **Apps and outputs live in the dock's side group**, not on the page
+  (`src/components/shell/outputs-panel.tsx`). The panel shows what the open
+  page made: a project's outputs on its page, a chat's own artifacts in a
+  chat. Opening a project page adds it to the side group as a tab behind
+  whatever that group is showing, or as a column beside the page when there
+  is none. The panels menu has "Apps and outputs" to bring it forward.
 
 ### Session graph (§9)
 

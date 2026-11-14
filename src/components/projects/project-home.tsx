@@ -1,24 +1,22 @@
-// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, and the project's context beside them) follows Claude's project page on Mobbin; docs/plans/projects-sidebar-and-session-graph.md §7.
-import { Link, useParams } from '@tanstack/react-router'
+// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, the project's context beside them, and its apps and outputs in the dock's side group) follows Claude's project page on Mobbin; docs/plans/projects-sidebar-and-session-graph.md §7.
+import { useParams } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { Database, FileText, FolderGit2, Link2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Composer } from '@/components/chat/composer'
 import { Icon } from '@/components/icons'
-import { ProjectGlyph, SessionGlyph } from '@/components/organize/glyphs'
+import { ProjectGlyph } from '@/components/organize/glyphs'
 import { ProjectStateDialog } from '@/components/organize/project-state-dialog'
 import { useProjects } from '@/components/shell/projects'
+import { useOutputsDock } from '@/components/shell/outputs-panel'
 import { useShell } from '@/components/shell/shell-state'
 import { Button } from '@/components/ui/button'
 import { lastMoved, useOrganization } from '@/lib/theorem/organization'
-import type { ThreadEntry } from '@/lib/theorem/organization'
 import { isPinned, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
 import { ProjectEditDialog } from './project-edit-dialog'
-import { ProjectOutputs } from './project-outputs'
-
-const RECENT = 8
+import { ProjectSessions } from './project-sessions'
 
 const ago = (atMs: number) =>
   Date.now() - atMs < 60_000
@@ -46,47 +44,6 @@ function Section({
       </div>
       {children}
     </section>
-  )
-}
-
-/** A session in a list: its mark, its name, where it came from, when it last moved. */
-function SessionLine({
-  thread,
-  titles,
-}: {
-  thread: ThreadEntry
-  titles: ReadonlyMap<string, string>
-}) {
-  const origin = thread.origin
-  const source = origin && titles.get(origin.threadId)
-  return (
-    <li>
-      <Link
-        to="/c/$threadId"
-        params={{ threadId: thread.threadId }}
-        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-1.5 hover:bg-hover"
-      >
-        <SessionGlyph threadId={thread.threadId} className="text-ink-muted" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span data-appearance-recipe="ui.label" className="truncate">
-            {thread.title || 'New chat'}
-          </span>
-          {(thread.summary || source) && (
-            <span className="truncate text-xs text-ink-muted">
-              {source
-                ? `${origin.kind === 'forked' ? 'Forked from' : 'Continues'} ${source}`
-                : thread.summary?.text}
-            </span>
-          )}
-        </span>
-        {thread.attention.running && (
-          <span className="text-xs text-ink-muted">Running</span>
-        )}
-        <span className="shrink-0 text-xs text-ink-muted tabular-nums">
-          {ago(lastMoved(thread))}
-        </span>
-      </Link>
-    </li>
   )
 }
 
@@ -156,7 +113,6 @@ export function ProjectHome({ projectId }: { projectId: string }) {
   const { data: records = [] } = useProjects()
   const [editing, setEditing] = useState(false)
   const [editingState, setEditingState] = useState(false)
-  const [showAll, setShowAll] = useState(false)
   const pin = { kind: 'project', id: projectId } as const
   const pinned = useSidebarPrefs((s) => isPinned(s.pins, pin))
   const togglePin = useSidebarPrefs((s) => s.togglePin)
@@ -165,6 +121,11 @@ export function ProjectHome({ projectId }: { projectId: string }) {
   useEffect(() => {
     useShell.getState().setProjectId(projectId)
   }, [projectId])
+  // The project's apps and outputs stand in the dock's side group, beside its page.
+  const openOutputs = useOutputsDock((s) => s.open)
+  useEffect(() => {
+    openOutputs?.()
+  }, [openOutputs, projectId])
 
   const project = organization?.projects.find((p) => p.projectId === projectId)
   const record = records.find((p) => p.projectId === projectId)
@@ -199,7 +160,6 @@ export function ProjectHome({ projectId }: { projectId: string }) {
     )
 
   const instructions = record?.instructions ?? ''
-  const listed = showAll ? threads : threads.slice(0, RECENT)
 
   return (
     <div className="h-full overflow-y-auto">
@@ -252,33 +212,7 @@ export function ProjectHome({ projectId }: { projectId: string }) {
             >
               <Composer autoFocus={false} />
             </section>
-            <Section
-              title="Sessions"
-              action={
-                threads.length > RECENT && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    aria-expanded={showAll}
-                    onClick={() => setShowAll((all) => !all)}
-                  >
-                    {showAll ? 'Show fewer' : `Show all ${threads.length}`}
-                  </Button>
-                )
-              }
-            >
-              {threads.length ? (
-                <ul className="-mx-3 flex flex-col">
-                  {listed.map((t) => (
-                    <SessionLine key={t.threadId} thread={t} titles={titles} />
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-sm text-ink-muted">
-                  No sessions yet. Start one above.
-                </p>
-              )}
-            </Section>
+            <ProjectSessions threads={threads} titles={titles} />
           </div>
 
           <aside
@@ -338,11 +272,6 @@ export function ProjectHome({ projectId }: { projectId: string }) {
                 ) : (
                   <p className="text-sm text-ink-muted">Not written yet.</p>
                 )}
-              </Section>
-            )}
-            {organization?.served && (
-              <Section title="Apps and outputs" className="p-4">
-                <ProjectOutputs projectId={projectId} limit={5} />
               </Section>
             )}
             <Section title="Knowledge and connections" className="p-4">
