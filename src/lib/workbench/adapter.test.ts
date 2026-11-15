@@ -11,6 +11,20 @@ import type {
 } from './adapter'
 import type { TerminalListReply } from '@theoremharness/sdk-ide'
 import type { TerminalHost } from './terminal'
+import type { Connectivity } from './terminal/wire'
+import { rig as terminalRig } from './terminal/test-rig'
+import {
+  ADOPTION_UNAVAILABLE_EVENT,
+  ATTACH_LOST_FRAGMENT,
+  ATTACH_RUNNING_FRAGMENT,
+  EXITED_EXITED,
+  EXITED_GONE,
+  EXITED_SCOPE_REMOVED,
+  LOST_LIST_ROW,
+  UPDATED_CORE_CLOSED,
+  UPDATED_CORE_UNAVAILABLE,
+  UPDATED_RUNNING,
+} from './terminal/fixtures/core-loss'
 import {
   FakeLive,
   HttpError,
@@ -258,6 +272,7 @@ class FakePort {
     processOwnedBy: 'herdr-core' as string | undefined,
     lease: { generation: 4 as number | undefined },
     programReport: { kind: 'unavailable' } as ProgramReport,
+    connectivity: { state: 'running' } as Connectivity,
   }
   seen: {
     input?: unknown[]
@@ -2309,5 +2324,233 @@ describe('account change and revoked access', () => {
       workspace: 'w1',
       state: 'closed',
     })
+  })
+})
+
+describe('terminal core loss, through the real terminal owner', () => {
+  const BINDING = { backend: 'herdr', epoch: 2, program: 1 }
+  const attachReply = (extra: Record<string, unknown> = {}) => ({
+    session: 'hc-example',
+    attached: true,
+    attachment: 'ta-1',
+    control: {
+      attachment: 'ta-1',
+      role: 'controller',
+      controlling: true,
+      controlled: true,
+      generation: 1,
+      epoch: 2,
+    },
+    backend: 'herdr',
+    epoch: 2,
+    binding: BINDING,
+    formatted: '',
+    offset_start: 0,
+    offset_end: 0,
+    data: '',
+    ...extra,
+  })
+  const wired = async (operation?: string) => {
+    const r = terminalRig()
+    r.handlers.open = () => ({
+      session: 'hc-example',
+      cols: 80,
+      rows: 24,
+      backend: 'herdr',
+      binding: BINDING,
+      process_owned_by: 'herdr-core',
+    })
+    r.handlers.attach = () => attachReply()
+    const t = await setup({
+      terminal: {
+        create: () => r.session,
+        host: { onEvent: () => () => undefined },
+      },
+    })
+    t.adapter.perform({
+      id: 1,
+      resource: WS,
+      kind: 'terminalOpen',
+      payload: {
+        backend: 'herdr',
+        cols: 80,
+        rows: 24,
+        ...(operation ? { operation } : {}),
+      },
+    } as never)
+    await t.settle()
+    expect(t.completions()[0]!.outcome).toEqual({ status: 'accepted' })
+    return { r, t }
+  }
+  const exits = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.hostMessages().flatMap((m) => (m.type === 'terminalExited' ? [m] : []))
+  const lists = (t: Awaited<ReturnType<typeof setup>>) =>
+    t.hostMessages().flatMap((m) => (m.type === 'terminalSessions' ? [m] : []))
+  const frame = (r: Awaited<ReturnType<typeof wired>>['r'], f: unknown) =>
+    r.emit(
+      (f as { kind: string }).kind,
+      (f as { data: Record<string, unknown> }).data,
+    )
+
+  test('a core loss reaches the pane as lost at the event epoch, never as an exit, and the list says lost', async () => {
+    const { r, t } = await wired()
+    frame(r, UPDATED_CORE_CLOSED)
+    expect(exits(t)).toEqual([
+      {
+        type: 'terminalExited',
+        resource: expect.anything(),
+        epoch: 2,
+        reason: 'lost',
+      },
+    ])
+    expect(exits(t)[0]).not.toHaveProperty('exitCode')
+    expect(lists(t).at(-1)!.sessions[0]).toMatchObject({
+      session: 'hc-example',
+      state: 'lost',
+    })
+  })
+
+  test('a recovery says running in the list and sends no exit; the program report on each update still arrives', async () => {
+    const { r, t } = await wired()
+    frame(r, UPDATED_CORE_UNAVAILABLE)
+    frame(r, UPDATED_RUNNING)
+    expect(exits(t)).toHaveLength(1)
+    expect(lists(t).at(-1)!.sessions[0]).toMatchObject({ state: 'running' })
+    const reports = t
+      .hostMessages()
+      .flatMap((m) => (m.type === 'terminalReport' ? [m] : []))
+    expect(reports.map((m) => m.report)).toEqual([{ kind: 'never_reported' }])
+  })
+
+  test('a host that sends none of the new fields sends the pane no loss', async () => {
+    const { r, t } = await wired()
+    frame(r, {
+      kind: 'terminal.updated',
+      data: { session: 'hc-example', epoch: 2 },
+    })
+    expect(exits(t)).toEqual([])
+    expect(lists(t).at(-1)!.sessions[0]).toMatchObject({ state: 'running' })
+  })
+
+  test('an attach answered attached:true with state:lost completes refused terminal_core_lost, not as a live terminal', async () => {
+    const { r, t } = await wired()
+    r.handlers.attach = () => attachReply(ATTACH_LOST_FRAGMENT)
+    t.adapter.perform({
+      ...effectOf(2, 'terminalAttach'),
+      resource: { type: 'terminal', workspace: 'w1', session: 'hc-example' },
+    } as never)
+    await t.settle()
+    const done = t.completions().at(-1)!
+    expect(done.outcome).toMatchObject({
+      status: 'refused',
+      code: 'terminal_core_lost',
+    })
+    expect(done).not.toHaveProperty('payload')
+    r.handlers.attach = () => attachReply(ATTACH_RUNNING_FRAGMENT)
+    t.adapter.perform({
+      ...effectOf(3, 'terminalAttach'),
+      resource: { type: 'terminal', workspace: 'w1', session: 'hc-example' },
+    } as never)
+    await t.settle()
+    expect(t.completions().at(-1)!.outcome).toEqual({ status: 'accepted' })
+  })
+
+  test('terminal.exited: gone and exited are exits with their word; scope_removed is lost', async () => {
+    const gone = await wired()
+    frame(gone.r, EXITED_GONE)
+    expect(exits(gone.t)).toEqual([
+      expect.objectContaining({ epoch: 2, reason: 'gone' }),
+    ])
+    expect(exits(gone.t)[0]).not.toHaveProperty('exitCode')
+    const done = await wired()
+    frame(done.r, EXITED_EXITED)
+    expect(exits(done.t)).toEqual([
+      expect.objectContaining({ reason: 'exited', exitCode: 0 }),
+    ])
+    const scope = await wired()
+    frame(scope.r, EXITED_SCOPE_REMOVED)
+    expect(exits(scope.t)).toEqual([
+      expect.objectContaining({ epoch: 2, reason: 'lost' }),
+    ])
+  })
+
+  test('the launch carries one operation id per intent: the pane’s own when it names one, else the effect’s', async () => {
+    const named = await wired('intent-7')
+    expect(
+      (named.r.of('open')[0]!.request.body as { operation_id: string })
+        .operation_id,
+    ).toBe('intent-7')
+    const bare = await wired()
+    const sent = (
+      bare.r.of('open')[0]!.request.body as { operation_id: string }
+    ).operation_id
+    expect(sent).toMatch(/:1$/)
+    expect(bare.r.of('open')[0]!.request['Idempotency-Key']).toBe(sent)
+  })
+
+  test('a lost launch answer completes uncertain and the adapter launches nothing again', async () => {
+    const r = terminalRig()
+    r.handlers.open = () => {
+      throw Object.assign(new Error('HTTP 409'), {
+        statusCode: 409,
+        body: {
+          code: 'terminal_operation_uncertain',
+          detail: { operation_id: 'i', next_step: 'reconcile' },
+        },
+      })
+    }
+    const t = await setup({
+      terminal: {
+        create: () => r.session,
+        host: { onEvent: () => () => undefined },
+      },
+    })
+    t.adapter.perform({
+      id: 1,
+      resource: WS,
+      kind: 'terminalOpen',
+      payload: { backend: 'herdr', cols: 80, rows: 24, operation: 'i' },
+    } as never)
+    await t.settle()
+    expect(t.completions()[0]!.outcome).toMatchObject({ status: 'uncertain' })
+    expect(r.of('open')).toHaveLength(1)
+  })
+
+  test('an unavailable adoption with the host’s stable code is stated on the Herdr profiles in plain words, with the advice', async () => {
+    const t = await setup(
+      {},
+      undefined,
+      {},
+      {
+        herdr: true,
+        canList: async () => true,
+        list: async () =>
+          ({
+            sessions: [LOST_LIST_ROW],
+            adoption: {
+              state: 'unavailable',
+              reason: 'core_unavailable',
+              next_step: 'retry',
+            },
+          }) as never,
+      },
+    )
+    await t.settle()
+    t.announce(ADOPTION_UNAVAILABLE_EVENT)
+    await t.settle()
+    const last = lists(t).at(-1)!
+    expect(last.profiles.filter((p) => p.backend === 'herdr')[0]).toMatchObject(
+      {
+        available: false,
+        unavailableReason:
+          'Herdr terminals cannot be reached: the core cannot be reached. Retry to reconnect.',
+      },
+    )
+    // The retained lost row is kept and says lost.
+    expect(last.sessions.find((s) => s.session === 'hc-example')).toMatchObject(
+      {
+        state: 'lost',
+      },
+    )
   })
 })

@@ -196,7 +196,10 @@ describe('open', () => {
       expect(sent.workspaceId).toBe('ws-1')
       expect(sent['X-CSRF-Token']).toBe('csrf-1')
       expect(typeof sent['Idempotency-Key']).toBe('string')
-      bodies.push(sent.body as Record<string, unknown>)
+      // The launch's operation id is the idempotency key: one value per launch intent.
+      const { operation_id, ...rest } = sent.body as Record<string, unknown>
+      expect(operation_id).toBe(sent['Idempotency-Key'])
+      bodies.push(rest)
     }
     expect(bodies).toEqual([
       { cols: 100, rows: 30 },

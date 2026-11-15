@@ -9,8 +9,9 @@ import { herdrIdentity } from './protocol'
 import type { HerdrIdentity } from './protocol'
 import { parseProgramReport } from './program-report'
 import type { ProgramReport } from './program-report'
-import { isTerminalEvent } from './wire'
+import { isTerminalEvent, readConnectivity } from './wire'
 import type {
+  Connectivity,
   AttachReply,
   InputKind,
   InputReply,
@@ -60,6 +61,8 @@ export interface TerminalDeps {
 export type ListedTerminals = Omit<TerminalListReply, 'sessions'> & {
   sessions: (TerminalListReply['sessions'][number] & {
     programReport?: ProgramReport
+    /** What the row says about reaching the terminal's core; absent when it says nothing (an older host). */
+    connectivity?: Connectivity
   })[]
 }
 
@@ -68,6 +71,13 @@ export interface AttachRequest {
   from_offset: number
   attachment?: string
   role?: Exclude<LeaseRole, 'unleased'>
+  /**
+   * With `role: 'controller'` on a lease somebody holds: the generation (and the binding epoch) of
+   * the claim being made. The host refuses a claim on an occupied lease that does not name the
+   * current attachment and generation.
+   */
+  generation?: number
+  epoch?: number
 }
 
 /** Exactly one wire form of the input: UTF-8 text, or the standard base64 of the exact bytes. */
@@ -75,7 +85,11 @@ export type InputBody = { bytes: string } | { bytes_base64: string }
 
 /** What the session talks to: one method per host operation, bodies as the contract defines them. */
 export interface TerminalHost {
-  open: (body: TerminalOpenRequest, key: string) => Promise<OpenReply>
+  /** `body` carries the launch's `operation_id`; the host returns the first reply for a repeat of it. */
+  open: (
+    body: TerminalOpenRequest & { operation_id?: string },
+    key: string,
+  ) => Promise<OpenReply>
   attach: (request: AttachRequest) => Promise<AttachReply>
   input: (
     request: {
@@ -156,6 +170,9 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
           programReport: parseProgramReport(
             (row as { program_report?: unknown }).program_report,
           ),
+          ...(readConnectivity(row)
+            ? { connectivity: readConnectivity(row) }
+            : {}),
         })),
       }
     },

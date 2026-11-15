@@ -6,11 +6,12 @@ import { openBody } from './terminal-profile'
 import type { TheoremTerminalProfile } from './terminal-profile'
 import { reason as readableReason } from '../environment/workspace-recovery'
 import type { HerdrIdentity } from './protocol'
-import { classify } from './wire'
+import { classify, lostWords, readConnectivity } from './wire'
 import { parseProgramReport, replaces, UNAVAILABLE } from './program-report'
 import type { ProgramReport } from './program-report'
 import type {
   AttachReply,
+  Connectivity,
   Failure,
   InputKind,
   LeaseRefusalReason,
@@ -54,6 +55,12 @@ export interface TerminalState {
    * lifecycle, the lease, the role, the attachment or the input check, and it is never a command, approval or task.
    */
   programReport: ProgramReport
+  /**
+   * Whether the host can reach the terminal's core. `lost` means the process outcome is unknown, not that it
+   * exited, and it is not `phase: 'lost'` (a program that cannot be resumed): it clears when the host says
+   * `running`. Control of the lease is a different fact and is not touched by it.
+   */
+  connectivity: Connectivity
   lease: {
     role: LeaseRole
     generation: number | undefined
@@ -99,8 +106,20 @@ export type TerminalEvent =
       code: number | null | undefined
       signal: number | null | undefined
     }
-  /** The program or its session is gone and cannot be resumed. A new program is a new `open`. */
-  | { type: 'lost'; cause: 'program_lost' | 'session_gone' | 'stream_closed' }
+  /** The program or its session is gone and cannot be resumed. A new program is a new `open`. `reason` is the host's own word when it gave one beyond `lost` (`scope_removed`). */
+  | {
+      type: 'lost'
+      cause: 'program_lost' | 'session_gone' | 'stream_closed'
+      reason?: string
+    }
+  /** The host can no longer reach (or can again reach) the terminal's core. Loss is not exit; `words` is what a person reads. */
+  | {
+      type: 'connectivity'
+      terminalId: string
+      bindingEpoch: number | undefined
+      connectivity: Connectivity
+      words: string | undefined
+    }
   | { type: 'reconnected' }
   /** The program's report for this binding changed. Informational only. */
   | {
@@ -119,7 +138,11 @@ export interface OpenOptions {
   role?: 'controller' | 'observer'
   /** The caller's own attachment name for the attach that follows the launch, sent to the host unchanged. */
   attachment?: string
-  /** Reuse after an uncertain launch so the gateway can recognise the same request (host behaviour unverified). */
+  /**
+   * One value per launch intent, reused on a retry of the same intent. It is sent as the launch's
+   * `operation_id` (the host returns the first reply for a repeat and never launches twice) and as
+   * the gateway's idempotency key. Minted once here when the caller names none; nonempty, at most 256 bytes.
+   */
   idempotencyKey?: string
 }
 
@@ -216,8 +239,12 @@ interface Sent {
   body: InputBody
   kind: InputKind
   claim: WriteClaim
-  /** No reply was seen, so the host may or may not have written it. */
+  /** No reply was seen (or the host said it cannot tell), so the host may or may not have written it. */
   uncertain: boolean
+  /** The binding epoch it was sent in; a repeat in another epoch is never sent. */
+  epoch: number | undefined
+  /** Set when the host itself reported the outcome unknown: the input is never sent again. */
+  blocked?: string
 }
 
 /** One terminal binding: its open, attach, input, lease and end, as the host's contract defines them. */
@@ -236,6 +263,7 @@ export class TerminalSession {
     origin: undefined,
     processOwnedBy: undefined,
     programReport: UNAVAILABLE,
+    connectivity: { state: 'running' },
     lease: {
       role: 'unleased',
       generation: undefined,
@@ -292,16 +320,29 @@ export class TerminalSession {
         })
       }
     }
+    // One id per launch intent: a retry of the same intent names the same one, so the host never launches twice.
+    const operationId = options.idempotencyKey ?? crypto.randomUUID()
+    if (
+      operationId === '' ||
+      new TextEncoder().encode(operationId).length > 256
+    ) {
+      this.current.phase = 'idle'
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_argument_refused',
+        field: 'operation_id',
+        reason:
+          'The launch id must be nonempty and at most 256 bytes; nothing was sent',
+      })
+    }
     const body = {
       ...openBody(options.profile, options.cols, options.rows),
       ...(options.name ? { name: options.name } : {}),
+      operation_id: operationId,
     }
     let reply
     try {
-      reply = await this.host.open(
-        body,
-        options.idempotencyKey ?? crypto.randomUUID(),
-      )
+      reply = await this.host.open(body, operationId)
     } catch (error) {
       this.current.phase = 'idle'
       return this.answer(classify(error))
@@ -326,6 +367,7 @@ export class TerminalSession {
       origin: 'launched',
       processOwnedBy: reply.process_owned_by,
       programReport: parseProgramReport(reply.program_report),
+      connectivity: { state: 'running' },
       offset: 0,
     })
     if (options.attachment) this.current.lease.attachment = options.attachment
@@ -358,6 +400,7 @@ export class TerminalSession {
       offset: options.fromOffset,
       phase: 'opening',
       exit: undefined,
+      connectivity: { state: 'running' },
     })
     if (options.attachment) this.current.lease.attachment = options.attachment
     this.listen()
@@ -372,7 +415,11 @@ export class TerminalSession {
    * is sent. The caller mints `inputId` (the terminal panel does, once per logical input) and may
    * name the `claim` it believes current; neither is rewritten. The id is fresh only when the caller
    * names none. A repeat of an id whose acknowledgement was lost resends the original body, claim
-   * included, so the host writes it once; a repeat of an id already answered sends nothing.
+   * included, so the host writes it once; a repeat of an id already answered sends nothing. An input
+   * whose outcome is unknown is sent again only by that explicit repeat, and only when the repeat is still
+   * the same input: the same binding epoch, an attachment name the host has not replaced, a reachable
+   * core and an outcome the host did not itself call uncertain. Otherwise nothing is sent and it stays
+   * `uncertain`; this module never repeats an input on its own.
    */
   async input(
     bytes: string,
@@ -438,6 +485,10 @@ export class TerminalSession {
           reason: 'the input was already answered; not resent',
         })
       }
+      const stale = this.notResendable(known)
+      if (stale) {
+        return this.answer<never>({ outcome: 'uncertain', reason: stale })
+      }
       return this.send(inputId, known)
     }
     const unfit = this.unfit()
@@ -455,6 +506,7 @@ export class TerminalSession {
       kind,
       claim,
       uncertain: false,
+      epoch: this.current.bindingEpoch,
     })
   }
 
@@ -627,6 +679,14 @@ export class TerminalSession {
         reason: `the terminal is ${phase}`,
       })
     }
+    const { connectivity } = this.current
+    if (connectivity.state === 'lost') {
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_core_lost',
+        reason: `${lostWords(connectivity.reason, connectivity.nextStep)} Nothing was sent.`,
+      })
+    }
     if (lease.role !== 'controller') {
       const reason: LeaseRefusalReason =
         lease.role === 'observer' ? 'observer' : 'unknown_attachment'
@@ -668,6 +728,7 @@ export class TerminalSession {
       this.ledger.delete(oldest)
     }
     sent.uncertain = true
+    const receipt = { uncertain: false }
     const result = await this.write(async (id) => {
       const reply = await this.host.input({
         session: id,
@@ -676,12 +737,24 @@ export class TerminalSession {
         kind: sent.kind,
         ...sent.claim,
       })
+      // The receipt itself can say the bytes may or may not have been delivered.
+      receipt.uncertain =
+        reply.uncertain === true || reply.code === 'terminal_input_uncertain'
       return {
         inputId,
         duplicate: reply.duplicate === true,
         discarded: reply.discarded === true,
       }
     })
+    if (receipt.uncertain && result.outcome === 'accepted') {
+      sent.blocked =
+        'The host cannot say whether these keystrokes reached the program (terminal_input_uncertain). They were not sent again; look at the screen and type them again only if they are missing'
+      sent.body = { bytes: '' }
+      return this.answer<never>({
+        outcome: 'uncertain',
+        reason: sent.blocked,
+      })
+    }
     // Only a call with no reply may still have been written; every other answer settles it.
     if (result.outcome !== 'uncertain') {
       sent.uncertain = false
@@ -696,7 +769,10 @@ export class TerminalSession {
     }
   }
 
-  private lose(cause: 'program_lost' | 'session_gone' | 'stream_closed'): void {
+  private lose(
+    cause: 'program_lost' | 'session_gone' | 'stream_closed',
+    reason?: string,
+  ): void {
     if (this.current.phase === 'lost') {
       return
     }
@@ -707,7 +783,46 @@ export class TerminalSession {
       held: false,
       attachment: undefined,
     }
-    this.emit({ type: 'lost', cause })
+    this.emit({ type: 'lost', cause, ...(reason ? { reason } : {}) })
+  }
+
+  /** Sets what the host says about reaching the core, and says so when it changed. Never touches the phase, the lease or the report. */
+  private connect(next: Connectivity): void {
+    const state = this.current
+    if (JSON.stringify(next) === JSON.stringify(state.connectivity)) return
+    state.connectivity = next
+    if (state.terminalId)
+      this.emit({
+        type: 'connectivity',
+        terminalId: state.terminalId,
+        bindingEpoch: state.bindingEpoch,
+        connectivity: next,
+        words:
+          next.state === 'lost'
+            ? lostWords(next.reason, next.nextStep)
+            : undefined,
+      })
+  }
+
+  /** Why an input whose outcome is unknown must not be sent again now, or undefined when the same input may be repeated. */
+  private notResendable(sent: Sent): string | undefined {
+    const { lease, bindingEpoch, connectivity } = this.current
+    if (sent.blocked) return sent.blocked
+    if (sent.epoch !== bindingEpoch) {
+      return `The terminal was rebound (binding epoch ${sent.epoch ?? 'unknown'} to ${bindingEpoch ?? 'unknown'}) after this input was sent, so whether it arrived is unknown; it was not sent again`
+    }
+    const named = sent.claim.attachment
+    if (
+      named !== undefined &&
+      named !== lease.attachment &&
+      this.superseded.has(named)
+    ) {
+      return `The host replaced the attachment name "${named}" this input was sent under, so a repeat would not be the same input; it was not sent again`
+    }
+    if (connectivity.state === 'lost') {
+      return `${lostWords(connectivity.reason, connectivity.nextStep)} Whether this input arrived is unknown; it was not sent again`
+    }
+    return undefined
   }
 
   /**
@@ -745,12 +860,24 @@ export class TerminalSession {
     }
     let reply: AttachReply
     try {
-      const { attachment } = this.current.lease
+      const { attachment, generation, held } = this.current.lease
+      // Control of a lease somebody holds is claimed with the current attachment, generation and epoch;
+      // an unheld lease is acquired without a claim.
+      const claim =
+        role === 'controller' && held && generation !== undefined
+          ? {
+              generation,
+              ...(this.current.bindingEpoch !== undefined
+                ? { epoch: this.current.bindingEpoch }
+                : {}),
+            }
+          : {}
       reply = await this.host.attach({
         session: id,
         from_offset: from,
         ...(attachment ? { attachment } : {}),
         ...(role ? { role } : {}),
+        ...claim,
       })
     } catch (error) {
       const failure = classify(error)
@@ -778,6 +905,15 @@ export class TerminalSession {
       })
     }
     this.apply(reply)
+    const { connectivity } = this.current
+    if (connectivity.state === 'lost') {
+      // Attached to the host's record, not to a live stream, and it launched nothing: not a live terminal.
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_core_lost',
+        reason: lostWords(connectivity.reason, connectivity.nextStep),
+      })
+    }
     return this.accepted({
       terminalId: id,
       bindingEpoch: this.current.bindingEpoch,
@@ -804,6 +940,9 @@ export class TerminalSession {
         ),
       )
     }
+    // The host states connectivity under the same lock as the screen; an answer that says none (an older
+    // host) claims no loss.
+    this.connect(readConnectivity(reply) ?? { state: 'running' })
     const before = state.lease.attachment
     // The lease control names the attachment the host holds; a bare `attachment` is only an echo.
     if (reply.control) {
@@ -839,9 +978,7 @@ export class TerminalSession {
       state.phase = 'attached'
     }
     if (rebound || reply.truncated) {
-      if (rebound) {
-        this.ledger.clear()
-      }
+      // An input sent in an older epoch stays in the ledger: a repeat of it is never sent into this one.
       state.bindingEpoch = epoch ?? state.bindingEpoch
       state.offset = reply.offset_end
       this.emit({
@@ -937,9 +1074,18 @@ export class TerminalSession {
   }
 
   /** `terminal.updated`: replaces the report for the current binding epoch and no other (omission clears it). */
-  private onUpdated(data: { epoch?: unknown; program_report?: unknown }): void {
+  private onUpdated(data: {
+    epoch?: unknown
+    program_report?: unknown
+    state?: unknown
+    reason?: unknown
+    next_step?: unknown
+  }): void {
     const { bindingEpoch } = this.current
     if (bindingEpoch === undefined || data.epoch !== bindingEpoch) return
+    // Connectivity first, and only when the update states it: an update without `state` changes none.
+    const stated = readConnectivity(data)
+    if (stated) this.connect(stated)
     const update = parseProgramReport(data.program_report)
     // An update with no report clears what was held; the host then says nothing, which is `unavailable`, not any word.
     if (replaces(this.current.programReport, update)) this.report(update)
@@ -985,6 +1131,8 @@ export class TerminalSession {
         }
         state.program = program ?? state.program
         state.origin = origin ?? state.origin
+        // A full recovery arrives as a new epoch and says `running`; so does an announcement that names none.
+        this.connect(readConnectivity(event.data) ?? { state: 'running' })
         if (origin === 'adopted') {
           this.emit({
             type: 'adopted',
@@ -1027,8 +1175,15 @@ export class TerminalSession {
         return
       case 'terminal.exited': {
         const reason = event.data.reason ?? 'exited'
-        if (reason === 'lost') {
-          this.lose('program_lost')
+        const word = (event.data as { state?: unknown }).state
+        // `state: lost` is a retired binding whose outcome is unknown (also `scope_removed`); `gone` and `exited` are ends.
+        // An older host names no state and says `lost` in the reason.
+        if (
+          word === 'lost' ||
+          (word === undefined &&
+            (reason === 'lost' || reason === 'scope_removed'))
+        ) {
+          this.lose('program_lost', reason === 'lost' ? undefined : reason)
           return
         }
         state.phase = 'exited'

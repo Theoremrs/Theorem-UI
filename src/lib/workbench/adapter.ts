@@ -12,6 +12,7 @@ import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import { herdrIdentity } from './terminal/protocol'
+import { causeWords, isKnownCause, stepWords } from './terminal/wire'
 import type { ListedTerminals } from './terminal/host'
 import { profileById, TERMINAL_PROFILES } from './terminal'
 import type { TerminalAdoption } from '@theoremharness/sdk-ide'
@@ -348,6 +349,19 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
             reason: 'lost',
           })
           return
+        case 'connectivity':
+          // The core connection is lost or back. Loss is not an end: the host retains the terminal and
+          // its process outcome is unknown, which is the pane's `lost` status (never `exited`). The core
+          // has no message that clears it within one epoch, so a recovery is not sent: it arrives as
+          // `terminal.opened` under a new epoch, or as the next attach answer (see the report).
+          if (event.connectivity.state === 'lost')
+            send({
+              type: 'terminalExited',
+              resource: target,
+              epoch: event.bindingEpoch ?? epoch(),
+              reason: 'lost',
+            })
+          return
         case 'resized':
           send({
             type: 'terminalResized',
@@ -409,7 +423,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           ? identity.supported
             ? 'The host reports Herdr terminals not ready'
             : identity.reason
-          : unreachable?.reason
+          : unreachable && adoptionWords(unreachable)
       return {
         id: profile.id,
         label: profile.id,
@@ -421,6 +435,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           : {}),
       }
     })
+  }
+
+  /** Why the host cannot read the core's inventory, in plain words, with its advice. */
+  function adoptionWords(unreachable: {
+    reason?: string
+    next_step?: string
+  }): string | undefined {
+    // A stable code is put in plain words with the host's advice; free text from an older host is shown as sent.
+    if (!isKnownCause(unreachable.reason)) return unreachable.reason
+    return `Herdr terminals cannot be reached: ${causeWords(unreachable.reason)}.${unreachable.next_step ? ` ${stepWords(unreachable.next_step)}` : ''}`
   }
 
   /** The host's adoption state as the wire names it; a state the wire does not know is left out, never guessed. */
@@ -590,7 +614,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       state:
         state.phase === 'exited'
           ? 'exited'
-          : state.phase === 'lost'
+          : state.phase === 'lost' || state.connectivity.state === 'lost'
             ? 'lost'
             : 'running',
       controlledElsewhere: state.lease.role === 'observer' && !state.lease.held,
@@ -743,6 +767,14 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     return reply(done)
   }
 
+  /** The launch intent the pane named, read defensively: the wire's `terminalOpen` carries none yet. */
+  function intentOf(payload: object): string | undefined {
+    const { operation } = payload as { operation?: unknown }
+    return typeof operation === 'string' && operation !== ''
+      ? operation
+      : undefined
+  }
+
   async function openTerminal(
     effect: Extract<Of<'terminal'>, { kind: 'terminalOpen' }>,
     requestId: string,
@@ -760,7 +792,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       rows,
       ...(name ? { name } : {}),
       ...(attachment ? { attachment } : {}),
-      idempotencyKey: requestId,
+      // One id per launch intent. The pane names the intent when its effect carries one (`operation`), so a
+      // retry of the same intent is the same launch to the host; otherwise it is this effect's own id.
+      idempotencyKey: intentOf(effect.payload) ?? requestId,
     })
     if (done.outcome === 'accepted' && !disposed) {
       terminals.set(done.value.terminalId, { port, stop })
