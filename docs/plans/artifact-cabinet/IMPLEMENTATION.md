@@ -69,18 +69,15 @@ The represented revision's content is read through the existing thread
 messages and upload content paths, without switching the foreground thread
 (§9.3).
 
-## Conflicts surfaced to the owner
+## Conflicts surfaced to the owner — decided
 
-1. **Project context column (§3.4).** The spec makes project instructions a
-   compact disclosure; the owner-approved project home has a context column.
-   Not changed silently.
-2. **Navigation width.** The owner's sidebar is 248 px, the spec's baseline
-   210 px. The 248 px sidebar is kept; the §4.1 budget is met by adapting
-   (collapsing navigation or overlaying the cabinet) when the project track
-   would fall under 480 px.
-3. **Docked cabinet.** Per the spec, a persistent dock reserves real width;
-   #111's outputs drawer was an overlay. The cabinet replaces that drawer, so
-   there is one collection browser.
+1. **Project context (§3.4).** Decided for the spec: the project home is one
+   680 px track with a compact "Project context" disclosure (#111, 01e3b64).
+2. **Navigation width.** Decided for the spec: the sidebar is 210 px
+   (`PANEL_WIDTH` {184, 210, 420}, store version 9). The §4.1 budget starts
+   from 210 px navigation and a 680 px project track.
+3. **Docked cabinet.** Agreed: the docked cabinet reserves real width. It
+   replaces #111's outputs drawer, so there is one collection browser.
 
 ## Slice B — host and real reads
 
