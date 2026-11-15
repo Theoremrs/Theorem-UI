@@ -60,6 +60,7 @@ fn one_node_per_chip_with_name_and_state() {
         ("n.md", Some("ready"))
     );
     assert!(a.state.selected);
+    assert!(a.state.focused);
     let b = find(&nodes, "composer:chip:b");
     assert!(b.state.busy);
     assert_eq!((b.pos_in_set, b.set_size), (Some(2), Some(2)));
@@ -67,6 +68,14 @@ fn one_node_per_chip_with_name_and_state() {
         !find(&nodes, "composer:text").state.focused,
         "the keyboard is on a chip"
     );
+    // The chip stays chosen, and nothing says focused, once the keyboard or the window is elsewhere.
+    r.c.set_focused(false);
+    let a = find(&r.c.semantics(r.area), "composer:chip:a").clone();
+    assert!(a.state.selected && !a.state.focused);
+    r.c.set_focused(true);
+    r.c.set_window_focused(false);
+    let a = find(&r.c.semantics(r.area), "composer:chip:a").clone();
+    assert!(a.state.selected && !a.state.focused);
 }
 
 #[test]

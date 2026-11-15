@@ -5014,6 +5014,12 @@ fn the_drawer_has_semantic_nodes_with_their_actions_and_wraps_and_escapes_long_t
     rig.tree_ok();
     let dialog = rig.node("history");
     assert!(dialog.name.contains("History of"));
+    // The drawer is the focused thing only while its panel owns the keyboard.
+    assert!(dialog.state.focused);
+    rig.send(Msg::Focus(false));
+    assert!(!rig.node("history").state.focused);
+    rig.send(Msg::Focus(true));
+    assert!(rig.node("history").state.focused);
     assert!(
         dialog
             .actions

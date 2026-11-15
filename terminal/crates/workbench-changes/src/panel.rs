@@ -1290,6 +1290,13 @@ impl Panel for ChangesPanel {
                 _ => {}
             }
         }
+        // A row or a field is the focused one only while this panel owns the keyboard: the
+        // model remembers where its cursor is after focus moves to another panel.
+        if !cx.focused {
+            for node in &mut nodes {
+                node.state.focused = false;
+            }
+        }
         nodes
     }
 

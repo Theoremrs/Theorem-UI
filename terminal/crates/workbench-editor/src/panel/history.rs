@@ -829,8 +829,9 @@ impl EditorPanel {
     }
 
     /// The drawer's nodes: the dialog, its list of points, the past version,
-    /// each with what it offers. `rect` is the text area it fills.
-    pub(super) fn history_nodes(&self, d: &Doc, rect: Rect) -> Vec<Node> {
+    /// each with what it offers. `rect` is the text area it fills; `focused` is
+    /// whether the panel owns the keyboard.
+    pub(super) fn history_nodes(&self, d: &Doc, rect: Rect, focused: bool) -> Vec<Node> {
         let Some(h) = d.history.as_ref() else {
             return vec![];
         };
@@ -843,7 +844,7 @@ impl EditorPanel {
             rect,
         );
         dialog.binding = self.resource();
-        dialog.state.focused = true;
+        dialog.state.focused = focused;
         dialog.state.busy =
             matches!(h.list, Listing::Loading) || matches!(h.restoring, Restoring::Sent);
         dialog.actions = [Choice::Restore, Choice::History, Choice::Dismiss]

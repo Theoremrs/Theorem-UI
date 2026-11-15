@@ -435,7 +435,7 @@ impl Composer {
                     });
                 let mut n = Node::new(&format!("{p}:chip:{}", a.id), Role::Button, &a.name, rect);
                 n.state.selected = self.chip == Some(i);
-                n.state.focused = self.chip == Some(i);
+                n.state.focused = self.focused && self.window_focused && self.chip == Some(i);
                 n.state.busy = a.state == DraftAttachmentState::Adding;
                 n.state.disabled = a.state == DraftAttachmentState::Refused;
                 n.state.description = Some(match a.state {

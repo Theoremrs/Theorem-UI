@@ -3526,3 +3526,35 @@ fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
     }
     assert!(seen > 5);
 }
+
+/// The panel's nodes that say they are focused.
+fn focused_nodes(rig: &Rig) -> Vec<String> {
+    theorem_workbench_core::tree::semantics(&rig.m)
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().contains("changes/") && n.state.focused)
+        .map(|n| n.id.as_str().to_owned())
+        .collect()
+}
+
+#[test]
+fn no_row_says_focused_once_the_keyboard_is_elsewhere() {
+    let mut rig = loaded();
+    assert!(
+        focused_nodes(&rig).iter().any(|id| id.contains("/file/")),
+        "{:?}",
+        focused_nodes(&rig)
+    );
+    // The window loses focus: the cursor row is remembered, and nothing says focused.
+    update(&mut rig.m, Msg::Focus(false));
+    assert_eq!(focused_nodes(&rig), Vec::<String>::new());
+    update(&mut rig.m, Msg::Focus(true));
+    assert!(focused_nodes(&rig).iter().any(|id| id.contains("/file/")));
+    // Another panel takes the keyboard: the same.
+    let (x, y) = rig.find("README.md");
+    rig.press(x + 2, y, 2);
+    assert!(rig.m.panel_ids().any(|(_, k)| k.as_str() == "document"));
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    assert_eq!(focused_nodes(&rig), Vec::<String>::new());
+}

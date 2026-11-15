@@ -1669,7 +1669,7 @@ impl EditorPanel {
             }
         }
         if d.history.is_some() {
-            let drawer = self.history_nodes(d, frame.text);
+            let drawer = self.history_nodes(d, frame.text, cx.focused);
             if let Some(first) = drawer.first() {
                 children.push(first.id.clone());
             }
