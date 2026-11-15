@@ -57,6 +57,11 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-editor', title: 'Workbench: the editor with tabs, CJK, ZWJ emoji, a wrapped line and a selection', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-editor-conflict', title: 'Workbench: the editor with a disk conflict', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-markdown-visual', title: 'Workbench: the Markdown panel in visual mode', lane: 'original', viewport: { width: 1280, height: 700 } },
+  { id: 'workbench-markdown-source', title: 'Workbench: the Markdown panel in source mode', lane: 'original', viewport: { width: 1280, height: 700 } },
+  { id: 'workbench-markdown-split', title: 'Workbench: the Markdown panel in split mode', lane: 'original', viewport: { width: 1280, height: 700 } },
+  { id: 'workbench-markdown-preview', title: 'Workbench: the Markdown panel in preview mode', lane: 'original', viewport: { width: 1280, height: 700 } },
+  { id: 'workbench-branches', title: 'Workbench: a reply with two branches, switched through the owner', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',

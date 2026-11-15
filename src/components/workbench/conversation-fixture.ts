@@ -3,9 +3,8 @@ import type { ConversationSnapshot } from '@/lib/workbench/conversation/conversa
 
 /**
  * The transcript `workbench-default` shows: a person's turn, a reply with Markdown, a tool call
- * with its output, an edit the reply shows as a fenced diff, and a call waiting for approval.
- * The owner sends a tool result as text and no structured diff or file reference yet, so the
- * diff is the reply's own fenced block, drawn as the Markdown it is; nothing is read out of it.
+ * with its output, an edit carrying a structured diff and the file it worked on, a reply with one fenced
+ * code block, and a call waiting for approval.
  */
 export const STORY_CONVERSATION: ConversationSnapshot = {
   conversationId: 'story-thread',
@@ -47,8 +46,31 @@ export const STORY_CONVERSATION: ConversationSnapshot = {
             'fn draw(&self) {\n    let width = self.area.width\n    render(width);\n}',
         },
         {
+          type: 'tool',
+          id: 'call-3',
+          name: 'apply_patch',
+          args: '{"path":"src/panel.rs"}',
+          status: 'complete',
+          result: 'Patched src/panel.rs',
+          diff: [
+            { k: 'file', t: [{ t: 'src/panel.rs' }] },
+            { k: 'hunk', t: [{ t: '@@ -1,3 +1,3 @@' }] },
+            { k: 'ctx', t: [{ t: 'fn draw(&self) {' }] },
+            { k: 'del', t: [{ t: '    let width = self.area.width' }] },
+            {
+              k: 'add',
+              t: [
+                { t: '    let width = self.area.width' },
+                { t: ';', e: true },
+              ],
+            },
+            { k: 'ctx', t: [{ t: '    render(width);' }] },
+          ],
+          open: { path: 'src/panel.rs', start: 1, end: 3 },
+        },
+        {
           type: 'text',
-          text: '```diff\n@@ -1,3 +1,3 @@\n fn draw(&self) {\n-    let width = self.area.width\n+    let width = self.area.width;\n     render(width);\n```\n\nThe change needs a write to disk, so I am asking first.',
+          text: 'Written as one function, it reads:\n\n```rust\nfn draw(&self) {\n    let width = self.area.width;\n    render(width);\n}\n```\n\nThe change needs a write to disk, so I am asking first.',
         },
         {
           type: 'tool',

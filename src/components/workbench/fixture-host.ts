@@ -1,6 +1,7 @@
 // SOURCING: none — the stories' fixture host: an Adapter whose answers are committed constants and whose documents, repository and terminal keep a little state, so the real wasm workbench draws and reacts with no network and no clock. It uses the wire types; nothing else applies.
 import type { Adapter } from '@/lib/workbench/adapter'
 import { snapshotMessage } from '@/lib/workbench/conversation/conversation'
+import type { ConversationSnapshot } from '@/lib/workbench/conversation/conversation'
 import type {
   Completion,
   CompletionPayload,
@@ -36,6 +37,8 @@ export interface FixtureOptions {
   tree?: Record<string, Listing>
   /** The conversation owner has a transcript to show. */
   transcript?: boolean
+  /** The thread has a second branch of the reply: switching between them re-sends the snapshot. */
+  branches?: boolean
   /** The terminal owner offers a recorded session. */
   terminal?: boolean
   /** The documents owner reports this path's disk as changed under the open document. */
@@ -68,6 +71,12 @@ function applyEdits(text: string, edits: TextChange[]) {
   return out
 }
 
+/** The shell's echo of typed input: printable text as it is, Enter as a new line and prompt, Backspace as an erase. */
+const echo = (typed: string) =>
+  typed
+    .replace(/\r\n?|\n/g, '\r\n\u001b[1;32mada@story\u001b[0m:\u001b[1;34m~/project\u001b[0m$ ')
+    .replace(/\u007f/g, '\b \b')
+
 type Held = { text: string; revision: number; saved: number; disk: string }
 
 export function createFixtureHost(
@@ -81,6 +90,39 @@ export function createFixtureHost(
   const epoch = 1
   /** The terminal's attachment, once something has attached. */
   let terminal: { resource: ResourceRef; cols: number; rows: number } | undefined
+  /** The branch of the thread the transcript shows, and the revision of the last snapshot sent. */
+  let branch = 'root'
+  let revision = STORY_CONVERSATION.revision
+
+  /** The transcript of the selected branch: the second branch answers with a different first line. */
+  const thread = (): ConversationSnapshot => ({
+    ...STORY_CONVERSATION,
+    revision,
+    // A thread with branches is shown at rest, so the status row can say which branch it is on.
+    ...(options.branches && { run: { state: 'idle' }, approval: undefined }),
+    messages: STORY_CONVERSATION.messages.map((message) => ({
+      ...message,
+      parts: message.parts.map((part, index) =>
+        branch === 'b1' &&
+        message.role === 'assistant' &&
+        index === 0 &&
+        part.type === 'text'
+          ? {
+              ...part,
+              text: 'On the other branch I started from the build log: the compiler stops at `src/panel.rs`, one line short of a semicolon.',
+            }
+          : part,
+      ),
+    })),
+    ...(options.branches && {
+      history: {
+        rootBranchId: 'root',
+        selectedBranchId: branch,
+        forks: [{ branchId: 'b1', createdAtMs: 1 }],
+        activeRunId: null,
+      },
+    }),
+  })
 
   const later = (task: () => void) =>
     queueMicrotask(() => {
@@ -149,7 +191,7 @@ export function createFixtureHost(
     if (options.transcript)
       dispatch({
         channel: 'host',
-        ...snapshotMessage('story-project', STORY_CONVERSATION),
+        ...snapshotMessage('story-project', thread()),
       })
   })
 
@@ -313,10 +355,77 @@ export function createFixtureHost(
           full: true,
           findings: [],
         })
+      case 'conversationSwitchBranch': {
+        branch = effect.payload.branchId
+        revision += 1
+        accept(effect, {
+          type: 'conversationOpened',
+          conversationId: effect.payload.threadId,
+        })
+        send(snapshotMessage('story-project', thread()))
+        return
+      }
+      case 'searchQuery': {
+        const needle = effect.payload.query.toLowerCase()
+        const rows = Object.entries(DOCUMENTS).flatMap(([path, text]) =>
+          text.split('\n').flatMap((line, index) => {
+            const start = line.toLowerCase().indexOf(needle)
+            return needle && start >= 0
+              ? [
+                  {
+                    path,
+                    line: index + 1,
+                    text: line,
+                    matches: [{ start, end: start + needle.length }],
+                  },
+                ]
+              : []
+          }),
+        )
+        accept(effect, { type: 'searchStarted', id: 'search-1' })
+        send({
+          type: 'searchPage',
+          id: 'search-1',
+          rows,
+          skipped: 0,
+          state: 'complete',
+          readAt: { workspaceId: WORKSPACE, generation: 1 },
+          encoding: 'utf16_code_units',
+        })
+        return
+      }
+      case 'searchCancel':
+      case 'runConfigure':
+      case 'runStop':
+        return accept(effect)
+      case 'runStart':
+        return accept(effect, { type: 'runStarted', handle: 'run-1' })
+      case 'runPoll':
+        return accept(effect, {
+          type: 'runState',
+          handle: effect.payload.handle,
+          state: 'exited',
+          exitCode: 0,
+          stdout: 'running 2 tests\ntest add ... ok\ntest sub ... ok\n',
+          stderr: '',
+          readAt: { workspaceId: WORKSPACE, generation: 1 },
+        })
       case 'terminalResize':
         return accept(effect)
       case 'terminalInput':
-      case 'terminalInputBytes':
+      case 'terminalInputBytes': {
+        accept(effect)
+        // A tiny line discipline: what is typed comes back as the shell would echo it, and Enter
+        // ends the line and shows the prompt again.
+        if (terminal) {
+          const typed =
+            effect.kind === 'terminalInput'
+              ? effect.payload.bytes
+              : atob(effect.payload.data)
+          frame(terminal.resource, echo(typed))
+        }
+        return
+      }
       case 'terminalDetach':
         return accept(effect)
       default:

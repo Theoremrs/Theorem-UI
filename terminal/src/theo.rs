@@ -39,7 +39,8 @@ use theorem_workbench_core::{
     completion::{CompletionPayload, SideChatInfo},
     effect::{
         ApprovalDecision, ConversationApproval, ConversationCancel, ConversationEdit,
-        ConversationInput, ConversationRetry, ConversationSend, SideChatOpen, SideChatScope,
+        ConversationInput, ConversationRetry, ConversationSend, ConversationSwitchBranch,
+        SideChatOpen, SideChatScope,
     },
     semantics::{Node, NodeAction, Role},
     stale::Binding,
@@ -83,6 +84,13 @@ struct OwnerFork {
 }
 
 impl OwnerHistory {
+    /// Every branch id, the root first, then each fork oldest first.
+    fn branch_ids(&self) -> Vec<&str> {
+        std::iter::once(self.root_branch_id.as_str())
+            .chain(self.forks.iter().map(|f| f.branch_id.as_str()))
+            .collect()
+    }
+
     /// The selected branch's place, root first, when the thread has more than one branch.
     fn position(&self) -> Option<(usize, usize)> {
         if self.forks.is_empty() {
@@ -451,6 +459,7 @@ enum Tracked {
     NewConversation,
     NewSideChat,
     ListSideChats,
+    SwitchBranch,
 }
 
 pub(crate) struct TheoPanel {
@@ -646,6 +655,7 @@ impl TheoPanel {
                 message_id,
                 client_message_id: id.clone(),
                 text: text.clone(),
+                references: vec![],
             })
         } else if self.owner.working() {
             let Some(run_id) = self.owner.run.run_id.clone() else {
@@ -662,6 +672,7 @@ impl TheoPanel {
                 client_message_id: id.clone(),
                 text: text.clone(),
                 attachments: Vec::new(),
+                references: vec![],
             })
         };
         self.pending
@@ -746,6 +757,34 @@ impl TheoPanel {
             EffectBody::ConversationRetry(ConversationRetry { message_id }),
             Tracked::Retry,
         );
+    }
+
+    /// Select the branch `step` places along from the selected one, wrapping, through the
+    /// conversation owner; the snapshot that answers shows it.
+    fn branch(&mut self, step: isize, cx: &mut Ctx) {
+        if self.owner.working() {
+            self.session
+                .borrow_mut()
+                .notify("a run is working; stop it first");
+            return;
+        }
+        let Some(history) = self.owner.history.as_ref().filter(|h| !h.forks.is_empty()) else {
+            self.session
+                .borrow_mut()
+                .notify("this conversation has only one branch");
+            return;
+        };
+        let ids = history.branch_ids();
+        let at = ids
+            .iter()
+            .position(|id| *id == history.selected_branch_id)
+            .unwrap_or(0);
+        let next = (at as isize + step).rem_euclid(ids.len() as isize) as usize;
+        let body = EffectBody::ConversationSwitchBranch(ConversationSwitchBranch {
+            thread_id: self.owner.conversation_id.clone(),
+            branch_id: ids[next].to_owned(),
+        });
+        self.emit(cx, body, Tracked::SwitchBranch);
     }
 
     /// Load the last message into the composer; Enter then sends it as an edit.
@@ -921,7 +960,8 @@ impl TheoPanel {
             | Tracked::Retry
             | Tracked::NewConversation
             | Tracked::NewSideChat
-            | Tracked::ListSideChats => {
+            | Tracked::ListSideChats
+            | Tracked::SwitchBranch => {
                 if let Some(reason) = said(&c.outcome) {
                     self.session.borrow_mut().notify(reason);
                 } else if let Outcome::Uncertain { reason } = &c.outcome {
@@ -973,6 +1013,14 @@ impl TheoPanel {
                 _ => {}
             }
             return;
+        }
+        // Alt+[ and Alt+] select the previous and the next branch of the thread.
+        if input.mods().contains(Mods::ALT) {
+            match input.key() {
+                Key::Char('[') => return self.branch(-1, cx),
+                Key::Char(']') => return self.branch(1, cx),
+                _ => {}
+            }
         }
         let (_, action) = self.session.borrow_mut().key(event);
         if let Some(action) = action {
@@ -1129,11 +1177,11 @@ impl Panel for TheoPanel {
                         self.submit(text, cx);
                     }
                 }
-                // Switching a branch has no effect in the core yet: the owner's `switchTo` takes a
-                // thread, and a branch is a selection inside one.
-                "theo.switch" => self.session.borrow_mut().notify(
-                    "branches are shown here; switching one needs the owner's branch switch",
-                ),
+                "theo.switch" => self
+                    .session
+                    .borrow_mut()
+                    .notify("no other conversation is offered to switch to yet"),
+                "theo.branch" => self.branch(1, cx),
                 "side-chat.create" if self.kind == Kind::Side && !self.bound() => {
                     self.choose_row(self.choice, cx);
                 }
@@ -1468,6 +1516,20 @@ impl Panel for TheoPanel {
                 },
             ),
         ];
+        if self
+            .owner
+            .history
+            .as_ref()
+            .is_some_and(|h| !h.forks.is_empty())
+        {
+            buttons.push(control(
+                "branch",
+                "Next branch",
+                "theo.branch",
+                !working,
+                "A run is working",
+            ));
+        }
         if let Some(approval) = &self.owner.approval {
             let open = self.answered.as_deref() != Some(approval.approval_id.as_str());
             let why = "The answer is already sent";
@@ -1864,6 +1926,7 @@ mod tests {
                         | EffectKind::ConversationApproval
                         | EffectKind::ConversationCreate
                         | EffectKind::ConversationSideChat
+                        | EffectKind::ConversationSwitchBranch
                 )
             })
             .collect()
@@ -2232,6 +2295,39 @@ mod tests {
         assert_eq!(fx.len(), 1);
         assert_eq!(fx[0].kind(), EffectKind::ConversationSend);
         assert!(!r.seen.iter().any(|e| e.kind().owner() == Owner::Terminal));
+    }
+
+    #[test]
+    fn the_branch_action_selects_the_next_branch_through_the_owner_and_wraps() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({
+                "messages": [user("m1", "hi")],
+                "history": {
+                    "rootBranchId": "root",
+                    "selectedBranchId": "b2",
+                    "forks": [{"branchId": "b1"}, {"branchId": "b2"}]
+                }
+            }),
+        );
+        let fx = update(
+            &mut r.m,
+            Msg::Action {
+                id: ActionId::new("theo.branch"),
+                actor: Actor::Human,
+            },
+        );
+        let effects = conversation_effects(&fx);
+        let EffectBody::ConversationSwitchBranch(switch) = &effects[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(switch.thread_id, "t1");
+        assert_eq!(
+            switch.branch_id, "root",
+            "the last branch wraps to the root"
+        );
     }
 
     #[test]

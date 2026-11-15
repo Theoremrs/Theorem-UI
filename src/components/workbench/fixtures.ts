@@ -47,7 +47,8 @@ export const FILES_TREE: Record<string, Listing> = {
   docs: {
     entries: [
       { name: 'architecture.md', kind: 'file' },
-      { name: 'notes.md', kind: 'file' },
+      { name: 'guide.md', kind: 'file' },
+      { name: 'notes.txt', kind: 'file' },
       { name: 'roadmap.md', kind: 'file' },
     ],
     partial: true,
@@ -64,7 +65,8 @@ export const TREE: Record<string, Listing> = {
   docs: {
     entries: [
       { name: 'architecture.md', kind: 'file' },
-      { name: 'notes.md', kind: 'file' },
+      { name: 'guide.md', kind: 'file' },
+      { name: 'notes.txt', kind: 'file' },
     ],
   },
 }
@@ -82,7 +84,7 @@ const LONG_LINE =
   'This single line is deliberately far longer than any pane the workbench draws it in, so the editor has to wrap it onto several rows and keep one caret, one selection and one gutter number for all of them: ' +
   'wrapping is a view of the line, never a change to the text, and it must break at word boundaries rather than in the middle of a word.'
 
-/** The editor story's file: tabs, CJK, a ZWJ emoji and a long line to wrap. */
+/** The editor story's file (plain text, so it opens in the editor and not in Markdown): tabs, CJK, a ZWJ emoji and a long line to wrap. */
 export const NOTES_TEXT = [
   '# Notes',
   '',
@@ -110,9 +112,40 @@ export const README_TEXT = [
   '',
 ].join('\n')
 
+/** The Markdown stories' document: front matter, a heading, a link, a checklist, a quotation, fenced code and a table. */
+export const GUIDE_TEXT = [
+  '---',
+  'title: Workbench guide',
+  'status: draft',
+  '---',
+  '',
+  '# Workbench guide',
+  '',
+  'The workbench draws panels in a grid of cells. Read the [architecture notes](docs/architecture.md) before you change a panel.',
+  '',
+  '- [x] Open a file from Files',
+  '- [ ] Switch the mode with Alt+1 to Alt+4',
+  '- [ ] Save with Mod+S',
+  '',
+  '> A panel is a view of one owner, never a copy of its state.',
+  '',
+  '```rust',
+  'fn main() {',
+  '    println!("hello");',
+  '}',
+  '```',
+  '',
+  '| Mode | Shows |',
+  '| --- | --- |',
+  '| Visual | the page, edited block by block |',
+  '| Source | the text |',
+  '',
+].join('\n')
+
 /** The texts the documents owner holds, by workspace path. */
 export const DOCUMENTS: Record<string, string> = {
-  'docs/notes.md': NOTES_TEXT,
+  'docs/notes.txt': NOTES_TEXT,
+  'docs/guide.md': GUIDE_TEXT,
   'README.md': README_TEXT,
   'src/main.rs': 'fn main() {\n    println!("hello");\n}\n',
   'src/lib.rs': 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n',

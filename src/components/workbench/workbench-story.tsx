@@ -29,7 +29,7 @@ const FILES_ONLY = ['files']
  */
 export type Step =
   | { chord: 'e' | 't' | 'g' | 's' }
-  | { key: string; shift?: boolean; ctrl?: boolean }
+  | { key: string; shift?: boolean; ctrl?: boolean; alt?: boolean }
   | { text: string }
   | { see: string }
   | { host: (host: FixtureHost) => void }
@@ -144,6 +144,7 @@ function FixtureStory({
             key: step.key,
             shiftKey: step.shift,
             ctrlKey: step.ctrl,
+            altKey: step.alt,
           })
         else if ('text' in step) type(input, step.text)
         else if ('see' in step) await seen(feed, step.see)
@@ -167,7 +168,7 @@ function FixtureStory({
       data-story-pending={ready ? undefined : ''}
       data-last-effect={lastEffect}
       style={{ width, height }}
-      className="flex flex-col overflow-hidden"
+      className="flex flex-col overflow-hidden bg-term"
     >
       <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)}>
         {(feed) => {
@@ -179,10 +180,7 @@ function FixtureStory({
   )
 }
 
-/** The picker's chord, then the story waits for the picker's last row. */
-const OPEN_PICKER: Step[] = [{ chord: 't' }, { see: 'More tools' }]
-
-/** `workbench-default`: Files, the conversation and tools at 1280x640, the picker open in the tools region. */
+/** `workbench-default`: Files, the conversation and tools at 1280x640, a fresh workbench: the picker rests in the tool group and the composer has the focus. */
 export function WorkbenchDefaultStory() {
   return (
     <FixtureStory
@@ -190,7 +188,7 @@ export function WorkbenchDefaultStory() {
       width={1280}
       height={640}
       options={{ granted: FILES_ONLY, transcript: true }}
-      script={OPEN_PICKER}
+      script={[]}
       wait={['README.md', 'More tools', 'Allow']}
     />
   )
@@ -207,7 +205,7 @@ export function WorkbenchPickerStory() {
       width={PICKER_WIDTH}
       height={PICKER_HEIGHT}
       options={{ granted: EVERY_TOOL }}
-      script={OPEN_PICKER}
+      script={[]}
       wait={['README.md', 'More tools']}
     />
   )
@@ -285,15 +283,15 @@ export function WorkbenchEditorConflictStory() {
       id="workbench-editor-conflict"
       width={1280}
       height={640}
-      options={{ granted: EVERY_TOOL, conflict: 'docs/notes.md' }}
+      options={{ granted: EVERY_TOOL, conflict: 'docs/notes.txt' }}
       script={EDITOR_SCRIPT.slice(0, EDITOR_OPEN)}
       wait={['Notes']}
     />
   )
 }
 
-/** The Files steps that open `docs/notes.md` into the editor. */
-const EDITOR_OPEN = 9
+/** The Files steps that open `docs/notes.txt` into the editor. */
+const EDITOR_OPEN = 10
 const EDITOR_SCRIPT: Step[] = [
   { chord: 'e' },
   { see: 'README.md' },
@@ -303,12 +301,78 @@ const EDITOR_SCRIPT: Step[] = [
   { see: 'architecture.md' },
   { key: 'ArrowDown' },
   { key: 'ArrowDown' },
+  { key: 'ArrowDown' },
   { key: 'Enter' },
   { see: 'Notes' },
   { key: 'ArrowRight', shift: true },
   { key: 'ArrowRight', shift: true },
   { key: 'ArrowRight', shift: true },
 ]
+
+/** The Files steps that open `docs/guide.md` into the Markdown panel. */
+const MARKDOWN_OPEN: Step[] = [
+  { chord: 'e' },
+  { see: 'README.md' },
+  { key: 'ArrowDown' },
+  { key: 'ArrowDown' },
+  { key: 'Enter' },
+  { see: 'architecture.md' },
+  { key: 'ArrowDown' },
+  { key: 'ArrowDown' },
+  { key: 'Enter' },
+  { see: 'Workbench guide' },
+]
+
+/** The Markdown panel in one of its four modes (Alt+1 to Alt+4) over the same document. */
+function MarkdownStory({
+  id,
+  mode,
+}: {
+  id: string
+  mode: '1' | '2' | '3' | '4'
+}) {
+  return (
+    <FixtureStory
+      id={id}
+      width={1280}
+      height={700}
+      options={{ granted: EVERY_TOOL }}
+      script={[...MARKDOWN_OPEN, { key: mode, alt: true }]}
+      wait={['Workbench guide']}
+    />
+  )
+}
+
+export const WorkbenchMarkdownVisualStory = () => (
+  <MarkdownStory id="workbench-markdown-visual" mode="1" />
+)
+export const WorkbenchMarkdownSourceStory = () => (
+  <MarkdownStory id="workbench-markdown-source" mode="2" />
+)
+export const WorkbenchMarkdownSplitStory = () => (
+  <MarkdownStory id="workbench-markdown-split" mode="3" />
+)
+export const WorkbenchMarkdownPreviewStory = () => (
+  <MarkdownStory id="workbench-markdown-preview" mode="4" />
+)
+
+/** `workbench-branches`: a reply with a second branch, switched to with Alt+] through the conversation owner. */
+export function WorkbenchBranchesStory() {
+  return (
+    <FixtureStory
+      id="workbench-branches"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, transcript: true, branches: true }}
+      script={[
+        { see: 'branch 1 of 2' },
+        { key: ']', alt: true },
+        { see: 'On the other branch' },
+      ]}
+      wait={['branch 2 of 2']}
+    />
+  )
+}
 
 /** `workbench-changes`: staged, unstaged, untracked and conflicted groups, a diff open, and a commit draft. */
 export function WorkbenchChangesStory() {

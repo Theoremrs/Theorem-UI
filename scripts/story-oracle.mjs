@@ -7,6 +7,8 @@
 //   node scripts/story-oracle.mjs collage <id|all>   the same collage from a render already in renders/,
 //                                                    such as one captured in another browser at the story's viewport
 //   node scripts/story-oracle.mjs motion <id>        animation names, and two frames 400ms apart
+//   node scripts/story-oracle.mjs interact <id>      real key presses on a fresh story, read back from the page text
+//                                                    (and a screenshot after a wait), for the stories with a scenario
 //
 // STORY_ORIGIN picks the dev server. A collage's number is reported, never a verdict: a person seals it.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -155,6 +157,72 @@ async function motion(story) {
   console.log(JSON.stringify({ id: story.id, ...seen }))
 }
 
+/** The text the story box shows, one string, as the semantic tree would give it. */
+const pageText = (page) => page.evaluate(() => document.querySelector('[data-workbench-story]')?.innerText ?? '')
+
+/** Real key presses per story; each returns named checks, true when the page text agrees. */
+const SCENARIOS = {
+  // A fresh workbench rests its picker and focuses the composer: a sentence typed lands in the composer.
+  'workbench-default': async (page) => {
+    const sentence = 'hello there'
+    await page.keyboard.type(sentence, { delay: 30 })
+    await page.waitForTimeout(500)
+    const text = await pageText(page)
+    const lines = text.split('\n')
+    const composer = lines.find((l) => l.includes('\u276f') && l.includes(sentence)) ?? ''
+    const filter = lines.find((l) => l.trim().startsWith('>') && l.includes(sentence))
+    return {
+      'composer shows the sentence': composer.includes(sentence),
+      'picker filter stays empty': !filter && !text.includes('No tools match'),
+    }
+  },
+  // Type, undo (Cmd+Z), redo (Cmd+Shift+Z): the text reads back each time.
+  'workbench-editor': async (page) => {
+    const has = async (needle) => (await pageText(page)).includes(needle)
+    const word = 'zzqq'
+    await page.keyboard.type(word)
+    await page.waitForTimeout(300)
+    const typed = await has(word)
+    await page.keyboard.press('Meta+z')
+    await page.waitForTimeout(300)
+    const undone = !(await has(word))
+    await page.keyboard.press('Meta+Shift+z')
+    await page.waitForTimeout(300)
+    const redone = await has(word)
+    return { typed, undone, redone }
+  },
+  // The story's own script has switched to the second branch; Alt+[ goes back to the first, Alt+] forward again.
+  'workbench-branches': async (page) => {
+    const has = async (needle) => (await pageText(page)).includes(needle)
+    const loaded = (await has('branch 2 of 2')) && (await has('On the other branch'))
+    await page.keyboard.press('Alt+[')
+    await page.waitForTimeout(600)
+    const back = (await has('branch 1 of 2')) && !(await has('On the other branch'))
+    await page.keyboard.press('Alt+]')
+    await page.waitForTimeout(600)
+    const forward = (await has('branch 2 of 2')) && (await has('On the other branch'))
+    return { loaded, back, forward }
+  },
+}
+
+async function interact(story) {
+  const scenario = SCENARIOS[story.id]
+  if (!scenario) throw new Error(`${story.id}: no interaction scenario`)
+  const checks = await withPage(story, async (page) => {
+    await page.locator('textarea').first().focus()
+    const result = await scenario(page)
+    // The claim is checked against pixels too: a screenshot after the wait.
+    mkdirSync(join(EVIDENCE, 'renders'), { recursive: true })
+    await page.screenshot({
+      path: renderPath(`${story.id}-interact`),
+      clip: { x: 0, y: 0, ...story.viewport },
+    })
+    return result
+  })
+  console.log(JSON.stringify({ id: story.id, checks, screenshot: renderPath(`${story.id}-interact`) }))
+  if (!Object.values(checks).every(Boolean)) process.exitCode = 1
+}
+
 const [command = 'list', target] = process.argv.slice(2)
 // Every listed story can be shot; only those judged against a committed reference can be diffed or collaged.
 const listed = await list()
@@ -169,6 +237,6 @@ if (chosen.length === 0)
   throw new Error(
     `No story named ${target}${needsReference ? ' with a reference' : ''}`,
   )
-const run = { shot, diff, collage, motion }[command]
+const run = { shot, diff, collage, motion, interact }[command]
 if (!run) throw new Error(`Unknown command ${command}`)
 for (const story of chosen) await run(story)

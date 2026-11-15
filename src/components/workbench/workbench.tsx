@@ -243,6 +243,15 @@ export function WorkbenchSurface({
               event.nativeEvent.isComposing
             )
               return
+            // Undo and redo are the workbench's own (Cmd+Z and Cmd+Shift+Z reach the panel as
+            // keys); the field's native history would replay stale text into it.
+            if (
+              event.nativeEvent instanceof InputEvent &&
+              event.nativeEvent.inputType.startsWith('history')
+            ) {
+              field.value = ''
+              return
+            }
             if (field.value)
               handle.current?.text_input(JSON.stringify({ text: field.value }))
             field.value = ''

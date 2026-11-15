@@ -18,7 +18,7 @@ use keybinds::{Key, KeyInput, Mods};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
 };
 use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
@@ -44,13 +44,22 @@ use crate::{
 /// and the placeholder for a kind this build cannot serve belong to the core
 /// itself; the panels crate adds Files, whose opening and workspace identity go
 /// through the core.
-fn factories(conversations: &Directory) -> PanelFactories {
+///
+/// The editor is registered ahead of the Markdown panel when `editor_first`: the openers are
+/// ranked, so which file opens where does not depend on the order.
+fn factories_with(conversations: &Directory, editor_first: bool) -> PanelFactories {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
     theo::register(&mut factories, conversations);
     theorem_workbench_process::register(&mut factories, process_styles(), load_nonce());
     theorem_workbench_changes::register(&mut factories);
-    theorem_workbench_editor::register(&mut factories);
+    if editor_first {
+        theorem_workbench_editor::register(&mut factories);
+        theorem_workbench_markdown_panel::register(&mut factories);
+    } else {
+        theorem_workbench_markdown_panel::register(&mut factories);
+        theorem_workbench_editor::register(&mut factories);
+    }
     factories
 }
 
@@ -62,6 +71,8 @@ fn registry() -> theorem_workbench_core::registry::Registry {
         .expect("the process actions extend the shell kind once");
     theorem_workbench_changes::extend_registry(&mut registry)
         .expect("the Changes actions extend the changes kind once");
+    theorem_workbench_markdown_panel::extend_registry(&mut registry)
+        .expect("the Markdown actions extend the markdown kind once");
     theorem_workbench_editor::extend_registry(&mut registry)
         .expect("the editor actions extend the document kind once");
     registry
@@ -74,7 +85,21 @@ fn registry() -> theorem_workbench_core::registry::Registry {
 fn process_styles() -> theorem_workbench_process::ProcessStyles {
     use theorem_workbench_vt::Palette as Vt;
     let p = palette();
-    let ansi = [
+    let ansi = ansi_of(&p);
+    theorem_workbench_process::ProcessStyles::new(Vt {
+        fg: p.ink,
+        bg: p.bg,
+        ansi,
+        selection: Style::new().bg(p.selection),
+        search_match: Style::new().bg(p.disabled),
+        search_current: Style::new().bg(p.warning).fg(p.bg),
+    })
+}
+
+/// The sixteen ANSI colours from the palette's roles: black the deep surface, red the error
+/// colour and so on, the bright eight repeating them with muted for bright black.
+fn ansi_of(p: &Palette) -> [Color; 16] {
+    [
         p.deep,
         p.error,
         p.success,
@@ -91,15 +116,7 @@ fn process_styles() -> theorem_workbench_process::ProcessStyles {
         p.syntax_keyword,
         p.accent,
         p.bright,
-    ];
-    theorem_workbench_process::ProcessStyles::new(Vt {
-        fg: p.ink,
-        bg: p.bg,
-        ansi,
-        selection: Style::new().bg(p.selection),
-        search_match: Style::new().bg(p.disabled),
-        search_current: Style::new().bg(p.warning).fg(p.bg),
-    })
+    ]
 }
 
 /// Different on every page load, so input ids and attachment names never repeat
@@ -114,6 +131,7 @@ fn load_nonce() -> String {
 /// text on the line's tint, changed words on the stronger one.
 fn theme_of(p: &Palette) -> Theme {
     let on = |bg| Style::new().fg(p.ink).bg(bg);
+    let fg = |color| Style::new().fg(color);
     Theme::chrome(
         Style::new().fg(p.ink).bg(p.bg),
         Style::new().fg(p.ink),
@@ -136,6 +154,16 @@ fn theme_of(p: &Palette) -> Theme {
         on(p.added_words),
         on(p.removed_words),
     )
+    // The syntax roles are the page's own token colours, as the transcript's code is drawn.
+    .with_syntax(
+        fg(p.syntax_keyword).add_modifier(Modifier::BOLD),
+        fg(p.syntax_string),
+        fg(p.syntax_number),
+        fg(p.syntax_comment).add_modifier(Modifier::ITALIC),
+        fg(p.syntax_function).add_modifier(Modifier::BOLD),
+        fg(p.syntax_variable),
+    )
+    .with_ansi(ansi_of(p))
 }
 
 // --- key conversion -----------------------------------------------------------------------
@@ -193,6 +221,15 @@ fn key_input(key: &str, mods: Mods) -> Option<KeyInput> {
     };
     match named {
         Key::Ignored | Key::Unidentified => None,
+        // Shift is dropped from a character key, so a browser's lowercase `z` with Shift and a
+        // command key would reach a panel as plain undo: the upper-case letter says redo.
+        Key::Char(c)
+            if c.is_ascii_lowercase()
+                && mods.contains(Mods::SHIFT)
+                && mods.intersects(Mods::CTRL | Mods::CMD) =>
+        {
+            Some(KeyInput::new(Key::Char(c.to_ascii_uppercase()), mods))
+        }
         key => Some(KeyInput::new(key, mods)),
     }
 }
@@ -436,6 +473,10 @@ impl Core {
     }
 
     fn new(platform: Platform) -> Self {
+        Self::with_editor_first(platform, false)
+    }
+
+    fn with_editor_first(platform: Platform, editor_first: bool) -> Self {
         let registry = registry();
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
         let (dock, _regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -443,7 +484,7 @@ impl Core {
         Self {
             model: Model::new(
                 registry,
-                factories(&conversations),
+                factories_with(&conversations, editor_first),
                 keys,
                 Capabilities::default(),
                 dock,
@@ -539,6 +580,9 @@ impl Core {
         if !self.theo_opened {
             self.theo_opened = true;
             effects.extend(self.focus("theo.focus"));
+            // A fresh workbench (a restored layout sets `theo_opened`) shows the picker in the
+            // tool group without taking keys: the composer keeps the focus.
+            self.model.rest_picker();
         }
         if !self.files_opened && self.model.capabilities().has(&Capability::new("files")) {
             self.files_opened = true;
@@ -773,6 +817,13 @@ impl WorkbenchHandle {
         self.send(Msg::Focus(focused));
     }
 
+    /// The person's reduced-motion preference, from
+    /// `matchMedia('(prefers-reduced-motion: reduce)')`; call it on mount and
+    /// again whenever that query changes.
+    pub fn set_reduced_motion(&self, reduced: bool) {
+        self.send(Msg::ReducedMotion(reduced));
+    }
+
     /// The semantic tree as it is now (JSON), the same one `on_semantics`
     /// publishes and `workbench.read` returns.
     pub fn semantics(&self) -> Result<String, JsValue> {
@@ -862,7 +913,11 @@ mod tests {
     }
 
     fn core() -> Core {
-        let mut core = Core::new(Platform::Other);
+        core_ordered(false)
+    }
+
+    fn core_ordered(editor_first: bool) -> Core {
+        let mut core = Core::with_editor_first(Platform::Other, editor_first);
         core.step(AREA, CELL, Theme::plain());
         core
     }
@@ -1039,7 +1094,6 @@ mod tests {
 
     #[test]
     fn the_theme_takes_each_role_from_the_palette_field_of_the_same_name() {
-        use ratatui::style::Color;
         let p = Palette::default();
         let theme = theme_of(&p);
         assert_eq!(theme.bg, Style::new().fg(p.ink).bg(p.bg));
@@ -1055,6 +1109,11 @@ mod tests {
         assert_ne!(theme.added_line, theme.removed_line);
         assert_ne!(theme.error, Theme::plain().error);
         assert_ne!(theme.added_words.bg, Some(Color::Reset));
+        // The syntax and ANSI roles are the palette's own, not roles derived from the state ones.
+        assert_eq!(theme.syntax_keyword.fg, Some(p.syntax_keyword));
+        assert_eq!(theme.syntax_string.fg, Some(p.syntax_string));
+        assert_eq!(theme.syntax_name.fg, Some(p.syntax_variable));
+        assert_eq!(theme.ansi, ansi_of(&p));
     }
 
     #[test]
@@ -1179,7 +1238,14 @@ mod tests {
         let mut core = core();
         granted(&mut core, &["files", "conversation"]);
         core.step(AREA, CELL, Theme::plain());
-        assert!(!core.model.focus().modal, "no picker is open");
+        assert!(
+            !core.model.focus().modal,
+            "the picker rests and takes no keys"
+        );
+        assert!(
+            core.model.picker().is_resting(),
+            "the picker rests in the tool group"
+        );
         let (consumed, _) = core.key(press("h"));
         assert!(
             !consumed,
@@ -1189,7 +1255,10 @@ mod tests {
         core.step(AREA, CELL, Theme::plain());
         let text = drawn(&core);
         assert!(text.contains("hello composer"), "{text}");
-        assert!(!core.model.picker().is_open());
+        assert!(
+            !text.contains("No tools match"),
+            "the text did not go to the picker's filter: {text}"
+        );
     }
 
     #[test]
@@ -1223,15 +1292,15 @@ mod tests {
         }
     }
 
-    #[test]
-    fn opening_a_file_from_files_opens_the_editor_for_it() {
+    /// Opens `name` from the Files panel and returns the kinds of the panels then open.
+    fn open_from_files(name: &str, editor_first: bool) -> Vec<String> {
         use theorem_workbench_core::{
             completion::{
                 Completion, CompletionPayload, FileEntry, FileKind, FileListing, Outcome,
             },
             effect::EffectBody,
         };
-        let mut core = core();
+        let mut core = core_ordered(editor_first);
         granted(&mut core, &["files", "documents"]);
         core.update(Msg::Host(HostMessage::WorkspaceChanged {
             workspace: "w".into(),
@@ -1245,7 +1314,7 @@ mod tests {
             .expect("Files asks the host for the root listing");
         let mut done = Completion::new(list.id, list.resource.clone(), Outcome::Accepted);
         done.payload = Some(CompletionPayload::Files(FileListing {
-            entries: vec![FileEntry::new("README.md", FileKind::File)],
+            entries: vec![FileEntry::new(name, FileKind::File)],
             partial: false,
         }));
         core.update(Msg::Completion(done));
@@ -1254,21 +1323,40 @@ mod tests {
         core.update(Msg::Key(press("Down")));
         let mut effects = core.update(Msg::Key(press("Enter")));
         effects.extend(core.step(AREA, CELL, Theme::plain()).effects);
-        assert!(
-            kinds(&core).contains(&"document".to_owned()),
-            "the file opens in the editor: {:?}\n{}",
-            kinds(&core),
-            drawn(&core)
-        );
         effects.extend(core.step(AREA, CELL, Theme::plain()).effects);
         let opens = |e: &theorem_workbench_core::Effect| {
             matches!(&e.body, EffectBody::DocumentOpen(_))
-                && matches!(&e.resource, theorem_workbench_core::ResourceRef::Document { resource_id, .. } if resource_id == "README.md")
+                && matches!(&e.resource, theorem_workbench_core::ResourceRef::Document { resource_id, .. } if resource_id == name)
         };
         assert!(
             effects.iter().any(opens),
-            "the editor reads README.md through the core: {effects:?}"
+            "the panel reads {name} through the core: {effects:?}"
         );
+        kinds(&core)
+    }
+
+    #[test]
+    fn a_markdown_file_opens_in_markdown_and_other_files_in_the_editor() {
+        // The registration order does not decide it.
+        for editor_first in [false, true] {
+            let md = open_from_files("a.md", editor_first);
+            assert!(md.contains(&"markdown".to_owned()), "{md:?}");
+            assert!(!md.contains(&"document".to_owned()), "{md:?}");
+            let rs = open_from_files("a.rs", editor_first);
+            assert!(rs.contains(&"document".to_owned()), "{rs:?}");
+            assert!(!rs.contains(&"markdown".to_owned()), "{rs:?}");
+        }
+    }
+
+    #[test]
+    fn a_shifted_command_letter_is_upper_case_whatever_case_the_browser_sent() {
+        let mods = Mods::SHIFT | Mods::CMD;
+        let lower = key_input("z", mods).unwrap();
+        assert_eq!(lower, key_input("Z", mods).unwrap());
+        assert_eq!(lower.key(), Key::Char('Z'));
+        // Without Shift, or without a command key, the letter is as it came.
+        assert_eq!(key_input("z", Mods::CMD).unwrap().key(), Key::Char('z'));
+        assert_eq!(key_input("z", Mods::SHIFT).unwrap().key(), Key::Char('z'));
     }
 
     #[test]

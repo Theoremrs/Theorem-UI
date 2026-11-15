@@ -1251,7 +1251,10 @@ impl Session {
         } else if self.snapshot.running {
             "enter sends · ctrl+c stop ".to_owned()
         } else if let Some(branches) = self.snapshot.branches {
-            format!("branch {} of {} ", branches.position, branches.total)
+            format!(
+                "branch {} of {} · alt+[ ] ",
+                branches.position, branches.total
+            )
         } else if self.has_output {
             let what = if self.expanded { "hide" } else { "show" };
             format!("ctrl+o {what} output ")

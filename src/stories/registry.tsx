@@ -49,11 +49,16 @@ import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
 import {
+  WorkbenchBranchesStory,
   WorkbenchChangesStory,
   WorkbenchDefaultStory,
   WorkbenchEditorConflictStory,
   WorkbenchEditorStory,
   WorkbenchFilesStory,
+  WorkbenchMarkdownPreviewStory,
+  WorkbenchMarkdownSourceStory,
+  WorkbenchMarkdownSplitStory,
+  WorkbenchMarkdownVisualStory,
   WorkbenchPickerStory,
   WorkbenchTerminalStory,
 } from '@/components/workbench/workbench-story'
@@ -786,6 +791,11 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-editor': WorkbenchEditorStory,
   'workbench-editor-conflict': WorkbenchEditorConflictStory,
   'workbench-changes': WorkbenchChangesStory,
+  'workbench-branches': WorkbenchBranchesStory,
+  'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
+  'workbench-markdown-source': WorkbenchMarkdownSourceStory,
+  'workbench-markdown-split': WorkbenchMarkdownSplitStory,
+  'workbench-markdown-preview': WorkbenchMarkdownPreviewStory,
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
