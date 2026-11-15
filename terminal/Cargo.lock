@@ -1951,11 +1951,14 @@ dependencies = [
 name = "theorem-workbench-changes"
 version = "0.1.0"
 dependencies = [
+ "keybinds",
  "ratatui",
  "serde",
  "serde_json",
  "similar",
  "theorem-workbench-core",
+ "theorem-workbench-dock",
+ "tui-input",
  "unicode-width",
 ]
 
@@ -1985,6 +1988,22 @@ dependencies = [
  "theorem-workbench-layout",
  "thiserror 2.0.21",
  "unicode-width",
+]
+
+[[package]]
+name = "theorem-workbench-editor"
+version = "0.1.0"
+dependencies = [
+ "keybinds",
+ "ratatui",
+ "ropey",
+ "serde_json",
+ "theorem-workbench-core",
+ "theorem-workbench-dock",
+ "theorem-workbench-panels",
+ "theorem-workbench-text",
+ "tui-input",
+ "unicode-segmentation",
 ]
 
 [[package]]
