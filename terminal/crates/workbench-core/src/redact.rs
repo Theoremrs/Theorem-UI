@@ -38,6 +38,7 @@ const CONTENT_KEYS: &[&str] = &[
     "detail",
     "stdout",
     "stderr",
+    "point",
 ];
 
 fn withhold(value: &mut Value) {
@@ -99,8 +100,9 @@ macro_rules! withhold {
 }
 
 use crate::completion::{
-    ArtifactContent, BlameHunk, ClipboardText, ConflictSides, DiffHunk, DocumentCurrent,
-    DocumentOpened, DocumentReconciled, DocumentSnapshot, LogEntry, ScmDiffResult, ScmShowResult,
+    ArtifactContent, BlameHunk, ClipboardText, ConflictSides, DelegationText, DiffHunk,
+    DocumentCurrent, DocumentHistory, DocumentOpened, DocumentPreview, DocumentReconciled,
+    DocumentSnapshot, LogEntry, ScmDiffResult, ScmShowResult,
 };
 use crate::draft::SourceReference;
 use crate::effect::{
@@ -133,6 +135,9 @@ withhold!(
     ClipboardWrite,
     SourceReference,
     DocumentSnapshot,
+    DocumentHistory,
+    DocumentPreview,
+    DelegationText,
     DocumentOpened,
     DocumentCurrent,
     DocumentReconciled,
@@ -315,10 +320,16 @@ impl fmt::Debug for PanelMsg {
                 .field("bytes", bytes)
                 .finish(),
             Self::Documents(list) => f.debug_tuple("Documents").field(list).finish(),
+            Self::Reference(r) => f.debug_tuple("Reference").field(r).finish(),
             Self::TerminalReport(report) => f.debug_tuple("TerminalReport").field(report).finish(),
             Self::Action(id) => f.debug_tuple("Action").field(id).finish(),
             Self::Workspace(w) => f.debug_tuple("Workspace").field(w).finish(),
             Self::Motion { reduced } => f.debug_struct("Motion").field("reduced", reduced).finish(),
+            Self::RevealOffset { start, unit } => f
+                .debug_struct("RevealOffset")
+                .field("start", start)
+                .field("unit", unit)
+                .finish(),
             Self::Reveal { line, column } => f
                 .debug_struct("Reveal")
                 .field("line", line)

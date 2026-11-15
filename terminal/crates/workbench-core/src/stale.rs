@@ -111,6 +111,10 @@ pub struct Pending {
     pub resource: ResourceRef,
     /// The binding generation the effect was emitted at.
     pub generation: Option<Generation>,
+    /// The panel asked about a resource it is not bound to (the Search panel
+    /// applying a replace to a file it does not show). Nothing about its binding
+    /// can make the answer stale, so the answer applies for every outcome.
+    pub foreign: bool,
 }
 
 /// The tracker is at its bound. The effect was not recorded and must not be
@@ -155,9 +159,17 @@ impl InFlight {
                 kind: effect.kind(),
                 resource: effect.resource.clone(),
                 generation: effect.generation,
+                foreign: false,
             },
         );
         Ok(())
+    }
+
+    /// The effect was emitted for a resource its panel is not bound to.
+    pub fn mark_foreign(&mut self, id: EffectId) {
+        if let Some(p) = self.pending.get_mut(&id) {
+            p.foreign = true;
+        }
     }
 
     /// Every effect still waiting, taken: the tracker is empty after it.
@@ -178,6 +190,9 @@ impl InFlight {
         };
         if pending.resource != completion.resource {
             return Verdict::Drop(Stale::ResourceChanged);
+        }
+        if pending.foreign {
+            return Verdict::Apply;
         }
         // The host is meant to echo the generation. A reply that leaves it out
         // is the answer to the effect as it was sent, so it is judged at the

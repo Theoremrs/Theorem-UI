@@ -263,6 +263,35 @@ pub(crate) struct Drag {
     pub(crate) start: Box<Dock>,
 }
 
+/// Follow the agent: whether the views go where an agent run edits, and which
+/// runs count. On until the person pauses it (their own navigation, or the
+/// action), as the page's `useFollow` starts.
+#[derive(Debug)]
+pub(crate) struct FollowState {
+    pub(crate) on: bool,
+    pub(crate) runs: std::collections::BTreeSet<String>,
+    /// The panel the last follow opened, replaced by the next one while the
+    /// person has not touched it.
+    pub(crate) preview: Option<PanelInstanceId>,
+}
+
+impl Default for FollowState {
+    fn default() -> Self {
+        Self {
+            on: true,
+            runs: Default::default(),
+            preview: None,
+        }
+    }
+}
+
+/// What Follow the agent shows: whether it is on and how many runs it follows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct FollowStatus {
+    pub on: bool,
+    pub runs: usize,
+}
+
 pub struct Model {
     pub(crate) registry: Registry,
     pub(crate) factories: PanelFactories,
@@ -295,6 +324,7 @@ pub struct Model {
     pub(crate) motion_told: BTreeMap<PanelInstanceId, bool>,
     /// The open-documents list each repository panel was last given.
     pub(crate) documents_told: BTreeMap<PanelInstanceId, Vec<crate::panel::OpenDocumentState>>,
+    pub(crate) follow: FollowState,
     /// The panels that have been handed the retained diagnostics.
     pub(crate) diagnostics_told: std::collections::BTreeSet<PanelInstanceId>,
     pub(crate) announced_focus: Option<PanelInstanceId>,
@@ -371,6 +401,7 @@ impl Model {
             reduced_motion: false,
             motion_told: BTreeMap::new(),
             documents_told: BTreeMap::new(),
+            follow: FollowState::default(),
             diagnostics_told: std::collections::BTreeSet::new(),
             announced_focus: None,
             before_picker: None,
@@ -509,6 +540,14 @@ impl Model {
 
     pub fn viewport(&self) -> Option<Viewport> {
         self.viewport
+    }
+
+    /// Follow the agent now.
+    pub fn follow(&self) -> FollowStatus {
+        FollowStatus {
+            on: self.follow.on,
+            runs: self.follow.runs.len(),
+        }
     }
 
     pub fn focus(&self) -> Focus {

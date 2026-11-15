@@ -133,6 +133,15 @@ pub enum ResourceRef {
         workspace: String,
         id: String,
     },
+    /// One run's delegation, or one file of it. `path` is empty for the
+    /// delegation as a whole (its list of changes, as the workspace root is
+    /// the empty path of a directory) and names a file for that file's
+    /// before and after.
+    Delegation {
+        run_id: String,
+        delegation_id: String,
+        path: String,
+    },
 }
 
 /// The kind of resource a panel kind binds to, without the ids.
@@ -151,9 +160,28 @@ pub enum ResourceKind {
     Commit,
     Revision,
     Untitled,
+    Delegation,
 }
 
 impl ResourceRef {
+    /// The workspace the resource lives in, when it names one.
+    pub fn workspace(&self) -> Option<&str> {
+        match self {
+            Self::Workspace { workspace }
+            | Self::Document { workspace, .. }
+            | Self::Repository { workspace, .. }
+            | Self::Terminal { workspace, .. }
+            | Self::Directory { workspace, .. }
+            | Self::Commit { workspace, .. }
+            | Self::Revision { workspace, .. }
+            | Self::Untitled { workspace, .. } => Some(workspace),
+            Self::None
+            | Self::Conversation { .. }
+            | Self::Project { .. }
+            | Self::Delegation { .. } => None,
+        }
+    }
+
     pub fn kind(&self) -> ResourceKind {
         match self {
             Self::None => ResourceKind::None,
@@ -167,6 +195,7 @@ impl ResourceRef {
             Self::Commit { .. } => ResourceKind::Commit,
             Self::Revision { .. } => ResourceKind::Revision,
             Self::Untitled { .. } => ResourceKind::Untitled,
+            Self::Delegation { .. } => ResourceKind::Delegation,
         }
     }
 }

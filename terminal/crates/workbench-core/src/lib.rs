@@ -48,7 +48,7 @@ pub use ids::{
     ActionId, Actor, Capability, EffectId, EffectIds, Generation, PanelInstanceId, PanelKind,
     ResourceKind, ResourceRef, Revision, WorkspaceIdentity,
 };
-pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
+pub use model::{Counters, Focus, FollowStatus, Model, Notice, RestoreError, Viewport};
 pub use msg::{DockMsg, Inbound, Msg, Pointer};
 pub use notice::{NoticeLine, NoticeSeverity};
 pub use panel::{

@@ -26,6 +26,7 @@ use serde_json::Value;
 use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
 
 use crate::completion::{Completion, CompletionPayload, Outcome};
+use crate::draft::SourceReference;
 use crate::effect::Effect;
 use crate::host::{HostMessage, ProgramReport};
 use crate::ids::{
@@ -38,7 +39,7 @@ use crate::msg::{DockMsg, Inbound, Msg, Pointer};
 use crate::panel::{
     Button, Composition, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind,
 };
-use crate::panels::{PICKER_KIND, Unavailable};
+use crate::panels::{PICKER_KIND, THEO_KIND, Unavailable};
 use crate::picker::{LayoutChoice, PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
 use crate::queue::{Popped, PtyFrame, Push, QueueLimits, SourceQueues};
@@ -50,6 +51,26 @@ use keybinds::{Key, KeyInput, Mods};
 /// Apply `msg` and return the effects the host must perform.
 pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
     let tick = matches!(msg, Msg::Tick);
+    // The person moving somewhere themselves pauses Follow the agent: a key,
+    // click, dock move, picker choice or action of theirs that changes which
+    // panel has the keyboard. Typing in the focused panel does not, and
+    // nothing an agent or the host does can.
+    let by_person = matches!(
+        msg,
+        Msg::Key(_)
+            | Msg::Pointer(_)
+            | Msg::Dock(_)
+            | Msg::Picker(_)
+            | Msg::Action {
+                actor: Actor::Human,
+                ..
+            }
+            | Msg::ActionOn {
+                actor: Actor::Human,
+                ..
+            }
+    );
+    let held = by_person.then(|| (model.dock.focused(), model.focus_owner()));
     let effects = match msg {
         Msg::Key(key) => model.on_key(key),
         Msg::Pointer(p) => model.on_pointer(p),
@@ -77,6 +98,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Arrangement(msg) => model.on_arrangement(msg),
         Msg::Tick => model.on_tick(),
     };
+    if let Some(held) = held
+        && held != (model.dock.focused(), model.focus_owner())
+        && model.follow.on
+    {
+        model.follow.on = false;
+        model.dirty = true;
+    }
     model.settle();
     if !tick {
         model.dirty = true;
@@ -96,6 +124,7 @@ impl Model {
 pub(crate) struct CtxOut {
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
+    pub(crate) references: Vec<SourceReference>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
     pub(crate) full: Option<usize>,
@@ -121,6 +150,7 @@ impl Model {
             actor: &self.acting,
             effects: vec![],
             opens: vec![],
+            references: vec![],
             close: false,
             invalidated: false,
             full: None,
@@ -129,6 +159,7 @@ impl Model {
         CtxOut {
             effects: cx.effects,
             opens: cx.opens,
+            references: cx.references,
             close: cx.close,
             invalidated: cx.invalidated,
             full: cx.full,
@@ -148,7 +179,20 @@ impl Model {
         };
         let silent = mode == Mode::Silent;
         let destroying = mode == Mode::Destroying;
+        let bound_before = entry.binding().resource;
         let out = self.run_ctx(id, mode, |cx| f(entry.panel.as_mut(), cx));
+        // An effect for a resource the panel is not bound to, before or after
+        // this call, is the panel acting for something it does not show (a
+        // replace across files): its answer is not judged by the panel's binding.
+        let bound_after = entry.binding().resource;
+        for effect in &out.effects {
+            if effect.resource != ResourceRef::None
+                && effect.resource != bound_before
+                && effect.resource != bound_after
+            {
+                self.in_flight.mark_foreign(effect.id);
+            }
+        }
         self.panels.insert(id.clone(), entry);
         self.dirty |= out.invalidated;
         if let Some(limit) = out.full {
@@ -161,10 +205,61 @@ impl Model {
         for target in out.opens {
             self.open_target(target);
         }
+        for reference in out.references {
+            self.deliver_reference(id, reference);
+        }
         if out.close && !silent {
             effects.extend(self.close_panel(id, destroying));
         }
         effects
+    }
+
+    /// A reference a panel collected goes to the draft of the conversation panel
+    /// of the current workspace, without moving the keyboard. A conversation is
+    /// named by a project, not a workspace, so the scope is the emitter's own:
+    /// a panel bound to another workspace than the current one has nothing to
+    /// add to this one's draft.
+    fn deliver_reference(&mut self, from: &PanelInstanceId, reference: SourceReference) {
+        let workspace = self
+            .panels
+            .get(from)
+            .and_then(|e| e.binding().resource.workspace().map(str::to_owned));
+        if let Some(workspace) = workspace
+            && !self.workspace.workspace.is_empty()
+            && workspace != self.workspace.workspace
+        {
+            self.drop_stale(Stale::ResourceChanged);
+            return;
+        }
+        let kind = PanelKind::new(THEO_KIND);
+        let target = match self.target_of_kind(&kind) {
+            Some(target) => target,
+            None => {
+                let (focused, group) = (self.focus_owner(), self.dock.focused());
+                let Some(opened) = self.open_panel(&kind) else {
+                    return;
+                };
+                // The tool is there to be read, not to take the keyboard.
+                match focused {
+                    Some(prev) if self.panels.contains_key(&prev) => {
+                        let r = self.dock.focus_panel(&Self::dock_id(&prev));
+                        self.dock_result(r);
+                    }
+                    _ => {
+                        let _ = self.dock.focus_group(group);
+                    }
+                }
+                opened
+            }
+        };
+        if !self.panels.get(&target).is_some_and(|e| e.available) {
+            self.drop_stale(Stale::NotBound);
+            return;
+        }
+        self.dirty = true;
+        self.call(&target, Mode::Silent, |p, cx| {
+            p.update(PanelMsg::Reference(reference), cx)
+        });
     }
 
     fn send(&mut self, id: &PanelInstanceId, msg: PanelMsg) -> Vec<Effect> {
@@ -1306,6 +1401,8 @@ impl Model {
                     self.dock_result(r);
                 }
             }
+            ("follow", "pause") => self.set_following(false),
+            ("follow", "resume") => self.set_following(true),
             ("layouts", _) => {
                 let _ = self.picker_msg(PickerMsg::Open);
                 return self.picker_msg(PickerMsg::Layouts);
@@ -1322,6 +1419,112 @@ impl Model {
             _ => {}
         }
         vec![]
+    }
+
+    fn set_following(&mut self, on: bool) {
+        if self.follow.on != on {
+            self.follow.on = on;
+            self.dirty = true;
+        }
+    }
+
+    /// An agent run edited a document: when Follow the agent is on and the run
+    /// is followed, show where without taking the keyboard. The panel showing
+    /// the document gets the position; else a panel is opened for it, in the
+    /// place its kind goes, and the keyboard goes back where it was. The panel
+    /// that has the keyboard is left alone, so a person's caret and draft
+    /// are not disturbed. Never an effect: the opened panel loads on its own
+    /// tick.
+    fn follow_edit(&mut self, message: &HostMessage) -> Vec<Effect> {
+        let HostMessage::DocumentChanged {
+            resource:
+                resource @ ResourceRef::Document {
+                    workspace,
+                    resource_id,
+                },
+            actor,
+            unit,
+            edits,
+            ..
+        } = message
+        else {
+            return vec![];
+        };
+        let followed = actor
+            .strip_prefix("theorem:run:")
+            .is_some_and(|run| self.follow.runs.contains(run));
+        if !self.follow.on || !followed {
+            return vec![];
+        }
+        if !self.workspace.workspace.is_empty() && *workspace != self.workspace.workspace {
+            return vec![];
+        }
+        let target = OpenTarget::File {
+            workspace: workspace.clone(),
+            path: resource_id.clone(),
+        };
+        let owner = self.focus_owner();
+        let bound = self
+            .panels
+            .iter()
+            .find(|(_, e)| {
+                e.available
+                    && e.binding().resource == *resource
+                    && self.factories.is_opener(&e.kind)
+            })
+            .map(|(id, _)| id.clone());
+        let mut effects = vec![];
+        let opened = bound.is_none();
+        let shown = match bound {
+            Some(id) => id,
+            None => {
+                // One preview at a time: the last one the follow opened goes
+                // when the person has not touched it.
+                if let Some(old) = self.follow.preview.take()
+                    && Some(&old) != owner.as_ref()
+                    && self
+                        .panels
+                        .get(&old)
+                        .is_some_and(|e| e.panel.tab_label().is_none_or(|l| !l.modified))
+                {
+                    effects.extend(self.close_panel(&old, false));
+                }
+                let kind = match self.factories.opener_of(&target).cloned() {
+                    Some(kind) if self.registry.get(&kind).is_some() => kind,
+                    _ => return effects,
+                };
+                let Some(id) = self.open_panel_with(&kind, &target.state(), None) else {
+                    return effects;
+                };
+                self.follow.preview = Some(id.clone());
+                id
+            }
+        };
+        self.dirty = true;
+        // Bring it forward, then give the keyboard back. A panel that was
+        // already open in the focused group cannot be shown without taking
+        // the keyboard (the dock has one active tab per group, and it is the
+        // person's); it still receives the position.
+        if owner.as_ref() != Some(&shown) {
+            let same_group = self
+                .dock
+                .find_panel(&Self::dock_id(&shown))
+                .is_some_and(|g| g == self.dock.focused());
+            if opened || !same_group {
+                if !same_group {
+                    let _ = self.dock.focus_panel(&Self::dock_id(&shown));
+                }
+                if let Some(prev) = owner.as_ref().filter(|p| self.panels.contains_key(*p)) {
+                    let _ = self.dock.focus_panel(&Self::dock_id(prev));
+                }
+            }
+            if let Some(start) = edits.iter().map(|e| e.start).min() {
+                self.call(&shown, Mode::Silent, |p, cx| {
+                    p.update(PanelMsg::RevealOffset { start, unit: *unit }, cx)
+                });
+            }
+        }
+        effects
     }
 
     /// Move the active panel of the focused group into the nearest group in
@@ -1716,6 +1919,7 @@ impl Model {
                             | ResourceRef::Repository { .. }
                             | ResourceRef::Commit { .. }
                             | ResourceRef::Revision { .. }
+                            | ResourceRef::Delegation { .. }
                     )
                 })
                 .map(|(id, _)| id.clone())
@@ -1745,6 +1949,8 @@ impl Model {
         self.retained = Default::default();
         self.queues = SourceQueues::new(QueueLimits::default());
         self.diagnostics_told.clear();
+        self.follow.runs.clear();
+        self.follow.preview = None;
         self.forget_arrangements(switched);
         for entry in self.panels.values_mut() {
             entry.replayed = None;
@@ -1765,6 +1971,14 @@ impl Model {
         }
         if let HostMessage::AccountChanged { account } = &message {
             return self.on_account_changed(account.clone());
+        }
+        if let HostMessage::FollowedRuns { runs } = &message {
+            let runs: std::collections::BTreeSet<String> = runs.iter().cloned().collect();
+            if runs != self.follow.runs {
+                self.follow.runs = runs;
+                self.dirty = true;
+            }
+            return vec![];
         }
         if let HostMessage::WorkspaceChanged {
             workspace,
@@ -1897,6 +2111,7 @@ impl Model {
             }
             effects.extend(self.send(&id, PanelMsg::Host(message.clone())));
         }
+        effects.extend(self.follow_edit(&message));
         effects
     }
 
@@ -2152,6 +2367,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | AccountChanged { .. }
         | ConnectionChanged { .. }
         | TerminalSessions { .. }
+        | FollowedRuns { .. }
         | SearchPage { .. }
         | DiagnosticsSet { .. }
         | DiagnosticsCleared { .. }

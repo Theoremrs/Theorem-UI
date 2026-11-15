@@ -18,7 +18,8 @@ use serde_json::Value;
 use theorem_workbench_dock::CellMetrics;
 
 use crate::completion::Completion;
-use crate::effect::{Effect, EffectKind};
+use crate::draft::SourceReference;
+use crate::effect::{CoordinateUnit, Effect, EffectKind};
 use crate::host::{HostMessage, ProgramReport};
 use crate::ids::{
     ActionId, Actor, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity,
@@ -95,6 +96,13 @@ pub enum OpenTarget {
     /// A new document with no path yet (New page), named by an id the asker
     /// minted so a second New page is not the first.
     Untitled { workspace: String, id: String },
+    /// One file of a delegation's changes, shown before and after (a run's
+    /// delegation card). A panel of kind `delegation` serves it.
+    Delegation {
+        run_id: String,
+        delegation_id: String,
+        path: String,
+    },
 }
 
 impl OpenTarget {
@@ -133,6 +141,15 @@ impl OpenTarget {
                 workspace: workspace.clone(),
                 id: id.clone(),
             },
+            Self::Delegation {
+                run_id,
+                delegation_id,
+                path,
+            } => ResourceRef::Delegation {
+                run_id: run_id.clone(),
+                delegation_id: delegation_id.clone(),
+                path: path.clone(),
+            },
         }
     }
 
@@ -146,6 +163,7 @@ impl OpenTarget {
             | Self::Revision { .. }
             | Self::Untitled { .. } => "document",
             Self::Commit { .. } => "diff",
+            Self::Delegation { .. } => "delegation",
         }
     }
 
@@ -182,6 +200,13 @@ impl OpenTarget {
             Self::Untitled { workspace, id } => {
                 serde_json::json!({ "workspace": workspace, "untitled": id })
             }
+            Self::Delegation {
+                run_id,
+                delegation_id,
+                path,
+            } => serde_json::json!({
+                "runId": run_id, "delegationId": delegation_id, "path": path
+            }),
         }
     }
 
@@ -203,6 +228,7 @@ impl OpenTarget {
                 format!("{} @ {}", last_part(path), short(commit))
             }
             Self::Untitled { .. } => "Untitled".to_owned(),
+            Self::Delegation { path, .. } => last_part(path),
         }
     }
 
@@ -218,6 +244,9 @@ impl OpenTarget {
                 format!("the file \"{path}\" at commit {}", short(commit))
             }
             Self::Untitled { .. } => "a new document".to_owned(),
+            Self::Delegation { path, .. } => {
+                format!("the changes a delegation made to \"{path}\"")
+            }
         }
     }
 }
@@ -304,6 +333,10 @@ pub enum PanelMsg {
     /// merged: unsaved if any is, the newest accepted revision). Sent only when
     /// the list changed; arrives on a silent `Ctx`.
     Documents(Vec<OpenDocumentState>),
+    /// A reference another panel added to this conversation's draft
+    /// (`Ctx::refer`), in the order they were added. Arrives on a silent `Ctx`:
+    /// append it to the draft's chips; do not send and do not move focus.
+    Reference(SourceReference),
     /// What the program in the terminal this panel is bound to says about
     /// itself (R32), as the host last said it. Sent only when the report's
     /// epoch is the binding's. It is the program's word, shown as text: handling
@@ -341,6 +374,18 @@ pub enum PanelMsg {
         line: u32,
         column: u32,
     },
+    /// Follow the agent: an agent run edited this panel's document. Put the view
+    /// at `start`, counted in `unit` from the start of the text before the
+    /// edit (the text before the first edit is the same in both revisions, so
+    /// either places it) and take no focus: the panel owns the text and does
+    /// the conversion. Arrives on a silent `Ctx`, possibly before the document
+    /// has loaded (keep it, apply it when ready; a later one replaces it). It
+    /// is never sent to the panel that has the keyboard, so a person's caret
+    /// and draft are not disturbed.
+    RevealOffset {
+        start: u32,
+        unit: CoordinateUnit,
+    },
     /// One frame. Work that was deferred from a silent message starts here.
     Tick,
 }
@@ -351,6 +396,8 @@ pub enum EmitError {
     Silent,
     #[error("closing a view may not emit a {0:?} effect")]
     Forbidden(EffectKind),
+    #[error("a {0:?} effect is for the person only; an agent's action may not emit it")]
+    HumanOnly(EffectKind),
     #[error("too many effects in flight (limit {})", .0.limit)]
     InFlightFull(InFlightFull),
 }
@@ -379,6 +426,7 @@ pub struct Ctx<'a> {
     pub(crate) actor: &'a Actor,
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
+    pub(crate) references: Vec<SourceReference>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
     /// The in-flight bound refused an emit: the limit it hit.
@@ -405,6 +453,21 @@ impl Ctx<'_> {
         self.opens.push(target);
     }
 
+    /// Add `reference` to the draft of the conversation of this workspace (the
+    /// Theo panel: the focused one, else the first, opened when none is, with
+    /// the keyboard where it was). It arrives there as
+    /// [`PanelMsg::Reference`]. No effect is emitted and nothing is sent: it
+    /// only adds a chip to a draft the person still has to send, so an agent's
+    /// action may do it. A reference from a panel bound to another workspace
+    /// than the current one is dropped. Ignored on a silent `Ctx` and while a
+    /// view is closing.
+    pub fn refer(&mut self, reference: SourceReference) {
+        if matches!(self.mode, Mode::Silent | Mode::Forbid(_)) {
+            return;
+        }
+        self.references.push(reference);
+    }
+
     /// Who the call is for: the person (a key, a click, the person's own
     /// action) or the agent run that asked for an action. A panel that starts
     /// work for an action reads it here instead of assuming a person.
@@ -427,6 +490,9 @@ impl Ctx<'_> {
         let mut effect = build(self.ids.mint());
         // The envelope says who the call was for, whatever `build` left there.
         effect.actor = self.actor.clone();
+        if effect.kind().human_only() && matches!(effect.actor, Actor::Agent { .. }) {
+            return Err(EmitError::HumanOnly(effect.kind()));
+        }
         if let Mode::Forbid(kinds) = &self.mode
             && kinds.contains(&effect.kind())
         {

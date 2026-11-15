@@ -10,6 +10,7 @@ use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{Completion, Outcome};
+use theorem_workbench_core::draft::SourceReference;
 use theorem_workbench_core::effect::{Effect, EffectBody, EffectKind, TerminalClaim};
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{
@@ -40,6 +41,12 @@ struct Log {
     term_epoch: u64,
     /// The session the next "term" panel is bound to; empty means "s1".
     term_session: String,
+    /// The workspace the next "note" panel is bound to; empty means "w".
+    doc_ws: String,
+    /// The document each conversation panel that got a reference was showing.
+    theo_refs: Vec<String>,
+    /// Whether the model builds real "theo" panels instead of the placeholder.
+    with_theo: bool,
     /// What each "term" panel was sent, by the session it is bound to.
     by_session: Vec<(String, PanelMsg)>,
     /// A "note" panel asks to open a file on every environment message.
@@ -75,6 +82,7 @@ struct TestPanel {
     taps: u64,
     epoch: u64,
     session: String,
+    ws: String,
 }
 
 impl TestPanel {
@@ -84,9 +92,14 @@ impl TestPanel {
             "" => "s1".to_owned(),
             other => other.to_owned(),
         };
+        let ws = match log.borrow().doc_ws.as_str() {
+            "" => "w".to_owned(),
+            other => other.to_owned(),
+        };
         Self {
             kind,
             log,
+            ws,
             session,
             rev: state["rev"].as_u64().unwrap_or(5),
             doc: state["doc"]
@@ -110,7 +123,7 @@ impl TestPanel {
                 thread: "t1".into(),
             },
             _ => ResourceRef::Document {
-                workspace: "w".into(),
+                workspace: self.ws.clone(),
                 resource_id: self.doc.clone(),
             },
         }
@@ -148,7 +161,29 @@ impl Panel for TestPanel {
             let granted = cx.capabilities().granted.len();
             self.log.borrow_mut().caps_at_tick.push(granted);
         }
+        if let (PanelMsg::Reference(_), "theo") = (&msg, self.kind) {
+            self.log.borrow_mut().theo_refs.push(self.doc.clone());
+        }
         match msg {
+            // Open, then edit, a document this panel does not show.
+            PanelMsg::Key(k) if matches!(k.key(), Key::Char('E') | Key::Char('F')) => {
+                let body = if k.key() == Key::Char('E') {
+                    EffectBody::DocumentOpen(theorem_workbench_core::effect::DocumentOpen {
+                        seed_text: None,
+                    })
+                } else {
+                    EffectBody::DocumentSave
+                };
+                let r = cx.emit(|id| {
+                    Effect::new(id, doc("other.md"), body).with_revision(Revision::Seq(2))
+                });
+                self.log.borrow_mut().emits.push(r);
+            }
+            PanelMsg::Key(k) if k.key() == Key::Char('D') => cx.open(OpenTarget::Delegation {
+                run_id: "run-1".into(),
+                delegation_id: "d-1".into(),
+                path: "src/a.rs".into(),
+            }),
             PanelMsg::Key(k) if k.key() == Key::Char('o') => cx.open(OpenTarget::File {
                 workspace: "w".into(),
                 path: "c.md".into(),
@@ -179,6 +214,15 @@ impl Panel for TestPanel {
                 workspace: "w".into(),
                 path: "docs/pic.png".into(),
             }),
+            PanelMsg::Key(k) if k.key() == Key::Char('Z') => {
+                cx.refer(SourceReference {
+                    path: self.doc.clone(),
+                    range: None,
+                    label: None,
+                    excerpt: Some(format!("excerpt-{}", self.taps)),
+                });
+                self.taps += 1;
+            }
             PanelMsg::Key(k) if k.key() == Key::Char('+') => {
                 self.rev += 1;
                 self.taps += 1;
@@ -188,8 +232,23 @@ impl Panel for TestPanel {
             PanelMsg::Key(k) if k.key() == Key::Char('R') => self.doc = "long-name-here.md".into(),
             PanelMsg::Action(id) => match id.as_str() {
                 "note.save" => self.try_emit(cx, EffectBody::DocumentSave),
+                "note.history" => self.try_emit(cx, EffectBody::DocumentHistoryList),
+                "note.restore" => self.try_emit(
+                    cx,
+                    EffectBody::DocumentHistoryRestore(
+                        theorem_workbench_core::effect::DocumentHistoryPoint {
+                            point: "h-2".into(),
+                        },
+                    ),
+                ),
                 "term.end" => self.try_emit(cx, EffectBody::TerminalEnd),
                 "chat.end" => cx.close_self(),
+                "note.find" => cx.refer(SourceReference {
+                    path: self.doc.clone(),
+                    range: None,
+                    label: Some("asked".into()),
+                    excerpt: Some("found".into()),
+                }),
                 _ => {}
             },
             PanelMsg::Resize { .. } | PanelMsg::Focus(_) | PanelMsg::Tick if greedy => {
@@ -337,6 +396,10 @@ fn model(log: &Shared) -> Model {
                     .key("Mod+Alt+K", KeyScope::Global),
                 ActionDescriptor::new("note.save", "Save note", ActionIntent::Start)
                     .emits(EffectKind::DocumentSave),
+                ActionDescriptor::new("note.history", "Note history", ActionIntent::Start)
+                    .emits(EffectKind::DocumentHistoryList),
+                ActionDescriptor::new("note.restore", "Restore note", ActionIntent::Start)
+                    .emits(EffectKind::DocumentHistoryRestore),
                 ActionDescriptor::local("note.find", "Find in note")
                     .key("Mod+Alt+F", KeyScope::Panel),
                 ActionDescriptor::local("note.wipe", "Wipe note").human_only(),
@@ -377,7 +440,11 @@ fn model(log: &Shared) -> Model {
         ))
         .unwrap();
     let mut factories = PanelFactories::new();
-    for kind in ["note", "term", "chat", "diag"] {
+    let theo = log.borrow().with_theo;
+    for kind in ["note", "term", "chat", "diag", "theo"]
+        .into_iter()
+        .filter(|k| *k != "theo" || theo)
+    {
         let log = log.clone();
         factories.register(kind, move |state, _| {
             Box::new(TestPanel::new(kind, state, log.clone()))
@@ -6157,4 +6224,749 @@ fn a_report_of_any_state_or_text_changes_nothing_but_what_the_pane_stores() {
             assert_eq!(sent, [PanelMsg::TerminalReport(report)]);
         }
     }
+}
+
+// ---- single-view tools focus the open one -------------------------------
+
+#[test]
+fn a_single_view_tool_focuses_the_open_one_and_opens_one_only_when_none_exists() {
+    for (action, kind) in [
+        ("changes.open", "changes"),
+        ("cabinet.open", "cabinet"),
+        ("diagnostics.open", "diagnostics"),
+        ("run-output.open", "run-output"),
+        ("search.open", "search"),
+        ("history.open", "history"),
+    ] {
+        let (mut m, _) = new_model();
+        action_ok(&mut m, action);
+        assert_eq!(kinds(&m, kind).len(), 1, "{action} opens one");
+        let first = kinds(&m, kind)[0].clone();
+        // Focus moves elsewhere, then the same tool is asked for again.
+        action_ok(&mut m, "note.open");
+        assert_ne!(m.focus().panel.as_ref(), Some(&first));
+        action_ok(&mut m, action);
+        assert_eq!(
+            kinds(&m, kind),
+            std::slice::from_ref(&first),
+            "{action} pressed twice"
+        );
+        assert_eq!(
+            m.focus().panel.as_ref(),
+            Some(&first),
+            "{action} focuses it"
+        );
+        // A third press with it already focused changes nothing.
+        action_ok(&mut m, action);
+        assert_eq!(kinds(&m, kind).len(), 1);
+    }
+}
+
+fn action_ok(m: &mut Model, id: &str) {
+    assert!(action(m, id).is_empty());
+    assert!(notices(m).is_empty(), "{id} was refused");
+}
+
+#[test]
+fn the_picker_row_and_the_catalog_say_focus_for_the_single_view_tools_and_open_for_shell_and_page()
+{
+    let (m, _) = new_model();
+    let caps = m.capabilities().clone();
+    let catalog = m.registry().catalog(&caps);
+    let intent = |id: &str| {
+        catalog
+            .iter()
+            .find(|e| e.action.as_str() == id)
+            .unwrap_or_else(|| panic!("{id} is listed"))
+            .intent
+    };
+    use theorem_workbench_core::registry::ActionIntent;
+    for id in [
+        "changes.open",
+        "cabinet.open",
+        "diagnostics.open",
+        "run-output.open",
+        "search.open",
+        "history.open",
+        "files.focus",
+        "theo.focus",
+    ] {
+        assert_eq!(intent(id), ActionIntent::Focus, "{id}");
+    }
+    for id in ["shell.choose", "page.new", "side-chat.choose"] {
+        assert_eq!(intent(id), ActionIntent::Open, "{id}");
+    }
+    // What the picker says choosing the row does is what it does.
+    use theorem_workbench_core::registry::Chooses;
+    let rows = m.registry().picker_rows(&caps, m.pinned());
+    let chooses = |id: &str| {
+        rows.iter()
+            .find(|r| r.action.as_str() == id)
+            .map(|r| r.chooses.clone())
+    };
+    assert_eq!(chooses("changes.open"), Some(Chooses::Focuses));
+    assert_eq!(chooses("files.focus"), Some(Chooses::Focuses));
+    assert!(matches!(
+        chooses("shell.choose"),
+        Some(Chooses::Starts { .. })
+    ));
+    assert!(matches!(chooses("page.new"), Some(Chooses::Creates { .. })));
+    let more = m.registry().more_tools(&caps, m.pinned());
+    for id in [
+        "cabinet.open",
+        "diagnostics.open",
+        "run-output.open",
+        "search.open",
+        "history.open",
+    ] {
+        let row = more.iter().find(|r| r.action.as_str() == id);
+        assert_eq!(
+            row.map(|r| r.chooses.clone()),
+            Some(Chooses::Focuses),
+            "{id}"
+        );
+    }
+}
+
+// ---- Add selection to chat: Ctx::refer -> PanelMsg::Reference ------------
+
+fn new_model_with_theo() -> (Model, Shared) {
+    let log: Shared = Rc::default();
+    log.borrow_mut().with_theo = true;
+    (model(&log), log)
+}
+
+fn references(log: &Shared, kind: &str) -> Vec<SourceReference> {
+    msgs_of(log, kind)
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Reference(r) => Some(r),
+            _ => None,
+        })
+        .collect()
+}
+
+fn excerpts(refs: &[SourceReference]) -> Vec<String> {
+    refs.iter().filter_map(|r| r.excerpt.clone()).collect()
+}
+
+fn in_workspace(m: &mut Model, workspace: &str) {
+    send(
+        m,
+        Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: workspace.into(),
+            environment: None,
+        }),
+    );
+}
+
+#[test]
+fn a_reference_reaches_the_conversation_panel_in_order_and_emits_nothing() {
+    let (mut m, log) = new_model_with_theo();
+    in_workspace(&mut m, "w");
+    action(&mut m, "theo.focus");
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    let theo = kinds(&m, "theo")[0].clone();
+    action(&mut m, "note.focus");
+    assert_eq!(m.focus().panel.as_ref(), Some(&note));
+    let before = m.in_flight().len();
+    let _ = notices(&mut m);
+
+    assert!(ch(&mut m, 'Z').is_empty());
+    assert!(ch(&mut m, 'Z').is_empty());
+    assert_eq!(
+        excerpts(&references(&log, "theo")),
+        ["excerpt-0", "excerpt-1"]
+    );
+    assert_eq!(references(&log, "theo")[0].path, "a.md");
+    // Nothing was sent, started or asked; the keyboard stayed with the note.
+    assert_eq!(m.in_flight().len(), before);
+    assert!(notices(&mut m).is_empty());
+    assert_eq!(m.focus().panel.as_ref(), Some(&note));
+    assert_eq!(kinds(&m, "theo"), [theo]);
+    assert!(references(&log, "note").is_empty());
+}
+
+#[test]
+fn a_reference_with_no_conversation_panel_opens_one_without_taking_the_keyboard() {
+    let (mut m, log) = new_model_with_theo();
+    in_workspace(&mut m, "w");
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    action(&mut m, "note.focus");
+    assert!(kinds(&m, "theo").is_empty());
+
+    assert!(ch(&mut m, 'Z').is_empty());
+    assert_eq!(kinds(&m, "theo").len(), 1);
+    assert_eq!(excerpts(&references(&log, "theo")), ["excerpt-0"]);
+    assert_eq!(m.focus().panel.as_ref(), Some(&note));
+
+    // The second goes to the one that is open, not another.
+    ch(&mut m, 'Z');
+    assert_eq!(kinds(&m, "theo").len(), 1);
+    assert_eq!(
+        excerpts(&references(&log, "theo")),
+        ["excerpt-0", "excerpt-1"]
+    );
+}
+
+#[test]
+fn a_reference_goes_to_the_focused_conversation_panel_else_the_first() {
+    let (mut a, _) = new_model_with_theo();
+    action(&mut a, "theo.focus");
+    action(&mut a, "note.open");
+    let mut saved = a.document();
+    // A second conversation panel beside the first, as a restored layout has.
+    let group = saved["dock"]["groups"]
+        .as_object_mut()
+        .unwrap()
+        .values_mut()
+        .find(|g| {
+            g["tabs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|t| t["kind"]["name"] == "theo")
+        })
+        .unwrap();
+    let mut copy = group["tabs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["kind"]["name"] == "theo")
+        .unwrap()
+        .clone();
+    copy["panel"] = json!("p90");
+    copy["view_state"] = json!({"doc": "second.md"});
+    group["tabs"].as_array_mut().unwrap().push(copy);
+
+    let (mut m, log) = new_model_with_theo();
+    in_workspace(&mut m, "w");
+    m.restore(saved).expect("the layout loads");
+    let theos = kinds(&m, "theo");
+    assert_eq!(theos.len(), 2);
+    let (first, second) = (theos[0].clone(), theos[1].clone());
+    let note = kinds(&m, "note")[0].clone();
+
+    let ask = |m: &mut Model| {
+        send(
+            m,
+            Msg::ActionOn {
+                id: ActionId::new("note.find"),
+                actor: Actor::Human,
+                panel: note.clone(),
+            },
+        )
+    };
+    let received = |log: &Shared| log.borrow().theo_refs.clone();
+
+    // The keyboard is on the note: the first conversation panel takes it.
+    action(&mut m, "note.focus");
+    ask(&mut m);
+    assert_eq!(received(&log), ["a.md"]);
+    assert_eq!(m.focus().panel.as_ref(), Some(&note));
+
+    // With the second one focused, it is the one that receives it.
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(second.clone())));
+    assert_eq!(m.focus().panel.as_ref(), Some(&second));
+    ask(&mut m);
+    assert_eq!(received(&log), ["a.md", "second.md"]);
+    assert_eq!(m.focus().panel.as_ref(), Some(&second));
+    let _ = first;
+}
+
+#[test]
+fn a_reference_never_crosses_into_another_workspaces_conversation() {
+    let (mut m, log) = new_model_with_theo();
+    log.borrow_mut().doc_ws = "other".into();
+    in_workspace(&mut m, "w");
+    action(&mut m, "theo.focus");
+    action(&mut m, "note.open");
+    action(&mut m, "note.focus");
+    let dropped = m.counters().dropped;
+    ch(&mut m, 'Z');
+    assert!(references(&log, "theo").is_empty());
+    assert_eq!(m.counters().dropped, dropped + 1);
+    assert_eq!(m.counters().last_drop, Some(Stale::ResourceChanged));
+    assert!(notices(&mut m).is_empty());
+    // No panel was opened for it either.
+    assert_eq!(kinds(&m, "theo").len(), 1);
+}
+
+#[test]
+fn an_agents_action_may_add_a_reference_and_it_is_still_only_a_chip() {
+    // The panel adds it whoever asked; the agent's own action path reaches the
+    // same `Ctx::refer`, which has no actor check: it sends nothing.
+    let (mut m, log) = new_model_with_theo();
+    in_workspace(&mut m, "w");
+    action(&mut m, "theo.focus");
+    action(&mut m, "note.open");
+    action(&mut m, "note.focus");
+    let fx = send(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new("note.find"),
+            actor: Actor::Agent {
+                run_id: "run-1".into(),
+            },
+        },
+    );
+    assert!(fx.is_empty());
+    assert!(notices(&mut m).is_empty());
+    let got = references(&log, "theo");
+    assert_eq!(excerpts(&got), ["found"]);
+    assert_eq!(got[0].label.as_deref(), Some("asked"));
+}
+
+// ---- Follow the agent ----------------------------------------------------
+
+fn followed(m: &mut Model, runs: &[&str]) {
+    send(
+        m,
+        Msg::Host(HostMessage::FollowedRuns {
+            runs: runs.iter().map(|r| r.to_string()).collect(),
+        }),
+    );
+}
+
+fn agent_edit(resource: &str, actor: &str, starts: &[u32]) -> Msg {
+    use theorem_workbench_core::effect::{CoordinateUnit, TextChange};
+    Msg::Host(HostMessage::DocumentChanged {
+        resource: doc(resource),
+        revision: Revision::Seq(9),
+        actor: actor.into(),
+        operation_id: None,
+        unit: CoordinateUnit::Utf16,
+        edits: starts
+            .iter()
+            .map(|s| TextChange {
+                start: *s,
+                end: *s,
+                insert: "x".into(),
+            })
+            .collect(),
+    })
+}
+
+fn reveals(log: &Shared) -> Vec<(u32, theorem_workbench_core::effect::CoordinateUnit)> {
+    msgs_of(log, "note")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::RevealOffset { start, unit } => Some((start, unit)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// A focused note on a.md, and an unfocused one on b.md.
+fn two_notes() -> (Model, Shared, PanelInstanceId, PanelInstanceId) {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let other = kinds(&m, "note")[0].clone();
+    ch(&mut m, 'r'); // this one now shows b.md
+    action(&mut m, "note.open"); // a.md, with the keyboard
+    let mine = kinds(&m, "note")
+        .into_iter()
+        .find(|id| *id != other)
+        .unwrap();
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    // Setting up moved the keyboard, which paused follow; start from on.
+    assert!(!m.follow().on);
+    action(&mut m, "follow.resume");
+    (m, log, mine, other)
+}
+
+#[test]
+fn a_followed_run_reveals_its_file_without_taking_the_keyboard() {
+    let (mut m, log, mine, other) = two_notes();
+    followed(&mut m, &["r1"]);
+    assert_eq!(m.follow().runs, 1);
+    let fx = send(&mut m, agent_edit("b.md", "theorem:run:r1", &[40, 7, 90]));
+    assert!(fx.is_empty());
+    // The smallest start, in the unit the edit gave.
+    assert_eq!(
+        reveals(&log),
+        vec![(7, theorem_workbench_core::effect::CoordinateUnit::Utf16)]
+    );
+    assert_eq!(kinds(&m, "note").len(), 2, "the open panel is reused");
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    assert_ne!(Some(&mine), Some(&other));
+    assert!(m.follow().on);
+}
+
+#[test]
+fn a_followed_file_with_no_panel_opens_one_unfocused_and_the_next_one_replaces_it() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let mine = kinds(&m, "note")[0].clone();
+    action(&mut m, "follow.resume");
+    followed(&mut m, &["r1"]);
+    send(&mut m, agent_edit("b.md", "theorem:run:r1", &[3]));
+    assert_eq!(kinds(&m, "note").len(), 2);
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    assert_eq!(reveals(&log).len(), 1);
+    send(&mut m, agent_edit("c.md", "theorem:run:r1", &[5]));
+    assert_eq!(kinds(&m, "note").len(), 2, "one preview at a time");
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    assert_eq!(reveals(&log).len(), 2);
+}
+
+#[test]
+fn nothing_follows_a_foreign_actor_an_unfollowed_run_a_pause_or_no_runs() {
+    let (mut m, log, mine, _) = two_notes();
+    for actor in ["u", "theorem:run:r2", "theorem:runner:r1", "theorem:run:"] {
+        followed(&mut m, &["r1"]);
+        send(&mut m, agent_edit("b.md", actor, &[1]));
+    }
+    followed(&mut m, &[]);
+    send(&mut m, agent_edit("b.md", "theorem:run:r1", &[1]));
+    followed(&mut m, &["r1"]);
+    action(&mut m, "follow.pause");
+    assert!(!m.follow().on);
+    send(&mut m, agent_edit("b.md", "theorem:run:r1", &[1]));
+    assert!(reveals(&log).is_empty());
+    assert_eq!(kinds(&m, "note").len(), 2);
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    // An edit with no ranges names no position.
+    action(&mut m, "follow.resume");
+    send(&mut m, agent_edit("b.md", "theorem:run:r1", &[]));
+    assert!(reveals(&log).is_empty());
+}
+
+#[test]
+fn the_focused_panel_its_draft_and_its_caret_are_untouched() {
+    let (mut m, log, mine, _) = two_notes();
+    followed(&mut m, &["r1"]);
+    let before = msgs_of(&log, "note").len();
+    send(&mut m, agent_edit("a.md", "theorem:run:r1", &[2]));
+    assert!(reveals(&log).is_empty(), "the person's panel is not moved");
+    assert_eq!(m.focus().panel.as_ref(), Some(&mine));
+    // It still hears the change like any bound panel.
+    assert!(msgs_of(&log, "note").len() > before);
+    assert!(m.follow().on);
+}
+
+#[test]
+fn the_persons_own_navigation_pauses_follow_and_resume_turns_it_on() {
+    let (mut m, log, _, other) = two_notes();
+    followed(&mut m, &["r1"]);
+    // Typing in the focused panel is not navigation.
+    ch(&mut m, 'z');
+    assert!(m.follow().on);
+    // The person focusing another panel is.
+    action(&mut m, "note.focus");
+    assert!(m.follow().on, "focusing what already has the keyboard");
+    action(&mut m, &format!("tab.focus.{}", other.as_str()));
+    assert_eq!(m.focus().panel.as_ref(), Some(&other));
+    assert!(!m.follow().on, "moving to another panel pauses follow");
+    send(&mut m, agent_edit("b.md", "theorem:run:r1", &[1]));
+    assert!(reveals(&log).is_empty());
+    action(&mut m, "follow.resume");
+    assert!(m.follow().on);
+    send(&mut m, agent_edit("a.md", "theorem:run:r1", &[4]));
+    assert_eq!(reveals(&log).len(), 1);
+}
+
+#[test]
+fn an_agent_moving_the_keyboard_does_not_pause_follow() {
+    let (mut m, _, _, other) = two_notes();
+    send(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new(format!("tab.focus.{}", other.as_str())),
+            actor: Actor::Agent {
+                run_id: "r1".into(),
+            },
+        },
+    );
+    assert_eq!(m.focus().panel.as_ref(), Some(&other), "the agent moved it");
+    assert!(m.follow().on);
+}
+
+#[test]
+fn the_follow_status_is_in_the_semantics_with_both_actions() {
+    let (mut m, _, _, _) = two_notes();
+    followed(&mut m, &["r1", "r2"]);
+    let text = format!("{:?}", semantics(&m));
+    assert!(text.contains("Following 2 run"), "{text}");
+    action(&mut m, "follow.pause");
+    let text = format!("{:?}", semantics(&m));
+    assert!(text.contains("Follow paused"), "{text}");
+    assert!(text.contains("follow.resume"));
+}
+
+// ---- Document history and restore ---------------------------------------
+
+#[test]
+fn a_documents_history_is_listed_and_answered_through_the_documents_owner() {
+    use theorem_workbench_core::completion::{DocumentHistory, DocumentHistoryEntry};
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let fx = action(&mut m, "note.history");
+    assert_eq!(fx.len(), 1);
+    assert_eq!(fx[0].kind(), EffectKind::DocumentHistoryList);
+    assert_eq!(fx[0].owner(), theorem_workbench_core::Owner::Documents);
+    assert_eq!(fx[0].resource, doc("a.md"));
+    let id = fx[0].id;
+    let entries = vec![DocumentHistoryEntry {
+        point: "h-2".into(),
+        revision: Revision::Seq(4),
+    }];
+    send(
+        &mut m,
+        Msg::Completion(completion(id, "a.md", 5, Outcome::Accepted).with_payload(
+            CompletionPayload::DocumentHistory(DocumentHistory { entries }),
+        )),
+    );
+    let got = msgs_of(&log, "note").into_iter().any(|msg| {
+        matches!(&msg, PanelMsg::Completion(c)
+            if matches!(&c.payload, Some(CompletionPayload::DocumentHistory(h)) if h.entries.len() == 1))
+    });
+    assert!(got, "the panel was handed the entries");
+    // An empty history is an answer too.
+    let fx = action(&mut m, "note.history");
+    send(
+        &mut m,
+        Msg::Completion(
+            completion(fx[0].id, "a.md", 5, Outcome::Accepted).with_payload(
+                CompletionPayload::DocumentHistory(DocumentHistory { entries: vec![] }),
+            ),
+        ),
+    );
+    assert_eq!(m.counters().applied, 2);
+    assert_eq!(m.counters().dropped, 0);
+}
+
+#[test]
+fn a_history_answer_for_an_older_revision_or_another_document_is_not_applied() {
+    use theorem_workbench_core::completion::DocumentPreview;
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let fx = action(&mut m, "note.history");
+    let id = fx[0].id;
+    // Older than revision 5: dropped, like any document effect.
+    send(
+        &mut m,
+        Msg::Completion(completion(id, "a.md", 3, Outcome::Accepted).with_payload(
+            CompletionPayload::DocumentPreview(DocumentPreview { text: "old".into() }),
+        )),
+    );
+    assert_eq!(m.counters().dropped, 1);
+    assert_eq!(m.counters().applied, 0);
+}
+
+#[test]
+fn a_restore_is_the_persons_to_make_and_an_agent_is_refused_at_the_emit() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    // The person's restore goes out.
+    let fx = action(&mut m, "note.restore");
+    assert_eq!(fx.len(), 1);
+    assert_eq!(fx[0].kind(), EffectKind::DocumentHistoryRestore);
+    assert!(fx[0].actor.is_human());
+    assert!(EffectKind::DocumentHistoryRestore.human_only());
+    assert!(!EffectKind::DocumentHistoryList.human_only());
+    assert!(!EffectKind::DocumentHistoryPreview.human_only());
+    // An agent's action reaches the panel, and the emit is refused.
+    let before = log.borrow().emits.len();
+    let fx = send(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new("note.restore"),
+            actor: Actor::Agent {
+                run_id: "r1".into(),
+            },
+        },
+    );
+    assert!(fx.is_empty(), "nothing was sent for the agent");
+    let emits = log.borrow().emits.clone();
+    assert_eq!(
+        emits[before..],
+        [Err(theorem_workbench_core::EmitError::HumanOnly(
+            EffectKind::DocumentHistoryRestore
+        ))]
+    );
+    // Reading the history is not the person's alone.
+    let fx = send(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new("note.history"),
+            actor: Actor::Agent {
+                run_id: "r1".into(),
+            },
+        },
+    );
+    assert_eq!(fx.len(), 1);
+    assert_eq!(
+        fx[0].actor,
+        Actor::Agent {
+            run_id: "r1".into()
+        }
+    );
+}
+
+// ---- Delegation before and after ----------------------------------------
+
+#[test]
+fn a_delegation_target_opens_a_readable_placeholder_while_no_panel_serves_it() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    let fx = ch(&mut m, 'D');
+    assert!(fx.is_empty());
+    let panels = kinds(&m, "delegation");
+    assert_eq!(panels.len(), 1, "named for what it stands in for");
+    assert!(m.is_unavailable(&panels[0]));
+    assert_ne!(m.focus().panel, Some(note.clone()));
+    let tree = semantics(&m);
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.starts_with("delegation") && n.name.ends_with("is unavailable"))
+        .expect("the placeholder is on the tree");
+    assert_eq!(
+        node.state.description.as_deref(),
+        Some(
+            "This build has no panel that can open the changes a delegation made to \"src/a.rs\"."
+        )
+    );
+    // The same delegation file again is the same placeholder.
+    m_focus(&mut m, &note);
+    ch(&mut m, 'D');
+    assert_eq!(kinds(&m, "delegation").len(), 1);
+}
+
+fn m_focus(m: &mut Model, panel: &PanelInstanceId) {
+    action(m, &format!("tab.focus.{}", panel.as_str()));
+}
+
+#[test]
+fn the_delegation_effects_belong_to_their_own_owner_and_answer_with_their_payloads() {
+    use theorem_workbench_core::completion::{
+        DelegationChange, DelegationChangeList, DelegationText,
+    };
+    use theorem_workbench_core::effect::{DelegationContentRead, DelegationRef, DelegationSide};
+    let target = OpenTarget::Delegation {
+        run_id: "run-1".into(),
+        delegation_id: "d-1".into(),
+        path: "src/a.rs".into(),
+    };
+    let whole = ResourceRef::Delegation {
+        run_id: "run-1".into(),
+        delegation_id: "d-1".into(),
+        path: String::new(),
+    };
+    assert_eq!(
+        target.resource(),
+        ResourceRef::Delegation {
+            run_id: "run-1".into(),
+            delegation_id: "d-1".into(),
+            path: "src/a.rs".into()
+        }
+    );
+    assert_eq!(
+        whole.kind(),
+        theorem_workbench_core::ids::ResourceKind::Delegation
+    );
+    assert_eq!(whole.workspace(), None);
+    for body in [
+        EffectBody::DelegationChanges(DelegationRef {
+            run_id: "run-1".into(),
+            delegation_id: "d-1".into(),
+        }),
+        EffectBody::DelegationContent(DelegationContentRead {
+            run_id: "run-1".into(),
+            delegation_id: "d-1".into(),
+            path: "src/a.rs".into(),
+            side: DelegationSide::After,
+        }),
+    ] {
+        let effect = Effect::new(EffectId(1), whole.clone(), body);
+        assert_eq!(effect.owner(), theorem_workbench_core::Owner::Delegations);
+    }
+    let answer = CompletionPayload::DelegationChanges(DelegationChangeList {
+        changes: vec![DelegationChange {
+            path: "src/a.rs".into(),
+            change: "modified".into(),
+            binary: false,
+            has_before: true,
+            has_after: true,
+        }],
+    });
+    let json = serde_json::to_value(&answer).unwrap();
+    assert_eq!(json["type"], "delegationChanges");
+    assert_eq!(json["changes"][0]["hasBefore"], true);
+    let back: CompletionPayload = serde_json::from_value(json).unwrap();
+    assert_eq!(back, answer);
+    let text = CompletionPayload::DelegationText(DelegationText { text: "x".into() });
+    assert_eq!(
+        serde_json::to_value(&text).unwrap()["type"],
+        "delegationText"
+    );
+}
+
+// ---- Workspace replace: effects for a document the panel does not show ----
+
+#[test]
+fn a_panel_may_open_and_save_a_document_it_is_not_bound_to_and_hears_every_outcome() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open"); // bound to a.md
+    let note = kinds(&m, "note")[0].clone();
+    let open = ch(&mut m, 'E');
+    let save = ch(&mut m, 'F');
+    assert_eq!((open.len(), save.len()), (1, 1));
+    assert_eq!(open[0].resource, doc("other.md"));
+    assert_eq!(open[0].kind(), EffectKind::DocumentOpen);
+    assert!(log.borrow().emits.iter().all(|e| e.is_ok()));
+    // An accepted answer reaches the panel as an answer, not as a cache entry.
+    send(
+        &mut m,
+        Msg::Completion(completion(open[0].id, "other.md", 2, Outcome::Accepted)),
+    );
+    // A refusal (the conflict a replace must honour) is delivered too: it was
+    // dropped as stale before, and the panel never learned of it.
+    send(
+        &mut m,
+        Msg::Completion(completion(
+            save[0].id,
+            "other.md",
+            2,
+            Outcome::Refused {
+                code: "conflict".into(),
+                reason: "the file changed".into(),
+            },
+        )),
+    );
+    let answers: Vec<Outcome> = msgs_of(&log, "note")
+        .into_iter()
+        .filter_map(|msg| match msg {
+            PanelMsg::Completion(c) => Some(c.outcome),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(answers.len(), 2, "{answers:?}");
+    assert!(matches!(&answers[1], Outcome::Refused { code, .. } if code == "conflict"));
+    assert_eq!(m.counters().applied, 2);
+    assert_eq!(m.counters().dropped, 0);
+    assert_eq!(m.focus().panel, Some(note));
+}
+
+#[test]
+fn an_answer_for_a_resource_the_panel_was_bound_to_is_still_only_cached() {
+    // The panel's own document, asked about while it showed it: the old rule.
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let fx = action(&mut m, "note.save");
+    ch(&mut m, 'r'); // now bound to b.md; the save was for a.md
+    send(
+        &mut m,
+        Msg::Completion(completion(fx[0].id, "a.md", 5, Outcome::Accepted)),
+    );
+    assert_eq!(m.counters().cached, 1);
+    assert!(
+        !msgs_of(&log, "note")
+            .iter()
+            .any(|msg| matches!(msg, PanelMsg::Completion(_)))
+    );
 }

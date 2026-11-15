@@ -463,6 +463,13 @@ pub enum HostMessage {
         epoch: u64,
         report: ProgramReport,
     },
+    /// The runs whose edits Follow the agent shows: the working turn's run and
+    /// the child runs of its delegations, as the page holds them now. The
+    /// whole set each time; empty when no turn works. Handled by the root and
+    /// sent to no panel.
+    FollowedRuns {
+        runs: Vec<String>,
+    },
     /// React's latest snapshot of a conversation, as the existing terminal
     /// takes it. The core does not interpret `snapshot`. `revision` is the
     /// snapshot's own and goes up across switches, so `judge` drops an older one;

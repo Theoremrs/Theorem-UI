@@ -123,6 +123,18 @@ fn completion_cases() -> Vec<(&'static str, Value)> {
             json!({"type": "languageHover", "contents": "@SENTENCE@"}),
         ),
         (
+            "documentHistory",
+            json!({"type": "documentHistory", "entries": [{"point": "@SENTENCE@", "revision": {"scheme": "seq", "value": 4}}, {"point": "@KEY@", "revision": {"scheme": "seq", "value": 3}}]}),
+        ),
+        (
+            "documentPreview",
+            json!({"type": "documentPreview", "text": "@SENTENCE@"}),
+        ),
+        (
+            "delegationText",
+            json!({"type": "delegationText", "text": "@KEY@"}),
+        ),
+        (
             "runState",
             json!({"type": "runState", "handle": "h1", "state": "done", "stdout": "@KEY@", "stderr": "@SENTENCE@", "readAt": {"workspaceId": "w", "generation": 1}}),
         ),
@@ -439,5 +451,23 @@ mod reports {
             )
             .contains("offset: 12")
         );
+    }
+
+    #[test]
+    fn a_reference_added_to_a_draft_prints_its_path_and_the_size_of_its_excerpt() {
+        use theorem_workbench_core::draft::SourceReference;
+        let reference: SourceReference = serde_json::from_value(fill(&json!({
+            "path": "src/lib.rs", "label": "lib", "excerpt": "@KEY@ @SENTENCE@"
+        })))
+        .unwrap();
+        for shown in both_forms(&PanelMsg::Reference(reference.clone()))
+            .into_iter()
+            .chain(both_forms(&reference))
+            .chain(both_forms(&vec![reference.clone()]))
+        {
+            no_marker(&shown, "reference");
+            assert!(shown.contains("src/lib.rs"), "{shown}");
+            assert!(shown.contains("bytes withheld"), "{shown}");
+        }
     }
 }

@@ -127,6 +127,14 @@ pub enum CompletionPayload {
     DocumentSaved(DocumentSaved),
     /// `documentReconcile`, `documentRevert`.
     DocumentReconciled(DocumentReconciled),
+    /// `documentHistoryList`.
+    DocumentHistory(DocumentHistory),
+    /// `documentHistoryPreview`.
+    DocumentPreview(DocumentPreview),
+    /// `delegationChanges`.
+    DelegationChanges(DelegationChangeList),
+    /// `delegationContent`.
+    DelegationText(DelegationText),
     /// `scmStatus`.
     Scm(ScmStatus),
     /// `scmDiff`.
@@ -325,6 +333,65 @@ pub struct DocumentSnapshot {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub text: Option<String>,
+}
+
+/// One point a document can be put back to.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentHistoryEntry {
+    /// The owner's name for the point; handed back to preview and restore.
+    pub point: String,
+    /// The revision the document had at that point.
+    pub revision: Revision,
+}
+
+/// The points a document can be put back to, newest first. An empty list is an
+/// answer, not an error.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentHistory {
+    pub entries: Vec<DocumentHistoryEntry>,
+}
+
+/// The text a document had at a point of its history. Document content.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentPreview {
+    pub text: String,
+}
+
+/// One file a delegation changed. `change` is the owner's word for what
+/// happened (added, modified, deleted, renamed); the workbench does not
+/// enumerate them. A side the file has no text for says so in `has_before` /
+/// `has_after`, and a binary file has none to show.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationChange {
+    pub path: String,
+    pub change: String,
+    pub binary: bool,
+    pub has_before: bool,
+    pub has_after: bool,
+}
+
+/// The files a delegation changed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationChangeList {
+    pub changes: Vec<DelegationChange>,
+}
+
+/// One side of one changed file. Document content.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationText {
+    pub text: String,
 }
 
 /// A document opened or created: the authority's text and where it stands

@@ -26,6 +26,7 @@ pub(super) fn emit_notice(error: EmitError) -> String {
         ),
         EmitError::Silent => "That cannot start from here; try again.".to_owned(),
         EmitError::Forbidden(kind) => format!("A {kind:?} request cannot start from here."),
+        EmitError::HumanOnly(kind) => format!("A {kind:?} request is for you to make."),
     }
 }
 

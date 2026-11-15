@@ -28,6 +28,8 @@ pub enum Owner {
     Conversation,
     Layout,
     Artifacts,
+    /// A run's delegations: what each changed, before and after.
+    Delegations,
     /// Clipboard and other browser services.
     Host,
 }
@@ -145,6 +147,15 @@ pub enum EffectBody {
     /// unknown (see [`DocumentKeep`]). Accepted with no payload; refused or
     /// failed carry a reason.
     DocumentKeep(DocumentKeep),
+    /// The points the document can be put back to, newest first. Accepted with
+    /// `documentHistory`; an empty list is an answer.
+    DocumentHistoryList,
+    /// The text the document had at `point`. Accepted with `documentPreview`.
+    DocumentHistoryPreview(DocumentHistoryPoint),
+    /// Put the document back to `point`. For the person only: an agent's action
+    /// is refused at the emit (see [`EffectKind::human_only`]). Accepted with no
+    /// payload; the restored text arrives as an ordinary `documentChanged`.
+    DocumentHistoryRestore(DocumentHistoryPoint),
 
     // SCM
     ScmStatus,
@@ -272,21 +283,43 @@ pub enum EffectBody {
     ArtifactsList(ArtifactsList),
     ArtifactRead(ArtifactRead),
 
+    // Delegations (what a run's delegation changed)
+    /// The files a delegation changed. Accepted with `delegationChanges`.
+    DelegationChanges(DelegationRef),
+    /// A file of a delegation, as it was before or is after. Accepted with
+    /// `delegationText`.
+    DelegationContent(DelegationContentRead),
+
     // Clipboard and host
     ClipboardWrite(ClipboardWrite),
     ClipboardRead,
 }
 
 impl EffectKind {
+    /// Whether an agent's action may not emit this kind: the person's own
+    /// decision, which an agent may propose but not carry out.
+    pub fn human_only(self) -> bool {
+        matches!(self, Self::DocumentHistoryRestore)
+    }
+
     pub fn owner(self) -> Owner {
         use EffectKind::*;
         match self {
             FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesCopy
             | FilesDelete => Owner::Files,
-            DocumentCreate | DocumentOpen | DocumentEdit | DocumentSave | DocumentClose
-            | DocumentReconcile | DocumentRevert | DocumentSettle | DocumentKeep => {
-                Owner::Documents
-            }
+            DocumentCreate
+            | DocumentOpen
+            | DocumentEdit
+            | DocumentSave
+            | DocumentClose
+            | DocumentReconcile
+            | DocumentRevert
+            | DocumentSettle
+            | DocumentKeep
+            | DocumentHistoryList
+            | DocumentHistoryPreview
+            | DocumentHistoryRestore => Owner::Documents,
+            DelegationChanges | DelegationContent => Owner::Delegations,
             ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
             | ScmCommit | ScmAmend | ScmBranches | ScmDiffCommit | ScmShowRevision | ScmBranch
             | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog | ScmConflict | ScmResolve => {
@@ -470,6 +503,46 @@ pub struct KeptEdit {
     pub operation_id: String,
     pub base_revision: Revision,
     pub edits: Vec<TextChange>,
+}
+
+/// A point in a document's history, as the owner named it. Opaque to the
+/// workbench; it is only handed back.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentHistoryPoint {
+    pub point: String,
+}
+
+// ---- delegations -------------------------------------------------------
+
+/// One delegation of one run.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationRef {
+    pub run_id: String,
+    pub delegation_id: String,
+}
+
+/// Which side of a change to read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum DelegationSide {
+    Before,
+    After,
+}
+
+/// One file of a delegation, before or after.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DelegationContentRead {
+    pub run_id: String,
+    pub delegation_id: String,
+    pub path: String,
+    pub side: DelegationSide,
 }
 
 // ---- scm ---------------------------------------------------------------
@@ -1282,6 +1355,38 @@ mod tests {
             json!({"edits": []}),
         );
         round_trip(
+            EffectBody::DocumentHistoryPreview(DocumentHistoryPoint {
+                point: "h-3".into(),
+            }),
+            "documentHistoryPreview",
+            json!({"point": "h-3"}),
+        );
+        round_trip(
+            EffectBody::DocumentHistoryRestore(DocumentHistoryPoint {
+                point: "h-3".into(),
+            }),
+            "documentHistoryRestore",
+            json!({"point": "h-3"}),
+        );
+        round_trip(
+            EffectBody::DelegationChanges(DelegationRef {
+                run_id: "run-1".into(),
+                delegation_id: "d-1".into(),
+            }),
+            "delegationChanges",
+            json!({"runId": "run-1", "delegationId": "d-1"}),
+        );
+        round_trip(
+            EffectBody::DelegationContent(DelegationContentRead {
+                run_id: "run-1".into(),
+                delegation_id: "d-1".into(),
+                path: "src/a.rs".into(),
+                side: DelegationSide::Before,
+            }),
+            "delegationContent",
+            json!({"runId": "run-1", "delegationId": "d-1", "path": "src/a.rs", "side": "before"}),
+        );
+        round_trip(
             EffectBody::FilesSearch(FilesSearch {
                 query: "q".into(),
                 limit: Some(50),
@@ -1301,6 +1406,11 @@ mod tests {
             (EffectKind::DocumentRevert, Owner::Documents),
             (EffectKind::DocumentSettle, Owner::Documents),
             (EffectKind::DocumentKeep, Owner::Documents),
+            (EffectKind::DocumentHistoryList, Owner::Documents),
+            (EffectKind::DocumentHistoryPreview, Owner::Documents),
+            (EffectKind::DocumentHistoryRestore, Owner::Documents),
+            (EffectKind::DelegationChanges, Owner::Delegations),
+            (EffectKind::DelegationContent, Owner::Delegations),
             (EffectKind::ConversationSideChat, Owner::Conversation),
             (EffectKind::ConversationSideList, Owner::Conversation),
             (EffectKind::ConversationAttachPick, Owner::Conversation),
@@ -1321,6 +1431,7 @@ mod tests {
         for (body, kind) in [
             (EffectBody::ScmBranches, "scmBranches"),
             (EffectBody::DocumentRevert, "documentRevert"),
+            (EffectBody::DocumentHistoryList, "documentHistoryList"),
             (EffectBody::ConversationSideClose, "conversationSideClose"),
             (EffectBody::ConversationSideList, "conversationSideList"),
             (EffectBody::ConversationAttachPick, "conversationAttachPick"),

@@ -100,6 +100,31 @@ pub fn semantics(model: &Model) -> SemanticTree {
         root.children.push(node.id.clone());
         nodes.push(node);
     }
+    // Follow the agent: shown once a run is followed or the person paused it.
+    // The two actions are always listed; the one that does nothing is disabled.
+    let follow = model.follow();
+    if follow.runs > 0 || !follow.on {
+        let label = if !follow.on {
+            "Follow paused".to_owned()
+        } else {
+            format!(
+                "Following {} run{}",
+                follow.runs,
+                if follow.runs == 1 { "" } else { "s" }
+            )
+        };
+        let mut node = Node::new("follow", Role::Status, &label, Rect::default());
+        node.actions = [("follow.pause", follow.on), ("follow.resume", !follow.on)]
+            .into_iter()
+            .map(|(id, enabled)| NodeAction {
+                id: ActionId::new(id),
+                enabled,
+                reason: (!enabled).then(|| "Already in that state".to_owned()),
+            })
+            .collect();
+        root.children.push(node.id.clone());
+        nodes.push(node);
+    }
     describe_frame(frame, &mut root);
     nodes.insert(0, root);
     SemanticTree {

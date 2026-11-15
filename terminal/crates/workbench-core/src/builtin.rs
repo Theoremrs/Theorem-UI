@@ -179,7 +179,7 @@ pub fn registry() -> Registry {
             requires: &["scm"],
         }
         .build(vec![
-            ActionDescriptor::new("changes.open", "Changes", Open)
+            ActionDescriptor::new("changes.open", "Changes", Focus)
                 .row(1)
                 .glyph("\u{00b1}")
                 .key("Mod+Alt+G", KeyScope::Global),
@@ -261,7 +261,7 @@ pub fn registry() -> Registry {
             requires: &["artifacts"],
         }
         .build(vec![
-            ActionDescriptor::new("cabinet.open", "Artifacts", Open).more(),
+            ActionDescriptor::new("cabinet.open", "Artifacts", Focus).more(),
         ]),
         Spec {
             kind: "diagnostics",
@@ -275,7 +275,7 @@ pub fn registry() -> Registry {
             requires: &["diagnostics.subscribe"],
         }
         .build(vec![
-            ActionDescriptor::new("diagnostics.open", "Diagnostics", Open).more(),
+            ActionDescriptor::new("diagnostics.open", "Diagnostics", Focus).more(),
         ]),
         Spec {
             kind: "run-output",
@@ -289,7 +289,7 @@ pub fn registry() -> Registry {
             requires: &["run.start", "run.subscribe"],
         }
         .build(vec![
-            ActionDescriptor::new("run-output.open", "Run output", Open).more(),
+            ActionDescriptor::new("run-output.open", "Run output", Focus).more(),
         ]),
         Spec {
             kind: "search",
@@ -303,7 +303,7 @@ pub fn registry() -> Registry {
             requires: &["search.query"],
         }
         .build(vec![
-            ActionDescriptor::new("search.open", "Search", Open).more(),
+            ActionDescriptor::new("search.open", "Search", Focus).more(),
         ]),
         Spec {
             kind: "history",
@@ -317,7 +317,7 @@ pub fn registry() -> Registry {
             requires: &["scm"],
         }
         .build(vec![
-            ActionDescriptor::new("history.open", "History", Open).more(),
+            ActionDescriptor::new("history.open", "History", Focus).more(),
         ]),
         // The workbench's own actions: no panel of this kind is ever opened.
         // They move focus and panels between groups, resize and maximise from
@@ -384,6 +384,10 @@ pub fn registry() -> Registry {
                 .key("Mod+Alt+PageDown", KeyScope::Global),
             ActionDescriptor::new("workbench.drawer.close", "Close the drawer", Focus)
                 .key("Mod+Alt+Escape", KeyScope::Global),
+            // Follow the agent: the views go where a followed run edits. The
+            // person's own navigation pauses it; either may pause or resume.
+            ActionDescriptor::new("follow.pause", "Pause Follow the agent", Focus),
+            ActionDescriptor::new("follow.resume", "Resume Follow the agent", Focus),
             ActionDescriptor::new("workbench.maximize", "Maximise or restore the group", Focus)
                 .key("Mod+Alt+M", KeyScope::Global),
             // Under More tools too, so the picker leads to them.
