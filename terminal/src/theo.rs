@@ -397,7 +397,7 @@ fn part_of(part: &OwnerPart) -> Part {
 /// a panel with no conversation yet has no resource to be replayed against:
 /// this tells it which one the owner opened, and the core does the rest.
 #[derive(Clone, Default)]
-pub(crate) struct Directory(Rc<RefCell<Option<Latest>>>);
+pub(crate) struct Directory(Rc<RefCell<Option<Latest>>>, FaceLink);
 
 #[derive(Clone)]
 struct Latest {
@@ -431,8 +431,95 @@ impl Directory {
         self.0.borrow().clone()
     }
 
+    /// The link the page reads Theo's face rectangle through. Shared with every
+    /// Theo panel the mount builds from this directory.
+    pub(crate) fn face(&self) -> &FaceLink {
+        &self.1
+    }
+
     fn project(&self) -> Option<String> {
         self.0.borrow().as_ref().map(|l| l.project.clone())
+    }
+}
+
+// ---- Theo's face ----------------------------------------------------------------------------
+
+/// Cells at the start of the status row that the panel keeps for Theo's face
+/// when the page has one: the row the activity already lives on, one row tall.
+const FACE_COLUMNS: u16 = 3;
+/// The narrowest status row that gives up its first cells to the face; below
+/// this the text matters more.
+const FACE_MIN_ROW: u16 = 24;
+
+/// Where the face is, in workbench grid cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+pub(crate) struct FaceCells {
+    x: u16,
+    y: u16,
+    w: u16,
+    h: u16,
+}
+
+#[derive(Default)]
+struct FaceShared {
+    /// The page has a face to lay over the cells. Until it says so the panel
+    /// draws exactly what it drew before.
+    wanted: bool,
+    /// Cells a panel reserved in the frame being drawn, and whether it is focused.
+    frame: Option<(FaceCells, bool)>,
+    epoch: u64,
+    published: Option<FaceCells>,
+}
+
+/// The handle between the page (through the workbench handle) and the Theo
+/// panels, in the shape of `CabinetLink`: panels report per frame, the mount
+/// calls `frame_end` after drawing, and the page reads `geometry_json`.
+/// Cloning shares it.
+#[derive(Clone, Default)]
+pub(crate) struct FaceLink(Rc<RefCell<FaceShared>>);
+
+impl FaceLink {
+    /// Whether the page has a face to lay over the reserved cells.
+    pub(crate) fn set_wanted(&self, wanted: bool) {
+        self.0.borrow_mut().wanted = wanted;
+    }
+
+    fn wanted(&self) -> bool {
+        self.0.borrow().wanted
+    }
+
+    /// One panel's reserved cells this frame. Of several, the focused one is
+    /// the one the page shows; otherwise the first drawn.
+    fn report(&self, cells: FaceCells, focused: bool) {
+        let mut shared = self.0.borrow_mut();
+        let replace = shared
+            .frame
+            .as_ref()
+            .is_none_or(|(_, held)| focused && !held);
+        if replace {
+            shared.frame = Some((cells, focused));
+        }
+    }
+
+    /// Called by the mount after each frame it drew the workbench, so a panel
+    /// that was not drawn in it (hidden, drawer closed, closed) is reported
+    /// gone. Publishes a new epoch when the cells moved, appeared or went.
+    pub(crate) fn frame_end(&self) {
+        let mut shared = self.0.borrow_mut();
+        let drawn = shared.frame.take().map(|(cells, _)| cells);
+        let drawn = if shared.wanted { drawn } else { None };
+        if shared.published != drawn {
+            shared.published = drawn;
+            shared.epoch += 1;
+        }
+    }
+
+    /// The face's cells as JSON `{epoch, cells}` (`cells` is null when no
+    /// panel shows one), or `None` when `since` is already the latest epoch.
+    pub(crate) fn geometry_json(&self, since: u64) -> Option<String> {
+        let shared = self.0.borrow();
+        (shared.epoch != since)
+            .then(|| json!({ "epoch": shared.epoch, "cells": shared.published }).to_string())
     }
 }
 
@@ -1701,22 +1788,36 @@ impl Panel for TheoPanel {
         ])
         .areas(area);
         session.draw_body(buf, body);
-        if !self.bound() {
-            Line::styled(" connecting to the conversation", Style::new().fg(p.muted))
-                .render(status, buf);
-        } else if self.unreadable {
-            Line::styled(" a snapshot could not be read", Style::new().fg(p.error))
-                .render(status, buf);
-        } else if self.owner.loading {
-            Line::styled(" loading the conversation", Style::new().fg(p.muted)).render(status, buf);
-        } else if let Some(id) = &self.editing {
-            let _ = id;
-            Line::styled(
-                " editing your last message: enter sends it, esc leaves",
-                Style::new().fg(p.accent),
-            )
-            .render(status, buf);
-        } else {
+        // The face takes the first cells of the status row when the page has
+        // one; the row's own text starts after them, in the row it already was.
+        let status = {
+            let row = status.intersection(buf.area);
+            let face = self.directory.face();
+            if face.wanted() && row.height == 1 && row.width >= FACE_MIN_ROW {
+                face.report(
+                    FaceCells {
+                        x: row.x,
+                        y: row.y,
+                        w: FACE_COLUMNS,
+                        h: 1,
+                    },
+                    cx.focused,
+                );
+                Rect::new(
+                    status.x + FACE_COLUMNS,
+                    status.y,
+                    status.width - FACE_COLUMNS,
+                    status.height,
+                )
+            } else {
+                status
+            }
+        };
+        // The composer's footer says why the box cannot send and what Enter
+        // and Esc do, editing included; the row keeps what only it knows: a
+        // waiting approval, the run's activity, the branch, a notice.
+        if self.bound() && !self.unreadable && !self.owner.loading {
+            session.hint_in_footer = true;
             session.draw_status(buf, status);
         }
         if referenced {
@@ -2434,6 +2535,138 @@ mod tests {
                 )
             })
             .collect()
+    }
+
+    fn face_json(r: &Rig, since: u64) -> Option<Value> {
+        r.directory
+            .face()
+            .geometry_json(since)
+            .map(|json| serde_json::from_str(&json).unwrap())
+    }
+
+    /// Draws a frame the way the mount does: the workbench, then `frame_end`.
+    fn frame(r: &Rig) -> String {
+        let text = r.drawn();
+        r.directory.face().frame_end();
+        text
+    }
+
+    #[test]
+    fn the_face_reserves_the_first_cells_of_the_status_row_and_nothing_else_moves() {
+        let mut r = rig();
+        // A waiting approval gives the status row its text, and no spinner
+        // that would turn between the two frames.
+        r.show(
+            1,
+            "t1",
+            json!({
+                "run": {"state": "waiting_approval", "runId": "run-1"},
+                "approval": {"runId": "run-1", "approvalId": "ap-1", "toolName": "shell", "summary": "list the build folder"}
+            }),
+        );
+        let before = frame(&r);
+        // Without a face the page has nothing to place: no cells, no epoch.
+        assert!(face_json(&r, 0).is_none());
+
+        r.directory.face().set_wanted(true);
+        let with = frame(&r);
+        let face = face_json(&r, 0).expect("the cells are published");
+        let cells = &face["cells"];
+        let body = main_body(&r);
+        let (x, y, w, h) = (
+            cells["x"].as_u64().unwrap() as u16,
+            cells["y"].as_u64().unwrap() as u16,
+            cells["w"].as_u64().unwrap() as u16,
+            cells["h"].as_u64().unwrap() as u16,
+        );
+        assert_eq!((w, h), (FACE_COLUMNS, 1), "three cells wide, one row tall");
+        assert!(
+            x >= body.x && x + w <= body.right() && y >= body.y && y < body.bottom(),
+            "{cells} is inside the panel {body:?}"
+        );
+        // Only that row differs, and only after the reserved cells: the text
+        // that was at the row's start is now after them; every other row is
+        // the same cells it was.
+        let (old, new): (Vec<_>, Vec<_>) = (before.lines().collect(), with.lines().collect());
+        assert_eq!(old.len(), new.len(), "no row was added or removed");
+        for (row, (a, b)) in old.iter().zip(&new).enumerate() {
+            if row as u16 != y {
+                assert_eq!(a, b, "row {row} moved");
+            }
+        }
+        let was: String = old[y as usize].chars().skip(x as usize).collect();
+        let now: String = new[y as usize].chars().skip((x + w) as usize).collect();
+        assert!(
+            !was.trim().is_empty()
+                && now.trim_start().starts_with(
+                    was.trim_start()
+                        .split_at(
+                            was.trim_start()
+                                .char_indices()
+                                .nth(8)
+                                .map_or(was.trim_start().len(), |(i, _)| i)
+                        )
+                        .0
+                ),
+            "the status text starts after the face: {was:?} then {now:?}"
+        );
+        let reserved: String = new[y as usize]
+            .chars()
+            .skip(x as usize)
+            .take(w as usize)
+            .collect();
+        assert_eq!(
+            reserved.trim(),
+            "",
+            "the panel draws nothing in the reserved cells"
+        );
+    }
+
+    #[test]
+    fn the_face_cells_change_epoch_when_the_panel_moves_and_go_when_it_is_not_drawn() {
+        let mut r = rig();
+        r.directory.face().set_wanted(true);
+        frame(&r);
+        let first = face_json(&r, 0).expect("published");
+        assert_eq!(first["epoch"], 1);
+        // The same frame again is not news.
+        frame(&r);
+        assert!(face_json(&r, 1).is_none());
+
+        // The workbench is resized: the panel's status row moves.
+        r.send(Msg::Resize {
+            area: Rect::new(0, 0, 160, 40),
+            metrics: CellMetrics::new(8.0, 16.0),
+        });
+        r.send(Msg::Tick);
+        let smaller = Rect::new(0, 0, 160, 40);
+        theorem_workbench_core::view(&r.m, smaller, &mut Buffer::empty(smaller), &Theme::plain());
+        r.directory.face().frame_end();
+        let moved = face_json(&r, 1).expect("a new epoch");
+        assert_eq!(moved["epoch"], 2);
+        assert_ne!(moved["cells"], first["cells"]);
+
+        // A frame in which no Theo panel was drawn reports the face gone.
+        r.directory.face().frame_end();
+        let gone = face_json(&r, 2).expect("a new epoch");
+        assert_eq!(gone["epoch"], 3);
+        assert!(gone["cells"].is_null());
+
+        // Drawn again, it is back with another epoch.
+        frame(&r);
+        assert_eq!(face_json(&r, 3).unwrap()["epoch"], 4);
+    }
+
+    #[test]
+    fn a_page_that_withdraws_its_face_gets_the_row_back_whole() {
+        let r = rig();
+        let before = frame(&r);
+        r.directory.face().set_wanted(true);
+        frame(&r);
+        r.directory.face().set_wanted(false);
+        let after = frame(&r);
+        assert_eq!(before, after);
+        assert!(face_json(&r, 0).unwrap()["cells"].is_null());
     }
 
     #[test]
@@ -3477,6 +3710,117 @@ mod tests {
         let fx = r.enter();
         let send = send_effect(&fx);
         assert_eq!(send.attachments.len(), 1, "{send:?}");
+    }
+
+    /// The status row above the box and the footer inside it, as drawn in the
+    /// main panel's columns.
+    fn rows_of(r: &Rig) -> (String, String) {
+        let body = main_body(r);
+        let text = r.drawn();
+        let lines: Vec<String> = text
+            .lines()
+            .map(|l| {
+                l.chars()
+                    .skip(body.x as usize)
+                    .take(body.width as usize)
+                    .collect::<String>()
+                    .trim()
+                    .to_owned()
+            })
+            .collect();
+        let top = lines
+            .iter()
+            .position(|l| l.starts_with('\u{256D}'))
+            .expect("the box's top border");
+        let bottom = lines
+            .iter()
+            .position(|l| l.starts_with('\u{2570}'))
+            .expect("the box's bottom border");
+        (
+            lines[top - 1].clone(),
+            lines[bottom - 1]
+                .trim_matches(|c: char| c == '\u{2502}' || c.is_whitespace())
+                .to_owned(),
+        )
+    }
+
+    #[test]
+    fn the_status_row_and_the_footer_never_say_the_same_thing() {
+        // Idle: the row is empty and the footer has the hint.
+        let mut r = rig();
+        r.show(1, "t1", json!({"messages": [user("m1", "hi")]}));
+        let (status, footer) = rows_of(&r);
+        eprintln!("idle: {status:?} | {footer:?}");
+        assert_eq!(status, "");
+        assert!(footer.starts_with("Enter sends"), "{footer}");
+
+        // Working: the row has the activity, the footer has the hint.
+        r.show(
+            2,
+            "t1",
+            json!({
+                "messages": [user("m1", "hi")],
+                "run": {"state": "streaming", "runId": "run-7"},
+            }),
+        );
+        let (status, footer) = rows_of(&r);
+        eprintln!("working: {status:?} | {footer:?}");
+        assert!(status.ends_with("working"), "{status}");
+        assert!(
+            !status.contains("enter sends") && !status.contains("ctrl+c"),
+            "{status}"
+        );
+        assert!(
+            footer.starts_with("Enter steers the run, Esc stops"),
+            "{footer}"
+        );
+
+        // Waiting for approval: the row has the approval and its keys.
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({
+                "run": {"state": "waiting_approval", "runId": "run-1"},
+                "approval": {"runId": "run-1", "approvalId": "ap-1", "toolName": "shell", "summary": "ls"}
+            }),
+        );
+        let (status, footer) = rows_of(&r);
+        eprintln!("approval: {status:?} | {footer:?}");
+        assert!(status.starts_with("? shell ls"), "{status}");
+        assert!(status.ends_with("y allow \u{b7} n deny"), "{status}");
+        assert!(!footer.contains("allow"), "{footer}");
+
+        // Blocked: the reason is the footer's alone.
+        for (r, reason) in [
+            (rig(), "connecting to the conversation"),
+            (
+                {
+                    let mut r = rig();
+                    r.show(1, "t1", json!({"loading": true}));
+                    r
+                },
+                "loading the conversation",
+            ),
+        ] {
+            let (status, footer) = rows_of(&r);
+            eprintln!("blocked: {status:?} | {footer:?}");
+            assert_eq!(status, "", "the row does not repeat the reason");
+            assert_eq!(footer, reason);
+            assert_eq!(r.drawn().matches(reason).count(), 1, "said once");
+        }
+
+        // Editing: the footer says it; the row does not.
+        let mut r = rig();
+        r.show(1, "t1", json!({"messages": [user("m1", "hi")]}));
+        r.key(Key::Up, Mods::NONE);
+        let (status, footer) = rows_of(&r);
+        eprintln!("editing: {status:?} | {footer:?}");
+        assert_eq!(status, "");
+        assert!(
+            footer.starts_with("Enter sends the edit, Esc cancels"),
+            "{footer}"
+        );
     }
 
     #[test]

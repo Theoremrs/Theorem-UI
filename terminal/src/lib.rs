@@ -778,6 +778,10 @@ struct Session {
     /// Whether the transcript has output for ctrl+o to show.
     has_output: bool,
     notice: Option<(String, f64)>,
+    /// Whether the panel's own composer says what Enter and Esc do, so the
+    /// status row leaves that hint out. The drawer's prompt is the session's
+    /// own and keeps it.
+    hint_in_footer: bool,
     /// Transcript lines, rebuilt when the snapshot, the width or the palette changes.
     lines: Vec<Line<'static>>,
     /// Each line's first row once wrapped, then the total, for clicks.
@@ -816,6 +820,7 @@ impl Session {
             expanded: false,
             has_output: false,
             notice: None,
+            hint_in_footer: false,
             lines: Vec::new(),
             rows: Vec::new(),
             links: Vec::new(),
@@ -1249,7 +1254,7 @@ impl Session {
             "y allow · n deny ".to_owned()
         } else if self.scroll_back > 0 {
             format!("↓ {} more · pgdn ", self.scroll_back)
-        } else if self.snapshot.running {
+        } else if self.snapshot.running && !self.hint_in_footer {
             "enter sends · ctrl+c stop ".to_owned()
         } else if let Some(branches) = self.snapshot.branches {
             format!(
@@ -2315,4 +2320,122 @@ pub fn preview_palette() -> String {
         "colours": colours,
     })
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The row's text and, for each run of one style, where it starts.
+    fn fingerprint(buf: &Buffer, area: Rect) -> String {
+        let mut text = String::new();
+        let mut runs = Vec::new();
+        let mut last = None;
+        for x in area.x..area.right() {
+            let cell = &buf[(x, area.y)];
+            // The spinner turns with the clock; its cell is not the row's wording.
+            let symbol = if x == area.x + 1 && SPINNER.contains(&cell.symbol()) {
+                "*"
+            } else {
+                cell.symbol()
+            };
+            text.push_str(symbol);
+            let style = (cell.fg, cell.bg, cell.modifier);
+            if last != Some(style) {
+                runs.push(format!(
+                    "{}:{:?}/{:?}/{:?}",
+                    x - area.x,
+                    style.0,
+                    style.1,
+                    style.2
+                ));
+                last = Some(style);
+            }
+        }
+        format!("{text}|{}", runs.join(" "))
+    }
+
+    fn row(session: &mut Session) -> String {
+        let area = Rect::new(0, 0, 60, 1);
+        let mut buf = Buffer::empty(area);
+        session.draw_status(&mut buf, area);
+        fingerprint(&buf, area)
+    }
+
+    fn session(json: &str) -> Session {
+        let mut session = Session::new("t".into(), "T".into(), false);
+        session.snapshot = serde_json::from_str(json).unwrap();
+        session
+    }
+
+    // The status row as the plain terminal drew it before `hint_in_footer`
+    // existed; the spinner cell is masked.
+    const GOLDEN_IDLE: &str =
+        "                                                            |0:Reset/Reset/NONE";
+    const GOLDEN_ACTIVITY: &str = " * reading src/panel.rs           enter sends · ctrl+c stop |0:Rgb(138, 168, 160)/Reset/NONE 3:Rgb(143, 152, 160)/Reset/NONE 23:Reset/Reset/NONE 34:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_WORKING: &str = " * working                        enter sends · ctrl+c stop |0:Rgb(138, 168, 160)/Reset/NONE 3:Rgb(143, 152, 160)/Reset/NONE 10:Reset/Reset/NONE 34:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_APPROVAL: &str = " ? edit_file Write src/panel.rs            y allow · n deny |0:Rgb(214, 188, 138)/Reset/BOLD 3:Rgb(228, 234, 238)/Reset/NONE 13:Rgb(143, 152, 160)/Reset/NONE 31:Reset/Reset/NONE 43:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_BRANCH: &str = "                                    branch 2 of 3 · alt+[ ] |0:Reset/Reset/NONE 36:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_OUTPUT: &str = "                                         ctrl+o show output |0:Reset/Reset/NONE 41:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_SCROLLED: &str = "                                            ↓ 4 more · pgdn |0:Reset/Reset/NONE 44:Rgb(143, 152, 160)/Reset/NONE";
+    const GOLDEN_NOTICE: &str = " copied                                                     |0:Rgb(138, 168, 160)/Reset/NONE";
+
+    #[test]
+    fn the_plain_terminal_draws_its_status_row_as_before() {
+        let cases = [
+            ("{}", GOLDEN_IDLE),
+            (
+                r#"{"running":true,"activity":"reading src/panel.rs"}"#,
+                GOLDEN_ACTIVITY,
+            ),
+            (r#"{"running":true}"#, GOLDEN_WORKING),
+            (
+                r#"{"approval":{"tool":"edit_file","summary":"Write src/panel.rs"}}"#,
+                GOLDEN_APPROVAL,
+            ),
+            (r#"{"branches":{"position":2,"total":3}}"#, GOLDEN_BRANCH),
+        ];
+        for (json, golden) in cases {
+            assert!(!session(json).hint_in_footer);
+            assert_eq!(row(&mut session(json)), golden, "{json}");
+        }
+        let mut s = session("{}");
+        s.has_output = true;
+        assert_eq!(row(&mut s), GOLDEN_OUTPUT);
+        let mut s = session("{}");
+        s.scroll_back = 4;
+        assert_eq!(row(&mut s), GOLDEN_SCROLLED);
+        let mut s = session("{}");
+        s.notify("copied");
+        assert_eq!(row(&mut s), GOLDEN_NOTICE);
+    }
+
+    #[test]
+    fn a_footer_that_owns_the_hint_takes_only_the_send_hint_off_the_row() {
+        let mut working = session(r#"{"running":true}"#);
+        working.hint_in_footer = true;
+        let got = row(&mut working);
+        assert!(got.starts_with(" * working "), "{got}");
+        assert!(!got.contains("enter sends"), "{got}");
+        assert!(!got.contains("ctrl+c stop"), "{got}");
+        // What only the status row knows stays.
+        for (json, golden) in [
+            (
+                r#"{"approval":{"tool":"edit_file","summary":"Write src/panel.rs"}}"#,
+                GOLDEN_APPROVAL,
+            ),
+            (r#"{"branches":{"position":2,"total":3}}"#, GOLDEN_BRANCH),
+        ] {
+            let mut s = session(json);
+            s.hint_in_footer = true;
+            assert_eq!(row(&mut s), golden, "{json}");
+        }
+        let mut s = session(r#"{"running":true,"branches":{"position":2,"total":3}}"#);
+        s.hint_in_footer = true;
+        assert!(row(&mut s).contains("branch 2 of 3"));
+        let mut s = session("{}");
+        s.hint_in_footer = true;
+        s.notify("copied");
+        assert_eq!(row(&mut s), GOLDEN_NOTICE);
+    }
 }

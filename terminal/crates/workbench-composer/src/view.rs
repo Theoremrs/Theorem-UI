@@ -2,7 +2,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::semantics::{Node, Role};
 use theorem_workbench_core::{DraftAttachmentState, Theme};
 use theorem_workbench_editor::{EditorStyles, Paint};
@@ -81,6 +81,25 @@ pub(crate) struct ChipCell {
     pub x: u16,
     pub width: u16,
     pub label: String,
+}
+
+/// The colour of a filled role with the fill taken off: the prompt glyph is
+/// drawn in the focus colour on the surface, never on a block of it. A role
+/// that is reverse video shows its foreground as the fill, so that is the
+/// accent; otherwise the fill is the background.
+fn accent(role: Style) -> Style {
+    let reversed = role.add_modifier.contains(Modifier::REVERSED);
+    let colour = if reversed {
+        role.fg
+    } else {
+        role.bg.or(role.fg)
+    };
+    let mut style = Style::default().add_modifier(role.add_modifier - Modifier::REVERSED);
+    style.sub_modifier = role.sub_modifier;
+    if let Some(c) = colour {
+        style = style.fg(c);
+    }
+    style
 }
 
 impl Composer {
@@ -290,7 +309,7 @@ impl Composer {
     fn draw_text(&self, t: Rect, area: Rect, buf: &mut Buffer, theme: &Theme) {
         if t.height > 0 && area.width >= PROMPT_WIDTH {
             let style = if self.focused && self.chip.is_none() {
-                theme.text.patch(theme.field_focus)
+                theme.text.patch(accent(theme.field_focus))
             } else {
                 theme.text.patch(theme.divider)
             };

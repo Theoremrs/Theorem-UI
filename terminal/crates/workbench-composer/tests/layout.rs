@@ -219,3 +219,36 @@ fn state_dumps() {
         }
     }
 }
+
+#[test]
+fn the_focused_prompt_is_the_glyph_in_the_focus_colour_on_the_surface() {
+    use ratatui::style::{Color, Modifier, Style};
+    let surface = Color::Rgb(30, 34, 40);
+    let accent = Color::Rgb(140, 190, 170);
+    let text = Style::default().fg(Color::White).bg(surface);
+    let filled = Style::default().fg(Color::Black).bg(accent);
+    let reversed = Style::default()
+        .fg(accent)
+        .add_modifier(Modifier::REVERSED | Modifier::BOLD);
+    for focus in [filled, reversed] {
+        let theme = Theme::chrome(
+            Style::default().bg(surface),
+            text,
+            Style::default().fg(Color::Gray),
+            Style::default().fg(Color::DarkGray),
+            focus,
+            Style::default(),
+        );
+        let mut r = rig(30, 4);
+        r.type_str("hello there");
+        r.c.set_focused(true);
+        let mut buf = ratatui::buffer::Buffer::empty(Rect::new(0, 0, 30, 4));
+        r.c.draw(Rect::new(0, 0, 30, 4), &mut buf, &theme);
+        let cell = &buf[(0, 0)];
+        assert_eq!(cell.symbol(), "\u{203A}");
+        assert_eq!(cell.bg, surface, "no filled cell behind the prompt");
+        assert_eq!(cell.fg, accent, "the glyph carries the focus colour");
+        assert!(!cell.modifier.contains(Modifier::REVERSED));
+        assert_eq!(buf[(1, 0)].bg, surface);
+    }
+}
