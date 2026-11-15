@@ -20,6 +20,8 @@ use ropey::{Rope, RopeSlice};
 use unicode_segmentation::{GraphemeCursor, GraphemeIncomplete, UnicodeSegmentation};
 use unicode_width::UnicodeWidthStr;
 
+use crate::visible::hidden;
+
 /// The unit an offset or column is counted in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Unit {
@@ -49,13 +51,41 @@ pub struct LineCol {
     pub col: usize,
 }
 
+/// The character drawn in place of a cluster that begins with a control or
+/// hidden character, so it can be seen and cannot reorder or hide what is
+/// around it: a Unicode control picture (U+2400 + code) for C0 controls, U+2421
+/// for DEL, U+25AF for C1 controls and [`hidden`] characters. Line endings and
+/// tabs are not stand-ins. VS Code's `renderControlCharacters` does the same;
+/// no dependency does it for a ratatui buffer, hence this one function.
+///
+/// A combining mark or a joiner after a first character that is not itself
+/// control or hidden stays inside its cluster and draws as before. A joiner
+/// that leads a cluster is a stand-in; marks that follow it are not drawn.
+pub fn stand_in(grapheme: &str) -> Option<char> {
+    let c = grapheme.chars().next()?;
+    match c {
+        '\n' | '\t' => None,
+        '\r' if grapheme == "\r\n" => None,
+        '\0'..='\u{1f}' => char::from_u32(0x2400 + u32::from(c)),
+        '\u{7f}' => Some('\u{2421}'),
+        '\u{80}'..='\u{9f}' => Some('\u{25af}'),
+        c if hidden(c) => Some('\u{25af}'),
+        _ => None,
+    }
+}
+
 /// Width in cells of one grapheme cluster that starts at display column
-/// `at_cell`. A tab runs to the next tab stop; everything else uses
-/// `unicode-width`, so wide characters take two cells and combining marks none.
+/// `at_cell`. A tab runs to the next tab stop; a stand-in takes one cell;
+/// everything else uses `unicode-width`, so wide characters take two cells and
+/// combining marks none. Layout, carets, selections and hit tests all measure
+/// through this function, and drawing paints [`stand_in`] in the cell it
+/// reserves.
 pub fn grapheme_cells(grapheme: &str, at_cell: usize, tab_width: usize) -> usize {
     if grapheme.starts_with('\t') {
         let tab = tab_width.max(1);
         tab - at_cell % tab
+    } else if stand_in(grapheme).is_some() {
+        1
     } else {
         UnicodeWidthStr::width(grapheme)
     }
@@ -541,6 +571,67 @@ mod tests {
         );
         assert_eq!(c.offset_at_cell(0, 7, 50, 4, Snap::Backward), 7);
         assert_eq!(c.display_col(4, 4), (0, 5 + 2));
+    }
+
+    #[test]
+    fn stand_ins_are_control_pictures_for_c0_del_and_a_box_for_c1_and_hidden() {
+        assert_eq!(stand_in("\u{0}"), Some('\u{2400}'));
+        assert_eq!(stand_in("\u{7}"), Some('\u{2407}'));
+        assert_eq!(stand_in("\u{1b}"), Some('\u{241b}'));
+        assert_eq!(stand_in("\u{d}"), Some('\u{240d}'));
+        assert_eq!(stand_in("\u{1f}"), Some('\u{241f}'));
+        assert_eq!(stand_in("\u{7f}"), Some('\u{2421}'));
+        for c in [
+            '\u{80}', '\u{85}', '\u{9f}', '\u{ad}', '\u{200b}', '\u{202e}', '\u{feff}',
+        ] {
+            assert_eq!(stand_in(&c.to_string()), Some('\u{25af}'), "{c:?}");
+        }
+        for plain in [
+            "a", "\n", "\t", "\r\n", " ", "\u{a0}", "\u{4e2d}", "\u{fe0f}",
+        ] {
+            assert_eq!(stand_in(plain), None, "{plain:?}");
+        }
+    }
+
+    #[test]
+    fn a_stand_in_is_one_cell_and_a_cluster_that_is_not_one_keeps_its_width() {
+        for c in [
+            '\u{0}', '\u{7}', '\u{1b}', '\u{7f}', '\u{85}', '\u{200b}', '\u{202e}',
+        ] {
+            assert_eq!(grapheme_cells(&c.to_string(), 3, 4), 1, "{c:?}");
+        }
+        // A combining mark stays on its letter.
+        assert_eq!(grapheme_cells("e\u{301}", 0, 4), 1);
+        assert_eq!(stand_in("e\u{301}"), None);
+        // A joiner or a variation selector after a letter is not drawn.
+        assert_eq!(grapheme_cells("a\u{200d}", 0, 4), 1);
+        assert_eq!(stand_in("a\u{200d}"), None);
+        assert_eq!(stand_in("\u{2764}\u{fe0f}"), None);
+        // A joiner inside an emoji sequence leaves the sequence whole.
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        assert_eq!(stand_in(family), None);
+        assert_eq!(grapheme_cells(family, 0, 4), UnicodeWidthStr::width(family));
+        // A joiner that stands alone or leads a cluster is drawn.
+        assert_eq!(stand_in("\u{200d}"), Some('\u{25af}'));
+        assert_eq!(grapheme_cells("\u{200d}", 0, 4), 1);
+        assert_eq!(stand_in("\u{200c}\u{301}"), Some('\u{25af}'));
+        assert_eq!(grapheme_cells("\u{200c}\u{301}", 0, 4), 1);
+        // A tab still runs to its stop.
+        assert_eq!(grapheme_cells("\t", 1, 4), 3);
+    }
+
+    #[test]
+    fn offsets_and_cells_round_trip_across_stand_ins() {
+        let text = "a\u{7}\u{1b}\u{0}\u{202e}b\u{7f}c";
+        let rope = r(text);
+        let c = Coords::new(&rope);
+        let n = text.chars().count();
+        for offset in 0..=n {
+            let cell = c.cells_between(0, offset, 4);
+            assert_eq!(cell, offset, "every character is one cell");
+            assert_eq!(c.offset_at_cell(0, n, cell, 4, Snap::Backward), offset);
+        }
+        assert_eq!(c.display_col(5, 4), (0, 5));
     }
 
     #[test]

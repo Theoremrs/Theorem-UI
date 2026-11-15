@@ -19,7 +19,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use theorem_workbench_core::{PanelPointer, PointerKind};
-use theorem_workbench_text::coords::grapheme_cells;
+use theorem_workbench_text::coords::{grapheme_cells, stand_in};
 use theorem_workbench_text::layout::{Row, line_rows, row_index};
 use theorem_workbench_text::{
     Caret, Coords, Deletion, EditError, EditSession, Motion, Newlines, PasteOptions, Scroll, Snap,
@@ -652,6 +652,14 @@ impl SourceView {
                         let px = content.x + cell as u16;
                         if g.starts_with('\t') {
                             buf.set_stringn(px, py, " ".repeat(w), w, style);
+                        } else if let Some(glyph) = stand_in(g) {
+                            let selected = selection.is_some_and(|(s, e)| at >= s && at < e);
+                            let style = if selected {
+                                style
+                            } else {
+                                style.patch(styles.gutter)
+                            };
+                            buf.set_stringn(px, py, glyph.to_string(), w, style);
                         } else {
                             buf.set_stringn(px, py, g, w, style);
                         }
@@ -1041,6 +1049,32 @@ mod tests {
             .map(|x| buf[(x, 0)].modifier.contains(Modifier::REVERSED))
             .collect();
         assert_eq!(reversed, vec![true, true, true, false, false]);
+    }
+
+    #[test]
+    fn control_and_hidden_characters_draw_as_stand_ins_and_the_caret_walks_over_them() {
+        let text = "a\u{7}\u{1b}\u{0}\u{202e}b\n";
+        let (mut s, mut v) = view(text, 20, 3);
+        let area = Rect::new(0, 0, 20, 3);
+        let draw = |s: &EditSession, v: &SourceView| {
+            let mut buf = Buffer::empty(area);
+            let styles = EditorStyles::plain();
+            let caret = v.draw(s, area, &mut buf, &Paint::new(&styles));
+            (buf, caret)
+        };
+        let (buf, _) = draw(&s, &v);
+        let row: String = (2..9).map(|x| buf[(x, 0)].symbol()).collect();
+        assert_eq!(row, "a\u{2407}\u{241b}\u{2400}\u{25af}b ");
+        assert!(buf[(3, 0)].modifier.contains(Modifier::DIM), "muted");
+        assert!(!buf[(2, 0)].modifier.contains(Modifier::DIM));
+        key(&mut v, &mut s, Key::Home, Mods::CTRL);
+        for step in 0..=5u16 {
+            let (_, caret) = draw(&s, &v);
+            let caret = caret.expect("the caret is on screen");
+            assert_eq!((caret.x, caret.width), (2 + step, 1), "step {step}");
+            key(&mut v, &mut s, Key::Right, Mods::NONE);
+        }
+        assert_eq!(s.text(), text, "the text is not changed");
     }
 
     use ratatui::style::Modifier;

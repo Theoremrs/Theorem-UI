@@ -6,7 +6,7 @@
 //! is never part of the text. Selection, preedit, atomic ranges and held
 //! conflict text are styled with the styles the caller supplies.
 
-use crate::coords::{Coords, grapheme_cells};
+use crate::coords::{Coords, grapheme_cells, stand_in};
 use crate::layout::{Row, line_rows, row_index};
 use crate::session::EditSession;
 use ratatui::buffer::Buffer;
@@ -201,6 +201,14 @@ pub fn render(
                     let px = content.x + (cell - left) as u16;
                     if g.starts_with('\t') {
                         buf.set_stringn(px, py, " ".repeat(w), w, style);
+                    } else if let Some(glyph) = stand_in(g) {
+                        let selected = selection.is_some_and(|(s, e)| at >= s && at < e);
+                        let style = if selected {
+                            style
+                        } else {
+                            style.patch(styles.line_number)
+                        };
+                        buf.set_stringn(px, py, glyph.to_string(), w, style);
                     } else {
                         buf.set_stringn(px, py, g, w, style);
                     }
@@ -280,4 +288,29 @@ fn rows_back(
         need -= rows;
     }
     (0, 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::session::SessionConfig;
+
+    #[test]
+    fn control_and_hidden_characters_draw_as_one_stand_in_cell_each() {
+        let text = "a\u{7}\u{1b}\u{0}\u{202e}b";
+        let mut session = EditSession::new(text, 1, SessionConfig::new("t"));
+        let area = Rect::new(0, 0, 12, 2);
+        let mut buf = Buffer::empty(area);
+        let options = RenderOptions::default();
+        render(&mut session, area, &mut buf, &options);
+        let row: String = (0..7).map(|x| buf[(x, 0)].symbol()).collect();
+        assert_eq!(row, "a\u{2407}\u{241b}\u{2400}\u{25af}b ");
+        assert!(
+            buf[(1, 0)]
+                .modifier
+                .contains(options.styles.line_number.add_modifier),
+            "the stand-in takes the muted style"
+        );
+        assert_eq!(session.text(), text, "the text is not changed");
+    }
 }

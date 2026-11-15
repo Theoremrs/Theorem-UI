@@ -3485,3 +3485,45 @@ fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
     }
     assert!(seen > 10);
 }
+
+#[test]
+fn source_mode_draws_control_and_hidden_characters_as_stand_ins_and_keeps_the_text() {
+    let text = "a\u{7}\u{1b}\u{0}\u{202e}b\n";
+    let mut rig = Rig::opened(text);
+    rig.alt('2');
+    let screen = rig.screen();
+    assert!(
+        screen.contains("a\u{2407}\u{241b}\u{2400}\u{25af}b"),
+        "{screen}"
+    );
+    // The focused panel paints the caret as a restyled cell. With the caret
+    // past the last character, no text cell is restyled: that is the baseline.
+    let styles_of = |rig: &Rig| {
+        let b = rig.body();
+        let buf = rig.draw(b.width, b.height);
+        let y = (0..b.height)
+            .find(|&y| (0..b.width).any(|x| buf[(x, y)].symbol() == "\u{2407}"))
+            .expect("the text row");
+        (2..b.width)
+            .map(|x| buf[(x, y)].style())
+            .collect::<Vec<_>>()
+    };
+    rig.mods(Key::End, Mods::NONE);
+    let baseline = styles_of(&rig);
+    rig.mods(Key::Home, Mods::CTRL);
+    let mut seen = Vec::new();
+    for _ in 0..6 {
+        let now = styles_of(&rig);
+        let at: Vec<usize> = (0..6).filter(|&i| now[i] != baseline[i]).collect();
+        seen.push(at);
+        rig.key(Key::Right);
+    }
+    // Cells 2.. hold a, BEL, ESC, NUL, U+202E, b: one cell per character.
+    let expected: Vec<Vec<usize>> = (0..6).map(|n| vec![n]).collect();
+    assert_eq!(seen, expected);
+    let published = rig.node("text").text.unwrap();
+    assert!(
+        published.starts_with("a\\u{7}\\u{1b}\\u{0}\\u{202e}b"),
+        "the text is the raw text, spelled out only in the tree: {published:?}"
+    );
+}

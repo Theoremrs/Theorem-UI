@@ -136,6 +136,18 @@ mod tests {
     }
 
     #[test]
+    fn stand_ins_wrap_as_one_cell_each() {
+        // Seven stand-ins and a letter: zero-width and control characters
+        // would otherwise pack into one row.
+        let text = "a\u{7}\u{1b}\u{0}\u{202e}\u{200b}\u{7f}b";
+        assert_eq!(rows(text, 4), vec![(0, 4), (4, 8)]);
+        // A line that is nothing but hidden characters still wraps by cell.
+        assert_eq!(rows("\u{200b}\u{200b}\u{200b}", 2), vec![(0, 2), (2, 3)]);
+        // A joiner inside a cluster adds no cell.
+        assert_eq!(rows("e\u{200d}e\u{200d}e\u{200d}", 2), vec![(0, 4), (4, 6)]);
+    }
+
+    #[test]
     fn row_index_puts_a_row_end_on_the_next_row() {
         let rope = Rope::from_str("hello world");
         let r = line_rows(&rope, 0, 7, 4);

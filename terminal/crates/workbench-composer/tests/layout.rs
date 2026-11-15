@@ -252,3 +252,30 @@ fn the_focused_prompt_is_the_glyph_in_the_focus_colour_on_the_surface() {
         assert_eq!(buf[(1, 0)].bg, surface);
     }
 }
+
+#[test]
+fn control_and_hidden_characters_draw_as_stand_ins_and_the_caret_walks_over_them() {
+    let text = "a\u{7}\u{1b}\u{0}\u{202e}b";
+    let mut r = rig(20, 6);
+    r.text(text);
+    assert_eq!(r.c.text(), text, "the text is what was put in");
+    let dump = r.dump();
+    assert_eq!(
+        dump.lines().next().unwrap(),
+        "\u{203A} a\u{2407}\u{241b}\u{2400}\u{25af}b",
+        "{dump}"
+    );
+    // prompt 2, then one cell per character; a stand-in is muted.
+    assert_eq!(r.c.caret(r.now).cell, Some((8, 0)));
+    for step in (0..6).rev() {
+        r.press(Key::Left);
+        assert_eq!(r.c.caret(r.now).cell, Some((2 + step, 0)), "step {step}");
+    }
+    let buf = r.buffer();
+    assert_ne!(
+        buf[(3, 0)].style(),
+        buf[(2, 0)].style(),
+        "the stand-in is muted"
+    );
+    assert_eq!(r.c.text(), text);
+}
