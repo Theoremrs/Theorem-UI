@@ -16,6 +16,8 @@ use theorem_workbench_core::registry::{
 use theorem_workbench_core::semantics::Role;
 use theorem_workbench_markdown::MarkdownMode;
 
+use theorem_workbench_text::recovery;
+
 use crate::KIND;
 
 /// Everything a person can choose in the Markdown panel.
@@ -38,6 +40,7 @@ pub enum Choice {
     TakeTheirs,
     KeepBoth,
     CopyMine,
+    CopyRecovered,
     Resend,
     KeepDisk,
     KeepAuthority,
@@ -118,7 +121,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 25] = [
+const TABLE: [Descriptor; 26] = [
     d(
         Choice::Visual,
         "markdown.mode.visual",
@@ -215,7 +218,7 @@ const TABLE: [Descriptor; 25] = [
     sends(
         Choice::KeepMine,
         "markdown.resolve.keepMine",
-        "Keep my text",
+        recovery::KEEP_MINE_TITLE,
         "Alt+M",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -223,7 +226,7 @@ const TABLE: [Descriptor; 25] = [
     sends(
         Choice::TakeTheirs,
         "markdown.resolve.takeTheirs",
-        "Take their text",
+        recovery::TAKE_THEIRS_TITLE,
         "Alt+T",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -231,7 +234,7 @@ const TABLE: [Descriptor; 25] = [
     sends(
         Choice::KeepBoth,
         "markdown.resolve.keepBoth",
-        "Keep both",
+        recovery::KEEP_BOTH_TITLE,
         "Alt+B",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -239,8 +242,15 @@ const TABLE: [Descriptor; 25] = [
     d(
         Choice::CopyMine,
         "markdown.resolve.copyMine",
-        "Copy my text",
+        recovery::COPY_MINE_TITLE,
         "Alt+Y",
+        None,
+    ),
+    d(
+        Choice::CopyRecovered,
+        "markdown.recovered.copy",
+        recovery::COPY_TITLE,
+        "",
         None,
     ),
     sends(
@@ -270,16 +280,16 @@ const TABLE: [Descriptor; 25] = [
     sends(
         Choice::KeepRecovered,
         "markdown.recovered.keep",
-        "Keep recovered edits",
-        "Alt+J",
+        recovery::KEEP_TITLE,
+        recovery::KEEP_CHORD,
         Some("documents"),
         EffectKind::DocumentSettle,
     ),
     sends(
         Choice::DiscardRecovered,
         "markdown.recovered.discard",
-        "Discard recovered edits",
-        "Alt+G",
+        recovery::DISCARD_TITLE,
+        recovery::DISCARD_CHORD,
         Some("documents"),
         EffectKind::DocumentSettle,
     ),
@@ -310,6 +320,20 @@ impl Choice {
 
     pub fn id(self) -> &'static str {
         self.descriptor().id
+    }
+
+    /// The choice that answers a button of the recovered-edits bar.
+    pub fn from_offer(offer: recovery::Offer) -> Self {
+        use recovery::Offer;
+        match offer {
+            Offer::Keep => Self::KeepRecovered,
+            Offer::Discard => Self::DiscardRecovered,
+            Offer::Copy => Self::CopyRecovered,
+            Offer::TakeTheirs => Self::TakeTheirs,
+            Offer::KeepBoth => Self::KeepBoth,
+            Offer::CopyMine => Self::CopyMine,
+            Offer::KeepMine => Self::KeepMine,
+        }
     }
 
     pub fn action_id(self) -> ActionId {

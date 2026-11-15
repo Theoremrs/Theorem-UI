@@ -1947,6 +1947,15 @@ fn settles(fx: &[Effect]) -> Vec<String> {
         .collect()
 }
 
+/// The rows of the whole body at `width`, joined into one line of words.
+fn words_on_screen(rig: &Rig, width: u16) -> String {
+    rig.rows(width, 24)
+        .join(" ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[test]
 fn local_state_is_in_the_status_line_in_every_mode_at_80_and_40_columns_and_in_the_tree() {
     // The words at 80 columns and at 40, and words that must not be there.
@@ -1955,9 +1964,9 @@ fn local_state_is_in_the_status_line_in_every_mode_at_80_and_40_columns_and_in_t
         (
             LocalStatus::Draft,
             None,
-            "not yet kept on this device",
-            "not yet kept on this device",
-            "saved",
+            "edits not yet kept on this device",
+            "not kept yet",
+            "kept on this device,",
         ),
         (
             LocalStatus::Checkpointed {
@@ -1965,16 +1974,16 @@ fn local_state_is_in_the_status_line_in_every_mode_at_80_and_40_columns_and_in_t
                 recovered: false,
             },
             None,
-            "kept on this device, not saved",
-            "kept on this device",
-            "not yet",
+            "kept on this device, not saved to the file",
+            "kept, unsaved",
+            "not kept",
         ),
         (
             LocalStatus::Draft,
             Some(("quota", "the browser store is full")),
-            "keeping failed, only in this page",
-            "only in this page",
-            "not yet",
+            "not kept: the browser store is full; only in this page",
+            "not kept",
+            "kept on this device,",
         ),
     ];
     for (status, problem, wide, narrow, absent) in states {
@@ -1996,20 +2005,33 @@ fn local_state_is_in_the_status_line_in_every_mode_at_80_and_40_columns_and_in_t
                     let name = rig.node("local").name;
                     assert!(name.contains("device") || name.contains("page"), "{name}");
                 }
+                if problem.is_some() {
+                    // The whole reason stays on screen at any width: in the
+                    // flag when it fits, in a notice row when the flag said less.
+                    let screen = words_on_screen(&rig, width);
+                    assert!(
+                        screen.contains("the browser store is full"),
+                        "{width} columns, mode {mode}: {screen}"
+                    );
+                    if width == 40 {
+                        assert!(
+                            screen.contains(
+                                "Not kept on this device: the browser store is full. The edits are only in this page."
+                            ),
+                            "{screen}"
+                        );
+                    }
+                }
                 rig.tree_ok();
             }
         }
     }
-    // A failed local write says why, and that the edits are only in this page.
+    // Edits the owner has say nothing extra, whatever came before.
     let mut rig = Rig::opened("hello\n");
     rig.host(local(
         LocalStatus::Draft,
         Some(("quota", "the browser store is full")),
     ));
-    let screen = rig.screen();
-    assert!(screen.contains("the browser store is full"), "{screen}");
-    assert!(screen.contains("only in this page"), "{screen}");
-    // Edits the owner has say nothing extra, whatever came before.
     rig.host(local(LocalStatus::Accepted, None));
     assert!(!rig.screen().contains("device"), "{}", rig.screen());
 }
@@ -2024,27 +2046,29 @@ fn recovered_edits_are_shown_and_nothing_is_sent_before_the_person_chooses() {
     );
     rig.alt('2');
     assert!(rig.text().starts_with("XYhello"), "{}", rig.text());
-    assert!(
-        rig.screen().contains("recovered from this device"),
-        "{}",
-        rig.screen()
-    );
+    let screen = rig.screen();
+    assert!(screen.contains("recovered from this device"), "{screen}");
+    for title in ["Keep recovered", "Discard recovered", "Copy"] {
+        assert!(screen.contains(title), "{title}: {screen}");
+    }
+    assert!(rig.status().contains("recovered"), "{}", rig.status());
     assert!(rig.has_node("strip"));
     rig.tree_ok();
     fx.extend(rig.tick());
     fx.extend(rig.typed("Q"));
     fx.extend(rig.tick());
-    assert!(fx.is_empty(), "nothing is sent before a choice: {fx:#?}");
+    // The caret is at the end of the last recovered change: Q lands after XY.
     assert!(
-        rig.text().starts_with("XYhello"),
-        "typing waits for the choice"
+        rig.text().starts_with("XYQhello"),
+        "the caret follows the recovery: {}",
+        rig.text()
     );
-    // Saving waits too.
-    assert!(rig.act("markdown.save").is_empty());
+    fx.extend(rig.act("markdown.save"));
+    assert!(fx.is_empty(), "nothing is sent before a choice: {fx:#?}");
 }
 
 #[test]
-fn keeping_recovered_edits_settles_each_and_then_sends_the_text_once() {
+fn keeping_recovered_edits_settles_each_and_then_sends_the_text() {
     let mut rig = Rig::start();
     rig.answer_open_with(
         "hello\n",
@@ -2064,31 +2088,33 @@ fn keeping_recovered_edits_settles_each_and_then_sends_the_text_once() {
     none_of(&first, EffectKind::DocumentEdit);
     let mut fx = rig.answer(&sent[1], Outcome::Accepted, None);
     fx.extend(rig.tick());
-    let first_edit = the_edit(&fx);
-    assert_eq!(applied("hello\n", &first_edit), "Xhello\n");
-    let EffectBody::DocumentEdit(body) = &first_edit.body else {
-        panic!()
-    };
-    assert!(
-        !["r1", "r2"].contains(&body.operation_id.as_str()),
-        "a new id"
-    );
-    assert_eq!(
-        first_edit.revision,
-        Some(seq(1)),
-        "against the current revision"
-    );
-    // One in flight at a time, in order; each leaves once.
-    assert!(edits(&rig.tick()).is_empty());
-    let mut fx = rig.accept(&first_edit, 2);
-    fx.extend(rig.tick());
-    let second = the_edit(&fx);
-    assert_eq!(applied("Xhello\n", &second), "XYhello\n");
-    assert_eq!(second.revision, Some(seq(2)));
-    let mut fx = rig.accept(&second, 3);
-    fx.extend(rig.tick());
-    assert!(edits(&fx).is_empty(), "nothing is sent again by itself");
-    assert!(!rig.screen().contains("recovered from this device"));
+    // One in flight at a time, in order, each against the revision before:
+    // together they are the recovered text, once.
+    let mut text = "hello\n".to_owned();
+    let mut revision = 1;
+    let mut count = 0;
+    while let Some(e) = edits(&fx).into_iter().next() {
+        assert_eq!(
+            e.revision,
+            Some(seq(revision)),
+            "against the current revision"
+        );
+        let EffectBody::DocumentEdit(body) = &e.body else {
+            panic!()
+        };
+        assert!(
+            !["r1", "r2"].contains(&body.operation_id.as_str()),
+            "a new id"
+        );
+        text = applied(&text, &e);
+        revision += 1;
+        count += 1;
+        assert!(count < 5, "sent too often");
+        fx = rig.accept(&e, revision);
+        fx.extend(rig.tick());
+    }
+    assert_eq!(text, "XYhello\n");
+    assert!(!rig.has_node("strip"), "the bar is gone");
 }
 
 #[test]
@@ -2104,38 +2130,169 @@ fn discarding_recovered_edits_only_settles_and_drops_the_text() {
     let mut after = rig.answer(&sent, Outcome::Accepted, None);
     after.extend(rig.tick());
     assert!(after.is_empty(), "discarding sends no edit: {after:#?}");
-    assert!(!rig.screen().contains("recovered from this device"));
+    assert!(!rig.has_node("strip"), "the bar is gone");
     // Editing works again, as ordinary edits.
     let edit = the_edit(&rig.key(Key::Char('Z')));
     assert_eq!(applied("hello\n", &edit), "Zhello\n");
 }
 
 #[test]
-fn recovered_edits_made_against_another_revision_are_not_applied_blindly() {
-    for keep in [true, false] {
+fn the_old_chords_do_not_keep_or_discard_and_alt_j_and_alt_g_do() {
+    let mut rig = Rig::start();
+    rig.answer_open_with("hello\n", 1, vec![restored("r1", 1, 0, 0, "X")]);
+    for old in ['e', 'w'] {
+        assert!(settles(&rig.alt(old)).is_empty());
+    }
+    assert_eq!(settles(&rig.alt('j')), vec!["r1".to_owned()]);
+}
+
+#[test]
+fn copy_sends_the_recovered_text_to_the_clipboard() {
+    for id in ["markdown.recovered.copy", "markdown.resolve.copyMine"] {
         let mut rig = Rig::start();
-        let mut fx = rig.answer_open_with("hello\n", 3, vec![restored("r1", 2, 0, 0, "LOST")]);
+        rig.answer_open_with("hello\n", 1, vec![restored("r1", 1, 0, 0, "X")]);
+        let fx = rig.act(id);
+        let writes = of_kind(&fx, EffectKind::ClipboardWrite);
+        assert_eq!(writes.len(), 1, "{id}: {fx:#?}");
+        let EffectBody::ClipboardWrite(w) = &writes[0].body else {
+            unreachable!()
+        };
+        assert_eq!(w.text, "X");
+    }
+}
+
+#[test]
+fn recovered_edits_made_against_another_revision_are_not_placed_and_are_chosen_about_as_a_conflict()
+{
+    let ids = |rig: &Rig| -> Vec<String> {
+        let tree = semantics(&rig.m);
+        rig.node("strip")
+            .children
+            .iter()
+            .map(|id| tree.node(id).expect("a button").name.clone())
+            .collect()
+    };
+    let moved = || {
+        let mut rig = Rig::start();
+        let mut fx = rig.answer_open_with("hello\n", 5, vec![restored("r1", 2, 0, 0, "LOST")]);
         rig.alt('2');
-        assert!(rig.text().starts_with("hello"), "{}", rig.text());
-        assert!(!rig.text().contains("LOST"), "the text is the owner's");
-        let screen = rig.screen();
-        assert!(screen.contains("not applied"), "{screen}");
-        assert!(screen.contains("revision 2"), "{screen}");
         fx.extend(rig.tick());
         assert!(fx.is_empty(), "{fx:#?}");
-        let fx = rig.alt(if keep { 'j' } else { 'g' });
-        assert_eq!(settles(&fx), vec!["r1".to_owned()]);
-        let sent = of_kind(&fx, EffectKind::DocumentSettle)[0].clone();
-        let mut after = rig.answer(&sent, Outcome::Accepted, None);
-        after.extend(rig.tick());
-        if keep {
-            let edit = the_edit(&after);
-            assert!(applied("hello\n", &edit).contains("LOST"));
-        } else {
-            assert!(after.is_empty(), "{after:#?}");
-            assert_eq!(rig.text(), "hello");
-        }
+        rig
+    };
+    let mut rig = moved();
+    assert_eq!(
+        rig.text().lines().next(),
+        Some("hello"),
+        "the text is the owner's"
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("not placed"), "{screen}");
+    assert!(screen.contains("revision 2"), "{screen}");
+    assert_eq!(ids(&rig), ["Take their text", "Keep both", "Copy my text"]);
+    // Typing sends nothing while they wait.
+    let fx = rig.typed("Q");
+    assert!(fx.is_empty(), "{fx:#?}");
+    // The keep that would place them is refused with its reason.
+    let mut rig = moved();
+    let fx = rig.act("markdown.resolve.keepMine");
+    assert!(fx.is_empty());
+    let said = rig.node("status").state.description.unwrap_or_default();
+    assert!(
+        said.contains("their ranges cannot be placed in this text"),
+        "{said}"
+    );
+    // Take their text drops them, as a settle.
+    let mut rig = moved();
+    let fx = rig.act("markdown.resolve.takeTheirs");
+    assert_eq!(settles(&fx), vec!["r1".to_owned()]);
+    let sent = of_kind(&fx, EffectKind::DocumentSettle)[0].clone();
+    let mut after = rig.answer(&sent, Outcome::Accepted, None);
+    after.extend(rig.tick());
+    assert!(after.is_empty(), "{after:#?}");
+    assert_eq!(rig.text(), "hello");
+    // Keep both adds the recovered text after the file's, then sends it once.
+    let mut rig = moved();
+    let fx = rig.act("markdown.resolve.keepBoth");
+    assert_eq!(settles(&fx), vec!["r1".to_owned()]);
+    none_of(&fx, EffectKind::DocumentEdit);
+    let sent = of_kind(&fx, EffectKind::DocumentSettle)[0].clone();
+    let mut after = rig.answer(&sent, Outcome::Accepted, None);
+    after.extend(rig.tick());
+    let edit = the_edit(&after);
+    assert_eq!(applied("hello\n", &edit), "hello\nLOST");
+    assert_eq!(edit.revision, Some(seq(5)));
+}
+
+#[test]
+fn the_words_and_choices_for_local_state_and_recovered_edits_are_the_source_editors() {
+    let shared = |rig: &mut Rig, message: HostMessage| -> Vec<String> {
+        rig.host(message);
+        let node = rig.node("local");
+        vec![
+            format!("local.name = {}", node.name),
+            format!(
+                "local.description = {}",
+                node.state.description.unwrap_or_default()
+            ),
+        ]
+    };
+    let bar = |rig: &Rig| -> Vec<String> {
+        let tree = semantics(&rig.m);
+        let strip = rig.node("strip");
+        let buttons: Vec<String> = strip
+            .children
+            .iter()
+            .map(|id| {
+                let b = tree.node(id).expect("a button");
+                format!("{} [{}]", b.name, b.shortcut.clone().unwrap_or_default())
+            })
+            .collect();
+        vec![
+            format!("bar.name = {}", strip.name),
+            format!(
+                "bar.description = {}",
+                strip.state.description.unwrap_or_default()
+            ),
+            format!("bar.buttons = {}", buttons.join(" | ")),
+        ]
+    };
+    let mut got = vec![];
+    for (status, problem) in [
+        (LocalStatus::Draft, None),
+        (
+            LocalStatus::Checkpointed {
+                saved_at_ms: 1,
+                recovered: false,
+            },
+            None,
+        ),
+        (LocalStatus::Draft, Some(("quota", "storage is full"))),
+    ] {
+        let mut rig = Rig::opened("hello\n");
+        got.extend(shared(&mut rig, local(status, problem)));
     }
+    let mut rig = Rig::start();
+    rig.answer_open_with("hello\n", 1, vec![restored("r1", 1, 0, 0, "X")]);
+    got.extend(bar(&rig));
+    let mut rig = Rig::start();
+    rig.answer_open_with("hello\n", 5, vec![restored("r1", 2, 0, 0, "X")]);
+    got.extend(bar(&rig));
+    let want = [
+        "local.name = edits not yet kept on this device",
+        "local.description = edits not yet kept on this device",
+        "local.name = kept on this device, not saved to the file",
+        "local.description = edits kept on this device, not saved to the file",
+        "local.name = not kept: storage is full; only in this page",
+        "local.description = not kept on this device (quota): storage is full; the edits are only in this page",
+        "bar.name = Edits recovered from this device are in the text. Nothing is sent until you choose.",
+        "bar.description = edits recovered from this device are in the text and wait for a choice",
+        "bar.buttons = Keep recovered [Alt+J] | Discard recovered [Alt+G] | Copy []",
+        "bar.name = Edits recovered from this device were made against revision 2; the file is at revision 5, so they are not placed. Recovered: \"X\"",
+        "bar.description = edits recovered from this device were made against revision 2 and are not placed; choose what to do with them",
+        "bar.buttons = Take their text [Alt+T] | Keep both [Alt+B] | Copy my text [Alt+Y]",
+    ];
+    assert_eq!(got, want);
 }
 
 #[test]
@@ -2153,10 +2310,13 @@ fn revoked_access_clears_the_document_and_stops_sending() {
     assert!(fx.is_empty());
     let screen = rig.screen();
     assert!(
+        screen.contains("You no longer have access to this file"),
+        "{screen}"
+    );
+    assert!(
         screen.contains("You were removed from this workspace."),
         "{screen}"
     );
-    assert!(screen.contains("withdrawn"), "{screen}");
     assert!(!screen.contains("secret"), "the text is gone: {screen}");
     let tree = format!("{:?}", semantics(&rig.m));
     assert!(!tree.contains("secret"), "{tree}");

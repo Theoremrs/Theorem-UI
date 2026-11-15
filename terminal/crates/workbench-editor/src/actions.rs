@@ -14,6 +14,8 @@ use theorem_workbench_core::registry::{
     ActionDescriptor, ActionIntent, KeyScope, Registry, RegistryError,
 };
 
+use theorem_workbench_text::recovery;
+
 use crate::panel::KIND;
 
 /// Everything a person can choose in the editor.
@@ -40,6 +42,7 @@ pub enum Choice {
     TakeTheirs,
     KeepBoth,
     CopyMine,
+    CopyRecovered,
     KeepRecovered,
     DiscardRecovered,
     Resend,
@@ -130,7 +133,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 30] = [
+const TABLE: [Descriptor; 31] = [
     sends(
         Choice::Save,
         "document.save",
@@ -270,7 +273,7 @@ const TABLE: [Descriptor; 30] = [
     sends(
         Choice::KeepMine,
         "document.keepMine",
-        "Keep my text",
+        recovery::KEEP_MINE_TITLE,
         "Alt+M",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -278,7 +281,7 @@ const TABLE: [Descriptor; 30] = [
     sends(
         Choice::TakeTheirs,
         "document.takeTheirs",
-        "Take their text",
+        recovery::TAKE_THEIRS_TITLE,
         "Alt+T",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -286,7 +289,7 @@ const TABLE: [Descriptor; 30] = [
     sends(
         Choice::KeepBoth,
         "document.keepBoth",
-        "Keep both",
+        recovery::KEEP_BOTH_TITLE,
         "Alt+B",
         Some("documents"),
         EffectKind::DocumentSettle,
@@ -294,24 +297,32 @@ const TABLE: [Descriptor; 30] = [
     sends(
         Choice::CopyMine,
         "document.copyMine",
-        "Copy my text",
+        recovery::COPY_MINE_TITLE,
         "Alt+Y",
+        None,
+        EffectKind::ClipboardWrite,
+    ),
+    sends(
+        Choice::CopyRecovered,
+        "document.copyRecovered",
+        recovery::COPY_TITLE,
+        "",
         None,
         EffectKind::ClipboardWrite,
     ),
     sends(
         Choice::KeepRecovered,
         "document.keepRecovered",
-        "Keep recovered edits",
-        "Alt+E",
+        recovery::KEEP_TITLE,
+        recovery::KEEP_CHORD,
         Some("documents"),
         EffectKind::DocumentSettle,
     ),
     sends(
         Choice::DiscardRecovered,
         "document.discardRecovered",
-        "Discard recovered edits",
-        "Alt+W",
+        recovery::DISCARD_TITLE,
+        recovery::DISCARD_CHORD,
         Some("documents"),
         EffectKind::DocumentSettle,
     ),
@@ -425,6 +436,20 @@ impl Choice {
 
     pub fn id(self) -> &'static str {
         self.descriptor().id
+    }
+
+    /// The choice that answers a button of the recovered-edits bar.
+    pub fn from_offer(offer: recovery::Offer) -> Self {
+        use recovery::Offer;
+        match offer {
+            Offer::Keep => Self::KeepRecovered,
+            Offer::Discard => Self::DiscardRecovered,
+            Offer::Copy => Self::CopyRecovered,
+            Offer::TakeTheirs => Self::TakeTheirs,
+            Offer::KeepBoth => Self::KeepBoth,
+            Offer::CopyMine => Self::CopyMine,
+            Offer::KeepMine => Self::KeepMine,
+        }
     }
 
     pub fn action_id(self) -> ActionId {

@@ -2830,12 +2830,14 @@ fn a_recovered_edit_on_the_same_revision_is_shown_and_nothing_is_sent_before_a_c
         [
             "document.keepRecovered",
             "document.discardRecovered",
-            "document.copyMine"
+            "document.copyRecovered"
         ]
     );
     assert!(rig.status().contains("recovered"), "{}", rig.status());
     let bar = rig.screen();
     assert!(bar.contains("recovered from this device"), "{bar}");
+    assert!(bar.contains("Keep recovered"), "{bar}");
+    assert!(bar.contains("Discard recovered"), "{bar}");
     // Ticks, typing and a save send nothing: the owner refuses edits until
     // each recovered one is settled.
     let mut fx = rig.tick();
@@ -2979,6 +2981,131 @@ fn unplaced_recovered_edits_are_discarded_or_added_after_the_text() {
     assert_eq!(body.edits[0].insert, "X");
     assert_eq!(e.revision, Some(seq(5)));
     assert!(rig.screen().contains("hello"), "{}", rig.screen());
+}
+
+#[test]
+fn the_caret_sits_at_the_end_of_the_last_recovered_change() {
+    let mut rig = Rig::start().at(80);
+    let two = PendingEdit {
+        edits: vec![
+            CoreChange {
+                start: 0,
+                end: 0,
+                insert: "ab".into(),
+            },
+            CoreChange {
+                start: 3,
+                end: 3,
+                insert: "Z".into(),
+            },
+        ],
+        ..recovered_edit("r1", 1, 0, "")
+    };
+    open_with(&mut rig, "hello\n", 1, vec![two]);
+    assert!(rig.screen().contains("abhelZlo"), "{}", rig.screen());
+    // The caret is after the Z: what is typed next lands there.
+    rig.typed("Q");
+    assert!(rig.screen().contains("abhelZQlo"), "{}", rig.screen());
+}
+
+#[test]
+fn keep_and_discard_recovered_answer_alt_j_and_alt_g() {
+    let mut rig = recovered_rig(80);
+    let fx = rig.mods(Key::Char('j'), Mods::ALT);
+    assert_eq!(settles(&fx), ["r1"], "{fx:#?}");
+    let mut rig = recovered_rig(80);
+    let fx = rig.mods(Key::Char('g'), Mods::ALT);
+    assert_eq!(settles(&fx), ["r1"], "{fx:#?}");
+    // The old chords are not bound.
+    let mut rig = recovered_rig(80);
+    let fx = rig.mods(Key::Char('e'), Mods::ALT);
+    assert!(settles(&fx).is_empty(), "{fx:#?}");
+}
+
+#[test]
+fn copy_sends_the_recovered_text_to_the_clipboard() {
+    for id in ["document.copyRecovered", "document.copyMine"] {
+        let mut rig = recovered_rig(80);
+        let fx = act(&mut rig, id);
+        let writes = of_kind(&fx, EffectKind::ClipboardWrite);
+        assert_eq!(writes.len(), 1, "{id}: {fx:#?}");
+        let EffectBody::ClipboardWrite(w) = &writes[0].body else {
+            unreachable!()
+        };
+        assert_eq!(w.text, "X");
+    }
+}
+
+/// What a person sees and a reader of the tree hears for the local state and
+/// the recovered bar, as lines. The Markdown panel's test builds the same lines
+/// from the same input and compares them with the same list.
+fn shared_words(rig: &mut Rig, local: HostMessage) -> Vec<String> {
+    rig.host(local);
+    let node = rig.node("local");
+    vec![
+        format!("local.name = {}", node.name),
+        format!(
+            "local.description = {}",
+            node.state.description.unwrap_or_default()
+        ),
+    ]
+}
+
+fn bar_words(rig: &Rig) -> Vec<String> {
+    let tree = semantics(&rig.m);
+    let strip = rig.node("strip");
+    let buttons: Vec<String> = strip
+        .children
+        .iter()
+        .map(|id| {
+            let b = tree.node(id).expect("a button");
+            format!("{} [{}]", b.name, b.shortcut.clone().unwrap_or_default())
+        })
+        .collect();
+    vec![
+        format!("bar.name = {}", strip.name),
+        format!(
+            "bar.description = {}",
+            strip.state.description.unwrap_or_default()
+        ),
+        format!("bar.buttons = {}", buttons.join(" | ")),
+    ]
+}
+
+#[test]
+fn the_words_and_choices_for_local_state_and_recovered_edits_are_the_markdown_panels() {
+    let mut got = vec![];
+    for (status, problem) in [
+        (LocalStatus::Draft, None),
+        (
+            LocalStatus::Checkpointed {
+                saved_at_ms: 1,
+                recovered: false,
+            },
+            None,
+        ),
+        (LocalStatus::Draft, Some(("quota", "storage is full"))),
+    ] {
+        let mut rig = Rig::opened("hello\n").at(80);
+        got.extend(shared_words(&mut rig, local(status, problem)));
+    }
+    got.extend(bar_words(&recovered_rig(80)));
+    got.extend(bar_words(&moved_rig(80)));
+    let want = [
+        "local.name = edits not yet kept on this device",
+        "local.description = edits not yet kept on this device",
+        "local.name = kept on this device, not saved to the file",
+        "local.description = edits kept on this device, not saved to the file",
+        "local.name = not kept: storage is full; only in this page",
+        "local.description = not kept on this device (quota): storage is full; the edits are only in this page",
+        "bar.name = Edits recovered from this device are in the text. Nothing is sent until you choose.",
+        "bar.description = edits recovered from this device are in the text and wait for a choice",
+        "bar.buttons = Keep recovered [Alt+J] | Discard recovered [Alt+G] | Copy []",
+        "bar.name = Edits recovered from this device were made against revision 2; the file is at revision 5, so they are not placed. Recovered: \"X\"",
+        "bar.description = edits recovered from this device were made against revision 2 and are not placed; choose what to do with them",
+        "bar.buttons = Take their text [Alt+T] | Keep both [Alt+B] | Copy my text [Alt+Y]",
+    ];
+    assert_eq!(got, want);
 }
 
 fn message_has_problem(m: &HostMessage) -> bool {

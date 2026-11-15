@@ -447,15 +447,24 @@ impl MarkdownPanel {
             Choice::NextLink => self.step_links(true),
             Choice::PreviousLink => self.step_links(false),
             Choice::KeepMine => self.resolve(Resolution::KeepMine, cx),
+            // Recovered edits that were not placed are chosen about with the
+            // conflict's words, and settled as recovered ones.
+            Choice::TakeTheirs if self.unplaced() => self.settle_recovered(false, cx),
+            Choice::KeepBoth if self.unplaced() => self.settle_recovered(true, cx),
             Choice::TakeTheirs => self.resolve(Resolution::TakeTheirs, cx),
             Choice::KeepBoth => self.resolve(Resolution::KeepBoth, cx),
-            Choice::CopyMine => {
+            Choice::CopyMine | Choice::CopyRecovered => {
                 let Some(d) = self.doc_mut() else { return };
                 let md = d.md.get_mut();
-                let text = match (md.block_conflict(), d.sync.recoverable.clone()) {
-                    (Some(k), _) => k.mine,
-                    (None, Some(set_aside)) => set_aside,
-                    (None, None) => md.text(),
+                let text = match (
+                    &d.sync.restored,
+                    md.block_conflict(),
+                    d.sync.recoverable.clone(),
+                ) {
+                    (Some(r), _, _) => r.text.clone(),
+                    (None, Some(k), _) => k.mine,
+                    (None, None, Some(set_aside)) => set_aside,
+                    (None, None, None) => md.text(),
                 };
                 self.write_clipboard(text, Clip::Copy, cx);
             }

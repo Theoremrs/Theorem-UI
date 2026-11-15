@@ -175,7 +175,7 @@ impl Problem {
             _ => (String::new(), None),
         };
         Self {
-            headline: "You no longer have access to this file".into(),
+            headline: theorem_workbench_text::recovery::REVOKED.into(),
             reason,
             code,
             unknown: false,

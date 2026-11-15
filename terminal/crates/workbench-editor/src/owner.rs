@@ -31,9 +31,8 @@ use theorem_workbench_core::effect::{
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::Revision as CoreRevision;
-use theorem_workbench_text::{
-    EditSession, LocalEdit, OpId, Resolution, SessionConfig, SyncError, TextChange,
-};
+use theorem_workbench_text::recovery;
+use theorem_workbench_text::{EditSession, LocalEdit, OpId, Resolution, SyncError, TextChange};
 
 use crate::sync::{Changed, apply_owner_change, resync, step_before};
 
@@ -298,17 +297,20 @@ impl OwnerSync {
         if kept.is_empty() {
             return None;
         }
-        let text = kept
+        let sets: Vec<Vec<TextChange>> = kept
             .iter()
             .map(|p| {
                 p.edits
                     .iter()
-                    .map(|e| e.insert.as_str())
-                    .collect::<String>()
+                    .map(|e| TextChange {
+                        start: e.start as usize,
+                        end: e.end as usize,
+                        insert: e.insert.clone(),
+                    })
+                    .collect()
             })
-            .filter(|t| !t.is_empty())
-            .collect::<Vec<_>>()
-            .join("\n");
+            .collect();
+        let text = recovery::recovered_text(&sets);
         let reason = kept.iter().find_map(|p| p.reason.clone());
         let mut moved_from = kept.iter().find_map(|p| match &p.base_revision {
             CoreRevision::Seq(n) if *n == opened && fresh => None,
@@ -317,39 +319,14 @@ impl OwnerSync {
             CoreRevision::Opaque(t) => Some(format!("revision {t}")),
         });
         if moved_from.is_none() {
-            let sets: Vec<Vec<TextChange>> = kept
-                .iter()
-                .map(|p| {
-                    p.edits
-                        .iter()
-                        .map(|e| TextChange {
-                            start: e.start as usize,
-                            end: e.end as usize,
-                            insert: e.insert.clone(),
-                        })
-                        .collect()
-                })
-                .collect();
             // Tried on a copy of the text first: every set fits, or none goes in.
-            let mut trial =
-                EditSession::new(&session.text(), 0, SessionConfig::new("recovery-check"));
-            if let Some(e) = sets.iter().find_map(|c| trial.apply_changes(c).err()) {
+            if let Err(e) = recovery::fits(&session.text(), &sets) {
                 moved_from = Some(format!("text these ranges do not fit ({e})"));
-            }
-            if moved_from.is_none() {
-                let mut first: Option<OpId> = None;
-                for changes in &sets {
-                    if let Ok(Some(edit)) = session.apply_changes(changes) {
-                        first.get_or_insert(edit.op_id);
-                    }
-                }
-                if let Some(op) = first {
-                    let why = reason
-                        .clone()
-                        .unwrap_or_else(|| "recovered from this device".to_owned());
-                    let _ = session.refuse(&op, why);
-                }
-                session.clear_history();
+            } else if let Some(op) = recovery::place(session, &sets) {
+                let why = reason
+                    .clone()
+                    .unwrap_or_else(|| "recovered from this device".to_owned());
+                let _ = session.refuse(&op, why);
             }
         }
         let placed = moved_from.is_none();
@@ -380,13 +357,9 @@ impl OwnerSync {
         };
         if r.moved_from.is_some() {
             let end = session.len();
-            let lead = if end > 0 && !session.text().ends_with('\n') {
-                "\n"
-            } else {
-                ""
-            };
+            let added = recovery::after_file_text(&session.text(), &r.text);
             session.set_selection(end, end);
-            if let Err(e) = session.insert_text(&format!("{lead}{}", r.text)) {
+            if let Err(e) = session.insert_text(&added) {
                 step.say(Level::Warn, format!("Not kept: {e}"));
                 self.restored = Some(r);
                 return step;

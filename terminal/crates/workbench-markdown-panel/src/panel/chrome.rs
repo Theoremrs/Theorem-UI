@@ -11,9 +11,10 @@ use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
-use theorem_workbench_editor::Paint;
+use theorem_workbench_editor::{Paint, Restored};
 use theorem_workbench_markdown::{MarkdownMode, TargetBlock};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+use theorem_workbench_text::recovery::{self, snip};
+use unicode_width::UnicodeWidthStr;
 
 use super::{Doc, MarkdownPanel, Phase, Tone};
 use crate::actions::Choice;
@@ -44,23 +45,6 @@ impl Strip {
         let text = (cells.div_ceil(w) + usize::from(cells > w)).clamp(1, 3) as u16;
         text + u16::from(!self.buttons.is_empty())
     }
-}
-
-/// One line of a snippet of text: line breaks shown, long text cut.
-fn snip(text: &str, max: usize) -> String {
-    let mut out = String::new();
-    let mut n = 0;
-    for c in text.chars() {
-        let c = if c == '\n' || c == '\r' { '\u{b6}' } else { c };
-        let w = c.width().unwrap_or(0);
-        if n + w > max {
-            out.push('\u{2026}');
-            break;
-        }
-        out.push(c);
-        n += w;
-    }
-    out
 }
 
 fn label(choice: Choice) -> String {
@@ -149,7 +133,19 @@ impl MarkdownPanel {
             (mode == MarkdownMode::Preview)
                 .then(|| "Preview shows the document and does not edit it.".to_owned())
         };
-        let conflict = || (!has_conflict).then(|| "There is nothing held.".to_owned());
+        let unplaced = d
+            .sync
+            .restored
+            .as_ref()
+            .is_some_and(|r| r.moved_from.is_some());
+        let offer = |o| {
+            recovery::refusal(
+                o,
+                d.sync.restored.as_ref().map(|r| r.moved_from.is_none()),
+                d.sync.read_only.as_deref(),
+            )
+        };
+        let conflict = || (!has_conflict && !unplaced).then(|| "There is nothing held.".to_owned());
         match choice {
             Choice::Visual | Choice::Source | Choice::Split | Choice::Preview => {
                 (choice.mode() == Some(mode)).then(|| "Already in this mode.".to_owned())
@@ -159,7 +155,7 @@ impl MarkdownPanel {
                 let md = d.md.borrow();
                 if !self.documents {
                     Some("The document service is not available.".to_owned())
-                } else if d.restored.is_some() {
+                } else if d.sync.restored.is_some() {
                     Some("Settle the recovered edits first.".to_owned())
                 } else if has_conflict {
                     Some("Settle the held text first.".to_owned())
@@ -185,25 +181,29 @@ impl MarkdownPanel {
             | Choice::OpenLink
             | Choice::NextLink
             | Choice::PreviousLink => None,
-            Choice::KeepMine => {
+            Choice::KeepMine => offer(recovery::Offer::KeepMine).or_else(|| {
                 if let Some(r) = read_only() {
                     Some(format!("{r}; sending the text again would be refused."))
                 } else {
                     conflict()
                 }
-            }
-            Choice::TakeTheirs | Choice::KeepBoth => conflict(),
-            Choice::CopyMine => (!has_conflict && d.sync.recoverable.is_none())
+            }),
+            Choice::TakeTheirs => offer(recovery::Offer::TakeTheirs).or_else(conflict),
+            Choice::KeepBoth => offer(recovery::Offer::KeepBoth).or_else(conflict),
+            Choice::CopyMine => (!has_conflict && d.sync.recoverable.is_none() && !unplaced)
                 .then(|| "There is no held text.".to_owned()),
+            Choice::CopyRecovered => d
+                .sync
+                .restored
+                .is_none()
+                .then(|| recovery::NOT_RECOVERED.to_owned()),
             Choice::Resend => d
                 .sync
                 .unknown
                 .is_none()
                 .then(|| "No edit is waiting on an unknown answer.".to_owned()),
-            Choice::KeepRecovered | Choice::DiscardRecovered => d
-                .restored
-                .is_none()
-                .then(|| "No recovered edits are waiting.".to_owned()),
+            Choice::KeepRecovered => offer(recovery::Offer::Keep),
+            Choice::DiscardRecovered => offer(recovery::Offer::Discard),
             Choice::KeepDisk | Choice::KeepAuthority => d
                 .sync
                 .disk
@@ -220,7 +220,7 @@ impl MarkdownPanel {
 
     // ---- layout -----------------------------------------------------------
 
-    fn strip(&self) -> Option<Strip> {
+    fn strip(&self, width: u16) -> Option<Strip> {
         let d = self.doc()?;
         let make = |text: String, tone, buttons, conflict| {
             Some(Strip {
@@ -240,6 +240,20 @@ impl MarkdownPanel {
                 Choice::CopyMine,
             ]
         };
+        // A failed keep keeps its whole reason in view when the status line
+        // had to say less. Worked out before the model is borrowed: the status
+        // line reads it too.
+        let local_notice = match self.kept() {
+            Some((_, Some((_, reason))))
+                if !self
+                    .status_left(d, usize::MAX, usize::from(width))
+                    .0
+                    .contains(reason) =>
+            {
+                Some(recovery::local_notice(reason))
+            }
+            _ => None,
+        };
         let md = d.md.borrow();
         if let Some(k) = md.block_conflict() {
             let theirs = if k.theirs.is_empty() {
@@ -257,28 +271,13 @@ impl MarkdownPanel {
                 true,
             );
         }
-        if let Some(r) = &d.restored {
-            let words = if r.applied {
-                format!(
-                    "Edits recovered from this device ({}) were never sent, and are shown in the text. Nothing is sent until you choose: keep sends them as new edits, discard drops them.",
-                    r.ops.len()
-                )
-            } else {
-                let base = r.base.as_deref().map_or_else(
-                    || "this text".to_owned(),
-                    |b| format!("revision {b}, and the document is at {}", md.revision()),
-                );
-                format!(
-                    "Edits recovered from this device ({}) were made against {base}, so they are not applied. Nothing is sent until you choose: keep adds the text they inserted at the end, discard drops them.",
-                    r.ops.len()
-                )
-            };
-            return make(
-                words,
-                Tone::Warn,
-                vec![Choice::KeepRecovered, Choice::DiscardRecovered],
-                false,
-            );
+        if let Some(r) = &d.sync.restored {
+            let bar = self.recovered_bar(&md, r);
+            let buttons = recovery::offers(bar.placed(), d.sync.read_only.is_some())
+                .into_iter()
+                .map(Choice::from_offer)
+                .collect();
+            return make(bar.text(), Tone::Warn, buttons, false);
         }
         let session = md.session();
         if session.has_conflict() || d.sync.held.is_some() {
@@ -359,10 +358,8 @@ impl MarkdownPanel {
         if let Some(why) = &d.sync.desync {
             return make(why.clone(), Tone::Warn, vec![], false);
         }
-        if self.local.as_ref().is_some_and(|l| l.problem.is_some())
-            && let Some(sentence) = self.local_words().into_iter().next()
-        {
-            return make(sentence, Tone::Warn, vec![], false);
+        if let Some(notice) = local_notice {
+            return make(notice, Tone::Warn, vec![], false);
         }
         if let Some(i) = d.link {
             let found = links::links(&md.text());
@@ -411,7 +408,7 @@ impl MarkdownPanel {
             bottom -= 1;
             Rect::new(area.x, bottom, area.width, 1)
         });
-        let strip = self.strip().and_then(|s| {
+        let strip = self.strip(area.width).and_then(|s| {
             let rows = s.rows(area.width).min((bottom - top).saturating_sub(1));
             (rows > 0).then(|| {
                 bottom -= rows;
@@ -495,7 +492,7 @@ impl MarkdownPanel {
     }
 
     fn strip_buttons(&self, rect: Rect) -> Vec<(Choice, Rect, Option<String>)> {
-        let Some(strip) = self.strip() else {
+        let Some(strip) = self.strip(rect.width) else {
             return vec![];
         };
         if strip.buttons.is_empty() {
@@ -546,20 +543,18 @@ impl MarkdownPanel {
         Some((i + 1, blocks.len(), kind_name(blocks.get(i)?.kind)))
     }
 
-    /// The left side: the path, what is true of the document.
     /// The left of the status line. The state of the edits matters more than
     /// where the caret is: a form of its words that does not fit beside the
-    /// position takes the whole row (`true`: the position goes) before a
-    /// shorter form is used.
+    /// position takes the whole row (`true`: the position goes) before the
+    /// short form is used.
     fn status_left(&self, d: &Doc, beside: usize, whole: usize) -> (String, bool, bool) {
-        let tiers = self.local_words();
-        if tiers.is_empty() {
+        let Some(flag) = self.local_flag() else {
             let (s, attention) = self.status_flags(d, None);
             return (s, attention, false);
-        }
+        };
         let mut last = (String::new(), false, false);
-        for words in &tiers {
-            let (s, attention) = self.status_flags(d, Some(words));
+        for words in [flag.long.as_str(), flag.short] {
+            let (s, attention) = self.status_flags(d, Some((words, flag.attention)));
             let width = s.width();
             last = (s, attention, width > beside);
             if width <= whole {
@@ -569,53 +564,54 @@ impl MarkdownPanel {
         last
     }
 
-    /// How far the edits are from being safe, in plain words and never more
-    /// than the host said: the sentence first, then shorter forms for a status
-    /// line with less room. Empty for edits the owner has.
-    fn local_words(&self) -> Vec<String> {
-        let Some(local) = self.local.as_ref() else {
-            return vec![];
+    /// How far the edits are from being safe, as the host said it.
+    fn kept(&self) -> Option<(recovery::Kept, Option<(&str, &str)>)> {
+        let l = self.local.as_ref()?;
+        let kept = match l.status {
+            LocalStatus::Accepted => recovery::Kept::Accepted,
+            LocalStatus::Draft => recovery::Kept::Draft,
+            LocalStatus::Checkpointed { .. } => recovery::Kept::Checkpointed,
         };
-        if let Some(p) = &local.problem {
-            return vec![
-                format!(
-                    "Keeping your edits on this device failed ({}). They are only in this page.",
-                    p.reason
-                ),
-                "keeping failed, only in this page".to_owned(),
-            ];
-        }
-        match local.status {
-            LocalStatus::Accepted => vec![],
-            LocalStatus::Draft => vec![
-                "Your edits are not yet kept on this device.".to_owned(),
-                "not yet kept on this device".to_owned(),
-            ],
-            LocalStatus::Checkpointed { recovered, .. } => vec![
-                if recovered {
-                    "Your edits were recovered from this device and are kept on it. They are not saved to the file."
-                } else {
-                    "Your edits are kept on this device. They are not saved to the file."
-                }
-                .to_owned(),
-                "kept on this device, not saved".to_owned(),
-                "kept on this device".to_owned(),
-            ],
+        let problem = l
+            .problem
+            .as_ref()
+            .map(|p| (p.code.as_str(), p.reason.as_str()));
+        Some((kept, problem))
+    }
+
+    fn local_flag(&self) -> Option<recovery::LocalFlag> {
+        let (kept, problem) = self.kept()?;
+        recovery::local_flag(kept, problem.map(|(_, reason)| reason))
+    }
+
+    fn local_description(&self) -> Option<String> {
+        let (kept, problem) = self.kept()?;
+        recovery::local_description(kept, problem)
+    }
+
+    /// What the bar over recovered edits says.
+    fn recovered_bar<'a>(
+        &self,
+        md: &theorem_workbench_markdown::MarkdownDoc,
+        r: &'a Restored,
+    ) -> recovery::Bar<'a> {
+        recovery::Bar {
+            from: r.moved_from.as_deref(),
+            current: md.session().accepted_revision(),
+            reason: r.reason.as_deref(),
+            text: &r.text,
         }
     }
 
-    fn status_flags(&self, d: &Doc, local: Option<&str>) -> (String, bool) {
+    fn status_flags(&self, d: &Doc, local: Option<(&str, bool)>) -> (String, bool) {
         let mut s = self.path.clone();
         let mut attention = false;
         let mut flag = |text: String, warn: bool| {
             s.push_str(&format!(" [{text}]"));
             attention |= warn;
         };
-        if let Some(words) = local {
-            let warn = self.local.as_ref().is_some_and(|l| l.problem.is_some());
-            // The status line says it in a flag: the sentence is the strip's
-            // and the semantic tree's.
-            flag(words.trim_end_matches('.').to_owned(), warn);
+        if let Some((words, warn)) = local {
+            flag(words.to_owned(), warn);
         }
         let shown = self.shown(d);
         flag(mode_title(shown.mode).to_lowercase(), false);
@@ -647,6 +643,9 @@ impl MarkdownPanel {
         }
         if d.sync.save.wanted {
             flag("save waits for edits".to_owned(), false);
+        }
+        if d.sync.restored.is_some() {
+            flag(recovery::WAITS_FLAG.0.to_owned(), true);
         }
         match self.connection {
             None | Some(ConnectionState::Open) => {}
@@ -752,7 +751,7 @@ impl MarkdownPanel {
         }
 
         // The strip.
-        if let (Some(rect), Some(strip)) = (frame.strip, self.strip()) {
+        if let (Some(rect), Some(strip)) = (frame.strip, self.strip(frame.text.width)) {
             let has_buttons = !strip.buttons.is_empty();
             let text_rows = rect.height - u16::from(has_buttons);
             if text_rows > 0 {
@@ -959,9 +958,6 @@ impl MarkdownPanel {
         if let Some(note) = &shown.note {
             words.push(note.clone());
         }
-        if let Some(sentence) = self.local_words().into_iter().next() {
-            words.push(sentence);
-        }
         if let Some(r) = &d.sync.read_only {
             words.push(format!("read-only: {r}"));
         }
@@ -972,6 +968,12 @@ impl MarkdownPanel {
             "line {}, column {} in graphemes ({} in UTF-16 units)",
             at.line, at.column, at.utf16
         ));
+        if let Some(r) = &d.sync.restored {
+            words.push(self.recovered_bar(&d.md.borrow(), r).description());
+        }
+        if let Some(l) = self.local_description() {
+            words.push(l);
+        }
         root.state.description = Some(words.join("; "));
         root.actions = [
             Choice::Visual,
@@ -1072,14 +1074,15 @@ impl MarkdownPanel {
             out.push(b);
         }
 
-        if let Some(sentence) = self.local_words().into_iter().next() {
+        if let Some(flag) = self.local_flag() {
             let mut n = Node::new(
-                "local",
+                recovery::LOCAL_NODE,
                 Role::Status,
-                &sentence,
+                &flag.long,
                 frame.status.unwrap_or(area),
             );
             n.binding = self.resource();
+            n.state.description = self.local_description();
             children.push(n.id.clone());
             out.push(n);
         }
@@ -1093,10 +1096,19 @@ impl MarkdownPanel {
             out.push(n);
         }
 
-        if let (Some(rect), Some(strip)) = (frame.strip, self.strip()) {
-            let id = if strip.conflict { "conflict" } else { "strip" };
+        if let (Some(rect), Some(strip)) = (frame.strip, self.strip(frame.text.width)) {
+            let id = if strip.conflict {
+                "conflict"
+            } else {
+                recovery::BAR_NODE
+            };
             let mut alert = Node::new(id, Role::Alert, &strip.text, rect);
             alert.binding = self.resource();
+            alert.state.description = d
+                .sync
+                .restored
+                .as_ref()
+                .map(|r| self.recovered_bar(&d.md.borrow(), r).description());
             let mut kids = vec![];
             for choice in &strip.buttons {
                 let a = self.action(*choice);

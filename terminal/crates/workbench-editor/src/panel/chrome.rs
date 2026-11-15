@@ -11,6 +11,7 @@ use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::results::Severity;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_text::Caret;
+use theorem_workbench_text::recovery::{self, snip};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::language::{Popup, word};
@@ -184,23 +185,6 @@ fn shorten_path(path: &str, room: usize) -> String {
     }
 }
 
-/// One line of a snippet of text: line breaks shown, long text cut.
-fn snip(text: &str, max: usize) -> String {
-    let mut out = String::new();
-    let mut n = 0;
-    for c in text.chars() {
-        let c = if c == '\n' || c == '\r' { '\u{b6}' } else { c };
-        let w = c.width().unwrap_or(0);
-        if n + w > max {
-            out.push('\u{2026}');
-            break;
-        }
-        out.push(c);
-        n += w;
-    }
-    out
-}
-
 fn label(choice: Choice) -> String {
     let d = choice.descriptor();
     if d.chord.is_empty() {
@@ -258,16 +242,18 @@ impl EditorPanel {
                 None
             }
         };
-        let placed = d
-            .sync
-            .restored
-            .as_ref()
-            .is_some_and(|r| r.moved_from.is_none());
         let unplaced = d
             .sync
             .restored
             .as_ref()
             .is_some_and(|r| r.moved_from.is_some());
+        let offer = |o| {
+            recovery::refusal(
+                o,
+                d.sync.restored.as_ref().map(|r| r.moved_from.is_none()),
+                d.sync.read_only.as_deref(),
+            )
+        };
         let conflict = || {
             (!d.session.has_conflict() && !unplaced).then(|| "There is no held text.".to_owned())
         };
@@ -333,38 +319,26 @@ impl EditorPanel {
                     None
                 }
             }
-            Choice::KeepMine if placed => {
-                Some("Edits recovered from this device are waiting: keep or discard them.".to_owned())
-            }
-            Choice::KeepMine if unplaced => Some(
-                "The recovered edits were made against another revision, so they cannot be placed in this text."
-                    .to_owned(),
-            ),
-            Choice::KeepMine => {
+            Choice::KeepMine => offer(recovery::Offer::KeepMine).or_else(|| {
                 if let Some(r) = read_only() {
                     Some(format!("{r}; sending the text again would be refused."))
                 } else {
                     conflict()
                 }
+            }),
+            Choice::TakeTheirs => offer(recovery::Offer::TakeTheirs).or_else(conflict),
+            Choice::KeepBoth => offer(recovery::Offer::KeepBoth).or_else(conflict),
+            Choice::KeepRecovered => offer(recovery::Offer::Keep),
+            Choice::DiscardRecovered => offer(recovery::Offer::Discard),
+            Choice::CopyRecovered => d
+                .sync
+                .restored
+                .is_none()
+                .then(|| recovery::NOT_RECOVERED.to_owned()),
+            Choice::CopyMine => {
+                (!d.session.has_conflict() && d.sync.recoverable.is_none() && !unplaced)
+                    .then(|| "There is no held text.".to_owned())
             }
-            Choice::TakeTheirs | Choice::KeepBoth if placed => {
-                Some("Keep or discard the recovered edits.".to_owned())
-            }
-            Choice::KeepBoth if unplaced => read_only(),
-            Choice::TakeTheirs | Choice::KeepBoth => conflict(),
-            Choice::KeepRecovered | Choice::DiscardRecovered => match &d.sync.restored {
-                None => Some("No edits were recovered from this device.".to_owned()),
-                Some(_) if unplaced => Some(
-                    "They were made against another revision: take theirs, keep both or copy them."
-                        .to_owned(),
-                ),
-                Some(_) if choice == Choice::KeepRecovered => read_only(),
-                Some(_) => None,
-            },
-            Choice::CopyMine => (!d.session.has_conflict()
-                && d.sync.recoverable.is_none()
-                && !unplaced)
-                .then(|| "There is no held text.".to_owned()),
             Choice::Resend => d
                 .sync
                 .unknown
@@ -388,6 +362,41 @@ impl EditorPanel {
 
     // ---- layout -----------------------------------------------------------
 
+    /// How far the edits are from being safe, as the host said it.
+    fn kept(&self) -> Option<(recovery::Kept, Option<(&str, &str)>)> {
+        let l = self.local.as_ref()?;
+        let kept = match l.status {
+            LocalStatus::Accepted => recovery::Kept::Accepted,
+            LocalStatus::Draft => recovery::Kept::Draft,
+            LocalStatus::Checkpointed { .. } => recovery::Kept::Checkpointed,
+        };
+        let problem = l
+            .problem
+            .as_ref()
+            .map(|p| (p.code.as_str(), p.reason.as_str()));
+        Some((kept, problem))
+    }
+
+    fn local_flag(&self) -> Option<recovery::LocalFlag> {
+        let (kept, problem) = self.kept()?;
+        recovery::local_flag(kept, problem.map(|(_, reason)| reason))
+    }
+
+    fn local_description(&self) -> Option<String> {
+        let (kept, problem) = self.kept()?;
+        recovery::local_description(kept, problem)
+    }
+
+    /// What the bar over recovered edits says.
+    fn recovered_bar<'a>(&self, d: &Doc, r: &'a crate::owner::Restored) -> recovery::Bar<'a> {
+        recovery::Bar {
+            from: r.moved_from.as_deref(),
+            current: d.session.accepted_revision(),
+            reason: r.reason.as_deref(),
+            text: &r.text,
+        }
+    }
+
     fn strip(&self) -> Option<Strip> {
         let d = self.doc()?;
         let text = |t: String, tone, buttons| {
@@ -409,35 +418,12 @@ impl EditorPanel {
             });
         }
         if let Some(r) = &d.sync.restored {
-            let why = r
-                .reason
-                .as_ref()
-                .map(|w| format!(" {w}"))
-                .unwrap_or_default();
-            let (body, mut buttons) = match &r.moved_from {
-                Some(from) => (
-                    format!(
-                        "Edits recovered from this device were made against {from}; the file is at revision {}, so they are not placed.{why} Recovered: \"{}\"",
-                        d.session.accepted_revision(),
-                        snip(&r.text, 24)
-                    ),
-                    vec![Choice::TakeTheirs, Choice::KeepBoth, Choice::CopyMine],
-                ),
-                None => (
-                    format!(
-                        "Edits recovered from this device are in the text. Nothing is sent until you choose.{why}"
-                    ),
-                    vec![
-                        Choice::KeepRecovered,
-                        Choice::DiscardRecovered,
-                        Choice::CopyMine,
-                    ],
-                ),
-            };
-            if d.sync.read_only.is_some() {
-                buttons.retain(|c| !matches!(c, Choice::KeepBoth | Choice::KeepRecovered));
-            }
-            return text(body, Tone::Warn, buttons);
+            let bar = self.recovered_bar(d, r);
+            let buttons = recovery::offers(bar.placed(), d.sync.read_only.is_some())
+                .into_iter()
+                .map(Choice::from_offer)
+                .collect();
+            return text(bar.text(), Tone::Warn, buttons);
         }
         if d.session.has_conflict() || d.sync.held.is_some() {
             let reason = d
@@ -771,27 +757,8 @@ impl EditorPanel {
         if d.dirty() {
             flag("modified".to_owned(), "modified", false);
         }
-        if let Some(l) = &self.local {
-            // Only what is known: a failed keep says the edits are in this
-            // page alone, and "kept" is said only when the host says so.
-            match (&l.problem, &l.status) {
-                (Some(p), _) => flag(
-                    format!("not kept: {}; only in this page", p.reason),
-                    "not kept",
-                    true,
-                ),
-                (None, LocalStatus::Accepted) => {}
-                (None, LocalStatus::Draft) => flag(
-                    "edits not yet kept on this device".to_owned(),
-                    "not kept yet",
-                    false,
-                ),
-                (None, LocalStatus::Checkpointed { .. }) => flag(
-                    "kept on this device, not saved to the file".to_owned(),
-                    "kept, unsaved",
-                    false,
-                ),
-            }
+        if let Some(l) = self.local_flag() {
+            flag(l.long, l.short, l.attention);
         }
         if let Some(r) = &d.sync.read_only {
             flag(format!("read-only: {r}"), "read-only", true);
@@ -817,7 +784,11 @@ impl EditorPanel {
             flag(b.to_owned(), b, false);
         }
         if d.sync.restored.is_some() {
-            flag("recovered edits wait".to_owned(), "recovered", true);
+            flag(
+                recovery::WAITS_FLAG.0.to_owned(),
+                recovery::WAITS_FLAG.1,
+                true,
+            );
         }
         if let Some(p) = &d.findings.problem {
             flag(format!("no findings: {p}"), "no findings", false);
@@ -902,15 +873,7 @@ impl EditorPanel {
             .as_ref()
             .and_then(|l| l.problem.as_ref())
             .filter(|p| !left.contains(&p.reason))
-            .map(|p| {
-                (
-                    format!(
-                        "Not kept on this device: {}. The edits are only in this page.",
-                        p.reason
-                    ),
-                    Tone::Warn,
-                )
-            });
+            .map(|p| (recovery::local_notice(&p.reason), Tone::Warn));
         let shown = match (&d.notice, finding) {
             (Some(n), _) => Some((n.text.clone(), n.tone)),
             (None, finding) => finding.or(not_kept),
@@ -1380,27 +1343,10 @@ impl EditorPanel {
             words.push(format!("{selected} graphemes selected"));
         }
         if let Some(r) = &d.sync.restored {
-            words.push(match &r.moved_from {
-                Some(from) => format!(
-                    "edits recovered from this device were made against {from} and are not placed; choose what to do with them"
-                ),
-                None => "edits recovered from this device are in the text and wait for a choice".to_owned(),
-            });
+            words.push(self.recovered_bar(d, r).description());
         }
-        if let Some(l) = &self.local {
-            match (&l.problem, &l.status) {
-                (Some(p), _) => words.push(format!(
-                    "not kept on this device ({}): {}; the edits are only in this page",
-                    p.code, p.reason
-                )),
-                (None, LocalStatus::Accepted) => {}
-                (None, LocalStatus::Draft) => {
-                    words.push("edits not yet kept on this device".to_owned())
-                }
-                (None, LocalStatus::Checkpointed { .. }) => {
-                    words.push("edits kept on this device, not saved to the file".to_owned())
-                }
-            }
+        if let Some(l) = self.local_description() {
+            words.push(l);
         }
         if d.find.is_open() {
             words.push(format!("find: {}", d.find.summary(&d.session)));
@@ -1451,6 +1397,18 @@ impl EditorPanel {
             let right = self.status_right(d).remove(0);
             let mut n = Node::new("status", Role::Status, &format!("{left}  {right}"), row);
             n.state.description = d.notice.as_ref().map(|n| n.text.clone());
+            children.push(n.id.clone());
+            out.push(n);
+        }
+        if let Some(flag) = self.local_flag() {
+            let mut n = Node::new(
+                recovery::LOCAL_NODE,
+                Role::Status,
+                &flag.long,
+                frame.status.unwrap_or(area),
+            );
+            n.binding = self.resource();
+            n.state.description = self.local_description();
             children.push(n.id.clone());
             out.push(n);
         }
@@ -1552,8 +1510,13 @@ impl EditorPanel {
                     out.push(n);
                 }
                 Prompt::Text(text, _) => {
-                    let mut alert = Node::new("strip", Role::Alert, text, rect);
+                    let mut alert = Node::new(recovery::BAR_NODE, Role::Alert, text, rect);
                     alert.binding = self.resource();
+                    alert.state.description = d
+                        .sync
+                        .restored
+                        .as_ref()
+                        .map(|r| self.recovered_bar(d, r).description());
                     let buttons = strip.buttons.clone();
                     let mut kids = vec![];
                     for choice in &buttons {

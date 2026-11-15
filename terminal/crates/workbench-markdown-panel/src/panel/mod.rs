@@ -31,7 +31,7 @@ use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{Composition, Ctx, EmitError, Panel, PanelMsg, TabLabel, ViewCtx};
 use theorem_workbench_editor::{EditorStyles, Mark, OwnerSync, SourceView, TokenState};
 use theorem_workbench_markdown::{MarkdownDoc, MarkdownMode, MarkdownViewState};
-use theorem_workbench_text::OpId;
+use theorem_workbench_text::{OpId, recovery};
 
 use crate::Drafts;
 use crate::actions::Choice;
@@ -115,10 +115,8 @@ impl Problem {
     /// again would only be refused again.
     fn revoked(code: &str, reason: &str) -> Self {
         Self {
-            headline: "Access to this document was withdrawn".into(),
-            reason: format!(
-                "{reason} The text, the preview and any unsent edits were cleared from this panel."
-            ),
+            headline: recovery::REVOKED.into(),
+            reason: reason.to_owned(),
             code: Some(code.to_owned()),
             unknown: false,
             can_retry: false,
@@ -134,24 +132,6 @@ impl Problem {
             can_retry: false,
         }
     }
-}
-
-/// Edits the owner holds that were recovered from this device's checkpoint and
-/// never sent in this page session. The owner refuses new edits until each is
-/// settled, so the panel holds everything back until the person chooses.
-#[derive(Clone, Debug)]
-pub(crate) struct Restored {
-    /// The owner's operation ids, to settle.
-    pub ops: Vec<String>,
-    /// Their text is in the session (their base is the revision opened). When
-    /// not, nothing was applied and `inserted` is all that is left of them.
-    pub applied: bool,
-    /// The base revision the edits were made against, when it was not this one.
-    pub base: Option<String>,
-    /// The text the edits insert, as one run per edit.
-    pub inserted: String,
-    /// What the owner said about reading only, to put back when settled.
-    pub owner_read_only: Option<String>,
 }
 
 /// An open document.
@@ -174,10 +154,6 @@ pub(crate) struct Doc {
     pub preedit: Option<String>,
     /// Syntax colour from the host, kept in step with the text.
     pub tokens: TokenState,
-    /// Edits recovered from this device that wait for the person's choice.
-    pub restored: Option<Restored>,
-    /// Settles of recovered edits not yet answered: nothing is sent behind them.
-    pub settling: usize,
     /// Changes with every message that can change the text, so colour laid
     /// out for earlier text is not drawn on this.
     pub version: u64,
@@ -356,6 +332,13 @@ impl MarkdownPanel {
         let id = self.emit(cx, self.resource(), body, revision)?;
         self.outstanding.insert(id, task);
         Ok(id)
+    }
+
+    /// Recovered edits wait that were not placed in the text.
+    fn unplaced(&self) -> bool {
+        self.doc()
+            .and_then(|d| d.sync.restored.as_ref())
+            .is_some_and(|r| r.moved_from.is_some())
     }
 
     fn doc(&self) -> Option<&Doc> {

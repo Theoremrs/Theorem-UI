@@ -45,8 +45,8 @@ fn chord(key: &KeyInput) -> Option<Choice> {
             't' => Some(Choice::TakeTheirs),
             'b' => Some(Choice::KeepBoth),
             'y' => Some(Choice::CopyMine),
-            'e' => Some(Choice::KeepRecovered),
-            'w' => Some(Choice::DiscardRecovered),
+            'j' => Some(Choice::KeepRecovered),
+            'g' => Some(Choice::DiscardRecovered),
             'r' => Some(Choice::Resend),
             'd' => Some(Choice::KeepDisk),
             'k' => Some(Choice::KeepAuthority),
@@ -439,7 +439,7 @@ impl EditorPanel {
             Choice::KeepBoth => self.resolve(Resolution::KeepBoth, cx),
             Choice::KeepRecovered => self.settle_recovered(true, cx),
             Choice::DiscardRecovered => self.settle_recovered(false, cx),
-            Choice::CopyMine => {
+            Choice::CopyMine | Choice::CopyRecovered => {
                 let Some(d) = self.doc() else { return };
                 let text = match &d.sync.restored {
                     Some(r) => r.text.clone(),

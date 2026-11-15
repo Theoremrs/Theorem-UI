@@ -5,6 +5,8 @@
 //! * [`coords`]: bytes, UTF-16, scalars, lines, graphemes and display cells.
 //! * [`EditSession`]: text, cursor, selection, undo, atomic ranges, IME
 //!   composition, and the exchange of changes with the document owner.
+//! * [`recovery`]: the words and decisions for local state, recovered edits
+//!   and revoked access that every panel over a document shares.
 //! * [`render`]: draw a session into a ratatui buffer.
 //!
 //! The crate is pure Rust with no terminal backend and no browser bindings,
@@ -14,6 +16,7 @@ pub mod change;
 pub mod coords;
 mod history;
 pub mod layout;
+pub mod recovery;
 pub mod render;
 pub mod session;
 
