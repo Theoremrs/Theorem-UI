@@ -134,6 +134,116 @@ pub struct TerminalSessionInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub modes: Option<TerminalModes>,
+    /// What the program says about itself. `unavailable` when the host sends
+    /// nothing, so an older host reads as before.
+    #[serde(default, skip_serializing_if = "ProgramReport::is_unavailable")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<ProgramReport>", optional))]
+    pub program_report: ProgramReport,
+}
+
+/// The words the host maps a program's own status report to. `Unknown`
+/// carries the program's own word in [`ProgramStatus::raw_state`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramState {
+    Idle,
+    Working,
+    Done,
+    Blocked,
+    Error,
+    Unknown,
+}
+
+/// What a program says about itself (R32). The text is the program's, kept as
+/// text: nothing here is read as an action, and its `Debug` prints the state
+/// and the sizes of the text, never the text.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ProgramStatus {
+    pub state: ProgramState,
+    /// The program's own word, only with `state: unknown`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub raw_state: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub msg: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub app: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub title: Option<String>,
+    /// 0-255, as sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub progress: Option<u8>,
+}
+
+/// What the host says a terminal's program reported. Four cases, never a
+/// boolean; none is task, approval, lifecycle or availability state, and none
+/// is derived from output or liveness. The report is the program's word, not
+/// the workbench's: it changes what a pane shows and nothing else.
+///
+/// - `unavailable`: the host says nothing (an older host, a native terminal,
+///   or a report it could not read).
+/// - `never_reported`: the program has never reported.
+/// - `cleared`: it reported before and has no current word. `status_ms` and
+///   `seq` are the core's, when sent.
+/// - `current`: its current word.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
+pub enum ProgramReport {
+    #[default]
+    Unavailable,
+    NeverReported,
+    Cleared {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+        status_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+        seq: Option<u64>,
+    },
+    Current {
+        status: ProgramStatus,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+        status_ms: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+        seq: Option<u64>,
+    },
+}
+
+impl ProgramReport {
+    pub fn is_unavailable(&self) -> bool {
+        matches!(self, Self::Unavailable)
+    }
+
+    fn seq(&self) -> Option<u64> {
+        match self {
+            Self::Cleared { seq, .. } | Self::Current { seq, .. } => *seq,
+            _ => None,
+        }
+    }
+
+    /// Whether an update replaces this report. It does unless both carry the
+    /// core's sequence and the update's is older: sequences order only against
+    /// sequences, and an update with neither says nothing about order.
+    pub fn replaced_by(&self, update: &Self) -> bool {
+        !matches!((self.seq(), update.seq()), (Some(held), Some(new)) if new < held)
+    }
 }
 
 /// The modes of a terminal as the host's screen holds them (`IdeTerminalModes`).
@@ -340,6 +450,18 @@ pub enum HostMessage {
         #[cfg_attr(feature = "ts", ts(type = "number"))]
         generation: u64,
         controlled: bool,
+    },
+    /// A terminal's program reported its own status (R32). Delivered as
+    /// `PanelMsg::TerminalReport` to the panel bound to `resource`, only when
+    /// `epoch` is the epoch of its binding, and kept on the session list a
+    /// chooser reads. A report for a terminal no panel is bound to is dropped
+    /// without a notice. It is the program's word: it moves no lifecycle,
+    /// lease, approval, task or availability state and is never an action.
+    TerminalReport {
+        resource: ResourceRef,
+        #[cfg_attr(feature = "ts", ts(type = "number"))]
+        epoch: u64,
+        report: ProgramReport,
     },
     /// React's latest snapshot of a conversation, as the existing terminal
     /// takes it. The core does not interpret `snapshot`. `revision` is the

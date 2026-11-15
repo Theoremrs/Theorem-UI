@@ -271,3 +271,173 @@ fn serialization_still_carries_the_content_and_content_free_types_print_as_befor
         "{shown}"
     );
 }
+
+// ---- a program's report, and typed or pasted content in a message ----------
+
+mod reports {
+    use super::*;
+    use keybinds::{Key, KeyInput, Mods};
+    use theorem_workbench_core::host::{ProgramReport, ProgramStatus, TerminalSessionInfo};
+    use theorem_workbench_core::panel::Composition;
+    use theorem_workbench_core::picker::PickerMsg;
+    use theorem_workbench_core::{Msg, PanelMsg};
+
+    fn report() -> ProgramReport {
+        serde_json::from_value(fill(&json!({
+            "kind": "current",
+            "status": {"state": "unknown", "rawState": "@KEY@", "kind": "@SENTENCE@",
+                "msg": "@SENTENCE@", "app": "@KEY@", "title": "@SENTENCE@", "progress": 7},
+            "statusMs": 1234, "seq": 99
+        })))
+        .unwrap()
+    }
+
+    #[test]
+    fn a_report_prints_its_state_and_the_sizes_of_its_text_never_the_text() {
+        let report = report();
+        let status = match &report {
+            ProgramReport::Current { status, .. } => status.clone(),
+            _ => unreachable!(),
+        };
+        let session: TerminalSessionInfo = serde_json::from_value(json!({
+            "session": "s1", "profile": "Shell", "backend": "native", "workspace": "w",
+            "programReport": serde_json::to_value(&report).unwrap()
+        }))
+        .unwrap();
+        let host = Msg::Host(HostMessage::TerminalReport {
+            resource: serde_json::from_value(
+                json!({"type": "terminal", "workspace": "w", "session": "s1"}),
+            )
+            .unwrap(),
+            epoch: 2,
+            report: report.clone(),
+        });
+        let sessions: HostMessage = serde_json::from_value(json!({
+            "type": "terminalSessions", "workspace": "w", "profiles": [],
+            "sessions": [serde_json::to_value(&session).unwrap()]
+        }))
+        .unwrap();
+        let wire: HostMessage = serde_json::from_value(json!({
+            "type": "terminalReport", "epoch": 2,
+            "resource": {"type": "terminal", "workspace": "w", "session": "s1"},
+            "report": serde_json::to_value(&report).unwrap()
+        }))
+        .unwrap();
+        for (what, shown) in [
+            ("status", both_forms(&status)),
+            ("report", both_forms(&report)),
+            ("session", both_forms(&session)),
+            ("host message", both_forms(&wire)),
+            ("sessions list", both_forms(&sessions)),
+            ("msg", both_forms(&host)),
+            (
+                "panel msg",
+                both_forms(&PanelMsg::TerminalReport(report.clone())),
+            ),
+            ("vec", both_forms(&vec![report.clone(), report.clone()])),
+        ] {
+            for text in &shown {
+                no_marker(text, what);
+                assert!(
+                    text.to_lowercase().contains("unknown"),
+                    "{what} lost the state: {text}"
+                );
+                assert!(text.contains("withheld"), "{what} shows no sizes: {text}");
+            }
+        }
+        // The state and the sizes are what is printed.
+        let line = format!("{status:?}");
+        assert!(
+            line.contains(&format!("<{} bytes withheld>", KEY.len())),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("<{} bytes withheld>", SENTENCE.len())),
+            "{line}"
+        );
+        // A report with no text prints as before.
+        assert_eq!(
+            format!("{:?}", ProgramReport::NeverReported),
+            "NeverReported"
+        );
+        let _ = ProgramStatus {
+            state: theorem_workbench_core::host::ProgramState::Idle,
+            raw_state: None,
+            kind: None,
+            msg: None,
+            app: None,
+            title: None,
+            progress: None,
+        };
+    }
+
+    #[test]
+    fn typed_pasted_and_streamed_content_in_a_message_prints_as_a_size() {
+        let key = KeyInput::new('q', Mods::NONE);
+        let enter = KeyInput::new(Key::Enter, Mods::NONE);
+        let msgs = [
+            Msg::Text(KEY.into()),
+            Msg::Text(SENTENCE.into()),
+            Msg::Paste(KEY.into()),
+            Msg::Paste(SENTENCE.into()),
+            Msg::Composition(Composition::Update {
+                text: SENTENCE.into(),
+            }),
+            Msg::Composition(Composition::End { text: KEY.into() }),
+            Msg::Picker(PickerMsg::Filter(SENTENCE.into())),
+        ];
+        for msg in msgs {
+            for shown in both_forms(&msg) {
+                no_marker(&shown, "msg");
+                assert!(shown.contains("bytes withheld"), "{shown}");
+            }
+        }
+        let panel = [
+            PanelMsg::Text(KEY.into()),
+            PanelMsg::Paste(SENTENCE.into()),
+            PanelMsg::Composition(Composition::Update { text: KEY.into() }),
+            PanelMsg::TerminalOutput {
+                epoch: 3,
+                offset: 12,
+                bytes: SENTENCE.as_bytes().to_vec(),
+            },
+            PanelMsg::TerminalReset {
+                epoch: 3,
+                offset: 12,
+                formatted: KEY.as_bytes().to_vec(),
+            },
+        ];
+        for msg in panel {
+            for shown in both_forms(&msg) {
+                no_marker(&shown, "panel msg");
+                assert!(shown.contains("bytes withheld"), "{shown}");
+                // Not even as a list of byte values.
+                assert!(!shown.contains("113, 117"), "{shown}");
+            }
+        }
+        // A typed character is not printed; a key that is not a character is.
+        for shown in both_forms(&Msg::Key(key))
+            .iter()
+            .chain(&both_forms(&PanelMsg::Key(key)))
+        {
+            assert!(!shown.contains('q'), "{shown}");
+        }
+        for shown in both_forms(&Msg::Key(enter)) {
+            assert!(shown.contains("Enter"), "{shown}");
+        }
+        // What is not content still prints as before.
+        assert_eq!(format!("{:?}", Msg::Tick), "Tick");
+        assert_eq!(format!("{:?}", PanelMsg::Focus(true)), "Focus(true)");
+        assert!(
+            format!(
+                "{:?}",
+                PanelMsg::TerminalOutput {
+                    epoch: 3,
+                    offset: 12,
+                    bytes: vec![1, 2]
+                }
+            )
+            .contains("offset: 12")
+        );
+    }
+}

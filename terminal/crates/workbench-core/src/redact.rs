@@ -45,6 +45,10 @@ fn withhold(value: &mut Value) {
         Value::Object(map) => {
             for (key, inner) in map.iter_mut() {
                 match inner {
+                    // A program's own status: its state stays, its text is a size.
+                    Value::Object(status) if key == "status" && status.contains_key("state") => {
+                        withhold_status(status)
+                    }
                     Value::String(s) if CONTENT_KEYS.contains(&key.as_str()) => {
                         *inner = Value::String(format!("<{} bytes withheld>", s.len()));
                     }
@@ -54,6 +58,15 @@ fn withhold(value: &mut Value) {
         }
         Value::Array(items) => items.iter_mut().for_each(withhold),
         _ => {}
+    }
+}
+
+/// A program status object: every string but `state` becomes its size.
+fn withhold_status(status: &mut serde_json::Map<String, Value>) {
+    for (key, inner) in status.iter_mut() {
+        if let (Value::String(s), true) = (&*inner, key != "state") {
+            *inner = Value::String(format!("<{} bytes withheld>", s.len()));
+        }
     }
 }
 
@@ -95,7 +108,10 @@ use crate::effect::{
     DocumentKeep, DocumentOpen, FilesSearch, KeptEdit, ScmAmend, ScmCommit, ScmResolve,
     SearchQuery, TerminalInput, TerminalInputBytes, TextChange,
 };
-use crate::host::HostMessage;
+use crate::host::{HostMessage, ProgramStatus};
+use crate::msg::Msg;
+use crate::panel::{Composition, PanelMsg};
+use crate::picker::PickerMsg;
 use crate::results::{CompletionItem, Finding, FindingAt, LanguageHover, RunState, SearchRow};
 
 withhold!(
@@ -136,3 +152,179 @@ withhold!(
     RunState,
     SearchRow,
 );
+
+impl fmt::Debug for ProgramStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Ok(Value::Object(mut wire)) = serde_json::to_value(self) else {
+            return write!(f, "ProgramStatus {{ .. }}");
+        };
+        withhold_status(&mut wire);
+        let wire = Value::Object(wire);
+        let shown = if f.alternate() {
+            serde_json::to_string_pretty(&wire)
+        } else {
+            serde_json::to_string(&wire)
+        };
+        write!(f, "ProgramStatus {}", shown.unwrap_or_default())
+    }
+}
+
+/// `<N bytes withheld>`: the size of typed, pasted or streamed content.
+struct Size(usize);
+
+impl fmt::Debug for Size {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{} bytes withheld>", self.0)
+    }
+}
+
+/// A key as the class of key it is: a character key is a character, never
+/// which one (a password is typed this way).
+struct KeyShape<'a>(&'a keybinds::KeyInput);
+
+impl fmt::Debug for KeyShape<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let key = self.0.key();
+        let mods = self.0.mods();
+        match key {
+            keybinds::Key::Char(_) => write!(f, "Char(<withheld>) {mods:?}"),
+            other => write!(f, "{other:?} {mods:?}"),
+        }
+    }
+}
+
+impl fmt::Debug for Composition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Start => f.write_str("Start"),
+            Self::Update { text } => f
+                .debug_struct("Update")
+                .field("text", &Size(text.len()))
+                .finish(),
+            Self::End { text } => f
+                .debug_struct("End")
+                .field("text", &Size(text.len()))
+                .finish(),
+        }
+    }
+}
+
+impl fmt::Debug for PickerMsg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Open => f.write_str("Open"),
+            Self::Rest => f.write_str("Rest"),
+            Self::Take => f.write_str("Take"),
+            Self::Back => f.write_str("Back"),
+            Self::Close => f.write_str("Close"),
+            Self::Filter(text) => f.debug_tuple("Filter").field(&Size(text.len())).finish(),
+            Self::Next => f.write_str("Next"),
+            Self::Prev => f.write_str("Prev"),
+            Self::Left => f.write_str("Left"),
+            Self::Right => f.write_str("Right"),
+            Self::Choose => f.write_str("Choose"),
+            Self::Select(n) => f.debug_tuple("Select").field(n).finish(),
+            Self::ChooseAt(n) => f.debug_tuple("ChooseAt").field(n).finish(),
+            Self::ChooseRow(id) => f.debug_tuple("ChooseRow").field(id).finish(),
+            Self::Layouts => f.write_str("Layouts"),
+            Self::SaveAs => f.write_str("SaveAs"),
+            Self::RenameSelected => f.write_str("RenameSelected"),
+            Self::DeleteSelected => f.write_str("DeleteSelected"),
+            Self::TogglePin => f.write_str("TogglePin"),
+            Self::TogglePinAt(n) => f.debug_tuple("TogglePinAt").field(n).finish(),
+        }
+    }
+}
+
+impl fmt::Debug for Msg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Key(key) => f.debug_tuple("Key").field(&KeyShape(key)).finish(),
+            Self::Pointer(p) => f.debug_tuple("Pointer").field(p).finish(),
+            Self::Text(text) => f.debug_tuple("Text").field(&Size(text.len())).finish(),
+            Self::Paste(text) => f.debug_tuple("Paste").field(&Size(text.len())).finish(),
+            Self::Composition(c) => f.debug_tuple("Composition").field(c).finish(),
+            Self::Resize { area, metrics } => f
+                .debug_struct("Resize")
+                .field("area", area)
+                .field("metrics", metrics)
+                .finish(),
+            Self::Focus(on) => f.debug_tuple("Focus").field(on).finish(),
+            Self::ReducedMotion(on) => f.debug_tuple("ReducedMotion").field(on).finish(),
+            Self::Host(m) => f.debug_tuple("Host").field(m).finish(),
+            Self::Completion(c) => f.debug_tuple("Completion").field(c).finish(),
+            Self::Action { id, actor } => f
+                .debug_struct("Action")
+                .field("id", id)
+                .field("actor", actor)
+                .finish(),
+            Self::ActionOn { id, actor, panel } => f
+                .debug_struct("ActionOn")
+                .field("id", id)
+                .field("actor", actor)
+                .field("panel", panel)
+                .finish(),
+            Self::Picker(m) => f.debug_tuple("Picker").field(m).finish(),
+            Self::Dock(m) => f.debug_tuple("Dock").field(m).finish(),
+            Self::Arrangement(m) => f.debug_tuple("Arrangement").field(m).finish(),
+            Self::Tick => f.write_str("Tick"),
+        }
+    }
+}
+
+impl fmt::Debug for PanelMsg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Key(key) => f.debug_tuple("Key").field(&KeyShape(key)).finish(),
+            Self::Text(text) => f.debug_tuple("Text").field(&Size(text.len())).finish(),
+            Self::Paste(text) => f.debug_tuple("Paste").field(&Size(text.len())).finish(),
+            Self::Composition(c) => f.debug_tuple("Composition").field(c).finish(),
+            Self::Pointer(p) => f.debug_tuple("Pointer").field(p).finish(),
+            Self::Resize { area, metrics } => f
+                .debug_struct("Resize")
+                .field("area", area)
+                .field("metrics", metrics)
+                .finish(),
+            Self::Focus(on) => f.debug_tuple("Focus").field(on).finish(),
+            Self::Completion(c) => f.debug_tuple("Completion").field(c).finish(),
+            Self::Cached(c) => f.debug_tuple("Cached").field(c).finish(),
+            Self::Host(m) => f.debug_tuple("Host").field(m).finish(),
+            Self::TerminalOutput {
+                epoch,
+                offset,
+                bytes,
+            } => f
+                .debug_struct("TerminalOutput")
+                .field("epoch", epoch)
+                .field("offset", offset)
+                .field("bytes", &Size(bytes.len()))
+                .finish(),
+            Self::TerminalReset {
+                epoch,
+                offset,
+                formatted,
+            } => f
+                .debug_struct("TerminalReset")
+                .field("epoch", epoch)
+                .field("offset", offset)
+                .field("formatted", &Size(formatted.len()))
+                .finish(),
+            Self::TerminalResetRequest { frames, bytes } => f
+                .debug_struct("TerminalResetRequest")
+                .field("frames", frames)
+                .field("bytes", bytes)
+                .finish(),
+            Self::Documents(list) => f.debug_tuple("Documents").field(list).finish(),
+            Self::TerminalReport(report) => f.debug_tuple("TerminalReport").field(report).finish(),
+            Self::Action(id) => f.debug_tuple("Action").field(id).finish(),
+            Self::Workspace(w) => f.debug_tuple("Workspace").field(w).finish(),
+            Self::Motion { reduced } => f.debug_struct("Motion").field("reduced", reduced).finish(),
+            Self::Reveal { line, column } => f
+                .debug_struct("Reveal")
+                .field("line", line)
+                .field("column", column)
+                .finish(),
+            Self::Tick => f.write_str("Tick"),
+        }
+    }
+}

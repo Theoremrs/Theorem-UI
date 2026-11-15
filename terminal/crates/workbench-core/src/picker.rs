@@ -69,7 +69,7 @@ pub enum LayoutChoice {
     Delete(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum PickerMsg {
     Open,
     /// Show the picker without taking the keyboard.

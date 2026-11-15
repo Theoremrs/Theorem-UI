@@ -40,7 +40,9 @@ pub use completion::{Completion, CompletionPayload, Outcome};
 pub use draft::{DraftAttachment, DraftAttachmentState, ModelChoice, SourceReference};
 pub use effect::{Effect, EffectBody, EffectKind, Owner};
 pub use factory::{OPENER_DEFAULT, OPENER_SPECIFIC, Opener, PanelFactories};
-pub use host::{HostMessage, LocalProblem, LocalState, LocalStatus};
+pub use host::{
+    HostMessage, LocalProblem, LocalState, LocalStatus, ProgramReport, ProgramState, ProgramStatus,
+};
 pub(crate) use ids::string_id;
 pub use ids::{
     ActionId, Actor, Capability, EffectId, EffectIds, Generation, PanelInstanceId, PanelKind,

@@ -2176,6 +2176,7 @@ fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace()
                 state: Default::default(),
                 controlled_elsewhere: false,
                 modes: None,
+                program_report: Default::default(),
             }],
             adoption: None,
         })
@@ -4465,6 +4466,7 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
                 state: Default::default(),
                 controlled_elsewhere: false,
                 modes: Some(modes),
+                program_report: Default::default(),
             }],
             adoption,
         })
@@ -5840,4 +5842,319 @@ fn the_layouts_page_marks_the_arrangements_that_carry_a_theme() {
         .map(|(x, y)| buf[(x, y)].symbol().to_owned())
         .collect();
     assert!(text.contains("theme"), "wide");
+}
+
+// ---- a program's own status report (R32) -------------------------------
+
+use theorem_workbench_core::host::{
+    ProgramReport, ProgramState, ProgramStatus, TerminalSessionInfo,
+};
+
+fn status(state: ProgramState, msg: &str) -> ProgramStatus {
+    ProgramStatus {
+        state,
+        raw_state: None,
+        kind: Some("task".into()),
+        msg: Some(msg.into()),
+        app: Some("build".into()),
+        title: Some(msg.into()),
+        progress: Some(40),
+    }
+}
+
+fn current(state: ProgramState, msg: &str, seq: Option<u64>) -> ProgramReport {
+    ProgramReport::Current {
+        status: status(state, msg),
+        status_ms: Some(1_700_000_000_000),
+        seq,
+    }
+}
+
+fn report_msg(session: &str, epoch: u64, report: ProgramReport) -> Msg {
+    Msg::Host(HostMessage::TerminalReport {
+        resource: ResourceRef::Terminal {
+            workspace: "w".into(),
+            session: session.into(),
+        },
+        epoch,
+        report,
+    })
+}
+
+fn reports_sent(log: &Shared, kind: &str) -> Vec<ProgramReport> {
+    msgs_of(log, kind)
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::TerminalReport(r) => Some(r),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_report_has_four_cases_on_the_wire_and_an_absent_one_reads_as_unavailable() {
+    let cases = [
+        (ProgramReport::Unavailable, json!({"kind": "unavailable"})),
+        (
+            ProgramReport::NeverReported,
+            json!({"kind": "never_reported"}),
+        ),
+        (
+            ProgramReport::Cleared {
+                status_ms: Some(5),
+                seq: Some(2),
+            },
+            json!({"kind": "cleared", "statusMs": 5, "seq": 2}),
+        ),
+        (
+            current(ProgramState::Blocked, "waiting", Some(9)),
+            json!({"kind": "current", "status": {"state": "blocked", "kind": "task",
+                "msg": "waiting", "app": "build", "title": "waiting", "progress": 40},
+                "statusMs": 1_700_000_000_000u64, "seq": 9}),
+        ),
+    ];
+    for (report, wire) in cases {
+        assert_eq!(serde_json::to_value(&report).unwrap(), wire);
+        assert_eq!(
+            serde_json::from_value::<ProgramReport>(wire).unwrap(),
+            report
+        );
+    }
+    // The order fields are optional on the wire.
+    let bare: ProgramReport = serde_json::from_value(json!({"kind": "cleared"})).unwrap();
+    assert_eq!(
+        bare,
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None
+        }
+    );
+    // A session an older host lists carries no report: it reads as unavailable,
+    // and an unavailable one is not written back.
+    let old: TerminalSessionInfo = serde_json::from_value(json!({
+        "session": "s1", "profile": "Shell", "backend": "native", "workspace": "w"
+    }))
+    .unwrap();
+    assert_eq!(old.program_report, ProgramReport::Unavailable);
+    assert!(
+        serde_json::to_value(&old)
+            .unwrap()
+            .get("programReport")
+            .is_none()
+    );
+    let reported: TerminalSessionInfo = serde_json::from_value(json!({
+        "session": "s1", "profile": "Shell", "backend": "native", "workspace": "w",
+        "programReport": {"kind": "never_reported"}
+    }))
+    .unwrap();
+    assert_eq!(reported.program_report, ProgramReport::NeverReported);
+}
+
+#[test]
+fn a_report_reaches_the_pane_bound_to_its_terminal_at_its_epoch_and_no_other() {
+    let (mut m, log) = term_model(2);
+    action(&mut m, "note.open");
+    let report = current(ProgramState::Working, "compiling", Some(1));
+
+    assert!(send(&mut m, report_msg("s1", 2, report.clone())).is_empty());
+    assert_eq!(reports_sent(&log, "term"), vec![report.clone()]);
+    assert!(reports_sent(&log, "note").is_empty());
+
+    // An older epoch and a newer one are not this binding's: dropped, counted.
+    send(&mut m, report_msg("s1", 1, report.clone()));
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderEpoch));
+    send(&mut m, report_msg("s1", 3, report.clone()));
+    assert_eq!(m.counters().last_drop, Some(Stale::ResourceChanged));
+    assert_eq!(reports_sent(&log, "term").len(), 1);
+
+    // A terminal no panel is bound to: dropped, with no notice.
+    let dropped = m.counters().dropped;
+    send(&mut m, report_msg("elsewhere", 2, report));
+    assert_eq!(m.counters().dropped, dropped + 1);
+    assert_eq!(m.counters().last_drop, Some(Stale::NotBound));
+    assert!(notices(&mut m).is_empty());
+    assert_eq!(reports_sent(&log, "term").len(), 1);
+}
+
+#[test]
+fn a_pane_bound_without_an_epoch_takes_a_report_for_any_epoch() {
+    let (mut m, log) = term_model(0);
+    send(&mut m, report_msg("s1", 7, ProgramReport::NeverReported));
+    assert_eq!(reports_sent(&log, "term"), [ProgramReport::NeverReported]);
+}
+
+fn sessions_message(reports: &[(&str, ProgramReport)]) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![],
+        sessions: reports
+            .iter()
+            .map(|(name, report)| TerminalSessionInfo {
+                session: (*name).into(),
+                profile: "Shell".into(),
+                backend: theorem_workbench_core::effect::TerminalBackend::Native,
+                workspace: "w".into(),
+                host: None,
+                program: Some(1),
+                state: Default::default(),
+                controlled_elsewhere: false,
+                modes: None,
+                program_report: report.clone(),
+            })
+            .collect(),
+        adoption: None,
+    })
+}
+
+fn listed_reports(log: &Shared) -> Vec<(String, ProgramReport)> {
+    let last = msgs_of(log, "term")
+        .into_iter()
+        .rev()
+        .find_map(|m| match m {
+            PanelMsg::Host(HostMessage::TerminalSessions { sessions, .. }) => Some(sessions),
+            _ => None,
+        })
+        .expect("the pane was handed a session list");
+    last.into_iter()
+        .map(|s| (s.session, s.program_report))
+        .collect()
+}
+
+#[test]
+fn the_session_list_a_chooser_reads_carries_the_latest_report_for_that_terminal() {
+    let (mut m, log) = term_model(2);
+    send(
+        &mut m,
+        Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: None,
+        }),
+    );
+    send(
+        &mut m,
+        sessions_message(&[
+            ("s1", ProgramReport::NeverReported),
+            ("s2", ProgramReport::Unavailable),
+        ]),
+    );
+    let first = current(ProgramState::Working, "one", Some(5));
+    send(&mut m, report_msg("s1", 2, first.clone()));
+    assert_eq!(
+        listed_reports(&log),
+        [
+            ("s1".to_owned(), first.clone()),
+            ("s2".to_owned(), ProgramReport::Unavailable)
+        ]
+    );
+
+    // An update that is older by sequence does not replace what is held.
+    let older = current(ProgramState::Idle, "older", Some(4));
+    send(&mut m, report_msg("s1", 2, older));
+    assert_eq!(listed_reports(&log)[0].1, first);
+
+    // One with no sequence replaces; a terminal that is not listed changes nothing.
+    send(
+        &mut m,
+        report_msg(
+            "s1",
+            2,
+            ProgramReport::Cleared {
+                status_ms: None,
+                seq: None,
+            },
+        ),
+    );
+    assert_eq!(
+        listed_reports(&log)[0].1,
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None
+        }
+    );
+    send(&mut m, report_msg("nobody", 2, first));
+    assert_eq!(listed_reports(&log).len(), 2);
+}
+
+#[derive(Debug, PartialEq)]
+struct ModelState {
+    document: Value,
+    tree: String,
+    focus: String,
+    in_flight: usize,
+    panels: Vec<(PanelInstanceId, bool)>,
+    labels: Vec<String>,
+    catalog: String,
+}
+
+fn model_state(m: &Model) -> ModelState {
+    let mut panels: Vec<_> = m
+        .panel_ids()
+        .map(|(id, _)| (id.clone(), m.is_unavailable(id)))
+        .collect();
+    panels.sort_by(|a, b| a.0.as_str().cmp(b.0.as_str()));
+    let labels = panels
+        .iter()
+        .map(|(id, _)| m.tab_label(id, "x").title)
+        .collect();
+    ModelState {
+        document: m.document(),
+        tree: serde_json::to_string(&semantics(m)).unwrap(),
+        focus: format!("{:?}", m.focus()),
+        in_flight: m.in_flight().len(),
+        panels,
+        labels,
+        catalog: serde_json::to_string(&m.registry().agent_catalog(m.capabilities())).unwrap(),
+    }
+}
+
+#[test]
+fn a_report_of_any_state_or_text_changes_nothing_but_what_the_pane_stores() {
+    let hostile: Vec<String> = vec![
+        "note.open".into(),
+        "approval.allow".into(),
+        "term.end".into(),
+        "\u{1b}[2J\u{1b}]0;pwned\u{7}\u{9b}31m".into(),
+        "e\u{301}".repeat(2048),
+        "x".repeat(4096),
+        "ok\0\r\n".into(),
+    ];
+    for state in [
+        ProgramState::Idle,
+        ProgramState::Working,
+        ProgramState::Done,
+        ProgramState::Blocked,
+        ProgramState::Error,
+        ProgramState::Unknown,
+    ] {
+        for text in &hostile {
+            let (mut m, log) = term_model(2);
+            action(&mut m, "note.open");
+            m.take_dirty();
+            let _ = notices(&mut m);
+            let before = model_state(&m);
+            let panels_before = m.panel_ids().count();
+            let dropped = m.counters().dropped;
+            let mut report = current(state, text, Some(1));
+            if let ProgramReport::Current { status, .. } = &mut report {
+                status.raw_state = Some(text.clone());
+                status.kind = Some(text.clone());
+                status.app = Some(text.clone());
+                status.title = Some(text.clone());
+            }
+            let fx = send(&mut m, report_msg("s1", 2, report.clone()));
+
+            assert!(fx.is_empty(), "a report emits no effect");
+            assert_eq!(model_state(&m), before, "{state:?} {text:?}");
+            assert_eq!(m.panel_ids().count(), panels_before);
+            assert_eq!(m.counters().dropped, dropped);
+            assert!(notices(&mut m).is_empty(), "a report raises no notice");
+            assert!(m.take_dirty(), "the pane shows it, so a frame is due");
+            // The pane was handed the report and nothing was run for it.
+            let sent: Vec<_> = msgs_of(&log, "term")
+                .into_iter()
+                .filter(|p| matches!(p, PanelMsg::TerminalReport(_) | PanelMsg::Action(_)))
+                .collect();
+            assert_eq!(sent, [PanelMsg::TerminalReport(report)]);
+        }
+    }
 }

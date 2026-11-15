@@ -91,6 +91,7 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
             state: TerminalSessionState::Exited,
             controlled_elsewhere: true,
             modes: None,
+            program_report: Default::default(),
         }],
         adoption: None,
     };

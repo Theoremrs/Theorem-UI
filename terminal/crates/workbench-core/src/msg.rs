@@ -56,7 +56,7 @@ pub enum DockMsg {
     },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Msg {
     Key(KeyInput),
     Pointer(Pointer),

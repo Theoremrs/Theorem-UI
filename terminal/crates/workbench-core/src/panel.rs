@@ -19,7 +19,7 @@ use theorem_workbench_dock::CellMetrics;
 
 use crate::completion::Completion;
 use crate::effect::{Effect, EffectKind};
-use crate::host::HostMessage;
+use crate::host::{HostMessage, ProgramReport};
 use crate::ids::{
     ActionId, Actor, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity,
 };
@@ -237,7 +237,7 @@ fn short(commit: &str) -> String {
 
 /// Everything the root says to a panel. New messages are added over time, so
 /// a match outside the core ends in a wildcard arm.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 #[non_exhaustive]
 pub enum PanelMsg {
     /// A key the workbench did not claim.
@@ -304,6 +304,14 @@ pub enum PanelMsg {
     /// merged: unsaved if any is, the newest accepted revision). Sent only when
     /// the list changed; arrives on a silent `Ctx`.
     Documents(Vec<OpenDocumentState>),
+    /// What the program in the terminal this panel is bound to says about
+    /// itself (R32), as the host last said it. Sent only when the report's
+    /// epoch is the binding's. It is the program's word, shown as text: handling
+    /// it must not emit an effect, raise a notice, move focus or change what the
+    /// panel allows, and its text is never read as an action. Arrives on a
+    /// silent `Ctx`. A report with an older `seq` than the one held is the
+    /// panel's to ignore (`ProgramReport::replaced_by`).
+    TerminalReport(ProgramReport),
     /// A registered action of the panel's kind with intent `Create`, `Start`
     /// or `Destroy`. The panel supplies the effect's payload.
     Action(ActionId),
@@ -478,8 +486,8 @@ pub struct PickerView {
     pub pin_shortcut: Option<String>,
 }
 
-/// One step of an input-method composition.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One step of an input-method composition. Its `Debug` prints sizes, not text.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Composition {
     /// A composition began at the caret.
     Start,

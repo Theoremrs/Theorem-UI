@@ -64,6 +64,7 @@ fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
         state: TerminalSessionState::Running,
         controlled_elsewhere: false,
         modes: None,
+        program_report: Default::default(),
     }
 }
 

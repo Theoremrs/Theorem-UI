@@ -27,7 +27,7 @@ use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
 
 use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::effect::Effect;
-use crate::host::HostMessage;
+use crate::host::{HostMessage, ProgramReport};
 use crate::ids::{
     ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceKind, ResourceRef, Revision,
     WorkspaceIdentity,
@@ -1852,6 +1852,11 @@ impl Model {
                 effects.extend(self.on_terminal_reset(resource, *epoch, *offset, data));
                 return effects;
             }
+            HostMessage::TerminalReport {
+                resource,
+                epoch,
+                report,
+            } => return self.on_terminal_report(resource, *epoch, report),
             // Output that arrived first is handed over first.
             HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
@@ -1915,6 +1920,74 @@ impl Model {
             .get(id)
             .and_then(|e| e.binding().generation)
             .is_some_and(|bound| epoch < bound.0)
+    }
+
+    /// A program's own status report (R32). The program's word, not the
+    /// workbench's: it is stored on the session list a chooser reads and handed
+    /// to the panes bound to that terminal, and nothing else happens. No effect,
+    /// no notice, no focus move, and nothing in it reaches an action, a tab
+    /// title or a notice. A stale count is the only trace of a report dropped.
+    fn on_terminal_report(
+        &mut self,
+        resource: &ResourceRef,
+        epoch: u64,
+        report: &ProgramReport,
+    ) -> Vec<Effect> {
+        self.keep_report(resource, report);
+        let targets = self.bound_to(Some(resource));
+        if targets.is_empty() {
+            return self.drop_stale(Stale::NotBound);
+        }
+        for id in targets {
+            let bound = self.panels.get(&id).and_then(|e| e.binding().generation);
+            if let Some(bound) = bound
+                && epoch != bound.0
+            {
+                self.drop_stale(if epoch < bound.0 {
+                    Stale::OlderEpoch
+                } else {
+                    Stale::ResourceChanged
+                });
+                continue;
+            }
+            self.dirty = true;
+            self.call(&id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::TerminalReport(report.clone()), cx)
+            });
+        }
+        vec![]
+    }
+
+    /// Put the report on the retained session list entry for this terminal and
+    /// hand the changed list to the panes that read it, as the host would on
+    /// any change to the list.
+    fn keep_report(&mut self, resource: &ResourceRef, report: &ProgramReport) {
+        let ResourceRef::Terminal { workspace, session } = resource else {
+            return;
+        };
+        let Some((_, HostMessage::TerminalSessions { sessions, .. })) = self
+            .retained
+            .sessions
+            .iter_mut()
+            .find(|(w, _)| w == workspace)
+        else {
+            return;
+        };
+        let Some(entry) = sessions.iter_mut().find(|s| s.session == *session) else {
+            return;
+        };
+        if !entry.program_report.replaced_by(report) || entry.program_report == *report {
+            return;
+        }
+        entry.program_report = report.clone();
+        if *workspace != self.workspace.workspace {
+            return;
+        }
+        let ids: Vec<PanelInstanceId> = self.panels.keys().cloned().collect();
+        for id in ids {
+            self.replay_sessions(&id);
+        }
+        self.dirty = true;
     }
 
     /// Queue a frame for the panes bound to its session. Nothing is handed over
@@ -2070,6 +2143,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | TerminalResized { resource, .. }
         | TerminalOpened { resource, .. }
         | TerminalExited { resource, .. }
+        | TerminalReport { resource, .. }
         | TerminalControl { resource, .. } => (Some(resource), None),
         FileChanged { .. }
         | ThemeChanged { .. }
