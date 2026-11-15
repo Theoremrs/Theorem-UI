@@ -1,0 +1,475 @@
+{
+  "requirements": [
+    {
+      "id": "R01",
+      "title": "Web-only delivery",
+      "owner": "Route/build owners",
+      "acceptance": [
+        "AC-01",
+        "AC-60"
+      ]
+    },
+    {
+      "id": "R02",
+      "title": "One operation and resource owner",
+      "owner": "SDK and service adapters",
+      "acceptance": [
+        "AC-02"
+      ]
+    },
+    {
+      "id": "R03",
+      "title": "Source reuse with provenance",
+      "owner": "Component port owners",
+      "acceptance": [
+        "AC-02",
+        "AC-61"
+      ]
+    },
+    {
+      "id": "R04",
+      "title": "Whole workbench and navigation continuity",
+      "owner": "Web shell",
+      "acceptance": [
+        "AC-01",
+        "AC-03",
+        "AC-55"
+      ]
+    },
+    {
+      "id": "R05",
+      "title": "One dock and panel registry",
+      "owner": "Workbench layout/registry",
+      "acceptance": [
+        "AC-05",
+        "AC-07",
+        "AC-59",
+        "AC-61"
+      ]
+    },
+    {
+      "id": "R06",
+      "title": "Adaptive geometry",
+      "owner": "Layout and appearance",
+      "acceptance": [
+        "AC-04",
+        "AC-36"
+      ]
+    },
+    {
+      "id": "R07",
+      "title": "Picker has no hidden effects",
+      "owner": "Tool picker and dispatch",
+      "acceptance": [
+        "AC-06",
+        "AC-07",
+        "AC-09",
+        "AC-47"
+      ]
+    },
+    {
+      "id": "R08",
+      "title": "Files operate on the real workspace",
+      "owner": "Files controller",
+      "acceptance": [
+        "AC-08"
+      ]
+    },
+    {
+      "id": "R09",
+      "title": "Source editor is functional",
+      "owner": "Editor controller",
+      "acceptance": [
+        "AC-09",
+        "AC-10"
+      ]
+    },
+    {
+      "id": "R10",
+      "title": "ELY Markdown mode parity",
+      "owner": "Markdown port",
+      "acceptance": [
+        "AC-11"
+      ]
+    },
+    {
+      "id": "R11",
+      "title": "No dropped concurrent block edits",
+      "owner": "Document reconciliation",
+      "acceptance": [
+        "AC-12"
+      ]
+    },
+    {
+      "id": "R12",
+      "title": "Markdown source preservation",
+      "owner": "Markdown parser/patcher",
+      "acceptance": [
+        "AC-13"
+      ]
+    },
+    {
+      "id": "R13",
+      "title": "Explicit text coordinate systems",
+      "owner": "Editor/protocol adapters",
+      "acceptance": [
+        "AC-14",
+        "AC-22"
+      ]
+    },
+    {
+      "id": "R14",
+      "title": "Local input, versioned acknowledgement",
+      "owner": "Document and composer controllers",
+      "acceptance": [
+        "AC-10",
+        "AC-12",
+        "AC-15",
+        "AC-52"
+      ]
+    },
+    {
+      "id": "R15",
+      "title": "Meaningful persistence claims",
+      "owner": "RustyRed/document owner",
+      "acceptance": [
+        "AC-16",
+        "AC-17",
+        "AC-50"
+      ]
+    },
+    {
+      "id": "R16",
+      "title": "Shared database access",
+      "owner": "RustyRed web adapter",
+      "acceptance": [
+        "AC-18"
+      ]
+    },
+    {
+      "id": "R17",
+      "title": "Functional Changes panel",
+      "owner": "SCM controller",
+      "acceptance": [
+        "AC-19",
+        "AC-54"
+      ]
+    },
+    {
+      "id": "R18",
+      "title": "Revision-correct Git mutations",
+      "owner": "SCM/document boundary",
+      "acceptance": [
+        "AC-20",
+        "AC-21"
+      ]
+    },
+    {
+      "id": "R19",
+      "title": "Language and run parity",
+      "owner": "IDE provider adapters",
+      "acceptance": [
+        "AC-22",
+        "AC-23",
+        "AC-54"
+      ]
+    },
+    {
+      "id": "R20",
+      "title": "Structured Theo stays separate",
+      "owner": "Agent/runtime adapter",
+      "acceptance": [
+        "AC-03",
+        "AC-24",
+        "AC-26"
+      ]
+    },
+    {
+      "id": "R21",
+      "title": "Composer caret and input quality",
+      "owner": "Composer/web input bridge",
+      "acceptance": [
+        "AC-14",
+        "AC-25",
+        "AC-26",
+        "AC-48"
+      ]
+    },
+    {
+      "id": "R22",
+      "title": "Inverse Theo is presentation",
+      "owner": "Theo appearance adapter",
+      "acceptance": [
+        "AC-27"
+      ]
+    },
+    {
+      "id": "R23",
+      "title": "Complete coordinated theme",
+      "owner": "Appearance owner",
+      "acceptance": [
+        "AC-27",
+        "AC-28",
+        "AC-46"
+      ]
+    },
+    {
+      "id": "R24",
+      "title": "Herdr through existing boundary",
+      "owner": "Host terminal adapter",
+      "acceptance": [
+        "AC-02",
+        "AC-24",
+        "AC-29",
+        "AC-62"
+      ]
+    },
+    {
+      "id": "R25",
+      "title": "Truthful profile availability",
+      "owner": "Profile picker and SDK",
+      "acceptance": [
+        "AC-29",
+        "AC-62"
+      ]
+    },
+    {
+      "id": "R26",
+      "title": "Terminal rendering is real",
+      "owner": "VT interpreter/Ratatui pane",
+      "acceptance": [
+        "AC-30",
+        "AC-31"
+      ]
+    },
+    {
+      "id": "R27",
+      "title": "Stable terminal bindings and epochs",
+      "owner": "Terminal registry/channel",
+      "acceptance": [
+        "AC-31",
+        "AC-32",
+        "AC-33",
+        "AC-34",
+        "AC-38",
+        "AC-57",
+        "AC-62"
+      ]
+    },
+    {
+      "id": "R28",
+      "title": "Control leases and observers",
+      "owner": "Host authorization/input",
+      "acceptance": [
+        "AC-26",
+        "AC-35",
+        "AC-36"
+      ]
+    },
+    {
+      "id": "R29",
+      "title": "Detach is not terminate",
+      "owner": "Resource lifecycle",
+      "acceptance": [
+        "AC-32",
+        "AC-33",
+        "AC-34",
+        "AC-56",
+        "AC-58",
+        "AC-61"
+      ]
+    },
+    {
+      "id": "R30",
+      "title": "Bounded live terminal adoption",
+      "owner": "Host live subscriptions",
+      "acceptance": [
+        "AC-37",
+        "AC-38",
+        "AC-39",
+        "AC-40"
+      ]
+    },
+    {
+      "id": "R31",
+      "title": "Execution trust boundary",
+      "owner": "Gateway and environment owner",
+      "acceptance": [
+        "AC-39",
+        "AC-41",
+        "AC-50"
+      ]
+    },
+    {
+      "id": "R32",
+      "title": "Status does not invent authority",
+      "owner": "Process/task projections",
+      "acceptance": [
+        "AC-42"
+      ]
+    },
+    {
+      "id": "R33",
+      "title": "Elm update/effect discipline",
+      "owner": "Workbench core",
+      "acceptance": [
+        "AC-43"
+      ]
+    },
+    {
+      "id": "R34",
+      "title": "Semantic actions with actor identity",
+      "owner": "Command/inspection adapters",
+      "acceptance": [
+        "AC-41",
+        "AC-44"
+      ]
+    },
+    {
+      "id": "R35",
+      "title": "Account-level meaningful customization",
+      "owner": "Configuration/dock owner",
+      "acceptance": [
+        "AC-45",
+        "AC-56",
+        "AC-59"
+      ]
+    },
+    {
+      "id": "R36",
+      "title": "Lifetimes independent of views",
+      "owner": "Resource controllers",
+      "acceptance": [
+        "AC-05",
+        "AC-09",
+        "AC-11",
+        "AC-16",
+        "AC-45"
+      ]
+    },
+    {
+      "id": "R37",
+      "title": "Approved artifact cabinet integration",
+      "owner": "Artifact owners and panel",
+      "acceptance": [
+        "AC-28",
+        "AC-46"
+      ]
+    },
+    {
+      "id": "R38",
+      "title": "Keyboard and accessible semantics",
+      "owner": "Web input/accessibility",
+      "acceptance": [
+        "AC-25",
+        "AC-44",
+        "AC-47",
+        "AC-48",
+        "AC-51"
+      ]
+    },
+    {
+      "id": "R39",
+      "title": "Responsive and legible web",
+      "owner": "Layout/accessibility",
+      "acceptance": [
+        "AC-04",
+        "AC-49"
+      ]
+    },
+    {
+      "id": "R40",
+      "title": "Recovery and content boundaries",
+      "owner": "State/security adapters",
+      "acceptance": [
+        "AC-08",
+        "AC-17",
+        "AC-23",
+        "AC-40",
+        "AC-50",
+        "AC-51"
+      ]
+    },
+    {
+      "id": "R41",
+      "title": "Bounded resource use",
+      "owner": "Rendering/effect runners",
+      "acceptance": [
+        "AC-10",
+        "AC-18",
+        "AC-52"
+      ]
+    },
+    {
+      "id": "R42",
+      "title": "Observable outcomes without secret dumps",
+      "owner": "Diagnostics/receipts",
+      "acceptance": [
+        "AC-53"
+      ]
+    },
+    {
+      "id": "R43",
+      "title": "Theia migration gate",
+      "owner": "Migration owner",
+      "acceptance": [
+        "AC-54",
+        "AC-60"
+      ]
+    },
+    {
+      "id": "R44",
+      "title": "Completed retirement and deploy compatibility",
+      "owner": "Build/deployment owner",
+      "acceptance": [
+        "AC-01",
+        "AC-55",
+        "AC-56",
+        "AC-60"
+      ]
+    },
+    {
+      "id": "R45",
+      "title": "End-to-end acceptance",
+      "owner": "Release verifier",
+      "acceptance": [
+        "AC-60"
+      ]
+    },
+    {
+      "id": "R46",
+      "title": "No automatic host migration",
+      "owner": "Execution environment UI",
+      "acceptance": [
+        "AC-03",
+        "AC-34",
+        "AC-57"
+      ]
+    },
+    {
+      "id": "R47",
+      "title": "Bounded retry and idempotency",
+      "owner": "SDK effect adapters",
+      "acceptance": [
+        "AC-15",
+        "AC-21",
+        "AC-43",
+        "AC-53",
+        "AC-58"
+      ]
+    },
+    {
+      "id": "R48",
+      "title": "Extensibility without new unsafe runtime",
+      "owner": "Panel/plugin owner",
+      "acceptance": [
+        "AC-02",
+        "AC-07",
+        "AC-41",
+        "AC-45",
+        "AC-59",
+        "AC-61"
+      ]
+    }
+  ]
+}

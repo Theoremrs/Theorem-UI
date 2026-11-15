@@ -1,0 +1,262 @@
+{
+  "spec": "SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0",
+  "status": "inventory_seed_not_verified",
+  "scope": "web-only",
+  "basis": "Inspected ide/README.md and terminal adapters; reconcile against current mounted implementation at Gate 0. Operations below are responsibilities, not invented endpoint schemas.",
+  "entries": [
+    {
+      "id": "P01",
+      "capability": "Workspace identity and navigation",
+      "existing_owner": "Theorem workspace connection and outer route",
+      "required_parity": "Workspace/project identity, environment display and permission scope survive replacement; files refer to the correct execution environment.",
+      "acceptance_references": [
+        "AC-01",
+        "AC-03",
+        "AC-08"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P02",
+      "capability": "Files and quick open",
+      "existing_owner": "SDK workspace file operations and live changes",
+      "required_parity": "Real listing/search/reveal and supported file mutations reach the existing owner; unavailable operations remain explicit.",
+      "acceptance_references": [
+        "AC-08",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P03",
+      "capability": "Source document editing",
+      "existing_owner": "SDK DocumentSession",
+      "required_parity": "Pending edits, conflicts, save and per-client undo remain usable; no second writer or lost local edits.",
+      "acceptance_references": [
+        "AC-10",
+        "AC-12",
+        "AC-14",
+        "AC-15",
+        "AC-16"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P04",
+      "capability": "Markdown reading and editing",
+      "existing_owner": "DocumentSession plus the selected ELY port",
+      "required_parity": "Visual, Source, Split and Preview refer to the same source and preserve unsupported source constructs and concurrent edits.",
+      "acceptance_references": [
+        "AC-11",
+        "AC-12",
+        "AC-13"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P05",
+      "capability": "Language/navigation/refactor",
+      "existing_owner": "SDK WorkspaceLanguage and host language services",
+      "required_parity": "Completion/definition/diagnostics/format/rename retain document revision and workspace scope; returned edits use the authoritative apply path.",
+      "acceptance_references": [
+        "AC-22",
+        "AC-23",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P06",
+      "capability": "Source control and diffs",
+      "existing_owner": "SDK WorkspaceScm",
+      "required_parity": "Staged/unstaged/conflict state, diff, stage, unstage, commit and supported branch/remote operations remain reachable through the chosen Changes UI.",
+      "acceptance_references": [
+        "AC-19",
+        "AC-20",
+        "AC-21",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P07",
+      "capability": "Run and output",
+      "existing_owner": "Existing run operations and output owner",
+      "required_parity": "Start/stop/configuration/output target the selected environment; view closure does not terminate work implicitly.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P08",
+      "capability": "History and source references",
+      "existing_owner": "Existing history/navigation and reference operations",
+      "required_parity": "History/log and supported source-range reveal remain reachable; adding a selection sends a typed scoped reference.",
+      "acceptance_references": [
+        "AC-19",
+        "AC-22",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P09",
+      "capability": "Native shell sessions",
+      "existing_owner": "SDK TerminalChannel and host native PTY",
+      "required_parity": "Input, byte stream, resize, copy/search, resets, detach and explicit kill retain their behavior and truthful host-lifetime limits.",
+      "acceptance_references": [
+        "AC-26",
+        "AC-30",
+        "AC-31",
+        "AC-34",
+        "AC-35",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P10",
+      "capability": "Herdr profiles and readiness",
+      "existing_owner": "Existing terminal profile/capability path",
+      "required_parity": "Herdr shell and configured external-agent profiles remain explicit and readiness-gated, with no native fallback.",
+      "acceptance_references": [
+        "AC-24",
+        "AC-29",
+        "AC-47"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P11",
+      "capability": "Herdr reconnect and control",
+      "existing_owner": "Theorem terminal registry and Herdr Core adapter",
+      "required_parity": "Binding epochs, adoption, snapshots, stream offsets, observer/control leases, process identity and replacement semantics reach the new consumer.",
+      "acceptance_references": [
+        "AC-31",
+        "AC-32",
+        "AC-33",
+        "AC-34",
+        "AC-35",
+        "AC-36",
+        "AC-37",
+        "AC-38",
+        "AC-39",
+        "AC-40",
+        "AC-58",
+        "AC-62"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P12",
+      "capability": "Follow agent and selection-to-chat",
+      "existing_owner": "Existing Follow/reveal and typed reference bridge",
+      "required_parity": "Following actual agent navigation and user pause/override remain explicit; opening another file does not corrupt the current draft.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P13",
+      "capability": "Themes, preferences and restoration",
+      "existing_owner": "Existing appearance/account configuration and browser owner",
+      "required_parity": "Mapped layouts and preferences restore safely without starting processes; themes retain drafts, focus and resource identity.",
+      "acceptance_references": [
+        "AC-05",
+        "AC-16",
+        "AC-28",
+        "AC-45",
+        "AC-49"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P14",
+      "capability": "Artifacts",
+      "existing_owner": "Existing artifact contributions/renderer and approved cabinet contract",
+      "required_parity": "Project artifacts retain revision identity, preview modes, originals, visibility and running editor state.",
+      "acceptance_references": [
+        "AC-46",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P15",
+      "capability": "Routes, build and deployment retirement",
+      "existing_owner": "Theo web route and Theia build owners",
+      "required_parity": "Actual supported workflows have replacement paths before obsolete Theia routes/dependencies are removed; migration/rollback is recorded.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-55",
+        "AC-56",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": null,
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    }
+  ]
+}
