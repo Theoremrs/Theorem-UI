@@ -82,7 +82,7 @@ pub(crate) fn nodes(p: &ProcessPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
 }
 
 fn choosing(p: &ProcessPanel, area: Rect) -> Vec<Node> {
-    let rows = chooser::rows(&p.catalog.snapshot(), &p.identity);
+    let rows = chooser::rows(&p.catalog.snapshot(&p.identity.workspace), &p.identity);
     let mut status = Node::new(
         "status",
         Aria::Status,
@@ -144,10 +144,27 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     term.binding = b.resource();
     term.state.focused = cx.focused && b.controlling();
     term.state.disabled = !b.controlling() || !b.running();
-    term.state.description = match &b.role {
-        Role::Observer(why) if b.running() => Some(why.text()),
-        _ => None,
-    };
+    // What a person sees, so assistive technology and the agent read the same
+    // screen; the node's text follows each frame because the tree is rebuilt
+    // from the screen.
+    term = term.with_text(&b.screen.contents());
+    let (row, col) = b.screen.cursor_position();
+    let mut notes = vec![format!("Cursor at row {}, column {}.", row + 1, col + 1)];
+    if !b.screen.cursor_visible() {
+        notes.push("The program hid the cursor.".into());
+    }
+    if b.screen.alternate_screen() {
+        notes.push("Alternate screen.".into());
+    }
+    if b.screen.bracketed_paste() {
+        notes.push("Bracketed paste on.".into());
+    }
+    if let Role::Observer(why) = &b.role
+        && b.running()
+    {
+        notes.insert(0, why.text());
+    }
+    term.state.description = Some(notes.join(" "));
 
     let mut out = vec![status, term];
 

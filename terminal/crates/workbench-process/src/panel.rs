@@ -11,7 +11,8 @@ use serde_json::{Value, json};
 use terminput::{MouseButton, MouseEvent, MouseEventKind, ScrollDirection};
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
 use theorem_workbench_core::effect::{
-    ClipboardWrite, Effect, EffectBody, InputKind, TerminalBackend, TerminalClaim, TerminalOpen,
+    ClipboardWrite, Effect, EffectBody, InputKind, TerminalAbandonOpen, TerminalBackend,
+    TerminalClaim, TerminalOpen,
 };
 use theorem_workbench_core::host::{ConnectionState, HostMessage};
 use theorem_workbench_core::ids::{ActionId, EffectId, Generation, ResourceRef, WorkspaceIdentity};
@@ -23,7 +24,7 @@ use theorem_workbench_vt::{
 };
 
 use crate::bound::{AttachFailure, Block, Bound, EndAsk, Note, Purpose, Tone, Want, Why};
-use crate::catalog::{ProcessCatalog, SessionState};
+use crate::catalog::{Catalog, CatalogData};
 use crate::chooser::{self, Row, RowKind};
 use crate::draw::{self, Geo};
 use crate::keys::{key_event, mouse_modifiers};
@@ -34,14 +35,21 @@ use crate::styles::ProcessStyles;
 const SAVED_VERSION: u64 = 1;
 const DEFAULT_SIZE: (u16, u16) = (80, 24);
 
-/// A detach owed for a binding the pane left while it could not emit.
-struct Detach {
-    resource: ResourceRef,
-    claim: TerminalClaim,
+/// Work owed for a binding the pane left while it could not emit.
+enum Deferred {
+    Detach {
+        resource: ResourceRef,
+        claim: TerminalClaim,
+    },
+    /// An open still in flight when the pane left: its session is undone.
+    Abandon {
+        resource: ResourceRef,
+        open: EffectId,
+    },
 }
 
 pub struct ProcessPanel {
-    pub(crate) catalog: ProcessCatalog,
+    pub(crate) catalog: Catalog,
     pub(crate) styles: Rc<ProcessStyles>,
     pub(crate) identity: WorkspaceIdentity,
     pub(crate) body: Rect,
@@ -51,7 +59,7 @@ pub struct ProcessPanel {
     pub(crate) connection: Option<ConnectionState>,
     seen: u64,
     binds: u64,
-    deferred: Vec<Detach>,
+    deferred: Vec<Deferred>,
     /// Opens the pane stopped waiting for: their answer is never shown as the
     /// current state, but a process that started is said so.
     abandoned: BTreeSet<EffectId>,
@@ -66,11 +74,7 @@ fn plain_char(key: &KeyInput) -> Option<char> {
 }
 
 impl ProcessPanel {
-    pub(crate) fn restore(
-        state: &Value,
-        catalog: ProcessCatalog,
-        styles: Rc<ProcessStyles>,
-    ) -> Self {
+    pub(crate) fn restore(state: &Value, catalog: Catalog, styles: Rc<ProcessStyles>) -> Self {
         let stage = match (state["session"].as_str(), state["workspace"].as_str()) {
             (Some(session), Some(workspace)) => Stage::Restoring(Saved {
                 workspace: workspace.to_owned(),
@@ -100,7 +104,10 @@ impl ProcessPanel {
     }
 
     fn rows(&self) -> Vec<Row> {
-        chooser::rows(&self.catalog.snapshot(), &self.identity)
+        chooser::rows(
+            &self.catalog.snapshot(&self.identity.workspace),
+            &self.identity,
+        )
     }
 
     fn geo(&self) -> Geo {
@@ -159,22 +166,22 @@ impl ProcessPanel {
             return;
         }
         let was_set = self.identity.is_set();
-        self.identity = now.clone();
+        let previous = std::mem::replace(&mut self.identity, now.clone());
         if !was_set {
             // The first name: a restored pane for a different workspace leaves
             // on its first call that may start work.
             return;
         }
-        self.leave_for_workspace();
+        self.leave_for_workspace(&previous);
     }
 
     /// The host named another workspace: detach from what this pane was
     /// attached to (the program keeps running) and show the chooser.
-    fn leave_for_workspace(&mut self) {
+    fn leave_for_workspace(&mut self, previous: &WorkspaceIdentity) {
         let named = format!("The workspace changed to {}.", self.identity.workspace);
         match std::mem::replace(&mut self.stage, Stage::Choosing) {
             Stage::Bound(b) => {
-                self.deferred.push(Detach {
+                self.deferred.push(Deferred::Detach {
                     resource: b.resource(),
                     claim: b.claim(),
                 });
@@ -185,8 +192,14 @@ impl ProcessPanel {
             }
             Stage::Opening(op) => {
                 self.abandoned.insert(op.effect);
+                self.deferred.push(Deferred::Abandon {
+                    resource: ResourceRef::Workspace {
+                        workspace: previous.workspace.clone(),
+                    },
+                    open: op.effect,
+                });
                 self.note = Some(format!(
-                    "{named} A shell opened for the previous workspace may still start; nothing was ended."
+                    "{named} The shell that was starting for the previous workspace was abandoned: the host is asked to end it."
                 ));
             }
             Stage::Restoring(saved) => {
@@ -213,13 +226,18 @@ impl ProcessPanel {
 
     fn open(&mut self, cx: &mut Ctx, choice: Choice, follows: Option<String>) {
         let (cols, rows) = self.size();
+        // Open and attach are one effect: the pane names its attachment now
+        // and the answer carries it back with the lease view.
+        self.binds += 1;
+        let prefix = self.prefix(cx);
+        let attachment = format!("{prefix}.a");
         let body = EffectBody::TerminalOpen(TerminalOpen {
             backend: choice.backend,
             argv: choice.argv.clone(),
             name: Some(choice.id.clone()),
             cols,
             rows,
-            attachment: None,
+            attachment: Some(attachment.clone()),
         });
         let resource = ResourceRef::Workspace {
             workspace: self.identity.workspace.clone(),
@@ -233,6 +251,8 @@ impl ProcessPanel {
                     effect,
                     uncertain: None,
                     follows,
+                    prefix,
+                    attachment,
                 });
             }
             Err(error) => {
@@ -268,6 +288,21 @@ impl ProcessPanel {
         } else {
             self.note = bound.notice.take().map(|n| n.text);
             self.stage = Stage::Choosing;
+        }
+    }
+
+    /// `shell.attach` and `shell.observe` mean the selected session row.
+    fn choose_session(&mut self, cx: &mut Ctx, how: Pick) {
+        if !matches!(self.stage, Stage::Choosing) {
+            return;
+        }
+        if matches!(
+            self.rows().get(self.selected).map(|r| &r.kind),
+            Some(RowKind::Session(_))
+        ) {
+            self.choose(cx, how);
+        } else {
+            self.note = Some("Select an existing session first.".into());
         }
     }
 
@@ -321,6 +356,19 @@ impl ProcessPanel {
         }
         if let Stage::Opening(op) = &self.stage {
             self.abandoned.insert(op.effect);
+            let open = op.effect;
+            let resource = ResourceRef::Workspace {
+                workspace: self.identity.workspace.clone(),
+            };
+            let generation = self.identity.generation;
+            let _ = cx.emit(|id| {
+                Effect::new(
+                    id,
+                    resource,
+                    EffectBody::TerminalAbandonOpen(TerminalAbandonOpen { open }),
+                )
+                .with_generation(generation)
+            });
         }
         self.stage = Stage::Choosing;
         self.note = note;
@@ -338,7 +386,7 @@ impl ProcessPanel {
             }
             Stage::Opening(_) => {
                 if key.key() == Key::Esc {
-                    self.back_to_chooser(cx, Some("Stopped waiting. The shell may still start; it will be listed under existing sessions.".into()));
+                    self.back_to_chooser(cx, Some("Stopped waiting. The host is asked to end the shell this open creates.".into()));
                 }
             }
             Stage::Failed(_) => self.failed_key(key, cx),
@@ -757,36 +805,19 @@ impl ProcessPanel {
                     });
                     return;
                 };
-                self.binds += 1;
-                let prefix = self.prefix(cx);
+                let attachment = t.attachment.clone().unwrap_or(op.attachment);
                 let mut b = Bound::new(
                     self.identity.workspace.clone(),
-                    prefix.clone(),
+                    op.prefix,
                     t.session.clone(),
                     t.backend,
-                    format!("{prefix}.a"),
+                    attachment,
                     t.cols,
                     t.rows,
                 );
-                b.epoch = t.epoch;
-                b.program = t.program;
-                b.origin = t.origin.clone();
-                b.stream_epoch = t.stream_epoch.clone();
-                b.owner = t.process_owner().to_owned();
-                if let Some(generation) = t.lease_generation {
-                    b.lease = generation;
-                }
-                b.size_known = t.cols > 0 && t.rows > 0;
-                b.provenance = crate::bound::Provenance::from_origin(
-                    t.origin.as_deref().unwrap_or("launched"),
-                );
                 b.profile = Some(op.choice);
                 b.follows = op.follows;
-                // The open reports no attachment name, so the pane attaches
-                // under its own to hold a claim it can present.
-                if !b.attach(cx, Purpose::Initial, Want::Controller, Why::Chosen, 0) {
-                    b.initial = Some(Some("the follow-up attach could not be sent".into()));
-                }
+                b.opened(cx, &t, Want::Controller, Why::Chosen);
                 self.stage = Stage::Bound(Box::new(b));
             }
             Outcome::Uncertain { reason } => {
@@ -828,6 +859,22 @@ impl ProcessPanel {
             self.connection = Some(*state);
             return;
         }
+        if let HostMessage::TerminalSessions {
+            workspace,
+            profiles,
+            sessions,
+        } = message
+        {
+            // A listing said for another workspace is not this pane's.
+            if workspace == self.identity.workspace {
+                self.catalog.replace(CatalogData {
+                    workspace,
+                    profiles,
+                    sessions,
+                });
+            }
+            return;
+        }
         if let Some(b) = self.bound_mut() {
             b.host(cx, &message);
         }
@@ -843,13 +890,33 @@ impl ProcessPanel {
                 Stage::Bound(b) if !b.running() => self.start_new(cx),
                 _ => {}
             },
+            "shell.attach" => self.choose_session(cx, Pick::Default),
+            "shell.observe" => self.choose_session(cx, Pick::Observe),
+            "shell.control" => {
+                if let Some(b) = self.bound_mut() {
+                    b.request_control(cx);
+                }
+            }
+            "shell.resend" => {
+                if let Some(b) = self.bound_mut() {
+                    b.resend(cx);
+                }
+            }
             "shell.end" => {
                 if let Some(b) = self.bound_mut()
                     && b.running()
                     && !b.attaching()
                 {
-                    // Only a person's key or click confirms.
+                    // Asking is all this does; confirming is a person's own
+                    // action (`shell.end.confirm`, human only) or key.
                     b.end = EndAsk::Asking;
+                }
+            }
+            "shell.end.confirm" => {
+                if let Some(b) = self.bound_mut()
+                    && b.end == EndAsk::Asking
+                {
+                    b.end_process(cx);
                 }
             }
             _ => {}
@@ -857,13 +924,7 @@ impl ProcessPanel {
     }
 
     fn on_tick(&mut self, cx: &mut Ctx) {
-        for d in std::mem::take(&mut self.deferred) {
-            let generation = Generation(d.claim.epoch);
-            let _ = cx.emit(|id| {
-                Effect::new(id, d.resource, EffectBody::TerminalDetach(d.claim))
-                    .with_generation(generation)
-            });
-        }
+        self.flush_deferred(cx);
         if let Stage::Restoring(saved) = &self.stage
             && self.identity.is_set()
         {
@@ -875,21 +936,8 @@ impl ProcessPanel {
                     saved.workspace, self.identity.workspace
                 ));
             } else {
-                let listed = self
-                    .catalog
-                    .snapshot()
-                    .sessions
-                    .into_iter()
-                    .find(|s| s.session == saved.session);
-                let (want, why) = match listed {
-                    Some(s) if !s.controlled_elsewhere && s.state == SessionState::Running => {
-                        (Want::Controller, Why::Chosen)
-                    }
-                    Some(s) if s.controlled_elsewhere => {
-                        (Want::Observer, Why::Lease("held".into()))
-                    }
-                    _ => (Want::Observer, Why::Restored),
-                };
+                // Never control on restore: the person asks for it.
+                let (want, why) = (Want::Observer, Why::Restored);
                 self.attach_to(cx, saved.session, saved.backend, want, why);
             }
         }
@@ -906,6 +954,27 @@ impl ProcessPanel {
             let count = self.rows().len();
             self.selected = self.selected.min(count.saturating_sub(1));
             cx.invalidate();
+        }
+    }
+
+    fn flush_deferred(&mut self, cx: &mut Ctx) {
+        for d in std::mem::take(&mut self.deferred) {
+            let _ = match d {
+                Deferred::Detach { resource, claim } => {
+                    let generation = Generation(claim.epoch);
+                    cx.emit(|id| {
+                        Effect::new(id, resource, EffectBody::TerminalDetach(claim))
+                            .with_generation(generation)
+                    })
+                }
+                Deferred::Abandon { resource, open } => cx.emit(|id| {
+                    Effect::new(
+                        id,
+                        resource,
+                        EffectBody::TerminalAbandonOpen(TerminalAbandonOpen { open }),
+                    )
+                }),
+            };
         }
     }
 
@@ -1031,6 +1100,9 @@ impl Panel for ProcessPanel {
             PanelMsg::Action(id) => self.on_action(id, cx),
             PanelMsg::Workspace(identity) => self.adopt(&identity),
             PanelMsg::Tick => self.on_tick(cx),
+            // `PanelMsg` is non-exhaustive: a message this pane has no use
+            // for changes nothing.
+            _ => {}
         }
         if !quiet {
             self.pump(cx);
@@ -1090,16 +1162,30 @@ impl Panel for ProcessPanel {
     fn teardown(&mut self, cx: &mut Ctx, _destroy: bool) {
         // Closing a view detaches. It never ends the process, even when a
         // Destroy action is the one closing it: ending is its own action.
-        for d in std::mem::take(&mut self.deferred) {
-            let generation = Generation(d.claim.epoch);
-            let _ = cx.emit(|id| {
-                Effect::new(id, d.resource, EffectBody::TerminalDetach(d.claim))
+        self.flush_deferred(cx);
+        match &self.stage {
+            Stage::Bound(b) => {
+                let claim = b.claim();
+                let _ = b.emit(cx, EffectBody::TerminalDetach(claim));
+            }
+            // The open is still in flight: the session it creates has no
+            // owner once this pane is gone, so the host is asked to undo it.
+            Stage::Opening(op) => {
+                let open = op.effect;
+                let resource = ResourceRef::Workspace {
+                    workspace: self.identity.workspace.clone(),
+                };
+                let generation = self.identity.generation;
+                let _ = cx.emit(|id| {
+                    Effect::new(
+                        id,
+                        resource,
+                        EffectBody::TerminalAbandonOpen(TerminalAbandonOpen { open }),
+                    )
                     .with_generation(generation)
-            });
-        }
-        if let Stage::Bound(b) = &self.stage {
-            let claim = b.claim();
-            let _ = b.emit(cx, EffectBody::TerminalDetach(claim));
+                });
+            }
+            _ => {}
         }
     }
 }

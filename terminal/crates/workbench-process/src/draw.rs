@@ -180,7 +180,7 @@ pub(crate) fn view(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
 }
 
 fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
-    let rows = chooser::rows(&p.catalog.snapshot(), &p.identity);
+    let rows = chooser::rows(&p.catalog.snapshot(&p.identity.workspace), &p.identity);
     let lines = chooser::lines(&rows, &p.identity, p.note.as_deref());
     let selected = p.selected.min(rows.len().saturating_sub(1));
     let top = chooser::top_for(&lines, selected, usize::from(area.height));

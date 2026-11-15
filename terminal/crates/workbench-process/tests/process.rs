@@ -12,7 +12,9 @@ use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome,
 use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalBackend, TerminalRole,
 };
-use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::host::{
+    HostMessage, TerminalProfileInfo, TerminalSessionInfo, TerminalSessionState,
+};
 use theorem_workbench_core::ids::{ActionId, Actor, EffectId, PanelInstanceId, ResourceRef};
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
 use theorem_workbench_core::registry::Capabilities;
@@ -21,10 +23,7 @@ use theorem_workbench_core::{
     Button, DockMsg, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, ViewCtx, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
-use theorem_workbench_process::{
-    CatalogData, ProcessCatalog, ProcessProfile, ProcessSession, ProcessStyles, SessionState,
-    register,
-};
+use theorem_workbench_process::{ProcessStyles, extend_registry, register};
 use theorem_workbench_vt::Palette;
 
 const CAPS: [&str; 11] = [
@@ -54,21 +53,21 @@ fn named(workspace: &str) -> Msg {
     })
 }
 
-fn session(name: &str, backend: TerminalBackend) -> ProcessSession {
-    ProcessSession {
+fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
+    TerminalSessionInfo {
         session: name.into(),
         profile: "zsh".into(),
         backend,
         workspace: "w".into(),
         host: Some("devbox".into()),
         program: Some(1),
-        state: SessionState::Running,
+        state: TerminalSessionState::Running,
         controlled_elsewhere: false,
     }
 }
 
-fn profile(id: &str, backend: TerminalBackend, available: bool) -> ProcessProfile {
-    ProcessProfile {
+fn profile(id: &str, backend: TerminalBackend, available: bool) -> TerminalProfileInfo {
+    TerminalProfileInfo {
         id: id.into(),
         label: id.into(),
         backend,
@@ -78,28 +77,31 @@ fn profile(id: &str, backend: TerminalBackend, available: bool) -> ProcessProfil
     }
 }
 
-fn data() -> CatalogData {
-    CatalogData {
-        sessions: vec![session("s1", TerminalBackend::Herdr)],
+/// What the host says the chooser offers, for workspace `workspace`.
+fn listing(workspace: &str, sessions: Vec<TerminalSessionInfo>) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: workspace.into(),
         profiles: vec![
             profile("herdr-zsh", TerminalBackend::Herdr, false),
             profile("native-zsh", TerminalBackend::Native, true),
         ],
-    }
+        sessions,
+    })
+}
+
+fn data() -> Msg {
+    listing("w", vec![session("s1", TerminalBackend::Herdr)])
 }
 
 fn palette() -> Palette {
     Palette::default()
 }
 
-fn model(workspace: &str, catalog: &ProcessCatalog) -> Model {
+fn model(workspace: &str) -> Model {
     let mut factories = PanelFactories::new();
-    register(
-        &mut factories,
-        catalog.clone(),
-        ProcessStyles::new(palette()),
-    );
-    let registry = builtin::registry();
+    register(&mut factories, ProcessStyles::new(palette()), "n1");
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).expect("the shell actions register");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
     let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -120,7 +122,6 @@ fn model(workspace: &str, catalog: &ProcessCatalog) -> Model {
 struct Rig {
     m: Model,
     id: PanelInstanceId,
-    catalog: ProcessCatalog,
 }
 
 fn shell_id(m: &Model) -> PanelInstanceId {
@@ -132,9 +133,7 @@ fn shell_id(m: &Model) -> PanelInstanceId {
 
 /// Shell opened in workspace `w`, nothing chosen.
 fn rig() -> Rig {
-    let catalog = ProcessCatalog::new("n1");
-    catalog.set(data());
-    let mut m = model("w", &catalog);
+    let mut m = model("w");
     let fx = update(
         &mut m,
         Msg::Action {
@@ -145,7 +144,8 @@ fn rig() -> Rig {
     assert!(fx.is_empty(), "opening Shell emitted {fx:?}");
     let id = shell_id(&m);
     update(&mut m, Msg::Dock(DockMsg::FocusPanel(id.clone())));
-    Rig { m, id, catalog }
+    update(&mut m, data());
+    Rig { m, id }
 }
 
 fn terminal() -> ResourceRef {
@@ -365,6 +365,8 @@ fn kinds(fx: &[Effect]) -> Vec<&'static str> {
             EffectBody::TerminalOpen(_) => "open",
             EffectBody::TerminalAttach(_) => "attach",
             EffectBody::TerminalInput(_) => "input",
+            EffectBody::TerminalInputBytes(_) => "bytes",
+            EffectBody::TerminalAbandonOpen(_) => "abandon",
             EffectBody::TerminalResize(_) => "resize",
             EffectBody::TerminalDetach(_) => "detach",
             EffectBody::TerminalEnd => "end",
@@ -497,26 +499,57 @@ fn an_uncertain_open_is_shown_unknown_never_retried_or_resolved() {
 }
 
 #[test]
-fn an_accepted_open_attaches_under_the_panels_own_attachment() {
+fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment_and_lease() {
     let mut r = rig();
     r.key(Key::Down);
     r.key(Key::Down);
     let fx = r.key(Key::Enter);
-    let open = fx[0].clone();
+    assert_eq!(kinds(&fx), ["open"]);
+    let EffectBody::TerminalOpen(o) = &fx[0].body else {
+        unreachable!()
+    };
+    let attachment = o.attachment.clone().expect("the open names its attachment");
     let fx = r.answer(
+        &fx[0],
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            attachment: Some(attachment.clone()),
+            controlling: Some(true),
+            controlled: Some(true),
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    assert!(
+        !kinds(&fx).contains(&"attach"),
+        "no follow-up attach after an open: {fx:?}"
+    );
+    let typed = r.typed("l");
+    let EffectBody::TerminalInput(i) = &typed[0].body else {
+        unreachable!()
+    };
+    assert_eq!(i.claim.attachment, attachment);
+    assert_eq!(i.claim.lease_generation, 1);
+}
+
+#[test]
+fn an_open_the_host_answers_without_control_leaves_the_pane_observing_with_the_reason() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(
         &open,
         Outcome::Accepted,
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
+            controlling: Some(false),
+            controlled: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
     );
-    let attach = only_attach(&fx);
-    let EffectBody::TerminalAttach(a) = &attach.body else {
-        unreachable!()
-    };
-    assert_eq!(a.role, TerminalRole::Controller);
-    assert_eq!(attach.resource, terminal());
+    assert!(r.typed("l").is_empty());
+    assert!(r.screen().contains("(host: held)"), "{}", r.screen());
 }
 
 // ---- 3. live, controlling --------------------------------------------------
@@ -941,21 +974,14 @@ fn a_lost_program_is_lost_and_a_new_shell_is_a_different_process() {
     r.key(Key::Down);
     r.key(Key::Down);
     let open = r.key(Key::Enter)[0].clone();
-    let fx = r.answer(
+    r.answer(
         &open,
         Outcome::Accepted,
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
+            controlling: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
-    );
-    let attach = only_attach(&fx);
-    r.accept_attach(
-        &attach,
-        TerminalOpened {
-            backend: TerminalBackend::Native,
-            ..opened(1, 1, 80, 24, "launched")
-        },
     );
     r.host(HostMessage::TerminalExited {
         resource: terminal(),
@@ -1096,15 +1122,13 @@ fn serialize_then_restore_attaches_by_identity_and_does_not_relaunch() {
     let saved = doc.to_string();
     assert!(saved.contains("\"session\":\"s1\""), "{saved}");
 
-    let catalog = ProcessCatalog::new("n2");
-    catalog.set(data());
-    let mut m = model("w", &catalog);
+    let mut m = model("w");
     m.restore(doc).expect("restores");
     let mut r2 = Rig {
         id: shell_id(&m),
         m,
-        catalog,
     };
+    r2.send(data());
     let fx = r2.tick();
     assert_eq!(kinds(&fx), ["attach"]);
     assert!(!kinds(&fx).contains(&"open"));
@@ -1116,15 +1140,13 @@ fn a_restored_pane_whose_terminal_is_gone_says_so_and_offers_the_chooser() {
     let mut r = rig();
     r.live();
     let doc = r.m.document();
-    let catalog = ProcessCatalog::new("n3");
-    catalog.set(data());
-    let mut m = model("w", &catalog);
+    let mut m = model("w");
     m.restore(doc).unwrap();
     let mut r2 = Rig {
         id: shell_id(&m),
         m,
-        catalog,
     };
+    r2.send(data());
     let attach = only_attach(&r2.tick());
     r2.answer(
         &attach,
@@ -1216,9 +1238,409 @@ fn unused(_: EffectId) {}
 #[test]
 fn the_chooser_follows_the_catalog_the_mount_updates() {
     let mut r = rig();
-    let mut next = data();
-    next.sessions.push(session("s2", TerminalBackend::Native));
-    r.catalog.set(next);
+    r.send(listing(
+        "w",
+        vec![
+            session("s1", TerminalBackend::Herdr),
+            session("s2", TerminalBackend::Native),
+        ],
+    ));
     assert!(r.tick().is_empty());
     assert!(r.screen().contains("s2"));
+}
+
+// ---- the open in flight ------------------------------------------------------
+
+/// Start the native profile and leave the open unanswered.
+fn opening() -> (Rig, Effect) {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let open = fx[0].clone();
+    (r, open)
+}
+
+#[test]
+fn closing_during_an_open_sends_the_abandon_and_nothing_else() {
+    let (mut r, open) = opening();
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["abandon"]);
+    let EffectBody::TerminalAbandonOpen(a) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(a.open, open.id);
+}
+
+#[test]
+fn an_uncertain_open_is_abandoned_too_when_the_pane_closes() {
+    let (mut r, open) = opening();
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket".into(),
+        },
+        None,
+    );
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["abandon"]);
+}
+
+#[test]
+fn leaving_the_wait_with_escape_asks_the_host_to_end_the_session_the_open_creates() {
+    let (mut r, open) = opening();
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"]);
+    assert!(r.screen().contains("asked to end the shell"));
+    // The late answer of the abandoned open starts no pane state.
+    let late = r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    assert!(late.is_empty());
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+#[test]
+fn a_workspace_change_during_an_open_abandons_it_on_the_next_tick() {
+    let (mut r, open) = opening();
+    let mut fx = r.send(named("other"));
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), ["abandon"]);
+    let EffectBody::TerminalAbandonOpen(a) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(a.open, open.id);
+    assert_eq!(
+        fx[0].resource,
+        ResourceRef::Workspace {
+            workspace: "w".into()
+        },
+        "the open's own workspace, not the new one"
+    );
+}
+
+#[test]
+fn an_open_that_resolved_is_detached_not_abandoned_when_the_pane_closes() {
+    let (mut r, open) = opening();
+    r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            controlling: Some(true),
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["detach"]);
+}
+
+// ---- input that is not UTF-8 -------------------------------------------------
+
+#[test]
+fn a_non_utf8_mouse_report_reaches_the_wire_intact_and_a_resend_reuses_its_id() {
+    let mut r = rig();
+    // Wide enough that a column past 94 exists: X10 reports add 33 to it.
+    r.send(Msg::Resize {
+        area: Rect::new(0, 0, 600, 50),
+        metrics: CellMetrics::new(8.0, 16.0),
+    });
+    r.live();
+    r.bytes(1, 0, b"\x1b[?1000h");
+    let b = r.body();
+    assert!(b.width > 100, "the pane is {} wide", b.width);
+    let at = |kind| {
+        Msg::Pointer(Pointer {
+            kind,
+            x: b.x + 100,
+            y: b.y + 3,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    let fx = r.send(at(PointerKind::Down(Button::Left)));
+    assert_eq!(kinds(&fx), ["bytes"]);
+    let EffectBody::TerminalInputBytes(sent) = &fx[0].body else {
+        unreachable!()
+    };
+    let wire = B64.decode(&sent.data).unwrap();
+    assert!(std::str::from_utf8(&wire).is_err(), "{wire:?}");
+    // CSI M, button 0 (+32), column 100 + 1 (+32), row 2 + 1 (+32).
+    assert_eq!(
+        wire,
+        vec![0x1b, b'[', b'M', 32, 32 + 101, 32 + 3 + 1 - 1 + 1 - 1]
+    );
+    assert_eq!(sent.claim.lease_generation, 1);
+    // Unknown outcome, resent by a person: same id, same data.
+    r.answer(
+        &fx[0],
+        Outcome::Uncertain {
+            reason: "timeout".into(),
+        },
+        None,
+    );
+    let b2 = r.body();
+    let again = r.click_at(2, b2.height - 1);
+    assert_eq!(kinds(&again), ["bytes"]);
+    let EffectBody::TerminalInputBytes(second) = &again[0].body else {
+        unreachable!()
+    };
+    assert_eq!(second.input_id, sent.input_id);
+    assert_eq!(second.data, sent.data);
+}
+
+// ---- the listing -----------------------------------------------------------
+
+#[test]
+fn a_listing_for_another_workspace_is_ignored_and_each_message_replaces_both_lists() {
+    let mut r = rig();
+    r.send(listing(
+        "elsewhere",
+        vec![session("x9", TerminalBackend::Native)],
+    ));
+    assert!(!r.screen().contains("x9"));
+    assert!(r.screen().contains("s1"));
+    r.send(listing("w", vec![session("s7", TerminalBackend::Native)]));
+    let s = r.screen();
+    assert!(s.contains("s7") && !s.contains(" s1 "), "{s}");
+}
+
+#[test]
+fn a_pane_opened_after_the_listing_shows_it_at_once() {
+    let mut r = rig();
+    // A second shell pane, opened after the host spoke.
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.choose"),
+        actor: Actor::Human,
+    });
+    assert!(fx.is_empty());
+    let ids =
+        r.m.panel_ids()
+            .filter(|(_, k)| k.as_str() == "shell")
+            .count();
+    assert!(ids >= 1);
+    let fresh =
+        r.m.panel_ids()
+            .filter(|(_, k)| k.as_str() == "shell")
+            .map(|(id, _)| id.clone())
+            .last()
+            .unwrap();
+    let r2 = Rig { m: r.m, id: fresh };
+    assert!(r2.screen().contains("s1"));
+}
+
+// ---- restore -----------------------------------------------------------------
+
+fn restored(controlling: Option<bool>, controlled: Option<bool>) -> (Rig, Effect) {
+    let mut r = rig();
+    r.live();
+    let doc = r.m.document();
+    let mut m = model("w");
+    m.restore(doc).expect("restores");
+    let mut r2 = Rig {
+        id: shell_id(&m),
+        m,
+    };
+    r2.send(data());
+    let attach = only_attach(&r2.tick());
+    r2.accept_attach(
+        &attach,
+        TerminalOpened {
+            controlling,
+            controlled,
+            ..opened(1, 1, 80, 24, "reattached")
+        },
+    );
+    (r2, attach)
+}
+
+#[test]
+fn a_restored_pane_does_not_take_control_even_when_nobody_holds_it() {
+    let (mut r, attach) = restored(Some(false), Some(false));
+    let EffectBody::TerminalAttach(a) = &attach.body else {
+        unreachable!()
+    };
+    assert_eq!(a.role, TerminalRole::Observer);
+    assert!(r.typed("l").is_empty(), "keys alone never take control");
+    assert!(
+        r.screen().contains("Nobody holds control"),
+        "{}",
+        r.screen()
+    );
+}
+
+#[test]
+fn a_restored_pane_shows_who_holds_control() {
+    let (mut r, _) = restored(Some(false), Some(true));
+    assert!(r.typed("l").is_empty());
+    assert!(
+        r.screen().contains("Another viewer holds control"),
+        "{}",
+        r.screen()
+    );
+}
+
+// ---- semantics ------------------------------------------------------------------
+
+#[test]
+fn the_terminal_node_carries_the_visible_screen_and_the_cursor_and_modes() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"hello\r\nworld\x1b[?2004h");
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    let text = term.text.as_deref().unwrap();
+    assert!(text.starts_with("hello\nworld"), "{text:?}");
+    let d = term.state.description.as_deref().unwrap();
+    assert!(d.contains("Cursor at row 2, column 6."), "{d}");
+    assert!(d.contains("Bracketed paste on."), "{d}");
+    r.bytes(1, 20, b"\x1b[?1049h");
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    assert!(
+        term.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("Alternate screen.")
+    );
+}
+
+#[test]
+fn the_screen_text_is_bounded_by_the_core() {
+    let mut r = rig();
+    r.live();
+    for i in 0..400 {
+        let off = (i * 20) as u64;
+        r.bytes(1, off, format!("{:019}\n", i).as_bytes());
+    }
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    assert!(
+        term.text.as_deref().unwrap().len() <= theorem_workbench_core::semantics::MAX_NODE_TEXT
+    );
+}
+
+// ---- actions ---------------------------------------------------------------------
+
+#[test]
+fn the_pane_registers_its_workflows_and_only_the_confirmation_is_human_only() {
+    let registry = {
+        let mut reg = builtin::registry();
+        extend_registry(&mut reg).unwrap();
+        reg
+    };
+    for id in [
+        "shell.attach",
+        "shell.observe",
+        "shell.control",
+        "shell.resend",
+        "shell.end.confirm",
+    ] {
+        assert!(registry.action(&ActionId::new(id)).is_some(), "{id}");
+    }
+    let human = |id: &str| registry.action(&ActionId::new(id)).unwrap().1.human_only;
+    assert!(human("shell.end.confirm"));
+    assert!(!human("shell.control") && !human("shell.attach"));
+    // Registering twice is refused rather than duplicated.
+    let mut again = registry;
+    assert!(extend_registry(&mut again).is_err());
+}
+
+#[test]
+fn shell_attach_and_shell_control_act_on_the_selected_row_and_the_lease() {
+    let mut r = rig();
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.observe"),
+        actor: Actor::Agent { run_id: "r".into() },
+    });
+    let attach = only_attach(&fx);
+    let EffectBody::TerminalAttach(a) = &attach.body else {
+        unreachable!()
+    };
+    assert_eq!(a.role, TerminalRole::Observer);
+    r.accept_attach(
+        &attach,
+        TerminalOpened {
+            controlling: Some(false),
+            controlled: Some(false),
+            ..opened(1, 1, 80, 24, "reattached")
+        },
+    );
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.control"),
+        actor: Actor::Human,
+    });
+    let attach = only_attach(&fx);
+    let EffectBody::TerminalAttach(a) = &attach.body else {
+        unreachable!()
+    };
+    assert_eq!(a.role, TerminalRole::Controller);
+}
+
+#[test]
+fn an_agent_cannot_confirm_the_end_and_a_person_can_only_after_it_was_asked() {
+    let mut r = rig();
+    r.live();
+    let agent = Actor::Agent { run_id: "r".into() };
+    let act = |r: &mut Rig, id: &str, actor: Actor| {
+        r.send(Msg::Action {
+            id: ActionId::new(id),
+            actor,
+        })
+    };
+    // Nothing asked yet: even a person's confirm emits nothing.
+    assert!(act(&mut r, "shell.end.confirm", Actor::Human).is_empty());
+    assert!(act(&mut r, "shell.end", agent.clone()).is_empty());
+    assert!(
+        act(&mut r, "shell.end.confirm", agent).is_empty(),
+        "refused for a model"
+    );
+    assert!(r.screen().contains("End process s1?"));
+    let fx = act(&mut r, "shell.end.confirm", Actor::Human);
+    assert_eq!(kinds(&fx), ["end"]);
+}
+
+#[test]
+fn the_unconfirmed_input_can_be_resent_through_its_action_with_the_same_id() {
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    r.answer(&fx[0], Outcome::Uncertain { reason: "t".into() }, None);
+    let again = r.send(Msg::Action {
+        id: ActionId::new("shell.resend"),
+        actor: Actor::Human,
+    });
+    assert_eq!(inputs(&again), inputs(&fx));
+}
+
+// ---- resets read from epochs, not from screen text -----------------------------
+
+#[test]
+fn the_first_repaint_after_an_attach_does_not_rewrite_how_the_binding_began() {
+    let mut r = rig();
+    r.live();
+    r.reset(1, 0, b"\x1b[Hfirst paint");
+    assert!(
+        r.screen()
+            .contains("kept running while no view was attached")
+    );
 }

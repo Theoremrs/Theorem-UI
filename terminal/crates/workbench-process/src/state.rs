@@ -33,6 +33,10 @@ pub(crate) struct Opening {
     pub uncertain: Option<String>,
     /// The program this one follows, named so it is never read as continuation.
     pub follows: Option<String>,
+    /// What the answer's attachment falls back to, and the id prefix of the
+    /// binding this open starts.
+    pub prefix: String,
+    pub attachment: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

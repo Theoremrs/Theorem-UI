@@ -5,11 +5,13 @@
 
 use std::collections::BTreeMap;
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as B64;
 use ratatui::layout::Rect;
 use theorem_workbench_core::completion::{Outcome, TerminalOpened};
 use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalAttach, TerminalBackend, TerminalClaim, TerminalInput,
-    TerminalResize, TerminalRole,
+    TerminalInputBytes, TerminalResize, TerminalRole,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{EffectId, Generation, ResourceRef};
@@ -37,6 +39,8 @@ impl Want {
 pub(crate) enum Why {
     /// Attached to observe, by choice.
     Chosen,
+    /// Nobody holds control; this view has not asked for it.
+    Free,
     /// Re-attached after a restore without taking control from anyone.
     Restored,
     /// The host's word in `terminal_control_refused`.
@@ -49,6 +53,7 @@ impl Why {
     pub(crate) fn text(&self) -> String {
         match self {
             Self::Chosen => "This view attached to observe and did not take control.".into(),
+            Self::Free => "Nobody holds control. Press a key to ask for it.".into(),
             Self::Restored => {
                 "This pane re-attached without taking control from anyone.".into()
             }
@@ -197,8 +202,25 @@ pub(crate) enum Delivery {
 
 #[derive(Clone, Debug)]
 pub(crate) struct Sent {
-    pub body: TerminalInput,
+    pub body: Wire,
     pub delivery: Delivery,
+}
+
+/// One logical input as it leaves: text when the bytes are UTF-8, base64
+/// otherwise. Both carry the same id and claim rules.
+#[derive(Clone, Debug)]
+pub(crate) enum Wire {
+    Text(TerminalInput),
+    Bytes(TerminalInputBytes),
+}
+
+impl Wire {
+    fn effect_body(&self) -> EffectBody {
+        match self {
+            Self::Text(t) => EffectBody::TerminalInput(t.clone()),
+            Self::Bytes(b) => EffectBody::TerminalInputBytes(b.clone()),
+        }
+    }
 }
 
 /// Frames that arrived before the host said how big the grid is.
@@ -357,6 +379,13 @@ impl Bound {
         matches!(self.role, Role::Controller)
     }
 
+    fn why_text(&self) -> String {
+        match &self.role {
+            Role::Observer(why) => why.text(),
+            Role::Controller => String::new(),
+        }
+    }
+
     pub(crate) fn running(&self) -> bool {
         self.status == Status::Running
     }
@@ -460,18 +489,25 @@ impl Bound {
         kind: InputKind,
     ) -> Result<(), Block> {
         self.gate()?;
-        let Ok(text) = String::from_utf8(bytes.to_vec()) else {
-            // The wire carries text; bytes that are not UTF-8 (a legacy mouse
-            // report) cannot be sent faithfully, so nothing is sent.
-            return Ok(());
+        let input_id = self.mint();
+        let claim = self.claim();
+        let body = match std::str::from_utf8(bytes) {
+            Ok(text) => Wire::Text(TerminalInput {
+                bytes: text.to_owned(),
+                kind,
+                input_id,
+                claim,
+            }),
+            // Legacy mouse reports and the like are raw bytes: they travel as
+            // base64 under the same ledger rather than being dropped.
+            Err(_) => Wire::Bytes(TerminalInputBytes {
+                data: B64.encode(bytes),
+                kind,
+                input_id,
+                claim,
+            }),
         };
-        let body = TerminalInput {
-            bytes: text,
-            kind,
-            input_id: self.mint(),
-            claim: self.claim(),
-        };
-        match self.emit(cx, EffectBody::TerminalInput(body.clone())) {
+        match self.emit(cx, body.effect_body()) {
             Ok(effect) => {
                 self.inputs.insert(
                     effect,
@@ -500,7 +536,7 @@ impl Bound {
             let Some(sent) = self.inputs.remove(&old) else {
                 continue;
             };
-            match self.emit(cx, EffectBody::TerminalInput(sent.body.clone())) {
+            match self.emit(cx, sent.body.effect_body()) {
                 Ok(effect) => {
                     self.inputs.insert(
                         effect,
@@ -711,6 +747,16 @@ impl Bound {
         None
     }
 
+    /// The answer to an open that attached in the same effect.
+    pub(crate) fn opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, want: Want, why: Why) {
+        let attaching = Attaching {
+            purpose: Purpose::Initial,
+            want,
+            why,
+        };
+        self.apply_opened(cx, opened, &attaching);
+    }
+
     fn apply_opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, attaching: &Attaching) {
         if opened.epoch > self.epoch && self.epoch != 0 {
             self.screen = Screen::new(opened.rows.max(1), opened.cols.max(1));
@@ -737,16 +783,42 @@ impl Bound {
                     Some(origin) => Provenance::from_origin(origin),
                     None => Provenance::None,
                 };
-                self.role = match attaching.want {
-                    Want::Controller => Role::Controller,
-                    Want::Observer => Role::Observer(attaching.why.clone()),
+                // The host's own word on the lease decides; the wish only
+                // stands in when it said nothing.
+                let controlling = opened
+                    .controlling
+                    .unwrap_or(attaching.want == Want::Controller);
+                self.role = if controlling {
+                    Role::Controller
+                } else {
+                    Role::Observer(observer_why(opened, attaching))
                 };
             }
-            Purpose::Control => {
-                self.role = Role::Controller;
-                self.notice = None;
+            Purpose::Control => match opened.controlling {
+                Some(false) => {
+                    self.role = Role::Observer(Why::Lease(
+                        if opened.controlled == Some(true) {
+                            "held"
+                        } else {
+                            "observer"
+                        }
+                        .into(),
+                    ));
+                    self.notice = Some(Note::new(
+                        Tone::Warning,
+                        format!("Control was not granted. {}", self.why_text()),
+                    ));
+                }
+                _ => {
+                    self.role = Role::Controller;
+                    self.notice = None;
+                }
+            },
+            Purpose::Repaint => {
+                if opened.controlling == Some(false) && self.controlling() {
+                    self.role = Role::Observer(Why::Lost(self.lease));
+                }
             }
-            Purpose::Repaint => {}
         }
         self.size_known = true;
         self.flush_held(cx);
@@ -830,17 +902,15 @@ impl Bound {
         if epoch < self.epoch {
             return;
         }
-        let newer = epoch > self.epoch;
-        if newer {
+        // What a reset means is read from the epoch and from whether this
+        // pane asked for it, never from the screen: a newer epoch is the same
+        // program under a new binding; an unasked repaint of the same epoch
+        // after output was applied is the host's own log reset. The first
+        // repaint after an attach is part of the attach and changes nothing.
+        if epoch > self.epoch {
             self.epoch = epoch;
-            // The screen was cleared for the new binding by whoever announced
-            // it; a reset that arrives alone replaces it the same way.
-            if matches!(self.provenance, Provenance::None | Provenance::Launched)
-                || !self.awaiting_repaint
-            {
-                self.provenance = Provenance::Continued;
-            }
-        } else if !self.awaiting_repaint {
+            self.provenance = Provenance::Continued;
+        } else if !self.awaiting_repaint && self.screen.applied_offset() > 0 {
             self.provenance = Provenance::HostReset(offset);
         }
         self.screen.reset_with_formatted(formatted, offset);
@@ -952,6 +1022,19 @@ impl Bound {
 
     pub(crate) fn set_want(&mut self, term: Rect) {
         self.want = (term.width, term.height);
+    }
+}
+
+/// Why an attach that did not get control is observing, from the host's
+/// `controlled` word when it gave one.
+fn observer_why(opened: &TerminalOpened, attaching: &Attaching) -> Why {
+    match (&attaching.why, opened.controlled) {
+        (Why::Restored, Some(true)) => Why::Lease("held".into()),
+        (Why::Restored, Some(false)) => Why::Free,
+        (Why::Chosen, Some(true)) if attaching.want == Want::Controller => {
+            Why::Lease("held".into())
+        }
+        (why, _) => why.clone(),
     }
 }
 
