@@ -6,6 +6,8 @@
 
 use std::collections::VecDeque;
 
+use crate::ids::ResourceRef;
+
 /// What a full queue does with the next item.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Overflow {
@@ -172,9 +174,12 @@ impl Item for ModelDelta {
     }
 }
 
-/// A PTY output frame at an absolute byte offset of one binding epoch.
+/// A PTY output frame at an absolute byte offset of one binding epoch, for the
+/// terminal session `resource` names. One queue serves every terminal, so a
+/// frame says whose it is.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PtyFrame {
+    pub resource: ResourceRef,
     pub epoch: u64,
     pub offset: u64,
     pub bytes: Vec<u8>,
@@ -297,6 +302,7 @@ mod tests {
 
     fn frame(offset: u64, len: usize) -> PtyFrame {
         PtyFrame {
+            resource: ResourceRef::None,
             epoch: 1,
             offset,
             bytes: vec![0; len],

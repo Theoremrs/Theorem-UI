@@ -159,10 +159,19 @@ pub enum EffectBody {
 
     // Conversation and runs
     ConversationCreate,
+    /// A turn, when no run is working. Intent `Start`; never emitted by a
+    /// `Focus` or `Open` action.
     ConversationSend(ConversationSend),
     /// Steer a running run (`runs.command` `input`).
     ConversationInput(ConversationInput),
-    ConversationCancel(RunRef),
+    /// Stop the working run. Intent `Destroy`: closing a view never stops a run.
+    ConversationCancel(ConversationCancel),
+    /// Run the reply to a user message again as a new branch.
+    ConversationRetry(ConversationRetry),
+    /// Send changed text for a user message as a new branch.
+    ConversationEdit(ConversationEdit),
+    /// Make another thread of the project the open one.
+    ConversationSwitch(ConversationSwitch),
     /// Human-only: the registry refuses it from an agent actor.
     ConversationApproval(ConversationApproval),
 
@@ -201,7 +210,9 @@ impl EffectKind {
             TerminalOpen | TerminalAttach | TerminalInput | TerminalResize | TerminalDetach
             | TerminalEnd => Owner::Terminal,
             ConversationCreate | ConversationSend | ConversationInput | ConversationCancel
-            | ConversationApproval => Owner::Conversation,
+            | ConversationRetry | ConversationEdit | ConversationSwitch | ConversationApproval => {
+                Owner::Conversation
+            }
             LayoutLoad | LayoutSave => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
             ClipboardWrite | ClipboardRead => Owner::Host,
@@ -559,8 +570,17 @@ pub enum InputKind {
 pub struct TerminalInput {
     pub bytes: String,
     pub kind: InputKind,
+    /// Minted by the terminal panel, once per logical input, and unique within
+    /// the binding epoch across page loads (the panel includes a per-load
+    /// nonce). The core never mints or rewrites it: a retry of an `Uncertain`
+    /// input re-emits this same body, so the id is the same.
+    ///
     /// The host remembers the last 256 per binding epoch and writes a repeat
     /// once. Uncertain input is never replayed past that window.
+    ///
+    /// The adapter MUST pass `input_id` and `claim` through to the terminal
+    /// session and must not let the session mint its own id for this input,
+    /// or a resend would be a new input and be written twice.
     pub input_id: String,
     pub claim: TerminalClaim,
 }
@@ -576,11 +596,29 @@ pub struct TerminalResize {
 
 // ---- conversation ------------------------------------------------------
 
+/// A file attached to a turn, by the id the attachment service gave it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AttachmentRef {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub content_type: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSend {
+    /// Minted by the composer once per turn. The owner never sends the same id
+    /// twice, so a retry of this effect reuses it and cannot double-send.
+    pub client_message_id: String,
     pub text: String,
+    /// Absent on input means none.
+    #[serde(default)]
+    pub attachments: Vec<AttachmentRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -588,14 +626,43 @@ pub struct ConversationSend {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationInput {
     pub run_id: String,
+    pub client_message_id: String,
+    pub text: String,
+}
+
+/// Stops a run. `run_id` names the run the person saw working; absent means
+/// whichever run the thread has now (the owner answers with the one it
+/// stopped).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationCancel {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub run_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationRetry {
+    pub message_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationEdit {
+    pub message_id: String,
+    pub client_message_id: String,
     pub text: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
-pub struct RunRef {
-    pub run_id: String,
+pub struct ConversationSwitch {
+    pub thread_id: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -712,6 +779,120 @@ mod tests {
         assert!(value.get("revision").is_none());
     }
 
+    fn round_trip(body: EffectBody, kind: &str, payload: serde_json::Value) {
+        let effect = Effect::new(EffectId(1), ResourceRef::None, body);
+        let value = serde_json::to_value(&effect).unwrap();
+        assert_eq!(value["kind"], kind);
+        assert_eq!(value["payload"], payload);
+        assert_eq!(serde_json::from_value::<Effect>(value).unwrap(), effect);
+    }
+
+    #[test]
+    fn conversation_effects_round_trip() {
+        round_trip(
+            EffectBody::ConversationSend(ConversationSend {
+                client_message_id: "c1".into(),
+                text: "hi".into(),
+                attachments: vec![AttachmentRef {
+                    id: "a1".into(),
+                    name: "x.png".into(),
+                    content_type: Some("image/png".into()),
+                }],
+            }),
+            "conversationSend",
+            json!({
+                "clientMessageId": "c1", "text": "hi",
+                "attachments": [{"id": "a1", "name": "x.png", "contentType": "image/png"}]
+            }),
+        );
+        round_trip(
+            EffectBody::ConversationInput(ConversationInput {
+                run_id: "r".into(),
+                client_message_id: "c2".into(),
+                text: "t".into(),
+            }),
+            "conversationInput",
+            json!({"runId": "r", "clientMessageId": "c2", "text": "t"}),
+        );
+        round_trip(
+            EffectBody::ConversationCancel(ConversationCancel {
+                run_id: Some("r".into()),
+            }),
+            "conversationCancel",
+            json!({"runId": "r"}),
+        );
+        round_trip(
+            EffectBody::ConversationCancel(ConversationCancel { run_id: None }),
+            "conversationCancel",
+            json!({}),
+        );
+        round_trip(
+            EffectBody::ConversationRetry(ConversationRetry {
+                message_id: "m".into(),
+            }),
+            "conversationRetry",
+            json!({"messageId": "m"}),
+        );
+        round_trip(
+            EffectBody::ConversationEdit(ConversationEdit {
+                message_id: "m".into(),
+                client_message_id: "c3".into(),
+                text: "t".into(),
+            }),
+            "conversationEdit",
+            json!({"messageId": "m", "clientMessageId": "c3", "text": "t"}),
+        );
+        round_trip(
+            EffectBody::ConversationSwitch(ConversationSwitch {
+                thread_id: "t1".into(),
+            }),
+            "conversationSwitch",
+            json!({"threadId": "t1"}),
+        );
+        round_trip(
+            EffectBody::ConversationApproval(ConversationApproval {
+                run_id: "r".into(),
+                approval_id: "ap".into(),
+                decision: ApprovalDecision::Deny,
+            }),
+            "conversationApproval",
+            json!({"runId": "r", "approvalId": "ap", "decision": "deny"}),
+        );
+        // A send with no attachments reads without the field.
+        let send: ConversationSend =
+            serde_json::from_value(json!({"clientMessageId": "c", "text": "t"})).unwrap();
+        assert!(send.attachments.is_empty());
+    }
+
+    #[test]
+    fn a_terminal_input_retry_carries_the_same_input_id_and_claim() {
+        let body = EffectBody::TerminalInput(TerminalInput {
+            bytes: "ls\r".into(),
+            kind: InputKind::Human,
+            input_id: "load1:7".into(),
+            claim: TerminalClaim {
+                attachment: "a1".into(),
+                lease_generation: 4,
+                epoch: 2,
+            },
+        });
+        let first = Effect::new(EffectId(9), ResourceRef::None, body.clone());
+        // A retry reuses the effect's id and body, so the id the host dedups on
+        // is unchanged on the wire.
+        let retry = Effect::new(EffectId(9), ResourceRef::None, body);
+        assert_eq!(
+            serde_json::to_value(&first).unwrap(),
+            serde_json::to_value(&retry).unwrap()
+        );
+        assert_eq!(
+            serde_json::to_value(&first).unwrap()["payload"],
+            json!({
+                "bytes": "ls\r", "kind": "human", "inputId": "load1:7",
+                "claim": {"attachment": "a1", "leaseGeneration": 4, "epoch": 2}
+            })
+        );
+    }
+
     #[test]
     fn every_kind_has_one_owner() {
         // Detach and End are distinct kinds in the terminal group (R29).
@@ -720,5 +901,13 @@ mod tests {
         assert_ne!(EffectKind::TerminalDetach, EffectKind::TerminalEnd);
         assert_eq!(EffectKind::ClipboardWrite.owner(), Owner::Host);
         assert_eq!(EffectKind::LayoutSave.owner(), Owner::Layout);
+        for kind in [
+            EffectKind::ConversationRetry,
+            EffectKind::ConversationEdit,
+            EffectKind::ConversationSwitch,
+            EffectKind::ConversationCancel,
+        ] {
+            assert_eq!(kind.owner(), Owner::Conversation);
+        }
     }
 }

@@ -38,7 +38,7 @@ pub use ids::{
     ResourceKind, ResourceRef, Revision,
 };
 pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
-pub use msg::{DockMsg, Msg, Pointer};
+pub use msg::{DockMsg, Inbound, Msg, Pointer};
 pub use panel::{
     Button, Ctx, EmitError, Panel, PanelMsg, PanelPointer, PickerView, PointerKind, ViewCtx,
 };

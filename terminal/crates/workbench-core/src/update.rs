@@ -11,9 +11,15 @@
 //! 3. A completion or host message is judged against the panel's binding. Only
 //!    `Apply` reaches the panel as a message to act on; `CacheOnly` reaches it
 //!    as `Cached`; the rest are counted and dropped.
-//! 4. Closing a view detaches. A destroying effect is refused unless a
+//! 4. Terminal output does not go straight to a panel: it is judged against the
+//!    pane's binding epoch, queued in the bounded PTY queue and handed over on
+//!    the next `Tick` or before the next terminal event, in order. A frame lost
+//!    to the bound reaches every terminal pane as a reset request.
+//! 5. Closing a view detaches. A destroying effect is refused unless a
 //!    `Destroy` action is running (R36).
 
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use ratatui::layout::{Direction, Rect};
 use serde_json::Value;
 use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
@@ -24,10 +30,11 @@ use crate::host::HostMessage;
 use crate::ids::{ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceRef, Revision};
 use crate::keys::active_contexts;
 use crate::model::{Drag, Entry, Model, Notice, Viewport};
-use crate::msg::{DockMsg, Msg, Pointer};
+use crate::msg::{DockMsg, Inbound, Msg, Pointer};
 use crate::panel::{Button, Ctx, Mode, Panel, PanelMsg, PanelPointer, PointerKind};
 use crate::panels::PICKER_KIND;
 use crate::picker::{PickerMsg, PickerOutcome};
+use crate::queue::{Popped, PtyFrame, Push};
 use crate::registry::{ActionIntent, Placement, Refusal};
 use crate::stale::{Binding, Stale, Verdict, judge};
 use keybinds::{Key, KeyInput, Mods};
@@ -60,6 +67,14 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         model.dirty = true;
     }
     effects
+}
+
+impl Model {
+    /// The one entry the host's `dispatch` calls: a completion or a host
+    /// message, told apart by the `channel` tag of [`Inbound`].
+    pub fn dispatch(&mut self, inbound: Inbound) -> Vec<Effect> {
+        update(self, inbound.into())
+    }
 }
 
 /// What a call into a panel left behind.
@@ -226,10 +241,10 @@ impl Model {
     }
 
     pub(crate) fn on_tick(&mut self) -> Vec<Effect> {
+        let mut effects = self.drain_pty();
         let ids: Vec<PanelInstanceId> = self.panels.keys().cloned().collect();
-        ids.iter()
-            .flat_map(|id| self.send(id, PanelMsg::Tick))
-            .collect()
+        effects.extend(ids.iter().flat_map(|id| self.send(id, PanelMsg::Tick)));
+        effects
     }
 
     // --- actions and the picker ---
@@ -615,6 +630,14 @@ impl Model {
         }) else {
             return vec![];
         };
+        if self.picker.is_open()
+            && self
+                .panels
+                .get(id)
+                .is_some_and(|e| e.kind.as_str() == PICKER_KIND)
+        {
+            return self.picker_pointer(p, body);
+        }
         self.send(
             id,
             PanelMsg::Pointer(PanelPointer {
@@ -624,6 +647,20 @@ impl Model {
                 mods: p.mods,
             }),
         )
+    }
+
+    /// A pointer over the picker's body. Row `i` is drawn on the body's line
+    /// `i + 1` (the first line is the filter): hovering selects it, a left
+    /// click chooses it. Nothing else the pointer does reaches the picker.
+    fn picker_pointer(&mut self, p: Pointer, body: Rect) -> Vec<Effect> {
+        let Some(row) = usize::from(p.y.saturating_sub(body.y)).checked_sub(1) else {
+            return vec![];
+        };
+        match p.kind {
+            PointerKind::Down(Button::Left) => self.picker_msg(PickerMsg::ChooseAt(row)),
+            PointerKind::Move => self.picker_msg(PickerMsg::Select(row)),
+            _ => vec![],
+        }
     }
 
     /// Move the dragged splitter so its gutter follows the pointer. A move
@@ -703,17 +740,39 @@ impl Model {
         if let HostMessage::CapabilitiesChanged { capabilities } = &message {
             self.caps = capabilities.clone();
         }
+        let mut effects = match &message {
+            HostMessage::TerminalOutput {
+                resource,
+                epoch,
+                offset,
+                data,
+            } => return self.on_terminal_output(resource, *epoch, *offset, data),
+            HostMessage::TerminalReset {
+                resource,
+                epoch,
+                offset,
+                data,
+            } => {
+                let mut effects = self.drain_pty();
+                effects.extend(self.on_terminal_reset(resource, *epoch, *offset, data));
+                return effects;
+            }
+            // Output that arrived first is handed over first.
+            HostMessage::TerminalOpened { .. }
+            | HostMessage::TerminalExited { .. }
+            | HostMessage::TerminalControl { .. }
+            | HostMessage::TerminalResized { .. } => self.drain_pty(),
+            HostMessage::ConversationSnapshot {
+                resource: ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            } if thread != conversation_id => {
+                return self.drop_stale(Stale::ResourceChanged);
+            }
+            _ => vec![],
+        };
         let (resource, revision) = host_route(&message);
-        let targets: Vec<PanelInstanceId> = self
-            .panels
-            .iter()
-            .filter(|(_, e)| match resource {
-                Some(r) => e.binding().resource == *r,
-                None => true,
-            })
-            .map(|(id, _)| id.clone())
-            .collect();
-        let mut effects = vec![];
+        let targets = self.bound_to(resource);
         for id in targets {
             if let (Some(resource), Some(revision)) = (resource, &revision) {
                 // The same gate a completion passes: an event older than the
@@ -727,6 +786,146 @@ impl Model {
                 }
             }
             effects.extend(self.send(&id, PanelMsg::Host(message.clone())));
+        }
+        effects
+    }
+
+    /// The panels a message about `resource` is for; every panel when it names
+    /// none.
+    fn bound_to(&self, resource: Option<&ResourceRef>) -> Vec<PanelInstanceId> {
+        self.panels
+            .iter()
+            .filter(|(_, e)| match resource {
+                Some(r) => e.binding().resource == *r,
+                None => true,
+            })
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    /// A terminal frame older than the pane's binding epoch belongs to a
+    /// binding that is gone.
+    fn older_epoch(&self, id: &PanelInstanceId, epoch: u64) -> bool {
+        self.panels
+            .get(id)
+            .and_then(|e| e.binding().generation)
+            .is_some_and(|bound| epoch < bound.0)
+    }
+
+    /// Queue a frame for the panes bound to its session. Nothing is handed over
+    /// here: the bounded queue holds it until the next tick, and a frame it
+    /// cannot hold becomes a reset request, never a silent loss.
+    fn on_terminal_output(
+        &mut self,
+        resource: &ResourceRef,
+        epoch: u64,
+        offset: u64,
+        data: &str,
+    ) -> Vec<Effect> {
+        let Ok(bytes) = BASE64.decode(data) else {
+            return self.drop_stale(Stale::MalformedFrame);
+        };
+        let targets = self.bound_to(Some(resource));
+        if targets.is_empty() {
+            return self.drop_stale(Stale::NotBound);
+        }
+        if targets.iter().all(|id| self.older_epoch(id, epoch)) {
+            return self.drop_stale(Stale::OlderEpoch);
+        }
+        let frame = PtyFrame {
+            resource: resource.clone(),
+            epoch,
+            offset,
+            bytes,
+        };
+        match self.queues.pty.push(frame) {
+            Push::Full(frame) => self.request_reset(1, frame.bytes.len() as u64),
+            Push::Queued | Push::Merged | Push::QueuedAfterDrop { .. } => vec![],
+        }
+    }
+
+    fn on_terminal_reset(
+        &mut self,
+        resource: &ResourceRef,
+        epoch: u64,
+        offset: u64,
+        data: &str,
+    ) -> Vec<Effect> {
+        let Ok(formatted) = BASE64.decode(data) else {
+            return self.drop_stale(Stale::MalformedFrame);
+        };
+        let mut effects = vec![];
+        let targets = self.bound_to(Some(resource));
+        if targets.is_empty() {
+            return self.drop_stale(Stale::NotBound);
+        }
+        for id in targets {
+            if self.older_epoch(&id, epoch) {
+                self.drop_stale(Stale::OlderEpoch);
+                continue;
+            }
+            self.dirty = true;
+            effects.extend(self.send(
+                &id,
+                PanelMsg::TerminalReset {
+                    epoch,
+                    offset,
+                    formatted: formatted.clone(),
+                },
+            ));
+        }
+        effects
+    }
+
+    /// Hand every queued frame to its panes, oldest first. A gap in front of
+    /// them means frames were dropped for the bound: every terminal pane is
+    /// asked to reset, because the queue is shared and does not say whose.
+    pub(crate) fn drain_pty(&mut self) -> Vec<Effect> {
+        let mut effects = vec![];
+        while let Some(popped) = self.queues.pty.pop() {
+            match popped {
+                Popped::Gap { items, weight } => effects.extend(self.request_reset(items, weight)),
+                Popped::Item(frame) => effects.extend(self.deliver_frame(frame)),
+            }
+        }
+        effects
+    }
+
+    fn deliver_frame(&mut self, frame: PtyFrame) -> Vec<Effect> {
+        let targets = self.bound_to(Some(&frame.resource));
+        if targets.is_empty() {
+            return self.drop_stale(Stale::NotBound);
+        }
+        let mut effects = vec![];
+        for id in targets {
+            if self.older_epoch(&id, frame.epoch) {
+                self.drop_stale(Stale::OlderEpoch);
+                continue;
+            }
+            self.dirty = true;
+            effects.extend(self.send(
+                &id,
+                PanelMsg::TerminalOutput {
+                    epoch: frame.epoch,
+                    offset: frame.offset,
+                    bytes: frame.bytes.clone(),
+                },
+            ));
+        }
+        effects
+    }
+
+    fn request_reset(&mut self, frames: u64, bytes: u64) -> Vec<Effect> {
+        let terminals: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(_, e)| matches!(e.binding().resource, ResourceRef::Terminal { .. }))
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut effects = vec![];
+        for id in terminals {
+            self.dirty = true;
+            effects.extend(self.send(&id, PanelMsg::TerminalResetRequest { frames, bytes }));
         }
         effects
     }
@@ -744,12 +943,20 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
             resource, revision, ..
         }
         | DocumentSaved { resource, revision } => (Some(resource), Some(revision.clone())),
-        ConversationSnapshot {
+        DocumentAcknowledged {
             resource, revision, ..
-        } => (Some(resource), revision.clone()),
+        }
+        | DocumentResync {
+            resource, revision, ..
+        }
+        | ConversationSnapshot {
+            resource, revision, ..
+        } => (Some(resource), Some(revision.clone())),
         DocumentMoved { from, .. } => (Some(from), None),
         DocumentRetired { resource }
         | TerminalOutput { resource, .. }
+        | TerminalReset { resource, .. }
+        | TerminalResized { resource, .. }
         | TerminalOpened { resource, .. }
         | TerminalExited { resource, .. }
         | TerminalControl { resource, .. } => (Some(resource), None),

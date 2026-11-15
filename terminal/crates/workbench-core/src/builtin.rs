@@ -97,6 +97,20 @@ pub fn registry() -> Registry {
         }
         .build(vec![
             ActionDescriptor::new("theo.focus", "Theo", Focus),
+            // Turns and thread changes start work: none is a Focus or Open
+            // action, and none is reachable from the picker.
+            ActionDescriptor::new("theo.send", "Send", Start).emits(EffectKind::ConversationSend),
+            ActionDescriptor::new("theo.retry", "Retry", Start)
+                .emits(EffectKind::ConversationRetry),
+            ActionDescriptor::new("theo.edit", "Edit and resend", Start)
+                .emits(EffectKind::ConversationEdit),
+            ActionDescriptor::new("theo.switch", "Switch conversation", Start)
+                .emits(EffectKind::ConversationSwitch),
+            ActionDescriptor::new("theo.new", "New conversation", Create)
+                .emits(EffectKind::ConversationCreate),
+            // Stopping a run is destroying: closing the view must never do it.
+            ActionDescriptor::new("theo.stop", "Stop", Destroy)
+                .emits(EffectKind::ConversationCancel),
             // An approval is the person's decision. A model-origin request
             // for either is refused (R34, AC-44).
             ActionDescriptor::new("approval.allow", "Allow", Start)

@@ -3,10 +3,24 @@ import type { TerminalBackend } from "./TerminalBackend";
 
 /**
  * The binding a terminal open or attach reports (`terminal-path.md` 2.1).
- * Binding epoch, program generation and the lease generation stay separate.
+ *
+ * Four versions, each its own field and never folded into one number:
+ * - `stream_epoch`: the live stream's epoch (a string, as the host sends it);
+ * - `epoch`: the binding epoch, which strands old byte offsets when it moves;
+ * - `program` with `origin`: the program incarnation (1 = original, +1 per
+ *   replacement) and how it came to be there;
+ * - `lease_generation`: the control lease's generation.
+ *
+ * Fields the session does not report are absent, never invented.
  */
-export type TerminalOpened = { session: string, cols: number, rows: number, backend: TerminalBackend, epoch: number, program: number, 
+export type TerminalOpened = { session: string, cols: number, rows: number, backend: TerminalBackend, streamEpoch?: string, epoch: number, program: number, 
 /**
- * `host` or `herdr-core`.
+ * `launched`, `adopted`, `replacement`, `reattached` or the host's other
+ * word.
  */
-processOwnedBy: string, };
+origin?: string, leaseGeneration?: number, 
+/**
+ * What the host reported (`host` or `herdr-core`). Absent when it did
+ * not: [`TerminalOpened::process_owner`] derives it from the backend.
+ */
+processOwnedBy?: string, };

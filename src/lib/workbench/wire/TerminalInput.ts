@@ -4,7 +4,16 @@ import type { TerminalClaim } from "./TerminalClaim";
 
 export type TerminalInput = { bytes: string, kind: InputKind, 
 /**
+ * Minted by the terminal panel, once per logical input, and unique within
+ * the binding epoch across page loads (the panel includes a per-load
+ * nonce). The core never mints or rewrites it: a retry of an `Uncertain`
+ * input re-emits this same body, so the id is the same.
+ *
  * The host remembers the last 256 per binding epoch and writes a repeat
  * once. Uncertain input is never replayed past that window.
+ *
+ * The adapter MUST pass `input_id` and `claim` through to the terminal
+ * session and must not let the session mint its own id for this input,
+ * or a resend would be a new input and be written twice.
  */
 inputId: string, claim: TerminalClaim, };

@@ -37,6 +37,11 @@ pub enum Stale {
     UnorderedRevision,
     /// Older generation than the pane's.
     OlderGeneration,
+    /// A terminal frame of an older binding epoch than the pane's: its offsets
+    /// belong to a binding that is gone.
+    OlderEpoch,
+    /// A host frame whose payload could not be decoded.
+    MalformedFrame,
 }
 
 /// What to do with a completion.

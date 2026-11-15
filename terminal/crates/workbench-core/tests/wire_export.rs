@@ -12,6 +12,7 @@ use theorem_workbench_core::{
     host::HostMessage,
     ids::Actor,
     keys::{KeyIssue, Overrides, Shortcut},
+    msg::Inbound,
     registry::{CatalogEntry, PanelDescriptor, PickerRow},
     semantics::{SemanticDiff, SemanticTree},
     stale::Stale,
@@ -44,6 +45,7 @@ fn export_wire_types() {
     Effect::export_all(&cfg).unwrap();
     Completion::export_all(&cfg).unwrap();
     HostMessage::export_all(&cfg).unwrap();
+    Inbound::export_all(&cfg).unwrap();
     PanelDescriptor::export_all(&cfg).unwrap();
     PickerRow::export_all(&cfg).unwrap();
     CatalogEntry::export_all(&cfg).unwrap();

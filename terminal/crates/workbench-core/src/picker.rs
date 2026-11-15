@@ -27,6 +27,11 @@ pub enum PickerMsg {
     Next,
     Prev,
     Choose,
+    /// A pointer is over row `n` of the rows now showing: select it. Out of
+    /// range does nothing.
+    Select(usize),
+    /// A pointer click on row `n`: select it, then choose it as `Choose` does.
+    ChooseAt(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -146,6 +151,19 @@ impl Picker {
                 }
                 PickerOutcome::Nothing
             }
+            PickerMsg::Select(row) if self.open => {
+                if row < self.rows(registry, caps, pinned).len() {
+                    self.selected = row;
+                }
+                PickerOutcome::Nothing
+            }
+            PickerMsg::ChooseAt(row) if self.open => {
+                if row >= self.rows(registry, caps, pinned).len() {
+                    return PickerOutcome::Nothing;
+                }
+                self.selected = row;
+                self.update(PickerMsg::Choose, registry, caps, pinned)
+            }
             PickerMsg::Choose if self.open => {
                 let rows = self.rows(registry, caps, pinned);
                 let Some(row) = rows.get(self.selected) else {
@@ -167,9 +185,12 @@ impl Picker {
                 PickerOutcome::Chosen(chosen)
             }
             // A message to a closed picker does nothing.
-            PickerMsg::Filter(_) | PickerMsg::Next | PickerMsg::Prev | PickerMsg::Choose => {
-                PickerOutcome::Nothing
-            }
+            PickerMsg::Filter(_)
+            | PickerMsg::Next
+            | PickerMsg::Prev
+            | PickerMsg::Choose
+            | PickerMsg::Select(_)
+            | PickerMsg::ChooseAt(_) => PickerOutcome::Nothing,
         }
     }
 }
@@ -265,6 +286,13 @@ mod tests {
             PickerMsg::Back, // closes
             PickerMsg::Open,
             PickerMsg::Close,
+            PickerMsg::Select(2),
+            PickerMsg::ChooseAt(1),
+            PickerMsg::Open,
+            PickerMsg::Select(2),
+            PickerMsg::Select(99),
+            PickerMsg::ChooseAt(99),
+            PickerMsg::Close,
         ];
         for msg in script {
             let outcome = picker.update(msg.clone(), &reg, &caps, &pins);
@@ -274,6 +302,57 @@ mod tests {
             );
         }
         assert!(!picker.is_open());
+    }
+
+    #[test]
+    fn pointer_selection_moves_the_highlight_and_a_click_chooses() {
+        let reg = registry();
+        let (caps, pins) = (all_caps(), no_pins());
+        let mut picker = Picker::default();
+        // A closed picker ignores the pointer.
+        assert_eq!(
+            picker.update(PickerMsg::ChooseAt(1), &reg, &caps, &pins),
+            PickerOutcome::Nothing
+        );
+        picker.update(PickerMsg::Open, &reg, &caps, &pins);
+        picker.update(PickerMsg::Select(3), &reg, &caps, &pins);
+        assert_eq!(picker.selected(), 3);
+        // Past the last row nothing moves.
+        picker.update(PickerMsg::Select(40), &reg, &caps, &pins);
+        assert_eq!(picker.selected(), 3);
+        assert_eq!(
+            picker.update(PickerMsg::ChooseAt(40), &reg, &caps, &pins),
+            PickerOutcome::Nothing
+        );
+        assert!(picker.is_open() && picker.selected() == 3);
+        let outcome = picker.update(PickerMsg::ChooseAt(1), &reg, &caps, &pins);
+        assert_eq!(
+            outcome,
+            PickerOutcome::Chosen(ActionId::new("shell.choose"))
+        );
+        assert!(!picker.is_open());
+    }
+
+    #[test]
+    fn a_click_on_more_tools_descends_and_on_an_unavailable_row_explains() {
+        let reg = registry();
+        let (caps, pins) = (all_caps(), no_pins());
+        let mut picker = Picker::default();
+        picker.update(PickerMsg::Open, &reg, &caps, &pins);
+        assert_eq!(
+            picker.update(PickerMsg::ChooseAt(5), &reg, &caps, &pins),
+            PickerOutcome::Nothing
+        );
+        assert_eq!(picker.page(), Page::More);
+
+        let few = Capabilities::of(["files"]);
+        let mut picker = Picker::default();
+        picker.update(PickerMsg::Open, &reg, &few, &pins);
+        assert!(matches!(
+            picker.update(PickerMsg::ChooseAt(1), &reg, &few, &pins),
+            PickerOutcome::Unavailable { .. }
+        ));
+        assert!(picker.is_open());
     }
 
     #[test]

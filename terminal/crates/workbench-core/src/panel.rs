@@ -86,6 +86,33 @@ pub enum PanelMsg {
     /// A host event for the resource the panel is bound to (or any panel, for
     /// events that name none). Revision and generation stamps have been judged.
     Host(HostMessage),
+    /// Output of the terminal session the panel is bound to, taken from the
+    /// bounded PTY queue: `bytes` start at the absolute `offset` of the binding
+    /// `epoch` (never older than the panel's own). Feed them with
+    /// `Screen::feed_at(offset, &bytes)`. Arrives on a tick or before the next
+    /// terminal event, in the order the host sent.
+    TerminalOutput {
+        epoch: u64,
+        offset: u64,
+        bytes: Vec<u8>,
+    },
+    /// The host repainted the screen: `formatted` replays the visible grid and
+    /// already includes every byte before `offset`. Call
+    /// `Screen::reset_with_formatted(&formatted, offset)`.
+    TerminalReset {
+        epoch: u64,
+        offset: u64,
+        formatted: Vec<u8>,
+    },
+    /// Output was dropped before it reached the pane (the PTY queue was full,
+    /// or one frame was larger than the queue): the screen is no longer
+    /// contiguous with the stream. Never silent: ask the host for a reset, by
+    /// attaching again from the screen's applied offset. `frames` and `bytes`
+    /// count what was lost, across every terminal, because the queue is shared.
+    TerminalResetRequest {
+        frames: u64,
+        bytes: u64,
+    },
     /// A registered action of the panel's kind with intent `Create`, `Start`
     /// or `Destroy`. The panel supplies the effect's payload.
     Action(ActionId),

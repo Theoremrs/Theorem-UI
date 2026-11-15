@@ -13,7 +13,8 @@ use theorem_workbench_core::completion::{Completion, Outcome};
 use theorem_workbench_core::effect::{Effect, EffectBody, EffectKind, TerminalClaim};
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{
-    ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceKind, ResourceRef, Revision,
+    ActionId, Actor, EffectId, Generation, PanelInstanceId, PanelKind, ResourceKind, ResourceRef,
+    Revision,
 };
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
 use theorem_workbench_core::picker::PickerMsg;
@@ -35,6 +36,8 @@ struct Log {
     emits: Vec<Result<EffectId, EmitError>>,
     teardowns: Vec<bool>,
     greedy: bool,
+    /// The binding epoch the next "term" panel is bound at; 0 means none.
+    term_epoch: u64,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -47,16 +50,19 @@ struct TestPanel {
     rev: u64,
     doc: String,
     taps: u64,
+    epoch: u64,
 }
 
 impl TestPanel {
     fn new(kind: &'static str, state: &Value, log: Shared) -> Self {
+        let term_epoch = log.borrow().term_epoch;
         Self {
             kind,
             log,
             rev: state["rev"].as_u64().unwrap_or(5),
             doc: state["doc"].as_str().unwrap_or("a.md").to_owned(),
             taps: state["taps"].as_u64().unwrap_or(0),
+            epoch: state["epoch"].as_u64().unwrap_or(term_epoch),
         }
     }
 
@@ -65,6 +71,10 @@ impl TestPanel {
             "term" => ResourceRef::Terminal {
                 workspace: "w".into(),
                 session: "s1".into(),
+            },
+            "chat" => ResourceRef::Conversation {
+                project: "p".into(),
+                thread: "t1".into(),
             },
             _ => ResourceRef::Document {
                 workspace: "w".into(),
@@ -127,7 +137,7 @@ impl Panel for TestPanel {
         Some(Binding {
             resource: self.resource(),
             revision: Some(Revision::Seq(self.rev)),
-            generation: None,
+            generation: (self.epoch > 0).then_some(Generation(self.epoch)),
         })
     }
 
@@ -210,8 +220,19 @@ fn model(log: &Shared) -> Model {
             ],
         ))
         .unwrap();
+    registry
+        .register(descriptor(
+            "chat",
+            ResourceKind::Conversation,
+            vec![ActionDescriptor::new(
+                "chat.open",
+                "New chat",
+                ActionIntent::Open,
+            )],
+        ))
+        .unwrap();
     let mut factories = PanelFactories::new();
-    for kind in ["note", "term"] {
+    for kind in ["note", "term", "chat"] {
         let log = log.clone();
         factories.register(kind, move |state, _| {
             Box::new(TestPanel::new(kind, state, log.clone()))
@@ -334,6 +355,12 @@ fn picker_messages_produce_zero_effects() {
         ],
         vec![PickerMsg::Open, PickerMsg::Back],
         vec![PickerMsg::Open, PickerMsg::Close],
+        // Pointer selection: hover, click, and out of range.
+        vec![PickerMsg::Open, PickerMsg::Select(2), PickerMsg::Select(99)],
+        vec![PickerMsg::Open, PickerMsg::ChooseAt(0)],
+        vec![PickerMsg::Open, PickerMsg::ChooseAt(5), PickerMsg::Back],
+        vec![PickerMsg::Open, PickerMsg::ChooseAt(99)],
+        vec![PickerMsg::Select(1), PickerMsg::ChooseAt(1)],
         vec![
             PickerMsg::Close,
             PickerMsg::Choose,
@@ -357,6 +384,16 @@ fn picker_messages_produce_zero_effects() {
             send(&mut m, Msg::Picker(PickerMsg::Next));
         }
         let fx = send(&mut m, Msg::Picker(PickerMsg::Choose));
+        assert!(fx.is_empty(), "row {row} returned {fx:?}");
+        assert!(m.in_flight().is_empty());
+    }
+
+    // The same rows chosen by a pointer click.
+    for row in 0..6 {
+        let (mut m, _) = new_model();
+        send(&mut m, Msg::Picker(PickerMsg::Open));
+        send(&mut m, Msg::Picker(PickerMsg::Select(row)));
+        let fx = send(&mut m, Msg::Picker(PickerMsg::ChooseAt(row)));
         assert!(fx.is_empty(), "row {row} returned {fx:?}");
         assert!(m.in_flight().is_empty());
     }
@@ -1068,4 +1105,385 @@ fn a_registered_kind_with_no_constructor_opens_as_the_placeholder() {
     assert!(fx.is_empty());
     let id = kinds(&m, "changes")[0].clone();
     assert!(m.is_unavailable(&id));
+}
+
+// ---- terminal output routing, the PTY queue, resets --------------------
+
+fn term() -> ResourceRef {
+    ResourceRef::Terminal {
+        workspace: "w".into(),
+        session: "s1".into(),
+    }
+}
+
+fn output(session: &str, epoch: u64, offset: u64, bytes: &[u8]) -> Msg {
+    use base64::Engine as _;
+    Msg::Host(HostMessage::TerminalOutput {
+        resource: ResourceRef::Terminal {
+            workspace: "w".into(),
+            session: session.into(),
+        },
+        epoch,
+        offset,
+        data: base64::engine::general_purpose::STANDARD.encode(bytes),
+    })
+}
+
+fn term_msgs(log: &Shared) -> Vec<PanelMsg> {
+    msgs_of(log, "term")
+        .into_iter()
+        .filter(|m| {
+            matches!(
+                m,
+                PanelMsg::TerminalOutput { .. }
+                    | PanelMsg::TerminalReset { .. }
+                    | PanelMsg::TerminalResetRequest { .. }
+                    | PanelMsg::Host(_)
+            )
+        })
+        .collect()
+}
+
+fn term_model(epoch: u64) -> (Model, Shared) {
+    let (mut m, log) = new_model();
+    log.borrow_mut().term_epoch = epoch;
+    action(&mut m, "term.open");
+    (m, log)
+}
+
+#[test]
+fn output_reaches_only_the_pane_bound_to_its_session_and_on_the_next_tick() {
+    let (mut m, log) = term_model(2);
+    action(&mut m, "note.open");
+    send(&mut m, output("s1", 2, 0, b"hi"));
+    assert!(term_msgs(&log).is_empty(), "queued, not yet handed over");
+    send(&mut m, Msg::Tick);
+    assert_eq!(
+        term_msgs(&log),
+        [PanelMsg::TerminalOutput {
+            epoch: 2,
+            offset: 0,
+            bytes: b"hi".to_vec()
+        }]
+    );
+    // The note is bound to a document: it never sees terminal output.
+    assert!(
+        msgs_of(&log, "note")
+            .iter()
+            .all(|m| !matches!(m, PanelMsg::TerminalOutput { .. }))
+    );
+    // Nobody is bound to another session: counted, not delivered.
+    let before = m.counters().dropped;
+    send(&mut m, output("elsewhere", 2, 0, b"x"));
+    send(&mut m, Msg::Tick);
+    assert_eq!(m.counters().dropped, before + 1);
+    assert_eq!(m.counters().last_drop, Some(Stale::NotBound));
+    assert_eq!(term_msgs(&log).len(), 1);
+}
+
+#[test]
+fn a_frame_for_an_older_binding_epoch_is_dropped_and_counted() {
+    let (mut m, log) = term_model(3);
+    send(&mut m, output("s1", 2, 40, b"old"));
+    send(&mut m, Msg::Tick);
+    assert!(term_msgs(&log).is_empty());
+    assert_eq!(m.counters().dropped, 1);
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderEpoch));
+    // The pane's own epoch is delivered, and so is a newer one: the announcement
+    // of the rebind is the pane's to act on.
+    send(&mut m, output("s1", 3, 0, b"now"));
+    send(&mut m, output("s1", 4, 0, b"next"));
+    send(&mut m, Msg::Tick);
+    assert_eq!(term_msgs(&log).len(), 2);
+    assert_eq!(m.counters().dropped, 1);
+}
+
+#[test]
+fn a_frame_that_is_not_base64_is_dropped_and_counted() {
+    let (mut m, log) = term_model(1);
+    send(
+        &mut m,
+        Msg::Host(HostMessage::TerminalOutput {
+            resource: term(),
+            epoch: 1,
+            offset: 0,
+            data: "***".into(),
+        }),
+    );
+    send(&mut m, Msg::Tick);
+    assert!(term_msgs(&log).is_empty());
+    assert_eq!(m.counters().last_drop, Some(Stale::MalformedFrame));
+}
+
+#[test]
+fn output_arrives_before_the_event_that_followed_it() {
+    let (mut m, log) = term_model(1);
+    send(&mut m, output("s1", 1, 0, b"bye"));
+    send(
+        &mut m,
+        Msg::Host(HostMessage::TerminalExited {
+            resource: term(),
+            epoch: 1,
+            exit_code: Some(0),
+            reason: "exited".into(),
+        }),
+    );
+    let seen = term_msgs(&log);
+    assert!(matches!(seen[0], PanelMsg::TerminalOutput { .. }));
+    assert!(matches!(
+        seen[1],
+        PanelMsg::Host(HostMessage::TerminalExited { .. })
+    ));
+}
+
+#[test]
+fn a_busy_stream_is_bounded_and_the_gap_reaches_the_pane_as_a_reset_request() {
+    let (mut m, log) = term_model(1);
+    // The queue holds 4096 frames; 4200 one-byte frames overflow it by 104.
+    for i in 0..4200u64 {
+        send(&mut m, output("s1", 1, i, b"x"));
+    }
+    assert!(
+        term_msgs(&log).is_empty(),
+        "nothing handed over before the tick"
+    );
+    send(&mut m, Msg::Tick);
+    let seen = term_msgs(&log);
+    assert_eq!(
+        seen[0],
+        PanelMsg::TerminalResetRequest {
+            frames: 104,
+            bytes: 104
+        },
+        "the gap comes first, in front of what survived"
+    );
+    // The survivors are the newest, contiguous with each other.
+    assert_eq!(seen.len(), 1 + 4096);
+    assert_eq!(
+        seen[1],
+        PanelMsg::TerminalOutput {
+            epoch: 1,
+            offset: 104,
+            bytes: b"x".to_vec()
+        }
+    );
+}
+
+#[test]
+fn a_frame_larger_than_the_queue_asks_for_a_reset_at_once() {
+    let (mut m, log) = term_model(1);
+    let big = vec![b'z'; 1024 * 1024 + 1];
+    send(&mut m, output("s1", 1, 0, &big));
+    assert_eq!(
+        term_msgs(&log),
+        [PanelMsg::TerminalResetRequest {
+            frames: 1,
+            bytes: 1024 * 1024 + 1
+        }]
+    );
+}
+
+#[test]
+fn a_reset_carries_the_repaint_and_its_offset_and_respects_the_epoch() {
+    use base64::Engine as _;
+    let (mut m, log) = term_model(2);
+    send(&mut m, output("s1", 2, 0, b"before"));
+    let reset = |epoch: u64| {
+        Msg::Host(HostMessage::TerminalReset {
+            resource: term(),
+            epoch,
+            offset: 900,
+            data: base64::engine::general_purpose::STANDARD.encode("\x1b[2Jscreen"),
+        })
+    };
+    send(&mut m, reset(1)); // an older binding: dropped
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderEpoch));
+    send(&mut m, reset(2));
+    assert_eq!(
+        term_msgs(&log),
+        [
+            PanelMsg::TerminalOutput {
+                epoch: 2,
+                offset: 0,
+                bytes: b"before".to_vec()
+            },
+            PanelMsg::TerminalReset {
+                epoch: 2,
+                offset: 900,
+                formatted: b"\x1b[2Jscreen".to_vec()
+            }
+        ],
+        "queued output is handed over before the reset that supersedes it"
+    );
+}
+
+// ---- document and conversation host messages ---------------------------
+
+#[test]
+fn document_acknowledgements_and_resyncs_are_judged_like_any_document_event() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open"); // bound to a.md at revision 5
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DocumentAcknowledged {
+            resource: doc("a.md"),
+            revision: Revision::Seq(4),
+            operation_id: "op".into(),
+        }),
+    );
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderRevision));
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DocumentResync {
+            resource: doc("a.md"),
+            revision: Revision::Seq(6),
+            text: "t".into(),
+        }),
+    );
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DocumentAcknowledged {
+            resource: doc("a.md"),
+            revision: Revision::Seq(6),
+            operation_id: "op".into(),
+        }),
+    );
+    let hosts = msgs_of(&log, "note")
+        .into_iter()
+        .filter(|m| matches!(m, PanelMsg::Host(_)))
+        .count();
+    assert_eq!(hosts, 2);
+}
+
+#[test]
+fn a_stale_or_mismatched_conversation_snapshot_is_dropped() {
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open"); // bound to p/t1 at revision 5
+    let snapshot = |thread: &str, revision: u64, id: &str| {
+        Msg::Host(HostMessage::ConversationSnapshot {
+            resource: ResourceRef::Conversation {
+                project: "p".into(),
+                thread: thread.into(),
+            },
+            revision: Revision::Seq(revision),
+            conversation_id: id.into(),
+            snapshot: "{}".into(),
+        })
+    };
+    send(&mut m, snapshot("t1", 4, "t1")); // older than the pane's
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderRevision));
+    send(&mut m, snapshot("t1", 9, "t2")); // says it is another conversation
+    assert_eq!(m.counters().dropped, 2);
+    send(&mut m, snapshot("t2", 9, "t2")); // another thread: not this pane's
+    send(&mut m, snapshot("t1", 9, "t1"));
+    let seen = msgs_of(&log, "chat")
+        .into_iter()
+        .filter(|m| matches!(m, PanelMsg::Host(_)))
+        .count();
+    assert_eq!(seen, 1);
+}
+
+#[test]
+fn the_conversation_actions_are_start_destroy_or_create_never_focus_or_open() {
+    let reg = builtin::registry();
+    for (id, kind) in [
+        ("theo.send", EffectKind::ConversationSend),
+        ("theo.retry", EffectKind::ConversationRetry),
+        ("theo.edit", EffectKind::ConversationEdit),
+        ("theo.switch", EffectKind::ConversationSwitch),
+        ("theo.new", EffectKind::ConversationCreate),
+        ("theo.stop", EffectKind::ConversationCancel),
+    ] {
+        let (_, action) = reg.action(&ActionId::new(id)).expect(id);
+        assert_eq!(action.emits, Some(kind), "{id}");
+        assert!(
+            !matches!(action.intent, ActionIntent::Focus | ActionIntent::Open),
+            "{id}"
+        );
+        assert!(action.picker.is_none(), "{id} is not a picker row");
+    }
+    let intent = |id: &str| reg.action(&ActionId::new(id)).unwrap().1.intent;
+    assert_eq!(intent("theo.send"), ActionIntent::Start);
+    assert_eq!(intent("theo.stop"), ActionIntent::Destroy);
+}
+
+// ---- one inbound entry --------------------------------------------------
+
+#[test]
+fn dispatch_takes_a_completion_or_a_host_message_by_one_tagged_type() {
+    use theorem_workbench_core::Inbound;
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let fx = m.dispatch(
+        serde_json::from_value(json!({
+            "channel": "host", "type": "themeChanged", "revision": 1, "dark": true
+        }))
+        .unwrap(),
+    );
+    assert!(fx.is_empty());
+    assert!(
+        msgs_of(&log, "note")
+            .iter()
+            .any(|m| matches!(m, PanelMsg::Host(HostMessage::ThemeChanged { .. })))
+    );
+    let before = m.counters().dropped;
+    let inbound: Inbound = serde_json::from_value(json!({
+        "channel": "completion", "effect": 77,
+        "resource": {"type": "none"}, "outcome": {"status": "accepted"}
+    }))
+    .unwrap();
+    m.dispatch(inbound);
+    assert_eq!(m.counters().dropped, before + 1, "an effect nobody sent");
+    assert_eq!(m.counters().last_drop, Some(Stale::UnknownEffect));
+}
+
+// ---- the picker takes the pointer --------------------------------------
+
+fn picker_row_rect(m: &Model, i: usize) -> (u16, u16) {
+    let tree = semantics(m);
+    let rows: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.role == Role::MenuItem)
+        .collect();
+    (rows[i].rect.x, rows[i].rect.y)
+}
+
+#[test]
+fn hovering_a_picker_row_selects_it_and_clicking_chooses_it_with_no_effects() {
+    let (mut m, _) = new_model();
+    action(&mut m, "picker.open");
+    assert_eq!(m.picker().selected(), 0);
+    let (x, y) = picker_row_rect(&m, 3);
+    let fx = send(
+        &mut m,
+        Msg::Pointer(Pointer {
+            kind: PointerKind::Move,
+            x,
+            y,
+            mods: Mods::NONE,
+        }),
+    );
+    assert!(fx.is_empty());
+    assert_eq!(m.picker().selected(), 3);
+    assert!(m.picker().is_open(), "hover chooses nothing");
+
+    // Click Changes (row 0): the picker closes and the tool opens.
+    let (x, y) = picker_row_rect(&m, 0);
+    let fx = click(&mut m, x, y);
+    assert!(fx.is_empty());
+    assert!(!m.picker().is_open());
+    assert_eq!(kinds(&m, "changes").len(), 1);
+    assert!(kinds(&m, "picker").is_empty());
+}
+
+#[test]
+fn a_click_on_the_pickers_filter_line_or_below_its_rows_chooses_nothing() {
+    let (mut m, _) = new_model();
+    action(&mut m, "picker.open");
+    let (x, y) = picker_row_rect(&m, 0);
+    click(&mut m, x, y - 1);
+    assert!(m.picker().is_open());
+    click(&mut m, x, y + 20);
+    assert!(m.picker().is_open());
 }
