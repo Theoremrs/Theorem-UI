@@ -25,7 +25,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
     ActionId, Actor, ArrangementMsg, Button, Capability, Caret, CaretPhase, CaretShape,
-    Composition, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, builtin,
+    Composition, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme,
+    agent::{AgentOutcome, action_msg, agent_outcome, agent_request},
+    builtin,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
@@ -607,6 +609,40 @@ impl Core {
         })
     }
 
+    /// Run an action for an agent run through the same `update` a key uses.
+    /// The answer says the action was dispatched or why it was not; it does
+    /// not say the effects succeeded.
+    fn agent_act(
+        &mut self,
+        action: &str,
+        run_id: &str,
+        panel: Option<&str>,
+    ) -> (AgentOutcome, Vec<Effect>) {
+        match agent_request(action, run_id, panel) {
+            Ok(msg) => self.run_for(msg),
+            Err(refused) => (refused, vec![]),
+        }
+    }
+
+    /// Run an action for the person, as the accessible overlay's buttons do.
+    /// The same path and answer as `agent_act`; the actor is the only difference.
+    fn person_act(&mut self, action: &str, panel: Option<&str>) -> (AgentOutcome, Vec<Effect>) {
+        self.run_for(action_msg(action, Actor::Human, panel))
+    }
+
+    fn run_for(&mut self, msg: Msg) -> (AgentOutcome, Vec<Effect>) {
+        self.model.capture_notices();
+        let effects = self.update(msg);
+        let notices = self.model.take_captured();
+        (agent_outcome(&notices, effects.len()), effects)
+    }
+
+    /// Every action the registry offers, as the agent sees it (JSON).
+    fn agent_catalog(&self) -> String {
+        let catalog = self.model.registry().catalog(self.model.capabilities());
+        serde_json::to_string(&catalog).unwrap_or_else(|_| "[]".to_owned())
+    }
+
     /// Apply a measured grid. Nothing happens when it is the grid already held.
     fn resize(&mut self, area: Rect, metrics: CellMetrics) -> Vec<Effect> {
         self.cell = Some(metrics);
@@ -739,6 +775,12 @@ impl Core {
 
 /// Hands effects and the semantic update to the page. Called with no borrow of
 /// the core held.
+/// An effect as the host callback receives it: the envelope names who it is
+/// for, an agent run or (left out) the person.
+fn effect_json(effect: &Effect) -> serde_json::Result<String> {
+    serde_json::to_string(effect)
+}
+
 fn deliver(
     on_effect: &js_sys::Function,
     on_semantics: &js_sys::Function,
@@ -746,7 +788,7 @@ fn deliver(
     semantics: Option<&str>,
 ) {
     for effect in effects {
-        match serde_json::to_string(effect) {
+        match effect_json(effect) {
             Ok(json) => {
                 let _ = on_effect.call1(&JsValue::NULL, &JsValue::from_str(&json));
             }
@@ -1055,6 +1097,43 @@ impl WorkbenchHandle {
             .conversations
             .face()
             .geometry_json(since as u64)
+    }
+
+    /// The registry's actions as the agent sees them (JSON array of
+    /// `CatalogEntry`): availability and reasons as they stand now. Human-only
+    /// actions are listed with `humanOnly: true`; they are not the agent's to run.
+    pub fn agent_catalog(&self) -> String {
+        self.core.borrow().agent_catalog()
+    }
+
+    /// Run `action` for the agent run `run_id` through the same `update` a key
+    /// uses, aimed at the panel instance `panel` (an id from the semantic tree)
+    /// when given. Effects go out through the effect callback.
+    ///
+    /// Returns JSON, exactly one of
+    /// `{"outcome":"accepted","effects":n,"notices":[...]}` or
+    /// `{"outcome":"refused","code":"unknown_action"|"human_only"|"unavailable"|"unknown_panel"|"empty_run","reason":"..."}`.
+    /// "accepted" means the action was dispatched, not that its effects
+    /// succeeded: those are answered later as completions. A refusal emits
+    /// nothing and changes nothing except the notice the person sees.
+    pub fn agent_act(&self, action: &str, run_id: &str, panel: Option<String>) -> String {
+        let (outcome, effects) = self
+            .core
+            .borrow_mut()
+            .agent_act(action, run_id, panel.as_deref());
+        deliver(&self.on_effect, &self.on_semantics, &effects, None);
+        serde_json::to_string(&outcome).unwrap_or_default()
+    }
+
+    /// Run `action` for the person, aimed at `panel` when given: what a button
+    /// of the accessible overlay does. Same path and same JSON as `agent_act`
+    /// (`refused` codes: `unknown_action`, `unavailable`, `unknown_panel`), but
+    /// the actor is the person, so human-only actions are allowed here and only
+    /// here.
+    pub fn act(&self, action: &str, panel: Option<String>) -> String {
+        let (outcome, effects) = self.core.borrow_mut().person_act(action, panel.as_deref());
+        deliver(&self.on_effect, &self.on_semantics, &effects, None);
+        serde_json::to_string(&outcome).unwrap_or_default()
     }
 
     /// The semantic tree as it is now (JSON), the same one `on_semantics`
@@ -2187,5 +2266,328 @@ mod tests {
         let doc = core.model.document();
         core.model.restore(doc.clone()).unwrap();
         assert_eq!(core.model.document(), doc);
+    }
+
+    // ---- the agent's entry ----
+
+    fn agent_json(
+        core: &mut Core,
+        action: &str,
+        run: &str,
+        panel: Option<&str>,
+    ) -> (Value, Vec<Effect>) {
+        let (outcome, effects) = core.agent_act(action, run, panel);
+        (serde_json::to_value(&outcome).unwrap(), effects)
+    }
+
+    fn chord_of(core: &Core, action: &str) -> KeyInput {
+        let shortcut = core
+            .model
+            .registry()
+            .default_shortcuts()
+            .into_iter()
+            .find(|s| s.action.as_str() == action)
+            .expect("the action has a default chord");
+        press(&shortcut.chord)
+    }
+
+    fn state(core: &Core) -> (Value, Value) {
+        (
+            core.model.document(),
+            serde_json::to_value(semantics(&core.model)).unwrap(),
+        )
+    }
+
+    #[test]
+    fn an_accepted_agent_action_changes_the_model_as_the_key_does() {
+        let (mut by_key, mut by_agent) = (core(), core());
+        let chord = chord_of(&by_key, "picker.open");
+        by_key.key(chord);
+        let (said, effects) = agent_json(&mut by_agent, "picker.open", "run-1", None);
+        assert_eq!(
+            said,
+            json!({"outcome": "accepted", "effects": 0, "notices": []})
+        );
+        assert!(effects.is_empty());
+        assert_eq!(state(&by_agent), state(&by_key));
+        assert!(by_agent.model.focus().modal, "the picker is open");
+    }
+
+    #[test]
+    fn each_refusal_has_its_code_emits_nothing_and_changes_nothing_but_the_notice() {
+        let cases = [
+            ("no.such.action", "run-1", None, "unknown_action"),
+            ("approval.allow", "run-1", None, "human_only"),
+            ("files.focus", "run-1", None, "unavailable"),
+            ("theo.focus", "run-1", Some("p-none"), "unknown_panel"),
+            ("theo.focus", "   ", None, "empty_run"),
+            ("theo.focus", "", None, "empty_run"),
+        ];
+        for (action, run, panel, code) in cases {
+            let mut core = core();
+            let before = state(&core);
+            let in_flight = core.model.in_flight().len();
+            let (said, effects) = agent_json(&mut core, action, run, panel);
+            assert_eq!(said["outcome"], "refused", "{action}: {said}");
+            assert_eq!(said["code"], code, "{action}: {said}");
+            assert!(
+                said["reason"].as_str().is_some_and(|r| !r.is_empty()),
+                "{action}: a readable reason"
+            );
+            assert!(effects.is_empty(), "{action}");
+            assert_eq!(core.model.in_flight().len(), in_flight, "{action}");
+            assert_eq!(
+                state(&core).0,
+                before.0,
+                "{action}: the layout is untouched"
+            );
+        }
+        // The human-only refusal names the run.
+        let mut core = core();
+        let (said, _) = agent_json(&mut core, "approval.allow", "run-9", None);
+        assert!(said["reason"].as_str().unwrap().contains("run-9"), "{said}");
+    }
+
+    #[test]
+    fn an_agents_effect_carries_its_run_to_the_host_callback_and_a_keys_does_not() {
+        let mut core = ide_core();
+        agent_json(&mut core, "changes.open", "run-1", None);
+        core.step(AREA, CELL, Theme::plain());
+        let (said, effects) = agent_json(&mut core, "changes.refresh", "run-7", None);
+        assert_eq!(said["outcome"], "accepted", "{said}");
+        assert!(!effects.is_empty(), "refresh asks the host for something");
+        assert_eq!(said["effects"], effects.len());
+        for effect in &effects {
+            let wire: Value = serde_json::from_str(&effect_json(effect).unwrap()).unwrap();
+            assert_eq!(
+                wire["actor"],
+                json!({"type": "agent", "runId": "run-7"}),
+                "{wire}"
+            );
+        }
+        // What the page's own ticks and keys emit is the person's: no actor.
+        let mut ticked = core.step(AREA, CELL, Theme::plain()).effects;
+        ticked.extend(core.update(Msg::Tick));
+        for effect in &ticked {
+            let wire: Value = serde_json::from_str(&effect_json(effect).unwrap()).unwrap();
+            assert!(wire.get("actor").is_none(), "{wire}");
+        }
+    }
+
+    #[test]
+    fn a_panel_instance_id_from_the_tree_is_the_handle_an_agent_aims_with() {
+        let mut core = ide_core();
+        agent_json(&mut core, "changes.open", "r", None);
+        agent_json(&mut core, "diagnostics.open", "r", None);
+        core.step(AREA, CELL, Theme::plain());
+        let tree = semantics(&core.model);
+        let tab_of = |kind: &str| {
+            core.model
+                .panel_ids()
+                .find(|(_, k)| k.as_str() == kind)
+                .map(|(id, _)| id.as_str().to_owned())
+                .unwrap()
+        };
+        let (changes, diag) = (tab_of("changes"), tab_of("diagnostics"));
+        assert!(
+            tree.nodes
+                .iter()
+                .any(|n| n.id.as_str() == format!("tab:{changes}"))
+        );
+        // A Local action aimed at a panel of another kind is refused, at the right one it runs.
+        let (said, _) = agent_json(&mut core, "changes.cursorDown", "r", Some(&diag));
+        assert_eq!(said["code"], "unavailable", "{said}");
+        let (said, _) = agent_json(&mut core, "changes.cursorDown", "r", Some(&changes));
+        assert_eq!(said["outcome"], "accepted", "{said}");
+    }
+
+    #[test]
+    fn the_nodes_actions_run_for_an_agent_as_a_click_would() {
+        // A tab's own actions: focus then close.
+        let mut by_click = ide_core();
+        let mut by_agent = ide_core();
+        for core in [&mut by_click, &mut by_agent] {
+            agent_json(core, "changes.open", "r", None);
+            agent_json(core, "diagnostics.open", "r", None);
+            core.step(AREA, CELL, Theme::plain());
+        }
+        let diag = by_agent
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "diagnostics")
+            .map(|(id, _)| id.clone())
+            .unwrap();
+        by_click.update(Msg::Dock(theorem_workbench_core::DockMsg::FocusPanel(
+            diag.clone(),
+        )));
+        let (said, _) = agent_json(
+            &mut by_agent,
+            &format!("tab.focus.{}", diag.as_str()),
+            "r",
+            None,
+        );
+        assert_eq!(said["outcome"], "accepted", "{said}");
+        assert_eq!(state(&by_agent).0, state(&by_click).0);
+
+        by_click.update(Msg::Dock(theorem_workbench_core::DockMsg::ClosePanel(
+            diag.clone(),
+        )));
+        let (said, effects) = agent_json(
+            &mut by_agent,
+            &format!("tab.close.{}", diag.as_str()),
+            "r",
+            None,
+        );
+        assert_eq!(said["outcome"], "accepted", "{said}");
+        assert!(
+            effects
+                .iter()
+                .all(|e| e.actor == Actor::Agent { run_id: "r".into() })
+        );
+        assert_eq!(state(&by_agent).0, state(&by_click).0);
+
+        // The picker's own actions: an agent opens it, pins a tool and steps back.
+        let mut core = ide_core();
+        agent_json(&mut core, "picker.open", "r", None);
+        core.step(AREA, CELL, Theme::plain());
+        // A row's own action, as the tree names it, runs the tool the row stands for.
+        let row = semantics(&core.model)
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str().ends_with("/row-0"))
+            .and_then(|n| n.actions.first().map(|a| a.id.as_str().to_owned()))
+            .expect("the first row offers its action");
+        assert!(core.model.focus().modal);
+        let (said, _) = agent_json(&mut core, &row, "r", None);
+        assert_eq!(said["outcome"], "accepted", "{said}");
+        assert!(
+            !core.model.focus().modal,
+            "choosing the row closes the picker as a click does"
+        );
+        agent_json(&mut core, "picker.open", "r", None);
+        core.step(AREA, CELL, Theme::plain());
+        let (said, _) = agent_json(&mut core, "picker.toggle-pin", "r", None);
+        assert_eq!(said["outcome"], "accepted", "{said}");
+        let (said, _) = agent_json(&mut core, "picker.back", "r", None);
+        assert_eq!(said["outcome"], "accepted", "{said}");
+
+        // A panel node's action: every action a node of the tree names that the
+        // agent catalogue lists resolves for it the same way, so none is refused as unknown.
+        let tree = semantics(&core.model);
+        let catalog = core.model.registry().catalog(core.model.capabilities());
+        for node in &tree.nodes {
+            for offered in &node.actions {
+                let id = offered.id.as_str();
+                let known = catalog.iter().any(|e| e.action.as_str() == id)
+                    || id.starts_with("tab.")
+                    || id.starts_with("picker.");
+                assert!(
+                    known,
+                    "{id} on node {} is not runnable by an agent",
+                    node.id.as_str()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_node_action_cannot_carry_an_agent_to_a_human_only_operation() {
+        let mut core = ide_core();
+        for human_only in [
+            "approval.allow",
+            "approval.deny",
+            "changes.confirm",
+            "shell.end.confirm",
+            "run.stop-confirm",
+        ] {
+            let mut c = ide_core();
+            let before = state(&c).0;
+            let (said, effects) = agent_json(&mut c, human_only, "run-3", None);
+            assert_eq!(said["code"], "human_only", "{human_only}: {said}");
+            assert!(effects.is_empty());
+            assert_eq!(state(&c).0, before);
+        }
+        // Dressing it up as a node action: an unknown tab or picker id is
+        // refused rather than guessed, and naming the panel changes nothing.
+        let (said, _) = agent_json(&mut core, "tab.close.nope", "run-3", None);
+        assert_eq!(said["code"], "unknown_panel", "{said}");
+        let (said, _) = agent_json(&mut core, "picker.pin.not-a-kind", "run-3", None);
+        assert_eq!(said["code"], "unknown_action", "{said}");
+        let theo = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "theo")
+            .map(|(id, _)| id.as_str().to_owned())
+            .unwrap();
+        let (said, _) = agent_json(&mut core, "approval.allow", "run-3", Some(&theo));
+        assert_eq!(said["code"], "human_only", "{said}");
+    }
+
+    #[test]
+    fn the_catalog_lists_every_action_marks_the_human_only_ones_and_keeps_availability() {
+        let core = core();
+        let catalog: Vec<Value> = serde_json::from_str(&core.agent_catalog()).unwrap();
+        let find = |id: &str| {
+            catalog
+                .iter()
+                .find(|e| e["action"] == id)
+                .unwrap_or_else(|| panic!("{id}"))
+        };
+        assert_eq!(find("approval.allow")["humanOnly"], true);
+        assert_eq!(find("picker.open")["humanOnly"], false);
+        assert_eq!(
+            find("picker.open")["availability"],
+            json!({"type": "available"})
+        );
+        let files = find("files.focus");
+        assert_eq!(files["availability"]["type"], "unavailable");
+        assert!(
+            files["availability"]["reason"]
+                .as_str()
+                .is_some_and(|r| !r.is_empty())
+        );
+        // The same registrations the picker resolves.
+        let registry = core.model.registry().catalog(core.model.capabilities());
+        assert_eq!(catalog.len(), registry.len());
+    }
+
+    #[test]
+    fn a_human_only_action_is_accepted_for_the_person_and_refused_for_an_agent() {
+        let mut core = core();
+        let (said, _) = core.person_act("approval.allow", None);
+        assert_eq!(
+            serde_json::to_value(&said).unwrap()["outcome"],
+            "accepted",
+            "{said:?}"
+        );
+        let (said, effects) = agent_json(&mut core, "approval.allow", "run-1", None);
+        assert_eq!(said["code"], "human_only", "{said}");
+        assert!(effects.is_empty());
+        // The overlay's refusals use the same codes.
+        for (action, panel, code) in [
+            ("no.such.action", None, "unknown_action"),
+            ("files.focus", None, "unavailable"),
+            ("theo.focus", Some("p-none"), "unknown_panel"),
+        ] {
+            let (said, effects) = core.person_act(action, panel);
+            let said = serde_json::to_value(&said).unwrap();
+            assert_eq!(said["code"], code, "{action}: {said}");
+            assert!(effects.is_empty());
+        }
+    }
+
+    #[test]
+    fn the_persons_effect_reaches_the_host_callback_without_an_actor() {
+        let mut core = ide_core();
+        core.person_act("changes.open", None);
+        core.step(AREA, CELL, Theme::plain());
+        let (said, effects) = core.person_act("changes.refresh", None);
+        assert_eq!(serde_json::to_value(&said).unwrap()["outcome"], "accepted");
+        assert!(!effects.is_empty());
+        for effect in &effects {
+            assert_eq!(effect.actor, Actor::Human);
+            let wire: Value = serde_json::from_str(&effect_json(effect).unwrap()).unwrap();
+            assert!(wire.get("actor").is_none(), "{wire}");
+        }
     }
 }

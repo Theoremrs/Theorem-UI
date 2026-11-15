@@ -9,7 +9,7 @@ use crate::results::Range;
 
 /// A workspace file location a turn carries. The TypeScript owner maps it to
 /// the SDK's `TheoremContextReference {location, excerpt?, label?}`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SourceReference {

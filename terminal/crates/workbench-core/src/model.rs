@@ -293,6 +293,8 @@ pub struct Model {
     /// Reduced motion as the host last said, and what each panel was last told.
     pub(crate) reduced_motion: bool,
     pub(crate) motion_told: BTreeMap<PanelInstanceId, bool>,
+    /// The open-documents list each repository panel was last given.
+    pub(crate) documents_told: BTreeMap<PanelInstanceId, Vec<crate::panel::OpenDocumentState>>,
     /// The panels that have been handed the retained diagnostics.
     pub(crate) diagnostics_told: std::collections::BTreeSet<PanelInstanceId>,
     pub(crate) announced_focus: Option<PanelInstanceId>,
@@ -321,6 +323,8 @@ pub struct Model {
     pub(crate) transient: Option<crate::notice::NoticeLine>,
     /// Queue notices for `take_notice` (the default).
     pub(crate) queue_notices: bool,
+    /// Every notice raised while an agent entry runs, for its answer.
+    pub(crate) captured: Option<Vec<Notice>>,
     pub(crate) dirty: bool,
 }
 
@@ -366,6 +370,7 @@ impl Model {
             window_focused: true,
             reduced_motion: false,
             motion_told: BTreeMap::new(),
+            documents_told: BTreeMap::new(),
             diagnostics_told: std::collections::BTreeSet::new(),
             announced_focus: None,
             before_picker: None,
@@ -380,6 +385,7 @@ impl Model {
             notices_overflowed: 0,
             transient: None,
             queue_notices: true,
+            captured: None,
             dirty: true,
         };
         model.sync_shortcuts();
@@ -571,10 +577,23 @@ impl Model {
         self.notices.pop_front()
     }
 
+    /// Start keeping a copy of every notice raised, until `take_captured`.
+    pub fn capture_notices(&mut self) {
+        self.captured = Some(vec![]);
+    }
+
+    /// The notices kept since `capture_notices`, ending the capture.
+    pub fn take_captured(&mut self) -> Vec<Notice> {
+        self.captured.take().unwrap_or_default()
+    }
+
     /// Queue a notice. A full queue pushes its oldest out and counts it, so
     /// the loss is told and never silent.
     pub(crate) fn notify(&mut self, notice: Notice) {
         self.show_notice(&notice);
+        if let Some(captured) = &mut self.captured {
+            captured.push(notice.clone());
+        }
         if !self.queue_notices {
             self.dirty = true;
             return;

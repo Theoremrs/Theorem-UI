@@ -75,6 +75,10 @@ pub(crate) fn describe(notice: &Notice) -> Option<(String, NoticeSeverity)> {
     use NoticeSeverity::{Error, Info, Warning};
     Some(match notice {
         Notice::Refused(Refusal::Unavailable { reason }) => (reason.clone(), Warning),
+        Notice::Refused(Refusal::UnknownPanel(panel)) => (
+            format!("There is no open panel \"{}\".", panel.as_str()),
+            Error,
+        ),
         Notice::Refused(Refusal::UnknownAction(id)) => {
             (format!("There is no action \"{}\".", id.as_str()), Error)
         }

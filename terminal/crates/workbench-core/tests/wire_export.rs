@@ -7,6 +7,7 @@
 
 use std::path::PathBuf;
 use theorem_workbench_core::{
+    agent::{AgentOutcome, RefusalCode},
     arrangement::ArrangementMsg,
     completion::Completion,
     effect::Effect,
@@ -57,6 +58,8 @@ fn export_wire_types() {
     SemanticTree::export_all(&cfg).unwrap();
     SemanticDiff::export_all(&cfg).unwrap();
     Actor::export_all(&cfg).unwrap();
+    AgentOutcome::export_all(&cfg).unwrap();
+    RefusalCode::export_all(&cfg).unwrap();
     Stale::export_all(&cfg).unwrap();
     Caret::export_all(&cfg).unwrap();
     ArrangementMsg::export_all(&cfg).unwrap();

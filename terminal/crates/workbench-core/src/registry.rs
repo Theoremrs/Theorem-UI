@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::effect::EffectKind;
-use crate::ids::{ActionId, Actor, Capability, PanelKind, ResourceKind};
+use crate::ids::{ActionId, Actor, Capability, PanelInstanceId, PanelKind, ResourceKind};
 use crate::keys::{KeyContext, Shortcut};
 use crate::semantics::Role;
 
@@ -376,6 +376,8 @@ pub enum Refusal {
         action: ActionId,
         actor: Actor,
     },
+    /// An action was aimed at a panel that is not open.
+    UnknownPanel(PanelInstanceId),
 }
 
 /// An action resolved against the registry and the host's capabilities.
@@ -429,6 +431,10 @@ pub struct CatalogEntry {
     pub title: String,
     pub intent: ActionIntent,
     pub availability: Availability,
+    /// A person's to do. Listed so the agent can see the action exists; the
+    /// model refuses it when asked for an agent.
+    #[serde(default)]
+    pub human_only: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -624,14 +630,23 @@ impl Registry {
     /// What the agent may ask for: every action it is allowed to invoke, with
     /// its availability. Human-only actions are not listed.
     pub fn agent_catalog(&self, caps: &Capabilities) -> Vec<CatalogEntry> {
+        let mut all = self.catalog(caps);
+        all.retain(|entry| !entry.human_only);
+        all
+    }
+
+    /// Every action as the agent sees it, availability and reasons included.
+    /// Human-only actions are listed and marked, so the agent knows they exist
+    /// and that they are not its to run.
+    pub fn catalog(&self, caps: &Capabilities) -> Vec<CatalogEntry> {
         self.actions()
-            .filter(|(_, a)| !a.human_only)
             .map(|(p, a)| CatalogEntry {
                 action: a.id.clone(),
                 panel: p.kind.clone(),
                 title: a.title.clone(),
                 intent: a.intent,
                 availability: self.action_availability(p, a, caps),
+                human_only: a.human_only,
             })
             .collect()
     }

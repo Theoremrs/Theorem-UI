@@ -60,6 +60,11 @@ struct Log {
     hosts: Vec<HostMessage>,
     /// How many times a probe was drawn.
     views: u64,
+    /// Every open-documents list a probe was told, with the panel told.
+    documents: Vec<(
+        PanelInstanceId,
+        Vec<theorem_workbench_core::OpenDocumentState>,
+    )>,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -73,6 +78,10 @@ struct Probe {
     resource: ResourceRef,
     generation: Option<u64>,
     shown: Option<EffectId>,
+    /// The tab says modified (a document probe).
+    modified: bool,
+    /// The revision the owner accepted for the probe's document.
+    revision: Option<u64>,
 }
 
 fn default_resource(kind: &str) -> ResourceRef {
@@ -113,6 +122,16 @@ impl Panel for Probe {
                     }
                 });
             }
+            PanelMsg::Key(k) if k.key() == Key::Char('M') => self.modified = !self.modified,
+            PanelMsg::Key(k) if k.key() == Key::Char('R') => {
+                self.revision = Some(self.revision.map_or(1, |r| r + 1));
+            }
+            PanelMsg::Documents(list) => {
+                self.log
+                    .borrow_mut()
+                    .documents
+                    .push((cx.panel().clone(), list));
+            }
             PanelMsg::Key(k) if k.key() == Key::Char('b') => {
                 if let Some((resource, generation)) = self.log.borrow_mut().rebind.pop_front() {
                     self.resource = resource;
@@ -131,6 +150,10 @@ impl Panel for Probe {
                     .borrow_mut()
                     .actions
                     .push((id.as_str().to_owned(), cx.actor().clone()));
+                if id.as_str() == "doc.act" {
+                    let resource = self.resource.clone();
+                    let _ = cx.emit(|eid| Effect::new(eid, resource, EffectBody::DocumentSave));
+                }
                 if id.as_str().starts_with("approval.") {
                     let decision = if id.as_str() == "approval.allow" {
                         ApprovalDecision::Allow
@@ -177,10 +200,17 @@ impl Panel for Probe {
         json!({"shown": self.shown.map(|e| e.0)})
     }
 
+    fn tab_label(&self) -> Option<theorem_workbench_core::TabLabel> {
+        (self.kind == "doc").then(|| theorem_workbench_core::TabLabel {
+            title: "doc".to_owned(),
+            modified: self.modified,
+        })
+    }
+
     fn binding(&self) -> Option<Binding> {
         Some(Binding {
             resource: self.resource.clone(),
-            revision: None,
+            revision: self.revision.map(Revision::Seq),
             generation: self.generation.map(Generation),
         })
     }
@@ -283,6 +313,8 @@ fn model_with(log: &Shared) -> Model {
                 resource: default_resource(kind),
                 generation: None,
                 shown,
+                modified: false,
+                revision: None,
             })
         });
     }
@@ -1385,7 +1417,7 @@ fn closing_a_view_by_its_tab_action_is_the_dock_close_and_emits_no_destroy() {
     assert!(fx.is_empty());
     assert!(matches!(
         m.take_notice(),
-        Some(Notice::Refused(Refusal::UnknownAction(_)))
+        Some(Notice::Refused(Refusal::UnknownPanel(_)))
     ));
     assert_eq!(m.document(), before);
 }
@@ -1695,4 +1727,282 @@ fn a_run_report_with_nothing_in_it_stays_empty_on_the_wire() {
         json!({"handle": "h", "state": "unknown"}),
         "nothing was filled in on the way through"
     );
+}
+
+// ---- who an effect is for (R34, R42) ----------------------------------------
+
+fn agent(run: &str) -> Actor {
+    Actor::Agent {
+        run_id: run.to_owned(),
+    }
+}
+
+fn act_as(m: &mut Model, id: &str, who: Actor) -> Vec<Effect> {
+    update(
+        m,
+        Msg::Action {
+            id: ActionId::new(id),
+            actor: who,
+        },
+    )
+}
+
+#[test]
+fn an_effect_says_who_it_is_for_the_person_or_the_agent_run_that_asked() {
+    let (mut m, _) = new_model();
+    action(&mut m, "doc.open");
+    action(&mut m, "theo.focus");
+
+    let fx = act_as(&mut m, "doc.act", agent("r1"));
+    assert_eq!(fx.len(), 1);
+    assert_eq!(fx[0].kind(), EffectKind::DocumentSave);
+    assert_eq!(fx[0].actor, agent("r1"));
+
+    let doc_panel = panels_of(&m, "doc").remove(0);
+    let fx = update(
+        &mut m,
+        Msg::ActionOn {
+            id: ActionId::new("doc.act"),
+            actor: agent("r2"),
+            panel: doc_panel,
+        },
+    );
+    assert_eq!(fx[0].actor, agent("r2"), "a targeted action is stamped too");
+
+    // The person's chord for the same action, and the person's approval.
+    let fx = key(&mut m, Key::Char('u'), Mods::CTRL | Mods::ALT);
+    assert_eq!(fx.len(), 1);
+    assert_eq!(fx[0].actor, Actor::Human);
+    let fx = action(&mut m, "approval.allow");
+    assert_eq!(fx[0].actor, Actor::Human);
+
+    // On the wire: the person is left out, an agent run is named, and a
+    // payload that never had the field reads as the person.
+    let human = serde_json::to_value(&fx[0]).unwrap();
+    assert!(human.get("actor").is_none(), "{human}");
+    let agent_fx = act_as(&mut m, "doc.act", agent("r1"));
+    let wire = serde_json::to_value(&agent_fx[0]).unwrap();
+    assert_eq!(wire["actor"], json!({"type": "agent", "runId": "r1"}));
+    let back: Effect = serde_json::from_value(wire).unwrap();
+    assert_eq!(back, agent_fx[0]);
+    let old: Effect = serde_json::from_value(human).unwrap();
+    assert_eq!(old.actor, Actor::Human);
+}
+
+#[test]
+fn a_key_after_an_agents_action_is_stamped_for_the_person() {
+    let (mut m, log) = new_model();
+    action(&mut m, "doc.open");
+    act_as(&mut m, "doc.act", agent("r1"));
+    log.borrow_mut().fire.push_back(EffectBody::ClipboardRead);
+    let fx = key(&mut m, Key::Char('f'), Mods::NONE);
+    assert_eq!(fx[0].actor, Actor::Human);
+}
+
+#[test]
+fn an_agents_human_only_request_emits_nothing_and_the_actor_is_restored_after_every_refusal() {
+    let (mut m, log) = new_model();
+    action(&mut m, "doc.open");
+    action(&mut m, "theo.focus");
+
+    let asks = [
+        Msg::Action {
+            id: ActionId::new("approval.allow"),
+            actor: agent("r1"),
+        },
+        Msg::Action {
+            id: ActionId::new("no.such.action"),
+            actor: agent("r1"),
+        },
+        Msg::ActionOn {
+            id: ActionId::new("doc.act"),
+            actor: agent("r1"),
+            panel: PanelInstanceId::new("no-such-panel"),
+        },
+        Msg::Action {
+            id: ActionId::new(format!("{ACTION_TAB_CLOSE}no-such-panel")),
+            actor: agent("r1"),
+        },
+    ];
+    for ask in asks {
+        let before = (m.document(), m.in_flight().len());
+        let fx = update(&mut m, ask.clone());
+        assert!(fx.is_empty(), "{ask:?}");
+        assert_eq!((m.document(), m.in_flight().len()), before, "{ask:?}");
+        // The next thing the person does is the person's, every time.
+        log.borrow_mut().fire.push_back(EffectBody::ClipboardRead);
+        action(&mut m, "doc.focus");
+        let fx = key(&mut m, Key::Char('f'), Mods::NONE);
+        assert_eq!(fx.len(), 1, "{ask:?}");
+        assert_eq!(fx[0].actor, Actor::Human, "{ask:?}");
+    }
+
+    // After an agent action that worked, the same.
+    act_as(&mut m, "doc.act", agent("r1"));
+    log.borrow_mut().fire.push_back(EffectBody::ClipboardRead);
+    let fx = key(&mut m, Key::Char('f'), Mods::NONE);
+    assert_eq!(fx[0].actor, Actor::Human);
+}
+
+// ---- which open documents hold a draft, told to repository panels ----------
+
+use theorem_workbench_core::OpenDocumentState;
+
+fn told_to_repos(log: &Shared) -> Vec<Vec<OpenDocumentState>> {
+    log.borrow()
+        .documents
+        .iter()
+        .map(|(_, l)| l.clone())
+        .collect()
+}
+
+fn entry(path: &str, saved: Option<u64>, unsaved: bool) -> OpenDocumentState {
+    OpenDocumentState {
+        path: path.to_owned(),
+        saved_revision: saved,
+        unsaved,
+    }
+}
+
+fn focus_panel(m: &mut Model, id: &PanelInstanceId) {
+    update(
+        m,
+        Msg::Action {
+            id: ActionId::new(format!("{ACTION_TAB_FOCUS}{}", id.as_str())),
+            actor: Actor::Human,
+        },
+    );
+}
+
+#[test]
+fn a_repository_panel_is_told_the_open_documents_on_each_change_and_only_then() {
+    let (mut m, log) = new_model();
+    action(&mut m, "repo.open");
+    assert!(
+        told_to_repos(&log).is_empty(),
+        "nothing open, nothing to say"
+    );
+
+    action(&mut m, "doc.open");
+    let doc_panel = panels_of(&m, "doc").remove(0);
+    assert_eq!(told_to_repos(&log), vec![vec![entry("a.md", None, false)]]);
+
+    // Quiet frames, ticks, draws and unrelated keys tell nothing.
+    for _ in 0..5 {
+        update(&mut m, Msg::Tick);
+        drawn(&m);
+        semantics(&m);
+    }
+    assert_eq!(told_to_repos(&log).len(), 1);
+
+    // An edit that first makes the document modified.
+    focus_panel(&mut m, &doc_panel);
+    ch(&mut m, 'M');
+    assert_eq!(told_to_repos(&log).len(), 2);
+    assert_eq!(told_to_repos(&log)[1], vec![entry("a.md", None, true)]);
+    // A second edit that changes nothing in the list.
+    ch(&mut m, 'x');
+    assert_eq!(told_to_repos(&log).len(), 2);
+
+    // A save answer: the owner accepted revision 1 and the draft is gone.
+    ch(&mut m, 'R');
+    ch(&mut m, 'M');
+    let told = told_to_repos(&log);
+    assert_eq!(told.last().unwrap(), &vec![entry("a.md", Some(1), false)]);
+    assert_eq!(told.len(), 4, "one message per change: {told:?}");
+
+    // The view moves to another path.
+    log.borrow_mut().rebind.push_back((doc("b.md"), None));
+    ch(&mut m, 'b');
+    assert_eq!(
+        told_to_repos(&log).last().unwrap(),
+        &vec![entry("b.md", Some(1), false)]
+    );
+
+    // It closes.
+    let before = told_to_repos(&log).len();
+    update(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new(format!("{ACTION_TAB_CLOSE}{}", doc_panel.as_str())),
+            actor: Actor::Human,
+        },
+    );
+    let told = told_to_repos(&log);
+    assert_eq!(told.len(), before + 1);
+    assert!(told.last().unwrap().is_empty());
+}
+
+#[test]
+fn a_repository_panel_opened_after_the_documents_is_told_at_once() {
+    let (mut m, log) = new_model();
+    action(&mut m, "doc.open");
+    let doc_panel = panels_of(&m, "doc").remove(0);
+    focus_panel(&mut m, &doc_panel);
+    ch(&mut m, 'M');
+    assert!(told_to_repos(&log).is_empty());
+    action(&mut m, "repo.open");
+    assert_eq!(told_to_repos(&log), vec![vec![entry("a.md", None, true)]]);
+}
+
+#[test]
+fn the_list_is_scoped_to_the_repository_panels_workspace() {
+    let (mut m, log) = new_model();
+    action(&mut m, "repo.open");
+    action(&mut m, "doc.open");
+    let elsewhere = ResourceRef::Document {
+        workspace: "other".into(),
+        resource_id: "z.md".into(),
+    };
+    log.borrow_mut().rebind.push_back((elsewhere, None));
+    ch(&mut m, 'b');
+    // The only document is in another workspace: this repository hears it is gone.
+    assert!(told_to_repos(&log).last().unwrap().is_empty());
+    action(&mut m, "doc.open");
+    assert_eq!(
+        told_to_repos(&log).last().unwrap(),
+        &vec![entry("a.md", None, false)],
+        "z.md of the other workspace is not in the list"
+    );
+}
+
+#[test]
+fn two_editors_on_one_path_make_one_entry_that_agrees_with_both() {
+    let (mut m, log) = new_model();
+    action(&mut m, "repo.open");
+    action(&mut m, "doc.open");
+    ch(&mut m, 'M');
+    ch(&mut m, 'R');
+    ch(&mut m, 'R');
+    action(&mut m, "doc.open");
+    ch(&mut m, 'R');
+    ch(&mut m, 'R');
+    ch(&mut m, 'R');
+    let told = told_to_repos(&log);
+    assert_eq!(
+        told.last().unwrap(),
+        &vec![entry("a.md", Some(3), true)],
+        "unsaved if either is, the newest accepted revision"
+    );
+    for list in &told {
+        assert!(list.len() <= 1, "one entry per path: {list:?}");
+    }
+}
+
+#[test]
+fn a_workspace_or_account_switch_that_changes_nothing_in_the_list_tells_nothing() {
+    let (mut m, log) = new_model();
+    action(&mut m, "repo.open");
+    action(&mut m, "doc.open");
+    ch(&mut m, 'M');
+    let before = told_to_repos(&log).len();
+    update(
+        &mut m,
+        Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: Some("e".into()),
+        }),
+    );
+    update(&mut m, Msg::Tick);
+    assert_eq!(told_to_repos(&log).len(), before, "same list, no message");
 }

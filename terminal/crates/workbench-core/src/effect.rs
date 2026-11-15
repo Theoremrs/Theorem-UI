@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
 use crate::draft::SourceReference;
-use crate::ids::{EffectId, Generation, ResourceRef, Revision};
+use crate::ids::{Actor, EffectId, Generation, ResourceRef, Revision};
 
 /// Which owner performs an effect. The adapter routes by this
 /// (`src/lib/workbench/{files,documents,scm,...}`).
@@ -50,6 +50,20 @@ pub struct Effect {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub generation: Option<Generation>,
+    /// Who the effect is for: the person, or the agent run that asked for the
+    /// action that made it (R34, R42). The model stamps this when the effect
+    /// leaves a panel, from the actor of the message being handled: an action
+    /// run for an agent stamps that run, a key, click or text the person.
+    ///
+    /// It says who asked for the call that emitted the effect, no more. An
+    /// effect emitted later on its own account (a follow-up to a completion,
+    /// a tick, a save that follows an edit) is stamped for the person, because
+    /// the model keeps no link from a completion back to the action that began
+    /// the work and does not guess one. An absent actor reads as the person,
+    /// so older payloads stay readable, and the person is not written out.
+    #[serde(default, skip_serializing_if = "Actor::is_human")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<Actor>", optional))]
+    pub actor: Actor,
     #[serde(flatten)]
     pub body: EffectBody,
 }
@@ -61,6 +75,7 @@ impl Effect {
             resource,
             revision: None,
             generation: None,
+            actor: Actor::Human,
             body,
         }
     }
@@ -72,6 +87,11 @@ impl Effect {
 
     pub fn with_generation(mut self, generation: Generation) -> Self {
         self.generation = Some(generation);
+        self
+    }
+
+    pub fn with_actor(mut self, actor: Actor) -> Self {
+        self.actor = actor;
         self
     }
 
@@ -121,6 +141,10 @@ pub enum EffectBody {
     /// The caller has dealt with a held edit (`DocumentHandle.settle`): a local
     /// call on the owner with no host round trip. Accepted with no payload.
     DocumentSettle(DocumentSettle),
+    /// The edits the editor is holding back behind an edit whose outcome is
+    /// unknown (see [`DocumentKeep`]). Accepted with no payload; refused or
+    /// failed carry a reason.
+    DocumentKeep(DocumentKeep),
 
     // SCM
     ScmStatus,
@@ -260,7 +284,9 @@ impl EffectKind {
             FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesCopy
             | FilesDelete => Owner::Files,
             DocumentCreate | DocumentOpen | DocumentEdit | DocumentSave | DocumentClose
-            | DocumentReconcile | DocumentRevert | DocumentSettle => Owner::Documents,
+            | DocumentReconcile | DocumentRevert | DocumentSettle | DocumentKeep => {
+                Owner::Documents
+            }
             ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
             | ScmCommit | ScmAmend | ScmBranches | ScmDiffCommit | ScmShowRevision | ScmBranch
             | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog | ScmConflict | ScmResolve => {
@@ -307,7 +333,7 @@ pub struct FilesPath {
     pub path: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FilesSearch {
@@ -361,7 +387,7 @@ pub enum CoordinateUnit {
 }
 
 /// One edit against the text before the whole change set.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TextChange {
@@ -370,7 +396,7 @@ pub struct TextChange {
     pub insert: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentCreate {
@@ -380,7 +406,7 @@ pub struct DocumentCreate {
     pub seed_text: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentOpen {
@@ -421,6 +447,29 @@ pub struct DocumentReconcile {
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSettle {
     pub operation_id: String,
+}
+
+/// The edits the editor is holding back behind an edit whose outcome is
+/// unknown. It is the whole queue each time, an empty list once nothing is held.
+/// The owner keeps them on the device and sends none of them.
+///
+/// The document resource is on the envelope, as for [`DocumentEdit`]. It carries
+/// document content, so its `Debug` prints sizes only.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentKeep {
+    pub edits: Vec<KeptEdit>,
+}
+
+/// One held edit: the operation, the revision it was made against, and its changes.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct KeptEdit {
+    pub operation_id: String,
+    pub base_revision: Revision,
+    pub edits: Vec<TextChange>,
 }
 
 // ---- scm ---------------------------------------------------------------
@@ -465,14 +514,14 @@ pub struct ScmRestore {
     pub restore_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScmCommit {
     pub message: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScmAmend {
@@ -557,7 +606,7 @@ pub enum ConflictTake {
     Merged,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScmResolve {
@@ -652,7 +701,7 @@ pub struct RunHandle {
     pub handle: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchQuery {
@@ -752,7 +801,7 @@ pub enum InputKind {
     Reply,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalInput {
@@ -775,7 +824,7 @@ pub struct TerminalInput {
 
 /// [`TerminalInput`] for bytes that are not UTF-8. Same ledger, same claim:
 /// `input_id` is minted once per logical input and a retry re-emits it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalInputBytes {
@@ -817,7 +866,7 @@ pub struct AttachmentRef {
     pub content_type: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSend {
@@ -859,7 +908,7 @@ pub struct SetEffort {
     pub level: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationInput {
@@ -887,7 +936,7 @@ pub struct ConversationRetry {
     pub message_id: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationEdit {
@@ -976,7 +1025,7 @@ pub struct ArtifactRead {
     pub key: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardWrite {
@@ -1209,6 +1258,30 @@ mod tests {
             json!({"operationId": "op1"}),
         );
         round_trip(
+            EffectBody::DocumentKeep(DocumentKeep {
+                edits: vec![KeptEdit {
+                    operation_id: "op2".into(),
+                    base_revision: Revision::Seq(4),
+                    edits: vec![TextChange {
+                        start: 1,
+                        end: 2,
+                        insert: "x".into(),
+                    }],
+                }],
+            }),
+            "documentKeep",
+            json!({"edits": [{
+                "operationId": "op2",
+                "baseRevision": {"scheme": "seq", "value": 4},
+                "edits": [{"start": 1, "end": 2, "insert": "x"}],
+            }]}),
+        );
+        round_trip(
+            EffectBody::DocumentKeep(DocumentKeep { edits: vec![] }),
+            "documentKeep",
+            json!({"edits": []}),
+        );
+        round_trip(
             EffectBody::FilesSearch(FilesSearch {
                 query: "q".into(),
                 limit: Some(50),
@@ -1227,6 +1300,7 @@ mod tests {
             (EffectKind::ScmShowRevision, Owner::Scm),
             (EffectKind::DocumentRevert, Owner::Documents),
             (EffectKind::DocumentSettle, Owner::Documents),
+            (EffectKind::DocumentKeep, Owner::Documents),
             (EffectKind::ConversationSideChat, Owner::Conversation),
             (EffectKind::ConversationSideList, Owner::Conversation),
             (EffectKind::ConversationAttachPick, Owner::Conversation),

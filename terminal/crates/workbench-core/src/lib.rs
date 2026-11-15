@@ -7,6 +7,7 @@
 //! with it. Everything that crosses the wasm boundary is serde JSON, and with
 //! the `ts` feature each type also derives its TypeScript declaration.
 
+pub mod agent;
 pub mod arrangement;
 pub mod builtin;
 pub mod completion;
@@ -24,6 +25,7 @@ pub mod panels;
 pub mod picker;
 pub mod picker_layout;
 pub mod queue;
+mod redact;
 pub mod registry;
 pub mod results;
 pub mod semantics;
@@ -48,8 +50,8 @@ pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
 pub use msg::{DockMsg, Inbound, Msg, Pointer};
 pub use notice::{NoticeLine, NoticeSeverity};
 pub use panel::{
-    Button, Caret, CaretPhase, CaretShape, Composition, Ctx, EmitError, OpenTarget, Panel,
-    PanelMsg, PanelPointer, PickerView, PointerKind, TabLabel, ViewCtx,
+    Button, Caret, CaretPhase, CaretShape, Composition, Ctx, EmitError, OpenDocumentState,
+    OpenTarget, Panel, PanelMsg, PanelPointer, PickerView, PointerKind, TabLabel, ViewCtx,
 };
 pub use theme::Theme;
 pub use tree::semantics;

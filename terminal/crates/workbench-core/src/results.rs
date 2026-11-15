@@ -65,7 +65,7 @@ pub struct ReadAt {
 // ---- language ----------------------------------------------------------
 
 /// `languageHover`. `contents` is Markdown, empty when no provider answered.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LanguageHover {
@@ -88,7 +88,7 @@ pub enum CompletionRange {
     Split { inserting: Range, replacing: Range },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct CompletionItem {
@@ -165,7 +165,7 @@ pub enum Severity {
     Hint,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct Finding {
@@ -188,7 +188,7 @@ pub struct Finding {
 
 /// One finding of a `diagnosticsSet`, placed by line and column. The unit of
 /// the columns is the `encoding` the message states once.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct FindingAt {
@@ -264,7 +264,7 @@ pub struct LanguageDiagnostics {
 
 /// `runPoll`: the host's word for the run, and everything it wrote so far
 /// (not only what is new since the last poll).
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct RunState {
@@ -290,7 +290,7 @@ pub struct MatchRange {
     pub end: u32,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchRow {

@@ -299,6 +299,11 @@ pub enum PanelMsg {
         frames: u64,
         bytes: u64,
     },
+    /// Every document open in the workspace a repository panel is bound to,
+    /// whole list each time, one entry per path (several views of one path are
+    /// merged: unsaved if any is, the newest accepted revision). Sent only when
+    /// the list changed; arrives on a silent `Ctx`.
+    Documents(Vec<OpenDocumentState>),
     /// A registered action of the panel's kind with intent `Create`, `Start`
     /// or `Destroy`. The panel supplies the effect's payload.
     Action(ActionId),
@@ -411,7 +416,9 @@ impl Ctx<'_> {
         if self.mode == Mode::Silent {
             return Err(EmitError::Silent);
         }
-        let effect = build(self.ids.mint());
+        let mut effect = build(self.ids.mint());
+        // The envelope says who the call was for, whatever `build` left there.
+        effect.actor = self.actor.clone();
         if let Mode::Forbid(kinds) = &self.mode
             && kinds.contains(&effect.kind())
         {
@@ -517,6 +524,22 @@ pub struct Caret {
     pub y: u16,
     pub shape: CaretShape,
     pub phase: CaretPhase,
+}
+
+/// One open document of a workspace, as a repository panel is told of it (see
+/// [`PanelMsg::Documents`]). The model builds it from the document-bound panels;
+/// it is not a host message and never leaves the core.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OpenDocumentState {
+    /// The document's path in the workspace (its resource id).
+    pub path: String,
+    /// The revision the owner has accepted for the document: the binding
+    /// revision of a document panel, when it is a sequence number. `None` when
+    /// no panel has loaded it yet or the owner's revisions are opaque.
+    pub saved_revision: Option<u64>,
+    /// Some view of the document holds changes the owner has not saved (its tab
+    /// says modified).
+    pub unsaved: bool,
 }
 
 /// What a tab shows for a panel that names itself (see [`Panel::tab_label`]).
@@ -627,6 +650,14 @@ pub trait Panel {
     /// then replaces its panel shortcuts).
     fn text_entry(&self) -> bool {
         false
+    }
+
+    /// Whether Escape means something to the panel now, so a drawer leaves it
+    /// to the panel instead of closing. Text entry implies it. Unlike
+    /// `text_entry` it changes nothing else: the panel keeps its own key
+    /// context.
+    fn holds_escape(&self) -> bool {
+        self.text_entry()
     }
 
     /// The view is closing. Emit what the view's own lifetime rule needs (a

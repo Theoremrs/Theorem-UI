@@ -176,6 +176,7 @@ impl Model {
     pub(crate) fn settle(&mut self) {
         self.announce_workspace();
         self.announce_motion();
+        self.announce_documents();
         self.replay_diagnostics();
         self.replay_retained();
         self.sync_tab_titles();
@@ -301,6 +302,68 @@ impl Model {
             self.motion_told.insert(id.clone(), reduced);
             self.call(&id, Mode::Silent, |p, cx| {
                 p.update(PanelMsg::Motion { reduced }, cx)
+            });
+            self.dirty = true;
+        }
+    }
+
+    /// Tell each repository panel which documents of its workspace are open and
+    /// which hold unsaved changes, when that list differs from what it was last
+    /// told. The model's own panels are the source: no host message says it.
+    fn announce_documents(&mut self) {
+        use crate::panel::OpenDocumentState;
+        use std::collections::BTreeMap;
+        let mut open: BTreeMap<String, BTreeMap<String, OpenDocumentState>> = BTreeMap::new();
+        let mut repositories: Vec<(PanelInstanceId, String)> = vec![];
+        for (id, entry) in &self.panels {
+            if !entry.available {
+                continue;
+            }
+            let Some(binding) = entry.panel.binding() else {
+                continue;
+            };
+            match binding.resource {
+                ResourceRef::Document {
+                    workspace,
+                    resource_id,
+                } => {
+                    let unsaved = entry.panel.tab_label().is_some_and(|l| l.modified);
+                    let saved = match binding.revision {
+                        Some(Revision::Seq(n)) => Some(n),
+                        _ => None,
+                    };
+                    let slot = open
+                        .entry(workspace)
+                        .or_default()
+                        .entry(resource_id.clone())
+                        .or_insert(OpenDocumentState {
+                            path: resource_id,
+                            saved_revision: None,
+                            unsaved: false,
+                        });
+                    slot.unsaved |= unsaved;
+                    slot.saved_revision = slot.saved_revision.max(saved);
+                }
+                ResourceRef::Repository { workspace, .. } => {
+                    repositories.push((id.clone(), workspace));
+                }
+                _ => {}
+            }
+        }
+        self.documents_told
+            .retain(|id, _| repositories.iter().any(|(r, _)| r == id));
+        for (id, workspace) in repositories {
+            let list: Vec<OpenDocumentState> = open
+                .get(&workspace)
+                .map(|m| m.values().cloned().collect())
+                .unwrap_or_default();
+            let told = self.documents_told.get(&id).cloned().unwrap_or_default();
+            if list == told {
+                continue;
+            }
+            self.documents_told.insert(id.clone(), list.clone());
+            self.call(&id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Documents(list), cx)
             });
             self.dirty = true;
         }
@@ -635,12 +698,32 @@ impl Model {
         actor: Actor,
         on: Option<PanelInstanceId>,
     ) -> Vec<Effect> {
+        // An action aimed at a panel that is not open is refused whatever its
+        // intent, so a wrong handle never falls back to another panel.
+        if let Some(panel) = &on
+            && !self.panels.contains_key(panel)
+        {
+            self.notify(Notice::Refused(Refusal::UnknownPanel(panel.clone())));
+            return vec![];
+        }
         // The tab strip's and the picker's own semantic actions.
         if let Some(effects) = self.tab_node_action(&id) {
             return effects;
         }
         if let Some(effects) = self.picker_node_action(&id) {
             return effects;
+        }
+        // An agent naming a row the open picker offers chooses it as a click
+        // would (the picker closes), and the tool runs for that agent.
+        if !actor.is_human()
+            && self.picker.is_open()
+            && !self.picker.is_resting()
+            && self
+                .picker
+                .offers(&id, &self.registry, &self.caps, &self.pinned)
+            && self.registry.resolve(&id, &actor, &self.caps).is_ok()
+        {
+            return self.picker_msg(PickerMsg::ChooseRow(id));
         }
         let (kind, intent, title) = match self.registry.resolve(&id, &actor, &self.caps) {
             Ok(r) => (r.panel.kind.clone(), r.action.intent, r.panel.title.clone()),
@@ -904,7 +987,7 @@ impl Model {
         };
         let panel = PanelInstanceId::new(panel);
         if !self.panels.contains_key(&panel) {
-            self.notify(Notice::Refused(Refusal::UnknownAction(id.clone())));
+            self.notify(Notice::Refused(Refusal::UnknownPanel(panel)));
             return Some(vec![]);
         }
         Some(self.on_dock(if close {
@@ -982,7 +1065,10 @@ impl Model {
             PickerOutcome::Layout(choice) => self.on_layout_choice(choice),
             PickerOutcome::Chosen(action) => {
                 // The chosen tool takes the picker's place.
-                let effects = self.run_action(action, Actor::Human, None);
+                // Whoever chose the row is who it runs for: the person's key
+                // or click, or the agent run that named the row's action.
+                let who = self.acting.clone();
+                let effects = self.run_action(action, who, None);
                 self.close_picker_panels();
                 effects
             }
@@ -1153,13 +1239,14 @@ impl Model {
             return true;
         }
         if let Some(drawer) = self.dock.drawer() {
-            // A panel in the drawer that takes text (an editor, a terminal, a
-            // composer) needs Esc itself; the action closes the drawer then.
+            // A panel in the drawer that holds Esc (it takes text, like an
+            // editor, a terminal or a composer, or it says so) needs it
+            // itself; the action closes the drawer then.
             let typing = self.dock.focused() == drawer
                 && self
                     .focus_owner()
                     .and_then(|id| self.panels.get(&id))
-                    .is_some_and(|e| e.panel.text_entry());
+                    .is_some_and(|e| e.panel.holds_escape());
             if typing {
                 return false;
             }

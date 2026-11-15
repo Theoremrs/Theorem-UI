@@ -7,4 +7,9 @@ import type { PanelKind } from "./PanelKind";
 /**
  * One action as the agent sees it (`workbench.act`).
  */
-export type CatalogEntry = { action: ActionId, panel: PanelKind, title: string, intent: ActionIntent, availability: Availability, };
+export type CatalogEntry = { action: ActionId, panel: PanelKind, title: string, intent: ActionIntent, availability: Availability, 
+/**
+ * A person's to do. Listed so the agent can see the action exists; the
+ * model refuses it when asked for an agent.
+ */
+humanOnly: boolean, };

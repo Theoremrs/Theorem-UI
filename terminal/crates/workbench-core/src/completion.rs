@@ -318,7 +318,7 @@ pub struct FileStat {
 // ---- documents ---------------------------------------------------------
 
 /// The authority's text after a read. Absent when the owner sent none.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentSnapshot {
@@ -329,7 +329,7 @@ pub struct DocumentSnapshot {
 
 /// A document opened or created: the authority's text and where it stands
 /// against the checkout. `dirty` is the owner's report, not inferred here.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentOpened {
@@ -370,7 +370,7 @@ pub struct DocumentEdited {
     pub revision: Revision,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentCurrent {
@@ -435,7 +435,7 @@ pub struct DocumentSaved {
 
 /// The authority's revision and text after a conflict with the checkout was
 /// resolved.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentReconciled {
@@ -516,7 +516,7 @@ pub struct ScmStatus {
     pub state: Option<RepoState>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DiffHunk {
@@ -529,7 +529,7 @@ pub struct DiffHunk {
     pub patch: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScmDiffResult {
@@ -549,7 +549,7 @@ pub struct ScmDiffResult {
     pub state: Option<RepoState>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ScmShowResult {
@@ -563,7 +563,7 @@ pub struct ScmShowResult {
     pub state: Option<RepoState>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LogEntry {
@@ -591,7 +591,7 @@ pub struct ScmLogResult {
     pub state: Option<RepoState>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct BlameHunk {
@@ -662,7 +662,7 @@ pub struct ScmMerged {
 /// One conflicted path: whether it is still in conflict and the text of each
 /// side. A side the host does not have (a file added on one branch has no
 /// `base`) is absent, not empty.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ConflictSides {
@@ -798,7 +798,7 @@ pub struct LayoutSaved {
     pub revision: Revision,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ClipboardText {
@@ -899,7 +899,7 @@ pub struct ArtifactsListing {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct ArtifactContent {
@@ -932,6 +932,38 @@ pub struct SearchStarted {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn a_document_keep_is_accepted_with_no_payload_and_refused_or_failed_with_a_reason() {
+        let doc = ResourceRef::Document {
+            workspace: "w1".into(),
+            resource_id: "a.md".into(),
+        };
+        let accepted = Completion::new(EffectId(9), doc.clone(), Outcome::Accepted)
+            .with_revision(Revision::Seq(3));
+        let wire = serde_json::to_value(&accepted).unwrap();
+        assert_eq!(wire["outcome"], json!({"status": "accepted"}));
+        assert!(wire.get("payload").is_none());
+        assert_eq!(
+            serde_json::from_value::<Completion>(wire).unwrap(),
+            accepted
+        );
+
+        for outcome in [
+            Outcome::Refused {
+                code: "no_such_document".into(),
+                reason: "closed".into(),
+            },
+            Outcome::Failed {
+                reason: "device full".into(),
+            },
+        ] {
+            let c = Completion::new(EffectId(9), doc.clone(), outcome);
+            let back: Completion =
+                serde_json::from_value(serde_json::to_value(&c).unwrap()).unwrap();
+            assert_eq!(back, c);
+        }
+    }
 
     #[test]
     fn completion_json_shape() {

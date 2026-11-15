@@ -320,6 +320,72 @@ mod tests {
         Effect::new(EffectId(id), doc(path), EffectBody::DocumentSave)
     }
 
+    fn keep(id: u64, path: &str, rev: u64, gen_: u64) -> Effect {
+        use crate::effect::{DocumentKeep, KeptEdit, TextChange};
+        Effect::new(
+            EffectId(id),
+            doc(path),
+            EffectBody::DocumentKeep(DocumentKeep {
+                edits: vec![KeptEdit {
+                    operation_id: "op".into(),
+                    base_revision: Revision::Seq(rev),
+                    edits: vec![TextChange {
+                        start: 0,
+                        end: 0,
+                        insert: "x".into(),
+                    }],
+                }],
+            }),
+        )
+        .with_revision(Revision::Seq(rev))
+        .with_generation(Generation(gen_))
+    }
+
+    #[test]
+    fn a_document_keep_is_judged_like_any_document_effect() {
+        let mut flight = InFlight::new(8);
+        let bound = binding("a.md", 5, 2);
+
+        // Current: the accepted answer, with no payload, applies and settles.
+        flight.register(&keep(1, "a.md", 5, 2)).unwrap();
+        assert_eq!(
+            flight.settle(&bound, &accepted(1, "a.md", 5, 2)),
+            Verdict::Apply
+        );
+        assert!(!flight.is_pending(EffectId(1)));
+
+        // An answer from an older generation is dropped.
+        flight.register(&keep(2, "a.md", 5, 1)).unwrap();
+        assert_eq!(
+            flight.settle(&bound, &accepted(2, "a.md", 5, 1)),
+            Verdict::Drop(Stale::OlderGeneration)
+        );
+
+        // An answer for an older revision is dropped.
+        flight.register(&keep(3, "a.md", 4, 2)).unwrap();
+        assert_eq!(
+            flight.settle(&bound, &accepted(3, "a.md", 4, 2)),
+            Verdict::Drop(Stale::OlderRevision)
+        );
+
+        // A pane rebound to another document keeps a result, drops a failure.
+        flight.register(&keep(4, "a.md", 5, 2)).unwrap();
+        assert_eq!(
+            flight.settle(&binding("b.md", 1, 1), &accepted(4, "a.md", 5, 2)),
+            Verdict::CacheOnly
+        );
+        flight.register(&keep(5, "a.md", 5, 2)).unwrap();
+        let failed = Completion::new(
+            EffectId(5),
+            doc("a.md"),
+            Outcome::Failed { reason: "x".into() },
+        );
+        assert_eq!(
+            flight.settle(&binding("b.md", 1, 1), &failed),
+            Verdict::Drop(Stale::NotBound)
+        );
+    }
+
     #[test]
     fn settling_removes_the_effect_and_a_repeat_is_unknown() {
         let mut flight = InFlight::new(4);

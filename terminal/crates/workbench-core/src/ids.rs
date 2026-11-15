@@ -230,7 +230,7 @@ impl WorkspaceIdentity {
 
 /// Who asked for an operation. A model-origin request never carries a human's
 /// approval, whatever action id it names.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(
     tag = "type",
@@ -238,8 +238,17 @@ impl WorkspaceIdentity {
     rename_all_fields = "camelCase"
 )]
 pub enum Actor {
+    #[default]
     Human,
-    Agent { run_id: String },
+    Agent {
+        run_id: String,
+    },
+}
+
+impl Actor {
+    pub fn is_human(&self) -> bool {
+        matches!(self, Self::Human)
+    }
 }
 
 #[cfg(test)]

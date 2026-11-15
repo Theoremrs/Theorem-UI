@@ -57,6 +57,8 @@ struct Log {
     caret: Option<(u16, u16, theorem_workbench_core::CaretPhase)>,
     /// Whether "note" panels take text (an editor or composer).
     text_entry: bool,
+    /// Whether "note" panels keep Escape for themselves without taking text.
+    holds_escape: bool,
     /// The one chord "note" panels handle themselves.
     takes: Option<KeyInput>,
 }
@@ -247,6 +249,10 @@ impl Panel for TestPanel {
         self.kind == "note" && self.log.borrow().text_entry
     }
 
+    fn holds_escape(&self) -> bool {
+        self.text_entry() || (self.kind == "note" && self.log.borrow().holds_escape)
+    }
+
     fn takes_chord(&self, key: &KeyInput) -> bool {
         self.kind == "note" && self.log.borrow().takes.as_ref() == Some(key)
     }
@@ -331,7 +337,8 @@ fn model(log: &Shared) -> Model {
                     .key("Mod+Alt+K", KeyScope::Global),
                 ActionDescriptor::new("note.save", "Save note", ActionIntent::Start)
                     .emits(EffectKind::DocumentSave),
-                ActionDescriptor::local("note.find", "Find in note"),
+                ActionDescriptor::local("note.find", "Find in note")
+                    .key("Mod+Alt+F", KeyScope::Panel),
                 ActionDescriptor::local("note.wipe", "Wipe note").human_only(),
             ],
         ))
@@ -4187,6 +4194,40 @@ fn esc_in_a_drawer_goes_to_a_text_panel_and_closes_it_otherwise_and_the_action_c
     send(&mut m, Msg::Dock(DockMsg::OpenDrawer(main)));
     action(&mut m, "workbench.drawer.close");
     assert_eq!(m.dock().drawer(), None);
+    assert_eq!(m.focus().panel, Some(note));
+}
+
+#[test]
+fn a_drawer_panel_that_holds_escape_without_text_entry_keeps_it_and_its_own_bindings() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let note = m.focus().panel.unwrap();
+    let tools = m.focus().group;
+    let esc_seen = |log: &Shared| {
+        msgs_of(log, "note")
+            .iter()
+            .filter(|m| matches!(m, PanelMsg::Key(k) if k.key() == Key::Esc))
+            .count()
+    };
+
+    // Holds Escape, takes no text: Escape goes to the panel, the drawer stays,
+    // and the panel's own chord still resolves (its context is not TextEntry).
+    log.borrow_mut().holds_escape = true;
+    assert!(!log.borrow().text_entry);
+    send(&mut m, Msg::Dock(DockMsg::OpenDrawer(tools)));
+    assert_eq!(m.dock().drawer(), Some(tools));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), Some(tools));
+    assert_eq!(esc_seen(&log), 1);
+    let finds = action_msgs(&log, "note", "note.find");
+    chord(&mut m, Key::Char('f'), CA);
+    assert_eq!(action_msgs(&log, "note", "note.find"), finds + 1);
+
+    // Neither: Escape closes the drawer and the panel never sees it.
+    log.borrow_mut().holds_escape = false;
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(esc_seen(&log), 1);
     assert_eq!(m.focus().panel, Some(note));
 }
 
