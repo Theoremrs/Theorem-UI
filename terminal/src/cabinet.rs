@@ -359,10 +359,10 @@ impl Cabinet {
             frame,
             y,
             Line::from(vec![
-                Span::styled("■ ", Style::new().fg(p.sage)),
+                Span::styled("■ ", Style::new().fg(p.accent)),
                 Span::styled(
                     self.view.title.clone(),
-                    Style::new().fg(p.bright).add_modifier(Modifier::BOLD),
+                    Style::new().fg(p.heading).add_modifier(Modifier::BOLD),
                 ),
             ]),
             Line::styled(self.view.count.clone(), Style::new().fg(p.muted)),
@@ -382,7 +382,7 @@ impl Cabinet {
             frame,
             y,
             Line::from(vec![
-                Span::styled("■ ", Style::new().fg(p.sage)),
+                Span::styled("■ ", Style::new().fg(p.accent)),
                 Span::styled(self.view.mode_label.clone(), Style::new().fg(p.muted)),
             ]),
             Line::from(vec![
@@ -448,7 +448,7 @@ impl Cabinet {
                 Paragraph::new(Span::styled(
                     label,
                     if active {
-                        Style::new().fg(p.sage)
+                        Style::new().fg(p.accent)
                     } else {
                         Style::new().fg(p.muted)
                     },
@@ -479,7 +479,7 @@ impl Cabinet {
             frame.render_widget(
                 Paragraph::new(Span::styled(
                     clip_text(&self.view.status, w as usize),
-                    Style::new().fg(p.gold),
+                    Style::new().fg(p.warning),
                 )),
                 Rect::new(x, y, w, 1),
             );
@@ -548,7 +548,7 @@ impl Cabinet {
             }
         };
         // Preview border, drawn row by row so a partly scrolled card clips.
-        let border = Style::new().fg(if selected { p.sage } else { p.line });
+        let border = Style::new().fg(if selected { p.focus } else { p.line });
         let w = card.width as usize;
         let number = format!("{:02}", index + 1);
         let top_left = if selected { "┌▸" } else { "┌─" };
@@ -601,7 +601,7 @@ impl Cabinet {
         );
         let mut y = card.y + i32::from(preview_rows);
         let title_style = if selected {
-            Style::new().fg(p.sage).add_modifier(Modifier::BOLD)
+            Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
         } else {
             Style::new().fg(p.bright)
         };

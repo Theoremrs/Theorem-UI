@@ -17,6 +17,7 @@ import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { TheoremArtifact } from '@/components/artifacts/artifact-model'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { useShell } from '@/components/shell/shell-state'
+import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import {
   Dialog,
@@ -69,9 +70,6 @@ type CabinetAction =
 /** One cabinet mount per host element; frames stop when it leaves the page. */
 const mounts = new WeakMap<HTMLElement, Promise<CabinetHandle>>()
 
-type Palette = { id: string; version: number; colours: string[] }
-let palette: Palette | undefined
-
 const px = (a: Area, [cw, ch]: [number, number]): CSSProperties => ({
   left: a.x * cw,
   top: a.y * ch,
@@ -93,6 +91,8 @@ function PreviewCanvas({
   height: number
 }) {
   const ref = useRef<HTMLCanvasElement>(null)
+  // Pᵗ = T(P⁰): the indices stay; the colours follow the terminal's roles.
+  const roles = useTerminalTheme((s) => s.roles)
   useLayoutEffect(() => {
     const canvas = ref.current
     if (!canvas || state?.status !== 'ready') return
@@ -102,14 +102,13 @@ function PreviewCanvas({
     canvas.width = W
     canvas.height = H
     const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = '#100f0f'
+    ctx.fillStyle = roles.chrome.deep
     ctx.fillRect(0, 0, W, H)
     if (state.mode === 'pixel') {
-      if (!palette) return
       const { width: w, height: h } = state.meta
       const scale = Math.max(1, Math.floor(Math.min(W / w, H / h)))
       const art = new ImageData(w, h)
-      const rgb = palette.colours.map((c) => [
+      const rgb = roles.illustration.map((c) => [
         parseInt(c.slice(1, 3), 16),
         parseInt(c.slice(3, 5), 16),
         parseInt(c.slice(5, 7), 16),
@@ -150,10 +149,11 @@ function PreviewCanvas({
         ctx.fillText(lines[i]!.slice(0, 200), pad, y, W - pad * 2)
       }
     }
-  }, [state, width, height])
+  }, [state, width, height, roles])
   if (state?.status !== 'ready') return null
   return (
     <canvas
+      data-palette-revision={roles.revision}
       ref={ref}
       aria-hidden="true"
       className="block size-full [image-rendering:pixelated]"
@@ -351,7 +351,6 @@ export function Cabinet({
     let mount = mounts.get(element)
     if (!mount) {
       mount = loadWasm().then((wasm) => {
-        palette ??= JSON.parse(wasm.preview_palette()) as Palette
         return wasm.mount_cabinet(
           HOST_ID,
           (json: string) => actions.current(JSON.parse(json) as CabinetAction),

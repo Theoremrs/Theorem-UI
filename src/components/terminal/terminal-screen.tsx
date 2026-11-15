@@ -26,6 +26,7 @@ import type { TerminalHandle } from '@/terminal-wasm/theorem_terminal'
 import { leftoversOf, snapshotOf } from './terminal-transcript'
 import type { Approval, Outgoing } from './terminal-transcript'
 import type * as TerminalWasm from '@/terminal-wasm/theorem_terminal'
+import type { TerminalRoles } from './terminal-roles'
 
 /** The terminal runs agent work: coding execution, not the front conversation. */
 const TURN_OPTIONS: TurnOptions = { executionMode: 'coding' }
@@ -433,10 +434,12 @@ export const loadWasm = () =>
   (wasmModule ??= Promise.all([
     import('@/terminal-wasm/theorem_terminal'),
     import('./live-terminal-theme'),
-  ]).then(async ([wasm, { useTerminalTheme }]) => {
+    import('./terminal-roles'),
+  ]).then(async ([wasm, { useTerminalTheme }, { wasmPalette }]) => {
     await wasm.default()
-    const paint = ({ theme }: { theme: object }) =>
-      wasm.set_palette(JSON.stringify(theme))
+    // One role contract for every terminal and the cabinet (terminal-roles.ts).
+    const paint = ({ roles }: { roles: TerminalRoles }) =>
+      wasm.set_palette(JSON.stringify(wasmPalette(roles)))
     paint(useTerminalTheme.getState())
     useTerminalTheme.subscribe(paint)
     return wasm

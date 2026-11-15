@@ -10,6 +10,7 @@ import { expect, test } from 'bun:test'
 import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import { converter, differenceCiede2000, wcagContrast } from 'culori'
 import { SLATE } from './terminal-theme'
+import { FALLBACK_ROLES, wasmPalette } from './terminal-roles'
 
 const oklch = converter('oklch')
 const deltaE = differenceCiede2000()
@@ -41,18 +42,29 @@ for (const [, name, r, g, b] of (slateSource ?? '').matchAll(
   colour[name!.toUpperCase()] = hex(r, g, b)
 }
 
-const CHROME = ['INK', 'BRIGHT', 'MUTED', 'SAGE', 'GOLD', 'ERROR']
-const CODE = [
-  'RED',
-  'PURPLE',
-  'BLUE',
-  'LIGHT_BLUE',
-  'ORANGE',
-  'GREEN',
-  'GREY',
-  'LINK_BLUE',
+const CHROME = [
   'INK',
+  'BRIGHT',
+  'MUTED',
+  'HEADING',
+  'ACCENT',
+  'ERROR',
+  'WARNING',
+  'SUCCESS',
+  'LINK',
+  'APPROVAL',
 ]
+const SYNTAX = [
+  'SYNTAX_KEYWORD',
+  'SYNTAX_FUNCTION',
+  'SYNTAX_NUMBER',
+  'SYNTAX_STRING',
+  'SYNTAX_VARIABLE',
+  'SYNTAX_TYPE',
+  'SYNTAX_TAG',
+  'SYNTAX_COMMENT',
+]
+const CODE = [...SYNTAX, 'INK']
 
 const below = (fgs: string[], bgs: string[]) =>
   bgs.flatMap((bg) =>
@@ -62,31 +74,42 @@ const below = (fgs: string[], bgs: string[]) =>
   )
 
 test("the crate's default palette is the slate terminal-theme.ts derives every other from", () => {
-  expect(slate).toEqual(SLATE)
+  const legacy = Object.fromEntries(
+    Object.keys(SLATE).map((name) => [name, slate[name]]),
+  )
+  expect(legacy).toEqual(SLATE)
+  // And every role is what terminal-roles.ts resolves on the slate itself.
+  expect(slate).toEqual(wasmPalette(FALLBACK_ROLES))
 })
 
 test("code draws in GitHub Dark's token colours, which Stone dark's Monaco uses", () => {
   const byClass: Record<string, string> = {
-    keyword: 'RED',
-    function: 'PURPLE',
-    number: 'BLUE',
-    string: 'LIGHT_BLUE',
-    type: 'ORANGE',
-    tag: 'GREEN',
-    comment: 'GREY',
-    link: 'LINK_BLUE',
+    keyword: 'SYNTAX_KEYWORD',
+    function: 'SYNTAX_FUNCTION',
+    number: 'SYNTAX_NUMBER',
+    string: 'SYNTAX_STRING',
+    type: 'SYNTAX_TYPE',
+    variable: 'SYNTAX_VARIABLE',
+    tag: 'SYNTAX_TAG',
+    link: 'LINK',
   }
   for (const [cls, name] of Object.entries(byClass))
     expect(colour[name]).toBe(
       githubDarkTheme.tokens[cls as keyof typeof githubDarkTheme.tokens],
     )
+  // The comment grey is GitHub Dark's, lifted in lightness only to read on
+  // the raised slate.
+  const comment = oklch(colour.SYNTAX_COMMENT)!
+  const github = oklch(githubDarkTheme.tokens.comment)!
+  expect(comment.l).toBeGreaterThan(github.l)
+  expect(Math.abs(comment.h! - github.h!)).toBeLessThan(3)
 })
 
 test('every text colour reads at 4.5:1 on each surface it is drawn on', () => {
   expect(below(CHROME, ['BG', 'RAISED'])).toEqual([])
   expect(below(CODE, ['BG', 'REMOVED_LINE', 'ADDED_LINE'])).toEqual([])
   const onWords = [
-    ...CODE.filter((name) => name !== 'GREY'),
+    ...CODE.filter((name) => name !== 'SYNTAX_COMMENT'),
     'COMMENT_ON_WORDS',
   ]
   expect(below(onWords, ['REMOVED_WORDS', 'ADDED_WORDS'])).toEqual([])

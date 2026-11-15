@@ -50,8 +50,12 @@ pub use cabinet::{CabinetHandle, mount_cabinet};
 /// The terminal's colours. The page works them out from the workspace around
 /// the terminal (src/components/terminal/terminal-theme.ts) and sets them with
 /// `set_palette`; until then the terminal draws pi's slate.
+///
+/// The page sends the complete role contract (terminal-roles.ts): the legacy
+/// keys through its one compatibility map, and the semantic roles beside
+/// them. A role it leaves out keeps the slate's, so an older page still draws.
 #[derive(Clone, Copy, PartialEq, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 struct Palette {
     #[serde(deserialize_with = "colour")]
     bg: Color,
@@ -86,6 +90,45 @@ struct Palette {
     /// A comment's changed words: the code grey, lifted to read on either tint.
     #[serde(deserialize_with = "colour")]
     comment_on_words: Color,
+    // Semantic roles (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §7). Headings are the
+    // bright text in bold; the prompt, caret and progress take the accent;
+    // amber is the warning family only.
+    #[serde(deserialize_with = "colour")]
+    heading: Color,
+    #[serde(deserialize_with = "colour")]
+    accent: Color,
+    #[serde(deserialize_with = "colour")]
+    focus: Color,
+    #[serde(deserialize_with = "colour")]
+    selection: Color,
+    #[serde(deserialize_with = "colour")]
+    disabled: Color,
+    #[serde(deserialize_with = "colour")]
+    deep: Color,
+    #[serde(deserialize_with = "colour")]
+    warning: Color,
+    #[serde(deserialize_with = "colour")]
+    success: Color,
+    #[serde(deserialize_with = "colour")]
+    link: Color,
+    #[serde(deserialize_with = "colour")]
+    approval: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_keyword: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_string: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_number: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_function: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_variable: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_type: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_tag: Color,
+    #[serde(deserialize_with = "colour")]
+    syntax_comment: Color,
 }
 
 // pi's slate as it is drawn in GitHub Sharp, where every other palette's
@@ -122,7 +165,32 @@ const SLATE: Palette = Palette {
     removed_words: Color::Rgb(0x5e, 0x21, 0x1d), // oklch(0.339 0.090 26.7)
     added_words: Color::Rgb(0x0e, 0x43, 0x18),  // oklch(0.338 0.090 146.3)
     comment_on_words: Color::Rgb(0x9a, 0xa4, 0xae),
+    // The roles terminal-roles.ts resolves on the slate itself.
+    heading: Color::Rgb(0xe4, 0xea, 0xee),
+    accent: Color::Rgb(0x8a, 0xa8, 0xa0),
+    focus: Color::Rgb(0x8a, 0xa8, 0xa0),
+    selection: Color::Rgb(0x27, 0x30, 0x42),
+    disabled: Color::Rgb(0x6c, 0x74, 0x7c),
+    deep: Color::Rgb(0x12, 0x19, 0x24),
+    warning: Color::Rgb(0xd6, 0xbc, 0x8a),
+    success: Color::Rgb(0x7e, 0xe7, 0x87),
+    link: Color::Rgb(0x58, 0xa6, 0xff),
+    approval: Color::Rgb(0xd6, 0xbc, 0x8a),
+    syntax_keyword: Color::Rgb(0xff, 0x7b, 0x72),
+    syntax_string: Color::Rgb(0xa5, 0xd6, 0xff),
+    syntax_number: Color::Rgb(0x79, 0xc0, 0xff),
+    syntax_function: Color::Rgb(0xd2, 0xa8, 0xff),
+    syntax_variable: Color::Rgb(0xff, 0xa6, 0x57),
+    syntax_type: Color::Rgb(0xff, 0xa6, 0x57),
+    syntax_tag: Color::Rgb(0x7e, 0xe7, 0x87),
+    syntax_comment: Color::Rgb(0x8e, 0x98, 0xa2), // #8b949e, lifted to read on the raised slate
 };
+
+impl Default for Palette {
+    fn default() -> Self {
+        SLATE
+    }
+}
 
 thread_local! {
     /// One palette for the page: every terminal on it sits in the same workspace.
@@ -152,17 +220,9 @@ pub fn set_palette(json: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
-// Code: Stone dark's code theme, GitHub Dark, which Monaco and the chat's
-// Shiki also use. These are TanStack Highlight's github-dark token colours
-// (@tanstack/highlight/themes/github-dark, 1.2.11), one per class it emits.
-const RED: Color = Color::Rgb(0xff, 0x7b, 0x72);
-const PURPLE: Color = Color::Rgb(0xd2, 0xa8, 0xff);
-const BLUE: Color = Color::Rgb(0x79, 0xc0, 0xff);
-const LIGHT_BLUE: Color = Color::Rgb(0xa5, 0xd6, 0xff);
-const ORANGE: Color = Color::Rgb(0xff, 0xa6, 0x57);
-const GREEN: Color = Color::Rgb(0x7e, 0xe7, 0x87);
-const GREY: Color = Color::Rgb(0x8b, 0x94, 0x9e);
-const LINK_BLUE: Color = Color::Rgb(0x58, 0xa6, 0xff);
+// Code colours are the palette's syntax roles: GitHub Dark's token colours
+// (TanStack Highlight's github-dark), lifted where the terminal's surfaces
+// need them to read (terminal-roles.ts).
 
 /// Edit diffs show this many lines under their row until ctrl+o.
 const DIFF_FOLD: usize = 12;
@@ -188,15 +248,15 @@ struct Markdown;
 impl StyleSheet for Markdown {
     fn heading(&self, level: u8) -> Style {
         match level {
-            1 | 2 => Style::new().fg(palette().gold).bold(),
-            _ => Style::new().fg(palette().gold),
+            1 | 2 => Style::new().fg(palette().heading).bold(),
+            _ => Style::new().fg(palette().heading),
         }
     }
     fn code(&self) -> Style {
         Style::new().fg(palette().sage).bg(palette().raised)
     }
     fn link(&self) -> Style {
-        Style::new().fg(palette().sage).underlined()
+        Style::new().fg(palette().link).underlined()
     }
     fn blockquote(&self) -> Style {
         Style::new().fg(palette().muted).italic()
@@ -443,15 +503,15 @@ fn separate(lines: &mut Vec<Line<'static>>) {
 fn token_style(class: Option<&str>) -> Style {
     let style = Style::new();
     match class {
-        Some("keyword" | "deleted") => style.fg(RED),
-        Some("function" | "command" | "operator") => style.fg(PURPLE),
-        Some("number" | "literal" | "attr" | "property") => style.fg(BLUE),
-        Some("heading") => style.fg(BLUE).bold(),
-        Some("string") => style.fg(LIGHT_BLUE),
-        Some("type" | "variable" | "code-inline") => style.fg(ORANGE),
-        Some("tag" | "selector" | "inserted") => style.fg(GREEN),
-        Some("comment" | "meta") => style.fg(GREY),
-        Some("link") => style.fg(LINK_BLUE),
+        Some("keyword" | "deleted") => style.fg(palette().syntax_keyword),
+        Some("function" | "command" | "operator") => style.fg(palette().syntax_function),
+        Some("number" | "literal" | "attr" | "property") => style.fg(palette().syntax_number),
+        Some("heading") => style.fg(palette().syntax_number).bold(),
+        Some("string") => style.fg(palette().syntax_string),
+        Some("type" | "variable" | "code-inline") => style.fg(palette().syntax_variable),
+        Some("tag" | "selector" | "inserted") => style.fg(palette().syntax_tag),
+        Some("comment" | "meta") => style.fg(palette().syntax_comment),
+        Some("link") => style.fg(palette().link),
         _ => style.fg(palette().ink),
     }
 }
@@ -523,15 +583,15 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
     diff.iter()
         .map(|line| {
             let (marker, mark, fill, words) = match line.k.as_str() {
-                "del" => ("-", RED, Some(palette().removed_line), palette().removed_words),
-                "add" => ("+", GREEN, Some(palette().added_line), palette().added_words),
+                "del" => ("-", palette().syntax_keyword, Some(palette().removed_line), palette().removed_words),
+                "add" => ("+", palette().syntax_tag, Some(palette().added_line), palette().added_words),
                 "ctx" => (" ", palette().muted, None, palette().bg),
                 // A file it changes, then each hunk's header.
                 quiet => {
                     let style = if quiet == "file" {
                         Style::new().fg(palette().ink).bold()
                     } else {
-                        Style::new().fg(GREY)
+                        Style::new().fg(palette().syntax_comment)
                     };
                     return (Line::styled(format!("{lead}{}", code(line)), style), None);
                 }
@@ -558,8 +618,9 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
                     continue;
                 }
                 let style = token_style(token.c.as_deref());
+                let comment = Some(palette().syntax_comment);
                 spans.push(Span::styled(rest, match (token.e, style.fg) {
-                    (true, Some(GREY)) => style.fg(palette().comment_on_words).bg(words),
+                    (true, fg) if fg == comment => style.fg(palette().comment_on_words).bg(words),
                     (true, _) => style.bg(words),
                     (false, _) => style,
                 }));
@@ -721,7 +782,7 @@ impl Session {
                     .join("\n");
                 for (index, row) in text.lines().enumerate() {
                     let lead = if index == 0 {
-                        Span::styled(PROMPT, Style::new().fg(palette().gold).bold())
+                        Span::styled(PROMPT, Style::new().fg(palette().accent).bold())
                     } else {
                         Span::raw(INDENT)
                     };
@@ -844,7 +905,7 @@ impl Session {
         }
 
         if let Some(row) = caret {
-            lines[row].spans.push(Span::styled(CARET, Style::new().fg(palette().gold)));
+            lines[row].spans.push(Span::styled(CARET, Style::new().fg(palette().accent)));
         }
 
         for sent in &self.snapshot.outgoing {
@@ -885,7 +946,7 @@ impl Session {
             }
             for (command, what) in commands {
                 lines.push(indented(Line::from(vec![
-                    Span::styled(format!("{command:<11}"), Style::new().fg(palette().gold)),
+                    Span::styled(format!("{command:<11}"), Style::new().fg(palette().accent)),
                     Span::styled(what, Style::new().fg(palette().muted)),
                 ])));
             }
@@ -967,20 +1028,20 @@ impl Session {
         }
         let left = if let Some(approval) = &self.snapshot.approval {
             Line::from(vec![
-                Span::styled(" ? ", Style::new().fg(palette().gold).add_modifier(Modifier::BOLD)),
+                Span::styled(" ? ", Style::new().fg(palette().approval).add_modifier(Modifier::BOLD)),
                 Span::styled(format!("{} ", approval.tool), Style::new().fg(palette().bright)),
                 Span::styled(approval.summary.clone(), Style::new().fg(palette().muted)),
             ])
         } else if self.snapshot.running {
             Line::from(vec![
-                Span::styled(format!(" {} ", spinner()), Style::new().fg(palette().gold)),
+                Span::styled(format!(" {} ", spinner()), Style::new().fg(palette().accent)),
                 Span::styled(
                     self.snapshot.activity.clone().unwrap_or_else(|| "working".to_owned()),
                     Style::new().fg(palette().muted),
                 ),
             ])
         } else if let Some((text, _)) = &self.notice {
-            Line::styled(format!(" {text}"), Style::new().fg(palette().gold))
+            Line::styled(format!(" {text}"), Style::new().fg(palette().accent))
         } else {
             Line::default()
         };
@@ -1011,7 +1072,7 @@ impl Session {
             if index > 0 {
                 spans.push(Span::styled(" · ", Style::new().fg(palette().muted)));
             }
-            spans.push(Span::styled(format!("@{label}"), Style::new().fg(palette().gold)));
+            spans.push(Span::styled(format!("@{label}"), Style::new().fg(palette().link)));
         }
         frame.render_widget(Line::from(spans), area);
         if self.input.value().is_empty() {
@@ -1042,7 +1103,7 @@ impl Session {
         frame.render_widget(
             Line::from(vec![
                 Span::raw(" "),
-                Span::styled(PROMPT, Style::new().fg(palette().gold).bold()),
+                Span::styled(PROMPT, Style::new().fg(palette().accent).bold()),
                 text,
             ]),
             inner,
@@ -1237,14 +1298,14 @@ fn refusal(reason: Option<&str>) -> Option<&'static str> {
 fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
     let taken = sent.status == "delivered";
     let (glyph, ink) = if taken {
-        (Style::new().fg(palette().gold).bold(), Style::new().fg(palette().bright))
+        (Style::new().fg(palette().accent).bold(), Style::new().fg(palette().bright))
     } else {
         (Style::new().fg(palette().muted), Style::new().fg(palette().ink))
     };
     let (tag, tag_style) = match sent.status.as_str() {
         "delivered" => (None, Style::new().fg(palette().muted)),
         "sending" => (Some("sending".to_owned()), Style::new().fg(palette().muted)),
-        "next" => (Some("goes as the next turn".to_owned()), Style::new().fg(palette().gold)),
+        "next" => (Some("goes as the next turn".to_owned()), Style::new().fg(palette().warning)),
         "resent" => (Some("sent as the next turn".to_owned()), Style::new().fg(palette().muted)),
         "not_delivered" => (
             Some(match refusal(sent.reason.as_deref()) {
@@ -1289,10 +1350,10 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
 /// terminal draws a hyperlink.
 fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> Line<'static> {
     let (glyph, color) = match status {
-        "complete" => ("✓", palette().sage),
+        "complete" => ("✓", palette().success),
         "error" => ("✗", palette().error),
-        "approval" => ("?", palette().gold),
-        _ => ("◌", palette().gold),
+        "approval" => ("?", palette().approval),
+        _ => ("◌", palette().accent),
     };
     let lead = format!("{INDENT}{glyph} ");
     let used = lead.chars().count() + name.chars().count() + 2;
@@ -1444,9 +1505,9 @@ impl App {
             .map(|(index, session)| {
                 let mut spans = Vec::new();
                 if session.snapshot.approval.is_some() {
-                    spans.push(Span::styled("? ", Style::new().fg(palette().gold)));
+                    spans.push(Span::styled("? ", Style::new().fg(palette().approval)));
                 } else if session.snapshot.running {
-                    spans.push(Span::styled(format!("{spin} "), Style::new().fg(palette().gold)));
+                    spans.push(Span::styled(format!("{spin} "), Style::new().fg(palette().accent)));
                 }
                 let mut title: String = session.title.chars().take(18).collect();
                 if session.title.chars().count() > 18 {
