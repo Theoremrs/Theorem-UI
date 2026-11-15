@@ -113,3 +113,22 @@ Note: the lock resolves ratatui to 0.30.2 (the root's requirement `0.30.1` is a 
 7. **Process coupling.** The module itself spawns and kills nothing (no `std::process`; it uses only `std::sync::atomic`, `std::mem`, `std::cmp`). The coupling is in comments and API shape. `split_pane` allocates the new id and returns it so the caller can create a runtime. The doc on `split_focused` says production splits flow through `Tab` so a failed spawn can roll back. `insert_pane_near` says it avoids spawning a runtime. `close_pane`/`close_focused` only remove the leaf, and ending the process is the caller's job in Herdr. In Theo Web, splitting creates an empty destination or relocates a view, and close is detach-only. The comments should be rewritten, and `split_pane`'s allocate-on-split should become "insert a caller-supplied id". Rollback, if still needed, should be an undo of the tree edit, with no runtime semantics.
 8. **Presentation fields.** `PaneInfo.scrollbar_rect`, `inner_rect` and `borders` are terminal-pane chrome. `panes_after_split` also ignores them (it sets `inner_rect = rect`). They are not part of a docked-panel contract.
 9. **Hidden/expanded/restored panels.** No concept of hide, expand (maximize), or restore. Closing the last pane is refused (`close_focused` returns false), so an empty dock cannot be represented.
+
+## Orchestrator review addendum (2026-11-14)
+
+Repeating the extracted test binary 400 times found one upstream test that fails
+intermittently when tests run in parallel:
+
+- `tests::failed_split_rollback_preserves_focus_history` failed 4 of 400 parallel runs
+  (`left: PaneId(2)`, `right: PaneId(4)` at `src/lib.rs:1350`) and 0 of 400 runs with
+  `--test-threads=1`.
+- Cause: `split_pane` takes its new id from the process-global `NEXT_PANE_ID` counter,
+  while `sample_layout` builds panes with `PaneId::from_raw(1..)`, which does not advance
+  the counter. When another test thread has left the counter at a value already in the
+  sample tree, the "new" pane collides with an existing one and focus history resolves to
+  the wrong pane. This is adaptation gap 1 observed as a failure, not a test-only problem:
+  a restored layout plus `alloc()` can collide the same way in the product.
+- The donor file is left byte-identical in this step. Until the dock task replaces the
+  global counter with caller-supplied stable ids, the crate's tests are run with
+  `-- --test-threads=1`. The dock task must make this test pass in parallel without
+  editing its assertions.
