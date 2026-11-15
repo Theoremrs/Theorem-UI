@@ -1,17 +1,16 @@
-// SOURCING: coss ui sidebar and collapsible, @dnd-kit/core useDraggable (a row carries its thread to another project), Base UI ContextMenu with coss menu parts, @tanstack/react-router Link, assistant-ui (the open thread's run state and reload), thread-tree (branches and forks, as the previous thread list read them), date-fns for a sleeping thread's wake time
-import { useAui, useAuiState } from '@assistant-ui/react'
+// SOURCING: coss ui sidebar and collapsible, @dnd-kit/core useDraggable (a row carries its thread to another project), Base UI ContextMenu with coss menu parts, @tanstack/react-router Link, assistant-ui (the open thread's run state), thread-tree (the thread's last reply, for unread), date-fns for a sleeping thread's wake time. A row is one session: conversation branches (edits, regenerations) stay inside the conversation, and only forked sessions nest (docs/plans/projects-sidebar-and-session-graph.md §2.2, §4.3).
+import { useAuiState } from '@assistant-ui/react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useDraggable } from '@dnd-kit/core'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { format, intlFormatDistance, isToday, isTomorrow } from 'date-fns'
 import { useContext, createContext, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   OriginMark,
-  ThreadBranchRow,
   TreeGuide,
   originLabel,
 } from '@/components/assistant-ui/elements/thread-list.aui'
-import { Badge } from '@/components/coss/badge'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -38,18 +37,13 @@ import type {
   ProjectEntry,
   ThreadEntry,
 } from '@/lib/theorem/organization'
-import {
-  useSelectBranch,
-  useStartThreadFrom,
-  useThreadTree,
-} from '@/lib/theorem/thread-tree'
+import { useStartThreadFrom, useThreadTree } from '@/lib/theorem/thread-tree'
 import { useSeenThreads } from '@/lib/theorem/seen-threads'
 import { cn } from '@/lib/utils'
 import { appearancePair } from '@/lib/appearance-policy'
-import { ThreadGlyph } from './glyphs'
+import { SessionGlyph } from './glyphs'
 import { ThreadMenuItems } from './thread-menu'
 
-/** What every row needs from the sidebar, so a tree does not pass it through each level. */
 /** The branch from the tree's guide line to a row. */
 export const TREE_TICK =
   'relative before:pointer-events-none before:absolute before:top-1/2 before:-start-2.5 before:w-2 before:border-t before:border-sidebar-border'
@@ -85,7 +79,11 @@ const wakeLabel = (later: Later, views: OrganizedViews) => {
   return format(at, 'MMM d')
 }
 
-/** The row's compact status, or when it last heard a message. Its width is the only thing that changes when it does. */
+/**
+ * The row's trailing mark, as the owner's sidebar reference draws it: a dot
+ * when it needs someone, a spinner while it runs, nothing at rest. When it
+ * last moved is in the row's tooltip, not its line.
+ */
 function StatusMark({
   thread,
   running,
@@ -105,51 +103,38 @@ function StatusMark({
         {hint}
       </span>
     )
-  if (reason?.kind === 'failed')
-    return (
-      <span className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible">
-        <span aria-hidden className="size-2 rounded-full bg-attention" />
-        <span className="sr-only">, failed</span>
-      </span>
-    )
   if (reason)
     return (
-      <Badge
-        data-appearance-recipe="metadata"
-        className="bg-hover text-ink-muted group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
+      <span
+        title={reason.kind === 'failed' ? 'Failed' : attentionLabel(reason)}
+        className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
       >
-        {attentionLabel(reason)}
-      </Badge>
+        <span aria-hidden className="size-2 rounded-full bg-attention" />
+        <span className="sr-only">
+          , {reason.kind === 'failed' ? 'failed' : attentionLabel(reason)}
+        </span>
+      </span>
     )
   if (running)
     return (
-      <span className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible">
+      <span
+        title="Running"
+        className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
+      >
         <span
           aria-hidden
-          className="size-1.5 animate-pulse rounded-full bg-teal motion-reduce:animate-none dark:bg-teal-ink"
+          className="size-3 animate-spin rounded-full border-[1.5px] border-ink-faint border-t-ink-muted motion-reduce:animate-none"
         />
         <span className="sr-only">, running</span>
       </span>
     )
-  const at = thread.lastMessageAtMs ?? thread.createdAtMs
-  return <Age at={at} />
+  return null
 }
 
-function Age({ at }: { at: number }) {
+/** When a session last moved, as its row's tooltip says it. */
+function useMovedLabel(at: number) {
   const { readAtMs } = useTree()
-  return (
-    <time
-      data-appearance-recipe="metadata"
-      dateTime={new Date(at).toISOString()}
-      title={format(at, 'PPp')}
-      className="shrink-0 text-ink-muted tabular-nums group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
-    >
-      {intlFormatDistance(at, Math.max(at, readAtMs), {
-        style: 'narrow',
-        numeric: 'always',
-      })}
-    </time>
-  )
+  return `${intlFormatDistance(at, Math.max(at, readAtMs), { numeric: 'always' })} · ${format(at, 'PPp')}`
 }
 
 export function RenameField({
@@ -195,9 +180,10 @@ export function RenameField({
 }
 
 /**
- * One thread where it is listed. A thread in several projects shows in each;
+ * One session where it is listed. A thread in several projects shows in each;
  * the pill glides to the one in its primary project and the others tint, so
- * every occurrence reads as open. Branches and forked threads open under it.
+ * every occurrence reads as open. Sessions forked from it open under it; its
+ * own conversation branches never do.
  */
 export function ThreadRow({
   thread,
@@ -205,22 +191,28 @@ export function ThreadRow({
   childThreads = [],
   childrenOf,
   hint,
+  nested = false,
+  menuExtra,
 }: {
   thread: ThreadEntry
   /** The project this occurrence is listed under, or a quick view. */
   place: string
   childThreads?: readonly ThreadEntry[]
-  /** Every thread's forks and continuations in this list, so a fork of a fork nests too. */
+  /** Every thread's forks in this list, so a fork of a fork nests too. */
   childrenOf?: ReadonlyMap<string, readonly ThreadEntry[]>
   hint?: 'reason' | 'later'
+  /** Shown beneath the session it was forked from, so its origin needs no mark. */
+  nested?: boolean
+  /** Items this listing adds to the row's menu, such as moving a pin. */
+  menuExtra?: ReactNode
 }) {
   const { projects, views, served } = useTree()
-  const aui = useAui()
   const navigate = useNavigate()
   const { threadId: openId } = useParams({ strict: false })
   const isOpen = openId === thread.threadId
   const openHere = useAuiState((s) => s.thread.isRunning)
   const running = thread.attention.running || (isOpen && openHere)
+  const moved = useMovedLabel(thread.lastMessageAtMs ?? thread.createdAtMs)
 
   const ref = useRef<HTMLLIElement>(null)
   const seen = useSeen(ref)
@@ -249,9 +241,7 @@ export function ThreadRow({
     observedLastMessageAt.current = thread.lastMessageAtMs
     void refetch()
   }, [seen, dataUpdatedAt, thread.lastMessageAtMs, refetch])
-  const forks = tree?.forks ?? []
-  const onFork = tree ? tree.selectedBranchId !== tree.rootBranchId : false
-  const hasChildren = forks.length > 0 || childThreads.length > 0
+  const hasChildren = childThreads.length > 0
   const [expanded, setExpanded] = useState(true)
   const [renaming, setRenaming] = useState(false)
   const {
@@ -264,7 +254,6 @@ export function ThreadRow({
     disabled: renaming,
   })
 
-  const selectBranch = useSelectBranch()
   const startThread = useStartThreadFrom()
   const edits = useThreadEdits()
   const canStartFrom = !running && !startThread.isPending
@@ -275,27 +264,9 @@ export function ThreadRow({
   const toProject = () =>
     useShell.getState().setProjectId(primaryProjectId(thread))
 
-  const openBranch = async (branchId: string) => {
-    if (!tree) return
-    const changed = tree.selectedBranchId !== branchId
-    if (changed)
-      try {
-        await selectBranch.mutateAsync({ threadId: thread.threadId, branchId })
-      } catch {
-        // The selection rolls back, so the highlight stays where Theorem has it.
-        return
-      }
-    if (!isOpen) {
-      toProject()
-      void navigate({
-        to: '/c/$threadId',
-        params: { threadId: thread.threadId },
-      })
-    } else if (changed) await aui.threads.reloadMainThread()
-  }
-
+  // The row is the session, whichever of its conversation versions is selected.
   // A row in the primary project takes the gliding pill, the rest tint.
-  const current = isOpen && !onFork
+  const current = isOpen
   const primary = place === primaryProjectId(thread)
   const hintText = !hint
     ? undefined
@@ -304,28 +275,31 @@ export function ThreadRow({
       : undefined
 
   const items = (
-    <ThreadMenuItems
-      thread={thread}
-      projects={projects}
-      running={views.running}
-      served={served}
-      canStartFrom={canStartFrom}
-      onFork={() =>
-        startThread.mutate({ kind: 'forked', threadId: thread.threadId })
-      }
-      onContinue={() =>
-        startThread.mutate({ kind: 'continued', threadId: thread.threadId })
-      }
-      onRename={() => setRenaming(true)}
-      onArchive={() => {
-        edits.archive.mutate(thread.threadId)
-        leave()
-      }}
-      onDelete={() => {
-        edits.remove.mutate(thread.threadId)
-        leave()
-      }}
-    />
+    <>
+      {menuExtra}
+      <ThreadMenuItems
+        thread={thread}
+        projects={projects}
+        running={views.running}
+        served={served}
+        canStartFrom={canStartFrom}
+        onFork={() =>
+          startThread.mutate({ kind: 'forked', threadId: thread.threadId })
+        }
+        onContinue={() =>
+          startThread.mutate({ kind: 'continued', threadId: thread.threadId })
+        }
+        onRename={() => setRenaming(true)}
+        onArchive={() => {
+          edits.archive.mutate(thread.threadId)
+          leave()
+        }}
+        onDelete={() => {
+          edits.remove.mutate(thread.threadId)
+          leave()
+        }}
+      />
+    </>
   )
 
   const title = thread.title || 'New chat'
@@ -363,9 +337,9 @@ export function ThreadRow({
                   'primary',
                   current ? 'selected' : 'navigation',
                 )}
-                title={thread.summary?.text ?? title}
+                title={`${thread.summary?.text ?? title}\n${moved}`}
                 className={cn(
-                  'w-full translate-x-0 pe-1 data-[organize-row=also]:bg-hover',
+                  'h-8 w-full translate-x-0 pe-1 data-[organize-row=also]:bg-hover sm:h-8',
                   'relative z-[1] hover:bg-hover',
                   isDragging && 'opacity-40',
                 )}
@@ -374,25 +348,15 @@ export function ThreadRow({
                     draggable={false}
                     to="/c/$threadId"
                     params={{ threadId: thread.threadId }}
-                    onClick={(event) => {
-                      toProject()
-                      // The row is the root branch: reopen it when a fork is selected.
-                      if (!tree || !onFork || running) return
-                      event.preventDefault()
-                      void openBranch(tree.rootBranchId)
-                    }}
+                    // Opening keeps the selected conversation version.
+                    onClick={toProject}
                   />
                 }
               >
-                {thread.origin ? (
-                  <OriginMark kind={thread.origin.kind} />
-                ) : (
-                  <ThreadGlyph
-                    glyph={thread.glyph}
-                    aria-hidden
-                    className="text-ink-muted"
-                  />
-                )}
+                <SessionGlyph
+                  threadId={thread.threadId}
+                  className="text-ink-muted"
+                />
                 <span
                   className={cn(
                     'min-w-0 flex-1 truncate',
@@ -401,6 +365,11 @@ export function ThreadRow({
                     running && 'shimmer motion-reduce:animate-none',
                   )}
                 >
+                  {thread.origin && !nested && (
+                    // Provenance, not ancestry: a continuation, or a fork
+                    // whose source is not listed here.
+                    <OriginMark kind={thread.origin.kind} />
+                  )}
                   {title}
                   {thread.origin && (
                     <span className="sr-only">
@@ -452,18 +421,6 @@ export function ThreadRow({
         </ContextMenu.Root>
         {hasChildren && (
           <CollapsiblePanel className="duration-(--duration-glide) ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit">
-            {forks.map((branch, index) => (
-              <ThreadBranchRow
-                key={branch.branchId}
-                threadId={thread.threadId}
-                branch={branch}
-                ordinal={index + 2}
-                isLast={index === forks.length - 1 && childThreads.length === 0}
-                isCurrent={isOpen && tree?.selectedBranchId === branch.branchId}
-                disabled={running}
-                onOpen={() => void openBranch(branch.branchId)}
-              />
-            ))}
             {childThreads.map((child, position) => (
               <div key={child.threadId} className="relative ps-6">
                 <TreeGuide isLast={position === childThreads.length - 1} />
@@ -473,6 +430,7 @@ export function ThreadRow({
                     place={place}
                     childThreads={childrenOf?.get(child.threadId)}
                     childrenOf={childrenOf}
+                    nested
                   />
                 </ul>
               </div>

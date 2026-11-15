@@ -205,7 +205,13 @@ type PaintedMark = FC<
  * arrow), so each fill takes the next lighter colour: the accent is painted
  * as the tint and the tint as the paper, which keeps the outline legible.
  */
-const SOFT = { tint: 'paper', paper: 'paper', accent: 'tint', line: 'line' }
+const SOFT: LayerPaint = {
+  tint: 'paper',
+  paper: 'paper',
+  accent: 'tint',
+  line: 'line',
+}
+type LayerPaint = Record<(typeof ORDER)[number], (typeof ORDER)[number]>
 
 /**
  * A coloured Streamline mark as stacked masks, one per layer
@@ -219,9 +225,11 @@ const SOFT = { tint: 'paper', paper: 'paper', accent: 'tint', line: 'line' }
 export const painted = (
   layers: MarkLayers,
   shift = 0,
-  soft = false,
-): PaintedMark =>
-  function PaintedMark({ className, style, ...props }) {
+  /** true for SOFT, or a mark's own layer-to-paint map. */
+  soft: boolean | LayerPaint = false,
+): PaintedMark => {
+  const paint = soft === true ? SOFT : soft || undefined
+  return function PaintedMark({ className, style, ...props }) {
     return (
       <span
         aria-hidden="true"
@@ -235,7 +243,7 @@ export const painted = (
             src && (
               <span
                 key={layer}
-                data-layer={soft ? SOFT[layer] : layer}
+                data-layer={paint ? paint[layer] : layer}
                 className="icon-mask"
                 style={{ '--icon-mask': `url("${src}")` } as CSSProperties}
               />
@@ -245,6 +253,7 @@ export const painted = (
       </span>
     )
   }
+}
 
 /**
  * The folder and the file as the notes tree draws them. A project in the
@@ -404,11 +413,32 @@ const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
 const WebSearch = painted(CONTROL_LAYERS.webSearch, 180, true)
-const NewChat = painted(CONTROL_LAYERS.newChat, 45, true)
+// The owner's Streamline file with a plus (review, 2026-11-15) for every new
+// thread: the page softened as the other controls' are, the plus kept at the
+// full accent, turned 260 degrees, which takes the default blue to green.
+const NewChat = painted(CONTROL_LAYERS.fileAdd, 260, {
+  ...SOFT,
+  accent: 'accent',
+})
 const ToolRunning = painted(CONTROL_LAYERS.toolRunning, 45, true)
 const ToolDone = painted(CONTROL_LAYERS.toolDone, 135, true)
 const Memory = painted(CONTROL_LAYERS.memory, 180, true)
 const Approval = painted(CONTROL_LAYERS.approval, 0, true)
+/** The sidebar's search, the coloured magnifier of the owner's sidebar reference. */
+const SearchMark = painted(CONTROL_LAYERS.search, 180, true)
+/**
+ * Session marks (components/organize/glyphs): a session's type, and the
+ * states that outrank it. Forks and continuations sit a turn from the rest
+ * so a session others came from reads apart.
+ */
+const SessionText = painted(CONTROL_LAYERS.fileText, 180, true)
+const SessionCode = painted(CONTROL_LAYERS.fileCode, 180, true)
+const SessionCheck = painted(CONTROL_LAYERS.fileCheck, 135, true)
+const SessionImage = painted(CONTROL_LAYERS.imageFileEdit, 180, true)
+const SessionForked = painted(CONTROL_LAYERS.fileModule, 45, true)
+const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
+const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
+const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
 
 export const Icon = {
   Group: SquareDashed,
@@ -443,6 +473,15 @@ export const Icon = {
   Calendar,
   Chat,
   ChatSearch,
+  SearchMark,
+  SessionText,
+  SessionCode,
+  SessionCheck,
+  SessionImage,
+  SessionForked,
+  SessionContinued,
+  SessionPair,
+  SessionEmpty,
   Check,
   ChevronDown,
   ChevronLeft,

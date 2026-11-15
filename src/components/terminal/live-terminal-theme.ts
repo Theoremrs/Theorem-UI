@@ -14,9 +14,20 @@ import {
   workspaceOf,
 } from './terminal-theme'
 import type { TerminalTheme, Workspace } from './terminal-theme'
+import { FALLBACK_ROLES, terminalRoles } from './terminal-roles'
+import type { TerminalRoles } from './terminal-roles'
 
-export const useTerminalTheme = create<{ theme: TerminalTheme }>(() => ({
+/**
+ * The page's terminal colours: the legacy theme the CSS reads, and the
+ * complete role contract (terminal-roles.ts) the Terminal and the Cabinet
+ * both draw in, set together so sibling views change in one step.
+ */
+export const useTerminalTheme = create<{
+  theme: TerminalTheme
+  roles: TerminalRoles
+}>(() => ({
   theme: SLATE,
+  roles: FALLBACK_ROLES,
 }))
 
 /** The workspace's tokens as the browser resolves them on the root. */
@@ -44,8 +55,12 @@ function follow() {
   if (key === followed) return
   followed = key
   let theme: TerminalTheme
+  let roles: TerminalRoles
   try {
     theme = terminalTheme(workspace)
+    roles = terminalRoles(workspace)
+    if (roles.diagnostics.some((d) => d.startsWith('fallback')))
+      console.warn('terminal roles:', roles.diagnostics)
   } catch (error) {
     // A token that is not a colour keeps the terminal as it was.
     console.error('terminal colours:', error)
@@ -54,11 +69,15 @@ function follow() {
   const root = document.documentElement
   for (const [name, value] of Object.entries(terminalCss(theme)))
     root.style.setProperty(name, value)
-  useTerminalTheme.setState({ theme })
+  useTerminalTheme.setState({ theme, roles })
 }
 
-follow()
-new MutationObserver(follow).observe(document.documentElement, {
-  attributes: true,
-  attributeFilter: ['class', 'data-palette', 'style'],
-})
+// The cabinet imports this module statically, so it can load during server
+// rendering: there it keeps the fallback roles and follows nothing.
+if (typeof document !== 'undefined') {
+  follow()
+  new MutationObserver(follow).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'data-palette', 'style'],
+  })
+}

@@ -11,6 +11,7 @@
   --recipe-composer-content: var(--recipe-prose);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-section: 500 0.875rem / 1.4285714286 var(--font-sans);
+  --recipe-ui-group: 600 0.9375rem / 1.3333333333 var(--font-sans);
   --recipe-metadata: 400 0.75rem / 1.5 var(--font-sans);
   --recipe-code: 400 0.8125rem / 1.5384615385 var(--font-mono);
   --recipe-heading-small: 600 1.125rem / 1.3333333333 var(--font-sans);
@@ -86,6 +87,10 @@
 [data-appearance-recipe='ui.section'] {
   font: var(--recipe-ui-section);
   letter-spacing: 0.01em;
+}
+[data-appearance-recipe='ui.group'] {
+  font: var(--recipe-ui-group);
+  letter-spacing: normal;
 }
 [data-appearance-recipe='metadata'] {
   font: var(--recipe-metadata);
@@ -657,6 +662,17 @@
 :root[data-material-canvas='flat'] .bg-sheet {
   --sheet-shade: var(--surface-neutral);
   --sheet-field: none;
+}
+/* The rail's tab is part of the surface it opens onto (rail.tsx Junction):
+   the panel's own fill while the panel is open, or the sheet as the canvas
+   material paints it. */
+.rail-junction[data-joins='navigation'] > * {
+  background-color: var(--surface-sidebar);
+  background-image: none;
+}
+:root[data-material-canvas='flat'] .rail-junction[data-joins='sheet'] > * {
+  background-color: var(--surface-neutral);
+  background-image: none;
 }
 :root[data-material-canvas='glass'] .bg-sheet {
   backdrop-filter: blur(var(--glass-blur));

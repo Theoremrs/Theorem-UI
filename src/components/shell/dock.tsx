@@ -31,6 +31,7 @@ import { INSPECTOR_TOOLS } from '@/components/inspector/inspector-state'
 import type { InspectorTool } from '@/components/inspector/inspector-state'
 import { NotePanel } from '@/components/notes/note-panel'
 import { ThreadHeader } from '@/components/organize/thread-header'
+import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { useNoteView } from '@/components/notes/note-view'
 import { Button } from '@/components/ui/button'
 import {
@@ -115,7 +116,8 @@ function subscribe(event: (listener: () => void) => { dispose: () => void }) {
 
 /** The main panel: the conversation, or the mode's view in the Index, Pages, Spaces and the canvas. Theia covers the dock in IDE mode. */
 function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
-  const title = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useAuiState((s) => s.threadListItem.title)
+  const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   useEffect(
     () =>
@@ -306,6 +308,9 @@ const inspector = (Panel: React.ComponentType) =>
     )
   }
 
+/** The id the outputs side panel had; only old saved layouts still name it. */
+const RETIRED_OUTPUTS_PANEL = 'outputs'
+
 const components = {
   thread: ThreadPanel,
   outline: inspector(OutlinePanel),
@@ -319,6 +324,9 @@ const components = {
   file: FileDockPanel,
   delegation: DelegationDockPanel,
   review: ReviewDockPanel,
+  // The outputs were a side panel until 2026-11-14; a layout saved then still
+  // names it, so it restores and is removed (restoreLayout).
+  [RETIRED_OUTPUTS_PANEL]: () => null,
 }
 
 const tabComponents = {
@@ -329,6 +337,23 @@ const tabComponents = {
 }
 
 /** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
+/** Opens and closes the artifact cabinet for the project that is open. */
+function OutputsToggle() {
+  const open = useShell((s) => s.sideDrawer === 'outputs')
+  return (
+    <TooltipIconButton
+      tooltip={open ? 'Close gallery' : 'Gallery'}
+      aria-pressed={open}
+      onClick={() =>
+        useShell.getState().setSideDrawer(open ? undefined : 'outputs')
+      }
+      className="size-7 p-1.5"
+    >
+      <Icon.Apps className="size-4" />
+    </TooltipIconButton>
+  )
+}
+
 function FollowToggle() {
   const following = useFollow((s) => s.following)
   const { pause, resume } = useFollow.getState()
@@ -392,6 +417,7 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
   return (
     <div className="flex h-full items-center pe-1">
       <FollowToggle />
+      <OutputsToggle />
       <Menu.Root>
         <Menu.Trigger
           render={
@@ -498,6 +524,8 @@ function restoreLayout(
   // Theia now covers the sheet in IDE mode, so an IDE panel would load it twice.
   const ide = api.getPanel('ide')
   if (ide) api.removePanel(ide)
+  const outputs = api.getPanel(RETIRED_OUTPUTS_PANEL)
+  if (outputs) api.removePanel(outputs)
   if (api.getPanel(THREAD)) return true
   api.clear()
   return false

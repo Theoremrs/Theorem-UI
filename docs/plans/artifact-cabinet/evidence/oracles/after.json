@@ -1,0 +1,121 @@
+{
+ "source_revision": "ff2f1cd+wt",
+ "environment": {
+  "viewport_css_px": 1536,
+  "viewport_height_css_px": 1000,
+  "device_pixel_ratio": 1,
+  "zoom": 1,
+  "browser": "Playwright Chromium (preinstalled)",
+  "route": "/projects/<seeded Headland survey>",
+  "preset": "default appearance; the terminal host uses its dark terminal palette (bg #202733)",
+  "weights_by_chars": {
+   "300": 12,
+   "400": 656,
+   "600": 47
+  },
+  "sizes_by_chars": {
+   "12.5px": 715
+  }
+ },
+ "observations": {
+  "tab-vs-body": {
+   "kind": "rendered_web",
+   "first": {
+    "family": "\"JetBrains Mono Variable\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, monospace",
+    "font_size_px": 12.5,
+    "font_weight": 400
+   },
+   "second": {
+    "family": "\"JetBrains Mono Variable\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, monospace",
+    "font_size_px": 12.5,
+    "font_weight": 400
+   }
+  },
+  "mono-face": {
+   "kind": "rendered_web",
+   "first": {
+    "actual_face": "JetBrainsMono",
+    "face_evidence": "CDP CSS.getPlatformFontsForNode glyph counts: {'JetBrainsMono-Regular': 808, 'DejaVuSansMono': 2}"
+   },
+   "second": {
+    "actual_face": "JetBrainsMono",
+    "face_evidence": "policy: JetBrains Mono"
+   }
+  },
+  "code-size": {
+   "kind": "rendered_web",
+   "numerator": 12.5,
+   "denominator": 13,
+   "note": "spec code recipe is JetBrains Mono 13px/20px"
+  },
+  "line-pitch": {
+   "kind": "rendered_web",
+   "numerator": 18.75,
+   "denominator": 12.5,
+   "note": "measured row-to-row distance of the drawn grid, not CSS line-height (18.75px)"
+  },
+  "ink": {
+   "kind": "rendered_web",
+   "foreground": "#C8D0D8",
+   "background": "#202733",
+   "chars": 195
+  },
+  "heading": {
+   "kind": "rendered_web",
+   "foreground": "#E4EAEE",
+   "background": "#202733",
+   "chars": 41
+  },
+  "muted": {
+   "kind": "rendered_web",
+   "foreground": "#8F98A0",
+   "background": "#202733",
+   "chars": 171
+  },
+  "accent": {
+   "kind": "rendered_web",
+   "foreground": "#8AA8A0",
+   "background": "#202733",
+   "chars": 6
+  },
+  "raised": {
+   "kind": "rendered_web",
+   "foreground": "#C8D0D8",
+   "background": "#273042",
+   "chars": 8
+  },
+  "lines": {
+   "kind": "rendered_web",
+   "foreground": "#3A4458",
+   "background": "#202733",
+   "chars": 294
+  },
+  "header-rhythm": {
+   "kind": "rendered_web",
+   "values_px": [
+    0.25,
+    37.25,
+    18.75,
+    37.25
+   ],
+   "hierarchy_px": [
+    0.25,
+    18.75,
+    37.25
+   ],
+   "note": "blank px between title\u2192scope, scope\u2192search, search\u2192filters, filters\u2192gallery; hierarchy = [within the identity group, between related controls (search/filters), between groups]"
+  },
+  "tab-track": {
+   "kind": "rendered_web",
+   "first": {
+    "inline_start_px": 1101.5,
+    "inline_size_px": 0
+   },
+   "second": {
+    "inline_start_px": 1102,
+    "inline_size_px": 0
+   },
+   "note": "tab label text start vs gallery content text start"
+  }
+ }
+}

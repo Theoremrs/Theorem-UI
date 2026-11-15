@@ -171,6 +171,60 @@ function ShellNavigationStory() {
   return <RouterProvider router={router} />
 }
 
+/** A project's page in the real shell: the projects route over the story transport. */
+function ProjectHomeStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: ShellCompareStory,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren([
+          createRoute({
+            getParentRoute: () => shell,
+            path: 'projects/$projectId',
+          }),
+          createRoute({ getParentRoute: () => shell, path: 'c/$threadId' }),
+        ]),
+      ]),
+      history: createMemoryHistory({
+        initialEntries: ['/projects/project-theorem'],
+      }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+/** A project's session graph on the canvas, in the real shell: Theorem's graph read, Make main chat and saved views over the story transport. */
+function SessionGraphStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: ShellCompareStory,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['canvas', 'c/$threadId', 'projects/$projectId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({
+        initialEntries: [
+          `/canvas?sessions=${encodeURIComponent('project:project-theorem')}`,
+        ],
+      }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
 function ShellNavigationFrame() {
   const pathname = useLocation({ select: (location) => location.pathname })
   return (
@@ -764,6 +818,8 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'compare-pane-standalone': () => <ComparePaneStory standalone />,
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
+  'project-home': ProjectHomeStory,
+  'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,
   'settings-ai': SettingsAiStory,
   'glass-compare': () => (

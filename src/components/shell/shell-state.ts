@@ -16,17 +16,17 @@ export type SavedLayout = {
 export type TerminalTab = { id: string; title: string; threadId?: string }
 
 /** What the right-hand drawer shows; only the terminal so far. */
-export type SideDrawer = 'terminal'
+export type SideDrawer = 'terminal' | 'outputs'
 
 /**
  * The navigation panel's working range in px; it opens at the default. This
  * is the one place a sidebar's width is set: the phone drawer and the settings
  * sidebar take the default from here too.
  */
-export const PANEL_WIDTH = { min: 240, default: 280, max: 420 } as const
+export const PANEL_WIDTH = { min: 184, default: 210, max: 420 } as const
 
-/** The default before version 7: a panel still at it was never dragged. */
-const WIDE_PANEL_WIDTH = 354
+/** Defaults before version 9 (354 before 7, 280 in 7, 248 in 8): a panel still at one was never dragged. */
+const OLD_PANEL_WIDTHS: readonly number[] = [354, 280, 248]
 
 type ShellState = {
   /** Project whose threads the sidebar lists. Falls back to the first project. */
@@ -79,6 +79,13 @@ type ShellState = {
   sideDrawer: SideDrawer | undefined
   /** The right-hand drawer's width in px on desktop, set by dragging its edge. */
   sideWidth: number
+  /**
+   * The docked artifact cabinet's width in px, set by dragging its edge
+   * (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §4.2 targets 466).
+   */
+  cabinetWidth: number
+  /** Whether the cabinet uses the whole workspace (§4.3). Not persisted. */
+  cabinetExpanded: boolean
   /** Each project's right-hand terminal tabs, in order, and the one showing. */
   terminalTabs: Readonly<
     Record<string, { tabs: readonly TerminalTab[]; active: string }>
@@ -104,6 +111,8 @@ type ShellState = {
   setTerminalThread: (projectId: string, threadId: string | undefined) => void
   setSideDrawer: (drawer: SideDrawer | undefined) => void
   setSideWidth: (width: number) => void
+  setCabinetWidth: (width: number) => void
+  setCabinetExpanded: (expanded: boolean) => void
   openTerminalTab: (projectId: string) => void
   closeTerminalTab: (projectId: string, tabId: string) => void
   selectTerminalTab: (projectId: string, tabId: string) => void
@@ -141,6 +150,8 @@ export const useShell = create<ShellState>()(
       terminalThreadIds: [],
       sideDrawer: undefined,
       sideWidth: 620,
+      cabinetWidth: 466,
+      cabinetExpanded: false,
       terminalTabs: {},
       setNoteOrder: (noteOrder) => set({ noteOrder }),
       setProjectId: (projectId) => set({ projectId }),
@@ -182,6 +193,8 @@ export const useShell = create<ShellState>()(
         }),
       setSideDrawer: (sideDrawer) => set({ sideDrawer }),
       setSideWidth: (sideWidth) => set({ sideWidth }),
+      setCabinetWidth: (cabinetWidth) => set({ cabinetWidth }),
+      setCabinetExpanded: (cabinetExpanded) => set({ cabinetExpanded }),
       openTerminalTab: (projectId) =>
         set((s) => {
           const tab = newTab()
@@ -254,9 +267,10 @@ export const useShell = create<ShellState>()(
       // whichever version 4 a layout was saved under. Version 6 gave the IDE
       // its own panel beside the rail: the IDE's collapsed flag had meant
       // Theia's explorer, so it moves to ideFilesOpen and the panel opens.
-      // Version 7 narrowed the default width: a panel left at the old default
-      // takes the new one, and a width the person dragged to is kept.
-      version: 7,
+      // Versions 7, 8 and 9 narrowed the default width: a panel left at an old
+      // default takes the new one, and a width the person dragged to is kept.
+      // Version 9 is the cabinet spec's 210px navigation.
+      version: 9,
       partialize: ({
         projectId,
         layouts,
@@ -270,6 +284,7 @@ export const useShell = create<ShellState>()(
         projectOrder,
         terminalHeight,
         sideWidth,
+        cabinetWidth,
         terminalThreads,
         terminalThreadIds,
         terminalTabs,
@@ -287,6 +302,7 @@ export const useShell = create<ShellState>()(
         projectOrder,
         terminalHeight,
         sideWidth,
+        cabinetWidth,
         terminalThreads,
         terminalThreadIds,
         terminalTabs,
@@ -297,10 +313,11 @@ export const useShell = create<ShellState>()(
         const { ide, ...collapsed } = state?.panelCollapsed ?? {}
         const theia = { panelCollapsed: collapsed, ideFilesOpen: !ide }
         const panelWidth =
-          state?.panelWidth === WIDE_PANEL_WIDTH
+          state?.panelWidth !== undefined &&
+          OLD_PANEL_WIDTHS.includes(state.panelWidth)
             ? PANEL_WIDTH.default
             : state?.panelWidth
-        if (version === 6) return { ...state, panelWidth }
+        if (version >= 6 && version <= 8) return { ...state, panelWidth }
         if (version === 5) return { ...state, ...theia, panelWidth }
         if (version >= 2 && version <= 4) {
           const { filesShown: _, ...kept } = (state ?? {}) as ShellState

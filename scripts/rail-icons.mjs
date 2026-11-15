@@ -70,6 +70,18 @@ export const CONTROLS = [
   },
   { name: 'memory', source: 'control/source/streamline-sd-card-question.png' },
   { name: 'approval', source: 'control/source/streamline-file-question.png' },
+  { name: 'search', source: 'control/source/streamline-search.png' },
+  // Session marks: a session's type, and the states that outrank it.
+  { name: 'fileText', source: 'control/source/streamline-common-file-text.png' },
+  { name: 'fileCode', source: 'control/source/streamline-file-code.png' },
+  { name: 'fileCheck', source: 'control/source/streamline-common-file-check.png' },
+  { name: 'fileModule', source: 'control/source/streamline-common-file-module.png' },
+  { name: 'fileDouble', source: 'control/source/streamline-common-file-double.png' },
+  { name: 'fileDouble2', source: 'control/source/streamline-common-file-double-2.png' },
+  { name: 'fileEmpty', source: 'control/source/streamline-common-file-empty.png' },
+  { name: 'fileEdit', source: 'control/source/streamline-common-file-edit.png' },
+  { name: 'fileAdd', source: 'control/source/streamline-common-file-add.png' },
+  { name: 'imageFileEdit', source: 'control/source/streamline-image-file-edit.png' },
 ]
 
 /**

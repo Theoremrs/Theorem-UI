@@ -121,12 +121,80 @@ export const programKeys = {
   /** The one run this browser is starting or following. */
   run: () => ['programs', 'run'] as const,
   names: () => ['programs', 'names'] as const,
+  sessionGraphs: () => ['programs', 'session-graphs'] as const,
+  sessionGraph: (nodeId: string) =>
+    ['programs', 'session-graph', nodeId] as const,
 }
 
 export const listPrograms = () =>
   read<{ programs: Array<ProgramSummary> }>({ action: 'list' }).then((answer) =>
     onePerName(answer.programs),
   )
+
+/** The facets a saved session graph shows or hides: the graph read's own sections. */
+export const SESSION_GRAPH_FACETS = [
+  'sessions',
+  'forks',
+  'connections',
+  'artifacts',
+  'documents',
+  'tools',
+] as const
+export type SessionGraphFacet = (typeof SESSION_GRAPH_FACETS)[number]
+export type SessionGraphShow = Record<SessionGraphFacet, boolean>
+
+/** Which graph a view is of: a chat project, or a fork tree named by its origin chat. */
+export type SessionGraphViewScope = { kind: 'project' | 'tree'; id: string }
+
+/** Node positions a person placed; the sessions themselves are read live. */
+export type SessionGraphLayout = {
+  nodes?: Record<string, { x: number; y: number }>
+  /** Which way the forks run out from the main; the positions above were placed in it. */
+  direction?: 'RIGHT' | 'DOWN'
+}
+
+export type SessionGraphSummary = {
+  node_id: string
+  kind: 'session_graph'
+  name: string
+  scope: SessionGraphViewScope
+  revision: number
+  updated_at_ms: number
+}
+
+export type SavedSessionGraph = SessionGraphSummary & {
+  layout: SessionGraphLayout
+  show: SessionGraphShow
+  created_at_ms: number
+}
+
+/**
+ * The session graphs saved beside the programs, newest first. A view holds
+ * only its scope, layout and facets; Theorem reads the sessions live.
+ */
+export const listSessionGraphs = () =>
+  read<{ session_graphs?: Array<SessionGraphSummary> }>({
+    action: 'list',
+  }).then((answer) => answer.session_graphs ?? [])
+
+export const loadSessionGraph = (nodeId: string) =>
+  read<SavedSessionGraph>({ action: 'load_session_graph', node_id: nodeId })
+
+/** Creates a view, or replaces one at the revision it was read at. */
+export const saveSessionGraph = (view: {
+  name: string
+  scope: SessionGraphViewScope
+  layout: SessionGraphLayout
+  show: SessionGraphShow
+  node_id?: string
+  expected_revision?: number
+}) => apply<SavedSessionGraph>({ action: 'save_session_graph', ...view })
+
+export const deleteSessionGraph = (nodeId: string) =>
+  apply<{ node_id: string }>({
+    action: 'delete_session_graph',
+    node_id: nodeId,
+  })
 
 /** Every saved version answers to its program's name, whichever id names it. */
 export const programNames = () =>

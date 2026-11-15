@@ -142,3 +142,20 @@ test('Alt and an arrow move a destination without opening it', async () => {
     `IDE moved to position ${labels().length - 2} of ${labels().length}.`,
   )
 })
+
+test("on the desktop the tab joins the Vault's sheet, which covers the open panel", async () => {
+  useShell.setState({ panelCollapsed: {} })
+  const { router, rendered } = renderRail({ collapsible: true })
+  await rendered
+  const junction = await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction'),
+  )
+  expect(junction.dataset.joins).toBe('sheet')
+  await act(async () => router.navigate({ to: '/' }))
+  await waitFor(() =>
+    document.querySelector<HTMLElement>('.rail-junction')?.dataset.joins ===
+    'navigation'
+      ? true
+      : undefined,
+  )
+})

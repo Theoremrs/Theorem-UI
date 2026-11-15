@@ -42,6 +42,42 @@ import approvalLine from './approval-line.svg'
 import approvalAccent from './approval-accent.svg'
 import approvalTint from './approval-tint.svg'
 import approvalPaper from './approval-paper.svg'
+import searchLine from './search-line.svg'
+import searchAccent from './search-accent.svg'
+import searchTint from './search-tint.svg'
+import fileTextLine from './fileText-line.svg'
+import fileTextTint from './fileText-tint.svg'
+import fileTextPaper from './fileText-paper.svg'
+import fileCodeLine from './fileCode-line.svg'
+import fileCodeTint from './fileCode-tint.svg'
+import fileCodePaper from './fileCode-paper.svg'
+import fileCheckLine from './fileCheck-line.svg'
+import fileCheckAccent from './fileCheck-accent.svg'
+import fileCheckTint from './fileCheck-tint.svg'
+import fileCheckPaper from './fileCheck-paper.svg'
+import fileModuleLine from './fileModule-line.svg'
+import fileModuleTint from './fileModule-tint.svg'
+import fileModulePaper from './fileModule-paper.svg'
+import fileDoubleLine from './fileDouble-line.svg'
+import fileDoubleTint from './fileDouble-tint.svg'
+import fileDoublePaper from './fileDouble-paper.svg'
+import fileDouble2Line from './fileDouble2-line.svg'
+import fileDouble2Tint from './fileDouble2-tint.svg'
+import fileDouble2Paper from './fileDouble2-paper.svg'
+import fileEmptyLine from './fileEmpty-line.svg'
+import fileEmptyTint from './fileEmpty-tint.svg'
+import fileEmptyPaper from './fileEmpty-paper.svg'
+import fileEditLine from './fileEdit-line.svg'
+import fileEditAccent from './fileEdit-accent.svg'
+import fileEditTint from './fileEdit-tint.svg'
+import fileEditPaper from './fileEdit-paper.svg'
+import fileAddLine from './fileAdd-line.svg'
+import fileAddAccent from './fileAdd-accent.svg'
+import fileAddTint from './fileAdd-tint.svg'
+import fileAddPaper from './fileAdd-paper.svg'
+import imageFileEditLine from './imageFileEdit-line.svg'
+import imageFileEditAccent from './imageFileEdit-accent.svg'
+import imageFileEditPaper from './imageFileEdit-paper.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -57,6 +93,17 @@ export const CONTROL_LAYERS = {
   toolDone: { line: toolDoneLine, tint: toolDoneTint, paper: toolDonePaper },
   memory: { line: memoryLine, accent: memoryAccent, tint: memoryTint, paper: memoryPaper },
   approval: { line: approvalLine, accent: approvalAccent, tint: approvalTint, paper: approvalPaper },
+  search: { line: searchLine, accent: searchAccent, tint: searchTint },
+  fileText: { line: fileTextLine, tint: fileTextTint, paper: fileTextPaper },
+  fileCode: { line: fileCodeLine, tint: fileCodeTint, paper: fileCodePaper },
+  fileCheck: { line: fileCheckLine, accent: fileCheckAccent, tint: fileCheckTint, paper: fileCheckPaper },
+  fileModule: { line: fileModuleLine, tint: fileModuleTint, paper: fileModulePaper },
+  fileDouble: { line: fileDoubleLine, tint: fileDoubleTint, paper: fileDoublePaper },
+  fileDouble2: { line: fileDouble2Line, tint: fileDouble2Tint, paper: fileDouble2Paper },
+  fileEmpty: { line: fileEmptyLine, tint: fileEmptyTint, paper: fileEmptyPaper },
+  fileEdit: { line: fileEditLine, accent: fileEditAccent, tint: fileEditTint, paper: fileEditPaper },
+  fileAdd: { line: fileAddLine, accent: fileAddAccent, tint: fileAddTint, paper: fileAddPaper },
+  imageFileEdit: { line: imageFileEditLine, accent: imageFileEditAccent, paper: imageFileEditPaper },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

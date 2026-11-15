@@ -14,9 +14,13 @@ import { appearancePair } from '@/lib/appearance-policy'
 import './chat-shell.css'
 import { LayoutPriority, Orientation, SplitviewReact } from 'dockview-react'
 import { modeLabel, navigatorMode, useShellMode } from './modes'
+import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { PANEL_WIDTH, useShell } from './shell-state'
 import { Rail } from './rail'
-import { SideTerminal } from '@/components/terminal/side-terminal'
+import {
+  SideTerminal,
+  useCabinetExpanded,
+} from '@/components/terminal/side-terminal'
 import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
@@ -45,7 +49,8 @@ const VaultWorkspace = lazy(() =>
 const iconButton = 'size-9 p-2'
 
 function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
-  const title = useAuiState((s) => s.threadListItem.title)
+  const threadTitle = useAuiState((s) => s.threadListItem.title)
+  const title = useProjectHomeTitle() ?? threadTitle
   const mode = useShellMode()
   return (
     <header className="flex h-14 shrink-0 items-center gap-1 px-2">
@@ -380,6 +385,8 @@ function DesktopShell(route: DockRoute) {
   if (drawerView !== null && drawerView !== view) setDrawerView(null)
   const vault = mode === 'vault'
   const ide = mode === 'ide'
+  // An expanded artifact cabinet covers the workspace: what it dims is inert.
+  const covered = useCabinetExpanded()
   const [vaultLoaded, setVaultLoaded] = useState(vault)
   if (vault && !vaultLoaded) setVaultLoaded(true)
   return (
@@ -391,9 +398,13 @@ function DesktopShell(route: DockRoute) {
       <div className="appearance-docked-rail" data-appearance-width-role="rail">
         <Rail collapsible />
       </div>
+      {/* A docked cabinet reserves its width here (side-terminal sets
+          --cabinet-dock); an overlay or the terminal reserves none. */}
       <div
-        className="relative my-(--sheet-inset) me-(--sheet-inset) min-w-0 flex-1"
+        className="relative my-(--sheet-inset) me-[calc(var(--sheet-inset)+var(--cabinet-dock,0px))] min-w-0 flex-1 transition-[margin] duration-(--duration-glide) ease-glide data-[covered]:opacity-40"
         data-appearance-part="sheet-frame"
+        data-covered={covered || undefined}
+        inert={covered}
       >
         <div aria-hidden="true" className="lift-glow" />
         <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">

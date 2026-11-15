@@ -16,6 +16,7 @@ import {
 } from './fixtures/notebook-parts'
 import { organizationFixture } from './fixtures/organization'
 import { reviewFixture, reviewShots } from './fixtures/review'
+import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
 import {
   POINTING_DELEGATION,
@@ -96,6 +97,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     return review
   }
   return {
+    ...sessionGraphRoutes(now),
     [`GET ${BASE}/models`]: () => ({
       defaultRef: 'example/research',
       models: ['Research', 'Writing', 'Code', 'Vision', 'Fast', 'Reasoning', 'Local', 'Compact'].map((name) => ({

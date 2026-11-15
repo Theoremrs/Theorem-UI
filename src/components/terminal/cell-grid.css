@@ -1,0 +1,33 @@
+/*
+ * The gallery and the agent terminal are cell grids (Ratzilla's DOM backend)
+ * in one monospaced face at one size, so their hierarchy comes from weight
+ * and line pitch:
+ *
+ * - Rows sit at 1.5 of the text size (18.75px at 12.5px), inside the code
+ *   recipe's 1.45-1.6 range. Ratzilla measures its cell from a probe `pre`,
+ *   which this rule reaches too, so the grid and the cell height agree and
+ *   box-drawing frames still join.
+ * - BOLD renders semibold (600): the gallery title, every card title, the
+ *   active filter and key glyphs.
+ * - DIM renders light (300) at full opacity rather than half opacity: a
+ *   quieter weight for labels and ordinals whose colour is already muted, so
+ *   their contrast stays the muted role's.
+ *
+ * The agent terminal takes the same pitch and semibold; its DIM keeps half
+ * opacity, since agent output uses it to mean secondary.
+ *
+ * JetBrains Mono Variable carries 100-800, so these are real weights, not
+ * synthesised ones.
+ */
+[data-artifact-cabinet] pre,
+[data-terminal-grid] pre {
+  line-height: 1.5 !important;
+}
+[data-artifact-cabinet] span[style*='font-weight: bold'],
+[data-terminal-grid] span[style*='font-weight: bold'] {
+  font-weight: 600 !important;
+}
+[data-artifact-cabinet] span[style*='opacity: 0.5'] {
+  opacity: 1 !important;
+  font-weight: 300;
+}

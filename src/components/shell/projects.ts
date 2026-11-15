@@ -8,6 +8,13 @@ import { useShell } from './shell-state'
 
 const PROJECTS = ['theorem', 'projects'] as const
 
+/**
+ * Pages read before giving up on the rest. A record missing from them is
+ * treated as unknown, never as empty (the project page refuses to overwrite
+ * instructions it could not read).
+ */
+const MAX_PROJECT_PAGES = 20
+
 /** Default home for chats when a tenant has no projects yet. */
 const DEFAULT_PROJECT = 'Chats'
 
@@ -15,8 +22,15 @@ export function useProjects() {
   return useQuery({
     queryKey: PROJECTS,
     queryFn: async (): Promise<Theorem.Project[]> => {
-      const page = await theorem().chat.projects.list({ limit: 100 })
-      if (page.items.length) return page.items
+      const items: Theorem.Project[] = []
+      let cursor: string | undefined
+      for (let read = 0; read < MAX_PROJECT_PAGES; read++) {
+        const page = await theorem().chat.projects.list({ limit: 100, cursor })
+        items.push(...page.items)
+        cursor = page.nextCursor
+        if (!cursor) break
+      }
+      if (items.length) return items
       const { record } = await mutate((headers) =>
         theorem().chat.projects.create({ title: DEFAULT_PROJECT, ...headers }),
       )

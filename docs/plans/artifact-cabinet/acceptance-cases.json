@@ -1,0 +1,502 @@
+{
+  "schema": "theorem-artifact-cabinet-acceptance/1",
+  "spec": "SPEC-THEOREM-ARTIFACT-CABINET-1.0.md",
+  "scope": "production implementation; not the historical HTML prototype checks",
+  "cases": [
+    {
+      "id": "A01",
+      "title": "Approved source custody",
+      "requirement_ids": [
+        "CAB-001"
+      ],
+      "evidence_required": "document",
+      "exercise": "Compare the bundled approved HTML and original manifest to the uploaded mockup.",
+      "expected": "The HTML digest matches; source screenshots remain unchanged; no mock sample becomes real project data.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A02",
+      "title": "Mounted Ratatui cabinet",
+      "requirement_ids": [
+        "CAB-001",
+        "CAB-031"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Mount the actual WASM cabinet with real artifact entries in the shared right-hand host.",
+      "expected": "The cabinet uses the existing Ratatui/Ratzilla host, retains the approved gallery composition, and is not a standalone HTML substitution.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A03",
+      "title": "Stable artifact identity",
+      "requirement_ids": [
+        "CAB-002"
+      ],
+      "evidence_required": "contract",
+      "exercise": "List the same artifact with several revisions and duplicate titles on other artifacts.",
+      "expected": "One card per authorized artifact identity; revisions remain attached to that card; titles never serve as IDs.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A04",
+      "title": "Cross-session original opening",
+      "requirement_ids": [
+        "CAB-002",
+        "CAB-004"
+      ],
+      "evidence_required": "real_service",
+      "exercise": "In session A, open a project artifact produced in session B.",
+      "expected": "The represented artifact and revision open without switching the foreground conversation or discarding its draft.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A05",
+      "title": "Scoped paginated catalog",
+      "requirement_ids": [
+        "CAB-003"
+      ],
+      "evidence_required": "real_service",
+      "exercise": "Browse a project with more entries than one catalog page and artifacts outside its authorized scope.",
+      "expected": "Pagination is complete under the service contract; foreign/inaccessible items do not leak; total versus loaded count is labeled accurately.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A06",
+      "title": "Real search filters and ordering",
+      "requirement_ids": [
+        "CAB-003"
+      ],
+      "evidence_required": "contract_and_browser",
+      "exercise": "Search a title/description beyond the first page, change kind filters, and update a run status.",
+      "expected": "Search scope is honest; filters work; accepted-date ordering is stable; status updates do not arbitrarily reorder cards.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A07",
+      "title": "No live preview fallback",
+      "requirement_ids": [
+        "CAB-005",
+        "CAB-030"
+      ],
+      "evidence_required": "contract",
+      "exercise": "Provide a contribution whose preview fallback resolves to a live thing/application presentation.",
+      "expected": "Cabinet refuses the live fallback and uses an inert representation or honest type illustration; no run/live slot is created.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A08",
+      "title": "Browsing has no external effects",
+      "requirement_ids": [
+        "CAB-005",
+        "CAB-030"
+      ],
+      "evidence_required": "real_service",
+      "exercise": "Browse and scroll both modes with applications whose normal opening can start work.",
+      "expected": "No application execution, network mutation, credential grant, or hidden active iframe is caused by browsing; original opening retains existing permissions.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A09",
+      "title": "Preview preference truth table",
+      "requirement_ids": [
+        "CAB-006"
+      ],
+      "evidence_required": "unit_and_browser",
+      "exercise": "Exercise both presets with theme_default, pixel, and full_fidelity, under light and dark terminal profiles.",
+      "expected": "Expressive/default is pixel; Calm/default is full fidelity; either explicit choice wins independently of light/dark or palette.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A10",
+      "title": "Saved override and reset",
+      "requirement_ids": [
+        "CAB-007"
+      ],
+      "evidence_required": "real_preference_store",
+      "exercise": "Choose Pixel under Calm, reload, switch preset/palette, then choose Use theme default.",
+      "expected": "The explicit choice survives the supported persistence scope; reset restores default resolution without losing other preferences or flashing the wrong mode.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A11",
+      "title": "Cabinet and terminal lifetimes",
+      "requirement_ids": [
+        "CAB-008"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Open Cabinet without a model configured, then switch to/from an existing running terminal.",
+      "expected": "Cabinet starts no agent session; existing terminal identity, task, scroll, and approvals remain intact.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A12",
+      "title": "Grounded descriptions",
+      "requirement_ids": [
+        "CAB-009"
+      ],
+      "evidence_required": "contract",
+      "exercise": "Provide missing page counts, a Markdown document, authored text, and a stale derived summary.",
+      "expected": "No invented PDF label/page count/summary; provenance and revision are retained; stale summaries are not represented as current.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A13",
+      "title": "Revision race on open",
+      "requirement_ids": [
+        "CAB-002",
+        "CAB-028"
+      ],
+      "evidence_required": "real_service",
+      "exercise": "Display revision A; publish B between pointer-down and the accepted open action.",
+      "expected": "The command targets the revision represented by the selected card; a newer-revision notice may appear; no silent substitution.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A14",
+      "title": "Image normalization and fit",
+      "requirement_ids": [
+        "CAB-011"
+      ],
+      "evidence_required": "unit",
+      "exercise": "Convert portrait, panoramic, EXIF-rotated, transparent, light, dark, and unsupported-color-profile fixtures.",
+      "expected": "Orientation and declared color/alpha normalization are correct; aspect is preserved; crop is explicit; unsupported profiles and oversized data are handled honestly.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A15",
+      "title": "Pixel-grid and palette bounds",
+      "requirement_ids": [
+        "CAB-011"
+      ],
+      "evidence_required": "unit_and_rendered",
+      "exercise": "Convert reference image fixtures and display at device scale 1, 2, and a fractional scale.",
+      "expected": "Indices are in range and color count stays within profile; display uses nearest-neighbor with no blur/stretch; compact/reflow behavior is explicit.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A16",
+      "title": "Source-specific versus generic art",
+      "requirement_ids": [
+        "CAB-009",
+        "CAB-012"
+      ],
+      "evidence_required": "unit_and_review",
+      "exercise": "Preview a PDF, Markdown document, non-game app, unfamiliar game, missing app capture, and unknown artifact kind.",
+      "expected": "Correct kind/source drives the visual; only a real PDF receives that label; no generic maze is shown as a different app; type illustrations are identifiable.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A17",
+      "title": "Recipe extension without renderer branch",
+      "requirement_ids": [
+        "CAB-010"
+      ],
+      "evidence_required": "integration",
+      "exercise": "Register a seventh safe recipe through the contribution seam.",
+      "expected": "The gallery consumes its standard result without a new artifact-kind branch in the card renderer or a second artifact registry.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A18",
+      "title": "Graph topology honesty",
+      "requirement_ids": [
+        "CAB-012"
+      ],
+      "evidence_required": "unit_and_review",
+      "exercise": "Render a graph with cross-links, disconnected nodes, and a dense graph requiring simplification.",
+      "expected": "No invented relationships; omitted/clustered detail is marked and traceable; existing view/lens semantics are preserved.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A19",
+      "title": "Chart geometry from data",
+      "requirement_ids": [
+        "CAB-012"
+      ],
+      "evidence_required": "unit",
+      "exercise": "Render known donut values, a tiny category, zero total, negative unsupported values, and NaN.",
+      "expected": "Valid category occupied-area fractions meet the 0.03 target; tiny subpixel categories are described honestly; invalid data yields a named fallback, not made-up numbers.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A20",
+      "title": "Bounded malformed and large input",
+      "requirement_ids": [
+        "CAB-013"
+      ],
+      "evidence_required": "fault_injection",
+      "exercise": "Submit malformed encodings, decompression-heavy/oversized headers, excessive dimensions, and an over-budget preview job.",
+      "expected": "Preallocation checks and decoder support are verified; bounded worker outcome is reported; the cabinet stays usable and original content remains intact.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A21",
+      "title": "Deterministic raster generation",
+      "requirement_ids": [
+        "CAB-014"
+      ],
+      "evidence_required": "unit",
+      "exercise": "Run each recipe repeatedly against pinned normalized data, then compare supported execution targets.",
+      "expected": "Same-target normalized indices/palettes agree exactly; versions/seeds/order are recorded; cross-target disagreement is isolated in cache identity rather than hidden.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A22",
+      "title": "Correct cache dependencies",
+      "requirement_ids": [
+        "CAB-014",
+        "CAB-018"
+      ],
+      "evidence_required": "unit",
+      "exercise": "Change only theme, then source revision, crop, recipe version, logical profile, and caption timestamp.",
+      "expected": "Theme reuses indices but remaps palette; output-changing inputs invalidate the right layer; relative-time labels do not rebuild pixel geometry.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A23",
+      "title": "Out-of-order async work",
+      "requirement_ids": [
+        "CAB-015",
+        "CAB-028"
+      ],
+      "evidence_required": "fault_injection",
+      "exercise": "Delay an old preview; change source revision, project, palette, and preview mode before its completion.",
+      "expected": "Late work cannot replace the current card; selected binding and anchor remain coherent; unused buffers are released.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A24",
+      "title": "Whole-terminal theme projection",
+      "requirement_ids": [
+        "CAB-016"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Switch Neutral/Paper/Slate/Forest profile fixtures while viewing Cabinet and a terminal containing code, diffs, prompt, approvals, and errors.",
+      "expected": "All roles update coherently from one adapter; no leftover forced gold headings or privileged purple/gold branding; source pixels/original content are not corrupted.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A25",
+      "title": "Invalid custom-theme repair",
+      "requirement_ids": [
+        "CAB-016"
+      ],
+      "evidence_required": "unit_and_browser",
+      "exercise": "Supply a gamut-extreme or low-contrast custom theme.",
+      "expected": "Actual sRGB roles are repaired or a same-mode known valid fallback is selected with diagnostics; no silent invalid palette is treated as passing.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A26",
+      "title": "Rendered contrast pairs",
+      "requirement_ids": [
+        "CAB-017"
+      ],
+      "evidence_required": "rendered_measurement",
+      "exercise": "Measure real labels and state indicators on base, raised, selected, and applicable terminal/diff surfaces.",
+      "expected": "Applicable normal text passes unrounded 4.5:1 and essential nontext 3:1; decorative/art pixels are classified correctly; missing measurements are unresolved.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A27",
+      "title": "Faithful originals stay faithful",
+      "requirement_ids": [
+        "CAB-018",
+        "CAB-030"
+      ],
+      "evidence_required": "rendered_and_contract",
+      "exercise": "Compare original gallery thumbnails and opened originals through several terminal palettes.",
+      "expected": "No terminal palette wash affects original image/screenshot content; explicit artifact-native theme behavior remains its own contract.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A28",
+      "title": "Preview and frame alignment",
+      "requirement_ids": [
+        "CAB-019"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Resize cabinet, zoom the page, load fonts late, scroll, and expand/restore at different device scales.",
+      "expected": "Preview, clip, card target, and semantic-control geometry share an epoch and agree within 1 CSS px in controlled captures; no drift or double-dispatch.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A29",
+      "title": "Keyboard pointer and touch parity",
+      "requirement_ids": [
+        "CAB-019",
+        "CAB-020"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Select cards by arrow keys, open with Enter/pointer/touch, resize by pointer and keyboard, and return with Escape.",
+      "expected": "Same IDs/actions are used; selection does not execute apps; return restores focus or a sensible surviving target; touch targets meet applicable rules.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A30",
+      "title": "Accessible semantic ownership",
+      "requirement_ids": [
+        "CAB-020"
+      ],
+      "evidence_required": "accessibility_audit",
+      "exercise": "Inspect accessibility tree and operate the cabinet using a screen reader.",
+      "expected": "One actionable semantic node per control/card; names/descriptions and selected/focus states are meaningful; no duplicate cell-text traversal or keyboard trap.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A31",
+      "title": "Search input and shortcut scope",
+      "requirement_ids": [
+        "CAB-021"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Enter composed Unicode text, paste content, use a mobile keyboard, and type / in another editor.",
+      "expected": "Input remains correct; focus is not stolen; the cabinet shortcut only acts in its allowed context; the global command palette is not silently replaced.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A32",
+      "title": "Draft and task continuity",
+      "requirement_ids": [
+        "CAB-004",
+        "CAB-008",
+        "CAB-029"
+      ],
+      "evidence_required": "real_service_and_browser",
+      "exercise": "Keep a draft/attachments and a running terminal operation, then open artifacts, switch styles, switch tabs, and expand/restore.",
+      "expected": "All existing owners preserve their draft, undo, references, task identity, and state; no invisible cancellation or fresh session.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A33",
+      "title": "Layout width conservation",
+      "requirement_ids": [
+        "CAB-022",
+        "CAB-023"
+      ],
+      "evidence_required": "rendered_measurement",
+      "exercise": "Capture 1536 and 1280 desktop widths plus 390 \u00d7 844 and 320 CSS px narrow conditions.",
+      "expected": "Measured allocation follows the width budget; desktop center meets the target when docked; otherwise an intentional overlay/reflow occurs; no font shrinking to retain columns.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A34",
+      "title": "Text scaling and long labels",
+      "requirement_ids": [
+        "CAB-023"
+      ],
+      "evidence_required": "mounted_browser",
+      "exercise": "Use long titles/descriptions, large user text, and 200% text enlargement.",
+      "expected": "Cards reduce columns or reflow; essential content and controls stay usable; titles/descriptions are not lost behind fades or tiny forced typography.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A35",
+      "title": "Honest state vocabulary",
+      "requirement_ids": [
+        "CAB-024"
+      ],
+      "evidence_required": "contract_and_browser",
+      "exercise": "Exercise empty, loading, refreshing, preview failure, unsupported kind, lost connection, and missing original.",
+      "expected": "Each is distinguishable; stale/offline is not empty; preview failure does not claim the original is absent; retry is available only where real.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A36",
+      "title": "Visual and recognition acceptance",
+      "requirement_ids": [
+        "CAB-001",
+        "CAB-031"
+      ],
+      "evidence_required": "visual_review",
+      "exercise": "Compare six real-kind fixtures plus the extended recognition corpus against the approved docked and expanded design.",
+      "expected": "Recognition, terminal visual language, composition, and descriptions are acceptable; fixture failures are named rather than averaged into a beauty score.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A37",
+      "title": "Permission change and cache privacy",
+      "requirement_ids": [
+        "CAB-025"
+      ],
+      "evidence_required": "real_service",
+      "exercise": "Revoke access while a preview is visible/in flight; switch between authorized scopes; inspect cached/hidden metadata behavior.",
+      "expected": "Existing access policy governs active preview, description, and metadata; unauthorized data is not exposed through stale cache or late results; originals are reauthorized.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A38",
+      "title": "Worker and workload measurement",
+      "requirement_ids": [
+        "CAB-026",
+        "CAB-027"
+      ],
+      "evidence_required": "performance",
+      "exercise": "Run the declared 1,000-entry fixture with up to 24 visible/buffered cards and two conversion jobs.",
+      "expected": "Conversion is off render/input callbacks and off main thread; work is bounded/deduplicated; cold/warm timing, long tasks, memory, and bundle results are recorded without unmeasured claims.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A39",
+      "title": "Historical revision and editor continuity",
+      "requirement_ids": [
+        "CAB-029"
+      ],
+      "evidence_required": "real_service_and_browser",
+      "exercise": "Open an artifact editor with unsaved work, inspect another revision, close/reopen Cabinet, and change its presentation.",
+      "expected": "Existing live editor/runtime state survives under its owner; looking at history does not overwrite or remount away unsaved work.",
+      "status": "not_run",
+      "evidence": []
+    },
+    {
+      "id": "A40",
+      "title": "Complete real product journey",
+      "requirement_ids": [
+        "CAB-032"
+      ],
+      "evidence_required": "real_end_to_end",
+      "exercise": "Create real artifacts across two sessions; browse pixel mode; open correct originals; publish revisions; change theme/preference; disconnect/reconnect and reload.",
+      "expected": "Identity, revisions, descriptions, source-derived previews, original operations, retained drafts, and accepted catalog converge end to end without fixture substitution.",
+      "status": "not_run",
+      "evidence": []
+    }
+  ]
+}

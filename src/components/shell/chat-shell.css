@@ -47,7 +47,12 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.appearance-navigation [data-sidebar='group-label'],
+.appearance-navigation [data-sidebar='group-label'] {
+  height: auto;
+  min-height: 2rem;
+  font: var(--recipe-ui-group);
+  letter-spacing: normal;
+}
 [data-slot='aui_thread-list-group-label'] {
   height: auto;
   min-height: 2rem;
@@ -80,4 +85,34 @@
   [data-slot='aui_thread-list-item-more'] {
   min-width: 1.5rem;
   min-height: 1.5rem;
+}
+/* The sidebar's rhythm, after the ChatGPT and Codex sidebars the owner's
+   review on 2026-11-14 named as its reference: 28px rows that touch, 14px
+   marks, and section labels in the row's own size, set apart by weight, a
+   quieter ink and the space above them rather than by being larger. Touch
+   density and coarse pointers keep their larger targets. */
+[data-organize-panel] {
+  --appearance-navigation-min: 1.75rem;
+}
+:root[data-density='touch'] [data-organize-panel] {
+  --appearance-navigation-min: 2.75rem;
+}
+@media (pointer: coarse) {
+  :root[data-density]:not([data-density='compact']) [data-organize-panel] {
+    --appearance-navigation-min: 2.75rem;
+  }
+}
+[data-organize-panel] :is([data-sidebar='menu'], [data-sidebar='menu-sub']) {
+  gap: 0;
+}
+[data-organize-panel]
+  :is([data-sidebar='menu-button'], [data-sidebar='menu-sub-button'])
+  > :is(svg, .rail-mark) {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+[data-organize-panel] [data-sidebar='group-label'] {
+  min-height: var(--appearance-navigation-min);
+  font: var(--recipe-ui-section);
+  color: var(--ink-muted);
 }
