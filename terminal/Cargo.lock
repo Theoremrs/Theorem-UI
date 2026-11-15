@@ -1911,10 +1911,13 @@ version = "0.1.0"
 dependencies = [
  "critical-section",
  "js-sys",
+ "keybinds",
  "ratatui",
  "ratzilla",
  "serde",
  "serde_json",
+ "theorem-workbench-core",
+ "theorem-workbench-dock",
  "tui-input",
  "tui-markdown",
  "unicode-width",
@@ -1926,6 +1929,7 @@ dependencies = [
 name = "theorem-workbench-core"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "keybinds",
  "ratatui",
  "serde",
@@ -1977,6 +1981,18 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width",
  "web-time",
+]
+
+[[package]]
+name = "theorem-workbench-panels"
+version = "0.1.0"
+dependencies = [
+ "keybinds",
+ "ratatui",
+ "serde_json",
+ "theorem-workbench-core",
+ "theorem-workbench-dock",
+ "tui-input",
 ]
 
 [[package]]

@@ -44,6 +44,12 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'design-oracle-rtl', title: 'Design oracle F10: RTL and CJK fallback', lane: 'original', viewport: { width: 390, height: 844 } },
   { id: 'design-oracle-continuity', title: 'Design oracle F11: draft continuity', lane: 'original', viewport: { width: 1440, height: 900 } },
   {
+    id: 'workbench-default',
+    title: 'Workbench: Files, main and tools with the picker',
+    lane: 'original',
+    viewport: { width: 1280, height: 640 },
+  },
+  {
     id: 'organized-sidebar',
     title: 'Organized sidebar',
     lane: 'translation',

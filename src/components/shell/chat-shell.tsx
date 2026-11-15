@@ -22,6 +22,8 @@ import {
   useCabinetExpanded,
 } from '@/components/terminal/side-terminal'
 import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
+import { Workbench } from '@/components/workbench/workbench'
+import { readWorkbenchSwitch } from '@/components/workbench/workbench-switch'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { WorkspaceCommands } from '@/components/workspace/workspace-commands'
@@ -34,6 +36,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 
 import { ModePage } from '@/components/pages/mode-page'
@@ -377,6 +380,12 @@ function SheetSplit({
  */
 function DesktopShell(route: DockRoute) {
   const mode = useShellMode()
+  // The opt-in delivery switch (ARCHITECTURE section 1); off on the server.
+  const workbench = useSyncExternalStore(
+    () => () => {},
+    readWorkbenchSwitch,
+    () => false,
+  )
   const { documentId } = useParams({ strict: false })
   const view = `${mode}:${route.threadId}:${documentId}`
   const [drawerView, setDrawerView] = useState<string | null>(null)
@@ -414,10 +423,14 @@ function DesktopShell(route: DockRoute) {
               {/* The field runs under the panel as well as the conversation,
                   while the conversation is the sheet's view. */}
               <LifeSheet active={mode === 'chat'}>
-                <SheetSplit
-                  {...route}
-                  onOpenSidebar={() => setDrawerOpen(true)}
-                />
+                {workbench && mode === 'chat' ? (
+                  <Workbench projectId={route.projectId} />
+                ) : (
+                  <SheetSplit
+                    {...route}
+                    onOpenSidebar={() => setDrawerOpen(true)}
+                  />
+                )}
               </LifeSheet>
             </div>
             {ide && <IdeStatusBar />}

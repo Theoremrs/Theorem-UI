@@ -48,6 +48,7 @@ import { ContextPanel } from '@/components/shell/sidebar'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
+import { WorkbenchDefaultStory } from '@/components/workbench/workbench-story'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
@@ -770,6 +771,7 @@ const ORACLE_RTL_CONTENT = [
 ].join('\n\n')
 
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
+  'workbench-default': WorkbenchDefaultStory,
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,

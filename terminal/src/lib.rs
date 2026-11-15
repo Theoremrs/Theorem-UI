@@ -44,8 +44,10 @@ use wasm_bindgen::prelude::*;
 
 pub mod preview;
 mod cabinet;
+mod workbench;
 
 pub use cabinet::{CabinetHandle, mount_cabinet};
+pub use workbench::{WorkbenchHandle, mount_workbench};
 
 /// The terminal's colours. The page works them out from the workspace around
 /// the terminal (src/components/terminal/terminal-theme.ts) and sets them with
@@ -1647,6 +1649,14 @@ trait Drawn {
     }
     /// Called after each draw, so a view can report what moved.
     fn drawn(&mut self) {}
+    /// Called each frame with the grid's area before drawing. A view that
+    /// returns false keeps what it last drew: the frame is neither drawn nor
+    /// diffed.
+    fn wants_frame(&mut self, _area: Rect) -> bool {
+        true
+    }
+    /// The grid was rebuilt blank, so the next frame must draw everything.
+    fn repaint(&mut self) {}
 }
 
 impl Drawn for App {
@@ -1833,9 +1843,10 @@ impl Screen {
             self.terminal.draw(|_| {})?;
             let size = self.terminal.backend_mut().window_size()?.columns_rows;
             self.terminal.resize(Rect::new(0, 0, size.width, size.height))?;
+            app.repaint();
         }
         let area = self.terminal.get_frame().area();
-        if area.width > 0 && area.height > 0 {
+        if area.width > 0 && area.height > 0 && app.wants_frame(area) {
             self.terminal.draw(|frame| app.draw(frame))?;
             app.drawn();
         }
