@@ -43,7 +43,7 @@ use serde::Deserialize;
 use serde_json::json;
 use theorem_workbench_core::caret::escaped;
 use theorem_workbench_panels::clip::finish_cut;
-use theorem_workbench_text::field::{Field as TextField, FieldStyles};
+use theorem_workbench_text::field::{Field as TextField, FieldStyles, Keyed};
 use theorem_workbench_text::visible::visible;
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
@@ -1578,6 +1578,36 @@ impl Session {
         (true, action)
     }
 
+    /// A Command chord on the prompt, which a Mac's keyboard uses where others use Ctrl: select
+    /// all, copy, cut, and a line's motion or deletion. Every other one stays the browser's, a
+    /// copy or cut with nothing selected in the prompt included.
+    fn command(&mut self, code: KeyCode, shift: bool) -> (bool, Option<Action>) {
+        let key = match code {
+            KeyCode::Char(c @ ('a' | 'c' | 'x')) => Key::Char(c),
+            KeyCode::Left => Key::Left,
+            KeyCode::Right => Key::Right,
+            KeyCode::Backspace => Key::Backspace,
+            KeyCode::Delete => Key::Delete,
+            _ => return (false, None),
+        };
+        let mods = if shift {
+            Mods::CMD | Mods::SHIFT
+        } else {
+            Mods::CMD
+        };
+        let cut = match self.input.key(&KeyInput::new(key, mods)) {
+            Keyed::Handled => return (true, None),
+            Keyed::Copy => false,
+            Keyed::Cut => true,
+            Keyed::Ignored | Keyed::Paste => return (false, None),
+        };
+        let action = self
+            .input
+            .selected_text()
+            .map(|text| Action::Clipboard { text, cut });
+        (true, action)
+    }
+
     /// The clipboard's answer to a copy or cut of `text`. A cut takes the selection out only
     /// when the clipboard has the text and the prompt still holds that same selection; a
     /// refusal leaves the prompt as it was and says so.
@@ -1954,6 +1984,20 @@ impl App {
         (handled, action.map(|action| (action, session.id.clone())))
     }
 
+    /// A Command chord, which is only ever the active session's prompt's.
+    fn command(&mut self, event: KeyEvent) -> (bool, Option<(Action, String)>) {
+        let active = self.active;
+        let Some(session) = self.sessions.get_mut(active) else {
+            return (false, None);
+        };
+        let (handled, action) = session.command(event.code, event.shift);
+        if handled {
+            self.typed_at = now();
+        }
+        let id = self.sessions[active].id.clone();
+        (handled, action.map(|action| (action, id)))
+    }
+
     /// A press at CSS pixels from the terminal's top left.
     /// The cell under a point in CSS pixels from the terminal's top left.
     fn cell_at(&self, x: f64, y: f64) -> Option<Position> {
@@ -2164,7 +2208,13 @@ impl TerminalHandle {
     /// Handles a keydown; true when the terminal used it.
     pub fn key(&self, event: KeyboardEvent) -> bool {
         // The borrow ends before React hears the action, which may set state.
-        let (handled, action) = self.app.borrow_mut().key(event.into());
+        // A Command chord never types: the prompt takes the few it knows, the browser the rest.
+        let command = event.meta_key();
+        let (handled, action) = if command {
+            self.app.borrow_mut().command(event.into())
+        } else {
+            self.app.borrow_mut().key(event.into())
+        };
         self.emit(action);
         handled
     }
@@ -2591,6 +2641,38 @@ mod tests {
             shift: false,
         })
         .1
+    }
+
+    #[test]
+    fn command_chords_select_copy_and_cut_the_prompt_and_leave_the_rest_to_the_browser() {
+        let mut s = selected_prompt();
+        let (handled, action) = s.command(KeyCode::Char('c'), false);
+        assert!(handled);
+        assert!(
+            matches!(action, Some(Action::Clipboard { ref text, cut: false }) if text == "lo wo")
+        );
+        let (_, action) = s.command(KeyCode::Char('x'), false);
+        assert!(
+            matches!(action, Some(Action::Clipboard { ref text, cut: true }) if text == "lo wo")
+        );
+        // The cut waits for the clipboard's answer.
+        assert_eq!(s.input.value(), "hello world");
+        assert!(s.command(KeyCode::Char('a'), false).0);
+        assert_eq!(s.input.selected_text().as_deref(), Some("hello world"));
+        assert!(s.command(KeyCode::Left, false).0);
+        assert_eq!(s.input.selected_text(), None);
+        assert!(s.command(KeyCode::Right, true).0);
+        assert_eq!(s.input.selected_text().as_deref(), Some("hello world"));
+        assert!(s.command(KeyCode::Right, false).0);
+        // With nothing selected a copy is the browser's, and so is a chord the prompt does not
+        // know; none of them types.
+        for c in ['c', 'x', 'r', 'k', 'v'] {
+            let (handled, action) = s.command(KeyCode::Char(c), false);
+            assert!(!handled && action.is_none(), "{c}");
+        }
+        assert_eq!(s.input.value(), "hello world");
+        assert!(s.command(KeyCode::Backspace, false).0);
+        assert_eq!(s.input.value(), "");
     }
 
     #[test]

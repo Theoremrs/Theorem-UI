@@ -556,10 +556,10 @@ export function TerminalScreen({
         aria-label="Agent terminal"
         data-base-ui-swipe-ignore=""
         onKeyDown={(event) => {
-          if (event.metaKey) return
-          // Copy wins over stop while the person has text selected.
+          // Copying text selected on the page wins over the terminal's own copy and stop. The
+          // terminal answers false for a Command chord that is not its prompt's.
           if (
-            event.ctrlKey &&
+            (event.ctrlKey || event.metaKey) &&
             event.key === 'c' &&
             !window.getSelection()?.isCollapsed
           )
