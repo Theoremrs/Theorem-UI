@@ -238,3 +238,17 @@ defect has not been reproduced. It now waits up to five seconds for the actual
 assertions and recording root size in diagnostics. A failure to reach that size
 still fails. All nine reflow checks pass locally with the readiness condition;
 CI on the updated revision is the remaining confirmation.
+
+Theorem #1076 native verification resumed on its merged source revision
+`786364720ce27cec2d885eed87c1d32a3f1c804e`, using the required pooled Cargo
+target and `CARGO_BUILD_JOBS=2`. The previously blocked test binary built in
+25m 06s. `cargo nextest run --locked --manifest-path rustyredcore_THG/Cargo.toml
+-p rustyred-thg-server --lib -E
+'test(discovery_pages_reach_admission_and_pin_native_capabilities)'` passed
+its one test. The same command with `-E 'test(chat_model_binding::)'` then
+passed all 31 selected tests, including authenticated HTTP listing, default
+resolution, personal keys, saved models and discovery outage behavior. No
+backend source was changed. GitHub's backend root-selection check still reports
+that it never started because of failed payments/spending limits; local native
+results are separate evidence. Live rollout approval has been requested for
+`travis-theorem-personal`; no deployment has been performed.
