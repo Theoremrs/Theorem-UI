@@ -7,6 +7,8 @@ import type { TheoremTerminalProfile } from './terminal-profile'
 import { reason as readableReason } from '../environment/workspace-recovery'
 import type { HerdrIdentity } from './protocol'
 import { classify } from './wire'
+import { parseProgramReport, replaces, UNAVAILABLE } from './program-report'
+import type { ProgramReport } from './program-report'
 import type {
   AttachReply,
   Failure,
@@ -47,6 +49,11 @@ export interface TerminalState {
   origin: ProgramOrigin | undefined
   /** What the host reported (`host` or `herdr-core`); absent when it did not. */
   processOwnedBy: string | undefined
+  /**
+   * What the program says about itself (R32). Plain data about the program's own word: it is never read by the
+   * lifecycle, the lease, the role, the attachment or the input check, and it is never a command, approval or task.
+   */
+  programReport: ProgramReport
   lease: {
     role: LeaseRole
     generation: number | undefined
@@ -95,6 +102,13 @@ export type TerminalEvent =
   /** The program or its session is gone and cannot be resumed. A new program is a new `open`. */
   | { type: 'lost'; cause: 'program_lost' | 'session_gone' | 'stream_closed' }
   | { type: 'reconnected' }
+  /** The program's report for this binding changed. Informational only. */
+  | {
+      type: 'report'
+      terminalId: string
+      bindingEpoch: number | undefined
+      report: ProgramReport
+    }
 
 export interface OpenOptions {
   profile: TheoremTerminalProfile | undefined
@@ -221,6 +235,7 @@ export class TerminalSession {
     program: undefined,
     origin: undefined,
     processOwnedBy: undefined,
+    programReport: UNAVAILABLE,
     lease: {
       role: 'unleased',
       generation: undefined,
@@ -310,6 +325,7 @@ export class TerminalSession {
       program,
       origin: 'launched',
       processOwnedBy: reply.process_owned_by,
+      programReport: parseProgramReport(reply.program_report),
       offset: 0,
     })
     if (options.attachment) this.current.lease.attachment = options.attachment
@@ -777,6 +793,17 @@ export class TerminalSession {
       epoch !== undefined &&
       state.bindingEpoch !== undefined &&
       epoch !== state.bindingEpoch
+    // A new binding epoch takes its whole report from this reply, absence included; within one epoch only a reply that carries a report replaces it.
+    if (
+      (reply as { program_report?: unknown }).program_report !== undefined ||
+      rebound
+    ) {
+      this.report(
+        parseProgramReport(
+          (reply as { program_report?: unknown }).program_report,
+        ),
+      )
+    }
     const before = state.lease.attachment
     // The lease control names the attachment the host holds; a bare `attachment` is only an echo.
     if (reply.control) {
@@ -895,6 +922,29 @@ export class TerminalSession {
     }
   }
 
+  /** Sets the report and says so when it changed. Nothing else is read or written. */
+  private report(next: ProgramReport): void {
+    const state = this.current
+    if (JSON.stringify(next) === JSON.stringify(state.programReport)) return
+    state.programReport = next
+    if (state.terminalId)
+      this.emit({
+        type: 'report',
+        terminalId: state.terminalId,
+        bindingEpoch: state.bindingEpoch,
+        report: next,
+      })
+  }
+
+  /** `terminal.updated`: replaces the report for the current binding epoch and no other (omission clears it). */
+  private onUpdated(data: { epoch?: unknown; program_report?: unknown }): void {
+    const { bindingEpoch } = this.current
+    if (bindingEpoch === undefined || data.epoch !== bindingEpoch) return
+    const update = parseProgramReport(data.program_report)
+    // An update with no report clears what was held; the host then says nothing, which is `unavailable`, not any word.
+    if (replaces(this.current.programReport, update)) this.report(update)
+  }
+
   private onLive(event: TerminalLiveEvent): void {
     const state = this.current
     // Adoption is the workspace's, not one terminal's: the adapter's session list reads it.
@@ -902,6 +952,10 @@ export class TerminalSession {
       return
     }
     if (event.data.session !== state.terminalId || state.phase === 'detached') {
+      return
+    }
+    if (event.kind === 'terminal.updated') {
+      this.onUpdated(event.data)
       return
     }
     // An epoch older than the binding's belongs to a log that is gone.

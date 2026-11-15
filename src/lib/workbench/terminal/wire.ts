@@ -46,6 +46,8 @@ export interface OpenReply {
   backend?: string
   binding?: WireBinding
   process_owned_by?: string
+  /** The program's own status report; read by `parseProgramReport`, never trusted as typed. */
+  program_report?: unknown
 }
 
 /**
@@ -74,16 +76,25 @@ const TERMINAL_KINDS = [
   'terminal.resized',
   'terminal.exited',
   'terminal.control',
+  'terminal.updated',
 ] as const
 
 /** Every terminal event the host publishes, as the SDK types the live stream. */
-export type TerminalLiveEvent = {
-  [K in (typeof TERMINAL_KINDS)[number]]: WorkspaceLiveEvent<K>
-}[(typeof TERMINAL_KINDS)[number]]
+export type TerminalLiveEvent =
+  | {
+      [
+        K in Exclude<(typeof TERMINAL_KINDS)[number], 'terminal.updated'>
+      ]: WorkspaceLiveEvent<K>
+    }[Exclude<(typeof TERMINAL_KINDS)[number], 'terminal.updated'>]
+  /** Passive: replaces the program's report for one binding epoch (omission clears it). Not in the SDK's typed stream yet, so the payload is read as unknown. */
+  | {
+      kind: 'terminal.updated'
+      data: { session: string; epoch?: unknown; program_report?: unknown }
+    }
 
-export const isTerminalEvent = (
-  event: WorkspaceLiveEvent,
-): event is TerminalLiveEvent =>
+export const isTerminalEvent = (event: {
+  kind: string
+}): event is TerminalLiveEvent =>
   (TERMINAL_KINDS as readonly string[]).includes(event.kind)
 
 /** Each refusal the host or this module can give. */

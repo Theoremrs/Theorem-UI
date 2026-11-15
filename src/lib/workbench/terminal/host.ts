@@ -7,6 +7,8 @@ import type {
 } from '@theoremharness/sdk-ide'
 import { herdrIdentity } from './protocol'
 import type { HerdrIdentity } from './protocol'
+import { parseProgramReport } from './program-report'
+import type { ProgramReport } from './program-report'
 import { isTerminalEvent } from './wire'
 import type {
   AttachReply,
@@ -54,6 +56,13 @@ export interface TerminalDeps {
   backend?: (name: string) => Promise<unknown>
 }
 
+/** The host's listing, each row with the program's report read defensively (`unavailable` when the row carries none). */
+export type ListedTerminals = Omit<TerminalListReply, 'sessions'> & {
+  sessions: (TerminalListReply['sessions'][number] & {
+    programReport?: ProgramReport
+  })[]
+}
+
 export interface AttachRequest {
   session: string
   from_offset: number
@@ -87,7 +96,7 @@ export interface TerminalHost {
     session: string,
   ) => Promise<{ process_killed?: boolean; session_live?: boolean }>
   /** The host's workspace terminals and whether that inventory is complete. */
-  list: () => Promise<TerminalListReply>
+  list: () => Promise<ListedTerminals>
   canKill: () => Promise<boolean>
   /** Whether bytes may be sent as `bytes_base64`; a host that does not list `terminal.input.bytes` reads text only. */
   canInputBytes: () => Promise<boolean>
@@ -138,7 +147,18 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
         (await terminal.kill({ ...(await headers()), body: { session } })) ?? {}
       )
     },
-    list: async () => terminal.list({ ...(await headers()), body: {} }),
+    async list() {
+      const listed = await terminal.list({ ...(await headers()), body: {} })
+      return {
+        ...listed,
+        sessions: listed.sessions.map((row) => ({
+          ...row,
+          programReport: parseProgramReport(
+            (row as { program_report?: unknown }).program_report,
+          ),
+        })),
+      }
+    },
     canKill: () => offers('terminal.kill'),
     canInputBytes: () => offers('terminal.input.bytes'),
     canList: () => offers('terminal.list'),
