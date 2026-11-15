@@ -76,6 +76,23 @@ export const BUILT_IN_TYPES: readonly SessionType[] = [
   },
 ]
 
+/**
+ * Which pins still point at something, from a read of the person's sessions
+ * and projects. Undefined unless the read was complete: a pin missing from a
+ * partial read may only be past the page that was read, and is kept.
+ */
+export function livePins(read: {
+  complete: boolean
+  threads: readonly { threadId: string }[]
+  projects: readonly { projectId: string }[]
+}): ((pin: Pin) => boolean) | undefined {
+  if (!read.complete) return undefined
+  const threads = new Set(read.threads.map((t) => t.threadId))
+  const projects = new Set(read.projects.map((p) => p.projectId))
+  return (pin) =>
+    pin.kind === 'thread' ? threads.has(pin.id) : projects.has(pin.id)
+}
+
 /** Pins with this one added at the end, or removed when it is already there. */
 export function togglePin(pins: readonly Pin[], pin: Pin): Pin[] {
   return isPinned(pins, pin)

@@ -3,6 +3,7 @@ import { describe, expect, test } from 'bun:test'
 import {
   BUILT_IN_TYPES,
   isPinned,
+  livePins,
   movePin,
   togglePin,
   typeId,
@@ -13,6 +14,23 @@ import type { Pin, SessionType } from './sidebar-prefs'
 describe('pins', () => {
   const a: Pin = { kind: 'thread', id: 'a' }
   const p: Pin = { kind: 'project', id: 'a' }
+
+  test('a complete read says which pins point at nothing any more', () => {
+    const exists = livePins({
+      complete: true,
+      threads: [{ threadId: 'a' }],
+      projects: [],
+    })
+    expect(
+      [a, p, { kind: 'thread', id: 'gone' } as Pin].filter(exists!),
+    ).toEqual([a])
+  })
+
+  test('a partial read keeps every pin: what it missed may be past its page', () => {
+    expect(
+      livePins({ complete: false, threads: [], projects: [] }),
+    ).toBeUndefined()
+  })
 
   test('toggling adds at the end and removes only the same kind and id', () => {
     const pins = togglePin(togglePin([], a), p)

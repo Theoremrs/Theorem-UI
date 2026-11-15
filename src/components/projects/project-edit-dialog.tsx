@@ -23,7 +23,8 @@ export function ProjectEditDialog({
 }: {
   projectId: string
   title: string
-  instructions: string
+  /** The stored instructions, or undefined when they could not be read. */
+  instructions: string | undefined
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -45,21 +46,28 @@ function EditForm({
 }: {
   projectId: string
   title: string
-  instructions: string
+  instructions: string | undefined
   onDone: () => void
 }) {
   const { describe } = useProjectEdits()
   const [name, setName] = useState(title)
-  const [brief, setBrief] = useState(instructions)
+  const [brief, setBrief] = useState(instructions ?? '')
+  // Instructions that could not be read are never sent: an empty field
+  // would erase them.
+  const known = instructions !== undefined
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
     const next = name.trim()
     if (!next) return
-    describe.mutate(
-      { projectId, title: next, instructions: brief },
-      { onSuccess: onDone },
-    )
+    // Only what changed is sent, so a rename leaves the instructions alone.
+    const change = {
+      title: next !== title ? next : undefined,
+      instructions: known && brief !== instructions ? brief : undefined,
+    }
+    if (change.title === undefined && change.instructions === undefined)
+      return onDone()
+    describe.mutate({ projectId, ...change }, { onSuccess: onDone })
   }
 
   return (
@@ -80,10 +88,17 @@ function EditForm({
         Instructions
         <Textarea
           rows={8}
+          disabled={!known}
           placeholder="How sessions here should work: the goal, the conventions, what to leave alone."
           value={brief}
           onChange={(event) => setBrief(event.target.value)}
         />
+        {!known && (
+          <span className="text-xs text-ink-muted">
+            The saved instructions could not be read, so they are left as they
+            are.
+          </span>
+        )}
       </label>
       {describe.error && (
         <p role="alert" className="text-sm text-error-ink">

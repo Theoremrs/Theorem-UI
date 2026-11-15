@@ -170,7 +170,16 @@ export type ProjectOutput = {
 }
 
 /** What the sidebar reads: the organization, and whether this Theorem serves the routes that change it. */
-export type OrganizationRead = Organization & { served: boolean }
+export type OrganizationRead = Organization & {
+  served: boolean
+  /**
+   * Every project and thread the person has was read. The organization route
+   * reads them all; the fallback for an older Theorem reads one page of each
+   * and says whether more were left, so nothing is taken as deleted only
+   * because it was not on the page.
+   */
+  complete: boolean
+}
 
 const BASE = '/api/chat/v1'
 const threadPath = (threadId: string) =>
@@ -198,6 +207,7 @@ export const inboxOf = (projects: readonly Theorem.Project[]) =>
 export function organizationFromThreads(
   projects: Theorem.Project[],
   threads: Theorem.Thread[],
+  complete = true,
 ): OrganizationRead {
   const inbox = inboxOf(projects)
   const entries = threads
@@ -239,6 +249,7 @@ export function organizationFromThreads(
   return {
     schema: 'theorem-organization/1',
     served: false,
+    complete,
     projects: projects
       .map((project): ProjectEntry => ({
         projectId: project.projectId,
@@ -269,12 +280,13 @@ export function organizationFromThreads(
 async function readOrganization(): Promise<OrganizationRead> {
   try {
     const organization = await theoremJson<Organization>(`${BASE}/organization`)
-    return { ...organization, served: true }
+    return { ...organization, served: true, complete: true }
   } catch (error) {
     if (!isNotServed(error)) throw error
   }
   const client = theorem()
-  const projects = (await client.chat.projects.list({ limit: 100 })).items
+  const listed = await client.chat.projects.list({ limit: 100 })
+  const projects = listed.items
   const pages = await Promise.all(
     projects.map((project) =>
       client.chat.threads.list({ projectId: project.projectId, limit: 100 }),
@@ -283,6 +295,7 @@ async function readOrganization(): Promise<OrganizationRead> {
   return organizationFromThreads(
     projects,
     pages.flatMap((page) => page.items),
+    !listed.nextCursor && pages.every((page) => !page.nextCursor),
   )
 }
 
@@ -875,7 +888,10 @@ export function useProjectEdits() {
       mutationFn: (projectId: string) => update(projectId, { archived: true }),
       onSettled: settled,
     }),
-    /** The project's title and instructions, together, as the project home edits them. */
+    /**
+     * The project's title and instructions, as the project home edits them.
+     * Only what is given is sent: a field left out keeps its stored value.
+     */
     describe: useMutation({
       mutationFn: ({
         projectId,
@@ -883,8 +899,8 @@ export function useProjectEdits() {
         instructions,
       }: {
         projectId: string
-        title: string
-        instructions: string
+        title?: string
+        instructions?: string
       }) => update(projectId, { title, instructions }),
       onSettled: settled,
     }),

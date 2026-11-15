@@ -399,6 +399,12 @@ describe('organizationFromThreads', () => {
     expect(views.projects[0]!.threads.map((t) => t.threadId)).toEqual(['there'])
   })
 
+  test('a read says whether every page was read', () => {
+    const projects = [apiProject('p', 1)]
+    expect(organizationFromThreads(projects, []).complete).toBe(true)
+    expect(organizationFromThreads(projects, [], false).complete).toBe(false)
+  })
+
   test('run state and failures are read from the thread', () => {
     const read = organizationFromThreads(
       [apiProject('p', 1)],

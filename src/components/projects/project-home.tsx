@@ -109,7 +109,7 @@ export function useProjectHomeTitle() {
  */
 export function ProjectHome({ projectId }: { projectId: string }) {
   const { data: organization, isPending } = useOrganization()
-  const { data: records = [] } = useProjects()
+  const { data: records, isPending: recordsPending } = useProjects()
   const [editing, setEditing] = useState(false)
   const [editingState, setEditingState] = useState(false)
   const pin = { kind: 'project', id: projectId } as const
@@ -121,7 +121,7 @@ export function ProjectHome({ projectId }: { projectId: string }) {
     useShell.getState().setProjectId(projectId)
   }, [projectId])
   const project = organization?.projects.find((p) => p.projectId === projectId)
-  const record = records.find((p) => p.projectId === projectId)
+  const record = records?.find((p) => p.projectId === projectId)
   const threads = useMemo(
     () =>
       (organization?.threads ?? [])
@@ -152,7 +152,8 @@ export function ProjectHome({ projectId }: { projectId: string }) {
       </div>
     )
 
-  const instructions = record?.instructions ?? ''
+  // Undefined while unknown: not yet read, or past the pages that were.
+  const instructions = record?.instructions
 
   return (
     <div className="@container h-full overflow-y-auto">
@@ -225,7 +226,11 @@ export function ProjectHome({ projectId }: { projectId: string }) {
                 </Button>
               }
             >
-              {instructions.trim() ? (
+              {instructions === undefined ? (
+                <p className="text-sm text-ink-muted">
+                  {recordsPending ? 'Loading…' : 'Could not be read.'}
+                </p>
+              ) : instructions.trim() ? (
                 <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
                   {instructions}
                 </p>

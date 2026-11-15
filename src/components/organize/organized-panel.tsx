@@ -97,7 +97,7 @@ import type {
   ProjectEntry,
   ThreadEntry,
 } from '@/lib/theorem/organization'
-import { isPinned, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
+import { isPinned, livePins, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
 import type { Pin } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
 import { LibrarianFooter } from './librarian-footer'
@@ -800,15 +800,12 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
     links[Number(next)]?.focus()
   }
 
-  // A pin whose session or project is gone goes too, once Theorem has said so.
+  // A pin whose session or project is gone goes too, once a complete read
+  // from Theorem has said so.
   const prunePins = useSidebarPrefs((s) => s.prunePins)
   useEffect(() => {
-    if (!data) return
-    const threads = new Set(data.threads.map((t) => t.threadId))
-    const projects = new Set(data.projects.map((p) => p.projectId))
-    prunePins((pin) =>
-      pin.kind === 'thread' ? threads.has(pin.id) : projects.has(pin.id),
-    )
+    const exists = data && livePins(data)
+    if (exists) prunePins(exists)
   }, [data, prunePins])
 
   // A drag starts after a few pixels, so a click on a row still opens it.
