@@ -11,7 +11,7 @@
 //! headings with their counts, and a row's actions per section.
 
 use ratatui::layout::Rect;
-use theorem_workbench_core::completion::BranchInfo;
+use theorem_workbench_core::completion::{BranchInfo, ConflictSides};
 
 use crate::diff::{DiffLine, Hunk, pair_places};
 use crate::model::{
@@ -249,6 +249,41 @@ pub(crate) fn rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
     out
 }
 
+/// The sides of a conflicted file: what to do about it, then ours, theirs and the base.
+/// A side the host does not have is said to be absent, which differs from an empty file.
+fn conflict_rows(sides: &ConflictSides, out: &mut Vec<Row<'_>>) {
+    if !sides.conflict {
+        out.push(text(
+            "The file is no longer in conflict. Refresh the list.",
+            Tone::Warning,
+        ));
+    } else {
+        out.push(text(
+            "o take ours   t take theirs   e merge by hand in the editor",
+            Tone::Muted,
+        ));
+    }
+    let mut side = |title: &str, body: &Option<String>| {
+        out.push(text(String::new(), Tone::Plain));
+        out.push(text(title.to_owned(), Tone::Muted));
+        match body {
+            None => out.push(text("This side has no file.", Tone::Muted)),
+            Some(body) if body.is_empty() => out.push(text("The file is empty.", Tone::Muted)),
+            Some(body) => {
+                let digits = body.lines().count().to_string().len();
+                for (at, line) in body.lines().enumerate() {
+                    out.push(text(format!("{:>digits$} {line}", at + 1), Tone::Plain));
+                }
+            }
+        }
+    };
+    side("Ours (this branch)", &sides.ours);
+    side("Theirs (incoming)", &sides.theirs);
+    if sides.base.is_some() {
+        side("Base (the common ancestor)", &sides.base);
+    }
+}
+
 /// What a file's read view lists: its heading, a way back, and the answer.
 fn read_rows(model: &Changes) -> Vec<Row<'_>> {
     let Some(read) = &model.read else {
@@ -329,6 +364,7 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
                 out.push(text(format!("{:>digits$} {line}", at + 1), Tone::Plain));
             }
         }
+        ReadBody::Conflict(sides) => conflict_rows(sides, &mut out),
         ReadBody::History(commits) if commits.is_empty() => {
             out.push(text("No commit changed this file.", Tone::Muted))
         }

@@ -19,6 +19,7 @@
 //! until the state is read, and an open diff whose file changed is marked out of date, not
 //! replaced.
 
+use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use theorem_workbench_core::completion::{
@@ -31,7 +32,7 @@ mod read;
 pub use read::{Caret, Field, Prompt, PromptKind, ReadBody, ReadKind, ReadView};
 
 use crate::diff::{Hunk, Parsed, parse};
-use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal};
+use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
 use crate::status::{Basis, Change, Groups, Head, RowKey, Section, is_folder, loss, shown};
 
 /// A subject's comfortable length, and its most (donor `SUBJECT`).
@@ -242,6 +243,8 @@ pub enum Confirm {
     Discard(Vec<(RowKey, Change)>),
     /// Bring a discarded change back over edits made since.
     Restore { path: String, restore_id: String },
+    /// Take one side of a conflicted file whole, losing the other side's lines.
+    Take { path: String, side: Side },
 }
 
 impl Confirm {
@@ -262,6 +265,13 @@ impl Confirm {
                     .join(" ");
                 (title, cost)
             }
+            Self::Take { path, side } => (
+                format!("Take {} for {}?", side.label(), shown(path)),
+                format!(
+                    "The file becomes {} side whole. The lines only the other side has are lost.",
+                    side.owner()
+                ),
+            ),
             Self::Restore { path, .. } => (
                 format!("Restore {}?", shown(path)),
                 "The discarded change is brought back over the edits made since.".into(),
@@ -340,7 +350,9 @@ pub struct Changes {
     pub(crate) subject: String,
     pub(crate) body: String,
     pub(crate) amend: bool,
-    amend_available: bool,
+    /// Whether the host offers amend. A cell so the panel can take it from the view
+    /// context, which only lends `&self`.
+    amend_available: Cell<bool>,
     pub(crate) focus: Focus,
     pub(crate) mode: Mode,
     pub(crate) log: LogState,
@@ -353,7 +365,10 @@ pub struct Changes {
     /// The log was asked for so the last commit's message can fill an amend.
     pub(crate) amend_wanted: bool,
     /// The message an amend loaded, so turning amend off can take it back out.
-    pub(crate) amend_loaded: Option<String>,
+    pub(crate) amend_loaded: Option<(String, String)>,
+    /// The last commit's body was not in the log (an older host), so the draft holds the
+    /// subject only and says so.
+    pub(crate) amend_body_unread: bool,
     /// Earlier read views, for Escape: a commit opened from a history goes back to it.
     pub(crate) read_back: Vec<ReadView>,
     pub(crate) confirm: Option<Confirm>,
@@ -395,7 +410,7 @@ impl Changes {
             subject: String::new(),
             body: String::new(),
             amend: false,
-            amend_available: false,
+            amend_available: Cell::new(false),
             focus: Focus::Files,
             mode: Mode::Changes,
             log: LogState::Idle,
@@ -406,6 +421,7 @@ impl Changes {
             branches_request: None,
             amend_wanted: false,
             amend_loaded: None,
+            amend_body_unread: false,
             read_back: Vec::new(),
             confirm: None,
             undo: Vec::new(),
@@ -542,7 +558,7 @@ impl Changes {
     }
 
     pub fn amend_available(&self) -> bool {
-        self.amend_available
+        self.amend_available.get()
     }
 
     /// The message a commit sends: the subject, and the body after a blank line when
@@ -577,8 +593,15 @@ impl Changes {
     }
 
     /// Whether the host offers `scm.commit.amend` (the owner refuses amend without it).
+    /// What the view context says the host offers now, for drawing and the semantic tree.
+    /// It changes what is shown, not what the draft holds: `set_amend_available` does that.
+    pub fn show_amend_available(&self, available: bool) {
+        self.amend_available.set(available);
+    }
+
+    /// Takes what the host offers. Withdrawing amend also turns amend off.
     pub fn set_amend_available(&mut self, available: bool) {
-        self.amend_available = available;
+        self.amend_available.set(available);
         if !available {
             self.amend = false;
             self.amend_wanted = false;
@@ -586,7 +609,7 @@ impl Changes {
     }
 
     pub fn set_amend(&mut self, amend: bool) -> Result<(), Refusal> {
-        if amend && !self.amend_available {
+        if amend && !self.amend_available.get() {
             return self.refuse(ActionKind::Commit, Refusal::AmendUnavailable);
         }
         self.amend = amend;
@@ -1078,6 +1101,7 @@ impl Changes {
         // A refusal to start leaves the question open.
         let action = match &self.confirm {
             Some(Confirm::Restore { .. }) => ActionKind::Restore,
+            Some(Confirm::Take { .. }) => ActionKind::Resolve,
             _ => ActionKind::Discard,
         };
         self.may_mutate(action)?;
@@ -1085,6 +1109,19 @@ impl Changes {
         match confirm {
             Confirm::Restore { path, restore_id } => {
                 Ok(vec![self.restore_intent(path, restore_id)])
+            }
+            Confirm::Take { path, side } => {
+                let pending = Pending {
+                    action: ActionKind::Resolve,
+                    generation: 0,
+                    subject: Some(path.clone()),
+                    key: None,
+                    sent: None,
+                    then_commit: None,
+                };
+                Ok(vec![
+                    self.issue(IntentKind::Resolve { path, side }, pending),
+                ])
             }
             Confirm::Discard(items) => {
                 let mut paths = Vec::new();
@@ -1276,7 +1313,8 @@ impl Changes {
             | ActionKind::Show
             | ActionKind::History
             | ActionKind::CommitDiff
-            | ActionKind::ShowRevision => {
+            | ActionKind::ShowRevision
+            | ActionKind::Conflict => {
                 self.read_done(id, &pending, outcome, payload);
                 vec![]
             }
@@ -1571,6 +1609,14 @@ impl Changes {
                 if let Some((kind, next)) = self.queue.pop_front() {
                     return vec![self.issue(kind, next)];
                 }
+                if pending.action == ActionKind::Resolve {
+                    // The file is settled: the conflict view has nothing left to show.
+                    self.read = None;
+                    self.read_back.clear();
+                    if self.mode == Mode::Read {
+                        self.mode = Mode::Changes;
+                    }
+                }
                 if matches!(
                     pending.action,
                     ActionKind::SwitchBranch | ActionKind::CreateBranch | ActionKind::Merge
@@ -1630,6 +1676,7 @@ impl Changes {
         if self.amend == sent.amend {
             self.amend = false;
             self.amend_loaded = None;
+            self.amend_body_unread = false;
         }
     }
 

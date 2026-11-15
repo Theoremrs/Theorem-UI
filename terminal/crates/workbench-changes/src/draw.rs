@@ -541,6 +541,10 @@ impl Changes {
             let mut lines = self.body.split('\n').skip(first);
             for row in 1..=2u16 {
                 let (line, style) = match lines.next() {
+                    Some(_) if row == 1 && self.amend_body_unread() => (
+                        "The body of the last commit could not be read.".to_owned(),
+                        styles.warning,
+                    ),
                     Some(_) if self.body.is_empty() => ("Description".to_owned(), styles.muted),
                     Some(line) => (line.to_owned(), styles.text),
                     None => (String::new(), styles.text),

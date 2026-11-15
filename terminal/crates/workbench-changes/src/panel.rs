@@ -23,6 +23,7 @@ use theorem_workbench_core::host::{ConnectionState, HostMessage};
 use theorem_workbench_core::ids::{
     ActionId, Capability, EffectId, Generation, ResourceRef, WorkspaceIdentity,
 };
+use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
@@ -31,10 +32,11 @@ use theorem_workbench_core::{
 use tui_input::{Input, InputRequest};
 
 use crate::descriptors::AMEND_CAPABILITY;
-use crate::intent::{ActionKind, Intent, IntentId, Refusal};
+use crate::intent::{ActionKind, Intent, IntentId, Refusal, Side};
 use crate::layout::{Control, Hit, Verb};
 use crate::model::{Caret, Changes, Field, Focus, Mode, PromptKind};
 use crate::semantics::actions;
+use crate::status::Section;
 use crate::styles::ChangesStyles;
 use crate::view_state::ViewState;
 
@@ -77,8 +79,6 @@ pub struct ChangesPanel {
     prompt: Option<Input>,
     /// An amend was asked for by action and waits for the log to name the last message.
     amend_send: bool,
-    /// The host offers `scm.commit.amend`. True until a capability list says otherwise.
-    amend_ok: bool,
 }
 
 /// A page of lines for the page keys.
@@ -119,7 +119,7 @@ fn at_column(input: &Input, column: usize) -> Input {
 impl ChangesPanel {
     pub fn restore(state: &Value) -> Self {
         let mut model = Changes::new();
-        // Until the host says otherwise the owner is asked, and refuses what it cannot do.
+        // A saved amend box is kept until the first message says what the host offers.
         model.set_amend_available(true);
         if let Ok(saved) = serde_json::from_value::<ViewState>(state.clone()) {
             model.restore(&saved);
@@ -139,7 +139,6 @@ impl ChangesPanel {
             in_body: false,
             prompt: None,
             amend_send: false,
-            amend_ok: true,
         };
         panel.load_inputs();
         panel
@@ -257,8 +256,9 @@ impl ChangesPanel {
             && (self.identity.workspace != identity.workspace
                 || self.identity.environment != identity.environment);
         if moved {
+            let amend = self.model.amend_available();
             self.model = Changes::new();
-            self.model.set_amend_available(self.amend_ok);
+            self.model.set_amend_available(amend);
             self.amend_send = false;
             self.sent.clear();
             self.prompt = None;
@@ -358,6 +358,24 @@ impl ChangesPanel {
         }
     }
 
+    /// Takes what the host offers from the context: scm to read at all, and the amend
+    /// capability for the amend box. A host that gains scm is read again.
+    fn take_capabilities(&mut self, capabilities: &Capabilities) {
+        let scm = capabilities.has(&Capability::new("scm"));
+        if scm && !self.scm_ok {
+            self.read_due = true;
+        }
+        self.scm_ok = scm;
+        let amend = capabilities.has(&Capability::new(AMEND_CAPABILITY));
+        self.model.set_amend_available(amend);
+    }
+
+    /// What the view context says the host offers, for what is drawn and described.
+    fn show_capabilities(&self, cx: &ViewCtx) {
+        self.model
+            .show_amend_available(cx.capabilities().has(&Capability::new(AMEND_CAPABILITY)));
+    }
+
     fn on_host(&mut self, message: HostMessage) {
         let workspace = self.identity.workspace.clone();
         match message {
@@ -376,16 +394,6 @@ impl ChangesPanel {
                 }
                 self.connection = Some(state);
             }
-            HostMessage::CapabilitiesChanged { capabilities } => {
-                let ok = capabilities.has(&Capability::new("scm"));
-                if ok && !self.scm_ok {
-                    self.read_due = true;
-                }
-                self.scm_ok = ok;
-                let amend = capabilities.has(&Capability::new(AMEND_CAPABILITY));
-                self.amend_ok = amend;
-                self.model.set_amend_available(amend);
-            }
             // Another workspace's, the root's own (it tells the panel of a new workspace
             // as `PanelMsg::Workspace`), or another kind of panel's.
             HostMessage::FileChanged { .. }
@@ -403,6 +411,7 @@ impl ChangesPanel {
             | HostMessage::TerminalResized { .. }
             | HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
+            | HostMessage::CapabilitiesChanged { .. }
             | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalSessions { .. }
             | HostMessage::ConversationSnapshot { .. }
@@ -530,6 +539,36 @@ impl ChangesPanel {
         self.go(cx, d);
     }
 
+    /// Shows both sides of the conflicted file under the cursor.
+    fn open_conflict(&mut self, cx: &mut Ctx) {
+        let d = self.model.open_conflict();
+        self.go(cx, d);
+    }
+
+    /// Asks before taking a side whole; the answer comes through the confirm.
+    fn take_side(&mut self, side: Side) {
+        let _ = self.model.take_side(side);
+    }
+
+    /// Opens the conflicted file in the editor, to merge it by hand.
+    fn edit_conflict(&mut self, cx: &mut Ctx) {
+        if let Some(path) = self.model.conflict_path() {
+            cx.open(OpenTarget::File {
+                workspace: self.identity.workspace.clone(),
+                path,
+            });
+        }
+    }
+
+    /// Enter on a row: a conflicted file shows its sides, any other expands its diff.
+    fn enter_row(&mut self, cx: &mut Ctx) {
+        if self.model.cursor().map(|k| k.section) == Some(Section::Conflicted) {
+            self.open_conflict(cx);
+        } else {
+            self.toggle_diff(cx);
+        }
+    }
+
     fn open_file(&mut self, cx: &mut Ctx) {
         if let Some(path) = self.model.cursor_path()
             && !path.ends_with('/')
@@ -608,6 +647,10 @@ impl ChangesPanel {
             actions::AMEND => self.amend_action(cx),
             actions::OPEN_COMMIT => self.open_commit(cx),
             actions::SHOW_AT_COMMIT => self.show_at_commit(cx),
+            actions::OPEN_CONFLICT => self.open_conflict(cx),
+            actions::TAKE_OURS => self.take_side(Side::Ours),
+            actions::TAKE_THEIRS => self.take_side(Side::Theirs),
+            actions::EDIT_CONFLICT => self.edit_conflict(cx),
             _ => {}
         }
     }
@@ -671,12 +714,16 @@ impl ChangesPanel {
 
     fn read_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let history = self.model.commit_row_open();
+        let conflict = self.model.conflict_view();
         match key.key() {
             Key::Esc | Key::Char('q') => self.model.close_read(),
             Key::Up if history => self.model.move_read_cursor(-1),
             Key::Down if history => self.model.move_read_cursor(1),
             Key::Enter if history => self.open_commit(cx),
             Key::Char('v') if history => self.show_at_commit(cx),
+            Key::Char('o') if conflict => self.take_side(Side::Ours),
+            Key::Char('t') if conflict => self.take_side(Side::Theirs),
+            Key::Char('e') if conflict => self.edit_conflict(cx),
             Key::Up => self.model.scroll_by(-1),
             Key::Down => self.model.scroll_by(1),
             Key::PageUp => self.model.scroll_by(-PAGE),
@@ -717,7 +764,7 @@ impl ChangesPanel {
                 }
             }
             Key::Enter if command => self.commit(cx),
-            Key::Enter => self.toggle_diff(cx),
+            Key::Enter => self.enter_row(cx),
             Key::Tab => {
                 self.model.focus_next();
                 self.mark_caret();
@@ -744,6 +791,7 @@ impl ChangesPanel {
     fn files_char(&mut self, c: char, cx: &mut Ctx) {
         match c {
             ' ' => self.model.toggle_selected(),
+            'e' => self.edit_conflict(cx),
             's' => {
                 let d = self.model.stage();
                 self.go(cx, d);
@@ -1096,8 +1144,9 @@ impl ChangesPanel {
 
 impl Panel for ChangesPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
-        // The root's identity is the truth, whichever message carries it.
+        // The root's identity and capabilities are the truth, whichever message carries them.
         self.adopt(cx.workspace());
+        self.take_capabilities(cx.capabilities());
         // The environment cannot start work, and a cached answer is not ours to show:
         // neither is followed by a read.
         let quiet = matches!(
@@ -1136,11 +1185,13 @@ impl Panel for ChangesPanel {
     }
 
     fn view(&self, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
+        self.show_capabilities(cx);
         self.model
             .draw(area, buf, &ChangesStyles::from_theme(cx.theme));
     }
 
-    fn semantics(&self, area: Rect, _cx: &ViewCtx) -> Vec<Node> {
+    fn semantics(&self, area: Rect, cx: &ViewCtx) -> Vec<Node> {
+        self.show_capabilities(cx);
         let mut nodes = self.model.semantics("changes", area).nodes;
         let resource = self.resource();
         if let Some(root) = nodes.first_mut() {

@@ -23,13 +23,13 @@ mod styles;
 mod text;
 mod view_state;
 
-pub use descriptors::{descriptors, with_actions};
+pub use descriptors::{descriptors, extend_registry};
 pub use diff::{
     DiffLine, Hunk, LineKind, ParseError, Parsed, mark_words, pair_places, pairs, parse,
     side_numbers,
 };
 pub use draw::SPLIT_MIN;
-pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal};
+pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
 pub use model::{
     BranchList, Caret, Changes, Confirm, Counters, DiffLayout, DiffState, DiffView, Field, Focus,
     LogState, Mode, Notice, PanelState, Problem, Prompt, PromptKind, RECENT, ReadBody, ReadKind,

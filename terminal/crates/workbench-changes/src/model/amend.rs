@@ -4,8 +4,8 @@
 //! Written for this crate; not translated. The donor's box only sets a flag and the
 //! donor's commit asks git to amend. Here the last commit's message is not known until the
 //! log is read, so turning amend on reads it first when it is not loaded, and the message
-//! is filled in when the log arrives. The log's entries carry the subject only, so a
-//! commit's description is not carried into an amend.
+//! is filled in when the log arrives. The log's entries carry the body when the host
+//! sends one; when it does not, the draft says the body could not be read.
 
 use super::{ActionKind, Changes, Intent, LogState, Refusal};
 
@@ -30,7 +30,7 @@ impl Changes {
         if self.snapshot.is_none() {
             return self.refuse(ActionKind::Commit, Refusal::NotLoaded);
         }
-        if !self.amend_available {
+        if !self.amend_available.get() {
             return self.refuse(ActionKind::Commit, Refusal::AmendUnavailable);
         }
         match &self.log {
@@ -65,22 +65,45 @@ impl Changes {
     pub fn end_amend(&mut self) {
         self.amend = false;
         self.amend_wanted = false;
-        if let Some(loaded) = self.amend_loaded.take()
-            && self.subject == loaded
-            && self.body.is_empty()
+        self.amend_body_unread = false;
+        if let Some((subject, body)) = self.amend_loaded.take()
+            && self.subject == subject
+            && self.body == body
         {
             self.subject.clear();
+            self.body.clear();
         }
     }
 
+    /// Fills an empty draft with the whole last message: the subject, a blank line, the
+    /// body. A host that sent no body leaves the subject alone in the draft, and the draft
+    /// says the body could not be read, so an amend never drops it unannounced.
     fn fill_from_last_commit(&mut self) {
-        if self.subject.trim().is_empty()
-            && self.body.is_empty()
-            && let Some(subject) = self.last_commit_subject().map(str::to_owned)
-        {
-            self.subject = subject.clone();
-            self.amend_loaded = Some(subject);
+        if !(self.subject.trim().is_empty() && self.body.is_empty()) {
+            return;
         }
+        let LogState::Ready(entries) = &self.log else {
+            return;
+        };
+        let Some(last) = entries.first() else {
+            return;
+        };
+        let subject = last.subject.clone();
+        let body = last
+            .body
+            .as_deref()
+            .unwrap_or("")
+            .trim_matches('\n')
+            .to_owned();
+        self.amend_body_unread = last.body.is_none();
+        self.subject = subject.clone();
+        self.body = body.clone();
+        self.amend_loaded = Some((subject, body));
+    }
+
+    /// Whether the draft holds a subject only because the host sent no body.
+    pub fn amend_body_unread(&self) -> bool {
+        self.amend && self.amend_body_unread && self.body.is_empty()
     }
 
     /// Called when a log answer has been applied: finishes an amend that waited for it.

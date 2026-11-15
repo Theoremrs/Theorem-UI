@@ -7,13 +7,16 @@
 //! answer is shown as it came: the lines, its refusal, or "unknown result".
 
 use theorem_workbench_core::completion::{
-    BlameHunk, BranchInfo, CompletionPayload, LogEntry, Outcome,
+    BlameHunk, BranchInfo, CompletionPayload, ConflictSides, LogEntry, Outcome,
 };
 use theorem_workbench_core::effect::ScmRef;
 
+use crate::intent::Side;
+use crate::status::Section;
+
 use super::{
-    ActionKind, Changes, Focus, Intent, IntentId, IntentKind, LogState, Mode, Pending, Problem,
-    Refusal, step,
+    ActionKind, Changes, Confirm, Focus, Intent, IntentId, IntentKind, LogState, Mode, Pending,
+    Problem, Refusal, step,
 };
 
 /// What the read view shows.
@@ -32,6 +35,8 @@ pub enum ReadKind {
     Revision {
         commit: String,
     },
+    /// The view's file as a merge left it: both sides, and the base when there is one.
+    Conflict,
 }
 
 fn short(commit: &str) -> String {
@@ -46,6 +51,7 @@ impl ReadKind {
             Self::History => ActionKind::History,
             Self::Commit { .. } => ActionKind::CommitDiff,
             Self::Revision { .. } => ActionKind::ShowRevision,
+            Self::Conflict => ActionKind::Conflict,
         }
     }
 
@@ -62,6 +68,7 @@ impl ReadKind {
             } => format!("Commit {}: {path}", short(commit)),
             Self::Commit { commit, .. } => format!("Commit {}", short(commit)),
             Self::Revision { commit } => format!("{path} at {}", short(commit)),
+            Self::Conflict => format!("Conflict: {path}"),
         }
     }
 }
@@ -76,6 +83,8 @@ pub enum ReadBody {
         text: String,
     },
     History(Vec<LogEntry>),
+    /// The sides of a conflicted file, as the owner answered.
+    Conflict(ConflictSides),
     /// The owner's refusal, an unknown result, or a failure, as it said it.
     Problem(Problem),
     /// The answer was for a repository state that has been left; nothing was kept.
@@ -164,6 +173,58 @@ impl Changes {
         self.open_read(ReadKind::Show(reference))
     }
 
+    /// Asks for the sides of the cursor file when it is conflicted.
+    pub fn open_conflict(&mut self) -> Result<Intent, Refusal> {
+        self.loaded(ActionKind::Conflict)?;
+        if self.cursor.as_ref().map(|k| k.section) != Some(Section::Conflicted) {
+            return self.refuse(ActionKind::Conflict, Refusal::NotInConflict);
+        }
+        self.open_read(ReadKind::Conflict)
+    }
+
+    /// The path of the conflict view, once the owner has said it is still in conflict.
+    fn conflict_open(&self) -> Option<(&str, bool)> {
+        let read = self.read.as_ref()?;
+        match (&read.kind, &read.body) {
+            (ReadKind::Conflict, ReadBody::Conflict(sides)) => {
+                Some((read.path.as_str(), sides.conflict))
+            }
+            _ => None,
+        }
+    }
+
+    /// The conflicted file the panel is about: the one in the open conflict view, else the
+    /// one under the cursor when it is in the conflicted group.
+    pub fn conflict_path(&self) -> Option<String> {
+        if let Some(read) = &self.read {
+            return (read.kind == ReadKind::Conflict).then(|| read.path.clone());
+        }
+        self.cursor
+            .as_ref()
+            .filter(|k| k.section == Section::Conflicted)
+            .map(|k| k.path.clone())
+    }
+
+    /// Whether a conflict view is open (so the side keys apply).
+    pub fn conflict_view(&self) -> bool {
+        self.read
+            .as_ref()
+            .is_some_and(|r| r.kind == ReadKind::Conflict)
+    }
+
+    /// Asks to take one side of the open conflict whole. The question comes first
+    /// (nothing is sent until [`confirm`](Self::confirm)): the other side's lines are
+    /// lost. A file the owner no longer reports in conflict has nothing to take.
+    pub fn take_side(&mut self, side: Side) -> Result<(), Refusal> {
+        self.may_mutate(ActionKind::Resolve)?;
+        let Some((path, true)) = self.conflict_open() else {
+            return self.refuse(ActionKind::Resolve, Refusal::NotInConflict);
+        };
+        let path = path.to_owned();
+        self.confirm = Some(Confirm::Take { path, side });
+        Ok(())
+    }
+
     /// Asks for the commits that changed the cursor file.
     pub fn history(&mut self) -> Result<Intent, Refusal> {
         self.open_read(ReadKind::History)
@@ -182,6 +243,7 @@ impl Changes {
                 reference: *reference,
             },
             ReadKind::History => IntentKind::History { path: path.clone() },
+            ReadKind::Conflict => IntentKind::Conflict { path: path.clone() },
             ReadKind::Commit { .. } | ReadKind::Revision { .. } => {
                 unreachable!("a commit is opened from a log or history row")
             }
@@ -380,6 +442,11 @@ impl Changes {
             (Outcome::Accepted, Some(CompletionPayload::ScmLog(answer)), ReadKind::History) => {
                 ReadBody::History(answer.commits.clone())
             }
+            (
+                Outcome::Accepted,
+                Some(CompletionPayload::ScmConflict(sides)),
+                ReadKind::Conflict,
+            ) => ReadBody::Conflict(sides.clone()),
             (Outcome::Accepted, _, _) => ReadBody::Problem(Problem::Failed {
                 reason: "the owner's answer was not the one asked for".into(),
             }),

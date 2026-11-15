@@ -10,11 +10,11 @@ use ratatui::layout::Rect;
 use serde_json::Value;
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
-use theorem_workbench_changes::{ChangesPanel, actions, descriptors, with_actions};
+use theorem_workbench_changes::{ChangesPanel, actions, descriptors, extend_registry};
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
-    BlameHunk, BranchInfo, Completion, CompletionPayload, Outcome, ScmBlameResult, ScmBranches,
-    ScmMerged, ScmShowResult,
+    BlameHunk, BranchInfo, Completion, CompletionPayload, ConflictSides, LogEntry, Outcome,
+    ScmBlameResult, ScmBranches, ScmLogResult, ScmMerged, ScmShowResult,
 };
 use theorem_workbench_core::effect::{Effect, EffectBody, ScmRef};
 use theorem_workbench_core::host::HostMessage;
@@ -112,7 +112,8 @@ fn factories(slot: &Slot) -> PanelFactories {
 }
 
 fn model_with(caps: &[&'static str], workspace: &str, slot: &Slot) -> Model {
-    let registry = with_actions(builtin::registry()).expect("the actions register");
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).expect("the actions register");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
     let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -184,6 +185,8 @@ fn names(effects: &[Effect]) -> Vec<&'static str> {
             EffectBody::ScmAmend(_) => "amend",
             EffectBody::ScmBranches => "branch list",
             EffectBody::ScmDiffCommit(_) => "commit diff",
+            EffectBody::ScmConflict(_) => "conflict",
+            EffectBody::ScmResolve(_) => "resolve",
             EffectBody::ScmShowRevision(_) => "show at revision",
             _ => "other",
         })
@@ -263,7 +266,8 @@ impl Rig {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
         let theme = Theme::plain();
-        let mut cx = ViewCtx::new(&theme, self.m.workspace());
+        let mut cx =
+            ViewCtx::new(&theme, self.m.workspace()).with_capabilities(self.m.capabilities());
         cx.focused = true;
         self.panel().view(area, &mut buf, &cx);
         common::lines(&buf)
@@ -886,6 +890,7 @@ fn a_merge_answers_with_the_conflicts_it_stopped_on() {
         &fx[0],
         CompletionPayload::ScmMerged(ScmMerged {
             merged: false,
+            conflicts: vec![],
             state: Some(common::repo(2)),
         }),
     );
@@ -1039,12 +1044,13 @@ fn the_semantic_tree_is_valid_in_each_state() {
 
 #[test]
 fn the_actions_are_in_the_catalog_with_a_reason_when_unavailable() {
-    let registry = with_actions(builtin::registry()).unwrap();
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).unwrap();
     let ids: Vec<String> = descriptors()
         .iter()
         .map(|d| d.id.as_str().to_owned())
         .collect();
-    assert_eq!(ids.len(), 24);
+    assert_eq!(ids.len(), 28);
     let with = registry.agent_catalog(&Capabilities::of(CAPS_AMEND));
     let without = registry.agent_catalog(&Capabilities::of(["files"]));
     for id in &ids {
@@ -1278,7 +1284,8 @@ fn the_amend_action_sends_the_last_commits_message_when_the_log_is_loaded() {
 
 #[test]
 fn the_amend_action_is_unavailable_in_the_catalog_without_the_capability() {
-    let registry = with_actions(builtin::registry()).unwrap();
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).unwrap();
     let without = registry.agent_catalog(&Capabilities::of(CAPS));
     let entry = without
         .iter()
@@ -1681,4 +1688,430 @@ fn a_file_at_a_revision_for_an_older_generation_is_dropped() {
     }));
     rig.send(Msg::Completion(stale));
     assert!(!rig.screen().contains("late text"), "{}", rig.screen());
+}
+
+// ---- capabilities from the context, the whole amend message ---------------------------------
+
+fn log_with_body(subject: &str, body: Option<&str>) -> CompletionPayload {
+    CompletionPayload::ScmLog(ScmLogResult {
+        commits: vec![LogEntry {
+            commit: format!("a1b2c30{}", "0".repeat(33)),
+            author: "Ada".into(),
+            email: None,
+            timestamp: "0".into(),
+            subject: subject.into(),
+            body: body.map(str::to_owned),
+        }],
+        state: None,
+    })
+}
+
+fn loaded_with_log(caps: &[&'static str], log: CompletionPayload) -> Rig {
+    let (mut rig, fx) = opened_with(caps, "w");
+    let next = rig.accept(&fx[0], common::status(1, mixed()));
+    rig.accept(&next[0], log);
+    rig
+}
+
+#[test]
+fn a_panel_opened_where_the_host_offers_amend_has_it_enabled_without_any_message() {
+    let rig = loaded_with(&CAPS_AMEND);
+    assert!(rig.model().amend_available());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    assert!(!branch_node(&tree).state.disabled);
+}
+
+#[test]
+fn a_panel_opened_where_the_host_does_not_offer_amend_has_it_disabled_without_any_message() {
+    let mut rig = loaded();
+    assert!(!rig.model().amend_available());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    assert!(branch_node(&tree).state.disabled);
+    assert!(rig.ch('a').is_empty());
+    assert!(!rig.model().amend());
+}
+
+#[test]
+fn amend_follows_the_hosts_capabilities_when_they_change() {
+    let mut rig = loaded_with(&CAPS_AMEND);
+    rig.ch('a');
+    assert!(rig.model().amend());
+    rig.send(caps_without_amend());
+    assert!(!rig.model().amend_available());
+    assert!(!rig.model().amend(), "withdrawn amend turns the box off");
+    rig.send(Msg::Host(HostMessage::CapabilitiesChanged {
+        capabilities: Capabilities::of(CAPS_AMEND),
+    }));
+    assert!(rig.model().amend_available());
+}
+
+#[test]
+fn amend_prefills_the_subject_a_blank_line_and_the_body() {
+    let mut rig = loaded_with_log(
+        &CAPS_AMEND,
+        log_with_body(
+            "fix the thing",
+            Some("It broke on Tuesday.\nThis mends it."),
+        ),
+    );
+    rig.ch('a');
+    let fx = rig.key_with(Key::Enter, Mods::CTRL);
+    match &fx[0].body {
+        EffectBody::ScmAmend(a) => assert_eq!(
+            a.message,
+            "fix the thing\n\nIt broke on Tuesday.\nThis mends it."
+        ),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn amend_without_a_body_prefills_the_subject_and_says_the_body_could_not_be_read() {
+    let mut rig = loaded_with_log(&CAPS_AMEND, log_with_body("fix the thing", None));
+    rig.ch('a');
+    let screen = rig.screen();
+    assert!(screen.contains("fix the thing"), "{screen}");
+    assert!(
+        screen.contains("The body of the last commit could not be read."),
+        "{screen}"
+    );
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let description = branch_node(&tree).state.description.clone().unwrap();
+    assert!(description.contains("sent no body"), "{description}");
+}
+
+#[test]
+fn a_commit_that_has_an_empty_body_does_not_claim_it_could_not_be_read() {
+    let mut rig = loaded_with_log(&CAPS_AMEND, log_with_body("fix the thing", Some("")));
+    rig.ch('a');
+    assert!(
+        !rig.screen().contains("could not be read"),
+        "{}",
+        rig.screen()
+    );
+    let fx = rig.key_with(Key::Enter, Mods::CTRL);
+    match &fx[0].body {
+        EffectBody::ScmAmend(a) => assert_eq!(a.message, "fix the thing"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn turning_amend_off_takes_back_the_message_it_loaded_with_its_body() {
+    let mut rig = loaded_with_log(&CAPS_AMEND, log_with_body("subject", Some("body text")));
+    rig.ch('a');
+    assert!(rig.screen().contains("body text"), "{}", rig.screen());
+    rig.ch('a');
+    assert!(!rig.model().amend());
+    assert!(!rig.screen().contains("body text"), "{}", rig.screen());
+}
+
+// ---- conflicted files ----------------------------------------------------------------------
+
+fn sides(conflict: bool) -> ConflictSides {
+    ConflictSides {
+        path: "both.rs".into(),
+        conflict,
+        base: Some("let x = 0;\n".into()),
+        ours: Some("let x = 1;\nlet y = 2;\n".into()),
+        theirs: Some("let x = 9;\n".into()),
+    }
+}
+
+fn conflicted() -> Rig {
+    let (mut rig, fx) = opened_with(&CAPS, "w");
+    let next = rig.accept(
+        &fx[0],
+        common::status(
+            1,
+            vec![common::conflict("both.rs"), change("a.rs", " ", "M")],
+        ),
+    );
+    rig.accept(&next[0], log_answer(&["x"]));
+    for _ in 0..4 {
+        if rig.model().cursor_path() == Some("both.rs") {
+            break;
+        }
+        rig.key(Key::Down);
+    }
+    assert_eq!(rig.model().cursor_path(), Some("both.rs"));
+    rig
+}
+
+fn open_sides(rig: &mut Rig, answer: ConflictSides) -> Effect {
+    let fx = rig.key(Key::Enter);
+    once(&fx, "conflict");
+    rig.accept(&fx[0], CompletionPayload::ScmConflict(answer));
+    fx[0].clone()
+}
+
+#[test]
+fn enter_on_a_conflicted_file_asks_for_its_sides_and_shows_both() {
+    let mut rig = conflicted();
+    let fx = rig.key(Key::Enter);
+    once(&fx, "conflict");
+    match &fx[0].body {
+        EffectBody::ScmConflict(p) => assert_eq!(p.path, "both.rs"),
+        other => panic!("{other:?}"),
+    }
+    assert!(rig.screen().contains("Reading"), "{}", rig.screen());
+    rig.accept(&fx[0], CompletionPayload::ScmConflict(sides(true)));
+    let screen = rig.screen();
+    assert!(screen.contains("Conflict: both.rs"), "{screen}");
+    assert!(screen.contains("Ours (this branch)"), "{screen}");
+    assert!(screen.contains("let x = 1;"), "{screen}");
+    assert!(screen.contains("Theirs (incoming)"), "{screen}");
+    assert!(screen.contains("let x = 9;"), "{screen}");
+    assert!(screen.contains("Base (the common ancestor)"), "{screen}");
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_side_the_host_does_not_have_is_said_to_have_no_file_and_not_shown_empty() {
+    let mut rig = conflicted();
+    open_sides(
+        &mut rig,
+        ConflictSides {
+            path: "both.rs".into(),
+            conflict: true,
+            base: None,
+            ours: Some("kept\n".into()),
+            theirs: None,
+        },
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("This side has no file."), "{screen}");
+    assert!(!screen.contains("Base (the common ancestor)"), "{screen}");
+}
+
+#[test]
+fn enter_on_an_ordinary_file_still_expands_its_diff() {
+    let mut rig = conflicted();
+    rig.key(Key::Down);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "diff");
+}
+
+#[test]
+fn escape_leaves_the_conflict_view_for_the_list_with_the_cursor_where_it_was() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.key(Key::Esc);
+    assert!(rig.model().read_view().is_none());
+    assert_eq!(rig.model().cursor_path(), Some("both.rs"));
+    assert!(rig.screen().contains("both.rs"), "{}", rig.screen());
+}
+
+#[test]
+fn taking_ours_asks_first_and_sends_nothing_until_it_is_confirmed() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    assert!(rig.ch('o').is_empty());
+    let screen = rig.screen();
+    assert!(screen.contains("Take ours for both.rs?"), "{screen}");
+    assert!(screen.contains("lost"), "{screen}");
+    assert_valid(&rig);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "resolve");
+    match &fx[0].body {
+        EffectBody::ScmResolve(r) => {
+            assert_eq!(r.path, "both.rs");
+            assert_eq!(r.take, theorem_workbench_core::effect::ConflictTake::Ours);
+            assert!(r.text.is_none());
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn taking_theirs_sends_the_theirs_take() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('t');
+    assert!(rig.screen().contains("Take theirs for both.rs?"));
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmResolve(r) => {
+            assert_eq!(r.take, theorem_workbench_core::effect::ConflictTake::Theirs)
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn declining_the_question_sends_nothing_and_keeps_the_sides_on_screen() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('o');
+    assert!(rig.key(Key::Esc).is_empty());
+    assert!(rig.model().confirm_pending().is_none());
+    assert!(
+        rig.screen().contains("Ours (this branch)"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
+fn a_resolve_that_was_accepted_closes_the_view_and_reads_the_state_again() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('o');
+    let fx = rig.key(Key::Enter);
+    let next = rig.accept(&fx[0], CompletionPayload::ScmState(common::repo(2)));
+    once(&next, "status");
+    assert!(rig.model().read_view().is_none());
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_refused_resolve_shows_the_owners_reason_and_leaves_the_sides_open() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('o');
+    let fx = rig.key(Key::Enter);
+    rig.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "not_conflicted".into(),
+            reason: "the file is not in conflict".into(),
+        },
+        None,
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("the file is not in conflict"), "{screen}");
+    assert!(rig.model().read_view().is_some());
+    assert_valid(&rig);
+}
+
+#[test]
+fn an_uncertain_resolve_is_shown_as_unknown_and_blocks_the_next_change() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('o');
+    let fx = rig.key(Key::Enter);
+    rig.answer(
+        &fx[0],
+        Outcome::Uncertain {
+            reason: "timed out".into(),
+        },
+        None,
+    );
+    assert!(
+        rig.screen().contains("unknown") || rig.screen().contains("Unknown"),
+        "{}",
+        rig.screen()
+    );
+    // Another change is refused until the state is read.
+    rig.ch('t');
+    assert!(rig.model().confirm_pending().is_none());
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_file_the_owner_no_longer_reports_in_conflict_offers_nothing_to_take() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(false));
+    let screen = rig.screen();
+    assert!(screen.contains("no longer in conflict"), "{screen}");
+    assert!(rig.ch('o').is_empty());
+    assert!(rig.model().confirm_pending().is_none());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let take = tree
+        .nodes
+        .iter()
+        .flat_map(|n| n.actions.iter())
+        .find(|a| a.id.as_str() == actions::TAKE_OURS)
+        .expect("listed");
+    assert!(!take.enabled && take.reason.is_some(), "{take:?}");
+}
+
+#[test]
+fn a_refused_conflict_read_shows_the_owners_reason() {
+    let mut rig = conflicted();
+    let fx = rig.key(Key::Enter);
+    rig.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "not_conflicted".into(),
+            reason: "no sides are kept for this file".into(),
+        },
+        None,
+    );
+    assert!(
+        rig.screen().contains("no sides are kept"),
+        "{}",
+        rig.screen()
+    );
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_conflict_answered_after_the_view_was_left_is_dropped() {
+    let mut rig = conflicted();
+    let fx = rig.key(Key::Enter);
+    rig.key(Key::Esc);
+    rig.accept(&fx[0], CompletionPayload::ScmConflict(sides(true)));
+    assert!(rig.model().read_view().is_none());
+    assert!(
+        !rig.screen().contains("Ours (this branch)"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
+fn a_conflict_for_an_older_generation_is_dropped() {
+    let mut rig = conflicted();
+    let fx = rig.key(Key::Enter);
+    rig.send(Msg::Host(HostMessage::Resync {
+        workspace: "w".into(),
+        reason: "epoch_changed".into(),
+    }));
+    let mut stale = Completion::new(fx[0].id, fx[0].resource.clone(), Outcome::Accepted);
+    stale.generation = Some(theorem_workbench_core::ids::Generation(0));
+    stale.payload = Some(CompletionPayload::ScmConflict(sides(true)));
+    rig.send(Msg::Completion(stale));
+    assert!(!rig.screen().contains("let x = 1;"), "{}", rig.screen());
+}
+
+#[test]
+fn e_opens_the_conflicted_file_in_the_editor_from_the_list_and_from_the_view() {
+    let mut rig = conflicted();
+    assert!(rig.ch('e').is_empty());
+    assert!(rig.m.panel_ids().any(|(_, k)| k.as_str() == "document"));
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    assert!(rig.ch('e').is_empty());
+    assert!(rig.m.panel_ids().any(|(_, k)| k.as_str() == "document"));
+}
+
+#[test]
+fn the_conflict_actions_are_registered_and_an_agent_cannot_confirm_a_side() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    assert!(rig.action(actions::TAKE_OURS, agent()).is_empty());
+    assert!(rig.model().confirm_pending().is_some());
+    // The question is answered by a person only.
+    assert!(rig.action(actions::CONFIRM, agent()).is_empty());
+    assert!(rig.model().confirm_pending().is_some());
+    let fx = rig.action(actions::CONFIRM, Actor::Human);
+    once(&fx, "resolve");
+}
+
+#[test]
+fn the_conflicted_row_offers_open_and_edit_in_the_semantic_tree() {
+    let rig = conflicted();
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let ids: Vec<&str> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().contains("/file/Conflicted/"))
+        .flat_map(|n| n.actions.iter().map(|a| a.id.as_str()))
+        .collect();
+    assert!(ids.contains(&actions::OPEN_CONFLICT), "{ids:?}");
+    assert!(ids.contains(&actions::EDIT_CONFLICT), "{ids:?}");
 }

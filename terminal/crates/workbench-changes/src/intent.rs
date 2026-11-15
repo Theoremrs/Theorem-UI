@@ -7,8 +7,9 @@
 
 use serde::{Deserialize, Serialize};
 use theorem_workbench_core::effect::{
-    EffectBody, FilesPath, ScmAmend, ScmBranch, ScmCommit, ScmDiff, ScmDiffCommit, ScmLog,
-    ScmMerge, ScmPaths, ScmPush, ScmRef, ScmRemote, ScmRestore, ScmShow, ScmShowRevision,
+    ConflictTake, EffectBody, FilesPath, ScmAmend, ScmBranch, ScmCommit, ScmDiff, ScmDiffCommit,
+    ScmLog, ScmMerge, ScmPaths, ScmPush, ScmRef, ScmRemote, ScmResolve, ScmRestore, ScmShow,
+    ScmShowRevision,
 };
 
 use crate::model::RECENT;
@@ -23,6 +24,32 @@ pub struct Intent {
     pub id: IntentId,
     pub generation: u64,
     pub kind: IntentKind,
+}
+
+/// Which side of a conflict a person takes whole. Merging by hand is done in the editor,
+/// so the panel never sends merged text and the wire's `merged` take has no case here.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Side {
+    Ours,
+    Theirs,
+}
+
+impl Side {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Ours => "ours",
+            Self::Theirs => "theirs",
+        }
+    }
+
+    /// The side as an owner's adjective: "our side", "their side".
+    pub fn owner(self) -> &'static str {
+        match self {
+            Self::Ours => "our",
+            Self::Theirs => "their",
+        }
+    }
 }
 
 /// The requests the Changes panel makes. One for each call the SCM owner (`scm.ts`)
@@ -92,6 +119,15 @@ pub enum IntentKind {
         path: String,
         revision: String,
     },
+    /// The sides of one conflicted path.
+    Conflict {
+        path: String,
+    },
+    /// Settles one conflicted path by taking a side whole.
+    Resolve {
+        path: String,
+        side: Side,
+    },
 }
 
 /// An action as the panel tells it apart: the key of in-flight state and of a notice.
@@ -117,6 +153,8 @@ pub enum ActionKind {
     History,
     CommitDiff,
     ShowRevision,
+    Conflict,
+    Resolve,
 }
 
 impl ActionKind {
@@ -141,6 +179,8 @@ impl ActionKind {
             Self::History => "history",
             Self::CommitDiff => "commit diff",
             Self::ShowRevision => "file at commit",
+            Self::Conflict => "conflict read",
+            Self::Resolve => "conflict resolve",
         }
     }
 
@@ -158,6 +198,7 @@ impl ActionKind {
                 | Self::History
                 | Self::CommitDiff
                 | Self::ShowRevision
+                | Self::Conflict
         )
     }
 }
@@ -184,6 +225,8 @@ impl IntentKind {
             Self::History { .. } => ActionKind::History,
             Self::CommitDiff { .. } => ActionKind::CommitDiff,
             Self::ShowRevision { .. } => ActionKind::ShowRevision,
+            Self::Conflict { .. } => ActionKind::Conflict,
+            Self::Resolve { .. } => ActionKind::Resolve,
         }
     }
 
@@ -253,6 +296,15 @@ impl IntentKind {
                 path: path.clone(),
                 revision: revision.clone(),
             }),
+            Self::Conflict { path } => EffectBody::ScmConflict(FilesPath { path: path.clone() }),
+            Self::Resolve { path, side } => EffectBody::ScmResolve(ScmResolve {
+                path: path.clone(),
+                take: match side {
+                    Side::Ours => ConflictTake::Ours,
+                    Side::Theirs => ConflictTake::Theirs,
+                },
+                text: None,
+            }),
         }
     }
 }
@@ -278,6 +330,8 @@ pub enum Refusal {
     /// The repository has no commit to amend or show.
     NoCommits,
     NoRestorePoint,
+    /// A conflict action on a file that is not (or is no longer) in conflict.
+    NotInConflict,
     /// `confirm` with nothing waiting to be confirmed.
     NothingToConfirm,
 }
@@ -295,6 +349,7 @@ impl Refusal {
             Self::EmptyBranchName => "empty_branch",
             Self::NoCommits => "no_commits",
             Self::NoRestorePoint => "no_restore_id",
+            Self::NotInConflict => "not_in_conflict",
             Self::NothingToConfirm => "nothing_to_confirm",
         }
     }
@@ -314,6 +369,7 @@ impl Refusal {
             Self::EmptyBranchName => "A branch needs a name".into(),
             Self::NoCommits => "There is no commit to use yet".into(),
             Self::NoRestorePoint => "There is no discarded change to restore".into(),
+            Self::NotInConflict => "The file is not in conflict".into(),
             Self::NothingToConfirm => "There is nothing waiting to be confirmed".into(),
         }
     }

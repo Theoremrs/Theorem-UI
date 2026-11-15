@@ -44,6 +44,10 @@ pub mod actions {
     pub const AMEND: &str = "changes.amend";
     pub const OPEN_COMMIT: &str = "changes.openCommit";
     pub const SHOW_AT_COMMIT: &str = "changes.showAtCommit";
+    pub const OPEN_CONFLICT: &str = "changes.openConflict";
+    pub const TAKE_OURS: &str = "changes.takeOurs";
+    pub const TAKE_THEIRS: &str = "changes.takeTheirs";
+    pub const EDIT_CONFLICT: &str = "changes.editConflict";
 }
 
 fn act(id: &str, reason: Option<String>) -> NodeAction {
@@ -146,6 +150,18 @@ impl Changes {
         let mut list = Node::new(&format!("{id}/list"), list_role, &list_name, regions.list);
         if let (Mode::Read, Some(read)) = (&self.mode, &self.read) {
             list.state.busy = read.body == ReadBody::Loading;
+            if let ReadBody::Conflict(sides) = &read.body {
+                let settled =
+                    (!sides.conflict).then(|| "The file is no longer in conflict".to_owned());
+                list.actions = vec![
+                    act(
+                        actions::TAKE_OURS,
+                        settled.clone().or_else(|| block.clone()),
+                    ),
+                    act(actions::TAKE_THEIRS, settled.or_else(|| block.clone())),
+                    act(actions::EDIT_CONFLICT, None),
+                ];
+            }
             if matches!(read.body, ReadBody::History(_)) {
                 list.actions = vec![
                     act(actions::OPEN_COMMIT, None),
@@ -158,6 +174,14 @@ impl Changes {
                 ReadBody::Text { exists: false, .. } => "The file has no such version".to_owned(),
                 ReadBody::Text { text, .. } => format!("{} lines", text.lines().count()),
                 ReadBody::History(c) => format!("{} commits", c.len()),
+                ReadBody::Conflict(sides) if !sides.conflict => {
+                    "The file is no longer in conflict".to_owned()
+                }
+                ReadBody::Conflict(sides) => format!(
+                    "Ours {}, theirs {}",
+                    side_words(sides.ours.as_deref()),
+                    side_words(sides.theirs.as_deref())
+                ),
                 ReadBody::Problem(p) => p.text(),
                 ReadBody::Outdated => {
                     "Dropped: it was for an earlier state of the repository".to_owned()
@@ -332,6 +356,9 @@ impl Changes {
             amend.state.busy = self.amend_waiting();
             amend.state.description = Some(match &amend_why {
                 Some(why) => why.clone(),
+                None if self.amend_body_unread() => {
+                    "Amending the last commit. The host sent no body, so the draft holds the subject only and the body would be dropped.".to_owned()
+                }
                 None if self.amend => "Amending the last commit".to_owned(),
                 None => "Amend the last commit instead of making a new one".to_owned(),
             });
@@ -444,6 +471,10 @@ impl Changes {
         if key.section.can_discard() {
             out.push(act(actions::DISCARD, block));
         }
+        if key.section == Section::Conflicted {
+            out.push(act(actions::OPEN_CONFLICT, None));
+            out.push(act(actions::EDIT_CONFLICT, None));
+        }
         let untracked = (key.section == Section::Untracked)
             .then(|| "The file is not tracked yet, so it has no history".to_owned());
         out.push(act(actions::BLAME, untracked.clone()));
@@ -451,5 +482,13 @@ impl Changes {
         out.push(act(actions::SHOW_HEAD, untracked.clone()));
         out.push(act(actions::SHOW_INDEX, untracked));
         out
+    }
+}
+
+/// How a side reads in a description: its line count, or that it has no file.
+fn side_words(side: Option<&str>) -> String {
+    match side {
+        Some(text) => format!("{} lines", text.lines().count()),
+        None => "has no file".to_owned(),
     }
 }

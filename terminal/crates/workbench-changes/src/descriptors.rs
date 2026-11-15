@@ -11,10 +11,11 @@
 //! ask for a discard and never approve one.
 
 use theorem_workbench_core::effect::EffectKind;
+use theorem_workbench_core::ids::PanelKind;
 use theorem_workbench_core::registry::{
     ActionDescriptor,
-    ActionIntent::{Create, Destroy, Start},
-    PanelDescriptor, Registry, RegistryError,
+    ActionIntent::{Create, Destroy, Open, Start},
+    Registry, RegistryError,
 };
 
 use crate::semantics::actions as id;
@@ -43,10 +44,14 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
         ActionDescriptor::new(id::DISCARD, "Discard the selected changes", Destroy)
             .requires(CAPABILITY)
             .emits(ScmDiscard),
-        ActionDescriptor::new(id::CONFIRM, "Confirm the discard", Destroy)
-            .requires(CAPABILITY)
-            .emits(ScmDiscard)
-            .human_only(),
+        ActionDescriptor::new(
+            id::CONFIRM,
+            "Confirm the question the panel asked (a discard, a restore or a side taken)",
+            Destroy,
+        )
+        .requires(CAPABILITY)
+        .emits(ScmDiscard)
+        .human_only(),
         start(
             id::RESTORE,
             "Bring back the last discarded change",
@@ -83,6 +88,33 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
             "Show the selected file as the index has it",
             ScmShow,
         ),
+        start(
+            id::OPEN_CONFLICT,
+            "Show both sides of the selected conflicted file",
+            ScmConflict,
+        ),
+        // These two ask first; nothing is taken until `changes.confirm`.
+        ActionDescriptor::new(
+            id::TAKE_OURS,
+            "Take our side of the conflicted file",
+            Destroy,
+        )
+        .requires(CAPABILITY)
+        .emits(ScmResolve),
+        ActionDescriptor::new(
+            id::TAKE_THEIRS,
+            "Take their side of the conflicted file",
+            Destroy,
+        )
+        .requires(CAPABILITY)
+        .emits(ScmResolve),
+        // Merging by hand is done in the editor.
+        ActionDescriptor::new(
+            id::EDIT_CONFLICT,
+            "Open the conflicted file in the editor to merge it by hand",
+            Open,
+        )
+        .requires("documents"),
         start(id::FETCH, "Fetch from the remote", ScmFetch),
         start(id::PUSH, "Push to the remote", ScmPush),
         // These three ask for the branch name in a prompt, which lists the branches the
@@ -95,16 +127,8 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
     ]
 }
 
-/// `registry` with the panel's workflow actions added to its "changes" kind. The builtin
-/// registry cannot list them itself, so the mount builds its registry through this.
-pub fn with_actions(registry: Registry) -> Result<Registry, RegistryError> {
-    let mut out = Registry::new();
-    for panel in registry.panels() {
-        let mut panel: PanelDescriptor = panel.clone();
-        if panel.kind.as_str() == "changes" {
-            panel.actions.extend(descriptors());
-        }
-        out.register(panel)?;
-    }
-    Ok(out)
+/// Adds the panel's workflow actions to the registry's "changes" kind. Call it on the
+/// registry before building the `Model`; the kind comes from the core's builtin registry.
+pub fn extend_registry(registry: &mut Registry) -> Result<(), RegistryError> {
+    registry.extend_actions(&PanelKind::new(crate::panel::KIND), descriptors())
 }
