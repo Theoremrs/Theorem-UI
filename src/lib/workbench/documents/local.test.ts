@@ -440,3 +440,147 @@ describe('AC-50: another account does not see these drafts', () => {
     expect(JSON.stringify(next.state)).not.toContain('secret')
   })
 })
+
+describe('AC-16: typing behind an unanswered edit is kept on the device too', () => {
+  const typed = (n: number) => ({
+    operationId: `typed-${n}`,
+    baseRevision: seq(1),
+    edits: insert(String(n)),
+  })
+  /** What a fresh owner over the same database is offered back after a reload: operation ids in order. */
+  const offered = async (ctx: Awaited<ReturnType<typeof setup>>) => {
+    const after = await ctx.open(ctx.owner())
+    return after
+  }
+
+  async function heldFirst() {
+    const ctx = await setup()
+    ctx.on('edit', lost)
+    const doc = await ctx.open()
+    const first = await doc.edit({
+      requestId: 'r1',
+      ...typed(1),
+    })
+    expect(first.outcome).toBe('uncertain')
+    return { ...ctx, doc }
+  }
+
+  test('a held first edit followed by more typing: a reload restores every edit, in order, and the host never saw the later ones', async () => {
+    const ctx = await heldFirst()
+    // The editor holds these behind the unanswered edit and says its queue as it grows.
+    ctx.doc.keep([typed(2)])
+    ctx.doc.keep([typed(2), typed(3)])
+    expect(await ctx.doc.flushLocal()).toMatchObject({
+      state: 'checkpointed',
+      recovered: false,
+    })
+    const after = await offered(ctx)
+    expect(after.state.pending.map((edit) => edit.operationId)).toEqual([
+      'typed-1',
+      'typed-2',
+      'typed-3',
+    ])
+    expect(after.state.pending.every((edit) => edit.state === 'restored')).toBe(
+      true,
+    )
+    expect(after.state.local).toMatchObject({
+      state: 'checkpointed',
+      recovered: true,
+    })
+    expect(ctx.count('edit')).toBe(1)
+    expect(after.state.pending.map((edit) => edit.edits)).toEqual([
+      insert('1'),
+      insert('2'),
+      insert('3'),
+    ])
+  })
+
+  test('the kept state is a draft until the database commits the queue, never kept on the strength of the first edit alone', async () => {
+    const ctx = await heldFirst()
+    await ctx.doc.flushLocal()
+    ctx.database.failWrite = new Error('write failed')
+    ctx.doc.keep([typed(2)])
+    expect(ctx.doc.state.local.state).toBe('draft')
+    expect(await ctx.doc.flushLocal()).toMatchObject({
+      state: 'draft',
+      problem: { code: 'checkpoint_failed' },
+    })
+  })
+
+  test('a later accepted edit drops what the host took and keeps the rest', async () => {
+    const ctx = await heldFirst()
+    ctx.doc.keep([typed(2), typed(3)])
+    await ctx.doc.flushLocal()
+    // The person chose: the first is settled, the second goes out and is accepted.
+    ctx.doc.settle('typed-1')
+    ctx.on('edit', (request) => {
+      ctx.state.revision = (request.base_revision as number) + 1
+      return {
+        document_id: 'd1',
+        revision: ctx.state.revision,
+        content_hash: 'c',
+        disk_hash: 'c',
+        text: ctx.state.text,
+      }
+    })
+    const sent = await ctx.doc.edit({ requestId: 'r2', ...typed(2) })
+    expect(sent.outcome).toBe('accepted')
+    expect(await ctx.doc.flushLocal()).toMatchObject({ state: 'checkpointed' })
+    const after = await offered(ctx)
+    expect(after.state.pending.map((edit) => edit.operationId)).toEqual([
+      'typed-3',
+    ])
+  })
+
+  test('when the whole queue is taken nothing is kept and the device copy is removed', async () => {
+    const ctx = await heldFirst()
+    ctx.doc.keep([typed(2)])
+    await ctx.doc.flushLocal()
+    ctx.doc.settle('typed-1')
+    ctx.doc.keep([])
+    expect(await ctx.doc.flushLocal()).toEqual({ state: 'accepted' })
+    expect(kept(ctx.database)).toEqual([])
+  })
+
+  test('a draft larger than the store can hold is a stated draft with the reason, not a kept one', async () => {
+    const ctx = await heldFirst()
+    await ctx.doc.flushLocal()
+    ctx.database.failWrite = new Error(
+      'chunk_store_browser_payload_too_large: 70000000 bytes',
+    )
+    ctx.doc.keep([typed(2)])
+    expect(await ctx.doc.flushLocal()).toMatchObject({
+      state: 'draft',
+      problem: { code: 'checkpoint_too_large' },
+    })
+    expect(ctx.doc.state.local.state).toBe('draft')
+  })
+
+  test("two tabs on one document: the second tab does not overwrite the first tab's kept edits with fewer", async () => {
+    const ctx = await setup()
+    ctx.on('edit', lost)
+    const tabA = await ctx.open(ctx.owner())
+    const tabB = await ctx.open(ctx.owner())
+    await tabA.edit({ requestId: 'a', ...typed(1) })
+    await tabA.flushLocal()
+    await tabB.edit({
+      requestId: 'b',
+      operationId: 'other-1',
+      baseRevision: seq(1),
+      edits: insert('b'),
+    })
+    await tabB.flushLocal()
+    const reload = await ctx.open(ctx.owner())
+    expect(reload.state.pending.map((edit) => edit.operationId).sort()).toEqual(
+      ['other-1', 'typed-1'],
+    )
+    // Tab B finishing its own work leaves tab A's edit on the device.
+    tabB.settle('other-1')
+    await tabB.flushLocal()
+    expect(kept(ctx.database)).toHaveLength(1)
+    const again = await ctx.open(ctx.owner())
+    expect(again.state.pending.map((edit) => edit.operationId)).toEqual([
+      'typed-1',
+    ])
+  })
+})

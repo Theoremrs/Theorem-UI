@@ -158,6 +158,18 @@ export interface DocumentHandle {
   ) => Promise<Completion<{ revision: Revision; text: string }>>
   /** The caller has dealt with a pending edit (rebased and resent it, or chose to drop it). */
   settle: (operationId: string) => void
+  /**
+   * The edits the editor holds behind an unanswered one, in order, as it holds them now (the whole queue each time, empty
+   * when none). They are not sent; they are kept on this device with the edits already held so a reload offers all of them.
+   * An edit later sent through `edit` leaves this queue by its operation id.
+   */
+  keep: (
+    queued: {
+      operationId: string
+      baseRevision: Revision
+      edits: TextChange[]
+    }[],
+  ) => void
   /** Resolves when every checkpoint write asked for so far has finished, with where the work stands. */
   flushLocal: () => Promise<LocalState>
   on: (listener: (event: DocumentEvent) => void) => () => void
@@ -206,6 +218,13 @@ interface Session {
   saveUncertain: boolean
   retired: boolean
   pending: Map<string, PendingEdit>
+  /**
+   * Edits the editor holds back behind an uncertain or unsent one: never sent from here, but kept on the device in
+   * order so a reload offers them. The editor says the whole queue each time ({@link DocumentHandle.keep}).
+   */
+  behind: Map<string, PendingEdit>
+  /** Every operation this session has held, so an edit in the device record that is not in it was kept by another tab. */
+  known: Set<string>
   local: LocalState
   /** What the device holds (or was last asked to hold) for `pending`: operation ids, bases and edits. */
   signature: string
@@ -341,7 +360,7 @@ export function createDocuments(
 
   const signatureOf = (session: Session) =>
     JSON.stringify(
-      [...session.pending.values()].map(
+      [...session.pending.values(), ...session.behind.values()].map(
         ({ operationId, baseRevision, edits }) => [
           operationId,
           baseRevision,
@@ -374,7 +393,7 @@ export function createDocuments(
     const signature = signatureOf(session)
     if (signature === session.signature) return
     session.signature = signature
-    const needed = session.pending.size > 0
+    const needed = session.pending.size + session.behind.size > 0
     if (!drafts) {
       setLocal(
         session,
@@ -401,7 +420,16 @@ export function createDocuments(
     if (!drafts) return
     session.queued = false
     const { signature, path } = session
-    const kept = [...session.pending.values()]
+    const own = [...session.pending.values(), ...session.behind.values()]
+    // Another tab on this document may have kept edits of its own: they stay, and are not overwritten with fewer.
+    const stored = await drafts.read(path)
+    const foreign =
+      stored.outcome === 'accepted' && stored.value
+        ? stored.value.pending.filter(
+            (edit) => !session.known.has(edit.operationId),
+          )
+        : []
+    const kept = [...foreign, ...own]
     if (kept.length === 0) {
       const done = await drafts.clear(path)
       if (session.signature !== signature) return
@@ -416,6 +444,14 @@ export function createDocuments(
       pending: kept,
     })
     if (session.signature !== signature) return
+    // Only another tab's edits are on the device: this session has no work of its own to call kept.
+    if (own.length === 0) {
+      setLocal(session, {
+        state: 'accepted',
+        ...(problemOf(done) ? { problem: problemOf(done) } : {}),
+      })
+      return
+    }
     setLocal(
       session,
       done.outcome === 'accepted'
@@ -439,6 +475,7 @@ export function createDocuments(
     }
     if (!done.value) return
     for (const edit of done.value.pending) {
+      session.known.add(edit.operationId)
       session.pending.set(edit.operationId, {
         ...edit,
         reason: `Kept on this device before a reload, against revision ${edit.baseRevision.value}; the document is at revision ${session.revision}`,
@@ -661,6 +698,8 @@ export function createDocuments(
       saveUncertain: false,
       retired: false,
       pending: new Map(),
+      behind: new Map(),
+      known: new Set(),
       local: { state: 'accepted' },
       signature: '[]',
       queued: false,
@@ -724,6 +763,8 @@ export function createDocuments(
           )
         }
         const hold = (state: PendingState, reason?: string) => {
+          session.known.add(operationId)
+          session.behind.delete(operationId)
           session.pending.set(operationId, {
             operationId,
             baseRevision,
@@ -862,7 +903,10 @@ export function createDocuments(
         } catch (error) {
           return failure({ workspaceId, requestId }, error, false)
         }
-        if (discard) session.pending.clear()
+        if (discard) {
+          session.pending.clear()
+          session.behind.clear()
+        }
         remember(session)
         session.saveUncertain = false
         return accepted(
@@ -917,6 +961,23 @@ export function createDocuments(
       revert: ({ requestId }) => resolveWith(requestId, 'disk', true),
       settle: (operationId) => {
         session.pending.delete(operationId)
+        session.behind.delete(operationId)
+        remember(session)
+      },
+      keep: (queued) => {
+        session.behind.clear()
+        for (const { operationId, baseRevision, edits } of queued) {
+          // An edit already sent from here is held in `pending`; it is not kept twice.
+          if (session.pending.has(operationId)) continue
+          session.known.add(operationId)
+          session.behind.set(operationId, {
+            operationId,
+            baseRevision,
+            edits: edits.map((change) => ({ ...change })),
+            state: 'restored',
+            reason: 'Typed behind an edit the owner has not answered; not sent',
+          })
+        }
         remember(session)
       },
       flushLocal: async () => {

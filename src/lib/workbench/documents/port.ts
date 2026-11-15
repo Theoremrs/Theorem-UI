@@ -62,7 +62,11 @@ const hostMessage = (event: DocumentEvent): HostMessage => {
     case 'retired':
       return { type: 'documentRetired', resource: event.resource }
     case 'local':
-      return { type: 'documentLocal', resource: event.resource, local: event.local }
+      return {
+        type: 'documentLocal',
+        resource: event.resource,
+        local: event.local,
+      }
   }
 }
 
