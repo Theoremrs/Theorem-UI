@@ -119,6 +119,8 @@ function mount(node: React.ReactNode) {
     [`GET ${root}/github`]: () => (github ? github : json(404, { title: 'Not connected' })),
     [`POST ${root}/github/connect`]: async (_p, request) => {
       seen.push(await note(request))
+      const refusal = refuse['POST github/connect']
+      if (refusal) return json(refusal.status, { detail: refusal.detail })
       return { authorizationUrl: 'about:blank#github' }
     },
     [`DELETE ${root}/github`]: async (_p, request) => {
@@ -282,24 +284,37 @@ async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string
 
 // ---- GitHub, not connected
 
-test('before GitHub is connected the card says what connecting gives and offers one button', async () => {
+test('before GitHub is connected the section shows a heading and one provider button', async () => {
   github = undefined
   await mount(<GithubSection />)
-  await waitFor(() => buttonNamed('Connect GitHub'))
-  expect(text()).toContain('Your agent can search code')
-  expect(named('Agent can use GitHub')).toBeNull()
+  await waitFor(() => buttonNamed('GitHub'))
+  expect(document.querySelector('h2')?.textContent).toBe('Connect git provider')
+  expect(document.querySelectorAll('button')).toHaveLength(1)
+  expect(text()).toBe('Connect git providerGitHub')
 })
 
-test('Connect GitHub asks Theorem to start the sign-in and says where to come back to', async () => {
+test('the GitHub button starts sign-in and says where to come back to', async () => {
   github = undefined
   await mount(<GithubSection />)
-  await press(await waitFor(() => buttonNamed('Connect GitHub')))
+  await press(await waitFor(() => buttonNamed('GitHub')))
   await waitFor(() => seen.length === 1)
   expect(seen[0]).toMatchObject({
     method: 'POST',
     path: `${root}/github/connect`,
     body: { returnTo: '/settings/connections' },
   })
+})
+
+test('a GitHub sign-in error appears below the provider button', async () => {
+  github = undefined
+  const detail = `GitHub is not configured. Reference: chatreq_${'A'.repeat(80)}`
+  refuse['POST github/connect'] = { status: 503, detail }
+  await mount(<GithubSection />)
+  await press(await waitFor(() => buttonNamed('GitHub')))
+  const alert = await waitFor(() => document.querySelector('[role="alert"]'))
+  expect(alert.textContent).toBe(detail)
+  expect(alert.previousElementSibling).toBe(buttonNamed('GitHub'))
+  expect(alert.classList.contains('wrap-anywhere')).toBe(true)
 })
 
 test('a connections list that cannot be read says why and offers another try', async () => {
