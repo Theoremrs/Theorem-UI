@@ -89,7 +89,7 @@ impl Completion {
     rename_all_fields = "camelCase"
 )]
 pub enum CompletionPayload {
-    /// `filesList`, `filesSearch`.
+    /// `filesList`; `filesSearch` answers with `fileSearchPage`.
     Files(FileListing),
     /// `filesStat`.
     FileStat(FileStat),
@@ -103,7 +103,7 @@ pub enum CompletionPayload {
     DocumentConflicted(DocumentConflicted),
     /// `documentSave`.
     DocumentSaved(DocumentSaved),
-    /// `documentReconcile`.
+    /// `documentReconcile`, `documentRevert`.
     DocumentReconciled(DocumentReconciled),
     /// `scmStatus`.
     Scm(ScmStatus),
@@ -115,8 +115,7 @@ pub enum CompletionPayload {
     ScmLog(ScmLogResult),
     /// `scmBlame`.
     ScmBlame(ScmBlameResult),
-    /// The branch list. No effect kind asks for it yet; this is the answer the
-    /// SCM owner's `branches` already produces, for the branch effect's panel.
+    /// `scmBranches`: the branch list the SCM owner's `branches` produces.
     ScmBranches(ScmBranches),
     /// `scmDiscard`: the id that brings the change back through `scmRestore`.
     ScmDiscarded(ScmDiscarded),
@@ -143,6 +142,12 @@ pub enum CompletionPayload {
     ConversationApproved(ConversationApproved),
     /// `conversationCreate`, `conversationSwitch`: the thread now open.
     ConversationOpened(ConversationOpened),
+    /// `conversationSideChat`: the side conversation's own id, which the
+    /// effects for it name in their `conversation` resource. It never replaces
+    /// the open thread, which is why it is not `conversationOpened`.
+    ConversationSideOpened(ConversationOpened),
+    /// `filesSearch`: rows with whole workspace paths, and the page's end.
+    FileSearchPage(FileSearchPage),
     /// `artifactsList`.
     Artifacts(ArtifactsListing),
     /// `artifactRead`.
@@ -200,6 +205,44 @@ impl FileEntry {
 pub struct FileListing {
     pub entries: Vec<FileEntry>,
     pub partial: bool,
+}
+
+/// One name-search hit: unlike a listing's `FileEntry`, `path` is the whole
+/// workspace-relative path and `name` only its last segment.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FileSearchRow {
+    pub path: String,
+    pub name: String,
+    pub kind: FileKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+    pub size: Option<u64>,
+    /// Milliseconds since the epoch, when the host gave it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+    pub modified: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub ignored: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub hidden: Option<bool>,
+}
+
+/// A page of a name search (`Files.search`). `partial` is never read as
+/// exhaustive; `next` is the `offset` of the following page and is absent on
+/// the last.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FileSearchPage {
+    pub rows: Vec<FileSearchRow>,
+    pub partial: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub next: Option<u32>,
 }
 
 /// What a path is now. `missing` is an answer, not a failure.
@@ -1054,6 +1097,35 @@ mod tests {
         shape(
             CompletionPayload::ScmState(RepoState::default()),
             json!({"type": "scmState"}),
+        );
+    }
+
+    #[test]
+    fn wire_order_payloads() {
+        shape(
+            CompletionPayload::FileSearchPage(FileSearchPage {
+                rows: vec![FileSearchRow {
+                    path: "src/a.rs".into(),
+                    name: "a.rs".into(),
+                    kind: FileKind::File,
+                    size: Some(12),
+                    modified: Some(1_700_000_000_000),
+                    ignored: None,
+                    hidden: Some(false),
+                }],
+                partial: true,
+                next: Some(50),
+            }),
+            json!({"type": "fileSearchPage", "rows": [{
+                "path": "src/a.rs", "name": "a.rs", "kind": "file",
+                "size": 12, "modified": 1_700_000_000_000u64, "hidden": false
+            }], "partial": true, "next": 50}),
+        );
+        shape(
+            CompletionPayload::ConversationSideOpened(ConversationOpened {
+                conversation_id: "side-1".into(),
+            }),
+            json!({"type": "conversationSideOpened", "conversationId": "side-1"}),
         );
     }
 

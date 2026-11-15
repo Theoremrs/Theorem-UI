@@ -114,6 +114,12 @@ pub enum EffectBody {
     DocumentSave,
     DocumentClose,
     DocumentReconcile(DocumentReconcile),
+    /// Drop unsaved edits and return to the checkout's text (`DocumentHandle.revert`).
+    /// Answered by `documentReconciled`.
+    DocumentRevert,
+    /// The caller has dealt with a held edit (`DocumentHandle.settle`): a local
+    /// call on the owner with no host round trip. Accepted with no payload.
+    DocumentSettle(DocumentSettle),
 
     // SCM
     ScmStatus,
@@ -124,6 +130,17 @@ pub enum EffectBody {
     ScmDiscard(FilesPath),
     ScmRestore(ScmRestore),
     ScmCommit(ScmCommit),
+    /// Replace the last commit (`scm.commit` with `amend`). The host must
+    /// advertise `scm.commit.amend`; the owner refuses `missing_capability`
+    /// otherwise.
+    ScmAmend(ScmAmend),
+    /// List the branches (`Scm.branches`), answered by `scmBranches`.
+    ScmBranches,
+    /// A commit's diff (`Scm.diffCommit`), so a log row opens as that commit.
+    ScmDiffCommit(ScmDiffCommit),
+    /// A file at any revision the host resolves (`Scm.show` with a revision
+    /// string); `ScmShow` stays the head-or-index form.
+    ScmShowRevision(ScmShowRevision),
     ScmBranch(ScmBranch),
     ScmFetch(ScmRemote),
     ScmPush(ScmPush),
@@ -177,6 +194,13 @@ pub enum EffectBody {
     ConversationSwitch(ConversationSwitch),
     /// Human-only: the registry refuses it from an agent actor.
     ConversationApproval(ConversationApproval),
+    /// A second conversation beside this one (`Conversation.sideChat`), on its
+    /// own runtime. Answered by `conversationSideOpened`; effects for it carry a
+    /// `conversation` resource naming the id that answer returned.
+    ConversationSideChat,
+    /// End the side chat the effect's `conversation` resource names
+    /// (`SideChat.close`). Accepted with no payload; Intent `Destroy`.
+    ConversationSideClose,
 
     // Layout (`client.workbench.get/save`, revisioned with `If-Match`)
     LayoutLoad,
@@ -198,11 +222,10 @@ impl EffectKind {
             FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesCopy
             | FilesDelete => Owner::Files,
             DocumentCreate | DocumentOpen | DocumentEdit | DocumentSave | DocumentClose
-            | DocumentReconcile => Owner::Documents,
+            | DocumentReconcile | DocumentRevert | DocumentSettle => Owner::Documents,
             ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
-            | ScmCommit | ScmBranch | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog => {
-                Owner::Scm
-            }
+            | ScmCommit | ScmAmend | ScmBranches | ScmDiffCommit | ScmShowRevision | ScmBranch
+            | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog => Owner::Scm,
             LanguageHover | LanguageComplete | LanguageNavigate | LanguageReferences
             | LanguageDiagnostics | LanguageFormat | LanguageRename | LanguageApplyPlan => {
                 Owner::Language
@@ -211,10 +234,16 @@ impl EffectKind {
             SearchQuery | SearchCancel => Owner::Search,
             TerminalOpen | TerminalAttach | TerminalInput | TerminalResize | TerminalDetach
             | TerminalEnd => Owner::Terminal,
-            ConversationCreate | ConversationSend | ConversationInput | ConversationCancel
-            | ConversationRetry | ConversationEdit | ConversationSwitch | ConversationApproval => {
-                Owner::Conversation
-            }
+            ConversationCreate
+            | ConversationSend
+            | ConversationInput
+            | ConversationCancel
+            | ConversationRetry
+            | ConversationEdit
+            | ConversationSwitch
+            | ConversationApproval
+            | ConversationSideChat
+            | ConversationSideClose => Owner::Conversation,
             LayoutLoad | LayoutSave => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
             ClipboardWrite | ClipboardRead => Owner::Host,
@@ -236,6 +265,14 @@ pub struct FilesPath {
 #[serde(rename_all = "camelCase")]
 pub struct FilesSearch {
     pub query: String,
+    /// Rows per page (`Files.search` `limit`); absent means the owner's page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub limit: Option<u32>,
+    /// Rows to skip (`Files.search` `offset`): the `next` of the page before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub offset: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -331,6 +368,14 @@ pub struct DocumentReconcile {
     pub keep: ReconcileKeep,
 }
 
+/// `DocumentHandle.settle(operationId)`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentSettle {
+    pub operation_id: String,
+}
+
 // ---- scm ---------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -378,6 +423,34 @@ pub struct ScmRestore {
 #[serde(rename_all = "camelCase")]
 pub struct ScmCommit {
     pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmAmend {
+    /// The owner refuses an empty message (`empty_message`), amend or not.
+    pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmDiffCommit {
+    pub commit: String,
+    /// Narrows the diff to one path; absent means the whole commit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub path: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmShowRevision {
+    pub path: String,
+    /// A commit id or any revision the host resolves.
+    pub revision: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -917,6 +990,80 @@ mod tests {
                 "claim": {"attachment": "a1", "leaseGeneration": 4, "epoch": 2}
             })
         );
+    }
+
+    #[test]
+    fn wire_order_effects_round_trip_and_have_owners() {
+        round_trip(
+            EffectBody::ScmAmend(ScmAmend {
+                message: "m".into(),
+            }),
+            "scmAmend",
+            json!({"message": "m"}),
+        );
+        round_trip(
+            EffectBody::ScmDiffCommit(ScmDiffCommit {
+                commit: "abc".into(),
+                path: Some("a.rs".into()),
+            }),
+            "scmDiffCommit",
+            json!({"commit": "abc", "path": "a.rs"}),
+        );
+        round_trip(
+            EffectBody::ScmShowRevision(ScmShowRevision {
+                path: "a.rs".into(),
+                revision: "abc".into(),
+            }),
+            "scmShowRevision",
+            json!({"path": "a.rs", "revision": "abc"}),
+        );
+        round_trip(
+            EffectBody::DocumentSettle(DocumentSettle {
+                operation_id: "op1".into(),
+            }),
+            "documentSettle",
+            json!({"operationId": "op1"}),
+        );
+        round_trip(
+            EffectBody::FilesSearch(FilesSearch {
+                query: "q".into(),
+                limit: Some(50),
+                offset: Some(100),
+            }),
+            "filesSearch",
+            json!({"query": "q", "limit": 50, "offset": 100}),
+        );
+        // A search that names no page still reads as before.
+        let old: FilesSearch = serde_json::from_value(json!({"query": "q"})).unwrap();
+        assert_eq!((old.limit, old.offset), (None, None));
+        for (kind, owner) in [
+            (EffectKind::ScmAmend, Owner::Scm),
+            (EffectKind::ScmBranches, Owner::Scm),
+            (EffectKind::ScmDiffCommit, Owner::Scm),
+            (EffectKind::ScmShowRevision, Owner::Scm),
+            (EffectKind::DocumentRevert, Owner::Documents),
+            (EffectKind::DocumentSettle, Owner::Documents),
+            (EffectKind::ConversationSideChat, Owner::Conversation),
+            (EffectKind::ConversationSideClose, Owner::Conversation),
+        ] {
+            assert_eq!(kind.owner(), owner);
+        }
+    }
+
+    #[test]
+    fn unit_wire_order_effects_carry_no_payload() {
+        for (body, kind) in [
+            (EffectBody::ScmBranches, "scmBranches"),
+            (EffectBody::DocumentRevert, "documentRevert"),
+            (EffectBody::ConversationSideChat, "conversationSideChat"),
+            (EffectBody::ConversationSideClose, "conversationSideClose"),
+        ] {
+            let v = serde_json::to_value(Effect::new(EffectId(1), ResourceRef::None, body.clone()))
+                .unwrap();
+            assert_eq!(v["kind"], kind);
+            let back: Effect = serde_json::from_value(v).unwrap();
+            assert_eq!(back.body, body);
+        }
     }
 
     #[test]
