@@ -166,7 +166,7 @@ export const Composer: FC<{
               data-kit-perch="composer"
               data-face-perch="composer"
               className={cn(
-                composerSurface(surface),
+                composerSurface(surface === 'glass' ? 'liquid' : surface),
                 'appearance-surface appearance-composer-box data-[dragging=true]:border-focus w-full cursor-text rounded-(--composer-radius) border transition-[border-color] duration-100 data-[dragging=true]:border-dashed',
               )}
             />
@@ -217,11 +217,13 @@ export const Composer: FC<{
  * contour over the border instead (styles.css surface-liquid).
  */
 export const composerSurface = (surface: ComposerSurface) =>
-  surface === 'liquid' || surface === 'glass'
+  surface === 'liquid'
     ? 'surface-liquid border-(color:--glass-edge) focus-within:border-(color:--glass-edge-focus)'
-    : surface === 'paper'
-      ? 'surface-paper border-(color:--paper-edge) focus-within:border-control'
-      : 'border-control focus-within:border-focus'
+    : surface === 'glass'
+      ? 'surface-glass border-(color:--glass-edge) focus-within:border-(color:--glass-edge-focus)'
+      : surface === 'paper'
+        ? 'surface-paper border-(color:--paper-edge) focus-within:border-control'
+        : 'border-control focus-within:border-focus'
 
 export const ComposerContext: FC<{ review: ComposerReview | undefined }> = ({
   review,

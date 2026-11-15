@@ -43,13 +43,21 @@
         "transmittedBackdrop": {
           "redPixel": [
             140,
-            13,
-            12
+            12,
+            11
           ],
           "bluePixel": [
-            13,
-            13,
-            139
+            12,
+            12,
+            138
+          ]
+        },
+        "editComposer": {
+          "material": "glass",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
           ]
         }
       }
@@ -90,14 +98,22 @@
         },
         "transmittedBackdrop": {
           "redPixel": [
-            223,
+            222,
             80,
             78
           ],
           "bluePixel": [
-            83,
+            82,
             80,
             218
+          ]
+        },
+        "editComposer": {
+          "material": "glass",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
           ]
         }
       }
@@ -138,14 +154,22 @@
         },
         "transmittedBackdrop": {
           "redPixel": [
-            140,
-            13,
-            13
+            139,
+            12,
+            11
           ],
           "bluePixel": [
-            13,
-            13,
-            140
+            12,
+            12,
+            138
+          ]
+        },
+        "editComposer": {
+          "material": "liquid",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
           ]
         }
       }
@@ -186,14 +210,22 @@
         },
         "transmittedBackdrop": {
           "redPixel": [
-            223,
+            222,
             80,
             78
           ],
           "bluePixel": [
-            83,
+            82,
             80,
-            219
+            218
+          ]
+        },
+        "editComposer": {
+          "material": "liquid",
+          "live": "live",
+          "planes": [
+            "rgba(0, 0, 0, 0)",
+            "rgba(0, 0, 0, 0)"
           ]
         }
       }

@@ -157,7 +157,7 @@
    retain their validated solid reading planes; forced colors below still wins. */
 :where(
     :root:not([data-palette='custom'])
-      .appearance-composer-box:is(
+      [data-surface-role='composer']:is(
         [data-material='glass'],
         [data-material='liquid']
       )

@@ -200,8 +200,8 @@ and passes with the fix. All three Life mount tests, 731 composer/runtime tests,
 TypeScript, affected-file ESLint and the production Vite build pass. The terminal
 WASM bindings were rebuilt from current main before TypeScript validation.
 Nine rendered checks verify tooltip absence, field publication with the companion
-off, both glass choices in light/dark mode, forced colors, phone toggling and the
-dedicated settings route. The glass check now compares screenshot pixels over
+off, both glass choices in light/dark mode for the main and edit composers,
+forced colors, phone toggling and the dedicated settings route. The glass check now compares screenshot pixels over
 red and blue backdrops: the interior transmits both, rather than merely asserting
 a canvas exists. It retains the mounted editor and draft checks. Screenshots and
 measurements: [glass follow-up evidence](evidence/glass-followup/theme-glass.json).
@@ -221,3 +221,10 @@ planes. Paper was restored afterward. Preferences are per device, so this does
 not establish the state of the browser used for the earlier screenshot. The
 earlier 384-row UI fixture remains consumer evidence, not proof of a repaired
 deployed catalog.
+
+PR #114 review caught the separate edit-message composer. Its renderer enablement
+and interior transparency now follow the main composer; the browser check opens
+and cancels editing in all four material/mode cases without changing the main
+draft or editor instance. Sent-message material mapping is left intact. The
+updated checks, 731 composer tests, TypeScript, focused lint and production build
+pass after that repair.

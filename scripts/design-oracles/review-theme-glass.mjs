@@ -161,6 +161,36 @@ try {
       await shell.screenshot({
         path: `${reviewOutput}/composer-${material}-${dark ? 'dark' : 'light'}.png`,
       })
+      const message = page
+        .locator('[data-slot="aui_user-message-root"]')
+        .first()
+      await message.hover()
+      await message.locator('.aui-user-action-edit').click()
+      const edit = page.locator('.aui-edit-composer-root')
+      await edit.locator('[data-liquid-canvas]').waitFor({ state: 'attached' })
+      await page.waitForFunction(
+        () =>
+          document.querySelector('.aui-edit-composer-root')?.dataset.liquid ===
+          'live',
+      )
+      paint.editComposer = await edit.evaluate((node) => ({
+        material: node.dataset.material,
+        live: node.dataset.liquid,
+        planes: [...node.querySelectorAll('.appearance-reading-plane')].map(
+          (plane) => getComputedStyle(plane).backgroundColor,
+        ),
+      }))
+      assert.equal(paint.editComposer.material, material)
+      assert.equal(paint.editComposer.live, 'live')
+      assert.equal(paint.editComposer.planes.length, 2)
+      assert(
+        paint.editComposer.planes.every(
+          (color) => color === 'rgba(0, 0, 0, 0)',
+        ),
+      )
+      await edit.getByRole('button', { name: 'Cancel', exact: true }).click()
+      assert(await editor.evaluate((node) => node === window.__glassEditor))
+      assert.equal(await editor.textContent(), 'Keep my glass composer draft.')
     }
   }
   await page.emulateMedia({ forcedColors: 'active' })
