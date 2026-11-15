@@ -250,5 +250,24 @@ passed all 31 selected tests, including authenticated HTTP listing, default
 resolution, personal keys, saved models and discovery outage behavior. No
 backend source was changed. GitHub's backend root-selection check still reports
 that it never started because of failed payments/spending limits; local native
-results are separate evidence. Live rollout approval has been requested for
-`travis-theorem-personal`; no deployment has been performed.
+results are separate evidence.
+
+The user approved the proposed relay rollout. That build stopped before image
+publication: its standalone harness-server lockfile is stale; the automatic
+retry also lost the builder connection. No production machine changed. Route
+inspection then corrected the deployment target: `theorem-mcp-server` forwards
+`/api/chat/v1/*rest` to the store; the catalog owner is `rustyred-thg-server` in
+`travis-theorem-personal-store`, not the relay named in the approval request.
+The store image is being prepared with `--build-only --push` from the same
+clean revision. Its one active data-bearing machine is `8147d9b9996e58`;
+the two stopped issuer machines must not be included in a rollout. Corrected
+approval must name this target and its restart/recovery interruption.
+
+Composer CI run `43774449311` passed all nine reflow checks, then found an
+outdated exact-title assertion in the runtime runner: the sidebar now adds a
+timestamp on the second line of its title. The captured row retained the full
+translated name and running/unread cues, with client and scroll widths both
+169px. The assertion now checks the complete first line and retains every
+geometry/status assertion. The focused local run passed all four sidebar checks
+before its separate attachment file-chooser wait timed out; full CI remains
+the acceptance gate for the updated runner.

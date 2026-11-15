@@ -359,7 +359,7 @@ try {
     'F08 long translated running row retains name and disclosure without widening its panel',
     row.name.includes(translatedTitle) &&
       row.name.includes('running') &&
-      row.title === translatedTitle &&
+      row.title.split('\n')[0] === translatedTitle &&
       row.scrollWidth <= row.clientWidth + 1,
     row,
   )
