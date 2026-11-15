@@ -124,7 +124,10 @@ const label = (text, width) =>
 
 async function collage(story) {
   if (!existsSync(renderPath(story.id))) throw new Error(`${story.id}: no render at ${renderPath(story.id)}`)
-  const { width, height } = story.viewport
+  // A story that shows more than the component names the part of its render that answers the
+  // reference; that part is shown at twice its size, so its cells can be read beside the reference.
+  const part = story.renderRegion
+  const { width, height } = part ? { width: part[2] * 2, height: part[3] * 2 } : story.viewport
   let reference = sharp(join(EVIDENCE, 'refs', story.reference))
   if (story.region) {
     const [left, top, w, h] = story.region
@@ -134,7 +137,14 @@ async function collage(story) {
   const asPng = (input) =>
     sharp(input).resize(width, height, flat).ensureAlpha().png().toBuffer()
   const referenceBytes = await asPng(await reference.png().toBuffer())
-  const renderBytes = await asPng(renderPath(story.id))
+  const renderBytes = await asPng(
+    part
+      ? await sharp(renderPath(story.id))
+          .extract({ left: part[0], top: part[1], width: part[2], height: part[3] })
+          .png()
+          .toBuffer()
+      : renderPath(story.id),
+  )
   const a = PNG.sync.read(referenceBytes)
   const b = PNG.sync.read(renderBytes)
   const heat = new PNG({ width, height })
@@ -1314,8 +1324,8 @@ const SCENARIOS = {
       const closed = !(await has(page, 'notes.txt \u00d7'))
       await page.keyboard.press(`${CHORD}e`)
       await page.waitForTimeout(400)
-      // The same Files steps the story's own script opens the note with.
-      await page.keyboard.press('ArrowDown')
+      // The same Files steps the story's own script opens the note with: Files lands on its
+      // first row when it takes focus, so one step down is docs/.
       await page.keyboard.press('ArrowDown')
       await page.keyboard.press('Enter')
       await sees(page, 'architecture.md', 4000)
@@ -1871,7 +1881,8 @@ async function interact(story) {
       })
       return result
     })
-    Object.assign(all, checks)
+    // A check that came back undefined is a failed check: said as false, so the printed record cannot drop it.
+    for (const [name, value] of Object.entries(checks)) all[name] = Boolean(value)
   }
   console.log(JSON.stringify({ id: story.id, engine: process.env.ORACLE_BROWSER ?? 'chromium', version: engineVersion, checks: all }))
   if (!Object.values(all).every(Boolean)) process.exitCode = 1

@@ -121,6 +121,8 @@ pub(crate) const RETAINED_LOCALS: usize = 256;
 pub(crate) struct Retained {
     pub(crate) snapshots: Vec<(ResourceRef, HostMessage)>,
     pub(crate) sessions: Vec<(String, HostMessage)>,
+    /// The latest `ThreadsChanged` of the account.
+    pub(crate) threads: Option<HostMessage>,
     /// The latest draft attachment list and model list of each conversation.
     pub(crate) attachments: Vec<(ResourceRef, HostMessage)>,
     pub(crate) models: Vec<(ResourceRef, HostMessage)>,

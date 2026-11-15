@@ -17,7 +17,7 @@ The workbench mounts as one React component, `Workbench`, in place of `SheetSpli
 
 Until the Theo pane reaches parity (end of Gate 4) the workbench is opt-in per browser: `localStorage['theorem-ui:workbench'] = '1'` or `?workbench=1`. The existing shell, its e2e scenarios and its oracles keep running unchanged meanwhile. The switch flips to default at the Gate 4 exit and is deleted, with the classic chat interior, at Gate 6. It is a delivery switch, not a product setting.
 
-Project and conversation navigation, which the sidebar carried, moves to the workbench header: a workspace/project switcher and a conversation switcher, both listed in the command palette as well (spec 4.1).
+Project and conversation navigation, which the sidebar carried, is the Threads panel (the first tab of the left dock, the one a fresh layout shows) and the palette actions beside it: the panel lists the account's projects and threads and the Herdr sessions, and picking a thread returns to Theo while picking a session opens it as a terminal tab beside Theo. The header switchers this paragraph once promised are not built (spec 4.1).
 
 ## 2. Crates
 

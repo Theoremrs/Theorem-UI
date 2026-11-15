@@ -170,6 +170,9 @@ export function createConversationPort({
             await conversation.switchTo({
               requestId,
               threadId: effect.payload.threadId,
+              ...(effect.payload.projectId
+                ? { projectId: effect.payload.projectId }
+                : {}),
             }),
             opened,
           )

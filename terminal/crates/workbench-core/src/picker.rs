@@ -846,6 +846,7 @@ mod tests {
             "run.subscribe",
             "search.query",
             "files",
+            "threads",
             "documents",
             "scm",
             "language",
@@ -1037,6 +1038,7 @@ mod tests {
                 "Run output",
                 "Search",
                 "History",
+                "Threads",
                 "Layouts"
             ]
         );

@@ -5,6 +5,7 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::widgets::{Clear, Widget};
 use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
@@ -1877,6 +1878,7 @@ fn draw_popup(
             styles.popup
         };
         let row = Rect::new(x, y + i as u16, width, 1);
+        Clear.render(row, buf);
         buf.set_style(row, style);
         buf.set_stringn(
             row.x + 1,

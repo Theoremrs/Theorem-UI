@@ -13,6 +13,8 @@ export type StoryMeta = {
   viewport: { width: number; height: number }
   /** The region of the reference this story answers: left, top, width, height. */
   region?: readonly [number, number, number, number]
+  /** The part of the render that answers the reference, when the story shows more than the component: left, top, width, height. The collage shows it at twice its size. */
+  renderRegion?: readonly [number, number, number, number]
   /** How closely the render is meant to match the reference, said plainly: the oracle prints it on the collage. */
   tolerance?: { threshold: number; note: string }
   /** A folder under docs/plans/evidence/ that holds this story's collage, when it has one of its own. */
@@ -55,6 +57,21 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1280, height: 640 },
   },
   { id: 'workbench-files', title: 'Workbench: Files with a symlink, ignored, hidden and partial listing', lane: 'original', viewport: { width: 1280, height: 640 } },
+  {
+    id: 'workbench-threads',
+    title: 'Workbench: the Threads panel over three projects, a pinned thread, children and delegations, running, needs-you, unread and archived threads, a hostile title and four Herdr sessions',
+    lane: 'translation',
+    reference: 'workbench-threads@delta-sidebar.png',
+    viewport: { width: 1280, height: 640 },
+    // The Threads pane of the default layout; the reference is the whole of the Delta sidebar.
+    renderRegion: [0, 0, 228, 640],
+    tolerance: {
+      threshold: 0.2,
+      note: 'Organization reference, not a pixel target: sections, nesting, state marks and times follow the reference; colors, fonts, metrics and the Herdr section differ by design (a cell grid in a mono face against a proportional UI). The differing share is reported, never a verdict.',
+    },
+    evidenceDir: 'workbench-threads',
+  },
+  { id: 'workbench-threads-withheld', title: 'Workbench: the Threads panel where the host grants no delete, tags, pin or admission', lane: 'translation', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal-adoption-pending', title: 'Workbench: the Shell chooser while the host is still looking for terminals', lane: 'original', viewport: { width: 1600, height: 640 } },
   { id: 'workbench-terminal-adoption-unavailable', title: 'Workbench: the Shell chooser when the host cannot list its terminals, with a reason', lane: 'original', viewport: { width: 1600, height: 640 } },

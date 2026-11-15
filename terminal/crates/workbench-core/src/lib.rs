@@ -33,6 +33,7 @@ pub mod results;
 pub mod semantics;
 pub mod stale;
 pub mod theme;
+pub mod threads;
 pub mod tree;
 pub mod update;
 pub mod view;

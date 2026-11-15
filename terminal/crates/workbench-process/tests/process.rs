@@ -56,6 +56,9 @@ fn named(workspace: &str) -> Msg {
 
 fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
     TerminalSessionInfo {
+        name: None,
+        cwd: None,
+        admitted: true,
         session: name.into(),
         profile: "zsh".into(),
         backend,
@@ -3428,6 +3431,9 @@ fn the_choosers_running_sessions_carry_the_same_report_in_compact_form_and_ended
         r.send(listing(
             "w",
             vec![TerminalSessionInfo {
+                name: None,
+                cwd: None,
+                admitted: true,
                 program_report: report,
                 state,
                 ..session("s1", TerminalBackend::Herdr)

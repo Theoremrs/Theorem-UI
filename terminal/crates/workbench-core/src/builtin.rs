@@ -319,6 +319,78 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("history.open", "History", Focus).more(),
         ]),
+        Spec {
+            kind: "threads",
+            title: "Threads",
+            icon: "message",
+            binding: R::None,
+            placement: Left,
+            min: (20, 6),
+            role: Role::Tree,
+            theme_roles: CHROME,
+            requires: &["threads"],
+        }
+        .build(vec![
+            ActionDescriptor::new("threads.focus", "Threads", Focus)
+                .more()
+                .key("Mod+Alt+H", KeyScope::Global),
+            // The same Enter the list takes: the conversation panel makes the
+            // thread the open one, so the answer that names it is the panel's.
+            ActionDescriptor::local("threads.open", "Open thread").requires("threads"),
+            ActionDescriptor::local("threads.menu", "Thread menu").requires("threads"),
+            ActionDescriptor::local("threads.details", "View thread details").requires("threads"),
+            ActionDescriptor::local("threads.archived", "Show archived threads")
+                .requires("threads"),
+            ActionDescriptor::new("threads.new", "New thread", Create)
+                .emits(EffectKind::ThreadsCreate)
+                .requires("threads.create"),
+            // Rename opens the inline field; the effect leaves on Enter.
+            ActionDescriptor::new("threads.rename", "Rename thread", Start)
+                .emits(EffectKind::ThreadsRename)
+                .requires("threads.rename"),
+            ActionDescriptor::new("threads.archive", "Archive thread", Start)
+                .emits(EffectKind::ThreadsArchive)
+                .requires("threads.archive"),
+            ActionDescriptor::new("threads.unarchive", "Restore thread", Start)
+                .emits(EffectKind::ThreadsArchive)
+                .requires("threads.archive"),
+            // Delete asks first; the effect leaves on the person's yes.
+            ActionDescriptor::new("threads.delete", "Delete thread", Destroy)
+                .emits(EffectKind::ThreadsDelete)
+                .requires("threads.delete"),
+            ActionDescriptor::new("threads.copy-title", "Copy thread title", Start)
+                .emits(EffectKind::ClipboardWrite)
+                .requires("threads"),
+            ActionDescriptor::new("threads.copy-id", "Copy thread id", Start)
+                .emits(EffectKind::ClipboardWrite)
+                .requires("threads"),
+            ActionDescriptor::new("threads.copy-markdown", "Copy thread as Markdown", Start)
+                .emits(EffectKind::ThreadsMarkdown)
+                .emits(EffectKind::ClipboardWrite)
+                .requires("threads.markdown"),
+            ActionDescriptor::new("threads.pin", "Pin thread", Start)
+                .emits(EffectKind::ThreadsPin)
+                .requires("threads.pin"),
+            ActionDescriptor::new("threads.unpin", "Unpin thread", Start)
+                .emits(EffectKind::ThreadsPin)
+                .requires("threads.pin"),
+            // Tag opens the colours; the effect leaves on the one chosen.
+            ActionDescriptor::new("threads.tag", "Tag thread", Start)
+                .emits(EffectKind::ThreadsTag)
+                .requires("threads.tags"),
+            ActionDescriptor::new("threads.untag", "Remove thread tag", Start)
+                .emits(EffectKind::ThreadsTag)
+                .requires("threads.tags"),
+            ActionDescriptor::new("threads.unread", "Mark thread as unread", Start)
+                .emits(EffectKind::ThreadsUnread)
+                .requires("threads.unread"),
+            ActionDescriptor::new("threads.read", "Mark thread as read", Start)
+                .emits(EffectKind::ThreadsUnread)
+                .requires("threads.unread"),
+            ActionDescriptor::new("threads.retitle", "Regenerate thread title", Start)
+                .emits(EffectKind::ThreadsRetitle)
+                .requires("threads.retitle"),
+        ]),
         // The workbench's own actions: no panel of this kind is ever opened.
         // They move focus and panels between groups, resize and maximise from
         // the keyboard, and apply a preset.

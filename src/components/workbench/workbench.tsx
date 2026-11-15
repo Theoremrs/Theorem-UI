@@ -10,7 +10,8 @@ import {
 } from 'react'
 import type { ReactNode } from 'react'
 import { loadWasm } from '@/components/terminal/terminal-screen'
-import { bootstrap, theorem } from '@/lib/theorem/client'
+import { bootstrap, mutate, mutateThread, theorem } from '@/lib/theorem/client'
+import { readOrganization } from '@/lib/theorem/organization'
 import { createAdapter } from '@/lib/workbench/adapter'
 import { setWorkbenchHandle } from '@/lib/workbench/agent/store'
 import { useAppearance } from '@/lib/appearance'
@@ -28,6 +29,8 @@ import {
 } from '@/lib/workbench/environment/connect'
 import { createConversation } from '@/lib/workbench/conversation/conversation'
 import { createConversationPort } from '@/lib/workbench/conversation/port'
+import { createThreadsPort } from '@/lib/workbench/threads/port'
+import { createThreads } from '@/lib/workbench/threads/threads'
 import { conversationServices } from '@/lib/workbench/conversation/runtime'
 import { createSideChatModel } from '@/lib/workbench/conversation/side-chat-model'
 import { createSideChats } from '@/lib/workbench/conversation/side-chats'
@@ -504,6 +507,23 @@ export function Workbench({
           services: conversationServices,
           workspaceId,
         })
+        const threads = createThreads({
+          client: theorem(),
+          organization: readOrganization,
+          mutate,
+          mutateThread,
+          open: () => {
+            const threadId = conversation.snapshot().conversationId
+            return threadId ? { projectId, threadId } : undefined
+          },
+        })
+        // The listing marks the open thread; it is read again when another conversation opens.
+        let openThread = conversation.snapshot().conversationId
+        const stopFollowing = conversation.subscribe((snapshot) => {
+          if (snapshot.conversationId === openThread) return
+          openThread = snapshot.conversationId
+          threads.refresh()
+        })
         const drafts = createDraftStore({ store, workspaceId })
         const documentOwner = createDocuments(environment, { drafts })
         const documents = createDocumentsPort({
@@ -536,6 +556,7 @@ export function Workbench({
             conversation,
             project: projectId,
           }),
+          threads: createThreadsPort(threads),
           artifacts: createArtifactsPort(projectId),
           delegations: createDelegationsPort(delegations),
           clipboard: createClipboardPort(),
@@ -555,6 +576,7 @@ export function Workbench({
             delegations.dispose()
             runner.dispose()
             search.dispose()
+            stopFollowing()
             conversation.dispose()
             stopTerminal()
             void checkpoints.dispose()

@@ -137,6 +137,7 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
     claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
   },
   terminalAbandonOpen: { open: 0 },
+  terminalAdmit: { session: 'hc-9' },
   terminalResize: {
     cols: 100,
     rows: 30,
@@ -144,6 +145,16 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   },
   terminalDetach: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
   terminalEnd: undefined,
+  threadsList: undefined,
+  threadsCreate: { projectId: 'p1' },
+  threadsRename: { threadId: 'th', title: 'T' },
+  threadsArchive: { threadId: 'th', archived: true },
+  threadsDelete: { threadId: 'th' },
+  threadsPin: { threadId: 'th', pinned: true },
+  threadsTag: { threadId: 'th' },
+  threadsUnread: { threadId: 'th', unread: true },
+  threadsRetitle: { threadId: 'th' },
+  threadsMarkdown: { threadId: 'th' },
   conversationCreate: undefined,
   conversationSend: { clientMessageId: 'c1', text: 't', attachments: [] },
   conversationInput: { runId: 'r', clientMessageId: 'c2', text: 't' },
@@ -231,7 +242,9 @@ const OWNER_OF = (kind: EffectKind) =>
                         ? 'appearance'
                         : kind.startsWith('delegation')
                           ? 'delegations'
-                          : 'clipboard'
+                          : kind.startsWith('threads')
+                            ? 'threads'
+                            : 'clipboard'
 
 const WS = { type: 'workspace', workspace: 'w1' } as const
 const TERMINAL = { type: 'terminal', workspace: 'w1', session: 't1' } as const
@@ -352,6 +365,7 @@ async function setup(
     'delegations',
     'clipboard',
     'appearance',
+    'threads',
   ],
   fileOverrides: Record<string, unknown> = {},
   terminalList: Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
@@ -469,6 +483,7 @@ async function setup(
     live,
     environment,
     port,
+    options,
     pushed,
     watchers,
     settle,
@@ -510,7 +525,10 @@ describe('routing', () => {
   test('every kind goes to exactly one owner, once (R02, AC-02)', async () => {
     const t = await setup()
     // Abandoning an open unbinds the terminal, so it has its own tests among the terminals.
-    const kinds = KINDS.filter((kind) => kind !== 'terminalAbandonOpen')
+    // An admission needs the terminal host's own call, so it has its own tests among the terminals.
+    const kinds = KINDS.filter(
+      (kind) => kind !== 'terminalAbandonOpen' && kind !== 'terminalAdmit',
+    )
     await performAll(t, kinds, (kind, index) =>
       effectOf(
         index,
@@ -1575,6 +1593,52 @@ describe('host events', () => {
     })
   })
 
+  test('a threads owner grants what the account can do, and never pin, tags, unread, retitle or admission', async () => {
+    const t = await setup({}, ['threads'])
+    await t.settle()
+    const granted = (
+      t.hostMessages().find((m) => m.type === 'capabilitiesChanged') as {
+        capabilities: { granted: string[] }
+      }
+    ).capabilities.granted
+    expect(granted).toEqual(
+      expect.arrayContaining([
+        'threads',
+        'threads.create',
+        'threads.rename',
+        'threads.archive',
+        'threads.delete',
+        'threads.markdown',
+      ]),
+    )
+    for (const withheld of [
+      'threads.pin',
+      'threads.tags',
+      'threads.unread',
+      'threads.retitle',
+      'terminal.admit',
+    ])
+      expect(granted).not.toContain(withheld)
+
+    const none = await setup({}, [])
+    await none.settle()
+    expect(
+      (
+        none.hostMessages().find((m) => m.type === 'capabilitiesChanged') as {
+          capabilities: { granted: string[] }
+        }
+      ).capabilities.granted,
+    ).not.toContain('threads')
+  })
+
+  test('the threads owner’s listing reaches the core as the host message it pushed', async () => {
+    const t = await setup()
+    await t.settle()
+    const listing = { projects: [], threads: [], asOfMs: 1 }
+    t.pushed.get('threads')!({ type: 'threadsChanged', listing } as never)
+    expect(t.hostMessages().at(-1)).toEqual({ type: 'threadsChanged', listing })
+  })
+
   test('the terminal session list is sent when the environment is ready, when a shell opens, and on each change', async () => {
     const t = await setup()
     await t.settle()
@@ -1732,6 +1796,89 @@ describe('host events', () => {
           .at(-1)!
           .sessions.map((s) => s.session),
       ).toEqual(['pty-1'])
+    })
+
+    test('a session the host lists as outside the workspace carries admitted: false, and the rest do not say', async () => {
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () =>
+            ({
+              sessions: [
+                { ...row('hc-1', 'herdr'), admitted: false },
+                row('pty-1', 'native'),
+              ],
+              adoption: { state: 'settled' },
+            }) as unknown as TerminalListReply,
+        },
+      )
+      await t.settle()
+      const [outside, inside] = sessionLists(t).at(-1)!.sessions
+      expect(outside).toMatchObject({ session: 'hc-1', admitted: false })
+      expect(inside).not.toHaveProperty('admitted')
+    })
+
+    test('admitting a session asks the host, then lists again so the row is an ordinary one', async () => {
+      const admitted: string[] = []
+      let listed = 0
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => {
+            listed += 1
+            return {
+              sessions: [row('hc-1', 'herdr')],
+              adoption: { state: 'settled' },
+            } as unknown as TerminalListReply
+          },
+        },
+      )
+      ;(
+        t.options.terminal.host as {
+          admit?: (session: string) => Promise<unknown>
+        }
+      ).admit = async (session) => void admitted.push(session)
+      await t.settle()
+      const before = listed
+      t.adapter.perform(effectOf(900, 'terminalAdmit'))
+      await t.settle()
+      await t.settle()
+      expect(admitted).toEqual(['hc-9'])
+      expect(listed).toBeGreaterThan(before)
+      expect(t.completions().find((c) => c.effect === 900)!.outcome).toEqual({
+        status: 'accepted',
+      })
+    })
+
+    test('with no admit call the host is not connected for it: refused owner_unavailable, nothing asked', async () => {
+      const t = await setup()
+      t.adapter.perform(effectOf(901, 'terminalAdmit'))
+      await t.settle()
+      expect(
+        t.completions().find((c) => c.effect === 901)!.outcome,
+      ).toMatchObject({ status: 'refused', code: 'owner_unavailable' })
+    })
+
+    test('an admit that throws is uncertain, since the host may have taken the session', async () => {
+      const t = await setup()
+      ;(
+        t.options.terminal.host as {
+          admit?: (session: string) => Promise<unknown>
+        }
+      ).admit = async () => {
+        throw new Error('connection dropped')
+      }
+      t.adapter.perform(effectOf(902, 'terminalAdmit'))
+      await t.settle()
+      expect(
+        t.completions().find((c) => c.effect === 902)!.outcome,
+      ).toMatchObject({ status: 'uncertain' })
     })
 
     test('a pending list proves nothing: a terminal it does not name stays in the list', async () => {

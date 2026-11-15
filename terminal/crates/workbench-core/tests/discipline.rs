@@ -751,6 +751,7 @@ fn cases() -> Vec<Case> {
             kind: "chat",
             body: EffectBody::ConversationSwitch(ConversationSwitch {
                 thread_id: "t2".into(),
+                project_id: None,
             }),
             next: chat("t2"),
         },

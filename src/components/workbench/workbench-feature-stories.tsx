@@ -479,3 +479,74 @@ export function WorkbenchReplaceStory() {
     />
   )
 }
+
+// ---- Threads (the account's conversations, and the Herdr sessions beside them) --------------
+
+/** What the host grants for the Threads panel: every thread action and the admission of a Herdr session. */
+export const THREADS_CAPS = [
+  ...EVERY_TOOL,
+  'terminal.herdr',
+  'threads',
+  'threads.create',
+  'threads.rename',
+  'threads.archive',
+  'threads.delete',
+  'threads.markdown',
+  'threads.pin',
+  'threads.tags',
+  'threads.unread',
+  'threads.retitle',
+  'terminal.admit',
+]
+
+/**
+ * `workbench-threads`: the Threads panel over the fixture account (three projects, a pinned thread, a thread in
+ * two projects, a thread with two children and two delegations, a running, a needs-you, an unread and an archived
+ * thread, a hostile title and a very long one) and four Herdr sessions, two of them not yet admitted. Every
+ * capability is granted; the scenario drives it by key.
+ */
+export function WorkbenchThreadsStory() {
+  return (
+    <FeatureStory
+      id="workbench-threads"
+      options={{
+        granted: THREADS_CAPS,
+        transcript: true,
+        idle: true,
+        threads: true,
+        terminal: true,
+        terminalAdoption: { state: 'settled' },
+      }}
+      script={[]}
+      wait={['Threads']}
+    />
+  )
+}
+
+/**
+ * `workbench-threads-withheld`: the same account where the host grants no delete, no tags, no pin and no
+ * admission: the row menu does not list them and the keys that would do them say nothing.
+ */
+export function WorkbenchThreadsWithheldStory() {
+  const withheld = new Set([
+    'threads.delete',
+    'threads.tags',
+    'threads.pin',
+    'terminal.admit',
+  ])
+  return (
+    <FeatureStory
+      id="workbench-threads-withheld"
+      options={{
+        granted: THREADS_CAPS.filter((cap) => !withheld.has(cap)),
+        transcript: true,
+        idle: true,
+        threads: true,
+        terminal: true,
+        terminalAdoption: { state: 'settled' },
+      }}
+      script={[]}
+      wait={['Threads']}
+    />
+  )
+}

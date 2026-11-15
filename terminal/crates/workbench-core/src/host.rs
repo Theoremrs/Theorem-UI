@@ -149,6 +149,22 @@ pub struct TerminalSessionInfo {
     #[serde(default, skip_serializing_if = "ProgramReport::is_unavailable")]
     #[cfg_attr(feature = "ts", ts(as = "Option<ProgramReport>", optional))]
     pub program_report: ProgramReport,
+    /// The session's own name on the machine it runs on, when the host has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub name: Option<String>,
+    /// The working directory of its program, as the host reports it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub cwd: Option<String>,
+    /// Whether the session belongs to this workspace. A session on the
+    /// person's own machine that the host has not taken in (no labels of this
+    /// workspace's or tenant's) is listed with `false`; it can be opened only
+    /// after `terminalAdmit`, which the host performs where it grants
+    /// `terminal.admit`.
+    #[serde(default = "yes")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<bool>", optional))]
+    pub admitted: bool,
 }
 
 /// The words the host maps a program's own status report to. `Unknown`
@@ -579,6 +595,13 @@ pub enum HostMessage {
     ConnectionChanged {
         workspace: String,
         state: ConnectionState,
+    },
+    /// The account's projects and threads changed (a thread was renamed,
+    /// archived, deleted, opened or given a new message): the whole listing,
+    /// replacing the last. For every panel that lists threads; a panel mounted
+    /// later is handed the last one.
+    ThreadsChanged {
+        listing: crate::threads::ThreadListing,
     },
     /// What the chooser offers: the profiles a process may be started from and
     /// the terminal sessions of the workspace, as the host last said. Each

@@ -4,6 +4,7 @@ import {
   useComposerReferences,
   referenceKey,
 } from '@/components/chat/composer-references'
+import { useShell } from '@/components/shell/shell-state'
 import { sendApprovalDecision } from '@/lib/theorem/approval'
 import {
   DRAFT,
@@ -137,6 +138,10 @@ export const conversationServices: ConversationServices = {
   sendInput: async ({ runId, inputId, text }) => {
     await sendRunInput(runId, text, inputId)
   },
+  openUnder: (threadId, projectId) =>
+    useShell
+      .getState()
+      .askProject(projectId ? { threadId, projectId } : undefined),
   history: loadThreadTree,
   selectBranch,
   references: {

@@ -15,12 +15,15 @@ function setup() {
   const stub = new StubRuntime()
   const answers: unknown[] = []
   const inputs: unknown[] = []
+  const asked: [string, string | undefined][] = []
   let frame: (() => void) | undefined
   const conversation = createConversation({
     runtime: stub.runtime,
     services: {
       answerApproval: async (request) => void answers.push(request),
       sendInput: async (request) => void inputs.push(request),
+      openUnder: (threadId, projectId) =>
+        void asked.push([threadId, projectId]),
     },
     workspaceId: 'w1',
     schedule: (callback) => {
@@ -48,6 +51,7 @@ function setup() {
     stub,
     answers,
     inputs,
+    asked,
     port,
     perform,
     runFrame: () => frame?.(),
@@ -240,6 +244,46 @@ describe('retry, edit, create and switch', () => {
       outcome: 'accepted',
       value: { type: 'conversationOpened', conversationId: 'new' },
     })
+  })
+
+  test('a switch that names a project says so before the thread opens, and one that names none says nothing', async () => {
+    const { perform, stub, asked } = setup()
+    const order: string[] = []
+    const switchToThread = stub.runtime.threads.switchToThread
+    stub.runtime.threads.switchToThread = async (id) => {
+      order.push(`opened ${id} after ${asked.length} asked`)
+      await switchToThread(id)
+    }
+    await perform('conversationSwitch', { threadId: 't2' }, { type: 'none' })
+    expect(asked).toEqual([])
+    await perform(
+      'conversationSwitch',
+      { threadId: 't3', projectId: 'p2' },
+      { type: 'none' },
+    )
+    expect(asked).toEqual([['t3', 'p2']])
+    expect(order).toEqual([
+      'opened t2 after 0 asked',
+      'opened t3 after 1 asked',
+    ])
+  })
+
+  test('a switch that fails takes back the project it asked for', async () => {
+    const { perform, stub, asked } = setup()
+    stub.runtime.threads.switchToThread = async () => {
+      throw new Error('gone')
+    }
+    expect(
+      await perform(
+        'conversationSwitch',
+        { threadId: 't3', projectId: 'p2' },
+        { type: 'none' },
+      ),
+    ).toMatchObject({ outcome: 'failed' })
+    expect(asked).toEqual([
+      ['t3', 'p2'],
+      ['t3', undefined],
+    ])
   })
 })
 

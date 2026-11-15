@@ -2281,6 +2281,9 @@ fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace()
             workspace: "w".into(),
             profiles: vec![],
             sessions: vec![theorem_workbench_core::host::TerminalSessionInfo {
+                name: None,
+                cwd: None,
+                admitted: true,
                 session: name.into(),
                 profile: "Shell".into(),
                 backend: theorem_workbench_core::effect::TerminalBackend::Native,
@@ -4577,6 +4580,9 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
             workspace: "w".into(),
             profiles: vec![],
             sessions: vec![theorem_workbench_core::host::TerminalSessionInfo {
+                name: None,
+                cwd: None,
+                admitted: true,
                 session: "s".into(),
                 profile: "Shell".into(),
                 backend: theorem_workbench_core::effect::TerminalBackend::Native,
@@ -6114,6 +6120,9 @@ fn sessions_message(reports: &[(&str, ProgramReport)]) -> Msg {
         sessions: reports
             .iter()
             .map(|(name, report)| TerminalSessionInfo {
+                name: None,
+                cwd: None,
+                admitted: true,
                 session: (*name).into(),
                 profile: "Shell".into(),
                 backend: theorem_workbench_core::effect::TerminalBackend::Native,

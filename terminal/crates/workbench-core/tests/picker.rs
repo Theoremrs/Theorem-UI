@@ -271,9 +271,9 @@ fn the_more_tools_page_renders_at_three_widths() {
             "",
             " Run output                                   \u{25cb}   Search                                       \u{25cb}",
             "",
-            " History                                      \u{25cb}   Layouts                          Ctrl+Alt+W  \u{25cb}",
+            " History                                      \u{25cb}   Threads                          Ctrl+Alt+H  \u{25cb}",
             "",
-            "",
+            " Layouts                          Ctrl+Alt+W  \u{25cb}",
             "",
             "",
             "",
@@ -290,9 +290,9 @@ fn the_more_tools_page_renders_at_three_widths() {
             "",
             " Run output                 \u{25cb}   Search                     \u{25cb}",
             "",
-            " History                    \u{25cb}   Layouts        Ctrl+Alt+W  \u{25cb}",
+            " History                    \u{25cb}   Threads        Ctrl+Alt+H  \u{25cb}",
             "",
-            "",
+            " Layouts        Ctrl+Alt+W  \u{25cb}",
             "",
             "",
             "",
@@ -306,16 +306,16 @@ fn the_more_tools_page_renders_at_three_widths() {
             " \u{2039} Back",
             ">",
             " Artifacts                 \u{25cb}",
-            "",
             " Diagnostics               \u{25cb}",
-            "",
             " Run output                \u{25cb}",
-            "",
             " Search                    \u{25cb}",
-            "",
             " History                   \u{25cb}",
-            "",
+            " Threads       Ctrl+Alt+H  \u{25cb}",
             " Layouts       Ctrl+Alt+W  \u{25cb}",
+            "",
+            "",
+            "",
+            "",
         ])
     );
 }
@@ -520,13 +520,14 @@ fn down_and_up_step_through_every_row_with_one_column() {
 fn an_odd_last_line_has_no_right_neighbour_and_down_skips_the_missing_cell() {
     let registry = builtin::registry();
     let caps = caps(&[]);
-    let pins: std::collections::BTreeSet<PanelKind> = [PanelKind::new("cabinet")].into();
+    let pins: std::collections::BTreeSet<PanelKind> =
+        [PanelKind::new("cabinet"), PanelKind::new("diagnostics")].into();
     let mut p = Picker::default();
     p.set_area(Rect::new(0, 0, 200, 20));
     p.update(PickerMsg::Open, &registry, &caps, &pins);
-    p.update(PickerMsg::Select(6), &registry, &caps, &pins);
+    p.update(PickerMsg::Select(7), &registry, &caps, &pins);
     p.update(PickerMsg::Choose, &registry, &caps, &pins);
-    // With Artifacts pinned, More tools lists five rows in two columns: the last line has one cell.
+    // With Artifacts and Diagnostics pinned, More tools lists five rows in two columns: the last line has one cell.
     let n = p.rows(&registry, &caps, &pins).len();
     assert_eq!(n, 5);
     p.update(PickerMsg::Select(4), &registry, &caps, &pins);
@@ -581,6 +582,7 @@ fn pinning_moves_a_tool_after_the_initial_rows_and_before_more_tools() {
             "Run output",
             "Search",
             "History",
+            "Threads",
             "Layouts",
             "Probe"
         ]
@@ -1042,7 +1044,7 @@ fn one_registration_is_what_the_picker_catalog_and_semantics_all_report() {
 
     // Choosing it explains rather than acts, and nothing but the registry's
     // refusal is on screen.
-    let fx = picker(&mut m, PickerMsg::ChooseAt(6));
+    let fx = picker(&mut m, PickerMsg::ChooseAt(7));
     assert!(fx.is_empty());
     assert_eq!(m.picker().reason(), Some(reason.as_str()));
 }

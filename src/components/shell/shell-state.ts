@@ -92,7 +92,16 @@ type ShellState = {
   >
   /** The order Notes mode lists notes in. */
   noteOrder: NoteOrder
+  /**
+   * The project a thread was asked to open under (its row under that project
+   * was picked in the workbench's Threads panel). It holds until another
+   * thread opens.
+   */
+  askedProject: { threadId: string; projectId: string } | undefined
   setProjectId: (projectId: string) => void
+  askProject: (
+    asked: { threadId: string; projectId: string } | undefined,
+  ) => void
   setNoteOrder: (order: NoteOrder) => void
   saveLayout: (projectId: string, layout: SavedLayout) => void
   setPanelWidth: (width: number) => void
@@ -133,6 +142,7 @@ export const useShell = create<ShellState>()(
   persist(
     (set) => ({
       projectId: undefined,
+      askedProject: undefined,
       layouts: {},
       panelWidth: PANEL_WIDTH.default,
       panelCollapsed: {},
@@ -155,6 +165,7 @@ export const useShell = create<ShellState>()(
       terminalTabs: {},
       setNoteOrder: (noteOrder) => set({ noteOrder }),
       setProjectId: (projectId) => set({ projectId }),
+      askProject: (askedProject) => set({ askedProject }),
       saveLayout: (projectId, layout) =>
         set((s) => ({ layouts: { ...s.layouts, [projectId]: layout } })),
       setPanelWidth: (panelWidth) => set({ panelWidth }),

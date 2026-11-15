@@ -40,7 +40,7 @@ use crate::msg::{DockMsg, Inbound, Msg, Pointer};
 use crate::panel::{
     Button, Composition, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind,
 };
-use crate::panels::{PICKER_KIND, THEO_KIND, Unavailable};
+use crate::panels::{PICKER_KIND, THEO_KIND, THREADS_KIND, Unavailable};
 use crate::picker::{LayoutChoice, PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
 use crate::queue::{Popped, PtyFrame, Push, QueueLimits, SourceQueues};
@@ -126,6 +126,7 @@ pub(crate) struct CtxOut {
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) references: Vec<SourceReference>,
+    pub(crate) switches: Vec<(String, String)>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
     pub(crate) full: Option<usize>,
@@ -157,6 +158,7 @@ impl Model {
             effects: vec![],
             opens: vec![],
             references: vec![],
+            switches: vec![],
             close: false,
             invalidated: false,
             full: None,
@@ -166,6 +168,7 @@ impl Model {
             effects: cx.effects,
             opens: cx.opens,
             references: cx.references,
+            switches: cx.switches,
             close: cx.close,
             invalidated: cx.invalidated,
             full: cx.full,
@@ -213,6 +216,9 @@ impl Model {
         }
         for reference in out.references {
             self.deliver_reference(id, reference);
+        }
+        for (project, thread) in out.switches {
+            effects.extend(self.deliver_switch(project, thread));
         }
         if out.close && !silent {
             effects.extend(self.close_panel(id, destroying));
@@ -266,6 +272,26 @@ impl Model {
         self.call(&target, Mode::Silent, |p, cx| {
             p.update(PanelMsg::Reference(reference), cx)
         });
+    }
+
+    /// A panel asked for another thread to be the open conversation. The
+    /// conversation panel is the one that switches (its answer is what names
+    /// the thread it now shows), so the ask goes to it, on the same acting
+    /// party, and the effect it emits is the panel's own. The focused one, else
+    /// the first; none open means there is nothing to switch.
+    fn deliver_switch(&mut self, project: String, thread: String) -> Vec<Effect> {
+        let kind = PanelKind::new(THEO_KIND);
+        let Some(target) = self.target_of_kind(&kind) else {
+            self.notify(Notice::NoPanel(ActionId::new("threads.open")));
+            return vec![];
+        };
+        self.dirty = true;
+        // Picking a thread goes back to Theo: its tab shows and holds the keys.
+        let r = self.dock.focus_panel(&Self::dock_id(&target));
+        self.dock_result(r);
+        self.call(&target, Mode::Normal, |p, cx| {
+            p.update(PanelMsg::Switch { project, thread }, cx)
+        })
     }
 
     fn send(&mut self, id: &PanelInstanceId, msg: PanelMsg) -> Vec<Effect> {
@@ -576,13 +602,25 @@ impl Model {
     /// panel bound to terminals that has just been told the workspace.
     fn replay_sessions(&mut self, id: &PanelInstanceId) {
         let workspace = self.workspace.workspace.clone();
-        let terminal = self.panels.get(id).is_some_and(|e| {
-            e.available
-                && self
-                    .registry
-                    .get(&e.kind)
-                    .is_some_and(|d| d.binding == ResourceKind::Terminal)
-        });
+        // A panel that lists threads is handed the last list of them, and the
+        // sessions too: the agents it shows are the terminals' own.
+        let lists_threads = self
+            .panels
+            .get(id)
+            .is_some_and(|e| e.available && e.kind.as_str() == THREADS_KIND);
+        if lists_threads && let Some(message) = self.retained.threads.clone() {
+            self.call(id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Host(message), cx)
+            });
+        }
+        let terminal = lists_threads
+            || self.panels.get(id).is_some_and(|e| {
+                e.available
+                    && self
+                        .registry
+                        .get(&e.kind)
+                        .is_some_and(|d| d.binding == ResourceKind::Terminal)
+            });
         if !terminal {
             return;
         }
@@ -1044,7 +1082,8 @@ impl Model {
                 Some(kind) if self.registry.get(&kind).is_some() => {
                     // Where the kind says it opens (its descriptor's placement):
                     // documents, Changes and artifacts in the tool group.
-                    self.open_panel_with(&kind, &target.state(), None)
+                    let role = target.main_region().then_some(dock::Role::Main);
+                    self.open_panel_with(&kind, &target.state(), role)
                 }
                 _ => self.open_unavailable(&target),
             },
@@ -2192,6 +2231,7 @@ impl Model {
             HostMessage::TerminalSessions { workspace, .. } => {
                 self.retained.keep_sessions(workspace, &message);
             }
+            HostMessage::ThreadsChanged { .. } => self.retained.threads = Some(message.clone()),
             _ => {}
         }
         let mut effects = match &message {
@@ -2520,6 +2560,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | AccountChanged { .. }
         | ConnectionChanged { .. }
         | TerminalSessions { .. }
+        | ThreadsChanged { .. }
         | FollowedRuns { .. }
         | SearchPage { .. }
         | DiagnosticsSet { .. }

@@ -19,6 +19,8 @@ use crate::semantics::{Node, NodeAction, Role};
 pub const PICKER_KIND: &str = "picker";
 /// The conversation panel (Theo): where a reference added from another panel lands.
 pub const THEO_KIND: &str = "theo";
+/// The panel that lists the account's threads.
+pub const THREADS_KIND: &str = "threads";
 /// The kind the workbench's own actions belong to (focus and move panels,
 /// resize, maximise, apply a layout). It is never opened as a panel.
 pub const WORKBENCH_KIND: &str = "workbench";

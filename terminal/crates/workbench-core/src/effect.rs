@@ -11,6 +11,9 @@ use strum::EnumDiscriminants;
 
 use crate::draft::SourceReference;
 use crate::ids::{Actor, EffectId, Generation, ResourceRef, Revision};
+pub use crate::threads::{
+    ThreadRef, ThreadsArchive, ThreadsCreate, ThreadsPin, ThreadsRename, ThreadsTag, ThreadsUnread,
+};
 
 /// Which owner performs an effect. The adapter routes by this
 /// (`src/lib/workbench/{files,documents,scm,...}`).
@@ -32,6 +35,9 @@ pub enum Owner {
     Delegations,
     /// Clipboard and other browser services.
     Host,
+    /// The account's threads and projects: the list, and the changes to a
+    /// thread that are not the open conversation's own.
+    Threads,
 }
 
 /// An effect: the envelope plus a body. `kind` and `payload` sit beside the
@@ -228,6 +234,29 @@ pub enum EffectBody {
     /// back. The adapter ends whatever that open starts, whichever side of
     /// this effect its answer falls on, so no process outlives its pane.
     TerminalAbandonOpen(TerminalAbandonOpen),
+    /// Take a session the person started themself into this workspace (the
+    /// host labels it). Answered with no payload, and the session list then
+    /// carries it with `admitted: true`. Needs `terminal.admit`.
+    TerminalAdmit(TerminalAdmit),
+
+    // Threads (the account's list of conversations)
+    /// The projects and threads that exist, answered by `threads`; the owner
+    /// then keeps the panel current with `threadsChanged`.
+    ThreadsList,
+    /// A new thread in a project, answered by `threadCreated`. Intent `Create`.
+    ThreadsCreate(ThreadsCreate),
+    ThreadsRename(ThreadsRename),
+    /// Archive or restore a thread (`archived: false`).
+    ThreadsArchive(ThreadsArchive),
+    /// Delete a thread for good. Intent `Destroy`, behind a question.
+    ThreadsDelete(ThreadRef),
+    ThreadsPin(ThreadsPin),
+    ThreadsTag(ThreadsTag),
+    ThreadsUnread(ThreadsUnread),
+    /// Make the thread a new title from what it says.
+    ThreadsRetitle(ThreadRef),
+    /// The thread as Markdown, answered by `threadMarkdown`.
+    ThreadsMarkdown(ThreadRef),
 
     // Conversation and runs
     ConversationCreate,
@@ -332,7 +361,7 @@ impl EffectKind {
             RunConfigure | RunStart | RunStop | RunPoll | RunList => Owner::Run,
             SearchQuery | SearchCancel => Owner::Search,
             TerminalOpen | TerminalAttach | TerminalInput | TerminalInputBytes | TerminalResize
-            | TerminalDetach | TerminalEnd | TerminalAbandonOpen => Owner::Terminal,
+            | TerminalDetach | TerminalEnd | TerminalAbandonOpen | TerminalAdmit => Owner::Terminal,
             ConversationCreate
             | ConversationSend
             | ConversationInput
@@ -350,6 +379,10 @@ impl EffectKind {
             | ConversationSetModel
             | ConversationSetEffort
             | ConversationSideClose => Owner::Conversation,
+            ThreadsList | ThreadsCreate | ThreadsRename | ThreadsArchive | ThreadsDelete
+            | ThreadsPin | ThreadsTag | ThreadsUnread | ThreadsRetitle | ThreadsMarkdown => {
+                Owner::Threads
+            }
             LayoutLoad | LayoutSave | AppearanceApply => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
             ClipboardWrite | ClipboardRead => Owner::Host,
@@ -915,6 +948,14 @@ pub struct TerminalInputBytes {
     pub claim: TerminalClaim,
 }
 
+/// The session the host lists as outside this workspace, to be taken into it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalAdmit {
+    pub session: String,
+}
+
 /// The effect whose `terminalOpen` is to be undone.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -1034,6 +1075,10 @@ pub struct ConversationEdit {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSwitch {
     pub thread_id: String,
+    /// The project to open it under, when that is not the one open now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub project_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1257,6 +1302,7 @@ mod tests {
         round_trip(
             EffectBody::ConversationSwitch(ConversationSwitch {
                 thread_id: "t1".into(),
+                project_id: None,
             }),
             "conversationSwitch",
             json!({"threadId": "t1"}),
@@ -1428,9 +1474,61 @@ mod tests {
             (EffectKind::ScmConflict, Owner::Scm),
             (EffectKind::ScmResolve, Owner::Scm),
             (EffectKind::ConversationSideClose, Owner::Conversation),
+            (EffectKind::ThreadsList, Owner::Threads),
+            (EffectKind::ThreadsCreate, Owner::Threads),
+            (EffectKind::ThreadsRename, Owner::Threads),
+            (EffectKind::ThreadsArchive, Owner::Threads),
+            (EffectKind::ThreadsDelete, Owner::Threads),
+            (EffectKind::ThreadsPin, Owner::Threads),
+            (EffectKind::ThreadsTag, Owner::Threads),
+            (EffectKind::ThreadsUnread, Owner::Threads),
+            (EffectKind::ThreadsRetitle, Owner::Threads),
+            (EffectKind::ThreadsMarkdown, Owner::Threads),
         ] {
             assert_eq!(kind.owner(), owner);
         }
+    }
+
+    #[test]
+    fn thread_effects_round_trip() {
+        use crate::threads::ThreadTag;
+        round_trip(
+            EffectBody::ThreadsList,
+            "threadsList",
+            serde_json::Value::Null,
+        );
+        round_trip(
+            EffectBody::ThreadsRename(ThreadsRename {
+                thread_id: "t1".into(),
+                title: "New".into(),
+            }),
+            "threadsRename",
+            json!({"threadId": "t1", "title": "New"}),
+        );
+        round_trip(
+            EffectBody::ThreadsTag(ThreadsTag {
+                thread_id: "t1".into(),
+                tag: Some(ThreadTag::Cyan),
+            }),
+            "threadsTag",
+            json!({"threadId": "t1", "tag": "cyan"}),
+        );
+        round_trip(
+            EffectBody::ThreadsTag(ThreadsTag {
+                thread_id: "t1".into(),
+                tag: None,
+            }),
+            "threadsTag",
+            json!({"threadId": "t1"}),
+        );
+        round_trip(
+            EffectBody::ConversationSwitch(ConversationSwitch {
+                thread_id: "t2".into(),
+                project_id: Some("p2".into()),
+            }),
+            "conversationSwitch",
+            json!({"threadId": "t2", "projectId": "p2"}),
+        );
     }
 
     #[test]

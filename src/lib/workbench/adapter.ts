@@ -48,6 +48,7 @@ export type LanguagePort = OwnerPort<Of<'language'>>
 export type RunPort = OwnerPort<Of<'run'>>
 export type AppearancePort = OwnerPort<Of<'appearance'>>
 export type SearchPort = OwnerPort<Of<'search'>>
+export type ThreadsPort = OwnerPort<Of<'threads'>>
 export type ConversationPort = OwnerPort<Of<'conversation'>> & {
   /** Side chats can be created here. */
   canSideChat?: boolean
@@ -99,7 +100,13 @@ export interface TerminalOwner {
    * `terminal.list`, its inventory. Without `list`, the session list is what this workbench knows.
    */
   host: Pick<TerminalHost, 'onEvent'> &
-    Partial<Pick<TerminalHost, 'canList' | 'list'>>
+    Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
+      /**
+       * Takes a session the host lists as not yet in this workspace (`admitted: false`) into it. Absent,
+       * the host cannot, and `terminalAdmit` is refused `owner_unavailable`.
+       */
+      admit?: (session: string) => Promise<unknown>
+    }
 }
 
 /** What the adapter reads of the environment. `Environment` satisfies it. */
@@ -129,6 +136,8 @@ export interface AdapterOptions {
   run?: RunPort
   search?: SearchPort
   conversation?: ConversationPort
+  /** The account's projects and threads. */
+  threads?: ThreadsPort
   artifacts?: ArtifactsPort
   delegations?: DelegationsPort
   clipboard?: ClipboardPort
@@ -516,6 +525,15 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const modes = wireModes(row.modes)
       const held = sessions.get(row.session)
       const report = row.programReport
+      const extra = row as {
+        name?: unknown
+        cwd?: unknown
+        host?: unknown
+        admitted?: unknown
+      }
+      const name = typeof extra.name === 'string' ? extra.name : undefined
+      const cwd = typeof extra.cwd === 'string' ? extra.cwd : undefined
+      const owned = typeof extra.host === 'string' ? extra.host : undefined
       if (terminals.has(row.session)) {
         // The binding owns the rest of its entry; the host's modes are still the host's to say.
         if (held)
@@ -535,6 +553,10 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         program: row.binding.program,
         state: row.state,
         controlledElsewhere: row.controlled,
+        ...(name ? { name } : {}),
+        ...(cwd ? { cwd } : {}),
+        ...(owned ? { host: owned } : {}),
+        ...(extra.admitted === false ? { admitted: false } : {}),
       })
     }
     // Only a settled inventory proves a terminal is gone; pending and unavailable ones prove nothing.
@@ -741,6 +763,22 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         : 'A terminal effect needs a terminal resource',
   })
 
+  /** Takes a session the host lists as outside this workspace into it, then reads the list again so the row is an ordinary one. */
+  async function admitTerminal(session: string): Promise<OwnerReply> {
+    const { admit } = options.terminal.host
+    if (!admit) return unavailable('terminal admission')
+    try {
+      await admit(session)
+    } catch (error) {
+      return {
+        outcome: 'uncertain',
+        reason: error instanceof Error ? error.message : String(error),
+      }
+    }
+    await refreshList()
+    return { outcome: 'accepted' }
+  }
+
   async function terminalEffect(
     effect: Of<'terminal'>,
     requestId: string,
@@ -755,6 +793,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
 
     if (effect.kind === 'terminalAbandonOpen')
       return abandonOpen(effect.payload.open)
+
+    if (effect.kind === 'terminalAdmit')
+      return admitTerminal(effect.payload.session)
 
     return terminalOperation(effect)
   }
@@ -831,7 +872,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   async function terminalOperation(
     effect: Exclude<
       Of<'terminal'>,
-      { kind: 'terminalOpen' | 'terminalAbandonOpen' }
+      { kind: 'terminalOpen' | 'terminalAbandonOpen' | 'terminalAdmit' }
     >,
   ): Promise<OwnerReply> {
     const session = terminalOf(effect.resource)
@@ -1167,7 +1208,20 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'terminalEnd':
       case 'terminalInputBytes':
       case 'terminalAbandonOpen':
+      case 'terminalAdmit':
         return terminalEffect(effect, requestId)
+
+      case 'threadsList':
+      case 'threadsCreate':
+      case 'threadsRename':
+      case 'threadsArchive':
+      case 'threadsDelete':
+      case 'threadsPin':
+      case 'threadsTag':
+      case 'threadsUnread':
+      case 'threadsRetitle':
+      case 'threadsMarkdown':
+        return route('threads', options.threads, effect, requestId)
 
       case 'conversationCreate':
       case 'conversationSend':
@@ -1297,6 +1351,17 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     if (options.conversation?.canSwitchBranch) local.push('conversation.branch')
     if (options.conversation?.canAttach) local.push('conversation.attach')
     if (options.conversation?.canPickModel) local.push('conversation.model')
+    // What the account's SDK can do. Pin, tags, unread marks and title regeneration, and admitting a
+    // Herdr session, have no call there, so they are not granted: the panel offers none of them.
+    if (options.threads)
+      local.push(
+        'threads',
+        'threads.create',
+        'threads.rename',
+        'threads.archive',
+        'threads.delete',
+        'threads.markdown',
+      )
     if (options.artifacts) local.push('artifacts')
     if (options.clipboard) local.push('clipboard')
     return grantedCapabilities(env, local)
@@ -1368,6 +1433,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     options.run,
     options.search,
     options.conversation,
+    options.threads,
     options.artifacts,
     options.delegations,
     options.clipboard,

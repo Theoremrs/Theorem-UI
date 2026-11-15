@@ -40,4 +40,20 @@ modes?: TerminalModes,
  * What the program says about itself. `unavailable` when the host sends
  * nothing, so an older host reads as before.
  */
-programReport?: ProgramReport, };
+programReport?: ProgramReport, 
+/**
+ * The session's own name on the machine it runs on, when the host has one.
+ */
+name?: string, 
+/**
+ * The working directory of its program, as the host reports it.
+ */
+cwd?: string, 
+/**
+ * Whether the session belongs to this workspace. A session on the
+ * person's own machine that the host has not taken in (no labels of this
+ * workspace's or tenant's) is listed with `false`; it can be opened only
+ * after `terminalAdmit`, which the host performs where it grants
+ * `terminal.admit`.
+ */
+admitted?: boolean, };

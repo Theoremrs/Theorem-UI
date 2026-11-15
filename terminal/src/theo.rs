@@ -46,8 +46,8 @@ use theorem_workbench_core::{
     effect::{
         ApprovalDecision, AttachRemove, AttachmentRef, ClipboardWrite, ConversationApproval,
         ConversationCancel, ConversationEdit, ConversationInput, ConversationRetry,
-        ConversationSend, ConversationSwitchBranch, FilesSearch, SetEffort, SetModel, SideChatOpen,
-        SideChatScope,
+        ConversationSend, ConversationSwitch, ConversationSwitchBranch, FilesSearch, SetEffort,
+        SetModel, SideChatOpen, SideChatScope,
     },
     panel::{Caret, CaretPhase, CaretShape},
     semantics::{Node, NodeAction, Role},
@@ -653,6 +653,8 @@ enum Tracked {
     NewSideChat,
     ListSideChats,
     SwitchBranch,
+    /// Another thread, from the Threads panel, under this project.
+    Switch(String),
     /// A control the owner answers by a host message (attach, model, effort).
     Control,
     Copy,
@@ -1411,6 +1413,21 @@ impl TheoPanel {
         self.editing = Some(id);
     }
 
+    /// Open `thread` as the conversation, asked for by the Threads panel. The
+    /// effect is stamped with the conversation this panel is bound to now, so
+    /// its answer is judged against it; the target is in the payload.
+    fn switch_to(&mut self, project: &str, thread: &str, cx: &mut Ctx) {
+        if thread == self.thread && (project.is_empty() || project == self.project) {
+            return;
+        }
+        let body = EffectBody::ConversationSwitch(ConversationSwitch {
+            thread_id: thread.to_owned(),
+            project_id: (!project.is_empty() && project != self.project)
+                .then(|| project.to_owned()),
+        });
+        self.emit(cx, body, Tracked::Switch(project.to_owned()));
+    }
+
     fn new_conversation(&mut self, cx: &mut Ctx) {
         self.emit(cx, EffectBody::ConversationCreate, Tracked::NewConversation);
     }
@@ -1524,6 +1541,10 @@ impl TheoPanel {
             Outcome::Refused { reason, .. } | Outcome::Failed { reason } => Some(reason.clone()),
             Outcome::Uncertain { .. } | Outcome::Accepted => None,
         };
+        let switched = match &tracked {
+            Tracked::Switch(project) => Some(project.clone()),
+            _ => None,
+        };
         match tracked {
             Tracked::Turn(id) => {
                 let Some(at) = self.pending.iter().position(|p| p.client_message_id == id) else {
@@ -1610,7 +1631,8 @@ impl TheoPanel {
             | Tracked::NewConversation
             | Tracked::NewSideChat
             | Tracked::ListSideChats
-            | Tracked::SwitchBranch => {
+            | Tracked::SwitchBranch
+            | Tracked::Switch(_) => {
                 if let Some(reason) = said(&c.outcome) {
                     self.session.borrow_mut().notify(reason);
                 } else if let Outcome::Uncertain { reason } = &c.outcome {
@@ -1622,6 +1644,10 @@ impl TheoPanel {
                     Some(CompletionPayload::ConversationOpened(opened))
                         if self.kind == Kind::Main =>
                     {
+                        // A switch from the Threads panel may change the project too.
+                        if let Some(project) = switched.filter(|p| !p.is_empty()) {
+                            self.project = project;
+                        }
                         self.thread = opened.conversation_id;
                     }
                     Some(CompletionPayload::ConversationSideOpened(opened))
@@ -1993,7 +2019,7 @@ impl Panel for TheoPanel {
                 "theo.switch" => self
                     .session
                     .borrow_mut()
-                    .notify("no other conversation is offered to switch to yet"),
+                    .notify("pick a conversation in the Threads panel"),
                 "theo.branch" => self.branch(1, cx),
                 name if name
                     .starts_with(theorem_workbench_core::panels::ACTION_DELEGATION_OPEN) =>
@@ -2038,6 +2064,7 @@ impl Panel for TheoPanel {
                     self.completed(c);
                 }
             }
+            PanelMsg::Switch { project, thread } => self.switch_to(&project, &thread, cx),
             PanelMsg::Resize { .. }
             | PanelMsg::Host(_)
             | PanelMsg::Workspace(_)

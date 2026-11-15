@@ -83,6 +83,12 @@ export interface ConversationServices {
     inputId: string
     text: string
   }) => Promise<void>
+  /**
+   * Says which project a thread is to open under before it is switched to (a thread placed in several
+   * projects, picked under one of them), or takes that back with no project when the switch fails. Absent:
+   * the host opens every thread where it decides.
+   */
+  openUnder?: (threadId: string, projectId: string | undefined) => void
   /** The thread's branches and standing, read when it opens and when a run ends. Absent: snapshots carry no history. */
   history?: (threadId: string) => Promise<ThreadTree | null>
   /** Makes a branch the thread's selected one, as the thread list does. */
@@ -235,7 +241,7 @@ export interface Conversation {
     },
   ) => Promise<Completion<{ approvalId: string }>>
   switchTo: (
-    request: Request & { threadId: string },
+    request: Request & { threadId: string; projectId?: string },
   ) => Promise<Completion<{ conversationId: string }>>
   create: (request: Request) => Promise<Completion<{ conversationId: string }>>
   /**
@@ -1218,9 +1224,12 @@ export function createConversation({
     async switchTo(request) {
       const { answers, refusal } = begin(request)
       if (refusal) return refusal
+      const { threadId, projectId } = request
+      if (projectId) services.openUnder?.(threadId, projectId)
       try {
-        await runtime.threads.switchToThread(request.threadId)
+        await runtime.threads.switchToThread(threadId)
       } catch (error) {
+        if (projectId) services.openUnder?.(threadId, undefined)
         return failure(answers, error, false)
       }
       return accepted(answers, { conversationId: conversationId() })

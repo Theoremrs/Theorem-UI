@@ -43,6 +43,11 @@ pub fn register(
 ) {
     let styles = Rc::new(styles);
     let catalog = catalog::Catalog::new(load_nonce);
+    // A Herdr row of the Threads panel opens its session here, or focuses the
+    // pane already bound to it.
+    factories.register_opener(KIND, |target| {
+        matches!(target, theorem_workbench_core::OpenTarget::Terminal { .. })
+    });
     factories.register(KIND, move |state, _version| {
         Box::new(ProcessPanel::restore(
             state,

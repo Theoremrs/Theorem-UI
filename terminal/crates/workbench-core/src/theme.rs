@@ -379,6 +379,15 @@ impl Theme {
         self
     }
 
+    /// Set the surface a popup's rows are drawn on (a menu, a completion list) and its chosen
+    /// row. Each carries a foreground and a background, so a row reads over whatever the popup
+    /// covers and the chosen one is told from the rest.
+    pub fn with_popup(mut self, popup: Style, popup_selected: Style) -> Self {
+        self.popup = popup;
+        self.popup_selected = popup_selected;
+        self
+    }
+
     /// Set the search roles: every match, and the current one.
     pub fn with_search(mut self, search_match: Style, current_match: Style) -> Self {
         self.search_match = search_match;

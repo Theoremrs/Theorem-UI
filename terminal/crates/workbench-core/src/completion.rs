@@ -205,6 +205,12 @@ pub enum CompletionPayload {
     RunState(RunState),
     /// `runList`.
     RunList(RunList),
+    /// `threadsList`: every project and thread, whole.
+    Threads(crate::threads::ThreadListing),
+    /// `threadsCreate`: the thread that now exists, in its project.
+    ThreadCreated(crate::threads::ThreadCreated),
+    /// `threadsMarkdown`.
+    ThreadMarkdown(crate::threads::ThreadMarkdown),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

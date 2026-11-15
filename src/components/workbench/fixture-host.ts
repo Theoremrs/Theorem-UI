@@ -47,6 +47,7 @@ import {
 import type { Listing } from './fixtures'
 import type { Dispatch } from './workbench'
 import { createClipboardPort } from './ports'
+import { createThreadsFixture } from './threads-fixture'
 
 export interface FixtureOptions {
   granted: string[]
@@ -57,6 +58,12 @@ export interface FixtureOptions {
   branches?: boolean
   /** The language owner reports the findings the fixtures hold for each document as it opens. */
   diagnostics?: boolean
+  /**
+   * The account has the threads the Threads panel's stories read (`threads-fixture`), and the terminal owner
+   * lists four Herdr sessions beside them, two of them not yet admitted. Writes change that state and the host
+   * says the listing again.
+   */
+  threads?: boolean
   /** The terminal owner offers a recorded session. */
   terminal?: boolean
   /**
@@ -450,6 +457,7 @@ export function createFixtureHost(
   })
 
   const clipboard = createClipboardPort()
+  const account_threads = options.threads ? createThreadsFixture() : undefined
   const later = (task: () => void) =>
     queueMicrotask(() => {
       if (live) task()
@@ -506,9 +514,11 @@ export function createFixtureHost(
         profiles: [
           { id: 'shell', label: 'Shell', backend: 'native', available: true },
         ],
-        sessions: options.terminalEmpty
-          ? []
-          : [
+        sessions: account_threads
+          ? account_threads.sessions()
+          : options.terminalEmpty
+            ? []
+            : [
               {
                 session: options.programReport ? 's1' : TERMINAL_SESSION,
                 profile: options.programReport ? 'zsh' : 'Shell',
@@ -528,6 +538,12 @@ export function createFixtureHost(
         ...(options.terminalAdoption
           ? { adoption: options.terminalAdoption }
           : {}),
+      })
+    if (account_threads)
+      dispatch({
+        channel: 'host',
+        type: 'threadsChanged',
+        listing: account_threads.listing(),
       })
     // The conversation owner's first snapshot, as its port sends one at connect.
     if (options.transcript)
@@ -1002,7 +1018,12 @@ export function createFixtureHost(
           effect.kind === 'terminalOpen'
             ? (effect.payload.attachment ?? 'story')
             : effect.payload.attachment
-        const named = options.programReport ? 's1' : TERMINAL_SESSION
+        const named =
+          account_threads && effect.resource.type === 'terminal'
+            ? effect.resource.session
+            : options.programReport
+              ? 's1'
+              : TERMINAL_SESSION
         const resource: ResourceRef = {
           type: 'terminal',
           workspace: WORKSPACE,
@@ -1165,6 +1186,96 @@ export function createFixtureHost(
       }
       case 'terminalDetach':
         return accept(effect)
+      case 'threadsList':
+      case 'threadsCreate':
+      case 'threadsRename':
+      case 'threadsArchive':
+      case 'threadsDelete':
+      case 'threadsPin':
+      case 'threadsTag':
+      case 'threadsUnread':
+      case 'threadsRetitle':
+      case 'threadsMarkdown':
+      case 'conversationSwitch':
+      case 'terminalAdmit': {
+        if (!account_threads) return refuse(effect, 'This story has no threads')
+        const tell = () =>
+          send({ type: 'threadsChanged', listing: account_threads.listing() })
+        switch (effect.kind) {
+          case 'threadsList':
+            return accept(effect, {
+              type: 'threads',
+              ...account_threads.listing(),
+            })
+          case 'threadsCreate': {
+            const made = account_threads.create(effect.payload.projectId)
+            accept(effect, { type: 'threadCreated', ...made })
+            return tell()
+          }
+          case 'threadsRename':
+            account_threads.rename(effect.payload.threadId, effect.payload.title)
+            break
+          case 'threadsArchive':
+            account_threads.archive(
+              effect.payload.threadId,
+              effect.payload.archived,
+            )
+            break
+          case 'threadsDelete':
+            account_threads.remove(effect.payload.threadId)
+            break
+          case 'threadsPin':
+            account_threads.pin(effect.payload.threadId, effect.payload.pinned)
+            break
+          case 'threadsTag':
+            account_threads.tag(effect.payload.threadId, effect.payload.tag)
+            break
+          case 'threadsUnread':
+            account_threads.unread(
+              effect.payload.threadId,
+              effect.payload.unread,
+            )
+            break
+          case 'threadsRetitle':
+            account_threads.retitle(effect.payload.threadId)
+            break
+          case 'threadsMarkdown':
+            return accept(effect, {
+              type: 'threadMarkdown',
+              text: account_threads.markdown(effect.payload.threadId),
+            })
+          case 'conversationSwitch':
+            account_threads.open(
+              effect.payload.threadId,
+              effect.payload.projectId ?? undefined,
+            )
+            accept(effect, {
+              type: 'conversationOpened',
+              conversationId: effect.payload.threadId,
+            })
+            return tell()
+          case 'terminalAdmit': {
+            account_threads.admit(effect.payload.session)
+            accept(effect)
+            return send({
+              type: 'terminalSessions',
+              workspace: WORKSPACE,
+              profiles: [
+                {
+                  id: 'shell',
+                  label: 'Shell',
+                  backend: 'native',
+                  available: true,
+                },
+              ],
+              sessions: account_threads.sessions(),
+              adoption: { state: 'settled' },
+            })
+          }
+        }
+        accept(effect)
+        return tell()
+      }
       // The browser's own clipboard, through the port the real mount uses.
       case 'clipboardWrite':
       case 'clipboardRead':

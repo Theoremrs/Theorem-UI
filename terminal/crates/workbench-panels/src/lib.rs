@@ -4,12 +4,15 @@
 pub mod caret;
 pub mod clip;
 pub mod files;
+pub mod threads;
 
 use theorem_workbench_core::PanelFactories;
 
 pub use files::FilesPanel;
+pub use threads::ThreadsPanel;
 
 /// Register every panel this crate provides.
 pub fn register(factories: &mut PanelFactories) {
     files::register(factories);
+    threads::register(factories);
 }

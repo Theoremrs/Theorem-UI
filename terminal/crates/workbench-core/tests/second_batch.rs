@@ -83,6 +83,9 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
             unavailable_reason: None,
         }],
         sessions: vec![TerminalSessionInfo {
+            name: None,
+            cwd: None,
+            admitted: true,
             session: "s-1".into(),
             profile: "Shell".into(),
             backend: TerminalBackend::Native,

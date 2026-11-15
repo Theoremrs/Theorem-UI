@@ -5,6 +5,9 @@
 // AC-59 (registered alternate presentation); R17 and AC-19 (delegation changes are Changes' read-only cousin); R19 with
 // AC-54 and P02/P05 (search and replace); R34 (actions carry actor identity), R38 (keyboard), R40 (content boundaries).
 
+// R-ids for the Threads scenarios (workbench-threads, workbench-threads-withheld): the plan's Threads panel row (LEDGER L24) with R34 (actions carry
+// actor identity), R38 (keyboard), R40 (content boundaries: titles and names are untrusted text) and the Herdr redirect (a session opens a terminal tab, a thread goes back to Theo).
+
 /** The characters that must never reach the page raw: controls (but not the new line) and the bidirectional controls. */
 export const RAW_HOSTILE = /[\u0000-\u0008\u000b-\u001f\u007f‪-‮⁦-⁩]/
 
@@ -93,6 +96,67 @@ export function scenarios(h) {
     return (await searchNode(page, 'status'))?.name
   }
   const sends = async (page) => (await effects(page)).filter((e) => e.kind === 'conversationSend')
+
+
+  // ---- Threads ------------------------------------------------------------------------------
+  const HOSTILE_RAW = /[\u0000-\u0008\u000b-\u001f\u007f\u202a-\u202e\u2066-\u2069]/
+  /** The row the Threads panel's cursor is on: its node id without the panel prefix (`r:t:p-atlas:t-parent`). */
+  const cursorRow = async (page) => {
+    const n = (await nodes(page)).find((x) => x.state?.selected && /\/r:/.test(x.id))
+    return n ? n.id.replace(/^[^/]+\//, '') : null
+  }
+  const rowNode = async (page, key) => node(page, `r:${key}`)
+  /** Threads takes the keyboard by a real press on its tab. */
+  const focusThreads = async (page) => {
+    await page.waitForTimeout(500)
+    await sees(page, 'Threads', 8000)
+    await clickTab(page, 'Threads')
+    await page.waitForTimeout(300)
+  }
+  /** Opens every collapsed project and every collapsed thread so each row is in the tree, then Home. */
+  const expandProjects = async (page) => {
+    await page.keyboard.press('Home')
+    await page.waitForTimeout(80)
+    for (let i = 0; i < 80; i++) {
+      const row = (await nodes(page)).find((x) => x.state?.selected && /\/r:/.test(x.id))
+      if (row && row.state.expanded === false) await page.keyboard.press('ArrowRight')
+      const before = await cursorRow(page)
+      await page.keyboard.press('ArrowDown')
+      await page.waitForTimeout(40)
+      if ((await cursorRow(page)) === before) break
+    }
+    await page.keyboard.press('Home')
+    await page.waitForTimeout(80)
+  }
+  /** The cursor on the row with this key, moved there by Down presses. */
+  const goTo = async (page, key) => {
+    if (!(await rowNode(page, key))) await expandProjects(page)
+    await page.keyboard.press('Home')
+    for (let i = 0; i < 120; i++) {
+      if ((await cursorRow(page)) === `r:${key}`) return true
+      await page.keyboard.press('ArrowDown')
+      await page.waitForTimeout(40)
+    }
+    return false
+  }
+  /** The open menu's item names, and a pick by name with the arrow keys and Enter. */
+  const menuItems = async (page) => (await nodes(page)).filter((x) => /\/m:\d+$/.test(x.id)).map((x) => x.name)
+  const openMenu = async (page) => {
+    await page.keyboard.press('Shift+F10')
+    await page.waitForTimeout(150)
+    return menuItems(page)
+  }
+  const pick = async (page, name) => {
+    const items = await menuItems(page)
+    for (let i = 0; i < items.indexOf(name); i++) await page.keyboard.press('ArrowDown')
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(250)
+  }
+  const kindsOf = async (page) => (await effects(page)).map((e) => e.kind)
+  const count = async (page, kind) => (await effects(page)).filter((e) => e.kind === kind).length
+  const lastOf = async (page, kind) => (await effects(page)).filter((e) => e.kind === kind).at(-1)
+  const tabCount = async (page) => (await layoutOf(page)).groups.flatMap((g) => g.tabs).length
+  const HOSTILE_TITLE = 'Plan \u202etxt.exe\u202c bell\u0007 team'
 
   // The same texts the story holds (workbench-feature-stories.tsx), to compare an excerpt with the file it came from.
   const LONG = `${Array.from({ length: 3 }, (_, i) => `${i + 1} ${'word '.repeat(400)}`.trimEnd()).join('\n')}\n`
@@ -1076,6 +1140,288 @@ export function scenarios(h) {
           'the question carries the note: "The replacement is inserted as typed: capture references such as $1 are not expanded."': question === 'Replace 7 matches in 4 files with "$1"? Enter replaces and saves each file, one at a time. Esc cancels. The replacement is inserted as typed: capture references such as $1 are not expanded.',
           'the preview shows $1 literally': preview.includes('    + $1 one and $1 two share a line.'),
           'the edit sent inserts the three characters $1': edit?.payload.edits.length === 1 && edit.payload.edits[0].insert === '$1',
+        }
+      },
+    ],
+
+    // The Threads panel over the fixture account: sections, rows, the keys, the effects each key asks for and the two directions between
+    // a Herdr session's terminal tab and Theo. Every step is a fresh load; the effects read are the whole effects the core asked the host for.
+    'workbench-threads': [
+      // Sections, rows and what a row says: Pinned, Projects with children and delegations, Herdr grouped by machine with the program's own word.
+      async (page) => {
+        await focusThreads(page)
+        await expandProjects(page)
+        const tree = await nodes(page)
+        const rows = tree.filter((x) => /\/r:/.test(x.id))
+        const labels = tree.filter((x) => /\/l:/.test(x.id)).map((x) => x.name)
+        const parent = await rowNode(page, 't:p-atlas:t-parent')
+        const child = await rowNode(page, 't:p-atlas:t-child-a')
+        const delegation = await rowNode(page, 'd:p-atlas:t-parent:d-review')
+        const pinned = await rowNode(page, 'pin:t-pinned')
+        const working = await rowNode(page, 's:herdr-build')
+        const blocked = await rowNode(page, 's:herdr-review')
+        const outside = await rowNode(page, 's:herdr-agent')
+        const unread = await rowNode(page, 't:p-harbor:t-unread')
+        const archivedHidden = !(await rowNode(page, 't:p-lantern:t-archived'))
+        await snap(page, 'workbench-threads-sections')
+        return {
+          'the sections Pinned, Projects and Herdr are drawn, in that order': ['Pinned', 'Projects', 'Herdr'].every((l) => labels.some((x) => x.startsWith(l))) && labels.findIndex((x) => x.startsWith('Pinned')) < labels.findIndex((x) => x.startsWith('Projects')) && labels.findIndex((x) => x.startsWith('Projects')) < labels.findIndex((x) => x.startsWith('Herdr')),
+          'a pinned thread is a row of its own in Pinned': pinned?.name === 'Reading list for the week',
+          'a thread is a tree item at the level under its project, and the two forked threads are its children one level deeper': !!parent && !!child && child.level === parent.level + 1,
+          'the delegations of the latest run are rows under the thread': delegation?.name === 'Reviewer' && delegation.state.description === 'delegation',
+          'a Herdr session shows the program\'s own word: working, blocked, and nothing said for one that never reported': (working?.state.description ?? '').includes('working') && (blocked?.state.description ?? '').includes('blocked') && !/working|blocked|idle/.test(outside?.state.description ?? ''),
+          'a session on the machine but outside the workspace says so': (outside?.state.description ?? '').includes('not in this workspace yet'),
+          'an unread thread says so on its node': (unread?.state.description ?? '').includes('unread'),
+          'the archived thread is not drawn until the toggle': archivedHidden,
+          'every row is a tree item with a position in its set': rows.length > 10 && rows.every((x) => x.role === 'treeitem' || x.role === 'treeItem'),
+        }
+      },
+      // Enter on a thread asks Theo to switch, once; the other open effects are not asked.
+      async (page) => {
+        await focusThreads(page)
+        const found = await goTo(page, 't:p-harbor:t-needs')
+        await recordEffects(page)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(400)
+        const switches = (await effects(page)).filter((e) => e.kind === 'conversationSwitch')
+        const layout = await layoutOf(page)
+        await snap(page, 'workbench-threads-switch')
+        return {
+          'the cursor reached the thread by keys': found,
+          'Enter asked for exactly one conversationSwitch, for that thread, in its project': switches.length === 1 && switches[0].payload.threadId === 't-needs' && switches[0].payload.projectId === 'p-harbor',
+          'it asked for nothing else of the account: no write': !(await kindsOf(page)).some((k) => /^threads(Rename|Archive|Delete|Pin|Tag|Unread|Retitle|Create)$/.test(k)),
+          'Theo has the keyboard afterwards, not Threads': layout.focused !== 'Threads',
+        }
+      },
+      // F2 renames through an edit row: typed text, Enter sends one update with the new title; Esc sends nothing.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-atlas:t-child-a')
+        await recordEffects(page)
+        await page.keyboard.press('F2')
+        await page.waitForTimeout(200)
+        const editing = !!(await node(page, 'edit'))
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(200)
+        const afterEsc = await count(page, 'threadsRename')
+        await page.keyboard.press('F2')
+        await page.waitForTimeout(200)
+        await page.keyboard.press('Control+a')
+        await page.keyboard.type('Renamed by key', { delay: 15 })
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(500)
+        const renames = (await effects(page)).filter((e) => e.kind === 'threadsRename')
+        const renamed = (await rowNode(page, 't:p-atlas:t-child-a'))?.name
+        await snap(page, 'workbench-threads-rename')
+        return {
+          'F2 opens the Rename field on the row': editing,
+          'Esc sends nothing': afterEsc === 0,
+          'Enter sends one threadsRename with the typed title': renames.length === 1 && renames[0].payload.threadId === 't-child-a' && renames[0].payload.title === 'Renamed by key',
+          'the listing the host tells next shows the new title': renamed === 'Renamed by key',
+        }
+      },
+      // Pin, tag and unread by the row menu: each sends one effect; the thread comes back changed.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-harbor:t-shared')
+        await recordEffects(page)
+        const items = await openMenu(page)
+        await pick(page, 'Pin')
+        const pins = (await effects(page)).filter((e) => e.kind === 'threadsPin')
+        await page.waitForTimeout(300)
+        const pinnedRow = await rowNode(page, 'pin:t-shared')
+        const followed = await cursorRow(page)
+        const leftProjects = !(await rowNode(page, 't:p-harbor:t-shared')) && !(await rowNode(page, 't:p-lantern:t-shared'))
+        await goTo(page, 'pin:t-shared')
+        await openMenu(page)
+        await pick(page, 'Mark as unread')
+        const unreads = (await effects(page)).filter((e) => e.kind === 'threadsUnread')
+        await page.waitForTimeout(300)
+        await goTo(page, 'pin:t-shared')
+        await openMenu(page)
+        await pick(page, 'Tag...')
+        const tagItems = await menuItems(page)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(300)
+        const tags = (await effects(page)).filter((e) => e.kind === 'threadsTag')
+        await snap(page, 'workbench-threads-pin-tag-unread')
+        return {
+          'the menu lists what the host grants: Open, Pin, Rename, Tag, Mark as unread, Regenerate title, Archive, copies, details and Delete': ['Open', 'Pin', 'Rename', 'Tag...', 'Mark as unread', 'Regenerate title', 'Archive', 'Copy title', 'Copy id', 'Copy as Markdown', 'View details', 'Delete'].every((w) => items.includes(w)),
+          'Pin sends one threadsPin with pinned true': pins.length === 1 && pins[0].payload.threadId === 't-shared' && pins[0].payload.pinned === true,
+          'the thread is then a row of Pinned': !!pinnedRow,
+          'and is no longer a row under either of its projects': leftProjects,
+          'the cursor follows it there': followed === 'r:pin:t-shared',
+          'Mark as unread sends one threadsUnread with unread true': unreads.length === 1 && unreads[0].payload.unread === true,
+          'Tag... opens the colours and No tag': tagItems.length >= 2 && tagItems.includes('No tag'),
+          'the first colour sends one threadsTag carrying a tag': tags.length === 1 && !!tags[0].payload.tag,
+        }
+      },
+      // Archive, and the toggle that shows what is archived.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-lantern:t-long')
+        await recordEffects(page)
+        await openMenu(page)
+        await pick(page, 'Archive')
+        await page.waitForTimeout(400)
+        const archives = (await effects(page)).filter((e) => e.kind === 'threadsArchive')
+        const hidden = !(await rowNode(page, 't:p-lantern:t-long'))
+        await goTo(page, 'p:p-lantern')
+        const toggleItems = await openMenu(page)
+        await pick(page, 'Show archived threads')
+        await page.waitForTimeout(400)
+        const shown = !!(await rowNode(page, 't:p-lantern:t-long')) && !!(await rowNode(page, 't:p-lantern:t-archived'))
+        await goTo(page, 't:p-lantern:t-long')
+        const restoreItems = await openMenu(page)
+        await pick(page, 'Restore')
+        await page.waitForTimeout(300)
+        const restores = (await effects(page)).filter((e) => e.kind === 'threadsArchive')
+        await snap(page, 'workbench-threads-archive')
+        return {
+          'Archive sends one threadsArchive with archived true': archives.length === 1 && archives[0].payload.threadId === 't-long' && archives[0].payload.archived === true,
+          'the archived thread leaves the list': hidden,
+          'the project menu offers Show archived threads': toggleItems.includes('Show archived threads'),
+          'with the toggle on, archived threads are rows again': shown,
+          'an archived thread offers Restore, and Restore sends archived false': restoreItems.includes('Restore') && restores.at(-1)?.payload.archived === false,
+        }
+      },
+      // Delete asks first: Esc keeps the thread and sends nothing; Enter sends one threadsDelete.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-harbor:t-unread')
+        await recordEffects(page)
+        await page.keyboard.press('Delete')
+        await page.waitForTimeout(200)
+        const asked = (await node(page, 'confirm'))?.name ?? ''
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(250)
+        const kept = !!(await rowNode(page, 't:p-harbor:t-unread')) && (await count(page, 'threadsDelete')) === 0
+        await page.keyboard.press('Delete')
+        await page.waitForTimeout(200)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(500)
+        const deletes = (await effects(page)).filter((e) => e.kind === 'threadsDelete')
+        await snap(page, 'workbench-threads-delete')
+        return {
+          'Delete puts a confirm row naming the thread': asked.includes('A reply came in'),
+          'Esc keeps the thread and sends nothing': kept,
+          'Delete then Enter sends one threadsDelete for it': deletes.length === 1 && deletes[0].payload.threadId === 't-unread',
+          'the thread is gone from the list afterwards': !(await rowNode(page, 't:p-harbor:t-unread')),
+        }
+      },
+      // Copy sends the exact title through ClipboardWrite; a hostile title is spelled out on the page and exact on the node.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-atlas:t-parent')
+        await recordEffects(page)
+        await page.keyboard.press('Control+c')
+        await page.waitForTimeout(300)
+        const copied = await lastOf(page, 'clipboardWrite')
+        await goTo(page, 't:p-lantern:t-hostile')
+        const hostileRow = await rowNode(page, 't:p-lantern:t-hostile')
+        const page_ = await pageText(page)
+        await page.keyboard.press('Control+c')
+        await page.waitForTimeout(300)
+        const hostileCopy = await lastOf(page, 'clipboardWrite')
+        await snap(page, 'workbench-threads-hostile')
+        return {
+          'Copy title sends one clipboardWrite with the exact title': copied?.payload.text === 'Release planning',
+          'the hostile title reaches the page with no control or bidirectional character': !HOSTILE_RAW.test(page_),
+          'the node of the row spells the hostile characters out instead of carrying them raw': !!hostileRow && !HOSTILE_RAW.test(hostileRow.name),
+          'copying it puts the exact original text on the clipboard, not the spelled-out one': hostileCopy?.payload.text === HOSTILE_TITLE + ' \u{1F468}\u200d\u{1F469}\u200d\u{1F467}\u200d\u{1F466}',
+        }
+      },
+      // Herdr is first class: Enter on an admitted session opens a terminal tab beside Theo; a thread goes back to Theo; both directions.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 's:herdr-build')
+        await recordEffects(page)
+        const tabsBefore = await tabCount(page)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(800)
+        const afterSession = await layoutOf(page)
+        const tabsAfter = await tabCount(page)
+        const noAdmit = (await count(page, 'terminalAdmit')) === 0
+        await snap(page, 'workbench-threads-session-opens')
+        await clickTab(page, 'Threads')
+        await goTo(page, 't:p-harbor:t-needs')
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(500)
+        const afterThread = await layoutOf(page)
+        await snap(page, 'workbench-threads-back-to-theo')
+        return {
+          'Enter on an admitted session opens one more tab': tabsAfter === tabsBefore + 1,
+          'the terminal tab has the keyboard, not Threads': afterSession.focused !== 'Threads',
+          'an admitted session asks for no admission': noAdmit,
+          'picking a thread afterwards sends one conversationSwitch': (await count(page, 'conversationSwitch')) === 1,
+          'and Theo has the keyboard again, not the terminal': afterThread.focused !== afterSession.focused && afterThread.focused !== 'Threads',
+        }
+      },
+      // A session outside the workspace: Enter asks for its admission, and the tab opens once the host has accepted.
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 's:herdr-agent')
+        await recordEffects(page)
+        const tabsBefore = await tabCount(page)
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(900)
+        const admits = (await effects(page)).filter((e) => e.kind === 'terminalAdmit')
+        const row = await rowNode(page, 's:herdr-agent')
+        const tabsAfter = await tabCount(page)
+        await snap(page, 'workbench-threads-admit')
+        return {
+          'Enter sent one terminalAdmit for the session': admits.length === 1 && admits[0].payload.session === 'herdr-agent',
+          'the row no longer says it is outside the workspace': !(row?.state.description ?? '').includes('not in this workspace'),
+          'a terminal tab opened once it was admitted': tabsAfter === tabsBefore + 1,
+        }
+      },
+      // A delegation's row opens what it changed, in the panel a run's own card opens; the conversation stays where it is.
+      async (page) => {
+        await focusThreads(page)
+        const reached = await goTo(page, 'd:p-atlas:t-parent:d-review')
+        await recordEffects(page)
+        await page.keyboard.press('Enter')
+        await sees(page, 'files changed', 8000)
+        await page.waitForTimeout(300)
+        const all = await nodes(page)
+        const tab = all.find((n) => n.role === 'tab' && n.binding?.type === 'delegation')
+        const reads = (await effects(page)).filter((e) => e.kind === 'delegationChanges')
+        await snap(page, 'workbench-threads-delegation')
+        return {
+          'the delegation row is reached with the arrows': reached === true,
+          'Enter opens a tab bound to the delegation and its run, with the keyboard': tab?.binding?.delegationId === 'd-review' && tab?.binding?.runId === 'r-parent' && tab?.state?.focused === true,
+          'it read that delegation\'s changes once': reads.length === 1,
+          'and switched no conversation': (await count(page, 'conversationSwitch')) === 0,
+        }
+      },
+    ],
+    // The same account where the host grants no delete, tags, pin or admission: the menu lists none of them and the keys say nothing.
+    'workbench-threads-withheld': [
+      async (page) => {
+        await focusThreads(page)
+        await goTo(page, 't:p-atlas:t-child-a')
+        await recordEffects(page)
+        const items = await openMenu(page)
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(150)
+        await page.keyboard.press('Delete')
+        await page.waitForTimeout(250)
+        const confirm = await node(page, 'confirm')
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(250)
+        const stillThere = !!(await rowNode(page, 't:p-atlas:t-child-a'))
+        await goTo(page, 's:herdr-agent')
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(500)
+        const sessionItems = await openMenu(page)
+        await snap(page, 'workbench-threads-withheld')
+        return {
+          'the menu does not list Pin, Tag..., Remove tag or Delete': !items.some((w) => /^(Pin|Unpin|Tag\.\.\.|Remove tag|Delete)$/.test(w)),
+          'the menu still lists what is granted: Open, Rename, Archive, Copy title': ['Open', 'Rename', 'Archive', 'Copy title'].every((w) => items.includes(w)),
+          'the Delete key puts up no confirm row': !confirm,
+          'and sends no threadsDelete': (await count(page, 'threadsDelete')) === 0 && stillThere,
+          'Enter on a session outside the workspace asks for no admission': (await count(page, 'terminalAdmit')) === 0,
+          'its menu offers no Admit': !sessionItems.some((w) => w.startsWith('Admit')),
         }
       },
     ],

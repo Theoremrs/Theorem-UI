@@ -194,6 +194,15 @@ fn theme_of(p: &Palette) -> Theme {
         fg(p.syntax_variable),
     )
     .with_ansi(ansi_of(p))
+    // A popup is ink on the raised surface. The palette's selection is that same surface, so
+    // the chosen row takes the focus fill instead: it has to differ from the rows around it.
+    .with_popup(
+        Style::new().fg(p.ink).bg(p.raised),
+        Style::new()
+            .fg(p.bg)
+            .bg(p.focus)
+            .add_modifier(Modifier::BOLD),
+    )
 }
 
 // --- key conversion -----------------------------------------------------------------------
@@ -543,6 +552,9 @@ struct Core {
     /// The default layout's Files panel has been asked for (or a saved layout
     /// replaced the default), so it is not asked for again.
     files_opened: bool,
+    /// The default layout's Threads panel has been asked for (or a saved layout
+    /// replaced the default). It is the first tab of the left dock.
+    threads_opened: bool,
     /// Theo, the main region's principal panel, has been asked for (or a saved
     /// layout replaced the default).
     theo_opened: bool,
@@ -600,6 +612,7 @@ impl Core {
             touched: true,
             repaint: true,
             files_opened: false,
+            threads_opened: false,
             theo_opened: false,
             conversations,
             cabinet,
@@ -754,10 +767,26 @@ impl Core {
             // tool group without taking keys: the composer keeps the focus.
             self.model.rest_picker();
         }
-        if !self.files_opened && self.model.capabilities().has(&Capability::new("files")) {
+        // The left dock holds Threads first and Files second, Threads showing.
+        // Both are asked for in one step when the host serves both, so Threads
+        // is the first tab whichever answer reached the page first.
+        let has = |core: &Self, name: &str| core.model.capabilities().has(&Capability::new(name));
+        if !self.files_opened && has(self, "files") {
             self.files_opened = true;
+            let threads = !self.threads_opened && has(self, "threads");
+            if threads {
+                self.threads_opened = true;
+                effects.extend(self.focus("threads.focus"));
+            }
             effects.extend(self.focus("files.focus"));
+            if threads {
+                effects.extend(self.focus("threads.focus"));
+            }
             // The conversation keeps the focus: it is the principal panel.
+            effects.extend(self.focus("theo.focus"));
+        } else if !self.threads_opened && has(self, "threads") {
+            self.threads_opened = true;
+            effects.extend(self.focus("threads.focus"));
             effects.extend(self.focus("theo.focus"));
         }
         effects.extend(self.update(Msg::Tick));
@@ -1168,6 +1197,7 @@ impl WorkbenchHandle {
         let mut core = self.core.borrow_mut();
         core.touched = true;
         core.files_opened = true;
+        core.threads_opened = true;
         core.theo_opened = true;
         core.model.restore(value).map(|_| ()).map_err(js_error)
     }
@@ -1444,6 +1474,10 @@ mod tests {
         assert_eq!(theme.syntax_string.fg, Some(p.syntax_string));
         assert_eq!(theme.syntax_name.fg, Some(p.syntax_variable));
         assert_eq!(theme.ansi, ansi_of(&p));
+        // A popup's rows are text on a surface of their own: readable over what they cover.
+        assert_eq!(theme.popup, Style::new().fg(p.ink).bg(p.raised));
+        assert_ne!(theme.popup.fg, Some(p.line));
+        assert_ne!(theme.popup_selected.bg, theme.popup.bg);
     }
 
     #[test]
@@ -1471,6 +1505,46 @@ mod tests {
         let count = core.model.panel_ids().count();
         core.step(AREA, CELL, Theme::plain());
         assert_eq!(core.model.panel_ids().count(), count);
+    }
+
+    #[test]
+    fn threads_is_the_first_tab_of_the_left_dock_and_shows_when_files_follows_it() {
+        let mut core = core();
+        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files", "threads"]),
+        }));
+        core.step(AREA, CELL, Theme::plain());
+        let id_of = |core: &Core, kind: &str| {
+            core.model
+                .panel_ids()
+                .find(|(_, k)| k.as_str() == kind)
+                .map(|(id, _)| id.as_str().to_owned())
+                .unwrap_or_else(|| panic!("no {kind} panel"))
+        };
+        let (threads, files) = (id_of(&core, "threads"), id_of(&core, "files"));
+        let tree = semantics(&core.model);
+        let at = |name: String| {
+            tree.nodes
+                .iter()
+                .position(|n| n.id.as_str() == name)
+                .unwrap_or_else(|| panic!("no {name}"))
+        };
+        assert!(
+            at(format!("tab:{threads}")) < at(format!("tab:{files}")),
+            "Threads is the first tab"
+        );
+        // Threads is the tab that shows.
+        let selected = |name: &str| {
+            tree.nodes
+                .iter()
+                .find(|n| n.id.as_str() == format!("tab:{name}"))
+                .map(|n| n.state.selected)
+        };
+        assert_eq!(selected(&threads), Some(true));
+        assert_eq!(selected(&files), Some(false));
+        // Theo keeps the keys.
+        let focused = core.model.focus().panel.expect("something has the focus");
+        assert_eq!(focused.as_str(), id_of(&core, "theo"));
     }
 
     #[test]

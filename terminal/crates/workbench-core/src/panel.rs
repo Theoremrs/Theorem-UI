@@ -103,6 +103,14 @@ pub enum OpenTarget {
         delegation_id: String,
         path: String,
     },
+    /// A terminal session of the workspace, in a pane of its own in the main
+    /// region (a Herdr row of the Threads panel). A pane already bound to it is
+    /// focused instead. A `shell` pane serves it.
+    Terminal {
+        workspace: String,
+        session: String,
+        backend: crate::effect::TerminalBackend,
+    },
 }
 
 impl OpenTarget {
@@ -150,7 +158,19 @@ impl OpenTarget {
                 delegation_id: delegation_id.clone(),
                 path: path.clone(),
             },
+            Self::Terminal {
+                workspace, session, ..
+            } => ResourceRef::Terminal {
+                workspace: workspace.clone(),
+                session: session.clone(),
+            },
         }
+    }
+
+    /// Where the target opens when it is not the kind's own place: a terminal
+    /// session is read beside the conversation, not in the tools group.
+    pub fn main_region(&self) -> bool {
+        matches!(self, Self::Terminal { .. })
     }
 
     /// The panel kind named when nothing serves the target: the placeholder
@@ -164,6 +184,7 @@ impl OpenTarget {
             | Self::Untitled { .. } => "document",
             Self::Commit { .. } => "diff",
             Self::Delegation { .. } => "delegation",
+            Self::Terminal { .. } => "shell",
         }
     }
 
@@ -207,6 +228,19 @@ impl OpenTarget {
             } => serde_json::json!({
                 "runId": run_id, "delegationId": delegation_id, "path": path
             }),
+            Self::Terminal {
+                workspace,
+                session,
+                backend,
+            } => serde_json::json!({
+                "v": 1,
+                "workspace": workspace,
+                "session": session,
+                "backend": match backend {
+                    crate::effect::TerminalBackend::Herdr => "herdr",
+                    crate::effect::TerminalBackend::Native => "native",
+                },
+            }),
         }
     }
 
@@ -229,6 +263,7 @@ impl OpenTarget {
             }
             Self::Untitled { .. } => "Untitled".to_owned(),
             Self::Delegation { path, .. } => last_part(path),
+            Self::Terminal { session, .. } => session.clone(),
         }
     }
 
@@ -247,6 +282,7 @@ impl OpenTarget {
             Self::Delegation { path, .. } => {
                 format!("the changes a delegation made to \"{path}\"")
             }
+            Self::Terminal { session, .. } => format!("the terminal \"{session}\""),
         }
     }
 }
@@ -348,6 +384,13 @@ pub enum PanelMsg {
     /// A registered action of the panel's kind with intent `Create`, `Start`
     /// or `Destroy`. The panel supplies the effect's payload.
     Action(ActionId),
+    /// Another thread was asked for as the open conversation (the Threads
+    /// panel's Open): the conversation panel emits the switch, naming the
+    /// thread and the project to open it under.
+    Switch {
+        project: String,
+        thread: String,
+    },
     /// The host named a different workspace or environment, or this panel was
     /// built after it did. Arrives on a silent `Ctx`: a panel that needs data
     /// for the new workspace records the need and emits on its next `Tick`. Its
@@ -427,6 +470,7 @@ pub struct Ctx<'a> {
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) references: Vec<SourceReference>,
+    pub(crate) switches: Vec<(String, String)>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
     /// The in-flight bound refused an emit: the limit it hit.
@@ -466,6 +510,17 @@ impl Ctx<'_> {
             return;
         }
         self.references.push(reference);
+    }
+
+    /// Ask for `thread` of `project` to be the open conversation: the
+    /// conversation panel emits the switch (`PanelMsg::Switch`), for the same
+    /// party the call is for. Ignored on a silent `Ctx` and while a view is
+    /// closing.
+    pub fn switch_conversation(&mut self, project: &str, thread: &str) {
+        if matches!(self.mode, Mode::Silent | Mode::Forbid(_)) {
+            return;
+        }
+        self.switches.push((project.to_owned(), thread.to_owned()));
     }
 
     /// Who the call is for: the person (a key, a click, the person's own

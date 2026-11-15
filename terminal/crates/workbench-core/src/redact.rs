@@ -324,6 +324,11 @@ impl fmt::Debug for PanelMsg {
             Self::Reference(r) => f.debug_tuple("Reference").field(r).finish(),
             Self::TerminalReport(report) => f.debug_tuple("TerminalReport").field(report).finish(),
             Self::Action(id) => f.debug_tuple("Action").field(id).finish(),
+            Self::Switch { project, thread } => f
+                .debug_struct("Switch")
+                .field("project", &Size(project.len()))
+                .field("thread", &Size(thread.len()))
+                .finish(),
             Self::Workspace(w) => f.debug_tuple("Workspace").field(w).finish(),
             Self::Motion { reduced } => f.debug_struct("Motion").field("reduced", reduced).finish(),
             Self::RevealOffset { start, unit } => f
