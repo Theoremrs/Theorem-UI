@@ -135,6 +135,12 @@ pub fn registry() -> Registry {
             ActionDescriptor::new("picker.open", "Add tool", Open)
                 .key("Mod+Alt+T", KeyScope::Global),
             ActionDescriptor::new("picker.more", "More tools", Open).row(6),
+            // Escape is the picker's fixed way back and Left walks it
+            // sideways; these are the same moves by name, for the agent and
+            // the palette. Pinning takes a chord because typing is the filter.
+            ActionDescriptor::new("picker.back", "Back", Open),
+            ActionDescriptor::new("picker.toggle-pin", "Pin or unpin tool", Open)
+                .key("Mod+Alt+P", KeyScope::Panel),
         ]),
         Spec {
             kind: "changes",

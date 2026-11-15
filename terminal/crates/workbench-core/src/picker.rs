@@ -82,6 +82,7 @@ pub struct Picker {
     /// the active key bindings give its actions. They outlive a close.
     area: Rect,
     shortcuts: BTreeMap<ActionId, String>,
+    pin_shortcut: Option<String>,
 }
 
 impl Default for Picker {
@@ -94,6 +95,7 @@ impl Default for Picker {
             reason: None,
             area: Rect::default(),
             shortcuts: BTreeMap::new(),
+            pin_shortcut: None,
         }
     }
 }
@@ -133,6 +135,12 @@ impl Picker {
         self.shortcuts = shortcuts;
     }
 
+    /// The chord the active bindings give pinning, shown beside the selected
+    /// row's pin mark when it fits.
+    pub fn set_pin_shortcut(&mut self, chord: Option<String>) {
+        self.pin_shortcut = chord;
+    }
+
     /// The rows now showing: this page's, narrowed by the filter, each with the
     /// chord its action has.
     pub fn rows(
@@ -168,6 +176,7 @@ impl Picker {
             filter: self.filter.clone(),
             more: self.page == Page::More,
             reason: self.reason.clone(),
+            pin_shortcut: self.pin_shortcut.clone(),
         }
     }
 
@@ -186,6 +195,7 @@ impl Picker {
         *self = Self {
             area: self.area,
             shortcuts: std::mem::take(&mut self.shortcuts),
+            pin_shortcut: self.pin_shortcut.take(),
             ..Self::default()
         };
     }

@@ -31,7 +31,7 @@ use crate::host::HostMessage;
 use crate::ids::{
     ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceRef, Revision, WorkspaceIdentity,
 };
-use crate::keys::active_contexts;
+use crate::keys::{KeyContext, active_contexts};
 use crate::model::{Drag, Entry, Model, Notice, Viewport};
 use crate::msg::{DockMsg, Inbound, Msg, Pointer};
 use crate::panel::{Button, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind};
@@ -247,6 +247,22 @@ impl Model {
     }
 
     fn picker_key(&mut self, key: KeyInput) -> Vec<Effect> {
+        // Pinning and going back by name come from the key table, so a remap
+        // moves them. Anything else the table binds is not the picker's.
+        let contexts = [
+            KeyContext::Panel {
+                kind: PanelKind::new(PICKER_KIND),
+            },
+            KeyContext::Global,
+        ];
+        let named = self.keys.resolve(&key, &contexts).map(ActionId::as_str);
+        match named {
+            Some(crate::panels::ACTION_TOGGLE_PIN) => {
+                return self.picker_msg(PickerMsg::TogglePin);
+            }
+            Some(crate::panels::ACTION_BACK) => return self.picker_msg(PickerMsg::Back),
+            _ => {}
+        }
         let msg = match key.key() {
             Key::Esc => PickerMsg::Back,
             Key::Enter => PickerMsg::Choose,
@@ -254,8 +270,6 @@ impl Model {
             Key::Up => PickerMsg::Prev,
             Key::Left => PickerMsg::Left,
             Key::Right => PickerMsg::Right,
-            // Typing is the filter, so pinning takes a chord.
-            Key::Char('p') if key.mods() == Mods::CTRL => PickerMsg::TogglePin,
             Key::Backspace => {
                 let mut filter = self.picker.filter().to_owned();
                 filter.pop();
@@ -506,6 +520,9 @@ impl Model {
         let name = id.as_str();
         if name == ACTION_BACK {
             return Some(self.picker_msg(PickerMsg::Back));
+        }
+        if name == crate::panels::ACTION_TOGGLE_PIN {
+            return Some(self.picker_msg(PickerMsg::TogglePin));
         }
         let (kind, pinned) = match (
             name.strip_prefix(ACTION_PIN),

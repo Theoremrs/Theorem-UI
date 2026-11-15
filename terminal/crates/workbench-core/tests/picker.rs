@@ -483,7 +483,7 @@ fn pinning_moves_a_tool_after_the_initial_rows_and_before_more_tools() {
     );
     // By key.
     picker(&mut m, PickerMsg::Next);
-    assert!(key(&mut m, Key::Char('p'), Mods::CTRL).is_empty());
+    assert!(key(&mut m, Key::Char('p'), Mods::CTRL | Mods::ALT).is_empty());
     assert!(m.pinned().contains(&PanelKind::new("diagnostics")));
     assert!(!titles(&m).contains(&"Diagnostics".to_owned()));
     // By pointer on the pin control of the first row.
@@ -956,4 +956,205 @@ fn the_initial_rows_are_the_six_in_order() {
     // Choosing Shell opens a chooser: nothing starts.
     picker(&mut m, PickerMsg::Next);
     assert!(picker(&mut m, PickerMsg::Choose).is_empty());
+}
+
+// ---- the reason wraps -------------------------------------------------------
+
+const LONG: &str =
+    "This host does not report the \"environment\" capability, so this tool cannot start here.";
+
+/// A picker whose Shell row was chosen and refused with a long reason.
+fn refused(_width: u16) -> PickerView {
+    let mut view = standalone(false, "");
+    view.selected = 1;
+    view.reason = Some(LONG.to_owned());
+    view
+}
+
+fn reason_text(view: &PickerView, width: u16, height: u16) -> (String, Rect) {
+    let area = Rect::new(0, 0, width, height);
+    let layout = Layout::compute(view, area);
+    let rect = layout.reason.expect("the reason has lines");
+    let text = render(view, width, height);
+    let drawn: Vec<&str> = text
+        .lines()
+        .skip(usize::from(rect.y))
+        .take(usize::from(rect.height))
+        .map(str::trim)
+        .collect();
+    (drawn.join(" "), rect)
+}
+
+#[test]
+fn a_long_reason_is_whole_at_every_width_and_the_rows_stay_consistent() {
+    for width in [24, 28, 40, 96] {
+        let view = refused(width);
+        let (drawn, rect) = reason_text(&view, width, 14);
+        assert_eq!(drawn, LONG, "{width}");
+        assert!(rect.height >= 1 && rect.bottom() <= 14);
+        if width < 96 {
+            assert!(rect.height > 1, "{width} wraps");
+        }
+        // Every row cell is above the reason, and rows hit-test to themselves.
+        let layout = Layout::compute(&view, Rect::new(0, 0, width, 14));
+        for cell in &layout.cells {
+            assert!(cell.rect.bottom() <= rect.y);
+            assert_eq!(
+                layout.hit(cell.rect.x, cell.rect.y),
+                Some(theorem_workbench_core::picker_layout::PickerHit::Row(
+                    cell.index
+                ))
+            );
+        }
+        assert_eq!(layout.hit(rect.x, rect.y), None);
+        // And the tree's alert node has the same rect and the full text.
+        let theme = Theme::plain();
+        let workspace = Default::default();
+        let mut cx = ViewCtx::new(&theme, &workspace);
+        cx.picker = Some(&view);
+        let nodes = PickerPanel.semantics(Rect::new(0, 0, width, 14), &cx);
+        let alert = nodes.iter().find(|n| n.role == Role::Alert).unwrap();
+        assert_eq!(alert.name, LONG);
+        assert_eq!(
+            Rect::new(
+                alert.rect.x,
+                alert.rect.y,
+                alert.rect.width,
+                alert.rect.height
+            ),
+            rect
+        );
+    }
+}
+
+#[test]
+fn a_reason_keeps_its_lines_and_the_list_gives_way_in_a_short_area() {
+    let mut view = refused(28);
+    view.selected = 5;
+    // 8 rows is the picker's registered minimum height; below it the reason
+    // is cut to what fits and the list keeps one row.
+    for height in 8..=14 {
+        let (drawn, rect) = reason_text(&view, 28, height);
+        assert_eq!(drawn, LONG, "height {height}");
+        let layout = Layout::compute(&view, Rect::new(0, 0, 28, height));
+        assert!(
+            layout.cells.iter().any(|c| c.index == 5),
+            "selected row stays, height {height}"
+        );
+        assert!(layout.cells.iter().all(|c| c.rect.bottom() <= rect.y));
+    }
+}
+
+#[test]
+fn the_real_refusal_wraps_in_a_narrow_picker() {
+    let view = {
+        let registry = builtin::registry();
+        let caps = Capabilities::default();
+        let pins = Default::default();
+        let mut p = Picker::default();
+        p.update(PickerMsg::Open, &registry, &caps, &pins);
+        p.update(PickerMsg::Next, &registry, &caps, &pins);
+        p.update(PickerMsg::Choose, &registry, &caps, &pins);
+        p.view(&registry, &caps, &pins)
+    };
+    let why = view
+        .reason
+        .clone()
+        .expect("Shell is unavailable without capabilities");
+    let (drawn, _) = reason_text(&view, 28, 14);
+    assert_eq!(drawn, why);
+}
+
+// ---- pin and back are registered actions ----------------------------------
+
+#[test]
+fn pin_and_back_are_registered_and_a_remap_moves_the_key_and_the_hint() {
+    let mut m = model(caps(&[]));
+    for id in ["picker.toggle-pin", "picker.back"] {
+        assert!(m.registry().action(&ActionId::new(id)).is_some(), "{id}");
+    }
+    let pin = ActionId::new("picker.toggle-pin");
+    assert_eq!(m.keys().label(&pin).as_deref(), Some("Ctrl+Alt+P"));
+    open_more(&mut m);
+    assert!(key(&mut m, Key::Char('p'), Mods::CTRL | Mods::ALT).is_empty());
+    assert!(m.pinned().contains(&PanelKind::new("cabinet")));
+    // A plain Ctrl+P is not bound any more.
+    key(&mut m, Key::Char('p'), Mods::CTRL);
+    assert_eq!(m.pinned().len(), 1);
+
+    let overrides = Overrides {
+        bind: vec![Shortcut {
+            chord: "Mod+Alt+U".into(),
+            context: KeyContext::Panel {
+                kind: PanelKind::new("picker"),
+            },
+            action: pin.clone(),
+        }],
+        unbind: vec![Unbind {
+            chord: "Mod+Alt+P".into(),
+            context: KeyContext::Panel {
+                kind: PanelKind::new("picker"),
+            },
+        }],
+        ..Overrides::default()
+    };
+    m.set_keys(build_keys(m.registry(), &overrides));
+    assert_eq!(m.keys().label(&pin).as_deref(), Some("Ctrl+Alt+U"));
+    // The old chord does nothing; the new one unpins the selected pinned... row.
+    picker(&mut m, PickerMsg::Select(0));
+    key(&mut m, Key::Char('p'), Mods::CTRL | Mods::ALT);
+    assert_eq!(m.pinned().len(), 1, "the old chord is gone");
+    assert!(key(&mut m, Key::Char('u'), Mods::CTRL | Mods::ALT).is_empty());
+    assert_eq!(m.pinned().len(), 2, "the new chord pins the selected row");
+    // The action by name does the same.
+    assert!(action(&mut m, "picker.toggle-pin").is_empty());
+    assert_eq!(m.pinned().len(), 3);
+}
+
+#[test]
+fn the_pin_chord_shows_beside_the_pin_mark_of_the_selected_row_only_if_it_fits() {
+    let mut view = standalone(true, "");
+    view.pin_shortcut = Some("Ctrl+Alt+P".into());
+    let text = render(&view, 60, 14);
+    let rows: Vec<&str> = text.lines().skip(3).take(3).collect();
+    assert!(rows[0].contains("Ctrl+Alt+P  \u{25cb}"), "{}", rows[0]);
+    assert!(!rows[1].contains("Ctrl"), "only the selected row");
+    // Too narrow: the label wins, the chord is dropped.
+    let text = render(&view, 20, 14);
+    let first = text.lines().nth(3).unwrap();
+    assert!(
+        first.contains("Artifacts") && !first.contains("Ctrl"),
+        "{first}"
+    );
+    // Never at the label's cost, at any width.
+    for width in 0..40 {
+        let text = render(&view, width, 14);
+        let first = text.lines().nth(3).unwrap_or("");
+        if first.contains("Ctrl+Alt+P") {
+            assert!(first.contains("Artifacts"), "{width}: {first}");
+        }
+    }
+}
+
+#[test]
+fn the_long_reason_at_28_columns() {
+    assert_eq!(
+        render(&refused(28), 28, 14),
+        lines(&[
+            "Tools",
+            ">",
+            " Changes         Ctrl+Alt+G",
+            " Shell           Ctrl+Alt+S",
+            " Files           Ctrl+Alt+E",
+            " Side chat       Ctrl+Alt+L",
+            " New page        Ctrl+Alt+N",
+            " More tools",
+            " This host does not report",
+            " the \"environment\"",
+            " capability, so this tool",
+            " cannot start here.",
+            "",
+            "",
+        ])
+    );
 }

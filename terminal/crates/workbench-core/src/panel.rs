@@ -298,6 +298,9 @@ pub struct PickerView {
     pub more: bool,
     /// Why the row last chosen could not be, until the selection moves.
     pub reason: Option<String>,
+    /// The chord the active bindings give pinning and unpinning, for the
+    /// selected row's hint. None: unbound.
+    pub pin_shortcut: Option<String>,
 }
 
 /// Read-only context for `view` and `semantics`.

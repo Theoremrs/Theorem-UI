@@ -233,6 +233,10 @@ impl Model {
             .filter_map(|(_, a)| Some((a.id.clone(), self.keys.label(&a.id)?)))
             .collect();
         self.picker.set_shortcuts(labels);
+        self.picker.set_pin_shortcut(
+            self.keys
+                .label(&ActionId::new(crate::panels::ACTION_TOGGLE_PIN)),
+        );
     }
 
     /// Pin or unpin a tool. Only a More tools entry can be pinned. Returns

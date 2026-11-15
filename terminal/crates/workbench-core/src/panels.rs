@@ -4,12 +4,13 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
+use ratatui::widgets::{Paragraph, Widget, Wrap};
 use serde_json::Value;
 
 use crate::ids::ActionId;
 use crate::panel::{Ctx, Panel, PanelMsg, PickerView, ViewCtx};
 use crate::picker_layout::{
-    BACK, HEADING_MAIN, HEADING_MORE, Layout, NO_MATCH, PAD, PINNED, UNPINNED, row_text,
+    BACK, HEADING_MAIN, HEADING_MORE, Layout, NO_MATCH, PAD, PINNED, UNPINNED, row_text_with,
 };
 use crate::registry::Availability;
 use crate::semantics::{Node, NodeAction, Role};
@@ -18,6 +19,9 @@ pub const PICKER_KIND: &str = "picker";
 
 /// The semantic action of the More tools page's back row.
 pub const ACTION_BACK: &str = "picker.back";
+/// Pin or unpin the selected tool. Registered with a default binding, so a
+/// remap changes the key and the hint beside the pin mark.
+pub const ACTION_TOGGLE_PIN: &str = "picker.toggle-pin";
 /// Prefixes of a row's pin and unpin semantic actions; the tool's panel kind
 /// follows (`picker.pin.cabinet`).
 pub const ACTION_PIN: &str = "picker.pin.";
@@ -146,7 +150,8 @@ impl Panel for PickerPanel {
             if selected {
                 buf.set_style(cell.rect, cx.theme.selected);
             }
-            let t = row_text(row, cell.rect.width, cell.pin.is_some());
+            let pin_hint = selected.then_some(view.pin_shortcut.as_deref()).flatten();
+            let t = row_text_with(row, cell.rect.width, cell.pin.is_some(), pin_hint);
             draw(buf, cell.rect, t.label_at, &t.label, label);
             if let Some(q) = &t.qualifier {
                 draw(buf, cell.rect, t.qualifier_at, q, quiet);
@@ -154,13 +159,26 @@ impl Panel for PickerPanel {
             if let Some(h) = &t.hint {
                 draw(buf, cell.rect, t.hint_at, h, quiet);
             }
+            if let Some(h) = &t.pin_hint {
+                draw(buf, cell.rect, t.pin_hint_at, h, quiet);
+            }
             if let Some(pin) = cell.pin {
                 let glyph = if row.pinned { PINNED } else { UNPINNED };
                 draw(buf, pin, 0, glyph, quiet);
             }
         }
         if let (Some(rect), Some(reason)) = (layout.reason, &view.reason) {
-            draw(buf, rect, PAD, reason, cx.theme.warning);
+            // The reason wraps; the layout reserved the lines it needs.
+            let at = Rect::new(
+                rect.x + PAD.min(rect.width),
+                rect.y,
+                rect.width.saturating_sub(PAD),
+                rect.height,
+            );
+            Paragraph::new(reason.as_str())
+                .style(cx.theme.warning)
+                .wrap(Wrap { trim: true })
+                .render(at, buf);
         }
     }
 

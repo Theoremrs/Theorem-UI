@@ -10,6 +10,7 @@
 
 use ratatui::layout::Rect;
 use ratatui::text::Span;
+use ratatui::widgets::{Paragraph, Wrap};
 
 use crate::panel::PickerView;
 use crate::registry::PickerRow;
@@ -113,7 +114,9 @@ pub struct Layout {
     pub filter: Rect,
     /// "No tools match", when the filter leaves nothing.
     pub empty: Option<Rect>,
-    /// The line for the reason a chosen row is unavailable.
+    /// The lines for the reason a chosen row is unavailable, from just under
+    /// the list: the reason is wrapped in the width after the left pad, and
+    /// takes the height it needs before the list does.
     pub reason: Option<Rect>,
     /// The rows showing, by index. Rows scrolled out have no cell.
     pub cells: Vec<Cell>,
@@ -146,8 +149,22 @@ impl Layout {
         let top = y;
 
         let room = usize::from(area.bottom().saturating_sub(top));
-        let reason_rows = usize::from(view.reason.is_some());
-        let visible = room.saturating_sub(reason_rows).max(usize::from(room > 0));
+        // The reason keeps every line it needs; the list scrolls or shortens,
+        // keeping a row while it can.
+        let reason_w = area.width.saturating_sub(PAD);
+        let wanted = view.reason.as_ref().map_or(0, |r| {
+            if reason_w == 0 {
+                0
+            } else {
+                reason_lines(r, reason_w)
+            }
+        });
+        let reason_rows = if room >= 2 {
+            wanted.min(room - 1)
+        } else {
+            wanted.min(room)
+        };
+        let visible = room - reason_rows;
         let selected_line = view.selected.min(n.saturating_sub(1)) % per_column;
         let offset = (selected_line + 1).saturating_sub(visible);
 
@@ -178,9 +195,13 @@ impl Layout {
         let shown = per_column.saturating_sub(offset).min(visible);
         let below = top.saturating_add(u16::try_from(shown).unwrap_or(u16::MAX));
         let empty = (n == 0).then(|| line(area, top));
-        let reason = view.reason.as_ref().map(|_| {
+        let reason = (reason_rows > 0).then(|| {
             let y = if n == 0 { top.saturating_add(1) } else { below };
-            line(area, y)
+            let top_of_reason = y.min(area.bottom());
+            let height = u16::try_from(reason_rows)
+                .unwrap_or(u16::MAX)
+                .min(area.bottom() - top_of_reason);
+            Rect::new(area.x, top_of_reason, area.width, height)
         });
         Self {
             columns,
@@ -222,13 +243,29 @@ pub struct RowText {
     pub label: String,
     pub qualifier: Option<String>,
     pub hint: Option<String>,
+    /// The chord for pinning, beside the pin mark.
+    pub pin_hint: Option<String>,
     /// Offsets from the cell's left edge.
     pub label_at: u16,
     pub qualifier_at: u16,
     pub hint_at: u16,
+    pub pin_hint_at: u16,
+}
+
+/// How many lines `reason` takes wrapped in `width` cells.
+pub fn reason_lines(reason: &str, width: u16) -> usize {
+    Paragraph::new(reason)
+        .wrap(Wrap { trim: true })
+        .line_count(width)
 }
 
 pub fn row_text(row: &PickerRow, width: u16, pin: bool) -> RowText {
+    row_text_with(row, width, pin, None)
+}
+
+/// [`row_text`] with the chord for pinning to show beside the pin mark when
+/// it fits after the label and the row's own hint.
+pub fn row_text_with(row: &PickerRow, width: u16, pin: bool, pin_hint: Option<&str>) -> RowText {
     let right = if pin { PIN_W } else { 0 };
     let usable = width.saturating_sub(PAD * 2 + right);
     let label = fit(&row.title, usable);
@@ -241,18 +278,31 @@ pub fn row_text(row: &PickerRow, width: u16, pin: bool) -> RowText {
     if let Some(h) = hint {
         used += SEP + text_width(h);
     }
+    let pin_hint = pin_hint.filter(|h| pin && used + SEP + text_width(h) <= usable);
+    if let Some(h) = pin_hint {
+        used += SEP + text_width(h);
+    }
     let qualifier = row.chooses.qualifier().filter(|q| {
         // The qualifier gives way before the hint does.
         used + SEP + text_width(q) <= usable
     });
     let hint_w = hint.map_or(0, |h| text_width(h));
+    let pin_hint_w = pin_hint.map_or(0, text_width);
+    let pin_hint_at = width.saturating_sub(PAD + right + pin_hint_w);
+    let hint_end = if pin_hint.is_some() {
+        pin_hint_at.saturating_sub(SEP)
+    } else {
+        width.saturating_sub(PAD + right)
+    };
     RowText {
         label_at: PAD,
         qualifier_at: PAD + label_w + SEP,
-        hint_at: width.saturating_sub(PAD + right + hint_w),
+        hint_at: hint_end.saturating_sub(hint_w),
+        pin_hint_at,
         label,
         qualifier,
         hint: hint.cloned(),
+        pin_hint: pin_hint.map(str::to_owned),
     }
 }
 
@@ -308,6 +358,7 @@ mod tests {
             filter: String::new(),
             more,
             reason: None,
+            pin_shortcut: None,
         }
     }
 
