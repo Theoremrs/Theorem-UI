@@ -24,6 +24,9 @@ const density = z.enum(['compact', 'comfortable', 'touch'])
 const reading = z.enum(['comfortable', 'wide'])
 const layout = z.enum(['conversation', 'sidecar'])
 const motion = z.enum(['system', 'reduced'])
+// The cabinet's preview preference. Absent is "use theme default": the
+// preset decides (expressive → pixel, calm → full_fidelity).
+export const previewPreferenceSchema = z.enum(['pixel', 'full_fidelity'])
 const scale = z.number().min(0.75).max(2)
 const fontFamily = z
   .string()
@@ -92,6 +95,7 @@ const appearanceOptionsSchema = z
     reading,
     layout,
     motion,
+    preview: previewPreferenceSchema,
     scales: z
       .strictObject({ content: scale, ui: scale, code: scale })
       .partial(),
