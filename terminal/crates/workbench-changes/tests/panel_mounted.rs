@@ -2340,3 +2340,137 @@ fn opening_changes_from_the_picker_lands_in_the_tool_group() {
     update(&mut m, Msg::Picker(PickerMsg::Choose));
     assert!(tools_group_holds_changes(&m), "the picker opened nothing");
 }
+
+// ---- a binary conflict ---------------------------------------------------------------------
+
+/// A binary file's sides: they exist but carry no text, so each is present and empty.
+fn binary_sides() -> ConflictSides {
+    ConflictSides {
+        path: "both.rs".into(),
+        conflict: true,
+        binary: true,
+        base: Some(String::new()),
+        ours: Some(String::new()),
+        theirs: Some(String::new()),
+    }
+}
+
+#[test]
+fn a_binary_conflict_says_it_is_binary_and_draws_no_empty_diff_or_no_file_rows() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, binary_sides());
+    let screen = rig.screen();
+    assert!(
+        screen.contains("This file is binary. Its sides cannot be shown as text."),
+        "{screen}"
+    );
+    assert!(screen.contains("Ours (this branch)"), "{screen}");
+    assert!(screen.contains("Theirs (incoming)"), "{screen}");
+    assert!(screen.contains("Binary: not shown as text."), "{screen}");
+    assert!(!screen.contains("The file is empty."), "{screen}");
+    assert!(!screen.contains("This side has no file."), "{screen}");
+    assert!(screen.contains("o take ours   t take theirs"), "{screen}");
+    assert!(!screen.contains("merge by hand"), "{screen}");
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_binary_side_that_does_not_exist_is_still_said_to_have_no_file() {
+    let mut rig = conflicted();
+    open_sides(
+        &mut rig,
+        ConflictSides {
+            ours: None,
+            base: None,
+            ..binary_sides()
+        },
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("This side has no file."), "{screen}");
+    assert!(screen.contains("Binary: not shown as text."), "{screen}");
+    assert!(!screen.contains("Base (the common ancestor)"), "{screen}");
+}
+
+#[test]
+fn a_binary_conflict_offers_both_sides_and_withholds_merging_by_hand() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, binary_sides());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let list = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str().ends_with("/list"))
+        .expect("the list");
+    let offered: Vec<&str> = list.actions.iter().map(|a| a.id.as_str()).collect();
+    assert!(offered.contains(&actions::TAKE_OURS), "{offered:?}");
+    assert!(offered.contains(&actions::TAKE_THEIRS), "{offered:?}");
+    assert!(!offered.contains(&actions::EDIT_CONFLICT), "{offered:?}");
+    assert!(
+        list.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("Binary")
+    );
+    // The key and the action open no editor.
+    assert!(rig.ch('e').is_empty());
+    assert!(rig.action(actions::EDIT_CONFLICT, agent()).is_empty());
+    assert!(!rig.m.panel_ids().any(|(_, k)| k.as_str() == "document"));
+}
+
+#[test]
+fn taking_ours_in_a_binary_conflict_sends_exactly_one_resolve_with_no_text() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, binary_sides());
+    assert!(rig.ch('o').is_empty());
+    let fx = rig.key(Key::Enter);
+    once(&fx, "resolve");
+    match &fx[0].body {
+        EffectBody::ScmResolve(r) => {
+            assert_eq!(r.path, "both.rs");
+            assert_eq!(r.take, theorem_workbench_core::effect::ConflictTake::Ours);
+            assert!(r.text.is_none());
+        }
+        other => panic!("{other:?}"),
+    }
+    assert!(rig.key(Key::Enter).is_empty(), "nothing is sent twice");
+}
+
+#[test]
+fn taking_theirs_in_a_binary_conflict_sends_the_theirs_take_with_no_text() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, binary_sides());
+    rig.ch('t');
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmResolve(r) => {
+            assert_eq!(r.take, theorem_workbench_core::effect::ConflictTake::Theirs);
+            assert!(r.text.is_none());
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_text_conflict_still_offers_merging_by_hand_and_draws_its_lines() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    let screen = rig.screen();
+    assert!(
+        screen.contains("o take ours   t take theirs   e merge by hand in the editor"),
+        "{screen}"
+    );
+    assert!(!screen.contains("Binary"), "{screen}");
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    let list = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str().ends_with("/list"))
+        .expect("the list");
+    assert!(
+        list.actions
+            .iter()
+            .any(|a| a.id.as_str() == actions::EDIT_CONFLICT)
+    );
+}

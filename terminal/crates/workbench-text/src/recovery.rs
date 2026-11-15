@@ -236,14 +236,56 @@ pub fn refusal(offer: Offer, placed: Option<bool>, read_only: Option<&str>) -> O
     }
 }
 
-/// The recovered edits' inserted text, one run per edit, for copying and for
-/// adding after the file's text.
+/// What the person wrote, as they wrote it, from recovered edits that are not
+/// placed.
+///
+/// `sets` are the restored entries in order, each over the text the one before
+/// left, in the coordinates of a base text this crate does not have: a
+/// `Restored` carries the ranges and the inserts but not the text they were
+/// made against. Replaying them over an empty scratch text would therefore
+/// fail for any edit made past the start of a longer base, so the entries are
+/// replayed as runs instead, which gives the same text a scratch replay would
+/// wherever one is possible. An insert that starts inside the current run
+/// (at its end, or in its middle) goes into it, a delete inside the run takes
+/// the characters out, and anything else ends the run: a new run starts after
+/// a line break. A deletion elsewhere inserts nothing but still ends the run,
+/// because it moves the position.
 pub fn recovered_text(sets: &[Vec<TextChange>]) -> String {
-    sets.iter()
-        .map(|set| set.iter().map(|c| c.insert.as_str()).collect::<String>())
-        .filter(|t| !t.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut done: Vec<String> = vec![];
+    // The current run: where it starts and its UTF-16 units.
+    let mut run: Option<(usize, Vec<u16>)> = None;
+    let mut finish = |run: &mut Option<(usize, Vec<u16>)>| {
+        if let Some((_, units)) = run.take() {
+            let text = String::from_utf16_lossy(&units);
+            if !text.is_empty() {
+                done.push(text);
+            }
+        }
+    };
+    for set in sets {
+        // The ranges of one entry are against the text before it: each change
+        // after the first is moved by what the ones before it did.
+        let mut shift: isize = 0;
+        for c in set {
+            let start = c.start.saturating_add_signed(shift);
+            let end = c.end.saturating_add_signed(shift);
+            let insert: Vec<u16> = c.insert.encode_utf16().collect();
+            shift += insert.len() as isize - (c.end - c.start) as isize;
+            if let Some((at, units)) = run.as_mut()
+                && start >= *at
+                && end <= *at + units.len()
+            {
+                units.splice(start - *at..end - *at, insert);
+                continue;
+            }
+            finish(&mut run);
+            if !insert.is_empty() {
+                run = Some((start, insert));
+            }
+        }
+    }
+    finish(&mut run);
+    done.join("\n")
 }
 
 /// What "keep both" inserts at the end of the file's text: the recovered text
@@ -376,7 +418,7 @@ mod tests {
         // "abhelZlo\n", then the first character is removed.
         assert_eq!(s.text(), "bhelZlo\n");
         assert!(fits("hi", &[vec![change(5, 5, "x")]]).is_err());
-        assert_eq!(recovered_text(&sets), "abZ");
+        assert_eq!(recovered_text(&sets), "ab\nZ");
     }
 
     #[test]
@@ -384,5 +426,62 @@ mod tests {
         assert_eq!(after_file_text("hello\n", "X"), "X");
         assert_eq!(after_file_text("hello", "X"), "\nX");
         assert_eq!(after_file_text("", "X"), "X");
+    }
+
+    fn typed(text: &str) -> Vec<Vec<TextChange>> {
+        text.chars()
+            .enumerate()
+            .map(|(i, c)| vec![change(i, i, &c.to_string())])
+            .collect()
+    }
+
+    #[test]
+    fn characters_typed_one_at_a_time_read_as_the_word() {
+        assert_eq!(recovered_text(&typed("zzdraft")), "zzdraft");
+    }
+
+    #[test]
+    fn separate_runs_are_separate_lines() {
+        let mut sets = typed("ab");
+        sets.extend([vec![change(9, 9, "c")], vec![change(10, 10, "d")]]);
+        assert_eq!(recovered_text(&sets), "ab\ncd");
+    }
+
+    #[test]
+    fn an_insert_in_the_middle_of_a_run_lands_in_the_middle() {
+        let mut sets = typed("abcd");
+        sets.push(vec![change(2, 2, "X")]);
+        assert_eq!(recovered_text(&sets), "abXcd");
+    }
+
+    #[test]
+    fn a_backspace_inside_a_run_removes_the_character() {
+        let mut sets = typed("abc");
+        sets.push(vec![change(2, 3, "")]);
+        sets.push(vec![change(2, 2, "d")]);
+        assert_eq!(recovered_text(&sets), "abd");
+    }
+
+    #[test]
+    fn a_deletion_elsewhere_ends_the_run_and_adds_nothing() {
+        let mut sets = typed("ab");
+        sets.push(vec![change(7, 8, "")]);
+        sets.push(vec![change(2, 2, "c")]);
+        assert_eq!(recovered_text(&sets), "ab\nc");
+    }
+
+    #[test]
+    fn pastes_keep_their_own_line_breaks() {
+        let sets = vec![
+            vec![change(0, 0, "one\ntwo\n")],
+            vec![change(8, 8, "three")],
+        ];
+        assert_eq!(recovered_text(&sets), "one\ntwo\nthree");
+    }
+
+    #[test]
+    fn units_are_utf16() {
+        let sets = vec![vec![change(0, 0, "\u{1f600}")], vec![change(2, 2, "x")]];
+        assert_eq!(recovered_text(&sets), "\u{1f600}x");
     }
 }

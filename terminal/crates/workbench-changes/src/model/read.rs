@@ -205,6 +205,15 @@ impl Changes {
             .map(|k| k.path.clone())
     }
 
+    /// Whether the open conflict is a binary file: its sides are not text, so only a whole
+    /// side can be taken and merging by hand is not offered.
+    pub fn conflict_binary(&self) -> bool {
+        matches!(
+            self.read.as_ref().map(|r| &r.body),
+            Some(ReadBody::Conflict(sides)) if sides.binary
+        )
+    }
+
     /// Whether a conflict view is open (so the side keys apply).
     pub fn conflict_view(&self) -> bool {
         self.read

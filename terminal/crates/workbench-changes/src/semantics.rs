@@ -176,8 +176,11 @@ impl Changes {
                         settled.clone().or_else(|| block.clone()),
                     ),
                     act(actions::TAKE_THEIRS, settled.or_else(|| block.clone())),
-                    act(actions::EDIT_CONFLICT, None),
                 ];
+                // Merging by hand needs text: a binary file offers whole sides only.
+                if !sides.binary {
+                    list.actions.push(act(actions::EDIT_CONFLICT, None));
+                }
             }
             if matches!(read.body, ReadBody::History(_)) {
                 list.actions = vec![
@@ -193,6 +196,9 @@ impl Changes {
                 ReadBody::History(c) => format!("{} commits", c.len()),
                 ReadBody::Conflict(sides) if !sides.conflict => {
                     "The file is no longer in conflict".to_owned()
+                }
+                ReadBody::Conflict(sides) if sides.binary => {
+                    "Binary file: its sides cannot be shown as text".to_owned()
                 }
                 ReadBody::Conflict(sides) => format!(
                     "Ours {}, theirs {}",

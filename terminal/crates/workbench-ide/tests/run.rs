@@ -784,3 +784,124 @@ fn a_click_in_a_scrolled_field_accounts_for_the_scroll() {
     );
     assert_eq!(&value[at + 1..at + 4], first, "{value}");
 }
+
+// ---- how a listed run reads: exit code and kind ----------------------------------------------
+
+fn listed(rows: Vec<RunSummary>) -> common::Rig {
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], CompletionPayload::RunList(RunList { runs: rows }));
+    rig
+}
+
+fn ended(handle: &str, state: &str, code: Option<i32>, kind: Option<&str>, at: u64) -> RunSummary {
+    RunSummary {
+        exit_code: code,
+        kind: kind.map(Into::into),
+        ..summary(handle, "job", &["make"], state, at)
+    }
+}
+
+fn row_of<'a>(screen: &'a [String], handle: &str) -> &'a str {
+    screen
+        .iter()
+        .find(|l| l.contains(&format!("[{handle}]")))
+        .unwrap_or_else(|| panic!("{handle}: {screen:?}"))
+}
+
+#[test]
+fn a_listed_run_says_how_it_ended_in_the_words_a_followed_run_uses() {
+    let rig = listed(vec![
+        ended("ok", "exited", Some(0), None, 4),
+        ended("bad", "exited", Some(101), None, 3),
+        ended("none", "exited", None, None, 2),
+        ended("live", "running", None, None, 1),
+    ]);
+    let screen = rig.screen();
+    assert!(
+        row_of(&screen, "ok").starts_with("exited with code 0  job"),
+        "{screen:?}"
+    );
+    assert!(row_of(&screen, "bad").starts_with("exited with code 101  job"));
+    assert!(
+        row_of(&screen, "none").starts_with("exited (no code given)  job"),
+        "no number is guessed: {screen:?}"
+    );
+    assert!(row_of(&screen, "live").starts_with("running  job"));
+    // The semantic tree says the same.
+    let name = |h: &str| {
+        rig.nodes()
+            .into_iter()
+            .find(|n| n.name.contains(&format!("[{h}]")))
+            .unwrap()
+            .name
+    };
+    assert!(name("bad").contains("exited with code 101") && name("none").contains("no code given"));
+}
+
+#[test]
+fn only_a_non_zero_exit_takes_the_error_role() {
+    use ratatui::style::Color;
+    let rig = listed(vec![
+        ended("ok", "exited", Some(0), None, 3),
+        ended("bad", "exited", Some(2), None, 2),
+        ended("none", "exited", None, None, 1),
+    ]);
+    let theme = Theme::plain().with_state(
+        ratatui::style::Style::new().fg(Color::Red),
+        ratatui::style::Style::new(),
+        ratatui::style::Style::new(),
+    );
+    let buf = rig.cells(&theme, 80, 24);
+    let fg_at = |needle: &str| {
+        let y = common::row_with(&buf, needle);
+        buf[(0, y)].fg
+    };
+    assert_eq!(fg_at("[bad]"), Color::Red);
+    assert_ne!(fg_at("[ok]"), Color::Red);
+    assert_ne!(fg_at("[none]"), Color::Red);
+}
+
+#[test]
+fn a_kind_is_a_muted_label_beside_the_name_and_absent_when_the_host_gave_none() {
+    let rig = listed(vec![
+        ended("with", "running", None, Some("test"), 2),
+        ended("without", "running", None, None, 1),
+    ]);
+    let screen = rig.screen();
+    assert!(
+        row_of(&screen, "with").contains("job  test  make"),
+        "{screen:?}"
+    );
+    assert!(!row_of(&screen, "without").contains("test"));
+    assert_eq!(
+        row_of(&screen, "without").split("  ").nth(1),
+        Some("job"),
+        "no kind is made up from `make`"
+    );
+    let item = rig
+        .nodes()
+        .into_iter()
+        .find(|n| n.name.contains("[with]"))
+        .unwrap();
+    assert!(item.name.contains("(test)"), "{}", item.name);
+}
+
+#[test]
+fn a_narrow_width_drops_the_kind_before_it_cuts_the_name() {
+    let (mut rig, sent) = listing();
+    let mut long = ended("h1", "running", None, Some("debug"), 1);
+    long.name = Some("integration-suite".into());
+    rig.accept(
+        &sent[0],
+        CompletionPayload::RunList(RunList { runs: vec![long] }),
+    );
+    // Wide: name and kind both whole.
+    assert!(rig.screen().join("\n").contains("integration-suite  debug"));
+    // "running  integration-suite" is 26 cells; the kind needs 7 more. At 30 columns it
+    // does not fit, so the kind goes and the name stays whole.
+    let theme = Theme::plain();
+    let buf = rig.cells(&theme, 30, 24);
+    let text = common::lines(&buf).join("\n");
+    assert!(text.contains("running  integration-suite"), "{text}");
+    assert!(!text.contains("debug"), "{text}");
+}

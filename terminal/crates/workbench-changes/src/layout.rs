@@ -257,17 +257,26 @@ fn conflict_rows(sides: &ConflictSides, out: &mut Vec<Row<'_>>) {
             "The file is no longer in conflict. Refresh the list.",
             Tone::Warning,
         ));
+    } else if sides.binary {
+        out.push(text(
+            "This file is binary. Its sides cannot be shown as text.",
+            Tone::Warning,
+        ));
+        out.push(text("o take ours   t take theirs", Tone::Muted));
     } else {
         out.push(text(
             "o take ours   t take theirs   e merge by hand in the editor",
             Tone::Muted,
         ));
     }
+    let binary = sides.binary;
     let mut side = |title: &str, body: &Option<String>| {
         out.push(text(String::new(), Tone::Plain));
         out.push(text(title.to_owned(), Tone::Muted));
         match body {
             None => out.push(text("This side has no file.", Tone::Muted)),
+            // A binary side carries no text; it exists, it is just not text.
+            Some(_) if binary => out.push(text("Binary: not shown as text.", Tone::Muted)),
             Some(body) if body.is_empty() => out.push(text("The file is empty.", Tone::Muted)),
             Some(body) => {
                 let digits = body.lines().count().to_string().len();

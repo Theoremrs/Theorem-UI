@@ -13,7 +13,7 @@ use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalAttach, TerminalBackend, TerminalClaim, TerminalInput,
     TerminalInputBytes, TerminalResize, TerminalRole,
 };
-use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::host::{HostMessage, TerminalAdoption, TerminalModes};
 use theorem_workbench_core::ids::{EffectId, Generation, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_vt::Screen;
@@ -302,6 +302,8 @@ pub(crate) struct Bound {
     /// The previous program of this pane, when this one was started to follow
     /// a lost one.
     pub follows: Option<String>,
+    /// The host settled its listing and the session was not in it.
+    pub gone: bool,
 }
 
 impl Bound {
@@ -351,6 +353,56 @@ impl Bound {
             end_effect: None,
             selecting: false,
             follows: None,
+            gone: false,
+        }
+    }
+
+    /// Start the screen in the modes the host reports for the session. The
+    /// vt screen reads modes from the stream, so they are replayed as the
+    /// escape sequences that set them; the stream offset stays at zero, and a
+    /// later repaint or output replaces them like any other state.
+    pub(crate) fn seed_modes(&mut self, m: &TerminalModes) {
+        use theorem_workbench_core::host::{MouseEncoding, MouseProtocol};
+        let mut seq = String::new();
+        let mut set = |on: bool, on_seq: &str| {
+            if on {
+                seq.push_str(on_seq);
+            }
+        };
+        set(m.alternate_screen, "\x1b[?1049h");
+        set(m.application_cursor, "\x1b[?1h");
+        set(m.application_keypad, "\x1b=");
+        set(m.bracketed_paste, "\x1b[?2004h");
+        set(m.hide_cursor, "\x1b[?25l");
+        seq.push_str(match m.mouse_protocol {
+            MouseProtocol::None => "",
+            MouseProtocol::Press => "\x1b[?9h",
+            MouseProtocol::PressRelease => "\x1b[?1000h",
+            MouseProtocol::ButtonMotion => "\x1b[?1002h",
+            MouseProtocol::AnyMotion => "\x1b[?1003h",
+        });
+        seq.push_str(match m.mouse_encoding {
+            MouseEncoding::Default => "",
+            MouseEncoding::Utf8 => "\x1b[?1005h",
+            MouseEncoding::Sgr => "\x1b[?1006h",
+        });
+        if !seq.is_empty() {
+            self.screen.reset_with_formatted(seq.as_bytes(), 0);
+        }
+    }
+
+    /// A listing arrived. Only a settled one proves absence: under a pending
+    /// or unavailable one, or from a host that does not say, a missing
+    /// session may just not be found yet.
+    pub(crate) fn listed(&mut self, data: &crate::catalog::CatalogData) {
+        let present = data
+            .sessions
+            .iter()
+            .any(|s| s.session == self.session && s.workspace == self.workspace);
+        match data.adoption {
+            Some(TerminalAdoption::Settled) => self.gone = !present,
+            _ if present => self.gone = false,
+            _ => {}
         }
     }
 

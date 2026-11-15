@@ -2,6 +2,7 @@
 //! started. Each row says workspace, host, profile and what persistence means
 //! for it.
 
+use theorem_workbench_core::host::TerminalAdoption;
 use theorem_workbench_core::ids::WorkspaceIdentity;
 
 use crate::catalog::{
@@ -127,7 +128,12 @@ pub(crate) enum LineKind {
     Note,
 }
 
-pub(crate) fn lines(rows: &[Row], identity: &WorkspaceIdentity, note: Option<&str>) -> Vec<Line> {
+pub(crate) fn lines(
+    rows: &[Row],
+    identity: &WorkspaceIdentity,
+    adoption: Option<&TerminalAdoption>,
+    note: Option<&str>,
+) -> Vec<Line> {
     let mut out = vec![];
     let mut push = |text: String, kind, row| out.push(Line { text, kind, row });
     let host = host_of(identity, None);
@@ -153,9 +159,33 @@ pub(crate) fn lines(rows: &[Row], identity: &WorkspaceIdentity, note: Option<&st
         push(note.to_owned(), LineKind::Note, None);
     }
     let sessions = session_count(rows);
+    match adoption {
+        Some(TerminalAdoption::Pending) => push(
+            "The host is still looking for running terminals. This list may be incomplete."
+                .to_owned(),
+            LineKind::Note,
+            None,
+        ),
+        Some(TerminalAdoption::Unavailable { reason }) => push(
+            match reason {
+                Some(r) => format!("The host cannot list its terminals: {r}"),
+                None => "The host cannot list its terminals.".to_owned(),
+            },
+            LineKind::Note,
+            None,
+        ),
+        Some(TerminalAdoption::Settled) | None => {}
+    }
     push(String::new(), LineKind::Body, None);
+    // An empty list is only "no terminals" when nothing says it is incomplete.
+    let incomplete = matches!(
+        adoption,
+        Some(TerminalAdoption::Pending | TerminalAdoption::Unavailable { .. })
+    );
     push(
-        if sessions == 0 {
+        if sessions == 0 && incomplete {
+            "No sessions listed yet".to_owned()
+        } else if sessions == 0 {
             "No existing sessions to attach to".to_owned()
         } else {
             "Existing sessions (attach; o observes, t takes control)".to_owned()

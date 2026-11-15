@@ -157,6 +157,15 @@ pub(crate) fn footer(b: &Bound) -> Option<(String, Tone)> {
         }
         Status::Running => {}
     }
+    if b.gone {
+        return Some((
+            format!(
+                "The host no longer lists session {}: it is gone. Esc returns to the chooser.",
+                b.session
+            ),
+            Tone::Warning,
+        ));
+    }
     if let Some(from) = &b.follows {
         return Some((
             format!("A new process. It does not continue {from}."),
@@ -180,8 +189,14 @@ pub(crate) fn view(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
 }
 
 fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
-    let rows = chooser::rows(&p.catalog.snapshot(&p.identity.workspace), &p.identity);
-    let lines = chooser::lines(&rows, &p.identity, p.note.as_deref());
+    let data = p.catalog.snapshot(&p.identity.workspace);
+    let rows = chooser::rows(&data, &p.identity);
+    let lines = chooser::lines(
+        &rows,
+        &p.identity,
+        data.adoption.as_ref(),
+        p.note.as_deref(),
+    );
     let selected = p.selected.min(rows.len().saturating_sub(1));
     let top = chooser::top_for(&lines, selected, usize::from(area.height));
     for (i, line) in lines

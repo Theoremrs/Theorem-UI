@@ -282,6 +282,18 @@ impl ProcessPanel {
             cols,
             rows,
         );
+        // What the host says the program already asked of the terminal, so the
+        // first key or mouse event is encoded before any output arrives.
+        let modes = self
+            .catalog
+            .snapshot(&self.identity.workspace)
+            .sessions
+            .iter()
+            .find(|s| s.session == session && s.workspace == self.identity.workspace)
+            .and_then(|s| s.modes);
+        if let Some(modes) = modes {
+            bound.seed_modes(&modes);
+        }
         if bound.attach(cx, Purpose::Initial, want, why, 0) {
             self.note = None;
             self.stage = Stage::Bound(Box::new(bound));
@@ -623,7 +635,13 @@ impl ProcessPanel {
                 };
             }
             PointerKind::Down(Button::Left) => {
-                let lines = chooser::lines(&rows, &self.identity, self.note.as_deref());
+                let data = self.catalog.snapshot(&self.identity.workspace);
+                let lines = chooser::lines(
+                    &rows,
+                    &self.identity,
+                    data.adoption.as_ref(),
+                    self.note.as_deref(),
+                );
                 let height = usize::from(self.body.height);
                 let top = chooser::top_for(
                     &lines,
@@ -863,16 +881,22 @@ impl ProcessPanel {
             workspace,
             profiles,
             sessions,
-            ..
+            adoption,
         } = message
         {
             // A listing said for another workspace is not this pane's.
             if workspace == self.identity.workspace {
-                self.catalog.replace(CatalogData {
+                let data = CatalogData {
                     workspace,
                     profiles,
                     sessions,
-                });
+                    adoption,
+                };
+                if let Some(b) = self.bound_mut() {
+                    b.listed(&data);
+                }
+                self.catalog.replace(data);
+                cx.invalidate();
             }
             return;
         }

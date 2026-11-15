@@ -552,6 +552,10 @@ impl ChangesPanel {
 
     /// Opens the conflicted file in the editor, to merge it by hand.
     fn edit_conflict(&mut self, cx: &mut Ctx) {
+        // A binary file has no text to merge by hand.
+        if self.model.conflict_binary() {
+            return;
+        }
         if let Some(path) = self.model.conflict_path() {
             cx.open(OpenTarget::File {
                 workspace: self.identity.workspace.clone(),

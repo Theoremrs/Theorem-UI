@@ -24,8 +24,8 @@ use ansi_to_tui::IntoText;
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::text::Line;
+use ratatui::style::{Color, Style};
+use ratatui::text::{Line, Span};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
@@ -1192,7 +1192,8 @@ impl RunPanel {
             if i == p.sel {
                 buf.set_style(row, base);
             }
-            text::put(buf, row.x, row.y, row.width as usize, &run_line(run), base);
+            let line = run_row(run, row.width as usize, base, s, i == p.sel);
+            buf.set_line(row.x, row.y, &line, row.width);
         }
     }
 
@@ -1375,16 +1376,77 @@ impl RunPanel {
     }
 }
 
-/// One listed run on one row: the host's state word, its name, its command and its handle.
-fn run_line(run: &RunSummary) -> String {
-    let mut line = format!("{:<9} ", run.state);
-    line.push_str(run.name.as_deref().unwrap_or("(unnamed)"));
+/// The pieces of one listed run's row. The state is said as it is for a followed run
+/// ("running", "exited with code 101", "exited (no code given)"); a code the host did not
+/// give is never read as 0, and a kind the host did not give is never made up.
+struct RunParts {
+    state: String,
+    /// The run ended with a non-zero code.
+    bad: bool,
+    name: String,
+    kind: Option<String>,
+    tail: String,
+}
+
+fn run_parts(run: &RunSummary) -> RunParts {
+    let word = Word {
+        word: run.state.clone(),
+        code: run.exit_code.map(i64::from),
+    };
+    let mut tail = String::new();
     if let Some(argv) = &run.command {
-        line.push_str("  ");
-        line.push_str(&argv.join(" "));
+        tail.push_str("  ");
+        tail.push_str(&argv.join(" "));
     }
-    line.push_str(&format!("  [{}]", run.handle));
-    line
+    tail.push_str(&format!("  [{}]", run.handle));
+    RunParts {
+        state: word.describe(),
+        bad: run.exit_code.is_some_and(|c| c != 0),
+        name: run.name.clone().unwrap_or_else(|| "(unnamed)".to_owned()),
+        kind: run.kind.clone(),
+        tail,
+    }
+}
+
+/// One listed run as plain text, for the semantic tree.
+fn run_line(run: &RunSummary) -> String {
+    let p = run_parts(run);
+    let kind = p.kind.map(|k| format!(" ({k})")).unwrap_or_default();
+    format!("{}  {}{kind}{}", p.state, p.name, p.tail)
+}
+
+/// One listed run drawn in `width` cells: the state in the error role when the run ended
+/// with a non-zero code, the kind muted beside the name. A kind that does not fit whole next
+/// to the name is dropped before the name is cut.
+fn run_row(
+    run: &RunSummary,
+    width: usize,
+    base: Style,
+    s: &Styles,
+    selected: bool,
+) -> Line<'static> {
+    let p = run_parts(run);
+    let (state_style, kind_style) = if selected {
+        (base, base)
+    } else if p.bad {
+        (s.error, s.muted)
+    } else {
+        (base, s.muted)
+    };
+    let mut spans = vec![
+        Span::styled(p.state.clone(), state_style),
+        Span::styled("  ", base),
+        Span::styled(p.name.clone(), base),
+    ];
+    if let Some(kind) = &p.kind {
+        let label = format!("  {kind}");
+        let upto = text::width(&p.state) + 2 + text::width(&p.name) + text::width(&label);
+        if upto <= width {
+            spans.push(Span::styled(label, kind_style));
+        }
+    }
+    spans.push(Span::styled(p.tail, base));
+    Line::from(spans)
 }
 
 struct ChipLabels {

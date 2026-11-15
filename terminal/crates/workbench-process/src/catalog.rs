@@ -20,6 +20,9 @@ pub(crate) struct CatalogData {
     pub workspace: String,
     pub profiles: Vec<ProcessProfile>,
     pub sessions: Vec<ProcessSession>,
+    /// Whether the host has finished finding surviving terminals. `None` is a
+    /// host that does not say, which is not the same as settled.
+    pub adoption: Option<theorem_workbench_core::host::TerminalAdoption>,
 }
 
 struct Inner {

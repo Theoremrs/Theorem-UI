@@ -1737,3 +1737,179 @@ fn the_themes_text_and_background_roles_win_over_the_explicit_palette() {
     assert_eq!(cell.fg, Color::Rgb(9, 9, 9));
     assert_eq!(cell.bg, Color::Rgb(1, 1, 1));
 }
+
+// ---- adoption and the host's modes -----------------------------------------------
+
+fn listing_with(
+    sessions: Vec<TerminalSessionInfo>,
+    adoption: Option<theorem_workbench_core::host::TerminalAdoption>,
+) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![profile("native-zsh", TerminalBackend::Native, true)],
+        sessions,
+        adoption,
+    })
+}
+
+fn no_chooser_note(s: &str) {
+    assert!(!s.contains("No existing sessions"), "{s}");
+}
+
+#[test]
+fn a_pending_listing_says_the_host_is_still_looking_and_never_says_there_are_none() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Pending)));
+    let s = r.screen();
+    assert!(s.contains("still looking for running terminals"), "{s}");
+    assert!(s.contains("No sessions listed yet"), "{s}");
+    no_chooser_note(&s);
+}
+
+#[test]
+fn a_settled_empty_listing_is_the_truth_and_says_there_are_no_sessions() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Settled)));
+    let s = r.screen();
+    assert!(s.contains("No existing sessions to attach to"), "{s}");
+    assert!(
+        !s.contains("still looking") && !s.contains("cannot list"),
+        "{s}"
+    );
+}
+
+#[test]
+fn an_unavailable_listing_gives_the_hosts_reason_and_without_one_still_says_it_cannot_list() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(
+        vec![],
+        Some(TerminalAdoption::Unavailable {
+            reason: Some("herdr socket missing".into()),
+        }),
+    ));
+    let s = r.screen();
+    assert!(
+        s.contains("The host cannot list its terminals: herdr socket missing"),
+        "{s}"
+    );
+    no_chooser_note(&s);
+    r.send(listing_with(
+        vec![],
+        Some(TerminalAdoption::Unavailable { reason: None }),
+    ));
+    assert!(r.screen().contains("The host cannot list its terminals."));
+}
+
+#[test]
+fn a_host_that_does_not_report_adoption_is_drawn_as_before() {
+    let mut r = rig();
+    r.send(listing_with(vec![], None));
+    let s = r.screen();
+    assert!(s.contains("No existing sessions to attach to"), "{s}");
+    assert!(
+        !s.contains("still looking") && !s.contains("cannot list"),
+        "{s}"
+    );
+}
+
+#[test]
+fn only_a_settled_listing_says_an_attached_session_is_gone() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    for (adoption, gone) in [
+        (None, false),
+        (Some(TerminalAdoption::Pending), false),
+        (Some(TerminalAdoption::Unavailable { reason: None }), false),
+        (Some(TerminalAdoption::Settled), true),
+    ] {
+        let mut r = rig();
+        r.live();
+        r.send(listing_with(vec![], adoption.clone()));
+        let s = r.screen();
+        assert_eq!(s.contains("is gone"), gone, "{adoption:?}: {s}");
+        assert!(r.m.panel(&r.id).is_some(), "the pane is never dropped");
+        // Listed again by a settled host, the session is back.
+        r.send(listing_with(
+            vec![session("s1", TerminalBackend::Herdr)],
+            Some(TerminalAdoption::Settled),
+        ));
+        assert!(!r.screen().contains("is gone"));
+    }
+}
+
+fn moded() -> theorem_workbench_core::host::TerminalModes {
+    use theorem_workbench_core::host::{MouseEncoding, MouseProtocol, TerminalModes};
+    TerminalModes {
+        alternate_screen: true,
+        application_cursor: true,
+        application_keypad: false,
+        bracketed_paste: true,
+        hide_cursor: false,
+        mouse_protocol: MouseProtocol::PressRelease,
+        mouse_encoding: MouseEncoding::Sgr,
+    }
+}
+
+/// An attach to a session the host lists with `modes`, answered with no output.
+fn attached_with(modes: Option<theorem_workbench_core::host::TerminalModes>) -> Rig {
+    let mut r = rig();
+    let mut s = session("s1", TerminalBackend::Herdr);
+    s.modes = modes;
+    r.send(listing_with(vec![s], None));
+    let fx = r.key(Key::Enter);
+    let attach = only_attach(&fx);
+    r.accept_attach(
+        &attach,
+        TerminalOpened {
+            controlling: Some(true),
+            controlled: Some(false),
+            ..opened(1, 1, 80, 24, "reattached")
+        },
+    );
+    r
+}
+
+#[test]
+fn an_attach_with_modes_encodes_the_first_key_paste_and_mouse_press_before_any_output() {
+    let mut r = attached_with(Some(moded()));
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1bOA", "application cursor");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "\x1b[200~x\x1b[201~");
+    let b = r.body();
+    let fx = r.send(Msg::Pointer(Pointer {
+        kind: PointerKind::Down(Button::Left),
+        x: b.x + 2,
+        y: b.y + 3,
+        mods: Mods::NONE,
+        clicks: 1,
+    }));
+    let sent = inputs(&fx);
+    assert_eq!(sent.len(), 1, "{fx:?}");
+    assert!(
+        sent[0].0.starts_with("\x1b[<0;") && sent[0].0.ends_with('M'),
+        "SGR press: {:?}",
+        sent[0].0
+    );
+}
+
+#[test]
+fn an_attach_with_no_modes_encodes_as_it_always_did() {
+    let mut r = attached_with(None);
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1b[A");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "x");
+}
+
+#[test]
+fn output_after_an_attach_still_wins_over_the_modes_the_list_gave() {
+    let mut r = attached_with(Some(moded()));
+    r.bytes(1, 0, b"\x1b[?1l\x1b[?2004l");
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1b[A");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "x");
+}
