@@ -198,6 +198,24 @@ describe('open', () => {
     ])
   })
 
+  test('an attachment named on open goes to the host with the first attach, unchanged', async () => {
+    const r = rig()
+    r.handlers.open = () => ({
+      session: 'pty-1',
+      cols: 80,
+      rows: 24,
+      binding: { epoch: 1, program: 1 },
+    })
+    r.handlers.attach = () => attachReply({ control: control(1, true, true) })
+    await r.session.open({
+      profile: profileById('Herdr shell'),
+      cols: 80,
+      rows: 24,
+      attachment: 'pane-7',
+    })
+    expect(r.of('attach')[0]).toMatchObject({ attachment: 'pane-7' })
+  })
+
   test('attaches as controller from offset 0 and reports what it answers', async () => {
     const r = rig()
     const result = await opened(r)
@@ -624,6 +642,24 @@ describe('lease and input', () => {
       ).outcome,
     ).toBe('uncertain')
     expect(r.of('input')).toHaveLength(2)
+  })
+
+  test('a resize carries the claim the caller names, and the session own claim when it names none', async () => {
+    const r = rig()
+    await opened(r)
+    const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+    await r.session.resize(90, 20, { claim })
+    await r.session.resize(91, 21)
+    const [named, own] = r.of('resize')
+    expect(named!.body).toMatchObject({
+      cols: 90,
+      rows: 20,
+      attachment: 'ta-9',
+      generation: 4,
+      epoch: 1,
+    })
+    expect(own!.body).toMatchObject({ cols: 91, rows: 21 })
+    expect((own!.body as { attachment: string }).attachment).not.toBe('ta-9')
   })
 
   test('the caller names the id and the claim, and a repeat resends the original body', async () => {

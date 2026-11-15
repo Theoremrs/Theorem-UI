@@ -34,7 +34,7 @@ const at = { line: 1, character: 2 }
 const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   filesList: { path: 'src' },
   filesStat: { path: 'a.txt' },
-  filesSearch: { query: 'a' },
+  filesSearch: { query: 'a', limit: 50, offset: 0 },
   filesCreate: { path: 'new.txt', directory: false },
   filesRename: { from: 'a', to: 'b' },
   filesCopy: { from: 'a', to: 'b', overwrite: false },
@@ -49,6 +49,8 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   documentSave: undefined,
   documentClose: undefined,
   documentReconcile: { keep: 'disk' },
+  documentRevert: undefined,
+  documentSettle: { operationId: 'op' },
   scmStatus: undefined,
   scmDiff: { staged: false },
   scmShow: { path: 'a', reference: 'head' },
@@ -57,6 +59,10 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   scmDiscard: { path: 'a' },
   scmRestore: { restoreId: 'r' },
   scmCommit: { message: 'm' },
+  scmAmend: { message: 'm' },
+  scmBranches: undefined,
+  scmDiffCommit: { commit: 'abc' },
+  scmShowRevision: { path: 'a', revision: 'abc' },
   scmBranch: { name: 'b', create: true },
   scmFetch: {},
   scmPush: {},
@@ -91,6 +97,13 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
     inputId: 'i',
     claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
   },
+  terminalInputBytes: {
+    data: 'bHMK',
+    kind: 'human',
+    inputId: 'ib',
+    claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+  },
+  terminalAbandonOpen: { open: 0 },
   terminalResize: {
     cols: 100,
     rows: 30,
@@ -106,6 +119,8 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   conversationEdit: { messageId: 'm', clientMessageId: 'c3', text: 't' },
   conversationSwitch: { threadId: 'th' },
   conversationApproval: { runId: 'r', approvalId: 'a', decision: 'allow' },
+  conversationSideChat: undefined,
+  conversationSideClose: undefined,
   layoutLoad: undefined,
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
   artifactsList: {},
@@ -205,7 +220,12 @@ class FakePort {
     processOwnedBy: 'herdr-core' as string | undefined,
     lease: { generation: 4 as number | undefined },
   }
-  seen: { input?: unknown[]; attach?: unknown[] } = {}
+  seen: {
+    input?: unknown[]
+    attach?: unknown[]
+    resize?: unknown[]
+    open?: unknown
+  } = {}
   constructor(private readonly calls: Call[]) {}
   subscribe = (listener: (event: never) => void) => {
     this.listeners.add(listener)
@@ -223,12 +243,14 @@ class FakePort {
       value,
     })
   }
-  open = () =>
-    this.answer('terminalOpen', {
+  open = (options?: unknown) => {
+    this.seen.open = options
+    return this.answer('terminalOpen', {
       terminalId: 't1',
       bindingEpoch: 2,
       program: 1,
     })
+  }
   attach = (...args: unknown[]) => {
     this.seen.attach = args
     return this.answer('terminalAttach', {
@@ -245,7 +267,10 @@ class FakePort {
       discarded: false,
     })
   }
-  resize = () => this.answer('terminalResize', { cols: 100, rows: 30 })
+  resize = (...args: unknown[]) => {
+    this.seen.resize = args
+    return this.answer('terminalResize', { cols: 100, rows: 30 })
+  }
   detach = () => this.answer('terminalDetach', { detached: true as const })
   kill = () =>
     this.answer('terminalEnd', { processKilled: true, sessionLive: false })
@@ -400,7 +425,9 @@ describe('routing', () => {
 
   test('every kind goes to exactly one owner, once (R02, AC-02)', async () => {
     const t = await setup()
-    await performAll(t, KINDS, (kind, index) =>
+    // Abandoning an open unbinds the terminal, so it has its own tests among the terminals.
+    const kinds = KINDS.filter((kind) => kind !== 'terminalAbandonOpen')
+    await performAll(t, kinds, (kind, index) =>
       effectOf(
         index,
         kind,
@@ -409,14 +436,21 @@ describe('routing', () => {
     )
     await t.settle()
 
-    for (const kind of KINDS) {
-      const made = t.calls.filter((call) => call.kind === kind)
+    // Bytes go through the session's input.
+    const recordedAs = (kind: EffectKind) =>
+      kind === 'terminalInputBytes' ? 'terminalInput' : kind
+    for (const kind of kinds) {
+      const recorded = recordedAs(kind)
+      const made = t.calls.filter((call) => call.kind === recorded)
       const owners = new Set(made.map((call) => call.owner))
       expect({ kind, owners: [...owners] }).toEqual({
         kind,
         owners: [OWNER_OF(kind)],
       })
-      expect({ kind, calls: made.length }).toEqual({ kind, calls: 1 })
+      expect({ kind, calls: made.length }).toEqual({
+        kind,
+        calls: kinds.filter((other) => recordedAs(other) === recorded).length,
+      })
     }
   })
 
@@ -625,15 +659,73 @@ describe('outcomes', () => {
     await t.settle()
     const [found, refused] = t.completions()
     expect(found!.payload).toEqual({
-      type: 'files',
-      entries: [{ name: 'src/a.ts', kind: 'file' }],
+      type: 'fileSearchPage',
+      rows: [{ name: 'a.ts', path: 'src/a.ts', kind: 'file' }],
       partial: true,
+      next: 200,
     })
     expect(refused!.outcome).toMatchObject({
       status: 'refused',
       code: 'missing_capability',
     })
     expect(refused!.payload).toBeUndefined()
+  })
+
+  test('search pages follow next: the offset and limit reach the owner and the next offset comes back', async () => {
+    const asked: { query: string; limit?: number; offset?: number }[] = []
+    const t = await setup({}, undefined, {
+      search: async (request: {
+        requestId: string
+        query: string
+        limit?: number
+        offset?: number
+      }) => {
+        asked.push({
+          query: request.query,
+          limit: request.limit,
+          offset: request.offset,
+        })
+        const first = request.offset === undefined
+        return {
+          workspaceId: 'w1',
+          requestId: request.requestId,
+          outcome: 'accepted' as const,
+          value: {
+            rows: [
+              {
+                name: first ? 'a.ts' : 'b.ts',
+                path: first ? 'a.ts' : 'b.ts',
+                kind: 'file' as const,
+              },
+            ],
+            partial: true,
+            ...(first ? { next: 1 } : {}),
+          },
+        }
+      },
+    })
+    t.adapter.perform({
+      ...effectOf(1, 'filesSearch'),
+      payload: { query: 'ts', limit: 1 },
+    } as never)
+    await t.settle()
+    const page = t.completions()[0]!.payload as { next?: number }
+    expect(page.next).toBe(1)
+    t.adapter.perform({
+      ...effectOf(2, 'filesSearch'),
+      payload: { query: 'ts', limit: 1, offset: page.next },
+    } as never)
+    await t.settle()
+    expect(asked).toEqual([
+      { query: 'ts', limit: 1, offset: undefined },
+      { query: 'ts', limit: 1, offset: 1 },
+    ])
+    const last = t.completions()[1]!.payload as {
+      rows: unknown[]
+      next?: number
+    }
+    expect(last.rows).toHaveLength(1)
+    expect(last.next).toBeUndefined()
   })
 
   test('copy is the files owner copy, with the overwrite flag', async () => {
@@ -857,6 +949,96 @@ describe('terminals', () => {
     t.adapter.perform(effectOf(2, 'terminalResize'))
     await t.settle()
     expect(t.completions()[1]!.outcome).toEqual({ status: 'accepted' })
+    // The claim the pane drew the resize against goes to the session as it is.
+    expect(t.port.seen.resize).toEqual([
+      100,
+      30,
+      { claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 } },
+    ])
+  })
+
+  test('an open with an attachment hands it to the session and the answer carries it with who holds the lease', async () => {
+    const t = await setup()
+    Object.assign(t.port.state, {
+      lease: {
+        generation: 4,
+        role: 'controller',
+        held: true,
+        attachment: 'pane-1',
+      },
+    })
+    t.adapter.perform({
+      ...effectOf(1, 'terminalOpen'),
+      payload: { backend: 'native', cols: 80, rows: 24, attachment: 'pane-1' },
+    } as never)
+    await t.settle()
+    expect(t.port.seen.open).toMatchObject({ attachment: 'pane-1' })
+    expect(t.completions()[0]!.payload).toMatchObject({
+      attachment: 'pane-1',
+      controlling: true,
+      controlled: true,
+    })
+  })
+
+  test('abandoning an open ends the program it started and forgets the binding; an open that was refused has nothing to undo; an unknown open is refused', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(7, 'terminalOpen'))
+    await t.settle()
+    t.adapter.perform({
+      ...effectOf(8, 'terminalAbandonOpen'),
+      resource: TERMINAL,
+      payload: { open: 7 },
+    } as never)
+    await t.settle()
+    expect(t.completions()[1]!.outcome).toEqual({ status: 'accepted' })
+    expect(t.calls.filter((call) => call.kind === 'terminalEnd')).toHaveLength(
+      1,
+    )
+    t.adapter.perform(effectOf(9, 'terminalResize'))
+    await t.settle()
+    expect(t.completions()[2]!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'terminal_session_not_found',
+    })
+    t.adapter.perform({
+      ...effectOf(10, 'terminalAbandonOpen'),
+      payload: { open: 99 },
+    } as never)
+    await t.settle()
+    expect(t.completions()[3]!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'unknown_open',
+    })
+  })
+
+  test('input bytes that are UTF-8 go through the session input with the panel id and claim; other bytes are refused', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    t.adapter.perform(effectOf(2, 'terminalInputBytes'))
+    t.adapter.perform({
+      ...effectOf(3, 'terminalInputBytes'),
+      payload: {
+        data: btoa(String.fromCharCode(0xff, 0xfe)),
+        kind: 'human',
+        inputId: 'bad',
+        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+      },
+    } as never)
+    await t.settle()
+    expect(t.port.seen.input).toEqual([
+      'ls\n',
+      'human',
+      {
+        inputId: 'ib',
+        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+      },
+    ])
+    expect(t.completions()[1]!.outcome).toEqual({ status: 'accepted' })
+    expect(t.completions()[2]!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'unsupported_binary_input',
+    })
   })
 
   test('what the session did not report is left out of the binding, never filled in', async () => {

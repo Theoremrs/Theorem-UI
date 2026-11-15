@@ -13,7 +13,7 @@ import type {
 export interface DocumentsPortOptions {
   documents: Documents
   /** `documentCreate` makes the file first: the documents owner opens files, it does not make them. */
-  files: Pick<Files, 'create'>
+  files: Pick<Files, 'create' | 'delete'>
 }
 
 const hostMessage = (event: DocumentEvent): HostMessage => {
@@ -150,7 +150,21 @@ export function createDocumentsPort({
           ...(seedText ? { text: seedText } : {}),
         })
         if (made.outcome !== 'accepted') return reply(made)
-        return open(path, requestId)
+        const opened = await open(path, requestId)
+        // An uncertain open may have happened on the host: the file stays.
+        if (opened.outcome === 'accepted' || opened.outcome === 'uncertain')
+          return opened
+        // This call made the file (an accepted create) and the open failed: take it back. A file that
+        // was already there makes the create refuse, so it never reaches this line.
+        const removed = await files.delete({
+          requestId: `${requestId}:rollback`,
+          path,
+        })
+        if (removed.outcome === 'accepted') return opened
+        return {
+          ...opened,
+          reason: `${opened.reason}; the file this call created could not be removed: ${removed.reason}`,
+        }
       }
 
       const path = pathOf(effect.resource)
@@ -211,6 +225,17 @@ export function createDocumentsPort({
               revision,
             }),
           )
+        case 'documentRevert':
+          return reply(
+            await handle.revert({ requestId }),
+            ({ revision, text }) => ({
+              value: { type: 'documentReconciled', revision, text },
+              revision,
+            }),
+          )
+        case 'documentSettle':
+          handle.settle(effect.payload.operationId)
+          return { outcome: 'accepted' }
         case 'documentClose': {
           const done = await handle.close({ requestId })
           if (done.outcome === 'accepted') {

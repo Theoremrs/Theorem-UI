@@ -60,7 +60,7 @@ function mount(
   sideSent: string[],
   aborted: { count: number },
 ) {
-  const side = createSideChats(() => model(sideSent, aborted))
+  const side = createSideChats(async () => model(sideSent, aborted))
   const mainAdapter: ChatModelAdapter = {
     async *run({ messages }) {
       const last = messages.at(-1)?.content[0]
@@ -139,6 +139,8 @@ test("a side chat's sends never reach the main thread, and closing it ends its r
 })
 
 test('with no host mounted a side chat fails instead of waiting', async () => {
-  const side = createSideChats(() => model([], { count: 0 }))
-  await expect(side.sideChats.open()).rejects.toThrow('No side chat host')
+  const side = createSideChats(async () => model([], { count: 0 }))
+  await expect(side.sideChats.open({ scope: 'fresh' })).rejects.toThrow(
+    'No side chat host',
+  )
 })

@@ -268,3 +268,242 @@ describe('snapshots', () => {
     expect(JSON.parse(last.snapshot).conversationId).toBe('remote-1')
   })
 })
+
+describe('side chats', () => {
+  function withSides() {
+    const main = new StubRuntime()
+    const sides: StubRuntime[] = []
+    const closed: number[] = []
+    const opened: unknown[] = []
+    const frames: (() => void)[] = []
+    const conversation = createConversation({
+      runtime: main.runtime,
+      sideChats: {
+        open: async (request) => {
+          opened.push(request)
+          const stub = new StubRuntime()
+          stub.threadId = `side-${sides.length + 1}`
+          stub.remoteId = undefined
+          sides.push(stub)
+          const index = sides.length
+          return {
+            runtime: stub.runtime,
+            threadId: () => undefined,
+            close: () => void closed.push(index),
+          }
+        },
+      },
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+      },
+      workspaceId: 'w1',
+      schedule: (callback) => {
+        frames.push(callback)
+        return () => void frames.splice(frames.indexOf(callback), 1)
+      },
+    })
+    const port = createConversationPort({ conversation, project: 'p1' })
+    const heard: HostMessage[] = []
+    port.subscribe?.((message) => heard.push(message))
+    let id = 0
+    const perform = (
+      kind: Effect['kind'],
+      payload?: unknown,
+      resource: ResourceRef = thread('remote-1'),
+    ) =>
+      port.perform(
+        {
+          id: (id += 1),
+          resource,
+          kind,
+          ...(payload === undefined ? {} : { payload }),
+        } as never,
+        `req-${id}`,
+      )
+    const open = async () => {
+      const done = await perform('conversationSideChat')
+      if (
+        done.outcome !== 'accepted' ||
+        done.value?.type !== 'conversationSideOpened'
+      )
+        throw new Error('the side chat did not open')
+      return done.value.conversationId
+    }
+    const flush = () => {
+      for (const frame of [...frames]) frame()
+    }
+    const snapshotsOf = (conversationId: string) =>
+      heard.filter(
+        (message) =>
+          message.type === 'conversationSnapshot' &&
+          message.resource.type === 'conversation' &&
+          message.resource.thread === conversationId,
+      ) as Extract<HostMessage, { type: 'conversationSnapshot' }>[]
+    return {
+      main,
+      sides,
+      closed,
+      opened,
+      port,
+      perform,
+      open,
+      flush,
+      heard,
+      snapshotsOf,
+    }
+  }
+
+  const send = (clientMessageId: string, text: string) => ({
+    clientMessageId,
+    text,
+    attachments: [],
+  })
+
+  test('opening one answers conversationSideOpened with its own id and sends its first snapshot under that id', async () => {
+    const { open, snapshotsOf, sides, opened } = withSides()
+    const id = await open()
+    expect(id).not.toBe('remote-1')
+    expect(sides).toHaveLength(1)
+    expect(opened).toEqual([{ scope: 'fresh', from: 'remote-1' }])
+    expect(snapshotsOf(id)).toHaveLength(1)
+    expect(snapshotsOf(id)[0]).toMatchObject({
+      conversationId: id,
+      revision: { scheme: 'seq', value: 1 },
+    })
+  })
+
+  test('a send for a side chat the port does not hold is refused and nothing reaches the main conversation or any side chat', async () => {
+    const { open, perform, main, sides } = withSides()
+    await open()
+    const done = await perform(
+      'conversationSend',
+      send('c1', 'lost'),
+      thread('no-such-side'),
+    )
+    expect(done).toMatchObject({
+      outcome: 'refused',
+      code: 'stale_conversation',
+    })
+    expect(main.appends).toEqual([])
+    expect(sides[0]!.appends).toEqual([])
+  })
+
+  test('a send names its conversation: the side chat gets it and the main conversation does not', async () => {
+    const { open, perform, main, sides } = withSides()
+    const id = await open()
+    const done = await perform(
+      'conversationSend',
+      send('c1', 'aside'),
+      thread(id),
+    )
+    expect(done).toMatchObject({
+      outcome: 'accepted',
+      value: { type: 'conversationSent', clientMessageId: 'c1' },
+    })
+    expect(sides[0]!.appends).toHaveLength(1)
+    expect(main.appends).toEqual([])
+    await perform('conversationSend', send('c2', 'main'), thread('remote-1'))
+    expect(main.appends).toHaveLength(1)
+    expect(sides[0]!.appends).toHaveLength(1)
+  })
+
+  test("two side chats' snapshots never cross, and each counts its own revisions", async () => {
+    const { open, perform, snapshotsOf, flush } = withSides()
+    const a = await open()
+    const b = await open()
+    await perform('conversationSend', send('c1', 'only-in-a'), thread(a))
+    flush()
+    const inA = snapshotsOf(a)
+    const inB = snapshotsOf(b)
+    expect(inA.at(-1)!.snapshot).toContain('only-in-a')
+    expect(inA.at(-1)!.revision).toEqual({ scheme: 'seq', value: 2 })
+    expect(inB.map((message) => message.snapshot).join()).not.toContain(
+      'only-in-a',
+    )
+    expect(inB.at(-1)!.revision).toEqual({ scheme: 'seq', value: 1 })
+    for (const message of [...inA, ...inB]) {
+      expect(JSON.parse(message.snapshot).conversationId).toBe(
+        message.resource.type === 'conversation' ? message.resource.thread : '',
+      )
+    }
+  })
+
+  test('closing one disposes its runtime, stops its forwarding and refuses what comes after, without touching the other', async () => {
+    const { open, perform, snapshotsOf, flush, sides, closed } = withSides()
+    const a = await open()
+    const b = await open()
+    expect(
+      await perform('conversationSideClose', undefined, thread(a)),
+    ).toEqual({ outcome: 'accepted' })
+    expect(closed).toEqual([1])
+    const before = snapshotsOf(a).length
+    sides[0]!.messages.push(assistant('late', 'x'))
+    sides[0]!.emit()
+    flush()
+    expect(snapshotsOf(a)).toHaveLength(before)
+    expect(
+      await perform('conversationSend', send('c1', 'too late'), thread(a)),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_conversation' })
+    expect(sides[0]!.appends).toEqual([])
+    expect(
+      await perform('conversationSend', send('c2', 'still here'), thread(b)),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(
+      await perform('conversationSideClose', undefined, thread(a)),
+    ).toMatchObject({ outcome: 'refused', code: 'unknown_conversation' })
+  })
+
+  test('cancel, retry, edit and approval go to the conversation the resource names', async () => {
+    const { open, perform, main, sides } = withSides()
+    const id = await open()
+    sides[0]!.isRunning = true
+    sides[0]!.messages.push(assistant('r1', 'working'))
+    expect(await perform('conversationCancel', {}, thread(id))).toMatchObject({
+      outcome: 'accepted',
+    })
+    expect(sides[0]!.cancels).toBe(1)
+    expect(main.cancels).toBe(0)
+    expect(
+      await perform('conversationRetry', { messageId: 'nope' }, thread('gone')),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_conversation' })
+  })
+
+  test('create and switch are refused for a side chat, which keeps its own thread', async () => {
+    const { open, perform, main } = withSides()
+    const id = await open()
+    expect(
+      await perform('conversationCreate', undefined, thread(id)),
+    ).toMatchObject({ outcome: 'refused', code: 'side_chat' })
+    expect(
+      await perform('conversationSwitch', { threadId: 'x' }, thread(id)),
+    ).toMatchObject({ outcome: 'refused', code: 'side_chat' })
+    expect(main.starts).toEqual([])
+  })
+
+  test('a conversation effect on another kind of resource is refused', async () => {
+    const { perform, main } = withSides()
+    expect(
+      await perform('conversationSend', send('c1', 'x'), {
+        type: 'document',
+        workspace: 'w1',
+        resourceId: 'a',
+      } as never),
+    ).toMatchObject({ outcome: 'refused', code: 'wrong_resource' })
+    expect(main.appends).toEqual([])
+  })
+
+  test('a later subscriber is told the main conversation and every open side chat first', async () => {
+    const { open, port } = withSides()
+    const a = await open()
+    const late: HostMessage[] = []
+    port.subscribe?.((message) => late.push(message))
+    const resources = late.flatMap((message) =>
+      message.type === 'conversationSnapshot' &&
+      message.resource.type === 'conversation'
+        ? [message.resource.thread]
+        : [],
+    )
+    expect(resources).toEqual(['remote-1', a])
+  })
+})

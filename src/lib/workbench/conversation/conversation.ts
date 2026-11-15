@@ -135,27 +135,61 @@ export interface Conversation {
    * A second conversation beside this one, on its own runtime and its own conversation resource.
    * Nothing sent to it reaches this one's runtime. Closing it disposes its conversation and its runtime.
    */
-  sideChat: (request: Request) => Promise<Completion<SideChat>>
+  sideChat: (
+    request: Request & { scope?: SideChatScope },
+  ) => Promise<Completion<SideChat>>
+  /**
+   * The side chats open now, oldest first. Theorem keeps no mark that tells a side chat's thread from any
+   * other thread (a forked or continued thread looks the same whoever made it), so this is the session's
+   * own list: after a reload it is empty, and a side chat's durable thread remains in the thread list.
+   */
+  sideChats: () => SideChatInfo[]
   dispose: () => void
 }
+
+/**
+ * What a side chat starts from, as far as Theorem can honour it:
+ * - `fresh`: a new thread in the main conversation's project, nothing carried over;
+ * - `continued`: a new, empty thread with the main conversation's thread available to it as context;
+ * - `forked`: a new thread holding the main conversation's history through its last stored message.
+ * `continued` and `forked` name the main conversation's stored thread, so they need one.
+ */
+export type SideChatScope = 'fresh' | 'continued' | 'forked'
 
 /** A runtime made for a side chat, and how to end it. */
 export interface SideRuntime {
   runtime: ConversationRuntime
+  /** The side chat's own stored thread, once it has one (a forked or continued one has it from the start). */
+  threadId: () => string | undefined
   /** Ends the runtime; nothing more is sent through it. */
   close: () => void
 }
 
 /** What makes side-chat runtimes: a second instance of the factory the main runtime came from. */
 export interface SideChats {
-  open: () => Promise<SideRuntime>
+  /** `from` is the main conversation's stored thread, present for `continued` and `forked`. */
+  open: (request: {
+    scope: SideChatScope
+    from?: string
+  }) => Promise<SideRuntime>
 }
 
 export interface SideChat {
-  /** The side chat's own conversation, with its own id, snapshots and actions. */
+  /** The side chat's own conversation, with its own snapshots and actions. */
   conversation: Conversation
+  /** Fixed when the side chat opens and never changes; its stored thread has another id once it exists (`SideChatInfo.threadId`). */
   conversationId: string
+  scope: SideChatScope
   close: () => void
+}
+
+export interface SideChatInfo {
+  conversationId: string
+  scope: SideChatScope
+  /** The main conversation's stored thread it started from; absent for `fresh`. */
+  from?: string
+  /** The side chat's own stored thread, once it has one. */
+  threadId?: string
 }
 
 export interface ConversationOptions {
@@ -205,6 +239,10 @@ export function createConversation({
   schedule = nextFrame,
 }: ConversationOptions): Conversation {
   const sides = new Set<SideChat>()
+  const info = new Map<
+    SideChat,
+    { base: Omit<SideChatInfo, 'threadId'>; threadId: () => string | undefined }
+  >()
   const listeners = new Set<(snapshot: ConversationSnapshot) => void>()
   let disposed = false
   let pending: (() => void) | undefined
@@ -633,9 +671,17 @@ export function createConversation({
           'missing_capability',
           'This host makes no second runtime for a side chat',
         )
+      const scope = request.scope ?? 'fresh'
+      const from = runtime.threads.mainItem.getState().remoteId
+      if (scope !== 'fresh' && !from)
+        return refused(
+          answers,
+          'not_stored',
+          `A ${scope} side chat starts from the main conversation's stored thread, and this one has none yet`,
+        )
       let side: SideRuntime
       try {
-        side = await sideChats.open()
+        side = await sideChats.open({ scope, ...(from ? { from } : {}) })
       } catch (error) {
         return failure(answers, error, false)
       }
@@ -653,17 +699,34 @@ export function createConversation({
       const chat: SideChat = {
         conversation,
         conversationId: conversation.snapshot().conversationId,
+        scope,
         close() {
           if (closed) return
           closed = true
           sides.delete(chat)
+          info.delete(chat)
           conversation.dispose()
           side.close()
         },
       }
       sides.add(chat)
+      info.set(chat, {
+        base: {
+          conversationId: chat.conversationId,
+          scope,
+          ...(scope !== 'fresh' && from ? { from } : {}),
+        },
+        threadId: side.threadId,
+      })
       return accepted(answers, chat)
     },
+
+    sideChats: () =>
+      [...sides].map((chat) => {
+        const { base, threadId } = info.get(chat)!
+        const stored = threadId()
+        return { ...base, ...(stored ? { threadId: stored } : {}) }
+      }),
 
     dispose() {
       if (disposed) return

@@ -93,6 +93,39 @@ export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
             await scm.commit({ requestId, message: effect.payload.message }),
             stateOnly,
           )
+        case 'scmAmend':
+          return reply(
+            await scm.commit({
+              requestId,
+              message: effect.payload.message,
+              amend: true,
+            }),
+            stateOnly,
+          )
+        case 'scmBranches':
+          return reply(await scm.branches({ requestId }), (branches) => ({
+            value: {
+              type: 'scmBranches',
+              branches: branches.map(({ upstream, ...branch }) => ({
+                ...branch,
+                ...(upstream ? { upstream } : {}),
+              })),
+            },
+          }))
+        case 'scmDiffCommit':
+          return reply(
+            await scm.diffCommit({ requestId, ...effect.payload }),
+            (diff) => ({ value: { type: 'scmDiff', ...diff } }),
+          )
+        case 'scmShowRevision':
+          return reply(
+            await scm.show({
+              requestId,
+              path: effect.payload.path,
+              reference: effect.payload.revision,
+            }),
+            (shown) => ({ value: { type: 'scmShow', ...shown } }),
+          )
         case 'scmBranch': {
           const { name, create } = effect.payload
           return reply(

@@ -28,8 +28,10 @@ const METHODS = [
   'blame',
 ] as const
 
-async function setup() {
-  const host = stubHost(METHODS.map((name) => op(`scm.${name}`)))
+async function setup(extra: string[] = []) {
+  const host = stubHost(
+    [...METHODS.map((name) => `scm.${name}`), ...extra].map((name) => op(name)),
+  )
   const calls: { name: string; request: Record<string, unknown> }[] = []
   const handlers = new Map<
     string,
@@ -292,6 +294,93 @@ describe('writes', () => {
     expect(await perform('scmMerge', { branch: 'dev' })).toEqual({
       outcome: 'accepted',
       value: { type: 'scmMerged', merged: false },
+    })
+  })
+})
+
+describe('revision reads and the new scm kinds', () => {
+  test('amend is a commit with amend, answered as the repository state, and refused when the host does not advertise it', async () => {
+    const refusedHost = await setup()
+    expect(
+      await refusedHost.perform('scmAmend', { message: 'fix' }),
+    ).toMatchObject({ outcome: 'refused', code: 'missing_capability' })
+    expect(refusedHost.calls).toEqual([])
+
+    const { perform, on, calls } = await setup(['scm.commit.amend'])
+    on('commit', () => ({ head: 'h2' }))
+    expect(await perform('scmAmend', { message: 'fix' })).toEqual({
+      outcome: 'accepted',
+      value: { type: 'scmState', head: 'h2' },
+    })
+    expect(calls[0]?.request).toMatchObject({
+      body: { message: 'fix', amend: true },
+    })
+  })
+
+  test('branches answers scmBranches, with an upstream only when there is one', async () => {
+    const { perform, on } = await setup()
+    on('branches', () => ({
+      branches: [
+        { name: 'main', remote: false, current: true, upstream: 'origin/main' },
+        { name: 'topic', remote: false, current: false },
+      ],
+    }))
+    expect(await perform('scmBranches')).toEqual({
+      outcome: 'accepted',
+      value: {
+        type: 'scmBranches',
+        branches: [
+          {
+            name: 'main',
+            remote: false,
+            current: true,
+            upstream: 'origin/main',
+          },
+          { name: 'topic', remote: false, current: false },
+        ],
+      },
+    })
+  })
+
+  test('a commit diff asks the host for that commit and answers scmDiff with the commit named', async () => {
+    const { perform, on, calls } = await setup()
+    on('diff', () => ({ commit: 'abc1234', diff: 'd', hunks: [] }))
+    expect(
+      await perform('scmDiffCommit', { commit: 'abc1234', path: 'a' }),
+    ).toMatchObject({
+      outcome: 'accepted',
+      value: { type: 'scmDiff', commit: 'abc1234', path: 'a', text: 'd' },
+    })
+    expect(calls[0]?.request).toMatchObject({
+      body: { commit: 'abc1234', path: 'a' },
+    })
+    on('diff', () => ({ diff: 'working tree', hunks: [] }))
+    expect(await perform('scmDiffCommit', { commit: 'abc1234' })).toMatchObject(
+      { outcome: 'refused', code: 'missing_capability' },
+    )
+  })
+
+  test('show at a revision asks for that revision and answers scmShow naming it', async () => {
+    const { perform, on, calls } = await setup()
+    on('show', (request) => ({
+      exists: true,
+      text: 'old',
+      ref: (request.body as { ref: string }).ref,
+    }))
+    expect(
+      await perform('scmShowRevision', { path: 'a', revision: 'abc1234' }),
+    ).toMatchObject({
+      outcome: 'accepted',
+      value: {
+        type: 'scmShow',
+        path: 'a',
+        reference: 'abc1234',
+        exists: true,
+        text: 'old',
+      },
+    })
+    expect(calls[0]?.request).toMatchObject({
+      body: { path: 'a', ref: 'abc1234' },
     })
   })
 })

@@ -13,7 +13,7 @@ import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import type { Layout } from './layout'
 import { grantedCapabilities } from './capabilities'
-import { reply } from './port'
+import { refusal, reply } from './port'
 import type { Of, OwnerPort, OwnerReply } from './port'
 import type {
   Capability,
@@ -295,6 +295,13 @@ export function createAdapter(options: AdapterOptions): Adapter {
         ? { leaseGeneration: state.lease.generation }
         : {}),
       ...(state.processOwnedBy ? { processOwnedBy: state.processOwnedBy } : {}),
+      ...(state.lease.attachment ? { attachment: state.lease.attachment } : {}),
+      ...(state.lease.role === 'controller' || state.lease.role === 'observer'
+        ? {
+            controlling: state.lease.role === 'controller',
+            controlled: state.lease.held,
+          }
+        : {}),
     }
     reported.add(bindingKey(payload.session, state.bindingEpoch, state.program))
     return { value: payload }
@@ -320,28 +327,83 @@ export function createAdapter(options: AdapterOptions): Adapter {
     requestId: string,
   ): Promise<OwnerReply> {
     if (effect.kind === 'terminalOpen') {
-      const { backend, argv, name, cols, rows } = effect.payload
-      const port = options.terminal.create()
-      const stop = follow(port)
-      const done = await port.open({
-        profile: {
-          id: name ?? backend,
-          backend,
-          ...(argv ? { argv } : {}),
-        },
-        cols,
-        rows,
-        ...(name ? { name } : {}),
-        idempotencyKey: requestId,
-      })
-      if (done.outcome === 'accepted' && !disposed) {
-        terminals.set(done.value.terminalId, { port, stop })
-      } else {
-        stop()
-      }
-      return reply(done, () => opened(port, { cols, rows }))
+      const opening = openTerminal(effect, requestId)
+      openings.set(effect.id, opening)
+      if (openings.size > OPENINGS_KEPT)
+        openings.delete(openings.keys().next().value!)
+      return opening
     }
 
+    if (effect.kind === 'terminalAbandonOpen')
+      return abandonOpen(effect.payload.open)
+
+    return terminalOperation(effect)
+  }
+
+  /** What each `terminalOpen` answered, by effect id, so the open can be undone after it settled. */
+  const openings = new Map<number, Promise<OwnerReply>>()
+  const OPENINGS_KEPT = 256
+
+  /** Undoes a `terminalOpen`: the program it started is ended and the binding forgotten. An open that never started one has nothing to undo. */
+  async function abandonOpen(open: number): Promise<OwnerReply> {
+    const opening = openings.get(open)
+    if (!opening)
+      return refusal(
+        'unknown_open',
+        `No terminal open ${open} was made by this workbench`,
+      )
+    const answer = await opening
+    openings.delete(open)
+    if (answer.outcome === 'uncertain')
+      return {
+        outcome: 'uncertain',
+        reason: `The open's outcome is unknown, so a program it started has no id here to end: ${answer.reason}`,
+      }
+    if (answer.outcome !== 'accepted' || answer.value?.type !== 'terminal')
+      return { outcome: 'accepted' }
+    const bound = terminals.get(answer.value.session)
+    if (!bound) return { outcome: 'accepted' }
+    const done = await bound.port.kill()
+    if (done.outcome === 'accepted') {
+      bound.stop()
+      terminals.delete(answer.value.session)
+    }
+    return reply(done)
+  }
+
+  async function openTerminal(
+    effect: Extract<Of<'terminal'>, { kind: 'terminalOpen' }>,
+    requestId: string,
+  ): Promise<OwnerReply> {
+    const { backend, argv, name, cols, rows, attachment } = effect.payload
+    const port = options.terminal.create()
+    const stop = follow(port)
+    const done = await port.open({
+      profile: {
+        id: name ?? backend,
+        backend,
+        ...(argv ? { argv } : {}),
+      },
+      cols,
+      rows,
+      ...(name ? { name } : {}),
+      ...(attachment ? { attachment } : {}),
+      idempotencyKey: requestId,
+    })
+    if (done.outcome === 'accepted' && !disposed) {
+      terminals.set(done.value.terminalId, { port, stop })
+    } else {
+      stop()
+    }
+    return reply(done, () => opened(port, { cols, rows }))
+  }
+
+  async function terminalOperation(
+    effect: Exclude<
+      Of<'terminal'>,
+      { kind: 'terminalOpen' | 'terminalAbandonOpen' }
+    >,
+  ): Promise<OwnerReply> {
     const session = terminalOf(effect.resource)
     if (!session) return noTerminal(effect.resource)
 
@@ -380,9 +442,33 @@ export function createAdapter(options: AdapterOptions): Adapter {
             claim: effect.payload.claim,
           }),
         )
+      case 'terminalInputBytes': {
+        // The host's input takes text. Bytes that are valid UTF-8 are that text; others cannot be sent faithfully.
+        let text: string
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(
+            Uint8Array.from(atob(effect.payload.data), (char) =>
+              char.charCodeAt(0),
+            ),
+          )
+        } catch {
+          return refusal(
+            'unsupported_binary_input',
+            'The terminal host writes text; these bytes are not valid UTF-8 text',
+          )
+        }
+        return reply(
+          await bound.port.input(text, effect.payload.kind, {
+            inputId: effect.payload.inputId,
+            claim: effect.payload.claim,
+          }),
+        )
+      }
       case 'terminalResize':
         return reply(
-          await bound.port.resize(effect.payload.cols, effect.payload.rows),
+          await bound.port.resize(effect.payload.cols, effect.payload.rows, {
+            claim: effect.payload.claim,
+          }),
         )
       case 'terminalDetach': {
         const done = await bound.port.detach()
@@ -476,20 +562,24 @@ export function createAdapter(options: AdapterOptions): Adapter {
           }),
         )
       case 'filesSearch':
-        // The wire asks for a query and nothing else, so this is the first page; the page's
-        // `next` has nowhere to go, and `partial` says the list is not the whole answer.
         return reply(
-          await files.search({ requestId, query: effect.payload.query }),
-          ({ rows, partial }) => ({
+          await files.search({ requestId, ...effect.payload }),
+          ({ rows, partial, next }) => ({
             value: {
-              type: 'files',
-              entries: rows.map(({ path, kind, ignored, hidden }) => ({
-                name: path,
-                kind,
-                ...(ignored !== undefined ? { ignored } : {}),
-                ...(hidden !== undefined ? { hidden } : {}),
-              })),
+              type: 'fileSearchPage',
+              rows: rows.map(
+                ({ path, name, kind, size, modified, ignored, hidden }) => ({
+                  path,
+                  name,
+                  kind,
+                  ...(size !== undefined ? { size } : {}),
+                  ...(modified !== undefined ? { modified } : {}),
+                  ...(ignored !== undefined ? { ignored } : {}),
+                  ...(hidden !== undefined ? { hidden } : {}),
+                }),
+              ),
               partial,
+              ...(next !== undefined ? { next } : {}),
             },
           }),
         )
@@ -596,6 +686,8 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'documentSave':
       case 'documentClose':
       case 'documentReconcile':
+      case 'documentRevert':
+      case 'documentSettle':
         return route('documents', options.documents, effect, requestId)
 
       case 'scmStatus':
@@ -606,6 +698,10 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'scmDiscard':
       case 'scmRestore':
       case 'scmCommit':
+      case 'scmAmend':
+      case 'scmBranches':
+      case 'scmDiffCommit':
+      case 'scmShowRevision':
       case 'scmBranch':
       case 'scmFetch':
       case 'scmPush':
@@ -640,6 +736,8 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'terminalResize':
       case 'terminalDetach':
       case 'terminalEnd':
+      case 'terminalInputBytes':
+      case 'terminalAbandonOpen':
         return terminalEffect(effect, requestId)
 
       case 'conversationCreate':
@@ -650,6 +748,8 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'conversationEdit':
       case 'conversationSwitch':
       case 'conversationApproval':
+      case 'conversationSideChat':
+      case 'conversationSideClose':
         return route('conversation', options.conversation, effect, requestId)
 
       case 'layoutLoad':

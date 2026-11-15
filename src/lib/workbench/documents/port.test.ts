@@ -6,7 +6,7 @@ import {
   stubHost,
   testEnvironment,
 } from '../environment/test-host'
-import { accepted } from '../environment/result'
+import { accepted, refused } from '../environment/result'
 import type { Effect, HostMessage, Revision } from '../wire'
 import { createDocuments } from './documents'
 import { createDocumentsPort } from './port'
@@ -29,7 +29,12 @@ const resource = (path = 'a.txt') => ({
 async function setup() {
   const host = stubHost(ALL)
   const calls: { name: string; request: Record<string, unknown> }[] = []
-  const state: { revision: number; text: string; gate?: Promise<void> } = {
+  const state: {
+    revision: number
+    text: string
+    gate?: Promise<void>
+    openFails?: boolean
+  } = {
     revision: 1,
     text: 'hello',
   }
@@ -49,7 +54,10 @@ async function setup() {
   host.client = {
     ...host.client,
     documentSessions: {
-      open: method('open', head),
+      open: method('open', () => {
+        if (state.openFails) throw new Error('the host could not open it')
+        return head()
+      }),
       head: method('head', head),
       edit: method('edit', async (request) => {
         await state.gate
@@ -65,11 +73,27 @@ async function setup() {
   const { environment } = testEnvironment(host, live)
   await environment.settled()
   const created: object[] = []
+  const deleted: string[] = []
+  /** Paths the checkout already has: the host refuses to create over one, as it does. */
+  const existing = new Set<string>()
   const port = createDocumentsPort({
     documents: createDocuments(environment),
     files: {
       create: async (request) => {
         created.push(request)
+        if (existing.has(request.path))
+          return refused(
+            { workspaceId: 'w1', requestId: request.requestId },
+            'exists',
+            `${request.path} already exists`,
+          )
+        return accepted(
+          { workspaceId: 'w1', requestId: request.requestId },
+          { path: request.path },
+        )
+      },
+      delete: async (request) => {
+        deleted.push(request.path)
         return accepted(
           { workspaceId: 'w1', requestId: request.requestId },
           { path: request.path },
@@ -91,7 +115,18 @@ async function setup() {
     )
   const count = (name: string) =>
     calls.filter((call) => call.name === name).length
-  return { port, perform, live, heard, calls, count, created, state }
+  return {
+    port,
+    perform,
+    live,
+    heard,
+    calls,
+    count,
+    created,
+    deleted,
+    existing,
+    state,
+  }
 }
 
 describe('open', () => {
@@ -133,6 +168,43 @@ describe('open', () => {
     ])
     expect(count('open')).toBe(1)
     expect(done).toMatchObject({ outcome: 'accepted' })
+  })
+
+  test('a failed open after create removes the file this call created and reports the open failure', async () => {
+    const { perform, state, deleted } = await setup()
+    state.openFails = true
+    const done = await perform(
+      'documentCreate',
+      { payload: { path: 'n.txt' } },
+      'n.txt',
+    )
+    expect(done.outcome).not.toBe('accepted')
+    expect(deleted).toEqual(['n.txt'])
+  })
+
+  test('a failed open on a path that already existed deletes nothing', async () => {
+    const { perform, state, deleted, existing } = await setup()
+    existing.add('old.txt')
+    state.openFails = true
+    const done = await perform(
+      'documentCreate',
+      { payload: { path: 'old.txt' } },
+      'old.txt',
+    )
+    expect(done).toMatchObject({ outcome: 'refused', code: 'exists' })
+    expect(deleted).toEqual([])
+  })
+
+  test('revert answers documentReconciled and settle is accepted with no payload', async () => {
+    const { perform } = await setup()
+    await perform('documentOpen', { payload: {} })
+    expect(await perform('documentRevert')).toMatchObject({
+      outcome: 'accepted',
+      value: { type: 'documentReconciled', text: 'hello' },
+    })
+    expect(
+      await perform('documentSettle', { payload: { operationId: 'op1' } }),
+    ).toEqual({ outcome: 'accepted' })
   })
 
   test('a resource that is not a document is refused', async () => {

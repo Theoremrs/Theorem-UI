@@ -287,12 +287,19 @@ describe('side chat', () => {
     side.remoteId = undefined
     let closed = 0
     let made = 0
+    const opens: unknown[] = []
+    const stored: { threadId?: string } = {}
     const conversation = createConversation({
       runtime: main.stub.runtime,
       sideChats: {
-        open: async () => {
+        open: async (request) => {
           made += 1
-          return { runtime: side.runtime, close: () => void (closed += 1) }
+          opens.push(request)
+          return {
+            runtime: side.runtime,
+            threadId: () => stored.threadId,
+            close: () => void (closed += 1),
+          }
         },
       },
       services: {
@@ -302,7 +309,15 @@ describe('side chat', () => {
       workspaceId: 'w1',
       schedule: () => () => undefined,
     })
-    return { main, side, conversation, closed: () => closed, made: () => made }
+    return {
+      main,
+      side,
+      conversation,
+      opens,
+      stored,
+      closed: () => closed,
+      made: () => made,
+    }
   }
 
   test('has its own conversation resource, and its sends never reach the main thread', async () => {
@@ -358,6 +373,47 @@ describe('side chat', () => {
         text: 'late',
       }),
     ).toMatchObject({ outcome: 'refused', code: 'disposed' })
+  })
+
+  test('a continued or forked side chat is opened from the main conversation stored thread, and a main one with none stored refuses', async () => {
+    const t = withSide()
+    for (const scope of ['continued', 'forked'] as const) {
+      expect(
+        (await t.conversation.sideChat({ ...base('r'), scope })).outcome,
+      ).toBe('accepted')
+    }
+    await t.conversation.sideChat(base('r'))
+    expect(t.opens).toEqual([
+      { scope: 'continued', from: 'remote-1' },
+      { scope: 'forked', from: 'remote-1' },
+      { scope: 'fresh', from: 'remote-1' },
+    ])
+    t.main.stub.remoteId = undefined
+    expect(
+      await t.conversation.sideChat({ ...base('r'), scope: 'forked' }),
+    ).toMatchObject({ outcome: 'refused', code: 'not_stored' })
+    expect(t.opens).toHaveLength(3)
+    expect((await t.conversation.sideChat(base('r'))).outcome).toBe('accepted')
+  })
+
+  test('lists the side chats open now with their scope and, once it exists, their stored thread; a closed one is gone', async () => {
+    const t = withSide()
+    expect(t.conversation.sideChats()).toEqual([])
+    const done = await t.conversation.sideChat({
+      ...base('r'),
+      scope: 'continued',
+    })
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    expect(t.conversation.sideChats()).toEqual([
+      { conversationId: 'side-1', scope: 'continued', from: 'remote-1' },
+    ])
+    t.stored.threadId = 'stored-9'
+    expect(t.conversation.sideChats()[0]).toMatchObject({
+      conversationId: 'side-1',
+      threadId: 'stored-9',
+    })
+    done.value.close()
+    expect(t.conversation.sideChats()).toEqual([])
   })
 
   test('disposing the owner closes every side chat', async () => {

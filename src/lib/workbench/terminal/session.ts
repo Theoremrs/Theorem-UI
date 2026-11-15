@@ -100,6 +100,8 @@ export interface OpenOptions {
   name?: string
   /** The lease to ask for with the first attach. Default `controller`: the opener types. */
   role?: 'controller' | 'observer'
+  /** The caller's own attachment name for the attach that follows the launch, sent to the host unchanged. */
+  attachment?: string
   /** Reuse after an uncertain launch so the gateway can recognise the same request (host behaviour unverified). */
   idempotencyKey?: string
 }
@@ -124,6 +126,13 @@ function programOf(binding: WireBinding | undefined): {
   return raw
     ? { program: raw.generation, ...(raw.origin ? { origin: raw.origin } : {}) }
     : {}
+}
+
+/** A claim a caller drew its write against: the attachment and the lease generation and epoch it believes current. */
+interface SuppliedClaim {
+  attachment: string
+  leaseGeneration: number
+  epoch: number
 }
 
 interface Sent {
@@ -211,6 +220,7 @@ export class TerminalSession {
       processOwnedBy: reply.process_owned_by,
       offset: 0,
     })
+    if (options.attachment) this.current.lease.attachment = options.attachment
     this.listen()
     this.emit({
       type: 'opened',
@@ -260,7 +270,7 @@ export class TerminalSession {
     kind: InputKind = 'human',
     options: {
       inputId?: string
-      claim?: { attachment: string; leaseGeneration: number; epoch: number }
+      claim?: SuppliedClaim
     } = {},
   ): Promise<
     Outcome<{ inputId: string; duplicate: boolean; discarded: boolean }>
@@ -280,17 +290,10 @@ export class TerminalSession {
     if (unfit) {
       return unfit
     }
-    const { claim } = options
     return this.send(inputId, {
       bytes,
       kind,
-      claim: claim
-        ? {
-            attachment: claim.attachment,
-            generation: claim.leaseGeneration,
-            epoch: claim.epoch,
-          }
-        : this.claim(),
+      claim: this.claim(options.claim),
       uncertain: false,
     })
   }
@@ -298,13 +301,19 @@ export class TerminalSession {
   async resize(
     cols: number,
     rows: number,
+    options: { claim?: SuppliedClaim } = {},
   ): Promise<Outcome<{ cols: number; rows: number }>> {
     const unfit = this.unfit()
     if (unfit) {
       return unfit
     }
     return this.write(async (id) => {
-      await this.host.resize({ session: id, cols, rows, ...this.claim() })
+      await this.host.resize({
+        session: id,
+        cols,
+        rows,
+        ...this.claim(options.claim),
+      })
       this.current.cols = cols
       this.current.rows = rows
       return { cols, rows }
@@ -402,7 +411,14 @@ export class TerminalSession {
     }
   }
 
-  private claim(): WriteClaim {
+  /** The claim a write presents: the one the caller names as it is, else the session's own. */
+  private claim(supplied?: SuppliedClaim): WriteClaim {
+    if (supplied)
+      return {
+        attachment: supplied.attachment,
+        generation: supplied.leaseGeneration,
+        epoch: supplied.epoch,
+      }
     const { lease, bindingEpoch } = this.current
     return {
       attachment: lease.attachment,

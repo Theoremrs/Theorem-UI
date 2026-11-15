@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import type {
   ConversationRuntime,
   SideChats,
+  SideChatScope,
   SideRuntime,
 } from './conversation'
 import type { SideChatModel } from './side-chat-model'
@@ -19,7 +20,12 @@ interface Entry {
  * Side chats for one mounted `Hosts`. `open` makes a second assistant-ui runtime over the
  * same factory as the main one; `close` unmounts it, which cancels its run and drops it.
  */
-export function createSideChats(makeModel: () => SideChatModel): {
+export function createSideChats(
+  makeModel: (request: {
+    scope: SideChatScope
+    from?: string
+  }) => Promise<SideChatModel>,
+): {
   sideChats: SideChats
   Hosts: () => ReactNode
 } {
@@ -63,23 +69,23 @@ export function createSideChats(makeModel: () => SideChatModel): {
   return {
     Hosts,
     sideChats: {
-      open: () =>
-        new Promise<SideRuntime>((resolve, reject) => {
-          if (mounted === 0) {
-            reject(new Error('No side chat host is mounted'))
-            return
-          }
+      open: async (request) => {
+        if (mounted === 0) throw new Error('No side chat host is mounted')
+        const model = await makeModel(request)
+        return new Promise<SideRuntime>((resolve) => {
           const entry: Entry = {
             key: (next += 1),
-            model: makeModel(),
+            model,
             ready: (runtime) =>
               resolve({
                 runtime,
+                threadId: model.threadId,
                 close: () => set(entries.filter((e) => e !== entry)),
               }),
           }
           set([...entries, entry])
-        }),
+        })
+      },
     },
   }
 }
