@@ -41,6 +41,8 @@ export type SearchPort = OwnerPort<Of<'search'>>
 export type ConversationPort = OwnerPort<Of<'conversation'>> & {
   /** Side chats can be created here. */
   canSideChat?: boolean
+  /** Branches can be selected here. */
+  canSwitchBranch?: boolean
 }
 export type ArtifactsPort = OwnerPort<Of<'artifact'>>
 export type ClipboardPort = OwnerPort<Of<'clipboard'>>
@@ -846,6 +848,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'conversationApproval':
       case 'conversationSideChat':
       case 'conversationSideList':
+      case 'conversationSwitchBranch':
       case 'conversationSideClose':
         return route('conversation', options.conversation, effect, requestId)
 
@@ -920,6 +923,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
     const local: Capability[] = ['layout']
     if (options.conversation) local.push('conversation')
     if (options.conversation?.canSideChat) local.push('conversation.side')
+    if (options.conversation?.canSwitchBranch) local.push('conversation.branch')
     if (options.artifacts) local.push('artifacts')
     if (options.clipboard) local.push('clipboard')
     return grantedCapabilities(env, local)

@@ -1,6 +1,7 @@
 // SOURCING: none — bun:test over ./conversation with a stub runtime shaped like assistant-ui's AssistantRuntime (thread and threads), no network
 
 import { describe, expect, test } from 'bun:test'
+import { TheoremError } from '@theoremharness/sdk'
 import { createConversation, snapshotMessage } from './conversation'
 import { StubRuntime, approvalPart, assistant } from './test-runtime'
 import type { ConversationServices, ConversationSnapshot } from './conversation'
@@ -145,6 +146,121 @@ describe('history', () => {
       lastReplyAtMs: 9,
       origin: { kind: 'continued', threadId: 'src' },
     })
+  })
+})
+
+describe('switching a branch', () => {
+  const fork = (branchId: string) => ({
+    schema: 's',
+    branchId,
+    tenantId: 't',
+    threadId: 'remote-1',
+    createdAtMs: 5,
+    parentBranchId: 'b0',
+  })
+  function branches(selected = 'b0') {
+    const stub = new StubRuntime()
+    const state = {
+      selected,
+      selects: [] as string[],
+      reloads: 0,
+      fail: undefined as unknown,
+      missing: false,
+    }
+    const tree = () =>
+      ({
+        rootBranchId: 'b0',
+        selectedBranchId: state.selected,
+        forks: [fork('b1')],
+        activeRunId: null,
+        lastRunOutcome: undefined,
+        lastReplyAtMs: undefined,
+        origin: undefined,
+      }) as never
+    stub.runtime.threads.reloadMainThread = async () =>
+      void (state.reloads += 1)
+    const conversation = createConversation({
+      runtime: stub.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+        history: async (threadId) => {
+          if (state.missing || threadId !== 'remote-1')
+            throw new TheoremError({ message: 'gone', statusCode: 404 })
+          return tree()
+        },
+        selectBranch: async (_thread, branch) => {
+          if (state.fail) throw state.fail
+          state.selects.push(branch)
+          state.selected = branch
+        },
+      },
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
+    return { conversation, state, stub }
+  }
+  const ask = (branchId: string, threadId = 'remote-1') => ({
+    requestId: 'r',
+    threadId,
+    branchId,
+  })
+
+  test('accepted: the branch is selected, the thread reloaded, and the snapshot at once carries the new selection', async () => {
+    const { conversation, state } = branches()
+    const heard: ConversationSnapshot[] = []
+    conversation.subscribe((snapshot) => heard.push(snapshot))
+    const done = await conversation.switchBranch(ask('b1'))
+    expect(done).toMatchObject({
+      outcome: 'accepted',
+      value: { conversationId: 'remote-1' },
+    })
+    expect(state.selects).toEqual(['b1'])
+    expect(state.reloads).toBe(1)
+    expect(heard.at(-1)!.history).toMatchObject({
+      rootBranchId: 'b0',
+      selectedBranchId: 'b1',
+      forks: [{ branchId: 'b1', parentBranchId: 'b0', createdAtMs: 5 }],
+    })
+    expect(heard.at(-1)!.revision).toBe(conversation.snapshot().revision)
+  })
+
+  test('a branch that is already selected is not written again', async () => {
+    const { conversation, state } = branches('b1')
+    expect(await conversation.switchBranch(ask('b1'))).toMatchObject({
+      outcome: 'accepted',
+    })
+    expect(state.selects).toEqual([])
+  })
+
+  test('an unknown branch and an unknown thread are refused and select nothing', async () => {
+    const { conversation, state } = branches()
+    expect(await conversation.switchBranch(ask('zz'))).toMatchObject({
+      outcome: 'refused',
+      code: 'unknown_branch',
+    })
+    expect(await conversation.switchBranch(ask('b1', 'nope'))).toMatchObject({
+      outcome: 'refused',
+      code: 'unknown_thread',
+    })
+    expect(state.selects).toEqual([])
+  })
+
+  test('a write whose answer was lost is uncertain and is not repeated', async () => {
+    const { conversation, state } = branches()
+    state.fail = new Error('network')
+    expect(await conversation.switchBranch(ask('b1'))).toMatchObject({
+      outcome: 'uncertain',
+    })
+    expect(state.selects).toEqual([])
+  })
+
+  test('a request drawn against another conversation is stale and does nothing', async () => {
+    const { conversation, state } = branches()
+    expect(
+      await conversation.switchBranch({ ...ask('b1'), conversationId: 'old' }),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_conversation' })
+    expect(state.selects).toEqual([])
   })
 })
 

@@ -5,6 +5,7 @@ import type { Actor } from '../wire/Actor'
 import type { ApprovalDecision } from '../wire/ApprovalDecision'
 import type { HostMessage } from '../wire/HostMessage'
 import { approvalChoice } from '@/lib/theorem/approval'
+import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
@@ -35,6 +36,8 @@ export interface ConversationRuntime {
     mainItem: { getState: () => { readonly remoteId?: string | undefined } }
     switchToThread: (threadId: string) => Promise<void>
     switchToNewThread: () => Promise<void>
+    /** Reads the open thread again, as it is stored (after its selected branch changed). */
+    reloadMainThread?: () => Promise<void>
   }
 }
 
@@ -54,6 +57,8 @@ export interface ConversationServices {
   }) => Promise<void>
   /** The thread's branches and standing, read when it opens and when a run ends. Absent: snapshots carry no history. */
   history?: (threadId: string) => Promise<ThreadTree | null>
+  /** Makes a branch the thread's selected one, as the thread list does. */
+  selectBranch?: (threadId: string, branchId: string) => Promise<unknown>
 }
 
 /** What a thread's history needs of its tree: the branches, which one is selected, and where the thread came from. */
@@ -155,6 +160,16 @@ export interface Conversation {
     request: Request & { threadId: string },
   ) => Promise<Completion<{ conversationId: string }>>
   create: (request: Request) => Promise<Completion<{ conversationId: string }>>
+  /**
+   * Selects a branch of a stored thread and opens that thread as it is stored. The thread and branch must
+   * exist; a branch that is already selected changes nothing. The snapshot that follows carries the new `history`.
+   * An answer that was lost is `uncertain` and is not asked again here.
+   */
+  switchBranch: (
+    request: Request & { threadId: string; branchId: string },
+  ) => Promise<Completion<{ conversationId: string }>>
+  /** Whether branches can be selected here: the host reads and sets them. */
+  canSwitchBranch: boolean
   /**
    * A second conversation beside this one, on its own runtime and its own conversation resource.
    * Nothing sent to it reaches this one's runtime. Closing it disposes its conversation and its runtime.
@@ -725,6 +740,66 @@ export function createConversation({
       return accepted(answers, { conversationId: conversationId() })
     },
 
+    async switchBranch(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      const { threadId, branchId } = request
+      if (!services.history || !services.selectBranch)
+        return refused(
+          answers,
+          'missing_capability',
+          'This host does not read or set a thread’s branches',
+        )
+      const read = async (): Promise<ThreadTree | null | Completion<never>> => {
+        try {
+          return await services.history!(threadId)
+        } catch (error) {
+          return hasStatus(error, 404)
+            ? refused(answers, 'unknown_thread', `No thread ${threadId}`)
+            : failure(answers, error, false)
+        }
+      }
+      const before = await read()
+      if (before && 'outcome' in before) return before
+      if (!before)
+        return refused(answers, 'unknown_thread', `No thread ${threadId}`)
+      if (
+        branchId !== before.rootBranchId &&
+        !before.forks.some((fork) => fork.branchId === branchId)
+      )
+        return refused(
+          answers,
+          'unknown_branch',
+          `Thread ${threadId} has no branch ${branchId}`,
+        )
+      if (before.selectedBranchId !== branchId) {
+        try {
+          await services.selectBranch(threadId, branchId)
+        } catch (error) {
+          // A refusal by status is a clean no; anything else may have been applied.
+          return failure(answers, error, true)
+        }
+      }
+      const opened = runtime.threads.mainItem.getState().remoteId
+      try {
+        if (opened === threadId && runtime.threads.reloadMainThread)
+          await runtime.threads.reloadMainThread()
+        else if (opened !== threadId)
+          await runtime.threads.switchToThread(threadId)
+      } catch (error) {
+        return failure(answers, error, true)
+      }
+      // The tree after the switch, delivered now: the snapshot's history is the new selection.
+      const after = await read()
+      if (after && !('outcome' in after)) {
+        const thread = conversationId()
+        historyKey = `${thread}|${runtime.thread.getState().isRunning}`
+        history = { thread, key: historyKey, tree: after }
+      }
+      flush()
+      return accepted(answers, { conversationId: conversationId() })
+    },
+
     async create(request) {
       const { answers, refusal } = begin(request)
       if (refusal) return refusal
@@ -796,6 +871,8 @@ export function createConversation({
     },
 
     canSideChat: sideChats !== undefined,
+    canSwitchBranch:
+      services.history !== undefined && services.selectBranch !== undefined,
 
     sideChats: () =>
       [...sides].map((chat) => {

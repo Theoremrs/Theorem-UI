@@ -2,7 +2,7 @@
 import type { AssistantClient } from '@assistant-ui/react'
 import { sendApprovalDecision } from '@/lib/theorem/approval'
 import { sendRunInput } from '@/lib/theorem/run-input-runtime'
-import { loadThreadTree } from '@/lib/theorem/thread-origin'
+import { loadThreadTree, selectBranch } from '@/lib/theorem/thread-origin'
 import type { ConversationRuntime, ConversationServices } from './conversation'
 
 /**
@@ -29,6 +29,9 @@ export function conversationRuntimeOf(
       switchToThread: async (threadId) => {
         await aui.threads().switchToThread(threadId)
       },
+      reloadMainThread: async () => {
+        await aui.threads().reloadMainThread()
+      },
       switchToNewThread: async () => {
         await aui.threads().switchToNewThread()
       },
@@ -45,4 +48,5 @@ export const conversationServices: ConversationServices = {
     await sendRunInput(runId, text, inputId)
   },
   history: loadThreadTree,
+  selectBranch,
 }

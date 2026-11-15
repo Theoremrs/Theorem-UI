@@ -39,6 +39,8 @@ export function createConversationPort({
   sideChats: Conversation['sideChats']
   /** Whether side chats can be created here; the adapter grants `conversation.side` on it. */
   canSideChat: boolean
+  /** Whether branches can be selected here; the adapter grants `conversation.branch` on it. */
+  canSwitchBranch: boolean
 } {
   /** Side chats by the id announced when they opened; that id never changes, whatever the thread behind it is called. */
   const sides = new Map<string, { chat: SideChat; stop: () => void }>()
@@ -55,6 +57,7 @@ export function createConversationPort({
   return {
     sideChats: () => conversation.sideChats(),
     canSideChat: conversation.canSideChat,
+    canSwitchBranch: conversation.canSwitchBranch,
 
     async perform(effect, requestId) {
       const thread = threadOf(effect.resource)
@@ -122,6 +125,7 @@ export function createConversationPort({
         }
         case 'conversationCreate':
         case 'conversationSwitch':
+        case 'conversationSwitchBranch':
           if (side)
             return refusal(
               'side_chat',
@@ -145,6 +149,16 @@ export function createConversationPort({
             await conversation.switchTo({
               requestId,
               threadId: effect.payload.threadId,
+            }),
+            opened,
+          )
+        case 'conversationSwitchBranch':
+          return reply(
+            await conversation.switchBranch({
+              requestId,
+              ...(thread ? { conversationId: thread } : {}),
+              threadId: effect.payload.threadId,
+              branchId: effect.payload.branchId,
             }),
             opened,
           )

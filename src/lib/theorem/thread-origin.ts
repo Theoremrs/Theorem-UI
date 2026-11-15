@@ -1,5 +1,5 @@
 // SOURCING: @theoremharness/sdk threads.get and the thread origin it stores (forked or continued); the plain half of thread-tree.ts, split out so a caller that is not a React hook can start a thread from another
-import { theorem } from './client'
+import { mutateThread, theorem } from './client'
 import type { Theorem } from './client'
 
 /** A message as the chat shows it. One sent this session has a local id, and the run that wrote it. */
@@ -104,3 +104,13 @@ export async function loadThreadTree(
     origin: thread.origin,
   }
 }
+
+/** Makes a branch the thread's selected one, which is what its history loads. */
+export const selectBranch = (threadId: string, branchId: string) =>
+  mutateThread(threadId, (headers) =>
+    theorem().chat.threads.update({
+      threadId,
+      selectedBranchId: branchId,
+      ...headers,
+    }),
+  )

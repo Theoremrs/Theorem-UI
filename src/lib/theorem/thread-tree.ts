@@ -8,9 +8,9 @@
 import { useAui } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
-import { describeError, mutate, mutateThread, theorem } from './client'
+import { describeError, mutate, theorem } from './client'
 import { organizationKey } from './organization'
-import { loadThreadTree, threadOriginFor } from './thread-origin'
+import { loadThreadTree, selectBranch, threadOriginFor } from './thread-origin'
 import type { ThreadFrom, ThreadTree } from './thread-origin'
 import type { Theorem } from './client'
 
@@ -69,14 +69,7 @@ export function useSelectBranch() {
     }: {
       threadId: string
       branchId: string
-    }) =>
-      mutateThread(threadId, (headers) =>
-        theorem().chat.threads.update({
-          threadId,
-          selectedBranchId: branchId,
-          ...headers,
-        }),
-      ),
+    }) => selectBranch(threadId, branchId),
     onMutate: ({ threadId, branchId }) => {
       const key = threadTreeKey(threadId)
       const previous = queryClient.getQueryData<ThreadTree | null>(key)

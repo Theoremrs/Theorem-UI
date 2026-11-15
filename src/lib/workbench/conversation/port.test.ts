@@ -526,3 +526,52 @@ describe('side chats', () => {
     expect(resources).toEqual(['remote-1', a])
   })
 })
+
+describe('switching a branch through the port', () => {
+  test('the effect selects the branch and answers like a switch; a resource for another thread is stale', async () => {
+    const stub = new StubRuntime()
+    const selects: string[] = []
+    const conversation = createConversation({
+      runtime: stub.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+        history: async () =>
+          ({
+            rootBranchId: 'b0',
+            selectedBranchId: selects.at(-1) ?? 'b0',
+            forks: [{ branchId: 'b1', createdAtMs: 1 }],
+            activeRunId: null,
+          }) as never,
+        selectBranch: async (_thread, branch) => void selects.push(branch),
+      },
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
+    const port = createConversationPort({ conversation, project: 'p1' })
+    expect(port.canSwitchBranch).toBe(true)
+    const perform = (resource: ResourceRef, branchId: string) =>
+      port.perform(
+        {
+          id: 1,
+          resource,
+          kind: 'conversationSwitchBranch',
+          payload: { threadId: 'remote-1', branchId },
+        } as never,
+        'req-1',
+      )
+    expect(await perform(thread('remote-1'), 'b1')).toEqual({
+      outcome: 'accepted',
+      value: { type: 'conversationOpened', conversationId: 'remote-1' },
+    })
+    expect(selects).toEqual(['b1'])
+    expect(await perform(thread('old'), 'b1')).toMatchObject({
+      outcome: 'refused',
+      code: 'stale_conversation',
+    })
+    expect(await perform(thread('remote-1'), 'zz')).toMatchObject({
+      outcome: 'refused',
+      code: 'unknown_branch',
+    })
+  })
+})

@@ -123,6 +123,7 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   conversationApproval: { runId: 'r', approvalId: 'a', decision: 'allow' },
   conversationSideChat: {},
   conversationSideList: undefined,
+  conversationSwitchBranch: { threadId: 't', branchId: 'b' },
   conversationSideClose: undefined,
   layoutLoad: undefined,
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
@@ -1382,6 +1383,9 @@ describe('host events', () => {
       'conversation.side',
     )
     expect(await granted(owner)).not.toContain('conversation.side')
+    expect(await granted({ ...owner, canSwitchBranch: true })).toContain(
+      'conversation.branch',
+    )
   })
 
   test('a pushed message from an owner is forwarded', async () => {
