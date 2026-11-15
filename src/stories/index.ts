@@ -66,6 +66,13 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-diagnostics', title: 'Workbench: Diagnostics for two open documents, every severity', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run', title: 'Workbench: a finished run attached from the host list, with coloured output', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run-list', title: 'Workbench: the list of runs on the host', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-cabinet', title: 'Workbench: the Artifacts panel with cards and previews over the grid', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-cabinet-picker', title: 'Workbench: Artifacts opened from the picker by key', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-face', title: 'Workbench: Theo face on the status row of the Theo panel, dark', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-face-custom', title: 'Workbench: Theo face on a custom warm palette', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-account-switch', title: 'Workbench: a draft, then another account is signed in', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-device-copy', title: 'Workbench: the layout read from this device, labelled, saving refused', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-arrangements', title: 'Workbench: presets applied by key and a saved arrangement kept across a reload', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',

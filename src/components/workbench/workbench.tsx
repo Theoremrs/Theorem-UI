@@ -1,5 +1,4 @@
-// SOURCING: hand-roll — the mount of the Rust workbench (terminal/src/workbench.rs, Ratzilla on the DOM backend, loaded by terminal-screen's loadWasm exactly as the terminal drawer loads it): no library models a host element that forwards keys, pointer, wheel, IME and paste into a wasm Elm core. The owners are src/lib/workbench (connectEnvironment, createFiles, createLayout, createCheckpoints, createAdapter) and the terminal owner is that folder's terminalHost and TerminalSession over the SDK's WorkspaceLive. The platform's ResizeObserver measures the host.
-import { WorkspaceLive } from '@theoremharness/sdk'
+// SOURCING: hand-roll — the mount of the Rust workbench (terminal/src/workbench.rs, Ratzilla on the DOM backend, loaded by terminal-screen's loadWasm exactly as the terminal drawer loads it): no library models a host element that forwards keys, pointer, wheel, IME and paste into a wasm Elm core. The owners are src/lib/workbench (connectEnvironment, createFiles, createLayout, createCheckpoints, createAdapter) and the terminal owner is that folder's terminalHost and TerminalSession from connectTerminalHost. The platform's ResizeObserver measures the host.
 import {
   createContext,
   useCallback,
@@ -13,8 +12,11 @@ import type { ReactNode } from 'react'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { bootstrap } from '@/lib/theorem/client'
 import { createAdapter } from '@/lib/workbench/adapter'
-import type { Adapter } from '@/lib/workbench/adapter'
-import { connectEnvironment } from '@/lib/workbench/environment/connect'
+import type { AccountAdapter, Adapter } from '@/lib/workbench/adapter'
+import { SignIn } from '@/components/auth/sign-in'
+import { accountKey, createAccountWatch } from '@/lib/workbench/account'
+import { statusOf } from '@/lib/workbench/environment/result'
+import { connectEnvironment, connectTerminalHost } from '@/lib/workbench/environment/connect'
 import { createConversation } from '@/lib/workbench/conversation/conversation'
 import { createConversationPort } from '@/lib/workbench/conversation/port'
 import { conversationServices } from '@/lib/workbench/conversation/runtime'
@@ -28,20 +30,34 @@ import { createRunPort } from '@/lib/workbench/run/port'
 import { createSearch } from '@/lib/workbench/search/search'
 import { createSearchPort } from '@/lib/workbench/search/port'
 import { createDocuments } from '@/lib/workbench/documents/documents'
+import { createDraftStore } from '@/lib/workbench/documents/local'
 import { createDocumentsPort } from '@/lib/workbench/documents/port'
 import { createFiles } from '@/lib/workbench/files/files'
 import {
   checkpointDirectory,
   createCheckpoints,
   createLayout,
+  createLocalStore,
 } from '@/lib/workbench/layout'
 import { createScm } from '@/lib/workbench/scm/scm'
 import { createScmPort } from '@/lib/workbench/scm/port'
-import { TerminalSession, terminalHost } from '@/lib/workbench/terminal'
-import type { Effect, Inbound } from '@/lib/workbench/wire'
+import { TerminalSession } from '@/lib/workbench/terminal'
+import type { ArrangementMsg, Effect, Inbound } from '@/lib/workbench/wire'
 import type { WorkbenchHandle } from '@/terminal-wasm/theorem_terminal'
 import { createArtifactsPort, createClipboardPort } from './ports'
 import { pointerJson } from './pointer-json'
+import { WorkbenchCabinet } from '@/components/cabinet/workbench-cabinet'
+import { WorkbenchFace } from './workbench-face'
+
+/** What the surface lets an adapter's builder do to the mounted core besides answering effects. */
+export interface SurfaceHost {
+  /** Delivers an arrangement message (load, save, apply, rename, delete) to the core. */
+  arrangement: (message: ArrangementMsg) => void
+  /** The presets and the account's saved arrangements, as the core lists them. */
+  arrangements: () => { name: string; builtin: boolean }[]
+  /** The person's key overrides (the core's `Overrides`, JSON): what the key table is rebuilt from. */
+  setKeys: (overridesJson: string) => void
+}
 
 /** Answers to the workbench: completions of its effects and events nobody asked for, each tagged by its channel. */
 export type Dispatch = (message: Inbound) => void
@@ -118,22 +134,33 @@ function mountWorkbench(host: HTMLElement) {
 export function WorkbenchSurface({
   connect,
   onDrawn,
+  project,
+  loadArrangements = false,
   children,
 }: {
-  connect: (dispatch: Dispatch) => Adapter
+  connect: (dispatch: Dispatch, surface: SurfaceHost) => Adapter
   /** Called once, after the first frame is on the page: what a story or an oracle waits for. */
   onDrawn?: () => void
+  /** The project whose artifacts the Artifacts panel shows; absent, the panel's page side is not mounted. */
+  project?: { id: string; title: string }
+  /** Ask the core to load the account's arrangements once the adapter is ready. */
+  loadArrangements?: boolean
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const hostId = `workbench-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
   const host = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const handle = useRef<WorkbenchHandle>(undefined)
+  // The same handle as state, for the page parts that are drawn over the grid once it is up.
+  const [mountedHandle, setMountedHandle] = useState<WorkbenchHandle>()
+  const [root, setRoot] = useState<HTMLDivElement | null>(null)
+  const arranging = useRef(loadArrangements)
   const latest = useRef(connect)
   const drawn = useRef(onDrawn)
   useEffect(() => {
     latest.current = connect
     drawn.current = onDrawn
+    arranging.current = loadArrangements
   })
 
   const [feed] = useState(createFeed)
@@ -149,11 +176,29 @@ export function WorkbenchSurface({
     void mounting.then((mounted) => {
       if (disposed) return
       handle.current = mounted
+      setMountedHandle(mounted)
       stopMotion = deliverReducedMotion(mounted)
-      adapter = latest.current((message) => {
-        if (!disposed) mounted.dispatch(JSON.stringify(message))
-      })
+      adapter = latest.current(
+        (message) => {
+          if (!disposed) mounted.dispatch(JSON.stringify(message))
+        },
+        {
+          arrangement: (message) => {
+            if (!disposed) mounted.arrangement(JSON.stringify(message))
+          },
+          arrangements: () =>
+            JSON.parse(mounted.arrangements()) as {
+              name: string
+              builtin: boolean
+            }[],
+          setKeys: (json) => {
+            if (!disposed) mounted.set_keys(json)
+          },
+        },
+      )
       sink.effect = (json) => adapter?.perform(JSON.parse(json) as Effect)
+      // The adapter is ready (and can take the load's effect): read the account's saved arrangements.
+      if (arranging.current) mounted.arrangement(JSON.stringify({ type: 'load' }))
       mounted.resize()
       // The keyboard works from load: take focus unless the person is already typing elsewhere.
       const active = document.activeElement
@@ -183,12 +228,14 @@ export function WorkbenchSurface({
       element.removeEventListener('wheel', wheel)
       adapter?.dispose()
       handle.current = undefined
+      setMountedHandle(undefined)
     }
   }, [feed])
 
   return (
     <FeedContext.Provider value={feed}>
       <div
+        ref={setRoot}
         className="relative flex h-full min-h-0 w-full flex-1 flex-col font-mono text-[12.5px]"
         onKeyDown={(event) => {
           // Keys pressed during an IME composition belong to the composition, never to the
@@ -280,117 +327,210 @@ export function WorkbenchSurface({
             handle.current?.paste(event.clipboardData.getData('text'))
           }}
         />
+        {mountedHandle && project ? (
+          <WorkbenchCabinet
+            host={mountedHandle}
+            overlay={root}
+            projectId={project.id}
+            projectTitle={project.title}
+          />
+        ) : null}
+        {mountedHandle ? <WorkbenchFace host={mountedHandle} /> : null}
         {children?.(feed)}
       </div>
     </FeedContext.Provider>
   )
 }
 
+/** What `Workbench` owns for one signed-in account; all of it lets go together. */
+type Owners = { adapter: AccountAdapter; stop: () => void }
+
 /**
  * The workbench of a project: the environment, then every owner that has a module (files, documents,
  * scm, language, run and search, the conversation and its side chats, the layout, the terminal, and the
  * clipboard and artifact cabinet of this app) under the adapter. Capabilities come from the adapter,
  * which derives them from the host's operations.
+ *
+ * Everything kept on this device is scoped by the signed-in account (`session.bootstrap`). When the
+ * account changes the adapter retires itself and tells the core; the owners of the old account are then
+ * let go, new ones are built for the new account, and the core is asked to load that account's
+ * arrangements. A sign-out or a revoked access shows the app's own sign-in page instead.
  */
 export function Workbench({
   projectId,
+  projectTitle = 'This project',
   children,
 }: {
   projectId: string
+  projectTitle?: string
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const runtime = useConversationRuntime()
   const [sideChats] = useState(() =>
     createSideChats((request) => createSideChatModel(projectId, request)),
   )
+  const [access, setAccess] = useState<{
+    code: 'signed_out' | 'forbidden'
+    reason: string
+  }>()
   const connect = useCallback(
-    (dispatch: Dispatch): Adapter => {
-      const environment = connectEnvironment(projectId)
-      const workspaceId = environment.workspaceId
-      // The core is told which workspace it shows as soon as it is known, and again when the
-      // host's environment (its epoch) changes.
-      let announced: string | undefined
-      const announce = () => {
-        const { workspaceId: workspace, epoch } = environment.identity
-        const key = `${workspace}/${epoch ?? ''}`
-        if (key === announced) return
-        announced = key
-        dispatch({
-          channel: 'host',
-          type: 'workspaceChanged',
-          workspace,
-          ...(epoch ? { environment: epoch } : {}),
+    (dispatch: Dispatch, surface: SurfaceHost): Adapter => {
+      let disposed = false
+      let current: Owners | undefined
+      /** Effects asked for while no adapter serves (before the account is known, or between accounts). */
+      let waiting: Effect[] = []
+
+      async function build(force: boolean): Promise<Owners> {
+        const identity = await bootstrap(force)
+        const account = accountKey(identity)
+        const directory = checkpointDirectory(account)
+        const environment = connectEnvironment(projectId)
+        const workspaceId = environment.workspaceId
+        // The core is told which workspace it shows as soon as it is known, and again when the
+        // host's environment (its epoch) changes.
+        let announced: string | undefined
+        const announce = () => {
+          const { workspaceId: workspace, epoch } = environment.identity
+          const key = `${workspace}/${epoch ?? ''}`
+          if (key === announced) return
+          announced = key
+          dispatch({
+            channel: 'host',
+            type: 'workspaceChanged',
+            workspace,
+            ...(epoch ? { environment: epoch } : {}),
+          })
+        }
+        announce()
+        const unsubscribe = environment.subscribe(announce)
+        // One store per account: the layout checkpoint and the document drafts share it.
+        const store = createLocalStore({ directory, account })
+        const checkpoints = createCheckpoints({ directory, account, store })
+        const layout = createLayout({ environment, checkpoints })
+        // The terminal owner and its live stream come from the environment's own SDK build.
+        const { host, stop: stopTerminal } = connectTerminalHost(environment)
+        const files = createFiles(environment)
+        const language = createLanguage(environment)
+        const runner = createRunner(environment)
+        const search = createSearch(environment)
+        const conversation = createConversation({
+          runtime,
+          sideChats: sideChats.sideChats,
+          services: conversationServices,
+          workspaceId,
         })
+        const drafts = createDraftStore({ store, workspaceId })
+        const documentOwner = createDocuments(environment, { drafts })
+        const documents = createDocumentsPort({
+          documents: documentOwner,
+          files,
+        })
+        const watch = createAccountWatch({
+          identify: () => bootstrap(true),
+          initial: identity,
+        })
+        const refresh = () => void watch.refresh()
+        window.addEventListener('focus', refresh)
+        const adapter = createAdapter({
+          environment,
+          files,
+          terminal: { create: () => new TerminalSession(host), host },
+          layout,
+          documents,
+          scm: createScmPort(createScm(environment)),
+          language: languagePortFor(language, documents),
+          run: createRunPort(runner),
+          search: createSearchPort(search),
+          conversation: createConversationPort({
+            conversation,
+            project: projectId,
+          }),
+          artifacts: createArtifactsPort(projectId),
+          clipboard: createClipboardPort(),
+          dispatch,
+          account: watch,
+          retiring: [store, { retire: () => documentOwner.dispose() }],
+        })
+        return {
+          adapter,
+          stop() {
+            window.removeEventListener('focus', refresh)
+            watch.dispose()
+            unsubscribe()
+            adapter.dispose()
+            language.dispose()
+            runner.dispose()
+            search.dispose()
+            conversation.dispose()
+            stopTerminal()
+            void checkpoints.dispose()
+            environment.dispose()
+          },
+        }
       }
-      announce()
-      const unsubscribe = environment.subscribe(announce)
-      const checkpoints = createCheckpoints({
-        directory: checkpointDirectory(workspaceId),
-      })
-      const layout = createLayout({ environment, checkpoints })
-      // The terminal owner listens to its own live stream for the terminal events.
-      const live = new WorkspaceLive({
-        client: environment.client,
-        workspaceId,
-      })
-      void live.start()
-      const host = terminalHost({
-        client: environment.client,
-        live,
-        workspaceId,
-        csrfToken: async () => (await bootstrap()).csrfToken,
-      })
-      const files = createFiles(environment)
-      const language = createLanguage(environment)
-      const runner = createRunner(environment)
-      const search = createSearch(environment)
-      const conversation = createConversation({
-        runtime,
-        sideChats: sideChats.sideChats,
-        services: conversationServices,
-        workspaceId,
-      })
-      const documents = createDocumentsPort({
-        documents: createDocuments(environment),
-        files,
-      })
-      const adapter = createAdapter({
-        environment,
-        files,
-        terminal: { create: () => new TerminalSession(host), host },
-        layout,
-        documents,
-        scm: createScmPort(createScm(environment)),
-        language: languagePortFor(language, documents),
-        run: createRunPort(runner),
-        search: createSearchPort(search),
-        conversation: createConversationPort({
-          conversation,
-          project: projectId,
-        }),
-        artifacts: createArtifactsPort(projectId),
-        clipboard: createClipboardPort(),
-        dispatch,
-      })
+
+      async function start(force: boolean) {
+        let owners: Owners
+        try {
+          owners = await build(force)
+        } catch (error) {
+          if (disposed) return
+          const status = statusOf(error)
+          if (status === 401 || status === 403)
+            setAccess({
+              code: status === 401 ? 'signed_out' : 'forbidden',
+              reason: error instanceof Error ? error.message : String(error),
+            })
+          else console.warn('The workbench could not start', error)
+          return
+        }
+        if (disposed) {
+          owners.stop()
+          return
+        }
+        current = owners
+        owners.adapter.onRetired((retirement) => {
+          if (disposed || current !== owners) return
+          current = undefined
+          owners.stop()
+          if (retirement.code === 'account_changed') void start(true)
+          else setAccess(retirement)
+        })
+        for (const effect of waiting.splice(0)) owners.adapter.perform(effect)
+        // The new account's saved arrangements. The old adapter already told the core the
+        // account changed; the core is not told again.
+        surface.arrangement({ type: 'load' })
+      }
+      void start(false)
+
       return {
-        perform: adapter.perform,
+        perform(effect) {
+          if (current) current.adapter.perform(effect)
+          else waiting.push(effect)
+        },
         dispose() {
-          unsubscribe()
-          adapter.dispose()
-          language.dispose()
-          runner.dispose()
-          search.dispose()
-          conversation.dispose()
-          live.close()
-          void checkpoints.dispose()
-          environment.dispose()
+          disposed = true
+          waiting = []
+          current?.stop()
+          current = undefined
         },
       }
     },
     [projectId, runtime, sideChats],
   )
+  if (access)
+    return (
+      <SignIn
+        failure={access.code === 'forbidden' ? 'access_denied' : undefined}
+        returnTo="/"
+      />
+    )
   return (
-    <WorkbenchSurface key={projectId} connect={connect}>
+    <WorkbenchSurface
+      key={projectId}
+      connect={connect}
+      project={{ id: projectId, title: projectTitle }}
+    >
       {(feed) => (
         <>
           <sideChats.Hosts />

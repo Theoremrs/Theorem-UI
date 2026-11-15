@@ -1,10 +1,15 @@
 // SOURCING: none — the stories' scripted fixture workbench: the real wasm workbench over createFixtureHost, driven by real key events and typed text on its own input surface. It uses WorkbenchSurface; nothing else applies.
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { terminalTheme, workspaceOf } from '@/components/terminal/terminal-theme'
+import { terminalRoles } from '@/components/terminal/terminal-roles'
+import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
+import { FaceStage } from '@/components/face/face-stage'
 import { createFixtureHost } from './fixture-host'
 import type { FixtureHost, FixtureOptions } from './fixture-host'
 import { FILES_TREE } from './fixtures'
 import { WorkbenchSurface } from './workbench'
-import type { Dispatch, SemanticsFeed } from './workbench'
+import type { Dispatch, SemanticsFeed, SurfaceHost } from './workbench'
+import type { ReactNode } from 'react'
 
 /** What the picker lists as live: every tool the fixture host can serve. */
 const EVERY_TOOL = [
@@ -23,6 +28,7 @@ const EVERY_TOOL = [
   'run.start',
   'run.subscribe',
   'run.list',
+  'artifacts',
 ]
 
 /** What the first stories' host can do: the files owner only, so the picker lists the rest as unavailable. */
@@ -34,12 +40,12 @@ const FILES_ONLY = ['files']
  */
 export type Step =
   | { chord: 'e' | 't' | 'g' | 's' }
-  | { key: string; shift?: boolean; ctrl?: boolean; alt?: boolean }
+  | { key: string; shift?: boolean; ctrl?: boolean; alt?: boolean; meta?: boolean }
   | { text: string }
   | { see: string }
   /** A person's drag, in pixels of the host: mouse down at `from`, moves, mouse up at `to`. */
   | { drag: { from: [number, number]; to: [number, number] } }
-  | { host: (host: FixtureHost) => void }
+  | { host: (host: FixtureHost, surface: SurfaceHost) => void }
 
 const mac = () => /Mac/.test(navigator.platform)
 
@@ -124,6 +130,10 @@ function FixtureStory({
   options,
   script,
   wait,
+  project,
+  arrangements = false,
+  controls,
+  extra,
 }: {
   id: string
   width: number
@@ -132,15 +142,25 @@ function FixtureStory({
   script: Step[]
   /** What the semantic tree must name before the story is ready. */
   wait: string[]
+  /** The project the Artifacts panel shows. */
+  project?: { id: string; title: string }
+  /** The core loads the account's arrangements once the host is ready. */
+  arrangements?: boolean
+  /** Fixture controls: things the host does that a person does not (an account switch). Never part of the product. */
+  controls?: Record<string, (host: FixtureHost, surface: SurfaceHost) => void>
+  /** Page parts that live beside the workbench in the real app (Theo's face). */
+  extra?: ReactNode
 }) {
   const box = useRef<HTMLDivElement>(null)
   const feedRef = useRef<SemanticsFeed>(undefined)
   const hostRef = useRef<FixtureHost>(undefined)
+  const surfaceRef = useRef<SurfaceHost>(undefined)
   const [lastEffect, setLastEffect] = useState<string>()
   const [drawn, setDrawn] = useState(false)
   const [ready, setReady] = useState(false)
   const connect = useCallback(
-    (dispatch: Dispatch) => {
+    (dispatch: Dispatch, surface: SurfaceHost) => {
+      surfaceRef.current = surface
       const host = createFixtureHost(dispatch, {
         ...options,
         performed: setLastEffect,
@@ -152,14 +172,28 @@ function FixtureStory({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   )
+  // An arrangements story shows what the core lists, on the box, for an oracle to read.
+  useEffect(() => {
+    if (!arrangements || !drawn) return
+    let frame = 0
+    const tick = () => {
+      const listed = surfaceRef.current?.arrangements()
+      if (listed && box.current)
+        box.current.dataset.arrangements = JSON.stringify(listed)
+      frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [arrangements, drawn])
   useEffect(() => {
     if (!drawn) return
     const root = box.current
     const feed = feedRef.current
     const fixture = hostRef.current
+    const surface = surfaceRef.current
     const element = root?.querySelector<HTMLElement>('[id^=workbench-]')
     const input = root?.querySelector('textarea')
-    if (!root || !feed || !fixture || !element || !input) return
+    if (!root || !feed || !fixture || !surface || !element || !input) return
     const stop = new AbortController()
     void (async () => {
       for (const step of script) {
@@ -177,11 +211,12 @@ function FixtureStory({
             shiftKey: step.shift,
             ctrlKey: step.ctrl,
             altKey: step.alt,
+            metaKey: step.meta,
           })
         else if ('text' in step) type(input, step.text)
         else if ('see' in step) await seen(feed, step.see)
         else if ('drag' in step) drag(element, step.drag)
-        else step.host(fixture)
+        else step.host(fixture, surface)
         await frames(3)
       }
       for (const text of wait) await seen(feed, text)
@@ -201,14 +236,42 @@ function FixtureStory({
       data-story-pending={ready ? undefined : ''}
       data-last-effect={lastEffect}
       style={{ width, height }}
-      className="flex flex-col overflow-hidden bg-term"
+      className="relative flex flex-col overflow-hidden bg-term"
     >
-      <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)}>
+      <WorkbenchSurface
+        connect={connect}
+        onDrawn={() => setDrawn(true)}
+        project={project}
+        loadArrangements={arrangements}
+      >
         {(feed) => {
           feedRef.current = feed
           return null
         }}
       </WorkbenchSurface>
+      {extra}
+      {controls ? (
+        <div
+          data-story-controls=""
+          className="absolute right-0 bottom-0 flex opacity-0"
+        >
+          {Object.entries(controls).map(([name, run]) => (
+            <button
+              key={name}
+              type="button"
+              data-story-control={name}
+              tabIndex={-1}
+              onClick={() => {
+                const fixture = hostRef.current
+                const surface = surfaceRef.current
+                if (fixture && surface) run(fixture, surface)
+              }}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -528,3 +591,193 @@ export function WorkbenchChangesStory() {
 
 export const PICKER_WIDTH = 2304
 export const PICKER_HEIGHT = 512
+
+
+/** The Artifacts panel opened from the picker, over a fake Theorem's outputs, with previews painted over the cards. */
+const OPEN_ARTIFACTS: Step[] = [
+  { chord: 't' },
+  { text: 'More tools' },
+  { key: 'Enter' },
+  { text: 'Artifacts' },
+  { key: 'Enter' },
+]
+
+/** `workbench-cabinet`: the Artifacts panel in the tools group, cards with their previews laid over the grid. */
+export function WorkbenchCabinetStory() {
+  return (
+    <FixtureStory
+      id="workbench-cabinet"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, transcript: true }}
+      project={{ id: 'project-theorem', title: 'Theorem' }}
+      script={OPEN_ARTIFACTS}
+      wait={['Gallery']}
+    />
+  )
+}
+
+/** `workbench-cabinet-picker`: the same workbench with the picker resting, for opening the Artifacts panel by key. */
+export function WorkbenchCabinetPickerStory() {
+  return (
+    <FixtureStory
+      id="workbench-cabinet-picker"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, transcript: true }}
+      project={{ id: 'project-theorem', title: 'Theorem' }}
+      script={[]}
+      wait={['README.md']}
+    />
+  )
+}
+
+/** A person's own warm, dark palette: neither the terminal's slate nor a light one. */
+const WARM_TOKENS: Record<string, string> = {
+  'surface-neutral': '#2b2118',
+  'surface-sidebar': '#241b13',
+  'surface-frame': '#241b13',
+  'surface-raised': '#34291f',
+  'surface-hover': '#3d3126',
+  'surface-composer': '#34291f',
+  'surface-artifact': '#34291f',
+  'surface-rail': '#241b13',
+  'sheet-from': '#2b2118',
+  'sheet-to': '#241b13',
+  ink: '#f2e4cf',
+  'ink-muted': '#c4b49c',
+  'ink-faint': '#988a76',
+  'line-control': '#4a3c2e',
+  'line-separator': '#4a3c2e',
+}
+
+/** Paints the workbench in the warm palette for as long as the story is up. */
+function WarmPalette() {
+  useEffect(() => {
+    const before = useTerminalTheme.getState()
+    const workspace = workspaceOf((name) => WARM_TOKENS[name] as string)
+    useTerminalTheme.setState({
+      theme: terminalTheme(workspace),
+      roles: terminalRoles(workspace),
+    })
+    return () => useTerminalTheme.setState(before)
+  }, [])
+  return null
+}
+
+/** `workbench-face`: Theo's face resting on the status row of the Theo panel, in the terminal's dark palette. */
+export function WorkbenchFaceStory() {
+  return (
+    <FixtureStory
+      id="workbench-face"
+      width={1280}
+      height={640}
+      options={{ granted: FILES_ONLY, transcript: true }}
+      script={[]}
+      wait={['README.md', 'Allow']}
+      extra={<FaceStage />}
+    />
+  )
+}
+
+/** `workbench-face-custom`: the same face on a person's own warm palette. */
+export function WorkbenchFaceCustomStory() {
+  return (
+    <FixtureStory
+      id="workbench-face-custom"
+      width={1280}
+      height={640}
+      options={{ granted: FILES_ONLY, transcript: true }}
+      script={[]}
+      wait={['README.md', 'Allow']}
+      extra={
+        <>
+          <WarmPalette />
+          <FaceStage />
+        </>
+      }
+    />
+  )
+}
+
+const SWITCH_TO_GRACE = (host: FixtureHost, surface: SurfaceHost) => {
+  host.switchAccount('grace')
+  surface.arrangement({ type: 'load' })
+}
+const SWITCH_TO_ADA = (host: FixtureHost, surface: SurfaceHost) => {
+  host.switchAccount('ada')
+  surface.arrangement({ type: 'load' })
+}
+
+/**
+ * `workbench-account-switch`: a draft typed into an open document, then the signed-in account changes.
+ * The host controls (`switch-grace`, `switch-ada`) stand in for the session changing in another tab.
+ */
+export function WorkbenchAccountSwitchStory() {
+  return (
+    <FixtureStory
+      id="workbench-account-switch"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, account: 'ada', persistLayout: true }}
+      arrangements
+      script={[...EDITOR_SCRIPT.slice(0, EDITOR_OPEN)]}
+      wait={['Notes']}
+      controls={{
+        'switch-grace': SWITCH_TO_GRACE,
+        'switch-ada': SWITCH_TO_ADA,
+        'save-mine': (_, surface) => surface.arrangement({ type: 'save', name: 'Mine' }),
+      }}
+    />
+  )
+}
+
+/** `workbench-device-copy`: the account's layout could not be read; the browser's copy is shown and says so, and saving is refused. */
+export function WorkbenchDeviceCopyStory() {
+  return (
+    <FixtureStory
+      id="workbench-device-copy"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, deviceLayout: true, transcript: true }}
+      arrangements
+      script={[]}
+      wait={['README.md']}
+      controls={{
+        'save-mine': (_, surface) => surface.arrangement({ type: 'save', name: 'Mine' }),
+      }}
+    />
+  )
+}
+
+/** The person's key overrides: Mod+Alt+F1 to F4 apply the four presets. */
+const LAYOUT_KEYS = JSON.stringify({
+  version: 1,
+  bind: ['default', 'editor', 'agent', 'minimal'].map((preset, index) => ({
+    chord: `Mod+Alt+F${index + 1}`,
+    context: { type: 'global' },
+    action: `workbench.layout.${preset}`,
+  })),
+})
+
+/**
+ * `workbench-arrangements`: the presets applied by key (the person's overrides bind them), an
+ * arrangement saved under a name, and the record kept across a reload of the story.
+ */
+export function WorkbenchArrangementsStory() {
+  return (
+    <FixtureStory
+      id="workbench-arrangements"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, transcript: true, persistLayout: true }}
+      arrangements
+      script={[{ host: (_, surface) => surface.setKeys(LAYOUT_KEYS) }]}
+      wait={['README.md']}
+      controls={{
+        'save-mine': (_, surface) => surface.arrangement({ type: 'save', name: 'Mine' }),
+        'apply-mine': (_, surface) => surface.arrangement({ type: 'apply', name: 'Mine' }),
+      }}
+    />
+  )
+}

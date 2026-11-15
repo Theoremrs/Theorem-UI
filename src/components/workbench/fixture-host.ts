@@ -13,6 +13,7 @@ import type {
   Effect,
   HostMessage,
   Outcome,
+  PendingEdit,
   ResourceRef,
   Revision,
   TextChange,
@@ -54,6 +55,12 @@ export interface FixtureOptions {
   terminal?: boolean
   /** The documents owner reports this path's disk as changed under the open document. */
   conflict?: string
+  /** The signed-in account the story starts as. */
+  account?: string
+  /** The account's layout record survives a reload of the story (local storage stands in for the server). */
+  persistLayout?: boolean
+  /** The account's layout cannot be read: the host answers with this browser's copy, labelled `device`. */
+  deviceLayout?: boolean
   /** Called with the kind of each effect the core asked the host for. */
   performed?: (kind: string) => void
 }
@@ -63,6 +70,11 @@ export interface FixtureHost extends Adapter {
   send: (message: HostMessage) => void
   /** The terminal's recorded chunks after the resize, and the resize itself, in order. */
   resizeTerminal: () => void
+  /**
+   * The signed-in account changes, as the real adapter reports it: the host says so once, lets go of
+   * everything of the old account and serves the new one. The mount then asks the core to load.
+   */
+  switchAccount: (next: string) => void
 }
 
 const seq = (value: number): Revision => ({ scheme: 'seq', value })
@@ -88,7 +100,22 @@ const echo = (typed: string) =>
     .replace(/\r\n?|\n/g, '\r\n\u001b[1;32mada@story\u001b[0m:\u001b[1;34m~/project\u001b[0m$ ')
     .replace(/\u007f/g, '\b \b')
 
-type Held = { text: string; revision: number; saved: number; disk: string }
+type Held = {
+  text: string
+  revision: number
+  saved: number
+  disk: string
+  /** Edits made since the last save, kept as the device would checkpoint them. */
+  pending: PendingEdit[]
+}
+
+/** What the host holds for one signed-in account: nothing of it is visible to another. */
+type Kept = {
+  documents: Map<string, Held>
+  layout: { revision: number; current?: string; namedLayouts?: string }
+  /** Unsaved edits left behind when the account was switched away from, offered back as restored. */
+  checkpoints: Map<string, PendingEdit[]>
+}
 
 export function createFixtureHost(
   dispatch: Dispatch,
@@ -96,7 +123,33 @@ export function createFixtureHost(
 ): FixtureHost {
   let live = true
   const tree = options.tree ?? TREE
-  const documents = new Map<string, Held>()
+  const accounts = new Map<string, Kept>()
+  let account = options.account ?? 'ada'
+  const keep = (name: string): Kept => {
+    let held = accounts.get(name)
+    if (!held) {
+      held = {
+        documents: new Map(),
+        layout: { revision: 0 },
+        checkpoints: new Map(),
+      }
+      accounts.set(name, held)
+    }
+    return held
+  }
+  const stored = (name: string) => `story-layout:${name}`
+  const restoreLayout = (name: string, held: Kept) => {
+    if (!options.persistLayout) return
+    try {
+      const text = localStorage.getItem(stored(name))
+      if (text) held.layout = JSON.parse(text) as Kept['layout']
+    } catch {
+      // No storage: the record lives as long as the host.
+    }
+  }
+  let kept = keep(account)
+  restoreLayout(account, kept)
+  let documents = kept.documents
   let offset = 0
   const epoch = 1
   /** The terminal's attachment, once something has attached. */
@@ -255,15 +308,29 @@ export function createFixtureHost(
           revision: 1,
           saved: 1,
           disk: text,
+          pending: [],
         }
         documents.set(path, held)
+        // Unsaved edits this account left behind come back as restored edits, never applied on their own.
+        const restored = kept.checkpoints.get(path)
         accept(effect, {
           type: 'documentOpened',
           text: held.text,
           revision: seq(held.revision),
           savedRevision: seq(held.saved),
           dirty: held.revision !== held.saved,
+          ...(restored ? { pending: restored } : {}),
         })
+        if (restored)
+          send({
+            type: 'documentLocal',
+            resource: effect.resource,
+            local: {
+              state: 'checkpointed',
+              savedAtMs: 1,
+              recovered: true,
+            },
+          })
         // The language owner reports what it found in the document as it opens.
         if (options.diagnostics && FINDINGS[path])
           send({
@@ -289,6 +356,12 @@ export function createFixtureHost(
         const found = document(effect)
         if (!found) return refuse(effect, 'This document is not open')
         const [, held] = found
+        held.pending.push({
+          operationId: effect.payload.operationId,
+          baseRevision: seq(held.revision),
+          edits: effect.payload.edits,
+          state: 'inflight',
+        })
         held.text = applyEdits(held.text, effect.payload.edits)
         held.revision += 1
         return accept(effect, {
@@ -303,6 +376,8 @@ export function createFixtureHost(
         const [, held] = found
         held.saved = held.revision
         held.disk = held.text
+        held.pending = []
+        kept.checkpoints.delete(found[0])
         return accept(effect, {
           type: 'documentSaved',
           revision: seq(held.revision),
@@ -328,6 +403,37 @@ export function createFixtureHost(
       case 'documentSettle':
       case 'documentRevert':
         return accept(effect)
+      case 'layoutLoad':
+        return accept(effect, {
+          type: 'layoutLoaded',
+          source: options.deviceLayout ? 'device' : 'account',
+          revision: seq(kept.layout.revision),
+          ...(kept.layout.current !== undefined && !options.deviceLayout
+            ? {
+                document: {
+                  current: kept.layout.current,
+                  namedLayouts: kept.layout.namedLayouts ?? '{}',
+                },
+              }
+            : {}),
+        })
+      case 'layoutSave': {
+        kept.layout = {
+          revision: kept.layout.revision + 1,
+          current: effect.payload.current,
+          namedLayouts: effect.payload.namedLayouts,
+        }
+        if (options.persistLayout)
+          try {
+            localStorage.setItem(stored(account), JSON.stringify(kept.layout))
+          } catch {
+            // No storage: the record lives as long as the host.
+          }
+        return accept(effect, {
+          type: 'layoutSaved',
+          revision: seq(kept.layout.revision),
+        })
+      }
       case 'scmStatus':
         return accept(effect, {
           type: 'scm',
@@ -539,6 +645,32 @@ export function createFixtureHost(
       send({ type: 'terminalResized', resource, ...TERMINAL_RESIZED })
       later(() => {
         for (const chunk of TERMINAL_AFTER_RESIZE) frame(resource, chunk)
+      })
+    },
+    switchAccount(next) {
+      // What the old account had not saved is checkpointed under it, as the device would.
+      for (const [path, held] of documents)
+        if (held.revision !== held.saved) {
+          kept.checkpoints.set(
+            path,
+            held.pending.map((edit) => ({ ...edit, state: 'restored' as const })),
+          )
+          // The file itself is what was saved: the draft lived only on the device.
+          held.text = held.disk
+          held.revision = held.saved
+          held.pending = []
+        }
+      send({ type: 'accountChanged', account: next })
+      send({ type: 'capabilitiesChanged', capabilities: { granted: [] } })
+      send({ type: 'connectionChanged', workspace: WORKSPACE, state: 'closed' })
+      account = next
+      kept = keep(account)
+      restoreLayout(account, kept)
+      documents = kept.documents
+      later(() => {
+        send({ type: 'workspaceChanged', workspace: WORKSPACE, environment: 'story' })
+        send({ type: 'capabilitiesChanged', capabilities: { granted: options.granted } })
+        send({ type: 'connectionChanged', workspace: WORKSPACE, state: 'open' })
       })
     },
     dispose() {

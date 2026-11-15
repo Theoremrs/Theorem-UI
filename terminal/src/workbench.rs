@@ -24,8 +24,9 @@ use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    ActionId, Actor, Button, Capability, Caret, CaretPhase, CaretShape, Composition, Effect,
-    Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, builtin,
+    ActionId, Actor, ArrangementMsg, ArrangementNotice, Button, Capability, Caret, CaretPhase,
+    CaretShape, Composition, Effect, Inbound, Model, Msg, Notice, PanelFactories, Pointer,
+    PointerKind, Theme, builtin,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
@@ -36,7 +37,9 @@ use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    BLINK_MS, CaretStyle, Drawn, Palette, Screen, now, palette, run_frames,
+    BLINK_MS, CaretStyle, Drawn, Palette, Screen,
+    cabinet_panel::CabinetLink,
+    now, palette, run_frames,
     theo::{self, Directory},
 };
 
@@ -47,10 +50,15 @@ use crate::{
 ///
 /// The editor is registered ahead of the Markdown panel when `editor_first`: the openers are
 /// ranked, so which file opens where does not depend on the order.
-fn factories_with(conversations: &Directory, editor_first: bool) -> PanelFactories {
+fn factories_with(
+    conversations: &Directory,
+    cabinet: &CabinetLink,
+    editor_first: bool,
+) -> PanelFactories {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
     theo::register(&mut factories, conversations);
+    crate::cabinet_panel::register(&mut factories, cabinet);
     theorem_workbench_process::register(&mut factories, process_styles(), load_nonce());
     theorem_workbench_changes::register(&mut factories);
     theorem_workbench_ide::register(&mut factories);
@@ -461,6 +469,11 @@ struct Core {
     /// The newest conversation snapshot the model was given, for the panels the
     /// core has not bound to a conversation yet.
     conversations: Directory,
+    /// The Artifacts panel's link to the page's cabinet controller.
+    cabinet: CabinetLink,
+    /// The last thing a saved arrangement did or could not do, drawn at the right end of the
+    /// bottom row until a key is pressed.
+    told: Option<String>,
     /// When the person last typed, so a blinking caret holds solid a beat after each key.
     typed_at: f64,
 }
@@ -495,7 +508,8 @@ impl Core {
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
         let (dock, _regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
         let conversations = Directory::default();
-        let mut factories = factories_with(&conversations, editor_first);
+        let cabinet = CabinetLink::default();
+        let mut factories = factories_with(&conversations, &cabinet, editor_first);
         tweak(&mut factories);
         Self {
             model: Model::new(registry, factories, keys, Capabilities::default(), dock),
@@ -508,6 +522,8 @@ impl Core {
             files_opened: false,
             theo_opened: false,
             conversations,
+            cabinet,
+            told: None,
             typed_at: 0.0,
         }
     }
@@ -519,6 +535,9 @@ impl Core {
             Msg::Key(_) | Msg::Text(_) | Msg::Paste(_) | Msg::Composition(_)
         ) {
             self.typed_at = now();
+            if self.told.take().is_some() {
+                self.repaint = true;
+            }
         }
         self.conversations.observe(&msg);
         update(&mut self.model, msg)
@@ -608,6 +627,12 @@ impl Core {
             effects.extend(self.focus("theo.focus"));
         }
         effects.extend(self.update(Msg::Tick));
+        while let Some(notice) = self.model.take_notice() {
+            if let Notice::Arrangement(told) = notice {
+                self.told = Some(arrangement_line(&told));
+                self.repaint = true;
+            }
+        }
         if theme != self.theme {
             self.theme = theme;
             self.repaint = true;
@@ -633,6 +658,48 @@ impl Core {
     fn draw(&self, frame: &mut Frame) {
         let area = frame.area();
         view(&self.model, area, frame.buffer_mut(), &self.theme);
+        // What a saved arrangement said, or that the layouts are this browser's own copy.
+        let line = self.told.clone().or_else(|| {
+            self.model
+                .layout_is_device_copy()
+                .then(|| "layout: this device's copy, not your account's".to_owned())
+        });
+        if let (Some(line), true) = (line, area.height > 0) {
+            let text = format!(" {line} ");
+            let width = u16::try_from(text.chars().count())
+                .unwrap_or(u16::MAX)
+                .min(area.width);
+            let x = area.x + area.width - width;
+            let y = area.y + area.height - 1;
+            let style = self.theme.warning;
+            frame
+                .buffer_mut()
+                .set_stringn(x, y, text, usize::from(width), style);
+        }
+    }
+}
+
+/// One line for what a saved arrangement did or could not do.
+fn arrangement_line(told: &ArrangementNotice) -> String {
+    use ArrangementNotice as N;
+    match told {
+        N::Applied { name } => format!("layout: {name} applied"),
+        N::Partial {
+            name, unavailable, ..
+        } => {
+            format!("layout: {name} applied, without {}", unavailable.join(", "))
+        }
+        N::Unreadable { name, reason } => format!("layout: {name} unreadable ({reason})"),
+        N::Unknown { name } => format!("layout: no arrangement named {name}"),
+        N::BadName { reason } => format!("layout: name refused ({reason})"),
+        N::NameTaken { name } => format!("layout: {name} is already taken"),
+        N::StoreFull { limit } => format!("layout: {limit} arrangements kept already"),
+        N::NotSaved { reason } => format!("layout: not saved ({reason})"),
+        N::DeviceCopy => "layout: this device's copy, not your account's".to_owned(),
+        N::NeedsAccountLoad { reason } => format!("layout: not saved ({reason})"),
+        N::LoadedWithLoss { skipped, reason } => {
+            format!("layout: {skipped} entries skipped ({reason})")
+        }
     }
 }
 
@@ -743,7 +810,11 @@ impl Drawn for Mounted {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        self.core.borrow().draw(frame);
+        let core = self.core.borrow();
+        core.draw(frame);
+        // The panels that were not drawn in this frame report gone.
+        core.cabinet.frame_end();
+        core.conversations.face().frame_end();
     }
 
     fn drawn(&mut self) {
@@ -891,6 +962,70 @@ impl WorkbenchHandle {
     /// again whenever that query changes.
     pub fn set_reduced_motion(&self, reduced: bool) {
         self.send(Msg::ReducedMotion(reduced));
+    }
+
+    /// The cabinet controller's view for `project` (JSON), given to the Artifacts panels.
+    pub fn cabinet_set_view(&self, project: &str, json: &str) -> Result<(), JsValue> {
+        let link = self.core.borrow().cabinet.clone();
+        link.set_view(project, json).map_err(js_error)
+    }
+
+    /// Where the Artifacts panel is, as JSON, or nothing while `since` is the latest epoch.
+    pub fn cabinet_geometry(&self, since: f64) -> Option<String> {
+        self.core.borrow().cabinet.geometry_json(since as u64)
+    }
+
+    /// The actions the Artifacts panel's keys and pointer produced (a JSON array).
+    pub fn cabinet_actions(&self) -> String {
+        self.core.borrow().cabinet.take_actions()
+    }
+
+    /// A command from the page's own cabinet controls; true when the cabinet used it.
+    pub fn cabinet_command(&self, json: &str) -> bool {
+        let link = self.core.borrow().cabinet.clone();
+        link.command(json)
+    }
+
+    /// Saved arrangements (JSON, the core's `ArrangementMsg`): `{"type":"load"}` once the adapter
+    /// is ready and again after an account change; `save`, `apply`, `rename` and `delete`.
+    pub fn arrangement(&self, json: &str) -> Result<(), JsValue> {
+        let msg: ArrangementMsg = serde_json::from_str(json).map_err(js_error)?;
+        self.send(Msg::Arrangement(msg));
+        Ok(())
+    }
+
+    /// The presets and the account's saved arrangements, as JSON `[{name, builtin}]`.
+    pub fn arrangements(&self) -> String {
+        let list: Vec<Value> = self
+            .core
+            .borrow()
+            .model
+            .arrangements()
+            .into_iter()
+            .map(|a| json!({ "name": a.name, "builtin": a.builtin }))
+            .collect();
+        Value::Array(list).to_string()
+    }
+
+    /// The measured cell in CSS pixels as JSON `{width, height}`, once a frame has measured it.
+    pub fn cell_size(&self) -> Option<String> {
+        let core = self.core.borrow();
+        let cell = core.cell?;
+        Some(json!({ "width": cell.width_px, "height": cell.height_px }).to_string())
+    }
+
+    /// Whether the page has a face to lay over the Theo panel's reserved cells.
+    pub fn set_face(&self, on: bool) {
+        self.core.borrow().conversations.face().set_wanted(on);
+    }
+
+    /// The face's cells as JSON `{epoch, cells}`, or nothing while `since` is the latest epoch.
+    pub fn face_geometry(&self, since: f64) -> Option<String> {
+        self.core
+            .borrow()
+            .conversations
+            .face()
+            .geometry_json(since as u64)
     }
 
     /// The semantic tree as it is now (JSON), the same one `on_semantics`

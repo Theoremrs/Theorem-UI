@@ -283,6 +283,153 @@ const SCENARIOS = {
       return { 'the editor opens at the finding': await sees(page, 'Ln 7, Col 1') }
     },
   ],
+
+  // Open the Artifacts panel from the picker by keyboard, move the selection, open an artifact, Escape closes it
+  // and the keys land where they were before (the composer).
+  'workbench-cabinet-picker': [
+    async (page) => {
+      await openTool(page, 'Artifacts')
+      const opened = await sees(page, 'Gallery')
+      await page.screenshot({ path: renderPath('workbench-cabinet-open'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      const first = await pageText(page)
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(400)
+      await page.keyboard.press('ArrowRight')
+      await page.waitForTimeout(400)
+      const moved = (await pageText(page)) !== first
+      await page.screenshot({ path: renderPath('workbench-cabinet-moved'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      // The dev server's overlay rule hides portals, and a hidden dialog cannot take focus: lift it first.
+      await page.evaluate(() => document.querySelectorAll('style').forEach((el) => el.textContent?.includes(':not([data-story])') && el.remove()))
+      const focused = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.tagName)
+      const before = await focused()
+      await page.keyboard.press('Enter')
+      await page.waitForTimeout(1000)
+      const dialog = () => page.evaluate(() => document.querySelector('[role=dialog]:not([data-state=closed])')?.innerText?.slice(0, 80) ?? null)
+      const shown = await dialog()
+      await page.screenshot({ path: renderPath('workbench-cabinet-artifact'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await page.keyboard.press('Escape')
+      // The dialog leaves with its exit and the focus follows on the next frame: wait for both.
+      let closed = false
+      let back = ''
+      for (let i = 0; i < 30 && !(closed && back === before); i++) {
+        await page.waitForTimeout(100)
+        closed = (await dialog()) === null
+        back = await focused()
+      }
+      await page.screenshot({ path: renderPath('workbench-cabinet-closed'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      return {
+        'the cabinet opens from the picker': opened,
+        'the arrows move the selection': moved,
+        'Enter opens the artifact in a dialog': shown !== null,
+        'Escape closes it': closed,
+        'focus returns to the card it came from': before === back && back !== 'BODY',
+      }
+    },
+  ],
+  // A draft in the open document, then another account is signed in.
+  'workbench-account-switch': [
+    async (page) => {
+      const control = (name) => page.evaluate((n) => document.querySelector(`[data-story-control="${n}"]`)?.click(), name)
+      await page.waitForTimeout(500)
+      await page.keyboard.type('zzdraft', { delay: 30 })
+      const typed = await sees(page, 'zzdraft')
+      await page.waitForTimeout(1500)
+      await page.screenshot({ path: renderPath('workbench-account-switch-draft'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await control('switch-grace')
+      await page.waitForTimeout(1500)
+      const gone = !(await has(page, 'zzdraft'))
+      await page.screenshot({ path: renderPath('workbench-account-switch-grace'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await control('switch-ada')
+      await page.waitForTimeout(1500)
+      await page.screenshot({ path: renderPath('workbench-account-switch-ada'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      const offered = await sees(page, 'recovered', 6000)
+      const notSent = !((await pageText(page)).split('\n').some((l) => /^\d+ zzdraft/.test(l)))
+      return { typed, 'old draft gone after the switch': gone, 'restored edit offered on return': offered, 'not applied on its own': notSent }
+    },
+  ],
+  // The account's layout failed to load; the device copy is labelled and a save is refused with the reason.
+  'workbench-device-copy': [
+    async (page) => {
+      const labelled = await sees(page, 'this device', 6000)
+      await page.screenshot({ path: renderPath('workbench-device-copy-label'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await page.evaluate(() => document.querySelector('[data-story-control="save-mine"]')?.click())
+      return { 'the device copy is labelled': labelled, 'the save was refused with the reason': await sees(page, 'not saved', 6000) }
+    },
+  ],
+  // Presets by key, a saved name kept across a reload.
+  'workbench-arrangements': [
+    async (page) => {
+      const control = (name) => page.evaluate((n) => document.querySelector(`[data-story-control="${n}"]`)?.click(), name)
+      const names = async () => page.evaluate(() => JSON.parse(document.querySelector('[data-workbench-story]')?.dataset.arrangements ?? '[]'))
+      const shot = (n) => page.screenshot({ path: renderPath(`workbench-arrangements-${n}`), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await page.waitForTimeout(800)
+      const start = await pageText(page)
+      await page.keyboard.press('Meta+Alt+F2')
+      await page.waitForTimeout(800)
+      const editor = await pageText(page)
+      await shot('editor')
+      await page.keyboard.press('Meta+Alt+F3')
+      await page.waitForTimeout(800)
+      const agent = await pageText(page)
+      await shot('agent')
+      await control('save-mine')
+      await page.waitForTimeout(800)
+      const listed = JSON.stringify(await names())
+      await shot('saved')
+      await page.reload()
+      await page.waitForTimeout(2500)
+      const after = JSON.stringify(await names())
+      return {
+        'editor differs from the start': editor !== start,
+        'agent differs from editor': agent !== editor,
+        'Mine is listed once saved': listed.includes('Mine'),
+        'Mine is still listed after a reload': after.includes('Mine'),
+      }
+    },
+  ],
+  // The face rests on the Theo panel's status row; it stays on its cells after the dock is resized and after
+  // the panel moves to another group (the status row text is the reference for where it should be).
+  'workbench-face': [
+    async (page) => {
+      const where = () =>
+        page.evaluate(() => {
+          const el = document.querySelector('[data-face-perch="terminal"]')
+          if (!el) return null
+          const r = el.getBoundingClientRect()
+          return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }
+        })
+      const shot = (n) => page.screenshot({ path: renderPath(`workbench-face-${n}`), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await sees(page, 'edit_file')
+      await page.waitForTimeout(800)
+      const start = await where()
+      await shot('start')
+      // Widen the Files group: the Theo group's left edge, and the face with it, move right.
+      await page.keyboard.press('Meta+Alt+ArrowLeft')
+      await page.waitForTimeout(400)
+      for (let i = 0; i < 3; i++) {
+        await page.keyboard.press('Meta+Alt+]')
+        await page.waitForTimeout(300)
+      }
+      await page.waitForTimeout(900)
+      const resized = await where()
+      await shot('resized')
+      // Back to the Theo group, then the panel moves into the tools group on its right.
+      await page.keyboard.press('Meta+Alt+ArrowRight')
+      await page.waitForTimeout(400)
+      await page.keyboard.press('Meta+Alt+Shift+ArrowRight')
+      await page.waitForTimeout(1200)
+      const moved = await where()
+      await shot('moved')
+      const row = (p) => p !== null && p.y > 500
+      console.error('face', JSON.stringify({ start, resized, moved }))
+      return {
+        'the face is on the page': start !== null,
+        'it rests on the Theo status row': row(start) && start.x < 300,
+        'after a dock resize it moved with the panel and kept its row': row(resized) && resized.x > start.x,
+        'after the panel moved it is on the status row of its new group': row(moved),
+      }
+    },
+  ],
   // Type, undo (Cmd+Z), redo (Cmd+Shift+Z): the text reads back each time.
   'workbench-editor': [
     async (page) => {

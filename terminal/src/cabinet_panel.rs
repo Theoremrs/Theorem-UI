@@ -16,10 +16,6 @@
 //! frame that drew the workbench but no cabinet (its tab is hidden, its drawer
 //! is closed, the panel was closed), so no canvas stays over another panel.
 
-// Until the workbench mount registers the panel and calls the link, only the
-// tests reach it.
-#![allow(dead_code)]
-
 use std::{
     cell::{Cell, RefCell},
     collections::BTreeMap,

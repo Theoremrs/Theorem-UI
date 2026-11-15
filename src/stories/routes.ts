@@ -191,14 +191,25 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     [`GET ${BASE}/librarian/history`]: () => ({
       items: organization.librarian.recent,
     }),
-    [`GET ${BASE}/projects/:projectId/outputs`]: () => ({
-      items: [
-        { outputId: 'output-1', kind: 'app', title: 'Gallery prototype', threadId: 'thread-app-gallery', revisionCount: 3, updatedAtMs: now - 20 * 60_000 },
-        { outputId: 'output-2', kind: 'artifact', title: 'SDK surface', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 40 * 60_000 },
-        { outputId: 'output-3', kind: 'review', title: 'App gallery', threadId: 'thread-app-gallery', reviewId: review.reviewId, revisionCount: 1, updatedAtMs: now - 8 * 60_000 },
-      ],
-      total: 5,
-    }),
+    [`GET ${BASE}/projects/:projectId/outputs`]: (_, request) => {
+      // The authority filters and searches (the cabinet asks with `category` and `q`).
+      const url = new URL(request.url)
+      const category = url.searchParams.get('category')
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const items = [
+        { outputId: 'output-1', kind: 'app', category: 'app', title: 'Gallery prototype', threadId: 'thread-app-gallery', revisionCount: 3, updatedAtMs: now - 20 * 60_000 },
+        { outputId: 'output-2', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'SDK surface', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 40 * 60_000 },
+        { outputId: 'output-3', kind: 'review', category: 'other', title: 'App gallery', threadId: 'thread-app-gallery', reviewId: review.reviewId, revisionCount: 1, updatedAtMs: now - 8 * 60_000 },
+        { outputId: 'output-4', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'Survey notes', threadId: 'thread-python-sdk', revisionCount: 1, updatedAtMs: now - 3 * 60 * 60_000 },
+        { outputId: 'output-5', kind: 'artifact', category: 'image', mediaType: 'image/png', title: 'Headland map', threadId: 'thread-app-gallery', revisionCount: 4, updatedAtMs: now - 5 * 60 * 60_000 },
+        { outputId: 'output-6', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'Release checklist', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 26 * 60 * 60_000 },
+      ].filter(
+        (item) =>
+          (!category || item.category === category) &&
+          (!q || item.title.toLowerCase().includes(q)),
+      )
+      return { items, total: items.length }
+    },
     [`GET ${BASE}/threads/:threadId/reviews`]: ({ threadId }) => ({
       items: !options.reviewless && threadId === review.threadId ? [review] : [],
     }),
