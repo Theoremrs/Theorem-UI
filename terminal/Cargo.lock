@@ -2030,6 +2030,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "theorem-workbench-process"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "keybinds",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "terminput",
+ "theorem-workbench-core",
+ "theorem-workbench-dock",
+ "theorem-workbench-vt",
+]
+
+[[package]]
 name = "theorem-workbench-text"
 version = "0.1.0"
 dependencies = [
