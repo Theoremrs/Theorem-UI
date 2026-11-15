@@ -121,7 +121,12 @@ export function createDocumentsPort({
   local: (path: string) => LocalState | undefined
 } {
   /** The handle this port holds per path: one holder, however many times the path is opened. */
-  const held = new Map<string, { handle: DocumentHandle; stop: () => void }>()
+  // One handle per path for every panel that has it open. `opens` counts them, so one panel letting go (a second
+  // editor, a replace run finishing a file) does not close the document under another.
+  const held = new Map<
+    string,
+    { handle: DocumentHandle; stop: () => void; opens: number }
+  >()
   const listeners = new Set<(message: HostMessage) => void>()
   const watchers = new Set<(change: OpenDocumentChange) => void>()
   const changed = (change: OpenDocumentChange) => {
@@ -237,8 +242,10 @@ export function createDocumentsPort({
       const done = await documents.open({ requestId, path })
       if (done.outcome !== 'accepted') return reply(done)
       handle = done.value
-      held.set(path, { handle, stop: handle.on(forward) })
+      held.set(path, { handle, stop: handle.on(forward), opens: 1 })
       changed({ kind: 'opened', path })
+    } else if (known) {
+      known.opens += 1
     }
     const { state } = handle
     // An open is a panel that has no spans yet, so this revision's are sent again.
@@ -433,13 +440,15 @@ export function createDocumentsPort({
           handle.keep(effect.payload.edits)
           return { outcome: 'accepted' }
         case 'documentClose': {
+          entry.opens -= 1
+          if (entry.opens > 0) return { outcome: 'accepted' }
+          // Let go before the host answers: the handle is released whatever the answer, and an open that arrives
+          // meanwhile (another presentation taking the tab) must take a handle of its own, not this one.
+          entry.stop()
+          held.delete(path)
+          tokened.delete(path)
           const done = await handle.close({ requestId })
-          if (done.outcome === 'accepted') {
-            entry.stop()
-            held.delete(path)
-            tokened.delete(path)
-            changed({ kind: 'closed', path })
-          }
+          changed({ kind: 'closed', path })
           return reply(done)
         }
       }

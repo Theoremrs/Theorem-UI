@@ -355,6 +355,46 @@ describe('edit, save, reconcile and close', () => {
     })
   })
 
+  test('a document two panels opened stays open until the second lets go', async () => {
+    const { perform, count } = await setup()
+    await perform('documentOpen', { payload: {} })
+    await perform('documentOpen', { payload: {} })
+    expect(count('open')).toBe(1)
+    expect(await perform('documentClose')).toMatchObject({
+      outcome: 'accepted',
+    })
+    expect(count('close')).toBe(0)
+    // The panel that still has it can go on working.
+    expect(await perform('documentSave')).toMatchObject({
+      outcome: 'accepted',
+      value: { type: 'documentSaved' },
+    })
+    expect(await perform('documentClose')).toMatchObject({
+      outcome: 'accepted',
+    })
+    expect(count('close')).toBe(1)
+    expect(await perform('documentSave')).toMatchObject({
+      outcome: 'refused',
+      code: 'document_not_open',
+    })
+  })
+
+  test('an open that arrives while a close is in flight takes a handle of its own', async () => {
+    const { perform, count } = await setup()
+    await perform('documentOpen', { payload: {} })
+    const closing = perform('documentClose')
+    const opening = perform('documentOpen', { payload: {} })
+    expect(await closing).toMatchObject({ outcome: 'accepted' })
+    expect(await opening).toMatchObject({
+      outcome: 'accepted',
+      value: { type: 'documentOpened' },
+    })
+    expect(count('open')).toBe(2)
+    expect(await perform('documentSave')).toMatchObject({
+      outcome: 'accepted',
+    })
+  })
+
   test('save answers documentSaved; close releases the handle and stops its events', async () => {
     const { perform, live, heard, count } = await setup()
     await perform('documentOpen', { payload: {} })
