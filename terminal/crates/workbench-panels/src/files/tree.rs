@@ -12,6 +12,18 @@ use theorem_workbench_core::ids::EffectId;
 pub struct Entry {
     pub name: String,
     pub kind: FileKind,
+    /// The host marked it ignored or hidden: drawn quieter, never omitted.
+    pub muted: bool,
+}
+
+impl Entry {
+    pub fn new(name: impl Into<String>, kind: FileKind) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+            muted: false,
+        }
+    }
 }
 
 pub fn join(dir: &str, name: &str) -> String {
@@ -85,6 +97,15 @@ impl Problem {
         }
     }
 
+    /// How the problem is drawn: an unknown result is a warning, everything
+    /// the owner refused or failed is an error.
+    pub fn tone(&self) -> Tone {
+        match self {
+            Self::Unknown { .. } => Tone::Warning,
+            Self::Refused { .. } | Self::Unavailable { .. } | Self::Failed { .. } => Tone::Error,
+        }
+    }
+
     pub fn label(&self) -> String {
         match self {
             Self::Refused { code, reason } => format!("refused ({code}): {reason}"),
@@ -93,6 +114,15 @@ impl Problem {
             Self::Failed { reason } => format!("failed: {reason}"),
         }
     }
+}
+
+/// Which theme role a line is drawn in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Tone {
+    /// Information: the quiet role.
+    Plain,
+    Warning,
+    Error,
 }
 
 /// What is happening to one row.
@@ -150,8 +180,8 @@ pub struct Overlay<'a> {
     pub rename: Option<&'a str>,
     /// A new entry is being named in this directory; `true` for a folder.
     pub new_in: Option<(&'a str, bool)>,
-    /// The path a delete is waiting on.
-    pub confirm: Option<&'a str>,
+    /// The row a question hangs under, and the question.
+    pub confirm: Option<(&'a str, String)>,
     /// The marked path and whether it is cut (`true`) or copied.
     pub clip: Option<(&'a str, bool)>,
 }
@@ -166,6 +196,7 @@ pub enum Row {
         expanded: Option<bool>,
         note: Option<NoteState>,
         mark: Option<&'static str>,
+        muted: bool,
         /// 1-based place among its siblings, and how many there are.
         pos: usize,
         set: usize,
@@ -174,6 +205,7 @@ pub enum Row {
     Status {
         depth: usize,
         text: String,
+        tone: Tone,
     },
     /// The inline name field. `path` is the row it replaces, or a placeholder
     /// for a new entry.
@@ -310,11 +342,14 @@ impl Tree {
         out
     }
 
-    pub fn kind_of(&self, path: &str) -> Option<FileKind> {
+    pub fn entry_of(&self, path: &str) -> Option<Entry> {
         self.children(parent(path))
             .into_iter()
             .find(|e| e.name == name_of(path))
-            .map(|e| e.kind)
+    }
+
+    pub fn kind_of(&self, path: &str) -> Option<FileKind> {
+        self.entry_of(path).map(|e| e.kind)
     }
 
     /// Replace one directory's entries with what the host listed. Other
@@ -324,8 +359,8 @@ impl Tree {
             .entries
             .into_iter()
             .map(|e| Entry {
-                name: e.name,
-                kind: e.kind,
+                muted: e.ignored == Some(true) || e.hidden == Some(true),
+                ..Entry::new(e.name, e.kind)
             })
             .collect();
         entries.sort_by_key(sort_key);
@@ -456,39 +491,42 @@ impl Tree {
                         Some((p, false)) if p == path => Some("copy"),
                         _ => None,
                     },
+                    muted: entry.muted,
                     pos: i + 1,
                     set,
                 });
             }
-            if overlay.confirm == Some(path.as_str()) {
-                let and = if is_dir { " and everything in it" } else { "" };
+            if let Some((row, text)) = &overlay.confirm
+                && *row == path
+            {
                 out.push(Row::Confirm {
                     depth,
-                    text: format!("Delete {}{and}? Enter deletes, Escape cancels", entry.name),
+                    text: text.clone(),
                 });
             }
             if is_dir && self.is_expanded(&path) {
                 self.push_dir(&path, depth + 1, overlay, out);
             }
         }
-        let text = match self.dirs.get(dir) {
-            None => Some("loading".to_owned()),
+        let line = match self.dirs.get(dir) {
+            None => Some(("loading".to_owned(), Tone::Plain)),
             Some(d) => match &d.problem {
-                Some(p) => Some(p.label()),
-                None if !d.loaded => Some("loading".to_owned()),
+                Some(p) => Some((p.label(), p.tone())),
+                None if !d.loaded => Some(("loading".to_owned(), Tone::Plain)),
                 None if set == 0 && overlay.new_in.is_none_or(|(t, _)| t != dir) => {
-                    Some("empty".to_owned())
+                    Some(("empty".to_owned(), Tone::Plain))
                 }
                 None => None,
             },
         };
-        if let Some(text) = text {
-            out.push(Row::Status { depth, text });
+        if let Some((text, tone)) = line {
+            out.push(Row::Status { depth, text, tone });
         }
         if self.dirs.get(dir).is_some_and(|d| d.partial) {
             out.push(Row::Status {
                 depth,
                 text: "partial: this listing may be a subset".to_owned(),
+                tone: Tone::Plain,
             });
         }
     }

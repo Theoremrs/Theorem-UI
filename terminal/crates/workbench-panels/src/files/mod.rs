@@ -9,82 +9,41 @@
 mod draw;
 mod tree;
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::rc::Rc;
 
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use theorem_workbench_core::completion::{Completion, CompletionPayload, FileKind, Outcome};
-use theorem_workbench_core::effect::{Effect, EffectBody, FilesCreate, FilesPath, FilesRename};
+use theorem_workbench_core::effect::{
+    Effect, EffectBody, FilesCopy, FilesCreate, FilesPath, FilesRename,
+};
 use theorem_workbench_core::host::{ConnectionState, HostMessage};
-use theorem_workbench_core::ids::{Capability, EffectId, Generation, ResourceRef};
+use theorem_workbench_core::ids::{Capability, EffectId, ResourceRef, WorkspaceIdentity};
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
-    Button, Ctx, EmitError, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, ViewCtx,
+    Button, Ctx, EmitError, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind,
+    ViewCtx,
 };
 use tui_input::{Input, InputRequest};
 
-use tree::{Entry, Note, NoteState, Overlay, Problem, Row, Tree, join, name_of, parent};
+use tree::{Entry, Note, NoteState, Overlay, Problem, Row, Tone, Tree, join, name_of, parent};
 
 /// Frames of silence after which type-ahead starts a new search.
 const TYPE_AHEAD_TICKS: u32 = 90;
-/// Frames within which a second press on a row is a double click.
-const DOUBLE_CLICK_TICKS: u32 = 30;
 
-/// A request to open a file, for the root to act on. The core gives a panel no
-/// way to ask the root to open a document panel, so the request is a value the
-/// host reads with [`Handle::take_opens`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OpenRequest {
-    pub workspace: String,
-    pub path: String,
-}
-
-#[derive(Default)]
-struct Shared {
-    workspace: String,
-    /// Rises each time the workspace changes; it is the panel's binding
-    /// generation, so a listing of the old workspace is dropped by the root.
-    epoch: u64,
-    opens: Vec<OpenRequest>,
-}
-
-/// What the host holds of the Files panels it registered.
-#[derive(Clone, Default)]
-pub struct Handle(Rc<RefCell<Shared>>);
-
-impl Handle {
-    /// The workspace the panels list. A different one clears them.
-    pub fn set_workspace(&self, workspace: &str) {
-        let mut shared = self.0.borrow_mut();
-        if shared.workspace != workspace {
-            shared.workspace = workspace.to_owned();
-            shared.epoch += 1;
-        }
-    }
-
-    /// Files a person asked to open since the last call.
-    pub fn take_opens(&self) -> Vec<OpenRequest> {
-        std::mem::take(&mut self.0.borrow_mut().opens)
-    }
-}
-
-pub(crate) fn register(factories: &mut PanelFactories) -> Handle {
-    let handle = Handle::default();
-    let shared = handle.clone();
-    factories.register("files", move |state, _version| {
-        Box::new(FilesPanel::restore(shared.clone(), state))
+pub(crate) fn register(factories: &mut PanelFactories) {
+    factories.register("files", |state, _version| {
+        Box::new(FilesPanel::restore(state))
     });
-    handle
 }
 
 enum Op {
     Create { path: String, directory: bool },
     Rename { from: String, to: String },
+    Copy { from: String, to: String },
     Delete { path: String },
 }
 
@@ -93,7 +52,7 @@ impl Op {
     fn row(&self) -> &str {
         match self {
             Self::Create { path, .. } | Self::Delete { path } => path,
-            Self::Rename { from, .. } => from,
+            Self::Rename { from, .. } | Self::Copy { from, .. } => from,
         }
     }
 }
@@ -109,11 +68,20 @@ struct Edit {
     error: Option<String>,
 }
 
+/// A question waiting for a yes.
+enum Question {
+    Delete(String),
+    /// A copy would replace what is already at `to`.
+    Replace {
+        from: String,
+        to: String,
+    },
+}
+
 enum Mode {
     Browse,
     Edit(Edit),
-    /// A delete is waiting for a yes.
-    Confirm(String),
+    Confirm(Question),
 }
 
 struct Clip {
@@ -122,8 +90,9 @@ struct Clip {
 }
 
 pub struct FilesPanel {
-    shared: Handle,
-    seen_epoch: u64,
+    /// The workspace the host last named: what every effect is stamped with
+    /// and what the root judges its answers against.
+    identity: WorkspaceIdentity,
     tree: Tree,
     lists: BTreeMap<EffectId, String>,
     ops: BTreeMap<EffectId, Op>,
@@ -134,7 +103,6 @@ pub struct FilesPanel {
     clip: Option<Clip>,
     ahead: String,
     ahead_idle: u32,
-    click: Option<(String, u32)>,
     connection: Option<ConnectionState>,
     files_ok: bool,
 }
@@ -151,8 +119,7 @@ fn normalize(path: &str) -> &str {
 }
 
 impl FilesPanel {
-    fn restore(shared: Handle, state: &Value) -> Self {
-        let epoch = shared.0.borrow().epoch;
+    fn restore(state: &Value) -> Self {
         let mut tree = Tree::new();
         if let Some(paths) = state["expanded"].as_array() {
             for path in paths.iter().filter_map(Value::as_str) {
@@ -160,8 +127,7 @@ impl FilesPanel {
             }
         }
         Self {
-            shared,
-            seen_epoch: epoch,
+            identity: WorkspaceIdentity::default(),
             tree,
             lists: BTreeMap::new(),
             ops: BTreeMap::new(),
@@ -172,35 +138,34 @@ impl FilesPanel {
             clip: None,
             ahead: String::new(),
             ahead_idle: 0,
-            click: None,
             connection: None,
             files_ok: true,
         }
     }
 
-    fn workspace(&self) -> String {
-        self.shared.0.borrow().workspace.clone()
-    }
-
     fn ready(&self) -> bool {
-        self.files_ok && !self.shared.0.borrow().workspace.is_empty()
+        self.files_ok && self.identity.is_set()
     }
 
-    /// The workspace changed under the panel: everything it knew is about
-    /// another tree.
-    fn sync_workspace(&mut self) {
-        let epoch = self.shared.0.borrow().epoch;
-        if epoch == self.seen_epoch {
+    /// Take the workspace the root names. The first one the panel sees is the
+    /// one its saved view state was for; a different one after that means
+    /// everything it knew is about another tree.
+    fn adopt(&mut self, identity: &WorkspaceIdentity) {
+        if self.identity == *identity {
             return;
         }
-        self.seen_epoch = epoch;
-        self.tree = Tree::new();
-        self.lists.clear();
-        self.ops.clear();
-        self.selected = None;
-        self.scroll = 0;
-        self.mode = Mode::Browse;
-        self.clip = None;
+        if self.identity.is_set() {
+            self.tree = Tree::new();
+            self.lists.clear();
+            self.ops.clear();
+            self.selected = None;
+            self.scroll = 0;
+            self.mode = Mode::Browse;
+            self.clip = None;
+            self.ahead.clear();
+            self.connection = None;
+        }
+        self.identity = identity.clone();
     }
 
     fn overlay(&self) -> Overlay<'_> {
@@ -218,7 +183,28 @@ impl FilesPanel {
                 kind: EditKind::New { dir, directory },
                 ..
             }) => o.new_in = Some((dir, *directory)),
-            Mode::Confirm(path) => o.confirm = Some(path),
+            Mode::Confirm(Question::Delete(path)) => {
+                let and = match self.tree.kind_of(path) {
+                    Some(FileKind::Directory) => " and everything in it",
+                    _ => "",
+                };
+                let text = format!(
+                    "Delete {}{and}? Enter deletes, Escape cancels",
+                    name_of(path)
+                );
+                o.confirm = Some((path, text));
+            }
+            Mode::Confirm(Question::Replace { to, .. }) => {
+                let and = match self.tree.kind_of(to) {
+                    Some(FileKind::Directory) => " and everything in it",
+                    _ => "",
+                };
+                let text = format!(
+                    "Replace {}{and}? Enter replaces, Escape cancels",
+                    name_of(to)
+                );
+                o.confirm = Some((to, text));
+            }
         }
         o
     }
@@ -228,12 +214,14 @@ impl FilesPanel {
             return vec![Row::Status {
                 depth: 0,
                 text: "the files service is unavailable".to_owned(),
+                tone: Tone::Error,
             }];
         }
-        if self.workspace().is_empty() {
+        if !self.identity.is_set() {
             return vec![Row::Status {
                 depth: 0,
                 text: "no workspace connected".to_owned(),
+                tone: Tone::Plain,
             }];
         }
         self.tree.rows(&self.overlay())
@@ -260,13 +248,13 @@ impl FilesPanel {
 
     fn resource(&self) -> ResourceRef {
         ResourceRef::Workspace {
-            workspace: self.workspace(),
+            workspace: self.identity.workspace.clone(),
         }
     }
 
     fn emit(&mut self, cx: &mut Ctx, body: EffectBody) -> Result<EffectId, EmitError> {
         let resource = self.resource();
-        let generation = Generation(self.shared.0.borrow().epoch);
+        let generation = self.identity.generation;
         cx.emit(|id| Effect::new(id, resource, body).with_generation(generation))
     }
 
@@ -356,7 +344,7 @@ impl FilesPanel {
     }
 
     fn on_host(&mut self, message: HostMessage) {
-        let workspace = self.workspace();
+        let workspace = self.identity.workspace.clone();
         match message {
             HostMessage::FileChanged { workspace: w, path } if w == workspace => {
                 let path = normalize(&path);
@@ -378,7 +366,29 @@ impl FilesPanel {
                 }
                 self.files_ok = ok;
             }
-            _ => {}
+            // Another resource's, or the root's own: it tells this panel about
+            // a new workspace as `PanelMsg::Workspace`, the theme arrives in
+            // `ViewCtx`, and documents, terminals and conversations are other
+            // panels'. A file changed in another workspace is not listed here.
+            HostMessage::FileChanged { .. }
+            | HostMessage::Resync { .. }
+            | HostMessage::ConnectionChanged { .. }
+            | HostMessage::DocumentChanged { .. }
+            | HostMessage::DocumentAcknowledged { .. }
+            | HostMessage::DocumentResync { .. }
+            | HostMessage::DocumentConflict { .. }
+            | HostMessage::DocumentSaved { .. }
+            | HostMessage::DocumentMoved { .. }
+            | HostMessage::DocumentRetired { .. }
+            | HostMessage::TerminalOutput { .. }
+            | HostMessage::TerminalReset { .. }
+            | HostMessage::TerminalResized { .. }
+            | HostMessage::TerminalOpened { .. }
+            | HostMessage::TerminalExited { .. }
+            | HostMessage::TerminalControl { .. }
+            | HostMessage::ConversationSnapshot { .. }
+            | HostMessage::ThemeChanged { .. }
+            | HostMessage::WorkspaceChanged { .. } => {}
         }
     }
 
@@ -478,19 +488,18 @@ impl FilesPanel {
         self.clamp_scroll();
     }
 
-    fn open(&mut self, path: &str) {
+    /// A directory opens and closes; a file is shown by the root, which
+    /// focuses the panel already showing it or opens one.
+    fn open(&mut self, path: &str, cx: &mut Ctx) {
         match self.tree.kind_of(path) {
             Some(FileKind::Directory) => {
                 let on = !self.tree.is_expanded(path);
                 self.toggle(path, on);
             }
-            Some(_) => {
-                let workspace = self.workspace();
-                self.shared.0.borrow_mut().opens.push(OpenRequest {
-                    workspace,
-                    path: path.to_owned(),
-                });
-            }
+            Some(_) => cx.open(OpenTarget::File {
+                workspace: self.identity.workspace.clone(),
+                path: path.to_owned(),
+            }),
             None => {}
         }
     }
@@ -553,7 +562,7 @@ impl FilesPanel {
             Key::Left => self.collapse_or_ascend(),
             Key::Enter => {
                 if let Some(p) = self.selected.clone() {
-                    self.open(&p);
+                    self.open(&p, cx);
                 }
             }
             Key::F2 => self.begin_rename(),
@@ -645,7 +654,7 @@ impl FilesPanel {
         self.rows().into_iter().nth(self.scroll + i as usize)
     }
 
-    fn on_pointer(&mut self, p: PanelPointer) {
+    fn on_pointer(&mut self, p: PanelPointer, cx: &mut Ctx) {
         match p.kind {
             PointerKind::Wheel { dy, .. } => {
                 let rows = self.rows().len();
@@ -666,20 +675,15 @@ impl FilesPanel {
                 let on_mark = kind == FileKind::Directory
                     && p.x >= (depth * 2) as i32
                     && p.x < (depth * 2 + 2) as i32;
-                let second = self
-                    .click
-                    .as_ref()
-                    .is_some_and(|(c, age)| *c == path && *age <= DOUBLE_CLICK_TICKS);
                 self.selected = Some(path.clone());
                 if on_mark {
-                    let on = !self.tree.is_expanded(&path);
-                    self.toggle(&path, on);
-                    self.click = None;
-                } else if second {
-                    self.open(&path);
-                    self.click = None;
-                } else {
-                    self.click = Some((path, 0));
+                    // The press that begins a double click already toggled it.
+                    if p.clicks <= 1 {
+                        let on = !self.tree.is_expanded(&path);
+                        self.toggle(&path, on);
+                    }
+                } else if p.clicks >= 2 {
+                    self.open(&path, cx);
                 }
             }
             _ => {}
@@ -722,7 +726,7 @@ impl FilesPanel {
             && !self.busy(&path)
             && self.tree.kind_of(&path).is_some()
         {
-            self.mode = Mode::Confirm(path);
+            self.mode = Mode::Confirm(Question::Delete(path));
         }
     }
 
@@ -761,25 +765,52 @@ impl FilesPanel {
         }
         let target = self.target_dir();
         let dest = join(&target, name_of(&src));
-        if !cut {
-            // The workbench has no copy effect, and the owner offers none on
-            // the current host: say so on the row instead of doing nothing.
-            self.refuse_here(
-                &src,
-                "copy_unavailable",
-                "copying files is not offered by this workbench build",
-            );
-            return;
-        }
         if target == src || target.starts_with(&format!("{src}/")) {
-            self.refuse_here(&src, "into_itself", "a folder cannot move into itself");
+            self.refuse_here(&src, "into_itself", "a folder cannot go into itself");
             return;
         }
         if parent(&src) == target {
             self.refuse_here(&src, "same_directory", "already in that folder");
             return;
         }
-        self.start_rename(cx, src, dest);
+        let taken =
+            self.tree.dir(&target).is_some_and(|d| d.loaded) && self.tree.entry_of(&dest).is_some();
+        match (cut, taken) {
+            (true, false) => self.start_rename(cx, src, dest),
+            (true, true) => self.refuse_here(
+                &src,
+                "name_taken",
+                "something with that name is already in that folder",
+            ),
+            (false, false) => self.start_copy(cx, src, dest, false),
+            // The host would refuse a copy over what exists; replacing it is
+            // for a person to say.
+            (false, true) => {
+                self.mode = Mode::Confirm(Question::Replace {
+                    from: src,
+                    to: dest,
+                })
+            }
+        }
+    }
+
+    fn start_copy(&mut self, cx: &mut Ctx, from: String, to: String, overwrite: bool) {
+        let body = EffectBody::FilesCopy(FilesCopy {
+            from: from.clone(),
+            to: to.clone(),
+            overwrite,
+        });
+        match self.emit(cx, body) {
+            Ok(id) => {
+                self.note(
+                    &from,
+                    NoteState::Pending(format!("copying to {to}...")),
+                    None,
+                );
+                self.ops.insert(id, Op::Copy { from, to });
+            }
+            Err(e) => self.refuse_here(&from, "not_sent", &e.to_string()),
+        }
     }
 
     fn start_rename(&mut self, cx: &mut Ctx, from: String, to: String) {
@@ -909,7 +940,7 @@ impl FilesPanel {
                 } else {
                     FileKind::File
                 };
-                let ghost = Entry { name, kind };
+                let ghost = Entry::new(name, kind);
                 match self.emit(cx, body) {
                     Ok(id) => {
                         self.note(
@@ -946,18 +977,24 @@ impl FilesPanel {
         if !yes && !no {
             return;
         }
-        let Mode::Confirm(path) = std::mem::replace(&mut self.mode, Mode::Browse) else {
+        let Mode::Confirm(question) = std::mem::replace(&mut self.mode, Mode::Browse) else {
             return;
         };
-        if yes {
-            let body = EffectBody::FilesDelete(FilesPath { path: path.clone() });
-            match self.emit(cx, body) {
-                Ok(id) => {
-                    self.note(&path, NoteState::Pending("deleting...".to_owned()), None);
-                    self.ops.insert(id, Op::Delete { path });
+        if !yes {
+            return;
+        }
+        match question {
+            Question::Delete(path) => {
+                let body = EffectBody::FilesDelete(FilesPath { path: path.clone() });
+                match self.emit(cx, body) {
+                    Ok(id) => {
+                        self.note(&path, NoteState::Pending("deleting...".to_owned()), None);
+                        self.ops.insert(id, Op::Delete { path });
+                    }
+                    Err(e) => self.refuse_here(&path, "not_sent", &e.to_string()),
                 }
-                Err(e) => self.refuse_here(&path, "not_sent", &e.to_string()),
             }
+            Question::Replace { from, to } => self.start_copy(cx, from, to, true),
         }
     }
 
@@ -966,15 +1003,15 @@ impl FilesPanel {
     fn on_write(&mut self, op: Op, c: Completion) {
         let row = op.row().to_owned();
         let ghost = match &op {
-            Op::Create { path, directory } => Some(Entry {
-                name: name_of(path).to_owned(),
-                kind: if *directory {
+            Op::Create { path, directory } => Some(Entry::new(
+                name_of(path),
+                if *directory {
                     FileKind::Directory
                 } else {
                     FileKind::File
                 },
-            }),
-            _ => None,
+            )),
+            Op::Rename { .. } | Op::Copy { .. } | Op::Delete { .. } => None,
         };
         let Some(problem) = Problem::of(&c.outcome) else {
             return self.write_accepted(op);
@@ -991,26 +1028,28 @@ impl FilesPanel {
                 } else {
                     FileKind::File
                 };
-                self.tree.insert_entry(
-                    parent(&path),
-                    Entry {
-                        name: name_of(&path).to_owned(),
-                        kind,
-                    },
-                );
+                self.tree
+                    .insert_entry(parent(&path), Entry::new(name_of(&path), kind));
                 self.tree.want(parent(&path));
             }
-            Op::Rename { from, to } => {
+            Op::Copy { from, to } => {
+                self.tree.notes.remove(&from);
                 let kind = self.tree.kind_of(&from).unwrap_or(FileKind::File);
+                self.tree
+                    .insert_entry(parent(&to), Entry::new(name_of(&to), kind));
+                self.tree.want(parent(&to));
+            }
+            Op::Rename { from, to } => {
+                let moved = Entry {
+                    name: name_of(&to).to_owned(),
+                    ..self
+                        .tree
+                        .entry_of(&from)
+                        .unwrap_or_else(|| Entry::new(name_of(&to), FileKind::File))
+                };
                 self.tree.move_subtree(&from, &to);
                 self.tree.remove_entry(&from);
-                self.tree.insert_entry(
-                    parent(&to),
-                    Entry {
-                        name: name_of(&to).to_owned(),
-                        kind,
-                    },
-                );
+                self.tree.insert_entry(parent(&to), moved);
                 if let Some(sel) = &self.selected
                     && let Some(rest) = sel.strip_prefix(from.as_str())
                     && (rest.is_empty() || rest.starts_with('/'))
@@ -1055,23 +1094,26 @@ impl FilesPanel {
 
 impl Panel for FilesPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
-        self.sync_workspace();
+        // The root's identity is the truth, whichever message carries it.
+        self.adopt(cx.workspace());
         // The environment cannot start work, and a cached answer is not ours
         // to show: neither is followed by a pump.
         let quiet = matches!(
             msg,
-            PanelMsg::Resize { .. } | PanelMsg::Focus(_) | PanelMsg::Cached(_)
+            PanelMsg::Resize { .. }
+                | PanelMsg::Focus(_)
+                | PanelMsg::Cached(_)
+                | PanelMsg::Workspace(_)
         );
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
             PanelMsg::Text(text) | PanelMsg::Paste(text) => self.insert_text(&text),
-            PanelMsg::Pointer(p) => self.on_pointer(p),
+            PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Resize { area, .. } => {
                 self.body = area;
                 self.ensure_visible();
                 self.clamp_scroll();
             }
-            PanelMsg::Focus(_) | PanelMsg::Cached(_) | PanelMsg::Action(_) => {}
             PanelMsg::Completion(c) => {
                 if let Some(dir) = self.lists.remove(&c.effect) {
                     self.on_listing(dir, c);
@@ -1080,18 +1122,24 @@ impl Panel for FilesPanel {
                 }
             }
             PanelMsg::Host(h) => self.on_host(h),
+            PanelMsg::Workspace(identity) => self.adopt(&identity),
             PanelMsg::Tick => {
                 self.ahead_idle += 1;
                 if self.ahead_idle > TYPE_AHEAD_TICKS {
                     self.ahead.clear();
                 }
-                if let Some((_, age)) = &mut self.click {
-                    *age += 1;
-                }
                 cx.invalidate();
             }
-            // Terminal frames are not this panel's.
-            _ => {}
+            // Focus changes the drawing (the root passes it in `ViewCtx`), not
+            // the state. An answer for a workspace this panel left is not
+            // shown as the current tree.
+            PanelMsg::Focus(_) | PanelMsg::Cached(_) => {}
+            // The panel registers no action that asks it for a payload.
+            PanelMsg::Action(_) => {}
+            // The panel is bound to no terminal session.
+            PanelMsg::TerminalOutput { .. }
+            | PanelMsg::TerminalReset { .. }
+            | PanelMsg::TerminalResetRequest { .. } => {}
         }
         if !quiet {
             self.pump(cx);
@@ -1114,14 +1162,13 @@ impl Panel for FilesPanel {
         })
     }
 
+    /// Bound to the workspace the root named, at that identity's generation,
+    /// from the moment of construction (generation 0 until the root says).
     fn binding(&self) -> Option<Binding> {
-        let shared = self.shared.0.borrow();
-        (!shared.workspace.is_empty()).then(|| Binding {
-            resource: ResourceRef::Workspace {
-                workspace: shared.workspace.clone(),
-            },
+        Some(Binding {
+            resource: self.resource(),
             revision: None,
-            generation: Some(Generation(shared.epoch)),
+            generation: Some(self.identity.generation),
         })
     }
 

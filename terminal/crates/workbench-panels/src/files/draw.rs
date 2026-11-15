@@ -3,12 +3,12 @@
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
-use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::completion::FileKind;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeId, Role};
+use theorem_workbench_core::{Theme, ViewCtx};
 
-use super::tree::{NoteState, Row};
+use super::tree::{NoteState, Row, Tone};
 use super::{Edit, FilesPanel, Mode};
 
 /// Write `text` from `x`, stopping at `limit`; returns the next free column.
@@ -35,15 +35,22 @@ fn mark(row: &Row) -> &'static str {
     }
 }
 
+/// `base` in the theme role a tone names.
+fn toned(theme: &Theme, base: Style, tone: Tone) -> Style {
+    base.patch(match tone {
+        Tone::Plain => theme.muted,
+        Tone::Warning => theme.warning,
+        Tone::Error => theme.error,
+    })
+}
+
 pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
     let theme = cx.theme;
     buf.set_style(area, theme.bg);
     let right = area.x + area.width;
     let mut y = area.y;
     if let Some(text) = p.banner() {
-        let mut style = theme.text;
-        style = style.add_modifier(Modifier::BOLD);
-        put(buf, area.x, y, right, text, style);
+        put(buf, area.x, y, right, text, theme.text.patch(theme.warning));
         y += 1;
     }
     let rows = p.rows();
@@ -72,8 +79,15 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                 kind,
                 note,
                 mark: clip,
+                muted,
                 ..
             } => {
+                // The cursor row keeps its own colors: it must stay legible.
+                let line = if *muted && !here {
+                    line.patch(theme.muted)
+                } else {
+                    line
+                };
                 x = put(buf, x, y, right, mark(row), line);
                 let shown = match kind {
                     FileKind::Directory => format!("{name}/"),
@@ -94,19 +108,19 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                 if let Some(note) = note {
                     let style = match note {
                         NoteState::Pending(_) => theme.muted,
-                        NoteState::Problem(_) => line.add_modifier(Modifier::BOLD),
+                        NoteState::Problem(p) => toned(theme, line, p.tone()),
                     };
                     put(buf, x, y, right, &format!("  {}", note.label()), style);
                 }
             }
-            Row::Status { text, .. } => {
+            Row::Status { text, tone, .. } => {
                 put(
                     buf,
                     x,
                     y,
                     right,
                     &format!("  {text}"),
-                    line.patch(theme.muted),
+                    toned(theme, line, *tone),
                 );
             }
             Row::Confirm { text, .. } => {
@@ -116,7 +130,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     y,
                     right,
                     &format!("  {text}"),
-                    line.add_modifier(Modifier::BOLD),
+                    line.patch(theme.warning),
                 );
             }
             Row::Edit { directory, .. } => {
@@ -143,7 +157,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                             y,
                             right,
                             &format!("  {error}"),
-                            line.add_modifier(Modifier::BOLD),
+                            line.patch(theme.error),
                         );
                     }
                 }
@@ -153,11 +167,13 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
     }
 }
 
-/// `level N, P of S`: what a tree item carries beyond its name. The core's
-/// node has no fields for level or position yet, so they ride in the
-/// description, the one place a screen reader reads after the name.
-fn place(depth: usize, pos: usize, set: usize) -> String {
-    format!("level {}, {pos} of {set}", depth + 1)
+/// Levels count from 1.
+fn level(depth: usize) -> u16 {
+    u16::try_from(depth + 1).unwrap_or(u16::MAX)
+}
+
+fn count(n: usize) -> u16 {
+    u16::try_from(n).unwrap_or(u16::MAX)
 }
 
 pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
@@ -167,7 +183,7 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     let window = usize::from(area.height).saturating_sub(p.header());
     let mut tree = Node::new("tree", Role::Tree, "Files", area);
     tree.binding = ResourceRef::Workspace {
-        workspace: p.workspace(),
+        workspace: p.identity.workspace.clone(),
     };
     tree.state.description = p.banner().map(str::to_owned);
     let mut items = vec![];
@@ -190,27 +206,28 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 ..
             } => {
                 last_entry = Some(path.clone());
-                let mut n = Node::new(&format!("f:{path}"), Role::TreeItem, name, rect);
+                // A node has no field for the kind of file, so a link says so
+                // in its name; a folder is told by `expanded`.
+                let label = match kind {
+                    FileKind::Symlink => format!("{name} (symlink)"),
+                    FileKind::File | FileKind::Directory => name.clone(),
+                };
+                let mut n = Node::new(&format!("f:{path}"), Role::TreeItem, &label, rect);
+                n.level = Some(level(*depth));
+                n.pos_in_set = Some(count(*pos));
+                n.set_size = Some(count(*set));
                 n.state.selected = selected;
                 n.state.focused = selected && cx.focused;
                 n.state.expanded = *expanded;
                 n.state.busy = matches!(note, Some(NoteState::Pending(_)));
-                let kind = match kind {
-                    FileKind::File => "",
-                    FileKind::Directory => "; folder",
-                    FileKind::Symlink => "; symlink",
-                };
-                let note = note
-                    .as_ref()
-                    .map(|s| format!("; {}", s.label()))
-                    .unwrap_or_default();
-                n.state.description = Some(format!("{}{kind}{note}", place(*depth, *pos, *set)));
+                // Only what a person can act on: why a write was refused.
+                n.state.description = note.as_ref().map(NoteState::label);
                 n
             }
-            Row::Status { text, depth } => {
+            Row::Status { text, depth, .. } => {
                 let id = format!("s:{}:{y}", last_entry.as_deref().unwrap_or(""));
                 let mut n = Node::new(&id, Role::Status, text, rect);
-                n.state.description = Some(format!("level {}", depth + 1));
+                n.level = Some(level(*depth));
                 n
             }
             Row::Confirm { text, .. } => Node::new("confirm", Role::Alert, text, rect),
