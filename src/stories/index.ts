@@ -12,6 +12,10 @@ export type StoryMeta = {
   viewport: { width: number; height: number }
   /** The region of the reference this story answers: left, top, width, height. */
   region?: readonly [number, number, number, number]
+  /** How closely the render is meant to match the reference, said plainly: the oracle prints it on the collage. */
+  tolerance?: { threshold: number; note: string }
+  /** A folder under docs/plans/evidence/ that holds this story's collage, when it has one of its own. */
+  evidenceDir?: string
   /** Selected in the sidebar, the way a route would. */
   threadId?: string
 }
@@ -48,6 +52,19 @@ export const STORIES: readonly StoryMeta[] = [
     title: 'Workbench: Files, main and tools with the picker',
     lane: 'original',
     viewport: { width: 1280, height: 640 },
+  },
+  {
+    id: 'workbench-picker',
+    title: 'Workbench: the tool picker in two columns',
+    lane: 'translation',
+    reference: 'workbench-picker@spec-1.0.png',
+    // The reference is 2048x454; the render is its aspect at a width that gives the tools pane 86+ cells.
+    viewport: { width: 2304, height: 512 },
+    tolerance: {
+      threshold: 0.2,
+      note: 'Hierarchy and interaction reference, not a pixel target: colors, fonts and metrics differ by design (cell grid in a mono face against a proportional UI). The differing share is reported, never a verdict.',
+    },
+    evidenceDir: 'workbench-picker',
   },
   {
     id: 'organized-sidebar',

@@ -15,18 +15,30 @@ import { bootstrap } from '@/lib/theorem/client'
 import { createAdapter } from '@/lib/workbench/adapter'
 import type { Adapter } from '@/lib/workbench/adapter'
 import { connectEnvironment } from '@/lib/workbench/environment/connect'
+import { createConversation } from '@/lib/workbench/conversation/conversation'
+import { createConversationPort } from '@/lib/workbench/conversation/port'
+import { conversationServices } from '@/lib/workbench/conversation/runtime'
+import { createSideChatModel } from '@/lib/workbench/conversation/side-chat-model'
+import { createSideChats } from '@/lib/workbench/conversation/side-chats'
+import { useConversationRuntime } from '@/lib/workbench/conversation/use-conversation-runtime'
+import { createDocuments } from '@/lib/workbench/documents/documents'
+import { createDocumentsPort } from '@/lib/workbench/documents/port'
 import { createFiles } from '@/lib/workbench/files/files'
 import {
   checkpointDirectory,
   createCheckpoints,
   createLayout,
 } from '@/lib/workbench/layout'
+import { createScm } from '@/lib/workbench/scm/scm'
+import { createScmPort } from '@/lib/workbench/scm/port'
 import { TerminalSession, terminalHost } from '@/lib/workbench/terminal'
-import type { Completion, Effect, HostMessage } from '@/lib/workbench/wire'
+import type { Effect, Inbound } from '@/lib/workbench/wire'
 import type { WorkbenchHandle } from '@/terminal-wasm/theorem_terminal'
+import { createArtifactsPort, createClipboardPort } from './ports'
+import { pointerJson } from './pointer-json'
 
-/** Answers to the workbench: completions of its effects and events nobody asked for. */
-export type Dispatch = (message: Completion | HostMessage) => void
+/** Answers to the workbench: completions of its effects and events nobody asked for, each tagged by its channel. */
+export type Dispatch = (message: Inbound) => void
 
 /**
  * The semantic tree as Rust publishes it: the first tree, then diffs, each a JSON string
@@ -92,31 +104,6 @@ function mountWorkbench(host: HTMLElement) {
   return mounted
 }
 
-function pointerJson(
-  type: 'down' | 'up' | 'move' | 'wheel',
-  event: PointerEvent | WheelEvent | React.PointerEvent,
-) {
-  return JSON.stringify({
-    type,
-    button: ['left', 'middle', 'right'][
-      'button' in event && event.button >= 0 && event.button <= 2
-        ? event.button
-        : 0
-    ],
-    clientX: event.clientX,
-    clientY: event.clientY,
-    deltaX: 'deltaX' in event ? event.deltaX : 0,
-    deltaY: 'deltaY' in event ? event.deltaY : 0,
-    deltaMode: 'deltaMode' in event ? event.deltaMode : 0,
-    // The press count, as the DOM gives it; a pointer event that carries none is a single press.
-    detail: event.detail || 1,
-    ctrlKey: event.ctrlKey,
-    altKey: event.altKey,
-    shiftKey: event.shiftKey,
-    metaKey: event.metaKey,
-  })
-}
-
 /**
  * The workbench over an adapter. `connect` builds the effect dispatcher once the wasm is up and
  * is given the handle's `dispatch`; it is called again if the surface remounts. Children receive
@@ -156,17 +143,18 @@ export function WorkbenchSurface({
       if (disposed) return
       handle.current = mounted
       adapter = latest.current((message) => {
-        if (!disposed)
-          mounted.dispatch(
-            // The core's inbound type is tagged by channel; a completion is the one with an effect.
-            JSON.stringify({
-              channel: 'effect' in message ? 'completion' : 'host',
-              ...message,
-            }),
-          )
+        if (!disposed) mounted.dispatch(JSON.stringify(message))
       })
       sink.effect = (json) => adapter?.perform(JSON.parse(json) as Effect)
       mounted.resize()
+      // The keyboard works from load: take focus unless the person is already typing elsewhere.
+      const active = document.activeElement
+      const typing =
+        active instanceof HTMLElement &&
+        active !== input.current &&
+        (active.isContentEditable ||
+          ['INPUT', 'TEXTAREA', 'SELECT'].includes(active.tagName))
+      if (!typing) input.current?.focus({ preventScroll: true })
       mounted.when_drawn(() => {
         if (!disposed) drawn.current?.()
       })
@@ -207,14 +195,15 @@ export function WorkbenchSurface({
           aria-hidden="true"
           data-base-ui-swipe-ignore=""
           // A press on a non-focusable element would move focus to the page; the input keeps it.
+          // The press goes in from `mousedown`, the one event whose `detail` is the click count.
           onMouseDown={(event) => {
             event.preventDefault()
             input.current?.focus({ preventScroll: true })
-          }}
-          onPointerDown={(event) => {
-            event.currentTarget.setPointerCapture(event.pointerId)
             handle.current?.pointer(pointerJson('down', event))
           }}
+          onPointerDown={(event) =>
+            event.currentTarget.setPointerCapture(event.pointerId)
+          }
           onPointerUp={(event) =>
             handle.current?.pointer(pointerJson('up', event))
           }
@@ -266,9 +255,11 @@ export function WorkbenchSurface({
 }
 
 /**
- * The workbench of a project: the environment, then the owners that exist today (files, layout, the
- * terminal) under the adapter. Owners with no module yet are left out, so the adapter answers their
- * effects `owner_unavailable`.
+ * The workbench of a project: the environment, then every owner that has a module (files, documents,
+ * scm, the conversation and its side chats, the layout, the terminal, and the clipboard and artifact
+ * cabinet of this app) under the adapter. The language, run and search owners have no module yet, so
+ * their ports are left unset and the adapter reports those capabilities absent. Capabilities come from
+ * the adapter, which derives them from the host's operations.
  */
 export function Workbench({
   projectId,
@@ -277,10 +268,31 @@ export function Workbench({
   projectId: string
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
+  const runtime = useConversationRuntime()
+  const [sideChats] = useState(() =>
+    createSideChats(() => createSideChatModel(projectId)),
+  )
   const connect = useCallback(
     (dispatch: Dispatch): Adapter => {
       const environment = connectEnvironment(projectId)
       const workspaceId = environment.workspaceId
+      // The core is told which workspace it shows as soon as it is known, and again when the
+      // host's environment (its epoch) changes.
+      let announced: string | undefined
+      const announce = () => {
+        const { workspaceId: workspace, epoch } = environment.identity
+        const key = `${workspace}/${epoch ?? ''}`
+        if (key === announced) return
+        announced = key
+        dispatch({
+          channel: 'host',
+          type: 'workspaceChanged',
+          workspace,
+          ...(epoch ? { environment: epoch } : {}),
+        })
+      }
+      announce()
+      const unsubscribe = environment.subscribe(announce)
       const checkpoints = createCheckpoints({
         directory: checkpointDirectory(workspaceId),
       })
@@ -297,27 +309,29 @@ export function Workbench({
         workspaceId,
         csrfToken: async () => (await bootstrap()).csrfToken,
       })
-      // The core is told which workspace it shows as soon as it is known, and again when the
-      // host's environment (its epoch) changes.
-      let announced: string | undefined
-      const announce = () => {
-        const { workspaceId: workspace, epoch } = environment.identity
-        const key = `${workspace}/${epoch ?? ''}`
-        if (key === announced) return
-        announced = key
-        dispatch({
-          type: 'workspaceChanged',
-          workspace,
-          ...(epoch ? { environment: epoch } : {}),
-        })
-      }
-      announce()
-      const unsubscribe = environment.subscribe(announce)
+      const files = createFiles(environment)
+      const conversation = createConversation({
+        runtime,
+        sideChats: sideChats.sideChats,
+        services: conversationServices,
+        workspaceId,
+      })
       const adapter = createAdapter({
         environment,
-        files: createFiles(environment),
+        files,
         terminal: { create: () => new TerminalSession(host), host },
         layout,
+        documents: createDocumentsPort({
+          documents: createDocuments(environment),
+          files,
+        }),
+        scm: createScmPort(createScm(environment)),
+        conversation: createConversationPort({
+          conversation,
+          project: projectId,
+        }),
+        artifacts: createArtifactsPort(projectId),
+        clipboard: createClipboardPort(),
         dispatch,
       })
       return {
@@ -325,17 +339,23 @@ export function Workbench({
         dispose() {
           unsubscribe()
           adapter.dispose()
+          conversation.dispose()
           live.close()
           void checkpoints.dispose()
           environment.dispose()
         },
       }
     },
-    [projectId],
+    [projectId, runtime, sideChats],
   )
   return (
     <WorkbenchSurface key={projectId} connect={connect}>
-      {children}
+      {(feed) => (
+        <>
+          <sideChats.Hosts />
+          {children?.(feed)}
+        </>
+      )}
     </WorkbenchSurface>
   )
 }

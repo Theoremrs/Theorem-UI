@@ -3,10 +3,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Adapter } from '@/lib/workbench/adapter'
 import type { Completion, Effect, FileListing } from '@/lib/workbench/wire'
 import { WorkbenchSurface } from './workbench'
-import type { Dispatch } from './workbench'
+import type { Dispatch, SemanticsFeed } from './workbench'
 
 /** What the fixture host reports it can do: the files owner only, so the picker lists the rest as unavailable. */
-const GRANTED = ['files']
+const FILES_ONLY = ['files']
+
+/** The picker story's host can serve every tool the picker lists, so its rows are all live, as in the reference. */
+const EVERY_TOOL = ['files', 'scm', 'terminal', 'documents', 'conversation']
 
 type Entries = FileListing['entries']
 
@@ -48,22 +51,29 @@ const treeKey = (path: string) =>
  * other effect is refused with `owner_unavailable`, as the real adapter answers an owner that
  * does not exist. The workspace and the capability set are announced once.
  */
-function fixtureAdapter(dispatch: Dispatch): Adapter {
+function fixtureAdapter(
+  dispatch: Dispatch,
+  granted: string[],
+  performed: (kind: string) => void,
+): Adapter {
   let live = true
   queueMicrotask(() => {
     if (!live) return
     dispatch({
+      channel: 'host',
       type: 'workspaceChanged',
       workspace: 'story-workspace',
       environment: 'story',
     })
     dispatch({
+      channel: 'host',
       type: 'capabilitiesChanged',
-      capabilities: { granted: GRANTED },
+      capabilities: { granted },
     })
   })
   return {
     perform(effect: Effect) {
+      performed(effect.kind)
       const listing =
         effect.kind === 'filesList'
           ? TREE[treeKey(effect.payload.path)]
@@ -84,7 +94,9 @@ function fixtureAdapter(dispatch: Dispatch): Adapter {
               reason: 'This story has no owners',
             },
           }
-      queueMicrotask(() => live && dispatch(completion))
+      queueMicrotask(
+        () => live && dispatch({ channel: 'completion', ...completion }),
+      )
     },
     dispose() {
       live = false
@@ -106,42 +118,118 @@ function openPicker(host: HTMLElement) {
   )
 }
 
+/** What the story waits to see: the fixture tree's last file, and the picker's last row. */
+const SHOWN = ['README.md', 'More tools']
+
+/** Calls `onShown` two frames after the semantic tree has named everything the story waits to see. */
+function ReadyWhenShown({
+  feed,
+  onShown,
+}: {
+  feed: SemanticsFeed
+  onShown: () => void
+}) {
+  useEffect(() => {
+    let seen = feed.latest ?? ''
+    let frames: number[] = []
+    let done = false
+    const check = () => {
+      if (done || !SHOWN.every((text) => seen.includes(text))) return
+      done = true
+      frames = [
+        requestAnimationFrame(() => {
+          frames = [requestAnimationFrame(onShown)]
+        }),
+      ]
+    }
+    check()
+    const stop = feed.subscribe((update) => {
+      seen += update
+      check()
+    })
+    return () => {
+      stop()
+      frames.forEach(cancelAnimationFrame)
+    }
+  }, [feed, onShown])
+  return null
+}
+
 /**
- * `workbench-default`: Files, main and tools at a fixed size, the picker open in the tools region.
- * Deterministic: a fixed box, a fixture host, no clock.
+ * The real wasm workbench over the fixture host at a fixed size: no network, no clock. The picker is
+ * opened with its chord once the first frame is on the page. `data-last-effect` names the kind of the
+ * last effect the core asked the host for, which is how a story shows a pointer or key reached it.
  */
-export function WorkbenchDefaultStory() {
+function FixtureStory({
+  id,
+  width,
+  height,
+  granted,
+}: {
+  id: string
+  width: number
+  height: number
+  granted: string[]
+}) {
   const box = useRef<HTMLDivElement>(null)
+  const [lastEffect, setLastEffect] = useState<string>()
   const connect = useCallback(
-    (dispatch: Dispatch) => fixtureAdapter(dispatch),
-    [],
+    (dispatch: Dispatch) => fixtureAdapter(dispatch, granted, setLastEffect),
+    [granted],
   )
-  // Pending until the first frame is on the page and the picker's chord has been sent.
+  // Pending until the first frame is on the page, the picker's chord has been sent, and the semantic
+  // tree (published with each frame) has carried both the first listing's row and the picker's last
+  // row; then two more frames, so what the tree named is on the page.
   const [drawn, setDrawn] = useState(false)
   const [ready, setReady] = useState(false)
+  const markReady = useCallback(() => setReady(true), [])
   useEffect(() => {
     if (!drawn) return
     const element = box.current?.querySelector<HTMLElement>('[id^=workbench-]')
-    if (!element) return
-    openPicker(element.parentElement ?? element)
-    // The chord's frame and the listing's: two animation frames after the input.
-    let second = 0
-    const first = requestAnimationFrame(() => {
-      second = requestAnimationFrame(() => setReady(true))
-    })
-    return () => {
-      cancelAnimationFrame(first)
-      cancelAnimationFrame(second)
-    }
+    if (element) openPicker(element.parentElement ?? element)
   }, [drawn])
   return (
     <div
       ref={box}
-      data-workbench-story="workbench-default"
+      data-workbench-story={id}
       data-story-pending={ready ? undefined : ''}
-      className="flex h-[640px] w-[1280px] flex-col overflow-hidden"
+      data-last-effect={lastEffect}
+      style={{ width, height }}
+      className="flex flex-col overflow-hidden"
     >
-      <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)} />
+      <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)}>
+        {(feed) => <ReadyWhenShown feed={feed} onShown={markReady} />}
+      </WorkbenchSurface>
     </div>
   )
 }
+
+/** `workbench-default`: Files, main and tools at 1280x640, the picker open in the tools region. */
+export function WorkbenchDefaultStory() {
+  return (
+    <FixtureStory
+      id="workbench-default"
+      width={1280}
+      height={640}
+      granted={FILES_ONLY}
+    />
+  )
+}
+
+/**
+ * `workbench-picker`: the tool picker in a tools pane wide enough for two columns (the core's fit
+ * rule needs 86 cells), beside Files and the main page, every tool live.
+ */
+export function WorkbenchPickerStory() {
+  return (
+    <FixtureStory
+      id="workbench-picker"
+      width={PICKER_WIDTH}
+      height={PICKER_HEIGHT}
+      granted={EVERY_TOOL}
+    />
+  )
+}
+
+export const PICKER_WIDTH = 2304
+export const PICKER_HEIGHT = 512

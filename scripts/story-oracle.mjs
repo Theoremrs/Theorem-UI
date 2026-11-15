@@ -99,29 +99,35 @@ async function collage(story) {
   const a = PNG.sync.read(referenceBytes)
   const b = PNG.sync.read(renderBytes)
   const heat = new PNG({ width, height })
-  const mismatched = pixelmatch(a.data, b.data, heat.data, width, height, { threshold: THRESHOLD })
+  const threshold = story.tolerance?.threshold ?? THRESHOLD
+  const mismatched = pixelmatch(a.data, b.data, heat.data, width, height, { threshold })
   const ratio = mismatched / (width * height)
 
   const gap = 12
   const image = sharp({
     create: {
       width: width * 3 + gap * 2,
-      height: height + 24,
+      height: height + 24 + (story.tolerance ? 24 : 0),
       channels: 4,
       background: '#101010',
     },
   }).composite([
-    { input: label(`Reference: ${story.reference}`, width), left: 0, top: 0 },
-    { input: label(`Render: /story/${story.id}`, width), left: width + gap, top: 0 },
-    { input: label(`Diff at ${THRESHOLD}: ${(ratio * 100).toFixed(1)}% differs`, width), left: (width + gap) * 2, top: 0 },
+    { input: label(`LEFT, REFERENCE: ${story.reference}`, width), left: 0, top: 0 },
+    { input: label(`MIDDLE, RENDER: /story/${story.id}`, width), left: width + gap, top: 0 },
+    { input: label(`RIGHT, DIFF HEATMAP at ${threshold}: ${(ratio * 100).toFixed(1)}% differs`, width), left: (width + gap) * 2, top: 0 },
     { input: referenceBytes, left: 0, top: 24 },
     { input: renderBytes, left: width + gap, top: 24 },
     { input: PNG.sync.write(heat), left: (width + gap) * 2, top: 24 },
+    ...(story.tolerance
+      ? [{ input: label(`Tolerance: ${story.tolerance.note}`, width * 3 + gap * 2), left: 0, top: height + 24 }]
+      : []),
   ])
-  const out = join(EVIDENCE, 'collages', `${story.id}.png`)
+  const out = story.evidenceDir
+    ? join(EVIDENCE, story.evidenceDir, 'collage.png')
+    : join(EVIDENCE, 'collages', `${story.id}.png`)
   mkdirSync(dirname(out), { recursive: true })
   writeFileSync(out, await image.png().toBuffer())
-  console.log(`${story.id}: ${(ratio * 100).toFixed(1)}% differs at ${THRESHOLD}, ${out}`)
+  console.log(`${story.id}: ${(ratio * 100).toFixed(1)}% differs at ${threshold}, ${out}`)
 }
 
 async function diff(story) {

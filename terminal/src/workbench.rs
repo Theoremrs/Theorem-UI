@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use theorem_workbench_core::{
     ActionId, Actor, Button, Capability, Effect, Inbound, Model, Msg, PanelFactories, Pointer,
     PointerKind, Theme, builtin,
-    keys::{KeyTable, Overrides, Platform, active_contexts},
+    keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
     semantics::{Publish, SemanticPublisher},
@@ -337,6 +337,17 @@ struct Core {
 }
 
 impl Core {
+    /// The key table for this platform from the person's overrides (JSON, the
+    /// core's own `Overrides`), handed to the model; the picker's shortcut
+    /// hints are drawn from it. The issues are bindings the table refused.
+    fn set_overrides(&mut self, json: &str) -> Result<Vec<KeyIssue>, serde_json::Error> {
+        let overrides: Overrides = serde_json::from_str(json)?;
+        let (table, issues) = KeyTable::build(self.model.registry(), self.platform, &overrides);
+        self.model.set_keys(table);
+        self.touched = true;
+        Ok(issues)
+    }
+
     fn new(platform: Platform) -> Self {
         let registry = builtin::registry();
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
@@ -660,6 +671,15 @@ impl WorkbenchHandle {
         core.touched = true;
         core.files_opened = true;
         core.model.restore(value).map(|_| ()).map_err(js_error)
+    }
+
+    /// Rebuilds the key table from the person's overrides (JSON: `{version,
+    /// bind, unbind}`; `{"version":1}` is the defaults) and gives it to the
+    /// model. Returns the bindings the table refused, as a JSON array.
+    pub fn set_keys(&self, overrides_json: &str) -> Result<String, JsValue> {
+        let mut core = self.core.borrow_mut();
+        let issues = core.set_overrides(overrides_json).map_err(js_error)?;
+        serde_json::to_string(&issues).map_err(js_error)
     }
 
     /// The layout document to save (JSON).
@@ -1032,6 +1052,41 @@ mod tests {
         assert!(!consumed);
         let (consumed, _) = core.key(press("Down"));
         assert!(consumed);
+    }
+
+    #[test]
+    fn pins_survive_a_save_and_a_restore() {
+        let mut core = core();
+        let more = core
+            .model
+            .registry()
+            .panels()
+            .iter()
+            .find(|p| {
+                p.actions
+                    .iter()
+                    .any(|a| a.picker == Some(theorem_workbench_core::registry::PickerSlot::More))
+            })
+            .expect("the builtin registry has a More tools entry")
+            .kind
+            .clone();
+        core.model.set_pinned(std::iter::once(more.clone()).collect());
+        let saved = core.model.document();
+        assert_eq!(saved["pinned"], json!([more.as_str()]));
+        // A fresh workbench takes the saved document back, pins included.
+        let mut fresh = self::core();
+        assert!(fresh.model.pinned().is_empty());
+        fresh.model.restore(saved.clone()).unwrap();
+        assert!(fresh.model.pinned().contains(&more));
+        assert_eq!(fresh.model.document(), saved);
+    }
+
+    #[test]
+    fn overrides_rebuild_the_key_table_and_bad_ones_are_an_error() {
+        let mut core = core();
+        let issues = core.set_overrides(r#"{"version":1}"#).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+        assert!(core.set_overrides("not json").is_err());
     }
 
     #[test]
