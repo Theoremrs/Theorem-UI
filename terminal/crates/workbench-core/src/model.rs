@@ -236,11 +236,13 @@ impl Entry {
 
 /// A splitter being dragged. `grab` is how far inside the gutter the pointer
 /// went down, so the gutter follows the pointer without jumping.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Drag {
     pub(crate) path: Vec<bool>,
     pub(crate) axis: Direction,
     pub(crate) grab: i32,
+    /// The dock as it was when the drag began, for Esc to put back.
+    pub(crate) start: Box<Dock>,
 }
 
 pub struct Model {

@@ -55,6 +55,8 @@ struct Log {
     /// What a "note" or "chat" panel reports as its caret: a offset from
     /// the top left of its body, and how it shows.
     caret: Option<(u16, u16, theorem_workbench_core::CaretPhase)>,
+    /// Whether "note" panels take text (an editor or composer).
+    text_entry: bool,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -237,6 +239,10 @@ impl Panel for TestPanel {
 
     fn wants_diagnostics(&self) -> bool {
         self.kind == "diag"
+    }
+
+    fn text_entry(&self) -> bool {
+        self.kind == "note" && self.log.borrow().text_entry
     }
 
     fn binding(&self) -> Option<Binding> {
@@ -4075,6 +4081,8 @@ fn escape_closes_the_innermost_transient_and_returns_focus_to_where_it_was() {
     let note = m.focus().panel.unwrap();
     let main = m.dock().group_ids()[1];
 
+    let dock_before_drag = m.dock().clone();
+
     // A drawer: Esc closes it and the keyboard goes back to the note.
     send(&mut m, Msg::Dock(DockMsg::OpenDrawer(main)));
     assert_eq!(m.dock().drawer(), Some(main));
@@ -4083,7 +4091,8 @@ fn escape_closes_the_innermost_transient_and_returns_focus_to_where_it_was() {
     assert_eq!(m.dock().drawer(), None);
     assert_eq!(m.focus().panel, Some(note.clone()));
 
-    // A splitter drag: Esc lets go of it, and a later move drags nothing.
+    // A splitter drag: Esc cancels it. The split goes back to what it was
+    // and a later move drags nothing.
     let s = m.frame().unwrap().splitters[0].clone();
     let pt = |kind, x| {
         Msg::Pointer(Pointer {
@@ -4095,11 +4104,14 @@ fn escape_closes_the_innermost_transient_and_returns_focus_to_where_it_was() {
         })
     };
     send(&mut m, pt(PointerKind::Down(Button::Left), s.rect.x));
-    send(&mut m, pt(PointerKind::Move, s.rect.x + 3));
+    send(&mut m, pt(PointerKind::Move, s.rect.x + 9));
+    assert_eq!(m.frame().unwrap().splitters[0].first_len, s.first_len + 9);
     key(&mut m, Key::Esc, Mods::NONE);
-    let held = m.frame().unwrap().splitters[0].first_len;
+    assert_eq!(m.frame().unwrap().splitters[0].first_len, s.first_len);
+    assert_eq!(m.dock(), &dock_before_drag);
     send(&mut m, pt(PointerKind::Move, s.rect.x + 12));
-    assert_eq!(m.frame().unwrap().splitters[0].first_len, held);
+    send(&mut m, pt(PointerKind::Up(Button::Left), s.rect.x + 12));
+    assert_eq!(m.frame().unwrap().splitters[0].first_len, s.first_len);
 
     // With nothing transient open, Esc is the panel's.
     let seen = |log: &Shared| {
@@ -4111,4 +4123,51 @@ fn escape_closes_the_innermost_transient_and_returns_focus_to_where_it_was() {
     let before = seen(&log);
     key(&mut m, Key::Esc, Mods::NONE);
     assert_eq!(seen(&log), before + 1);
+}
+
+#[test]
+fn esc_in_a_drawer_goes_to_a_text_panel_and_closes_it_otherwise_and_the_action_closes_it_either_way()
+ {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let note = m.focus().panel.unwrap();
+    let tools = m.focus().group;
+    let esc_seen = |log: &Shared| {
+        msgs_of(log, "note")
+            .iter()
+            .filter(|m| matches!(m, PanelMsg::Key(k) if k.key() == Key::Esc))
+            .count()
+    };
+
+    // A note in the drawer that takes text keeps Esc for itself.
+    log.borrow_mut().text_entry = true;
+    send(&mut m, Msg::Dock(DockMsg::OpenDrawer(tools)));
+    assert_eq!(m.dock().drawer(), Some(tools));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), Some(tools));
+    assert_eq!(esc_seen(&log), 1);
+    // The action closes it whatever is focused, and focus goes back.
+    let main = m.dock().group_ids()[1];
+    send(&mut m, Msg::Dock(DockMsg::FocusGroup(main)));
+    send(&mut m, Msg::Dock(DockMsg::FocusGroup(tools)));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), Some(tools));
+    chord(&mut m, Key::Esc, CA);
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(m.focus().panel, Some(note.clone()));
+
+    // A panel that is not taking text lets Esc close the drawer.
+    log.borrow_mut().text_entry = false;
+    send(&mut m, Msg::Dock(DockMsg::OpenDrawer(tools)));
+    let before = esc_seen(&log);
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(esc_seen(&log), before);
+    assert_eq!(m.focus().panel, Some(note.clone()));
+
+    // The action closes it with another group focused, too.
+    send(&mut m, Msg::Dock(DockMsg::OpenDrawer(main)));
+    action(&mut m, "workbench.drawer.close");
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(m.focus().panel, Some(note));
 }

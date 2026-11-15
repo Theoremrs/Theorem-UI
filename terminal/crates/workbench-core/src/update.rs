@@ -962,11 +962,24 @@ impl Model {
     /// dragged, then the drawer. Returns whether there was one; if not, the
     /// key goes on to the panel.
     fn close_transient(&mut self) -> bool {
-        if self.drag.take().is_some() {
+        if let Some(drag) = self.drag.take() {
+            // Cancel: the split goes back to the sizes it had, and the
+            // pointer is let go.
+            self.dock = *drag.start;
             self.capture = None;
             return true;
         }
-        if self.dock.drawer().is_some() {
+        if let Some(drawer) = self.dock.drawer() {
+            // A panel in the drawer that takes text (an editor, a terminal, a
+            // composer) needs Esc itself; the action closes the drawer then.
+            let typing = self.dock.focused() == drawer
+                && self
+                    .focus_owner()
+                    .and_then(|id| self.panels.get(&id))
+                    .is_some_and(|e| e.panel.text_entry());
+            if typing {
+                return false;
+            }
             self.close_drawer();
             return true;
         }
@@ -975,6 +988,9 @@ impl Model {
 
     /// Close the drawer and put the keyboard back where it was when it opened.
     fn close_drawer(&mut self) {
+        if self.dock.drawer().is_none() {
+            return;
+        }
         self.dock.close_drawer();
         if let Some(id) = self.before_drawer.take()
             && self.panels.contains_key(&id)
@@ -1011,6 +1027,7 @@ impl Model {
             ("resize", "narrower") => self.resize_focused([Right, Left], -RESIZE_COLS),
             ("resize", "taller") => self.resize_focused([Down, Up], RESIZE_ROWS),
             ("resize", "shorter") => self.resize_focused([Down, Up], -RESIZE_ROWS),
+            ("drawer", "close") => self.close_drawer(),
             ("maximize", _) => {
                 if self.dock.maximized().is_some() {
                     self.dock.unmaximize();
@@ -1200,7 +1217,12 @@ impl Model {
                         Direction::Horizontal => i32::from(p.x) - i32::from(rect.x),
                         Direction::Vertical => i32::from(p.y) - i32::from(rect.y),
                     };
-                    self.drag = Some(Drag { path, axis, grab });
+                    self.drag = Some(Drag {
+                        path,
+                        axis,
+                        grab,
+                        start: Box::new(self.dock.clone()),
+                    });
                 }
                 vec![]
             }

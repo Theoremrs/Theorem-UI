@@ -374,6 +374,8 @@ pub fn registry() -> Registry {
                 .key("Mod+Alt+PageUp", KeyScope::Global),
             ActionDescriptor::new("workbench.resize.shorter", "Make the group shorter", Focus)
                 .key("Mod+Alt+PageDown", KeyScope::Global),
+            ActionDescriptor::new("workbench.drawer.close", "Close the drawer", Focus)
+                .key("Mod+Alt+Escape", KeyScope::Global),
             ActionDescriptor::new("workbench.maximize", "Maximise or restore the group", Focus)
                 .key("Mod+Alt+M", KeyScope::Global),
             ActionDescriptor::new("workbench.layout.default", "Layout: Default", Focus),
