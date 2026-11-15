@@ -404,6 +404,29 @@ impl Bound {
             _ if present => self.gone = false,
             _ => {}
         }
+        // The host's own word on the program outranks a pane that has seen no
+        // exit event: a listed Lost or Exited terminal is not "controlling".
+        if matches!(self.status, Status::Running)
+            && let Some(row) = data
+                .sessions
+                .iter()
+                .find(|s| s.session == self.session && s.workspace == self.workspace)
+        {
+            match row.state {
+                theorem_workbench_core::host::TerminalSessionState::Running => {}
+                theorem_workbench_core::host::TerminalSessionState::Exited => {
+                    self.status = Status::Exited {
+                        code: None,
+                        reason: "the host lists this terminal as exited".into(),
+                    };
+                }
+                theorem_workbench_core::host::TerminalSessionState::Lost => {
+                    self.status = Status::Lost {
+                        reason: "the host lists this terminal as lost".into(),
+                    };
+                }
+            }
+        }
     }
 
     pub(crate) fn resource(&self) -> ResourceRef {
@@ -817,6 +840,12 @@ impl Bound {
         if opened.epoch >= self.epoch {
             self.epoch = opened.epoch;
             self.program = opened.program;
+        }
+        // The host mints its own attachment name when it does not know the one
+        // asked for; every later claim, input, resize and detach must carry
+        // the name it returned, or it answers `unknown_attachment`.
+        if let Some(attachment) = &opened.attachment {
+            self.attachment = attachment.clone();
         }
         self.origin = opened.origin.clone();
         self.stream_epoch = opened.stream_epoch.clone();

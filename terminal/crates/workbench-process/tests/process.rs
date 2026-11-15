@@ -2452,3 +2452,218 @@ fn a_frame_whose_payload_is_not_the_supported_encoding_draws_nothing_and_is_not_
     r.bytes(1, 6, b"next");
     assert!(r.screen().contains("next"));
 }
+
+// ---- names the core accepts, and the attachment the host returned ----------------
+
+fn attachment_of(effect: &Effect) -> String {
+    let EffectBody::TerminalAttach(a) = &effect.body else {
+        panic!("not an attach: {effect:?}")
+    };
+    a.attachment.clone()
+}
+
+fn claim_of(fx: &[Effect]) -> Vec<String> {
+    fx.iter()
+        .filter_map(|e| match &e.body {
+            EffectBody::TerminalInput(i) => Some(i.claim.attachment.clone()),
+            EffectBody::TerminalInputBytes(i) => Some(i.claim.attachment.clone()),
+            EffectBody::TerminalResize(r) => Some(r.claim.attachment.clone()),
+            EffectBody::TerminalDetach(c) => Some(c.attachment.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn named_profiles(ids: &[&str]) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: ids
+            .iter()
+            .map(|id| profile(id, TerminalBackend::Herdr, true))
+            .collect(),
+        sessions: vec![],
+        adoption: None,
+    })
+}
+
+#[test]
+fn starting_a_profile_whose_id_has_spaces_sends_a_name_the_core_accepts() {
+    for id in [
+        "Herdr shell",
+        "Claude Code (Herdr)",
+        "Codex (Herdr)",
+        "\u{65e5}\u{672c}",
+    ] {
+        let mut r = rig();
+        r.send(named_profiles(&[id]));
+        let fx = r.key(Key::Enter);
+        let EffectBody::TerminalOpen(open) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        match &open.name {
+            Some(name) => assert!(
+                (1..=32).contains(&name.len())
+                    && name
+                        .chars()
+                        .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '-' | '_' | '.')),
+                "{id:?} sent {name:?}"
+            ),
+            None => assert!(!id.is_ascii(), "{id:?} lost its name"),
+        }
+    }
+    let mut r = rig();
+    r.send(named_profiles(&["Herdr shell"]));
+    let fx = r.key(Key::Enter);
+    let EffectBody::TerminalOpen(open) = &fx[0].body else {
+        panic!()
+    };
+    assert!(open.name.as_deref().unwrap().starts_with("herdr-shell-"));
+}
+
+#[test]
+fn every_claim_after_an_attach_carries_the_attachment_the_host_returned() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let asked = attachment_of(&attach);
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.attachment = Some("ta-host-1".into());
+    let fx = r.accept_attach(&attach, o);
+    assert_ne!(asked, "ta-host-1");
+    assert_eq!(
+        claim_of(&fx),
+        ["ta-host-1"],
+        "the pane's first resize: {fx:?}"
+    );
+    r.settle_resize(fx);
+    assert_eq!(claim_of(&r.typed("a")), ["ta-host-1"]);
+    assert_eq!(claim_of(&r.send(Msg::Paste("p".into()))), ["ta-host-1"]);
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(claim_of(&fx), ["ta-host-1"], "detach: {fx:?}");
+}
+
+#[test]
+fn a_later_attach_asks_by_the_hosts_name_and_a_new_answer_replaces_it_again() {
+    let mut r = observing_with_host_name("ta-host-1");
+    r.typed("x");
+    let attach = only_attach(&r.key(Key::Enter));
+    assert_eq!(
+        attachment_of(&attach),
+        "ta-host-1",
+        "the host's name is the key"
+    );
+    let mut o = opened(2, 2, 80, 24, "reattached");
+    o.attachment = Some("ta-host-2".into());
+    o.controlling = Some(true);
+    r.accept_attach(&attach, o);
+    assert_eq!(claim_of(&r.typed("a")), ["ta-host-2"]);
+}
+
+#[test]
+fn an_answer_with_no_attachment_keeps_the_panes_own() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let asked = attachment_of(&attach);
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    r.settle_resize(fx);
+    assert_eq!(claim_of(&r.typed("a")), [asked]);
+}
+
+fn observing_with_host_name(name: &str) -> Rig {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Char('o')));
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.attachment = Some(name.into());
+    r.accept_attach(&attach, o);
+    r
+}
+
+// ---- Escape, a stale list, a host that lists the program as lost ----------------
+
+#[test]
+fn escape_in_a_failure_inside_a_drawer_leaves_the_failure_and_the_pane_to_the_pane() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: "herdr is not running".into(),
+        },
+        None,
+    );
+    let group = r.m.focus().group;
+    r.send(Msg::Dock(DockMsg::OpenDrawer(group)));
+    assert_eq!(r.m.dock().drawer(), Some(group));
+    // Esc goes to the pane, not the drawer: the pane returns to its chooser,
+    // visibly, instead of vanishing with the failure.
+    r.key(Key::Esc);
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
+}
+
+#[test]
+fn escape_keeps_its_meaning_in_a_wait_an_end_prompt_and_an_ended_program_inside_a_drawer() {
+    let mut r = bound();
+    let group = r.m.focus().group;
+    r.send(Msg::Dock(DockMsg::OpenDrawer(group)));
+    r.key(Key::Char('d')); // typing goes to the program
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    r.key(Key::Esc);
+    assert_eq!(r.m.dock().drawer(), Some(group), "an ended program's Esc");
+    assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
+}
+
+#[test]
+fn the_chooser_follows_a_host_that_reports_herdr_ready_after_it_first_drew_and_back() {
+    let mut r = rig();
+    let herdr = |available: bool, reason: &str| {
+        let mut p = profile("Herdr shell", TerminalBackend::Herdr, available);
+        p.unavailable_reason = (!available).then(|| reason.to_owned());
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![p],
+            sessions: vec![],
+            adoption: None,
+        })
+    };
+    r.send(herdr(false, "not ready yet"));
+    assert!(
+        r.screen().contains("unavailable: not ready yet"),
+        "{}",
+        r.screen()
+    );
+    r.send(herdr(true, ""));
+    let s = r.screen();
+    assert!(!s.contains("unavailable"), "a stale answer stayed:\n{s}");
+    r.send(herdr(false, "core stopped"));
+    assert!(
+        r.screen().contains("unavailable: core stopped"),
+        "{}",
+        r.screen()
+    );
+}
+
+#[test]
+fn a_host_that_lists_the_bound_session_as_lost_or_exited_ends_the_pane_s_controlling() {
+    for (state, word) in [
+        (TerminalSessionState::Lost, "lost"),
+        (TerminalSessionState::Exited, "exited"),
+    ] {
+        let mut r = bound();
+        assert!(r.screen().contains("controlling"));
+        let mut row = session("s1", TerminalBackend::Herdr);
+        row.state = state;
+        r.send(listing("w", vec![row]));
+        let s = r.screen();
+        assert!(!s.contains("controlling") && s.contains(word), "{s}");
+        assert!(
+            r.typed("z").is_empty(),
+            "input went to a program the host calls {word}"
+        );
+    }
+}

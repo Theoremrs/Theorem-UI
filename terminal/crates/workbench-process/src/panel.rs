@@ -123,13 +123,6 @@ impl ProcessPanel {
         }
     }
 
-    pub(crate) fn bound(&self) -> Option<&Bound> {
-        match &self.stage {
-            Stage::Bound(b) => Some(b),
-            _ => None,
-        }
-    }
-
     fn bound_mut(&mut self) -> Option<&mut Bound> {
         match &mut self.stage {
             Stage::Bound(b) => Some(b),
@@ -234,7 +227,7 @@ impl ProcessPanel {
         let body = EffectBody::TerminalOpen(TerminalOpen {
             backend: choice.backend,
             argv: choice.argv.clone(),
-            name: Some(choice.id.clone()),
+            name: terminal_name(&choice.id, &prefix),
             cols,
             rows,
             attachment: Some(attachment.clone()),
@@ -1179,9 +1172,22 @@ impl Panel for ProcessPanel {
         })
     }
 
+    /// Escape belongs to the pane wherever it means something here: out of a
+    /// failure or a wait, off an end prompt, away from an offer of control, or
+    /// back from an ended program. Otherwise a drawer takes it and the pane
+    /// vanishes with a failure unread.
     fn text_entry(&self) -> bool {
-        self.bound()
-            .is_some_and(|b| b.controlling() && b.running() && !b.attaching())
+        match &self.stage {
+            Stage::Choosing => false,
+            Stage::Restoring(_) | Stage::Opening(_) | Stage::Failed(_) => true,
+            Stage::Bound(b) => {
+                (b.controlling() && b.running() && !b.attaching())
+                    || b.end != EndAsk::No
+                    || b.offer_control
+                    || !b.running()
+                    || b.gone
+            }
+        }
     }
 
     fn teardown(&mut self, cx: &mut Ctx, _destroy: bool) {
@@ -1212,5 +1218,113 @@ impl Panel for ProcessPanel {
             }
             _ => {}
         }
+    }
+}
+
+/// The terminal name the Herdr core accepts: 1 to 32 characters of `a-z 0-9 - _ .`,
+/// unique among live terminals. The name is the profile id made readable plus
+/// a short hash of `unique` (this binding's own prefix), so two opens of one
+/// profile never collide. No safe name (an id with nothing ASCII in it) gives
+/// `None` and the host names the terminal.
+///
+/// Hand-rolled on purpose: the only slug code in the lockfile is `heck`, a
+/// transitive dependency that keeps non-ASCII letters and has no length or
+/// uniqueness rule, so it would still need this filter around it.
+pub(crate) fn terminal_name(profile_id: &str, unique: &str) -> Option<String> {
+    use std::hash::{DefaultHasher, Hash, Hasher};
+    const READABLE: usize = 23;
+    let mut slug = String::new();
+    for c in profile_id.chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c.to_ascii_lowercase());
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    let slug = &slug[..slug.len().min(READABLE)];
+    let slug = slug.trim_end_matches('-');
+    if slug.is_empty() {
+        return None;
+    }
+    let mut hasher = DefaultHasher::new();
+    unique.hash(&mut hasher);
+    Some(format!("{slug}-{:08x}", hasher.finish() as u32))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::terminal_name;
+
+    fn valid(name: &str) -> bool {
+        (1..=32).contains(&name.len())
+            && name
+                .chars()
+                .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '-' | '_' | '.'))
+    }
+
+    #[test]
+    fn a_profile_id_becomes_a_readable_name_the_core_accepts() {
+        let name = terminal_name("Herdr shell", "n1.p.1").unwrap();
+        assert!(name.starts_with("herdr-shell-") && valid(&name), "{name}");
+        let name = terminal_name("Claude Code (Herdr)", "n1.p.1").unwrap();
+        assert!(
+            name.starts_with("claude-code-herdr-") && valid(&name),
+            "{name}"
+        );
+    }
+
+    #[test]
+    fn uppercase_punctuation_and_non_ascii_never_reach_the_name() {
+        for id in [
+            "ZSH",
+            "a/b\\c:d*e?f",
+            "caf\u{e9} shell",
+            "x\ty\nz",
+            "  lead and trail  ",
+            "--a--",
+        ] {
+            let name = terminal_name(id, "u").unwrap();
+            assert!(valid(&name), "{id:?} gave {name:?}");
+            assert!(!name.contains("--") && !name.starts_with('-'), "{name}");
+        }
+        assert!(terminal_name("caf\u{e9}", "u").unwrap().starts_with("caf-"));
+    }
+
+    #[test]
+    fn an_id_with_nothing_usable_gets_no_name_instead_of_a_failing_one() {
+        for id in [
+            "",
+            " ",
+            "\u{65e5}\u{672c}\u{8a9e}",
+            "---",
+            "!!!",
+            "\u{1f600}",
+        ] {
+            assert_eq!(terminal_name(id, "u"), None, "{id:?}");
+        }
+    }
+
+    #[test]
+    fn a_very_long_id_is_cut_to_fit_with_its_suffix_inside_32() {
+        let name = terminal_name(&"a".repeat(500), "u").unwrap();
+        assert_eq!(name.len(), 32, "{name}");
+        assert!(valid(&name));
+        // A cut that lands on a separator does not leave a doubled one.
+        let id = format!("{} b", "a".repeat(22));
+        let name = terminal_name(&id, "u").unwrap();
+        assert!(valid(&name) && !name.contains("--"), "{name}");
+    }
+
+    #[test]
+    fn two_opens_of_one_profile_get_different_names() {
+        assert_ne!(
+            terminal_name("Herdr shell", "n1.p.1"),
+            terminal_name("Herdr shell", "n1.p.2")
+        );
+        assert_eq!(
+            terminal_name("Herdr shell", "n1.p.1"),
+            terminal_name("Herdr shell", "n1.p.1")
+        );
     }
 }
