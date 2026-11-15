@@ -68,9 +68,25 @@ struct Log {
     holds_escape: bool,
     /// The one chord "note" panels handle themselves.
     takes: Option<KeyInput>,
+    /// Whether "note" panels write hostile characters straight into cells and
+    /// into their semantic nodes, as a panel that forgot to spell them out would.
+    hostile: bool,
 }
 
 type Shared = Rc<RefCell<Log>>;
+
+/// Everything a file name, a reason or a tool argument could carry to hide or
+/// reorder what is shown: a bidi override, an escape sequence, a zero-width
+/// space and a bell.
+const HOSTILE: &str = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+/// [`HOSTILE`] as it is shown: each character spelled out.
+const SPELLED: &str = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+
+const FAMILY: &str = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+
+fn unsafe_char(c: char) -> bool {
+    c.is_control() || theorem_workbench_text::visible::hidden(c)
+}
 
 /// One test panel for two kinds: "note" is bound to a document, "term" to a
 /// terminal. It records everything it is sent and every emit it attempts.
@@ -220,6 +236,7 @@ impl Panel for TestPanel {
                     range: None,
                     label: None,
                     excerpt: Some(format!("excerpt-{}", self.taps)),
+                    excerpt_cut: false,
                 });
                 self.taps += 1;
             }
@@ -230,6 +247,9 @@ impl Panel for TestPanel {
             PanelMsg::Key(k) if k.key() == Key::Char('r') => self.doc = "b.md".into(),
             PanelMsg::Key(k) if k.key() == Key::Char('C') => self.doc = "c.md".into(),
             PanelMsg::Key(k) if k.key() == Key::Char('R') => self.doc = "long-name-here.md".into(),
+            PanelMsg::Key(k) if k.key() == Key::Char('H') => {
+                self.doc = format!("tricky{HOSTILE}.md")
+            }
             PanelMsg::Action(id) => match id.as_str() {
                 "note.save" => self.try_emit(cx, EffectBody::DocumentSave),
                 "note.history" => self.try_emit(cx, EffectBody::DocumentHistoryList),
@@ -248,6 +268,7 @@ impl Panel for TestPanel {
                     range: None,
                     label: Some("asked".into()),
                     excerpt: Some("found".into()),
+                    excerpt_cut: false,
                 }),
                 _ => {}
             },
@@ -270,13 +291,39 @@ impl Panel for TestPanel {
             usize::from(area.width),
             cx.theme.text,
         );
+        if self.kind == "note" && self.log.borrow().hostile && area.height > 1 && area.width > 12 {
+            // What a panel that wrote cells by hand, or appended a zero-width
+            // mark to a symbol, would leave in the frame.
+            let y = area.y + 1;
+            buf[(area.x, y)].set_symbol("e\u{200c}");
+            buf[(area.x + 1, y)].set_char('\u{202e}');
+            buf[(area.x + 2, y)].set_symbol("\u{1b}[31m");
+            buf.set_stringn(area.x + 3, y, "ab\u{200c}\u{200d}c\u{7}", 8, cx.theme.text);
+            // An emoji sequence is one cluster in one cell; its joiners are part of it.
+            buf[(area.x + 10, y)].set_symbol(FAMILY);
+        }
     }
 
     fn semantics(&self, area: Rect, _cx: &ViewCtx) -> Vec<Node> {
         let mut root = Node::new("root", Role::Region, self.kind, area);
         let leaf = Node::new("line", Role::Status, "line", area);
         root.children.push(leaf.id.clone());
-        vec![root, leaf]
+        let mut nodes = vec![root, leaf];
+        if self.kind == "note" && self.log.borrow().hostile {
+            let mut bad = Node::new(&format!("id{HOSTILE}"), Role::Status, HOSTILE, area)
+                .with_text(&format!("one\n\ttwo{HOSTILE}"));
+            bad.state.description = Some(format!("why\nnot{HOSTILE}"));
+            bad.shortcut = Some(HOSTILE.to_owned());
+            bad.actions = vec![theorem_workbench_core::semantics::NodeAction {
+                id: ActionId::new("note.find"),
+                enabled: false,
+                reason: Some(HOSTILE.to_owned()),
+                title: Some(HOSTILE.to_owned()),
+            }];
+            nodes[0].children.push(bad.id.clone());
+            nodes.push(bad);
+        }
+        nodes
     }
 
     fn serialize(&self) -> Value {
@@ -7343,4 +7390,159 @@ fn a_registered_actions_title_is_the_descriptors() {
         }
     }
     assert!(checked > 0, "some action in the tree is registered");
+}
+
+// ---- control and hidden characters never reach a cell or a node -----------------
+
+/// The text a reader or an agent is told by `node`: every field but its id.
+fn node_texts(node: &Node) -> Vec<(&'static str, &str)> {
+    let mut out = vec![("name", node.name.as_str())];
+    out.extend(
+        node.state
+            .description
+            .as_deref()
+            .map(|d| ("description", d)),
+    );
+    out.extend(node.shortcut.as_deref().map(|d| ("shortcut", d)));
+    out.extend(node.text.as_deref().map(|d| ("text", d)));
+    for a in &node.actions {
+        out.extend(a.reason.as_deref().map(|d| ("action reason", d)));
+        out.extend(a.title.as_deref().map(|d| ("action title", d)));
+    }
+    out
+}
+
+fn assert_tree_is_clean(m: &Model) {
+    for node in &semantics(m).nodes {
+        for (what, text) in node_texts(node) {
+            // A description and a text are several lines: newline and tab stay.
+            let raw = text
+                .chars()
+                .find(|c| unsafe_char(*c) && !(matches!(c, '\n' | '\t') && what != "name"));
+            assert!(
+                raw.is_none(),
+                "{what} of {:?}: {raw:?} in {text:?}",
+                node.id
+            );
+        }
+    }
+}
+
+fn assert_frame_is_clean(buf: &Buffer) {
+    for (i, cell) in buf.content.iter().enumerate() {
+        if cell.symbol() == FAMILY {
+            continue;
+        }
+        assert!(
+            !cell.symbol().chars().any(unsafe_char),
+            "cell {i}: {:?}",
+            cell.symbol()
+        );
+    }
+}
+
+#[test]
+fn a_cell_the_panel_wrote_with_a_control_or_hidden_character_is_cleaned_at_the_end_of_the_frame() {
+    let (mut m, log) = new_model();
+    log.borrow_mut().hostile = true;
+    action(&mut m, "note.open");
+    let buf = draw(&m, 200, 50);
+    assert_frame_is_clean(&buf);
+    assert!(
+        buf.content.iter().any(|cell| cell.symbol() == FAMILY),
+        "an emoji sequence keeps its joiners and stays one cluster"
+    );
+    assert!(
+        !buf.content
+            .iter()
+            .any(|cell| cell.symbol().contains("e\u{200c}")),
+        "a joiner after a letter goes"
+    );
+}
+
+#[test]
+fn a_node_a_panel_published_with_a_control_or_hidden_character_is_spelled_out_in_the_tree() {
+    let (mut m, log) = new_model();
+    log.borrow_mut().hostile = true;
+    action(&mut m, "note.open");
+    assert_tree_is_clean(&m);
+    let tree = semantics(&m);
+    let bad = tree
+        .nodes
+        .iter()
+        .find(|n| n.name == SPELLED)
+        .expect("the hostile node, named by its spelled form");
+    assert!(
+        bad.id.as_str().contains('\u{202e}'),
+        "an id is an identifier and stays"
+    );
+    assert_eq!(bad.name, SPELLED);
+    assert_eq!(bad.shortcut.as_deref(), Some(SPELLED));
+    assert_eq!(bad.actions[0].reason.as_deref(), Some(SPELLED));
+    assert_eq!(bad.actions[0].title.as_deref(), Some(SPELLED));
+    assert_eq!(
+        bad.state.description.as_deref(),
+        Some(format!("why\nnot{SPELLED}").as_str()),
+        "newline stays in a description"
+    );
+    assert_eq!(
+        bad.text.as_deref(),
+        Some(format!("one\n\ttwo{SPELLED}").as_str())
+    );
+}
+
+#[test]
+fn spelling_a_node_twice_changes_nothing_and_ordinary_backslashes_stay() {
+    let (mut m, log) = new_model();
+    log.borrow_mut().hostile = true;
+    action(&mut m, "note.open");
+    let once = semantics(&m);
+    // A name that already holds the spelled form is ordinary text.
+    let node = once.nodes.iter().find(|n| n.name == SPELLED).unwrap();
+    let mut again = node.clone();
+    again.name = theorem_workbench_text::visible::visible(&again.name);
+    assert_eq!(again.name, SPELLED);
+    assert_eq!(
+        theorem_workbench_text::visible::visible("C:\\u{41}\\new"),
+        "C:\\u{41}\\new"
+    );
+}
+
+#[test]
+fn a_tab_titled_by_a_hostile_file_name_is_drawn_measured_and_named_spelled_out() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    ch(&mut m, 'H');
+    let spelled = format!("tricky{SPELLED}.md");
+    let tree = semantics(&m);
+    let tab = tree
+        .nodes
+        .iter()
+        .find(|n| n.role == Role::Tab && n.name == spelled)
+        .expect("the tab is named by the spelled title");
+    let rect = tab.rect.expect("drawn");
+    let buf = draw(&m, 200, 50);
+    assert_frame_is_clean(&buf);
+    assert!(
+        row(&buf, rect.y, rect.x, rect.x + rect.width)
+            .contains(&format!("tricky{}", &SPELLED[..8])),
+        "{}",
+        row(&buf, rect.y, rect.x, rect.x + rect.width)
+    );
+    assert_tree_is_clean(&m);
+}
+
+#[test]
+fn a_notice_naming_a_hostile_id_is_spelled_out_on_the_row_and_in_the_tree() {
+    let (mut m, _) = new_model();
+    action(&mut m, &format!("no.such{HOSTILE}"));
+    let line = m.notice_line().expect("a notice");
+    assert!(!line.text.chars().any(unsafe_char), "{:?}", line.text);
+    assert!(
+        line.text.contains(&format!("no.such{SPELLED}")),
+        "{}",
+        line.text
+    );
+    assert_frame_is_clean(&draw(&m, 200, 50));
+    assert_tree_is_clean(&m);
 }

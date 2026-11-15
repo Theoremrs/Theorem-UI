@@ -24,6 +24,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use ratatui::layout::{Direction, Rect};
 use serde_json::Value;
 use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
+use theorem_workbench_text::visible::visible;
 
 use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::draft::SourceReference;
@@ -515,7 +516,8 @@ impl Model {
                 let label = e.panel.tab_label()?;
                 Some((
                     theorem_workbench_dock::PanelId(id.as_str().to_owned()),
-                    label.title,
+                    // The width of the title as the tab draws it, spelled out.
+                    visible(&label.title),
                 ))
             })
             .collect();

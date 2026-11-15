@@ -9,6 +9,7 @@ use theorem_workbench_dock::{
     CellMetrics, Dock, DockDocument, DockError, GroupId, PanelId, RestoreReport, Role as DockRole,
     SolvedFrame,
 };
+use theorem_workbench_text::visible::visible;
 
 use crate::effect::EffectKind;
 use crate::factory::PanelFactories;
@@ -448,13 +449,17 @@ impl Model {
     /// The title and modified mark a panel's tab shows: what it names itself
     /// with, else `registered`, the title the dock holds for it.
     pub fn tab_label(&self, panel: &PanelInstanceId, registered: &str) -> crate::panel::TabLabel {
-        self.panels
+        let mut label = self
+            .panels
             .get(panel)
             .and_then(|e| e.panel.tab_label())
             .unwrap_or_else(|| crate::panel::TabLabel {
                 title: registered.to_owned(),
                 modified: false,
-            })
+            });
+        // A title is a file name or a host's word: it is shown, never typed.
+        label.title = visible(&label.title);
+        label
     }
 
     pub fn capabilities(&self) -> &Capabilities {

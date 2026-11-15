@@ -71,7 +71,9 @@ fn put(buf: &mut Buffer, area: Rect, y: u16, text: &str, style: Style) {
     if y < area.y || y >= area.bottom() || area.width == 0 {
         return;
     }
-    buf.set_stringn(area.x, y, text, usize::from(area.width), style);
+    // Every line here is the host's or the program's word about the pane (a
+    // session, a reason, a profile, a program), never the program's screen.
+    buf.set_stringn(area.x, y, visible(text), usize::from(area.width), style);
 }
 
 /// Text wrapped to the pane's width on word boundaries, one row after

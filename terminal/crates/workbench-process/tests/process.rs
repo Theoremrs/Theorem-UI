@@ -3895,3 +3895,27 @@ fn a_refused_launch_is_retried_with_the_same_operation_too() {
     assert!(first.is_some());
     assert_eq!(again, first);
 }
+
+#[test]
+fn a_session_name_and_a_reason_with_control_or_hidden_characters_are_spelled_out() {
+    let hostile = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+    let spelled = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+    let mut r = rig();
+    let mut s = session(&format!("tricky{hostile}"), TerminalBackend::Herdr);
+    s.state = TerminalSessionState::Lost;
+    s.reason = Some(format!("gone{hostile}"));
+    r.send(listing("w", vec![s]));
+    let buf = r.draw(100, 30);
+    for cell in &buf.content {
+        assert!(
+            !cell
+                .symbol()
+                .chars()
+                .any(|c| c.is_control() || theorem_workbench_text::visible::hidden(c)),
+            "{:?}",
+            cell.symbol()
+        );
+    }
+    let screen = r.screen();
+    assert!(screen.contains(&format!("tricky{spelled}")), "{screen}");
+}

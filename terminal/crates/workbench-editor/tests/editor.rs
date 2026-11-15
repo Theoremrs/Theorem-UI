@@ -59,10 +59,21 @@ fn ws() -> ResourceRef {
     }
 }
 
+thread_local! {
+    /// A file name the next rig opens instead of [`PATH`], for the test that
+    /// checks a hostile one.
+    static NAME: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) };
+}
+
+fn name() -> String {
+    NAME.with(|n| n.borrow().clone())
+        .unwrap_or_else(|| PATH.to_owned())
+}
+
 fn doc() -> ResourceRef {
     ResourceRef::Document {
         workspace: "w".into(),
-        resource_id: PATH.into(),
+        resource_id: name(),
     }
 }
 
@@ -169,12 +180,12 @@ impl Rig {
         c.payload = Some(CompletionPayload::Files(FileListing {
             entries: vec![
                 FileEntry::new("src", FileKind::Directory),
-                FileEntry::new(PATH, FileKind::File),
+                FileEntry::new(name(), FileKind::File),
             ],
             partial: false,
         }));
         update(&mut m, Msg::Completion(c));
-        for ch in PATH.chars() {
+        for ch in name().chars() {
             update(&mut m, Msg::Key(KeyInput::new(Key::Char(ch), Mods::NONE)));
         }
         update(&mut m, Msg::Key(KeyInput::new(Key::Enter, Mods::NONE)));
@@ -4419,6 +4430,15 @@ fn add_selection_is_cut_to_a_bounded_excerpt_but_names_the_whole_range() {
         got[0].excerpt.as_deref().map(str::len),
         Some(theorem_workbench_editor::EXCERPT_LIMIT)
     );
+    assert!(got[0].excerpt_cut, "the reference says it was cut");
+}
+
+#[test]
+fn add_selection_within_the_limit_is_not_marked_cut() {
+    let (mut rig, refs) = with_chat("short\n");
+    rig.chord('a');
+    alt_q(&mut rig);
+    assert!(!refs.borrow()[0].excerpt_cut);
 }
 
 #[test]
@@ -5203,4 +5223,87 @@ fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
         }
     }
     assert!(seen > 10, "the editor offers its actions on its nodes");
+}
+
+// ---- control and hidden characters in what the editor shows ------------------
+
+const HOSTILE: &str = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+const SPELLED: &str = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+
+fn unsafe_char(c: char) -> bool {
+    c.is_control() || theorem_workbench_text::visible::hidden(c)
+}
+
+fn hostile_rig(text: &str) -> Rig {
+    NAME.with(|n| *n.borrow_mut() = Some(format!("tricky{HOSTILE}txt.cod")));
+    Rig::opened(text)
+}
+
+fn assert_clean(buf: &Buffer) {
+    for cell in &buf.content {
+        assert!(
+            !cell.symbol().chars().any(unsafe_char),
+            "{:?}",
+            cell.symbol()
+        );
+    }
+}
+
+#[test]
+fn a_hostile_file_name_is_spelled_out_in_the_status_line_the_nodes_and_every_cell() {
+    let rig = hostile_rig("hello\n");
+    let spelled = format!("tricky{SPELLED}txt.cod");
+    assert!(rig.screen().contains(&spelled), "{}", rig.screen());
+    assert_clean(&rig.draw(120, 20));
+    let text = rig.node("text");
+    assert_eq!(text.name, spelled);
+    for node in &semantics(&rig.m).nodes {
+        let raw = node.name.chars().find(|c| unsafe_char(*c));
+        assert!(raw.is_none(), "{:?}: {raw:?}", node.name);
+    }
+}
+
+#[test]
+fn a_notice_about_a_hostile_file_is_spelled_out() {
+    let mut rig = hostile_rig("hello\n");
+    let fx = rig.send(Msg::Action {
+        id: ActionId::new("document.save"),
+        actor: Actor::Human,
+    });
+    let _ = fx;
+    assert_clean(&rig.draw(120, 20));
+    let tree = semantics(&rig.m);
+    for node in &tree.nodes {
+        for text in [
+            Some(&node.name),
+            node.state.description.as_ref(),
+            node.text.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            assert!(
+                !text
+                    .chars()
+                    .any(|c| unsafe_char(c) && c != '\n' && c != '\t'),
+                "{:?}",
+                node.id
+            );
+        }
+    }
+}
+
+#[test]
+fn the_composition_text_shows_a_one_cell_stand_in_for_a_hidden_character() {
+    let mut rig = Rig::opened("ab\n");
+    rig.send(Msg::Composition(Composition::Start));
+    rig.send(Msg::Composition(Composition::Update {
+        text: format!("z{HOSTILE}y"),
+    }));
+    let buf = rig.draw(40, 10);
+    assert_clean(&buf);
+    let row: String = (0..40u16)
+        .map(|x| buf[(x, 0)].symbol().to_owned())
+        .collect();
+    assert!(row.contains('z') && row.contains('y'), "{row:?}");
 }

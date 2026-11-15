@@ -14,7 +14,7 @@
 //!   node's description (see [`CaretText::windowed`]).
 
 use crate::semantics::{MAX_NODE_TEXT, Node, TextSelection};
-use theorem_workbench_text::visible::{hidden, visible};
+use theorem_workbench_text::visible::{hidden, joins_emoji, visible};
 
 /// What a text node carries.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -44,14 +44,26 @@ impl CaretText {
     }
 }
 
-/// Escape one character: the text is shown as typed except what a terminal or
-/// reader would act on or hide. Newline and tab keep their shape.
-fn push_escaped(out: &mut String, c: char) {
-    if c != '\n' && c != '\t' && (c.is_control() || hidden(c)) {
+/// Escape the character at `i`: the text is shown as typed except what a
+/// terminal or reader would act on or hide. Newline and tab keep their shape,
+/// and an emoji sequence keeps its joiner.
+fn push_escaped(out: &mut String, chars: &[char], i: usize) {
+    let c = chars[i];
+    if c != '\n' && c != '\t' && (c.is_control() || hidden(c)) && !joins_emoji(chars, i) {
         out.push_str(&visible(c.encode_utf8(&mut [0; 4])));
     } else {
         out.push(c);
     }
+}
+
+/// `raw` with control and hidden characters spelled out by `visible`, newline
+/// and tab kept: what a description or a transcript shows. It tracks no
+/// offsets; a text with a selection goes through [`caret_text`].
+pub fn escaped(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let chars: Vec<char> = raw.chars().collect();
+    (0..chars.len()).for_each(|i| push_escaped(&mut out, &chars, i));
+    out
 }
 
 /// The text node content for `raw` with the selection from scalar offset
@@ -66,14 +78,15 @@ pub fn caret_text_within(raw: &str, anchor: usize, focus: usize, max_bytes: usiz
     let mut escaped = String::with_capacity(raw.len());
     // Byte offset in `escaped` of the scalar at each of anchor and focus.
     let (mut anchor_at, mut focus_at) = (None, None);
-    for (i, c) in raw.chars().enumerate() {
+    let chars: Vec<char> = raw.chars().collect();
+    for i in 0..chars.len() {
         if i == anchor {
             anchor_at = Some(escaped.len());
         }
         if i == focus {
             focus_at = Some(escaped.len());
         }
-        push_escaped(&mut escaped, c);
+        push_escaped(&mut escaped, &chars, i);
     }
     let anchor_at = anchor_at.unwrap_or(escaped.len());
     let focus_at = focus_at.unwrap_or(escaped.len());

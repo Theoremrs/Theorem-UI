@@ -19,7 +19,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use theorem_workbench_core::{PanelPointer, PointerKind};
-use theorem_workbench_text::coords::{grapheme_cells, stand_in};
+use theorem_workbench_text::coords::{grapheme_cells, stand_in, with_stand_ins};
 use theorem_workbench_text::layout::{Row, line_rows, row_index};
 use theorem_workbench_text::{
     Caret, Coords, Deletion, EditError, EditSession, Motion, Newlines, PasteOptions, Scroll, Snap,
@@ -285,8 +285,13 @@ impl SourceView {
 
     /// The caret in every unit that leaves the crate.
     pub fn position(&self, session: &EditSession) -> Position {
+        self.position_at(session, session.cursor())
+    }
+
+    /// The position of the scalar offset `at` in `session`'s text, for a
+    /// caret that is not the session's cursor.
+    pub fn position_at(&self, session: &EditSession, at: usize) -> Position {
         let coords = session.coords();
-        let at = session.cursor();
         let line = coords.line_of(at);
         let (start, _) = coords.line_range(line).unwrap_or((0, 0));
         let tab = session.config().tab_width;
@@ -698,7 +703,7 @@ impl SourceView {
                                     let (end, _) = buf.set_stringn(
                                         x,
                                         py,
-                                        pre,
+                                        with_stand_ins(pre),
                                         room,
                                         styles.text.patch(styles.preedit),
                                     );

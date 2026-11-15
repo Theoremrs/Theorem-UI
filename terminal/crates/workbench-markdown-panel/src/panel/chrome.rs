@@ -13,6 +13,7 @@ use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_editor::{Paint, Restored, text_window};
 use theorem_workbench_markdown::{MarkdownMode, TargetBlock};
+use theorem_workbench_text::coords::with_stand_ins;
 use theorem_workbench_text::recovery::{self, snip};
 use unicode_width::UnicodeWidthStr;
 
@@ -661,7 +662,7 @@ impl MarkdownPanel {
     fn status_right(&self, d: &Doc) -> Vec<String> {
         let md = d.md.borrow();
         let session = md.session();
-        let at = d.source.position(session);
+        let at = d.source.position_at(session, md.caret_offset());
         let place = format!("Ln {}, Col {} (graphemes)", at.line, at.column);
         let selected = session.selection().map_or(0, |(a, b)| {
             let c = session.coords();
@@ -948,7 +949,10 @@ impl MarkdownPanel {
         };
         let shown = self.shown(d);
         let revision = d.md.borrow().revision();
-        let at = d.source.position(d.md.borrow().session());
+        let at = {
+            let md = d.md.borrow();
+            d.source.position_at(md.session(), md.caret_offset())
+        };
 
         let mut root = Node::new(
             "markdown",
@@ -1234,6 +1238,7 @@ fn draw_preedit(
     (x, y, end): (u16, u16, u16),
     style: ratatui::style::Style,
 ) {
+    let text = with_stand_ins(text);
     let room = usize::from(end.saturating_sub(x));
     let shift = text.width().min(room) as u16;
     for col in (x + shift..end).rev() {
@@ -1243,5 +1248,5 @@ fn draw_preedit(
     for col in x..x + shift {
         buf[(col, y)].reset();
     }
-    buf.set_stringn(x, y, text, room, style);
+    buf.set_stringn(x, y, &text, room, style);
 }

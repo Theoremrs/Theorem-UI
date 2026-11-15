@@ -10,7 +10,9 @@ use theorem_workbench_core::{
     SourceReference,
 };
 use theorem_workbench_editor::{Clipboard, Reaction, SourceView};
+use theorem_workbench_text::coords::with_stand_ins;
 use theorem_workbench_text::layout::line_rows;
+use theorem_workbench_text::visible::visible;
 use theorem_workbench_text::{AtomicId, Deletion, EditSession, Motion, Scroll, SessionConfig};
 
 use crate::types::{
@@ -90,7 +92,7 @@ impl Popup {
 
     /// The text of each row.
     pub fn labels(&self) -> Vec<String> {
-        match self {
+        let rows: Vec<String> = match self {
             Self::Files { rows, .. } => rows.clone().unwrap_or_default(),
             Self::Models { choices, .. } => choices
                 .iter()
@@ -99,7 +101,9 @@ impl Popup {
                     None => c.label.clone(),
                 })
                 .collect(),
-        }
+        };
+        // Paths and model labels come from the host: shown, never typed.
+        rows.iter().map(|row| visible(row)).collect()
     }
 }
 
@@ -220,7 +224,7 @@ impl Composer {
 
     /// The text shown, and described to assistive technology, while the draft is empty.
     pub fn set_placeholder(&mut self, placeholder: &str) {
-        self.placeholder = placeholder.to_owned();
+        self.placeholder = visible(placeholder);
     }
 
     pub fn set_status(&mut self, status: ComposerStatus) {
@@ -670,6 +674,7 @@ impl Composer {
                             range: None,
                             label: None,
                             excerpt: None,
+                            excerpt_cut: false,
                         },
                         Some(start),
                     );
@@ -1306,7 +1311,7 @@ impl Composer {
         }
         let c = self.view.caret_cell(&self.session, t)?;
         let pre = self.preedit.as_deref().map_or(0, |p| {
-            u16::try_from(crate::view::width(p)).unwrap_or(u16::MAX)
+            u16::try_from(crate::view::width(&with_stand_ins(p))).unwrap_or(u16::MAX)
         });
         let x = c.x.saturating_sub(t.x).saturating_add(pre).min(t.width - 1);
         Some((t.x + x, c.y))

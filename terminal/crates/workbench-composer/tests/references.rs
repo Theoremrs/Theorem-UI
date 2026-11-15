@@ -3,6 +3,7 @@ mod common;
 use common::*;
 use keybinds::{Key, Mods};
 use theorem_workbench_composer::{Event, reference_token};
+use theorem_workbench_core::DraftAttachmentState::Refused;
 use theorem_workbench_core::SourceReference;
 
 fn file(path: &str) -> SourceReference {
@@ -11,6 +12,7 @@ fn file(path: &str) -> SourceReference {
         range: None,
         label: None,
         excerpt: None,
+        excerpt_cut: false,
     }
 }
 
@@ -238,6 +240,7 @@ fn add_reference_inserts_at_the_caret_for_ask_about_this() {
         }),
         label: Some("parse".into()),
         excerpt: Some("fn parse() {}".into()),
+        excerpt_cut: false,
     })
     .expect("placed");
     assert_eq!(r.c.text(), "what is @src/lib.rs:10 ");
@@ -282,4 +285,85 @@ fn the_reference_text_is_drawn_in_the_atomic_role() {
     let cell = &buf[(2, 0)];
     assert_eq!(cell.symbol(), "@");
     assert_eq!(cell.style().add_modifier, theme.atomic.add_modifier);
+}
+
+// ---- control and hidden characters in what the composer shows ---------------
+
+const HOSTILE: &str = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+const SPELLED: &str = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+
+fn unsafe_char(c: char) -> bool {
+    c.is_control() || theorem_workbench_text::visible::hidden(c)
+}
+
+fn assert_clean(r: &Rig) {
+    for cell in &r.buffer().content {
+        assert!(
+            !cell.symbol().chars().any(unsafe_char),
+            "{:?}",
+            cell.symbol()
+        );
+    }
+    for n in r.c.semantics(r.area) {
+        for text in [Some(&n.name), n.state.description.as_ref()]
+            .into_iter()
+            .flatten()
+        {
+            assert!(
+                !text
+                    .chars()
+                    .any(|c| unsafe_char(c) && c != '\n' && c != '\t'),
+                "{:?}: {text:?}",
+                n.id
+            );
+        }
+    }
+}
+
+#[test]
+fn a_chip_for_a_hostile_file_name_is_spelled_out_in_its_label_and_its_node() {
+    let mut r = rig(80, 8);
+    let mut chip = attachment("a", &format!("tricky{HOSTILE}txt.cod"), Refused);
+    chip.reason = Some(format!("no{HOSTILE}"));
+    r.c.set_attachments(vec![chip]);
+    assert_clean(&r);
+    let spelled = format!("tricky{SPELLED}txt.cod");
+    // The chip is clipped to its width: what shows is a spelled prefix.
+    assert!(r.dump().contains("tricky\\u{202e}"), "{}", r.dump());
+    assert!(r.dump().contains("no\\u{202e}"), "{}", r.dump());
+    let node =
+        r.c.semantics(r.area)
+            .into_iter()
+            .find(|n| n.id.as_str().contains(":chip:"))
+            .expect("the chip node");
+    assert_eq!(node.name, spelled);
+}
+
+#[test]
+fn a_reference_token_shows_a_one_cell_stand_in_while_it_is_typed_text() {
+    let mut r = rig(80, 8);
+    r.c.add_reference(file(&format!("tricky{HOSTILE}txt.cod")))
+        .expect("held");
+    assert_clean(&r);
+    assert!(r.dump().contains("tricky"), "{}", r.dump());
+}
+
+#[test]
+fn a_hostile_placeholder_and_popup_rows_are_spelled_out() {
+    let mut r = rig(80, 8);
+    r.c.set_placeholder(&format!("ask{HOSTILE}me"));
+    assert_clean(&r);
+    assert!(
+        r.dump().contains(&format!("ask{SPELLED}me")),
+        "{}",
+        r.dump()
+    );
+    let token = open_files(&mut r, "@", &[&format!("a{HOSTILE}b.rs")]);
+    assert!(token > 0 || r.c.has_popup());
+    assert_clean(&r);
+    assert!(
+        r.dump().contains(&format!("a{SPELLED}b.rs")),
+        "{}",
+        r.dump()
+    );
 }

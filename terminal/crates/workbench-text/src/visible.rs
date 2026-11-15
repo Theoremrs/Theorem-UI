@@ -28,15 +28,31 @@ pub fn hidden(c: char) -> bool {
     )
 }
 
+/// Whether the character at `i` is the joiner of an emoji sequence (a family,
+/// a flag, a profession): U+200D with a pictograph on both sides. The reader
+/// sees the sequence as one emoji, so its joiner is neither spelled out nor
+/// dropped. A pictograph here is anything that is not a letter, a digit, a
+/// control or hidden: the standard library has no emoji property, and a
+/// joiner between two symbols can neither reorder nor hide text.
+pub fn joins_emoji(chars: &[char], i: usize) -> bool {
+    let pictograph = |c: &char| !c.is_control() && !hidden(*c) && !c.is_alphanumeric();
+    chars[i] == '\u{200d}'
+        && i > 0
+        && pictograph(&chars[i - 1])
+        && chars.get(i + 1).is_some_and(pictograph)
+}
+
 /// `text` with every control or hidden character spelled out as `\u{..}`;
-/// everything else, quotes and backslashes included, is left as it is.
+/// everything else, quotes and backslashes included, is left as it is, and so
+/// is the joiner inside an emoji sequence ([`joins_emoji`]).
 pub fn visible(text: &str) -> String {
     if !text.chars().any(|c| c.is_control() || hidden(c)) {
         return text.to_owned();
     }
+    let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_control() || hidden(c) {
+    for (i, &c) in chars.iter().enumerate() {
+        if (c.is_control() || hidden(c)) && !joins_emoji(&chars, i) {
             out.push_str(&format!("\\u{{{:x}}}", u32::from(c)));
         } else {
             out.push(c);
@@ -60,6 +76,21 @@ mod tests {
         ] {
             assert_eq!(visible(plain), plain);
         }
+    }
+
+    #[test]
+    fn the_joiner_inside_an_emoji_sequence_stays_and_any_other_joiner_is_spelled_out() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+        let flag = "\u{1F3F3}\u{FE0F}\u{200D}\u{1F308}";
+        assert_eq!(visible(family), family);
+        assert_eq!(visible(&format!("{flag}\u{7}")), format!("{flag}\\u{{7}}"));
+        assert_eq!(visible("a\u{200d}b"), "a\\u{200d}b");
+        assert_eq!(visible("\u{200d}\u{1F467}"), "\\u{200d}\u{1F467}");
+        assert_eq!(visible("\u{1F467}\u{200d}"), "\u{1F467}\\u{200d}");
+        assert_eq!(
+            visible("\u{1F468}\u{200d}\u{202e}\u{1F467}"),
+            "\u{1F468}\\u{200d}\\u{202e}\u{1F467}"
+        );
     }
 
     #[test]

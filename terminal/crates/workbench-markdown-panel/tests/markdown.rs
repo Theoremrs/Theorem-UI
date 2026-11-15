@@ -3210,6 +3210,53 @@ fn add_selection_in_visual_mode_refers_the_line_without_an_open_block() {
 }
 
 #[test]
+fn in_visual_mode_the_status_line_and_the_added_reference_name_the_same_line() {
+    let refs = Refs::default();
+    let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, Some(refs.clone()));
+    rig.answer_open("one\n\ntwo\n\nthree\n", 1);
+    assert_eq!(rig.mode(), "visual");
+    for _ in 0..3 {
+        rig.key(Key::Down);
+        refs.borrow_mut().clear();
+        rig.alt('q');
+        let line = refs.borrow()[0].range.as_ref().expect("a range").start.line + 1;
+        assert!(
+            rig.status().contains(&format!("Ln {line},")),
+            "reference line {line}, status {:?}",
+            rig.status()
+        );
+    }
+}
+
+#[test]
+fn a_hostile_block_is_drawn_in_visual_mode_without_raw_control_or_hidden_characters() {
+    let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, None);
+    rig.answer_open("# a\u{202e}b\u{200b}c\u{7}d\n\ntext \u{1b}[31m red\n", 1);
+    let b = rig.body();
+    let area = Rect::new(0, 0, b.width, b.height);
+    let mut buf = Buffer::empty(area);
+    let theme = Theme::plain();
+    let cx = ViewCtx::new(&theme, rig.m.workspace());
+    rig.m.panel(&rig.id).unwrap().view(area, &mut buf, &cx);
+    for cell in &buf.content {
+        assert!(
+            !cell
+                .symbol()
+                .chars()
+                .any(|c| c.is_control() || theorem_workbench_text::visible::hidden(c)),
+            "{:?}",
+            cell.symbol()
+        );
+    }
+    // Nothing was dropped silently: the escape is shown as its stand-in.
+    assert!(
+        rig.screen().contains("\u{241b}[31m red"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
 fn add_selection_is_disabled_with_its_reason_with_no_document_and_an_agent_may_use_it() {
     let refs = Refs::default();
     let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, Some(refs.clone()));

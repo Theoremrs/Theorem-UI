@@ -27,7 +27,16 @@ pub struct SourceReference {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub excerpt: Option<String>,
+    /// The excerpt is only the first [`EXCERPT_LIMIT`] characters of what was
+    /// selected. It stays in this process: the wire carries the excerpt as it
+    /// is, and the range still names the whole selection.
+    #[serde(skip)]
+    #[cfg_attr(feature = "ts", ts(skip))]
+    pub excerpt_cut: bool,
 }
+
+/// The most characters of text a reference carries as its excerpt.
+pub const EXCERPT_LIMIT: usize = 4096;
 
 /// Where a file the person is attaching stands. The browser holds the file;
 /// the owner uploads it when the turn is sent.

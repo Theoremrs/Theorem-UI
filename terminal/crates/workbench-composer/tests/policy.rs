@@ -115,6 +115,7 @@ fn take_returns_the_draft_and_empties_the_composer_and_its_undo_history() {
         range: None,
         label: None,
         excerpt: None,
+        excerpt_cut: false,
     })
     .expect("placed");
     let d = r.c.take();
@@ -138,6 +139,7 @@ fn put_back_returns_the_draft_with_references_and_attachments() {
         range: None,
         label: None,
         excerpt: Some("e".into()),
+        excerpt_cut: false,
     })
     .expect("placed");
     r.type_str("end");
@@ -189,6 +191,7 @@ fn serialize_and_restore_round_trip_text_caret_selection_and_references() {
         range: None,
         label: Some("a".into()),
         excerpt: None,
+        excerpt_cut: false,
     })
     .expect("placed");
     r.type_str("about \u{1F600} \u{4E2D}\u{6587}");
@@ -288,6 +291,7 @@ fn a_loaded_message_keeps_its_references_atomic() {
         range: None,
         label: None,
         excerpt: Some("x".into()),
+        excerpt_cut: false,
     };
     r.c.load_for_edit("look at @a.rs now", vec![reference.clone()]);
     assert_eq!(r.c.references(), vec![reference.clone()]);
@@ -297,6 +301,7 @@ fn a_loaded_message_keeps_its_references_atomic() {
         range: None,
         label: None,
         excerpt: None,
+        excerpt_cut: false,
     };
     r.c.load_for_edit("plain", vec![other.clone()]);
     assert_eq!(r.c.text(), "plain @b.rs ");

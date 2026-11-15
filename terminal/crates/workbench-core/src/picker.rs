@@ -10,6 +10,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use ratatui::layout::Rect;
+use theorem_workbench_text::visible::visible;
 
 use crate::arrangement::{ARRANGEMENT_NAME_CHARS, ArrangementInfo, preset_named};
 use crate::ids::{ActionId, PanelKind};
@@ -413,8 +414,11 @@ impl Picker {
         caps: &Capabilities,
         pinned: &BTreeSet<PanelKind>,
     ) -> PickerView {
+        // Layout names and reasons are shown, never typed: spelled out.
+        let mut rows = self.rows(registry, caps, pinned);
+        rows.iter_mut().for_each(|r| r.title = visible(&r.title));
         PickerView {
-            rows: self.rows(registry, caps, pinned),
+            rows,
             selected: self.selected,
             filter: self.filter.clone(),
             more: self.page != Page::Main,
@@ -425,9 +429,9 @@ impl Picker {
             },
             entry: self.naming.as_ref().map(|n| match n {
                 NameFor::Save => "Save layout as".to_owned(),
-                NameFor::Rename(from) => format!("Rename \"{from}\" to"),
+                NameFor::Rename(from) => visible(&format!("Rename \"{from}\" to")),
             }),
-            reason: self.reason.clone(),
+            reason: self.reason.as_deref().map(visible),
             pin_shortcut: self.pin_shortcut.clone(),
         }
     }

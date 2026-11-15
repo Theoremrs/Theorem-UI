@@ -7,6 +7,7 @@ use theorem_workbench_core::semantics::{Node, Role};
 use theorem_workbench_core::{DraftAttachmentState, Theme};
 use theorem_workbench_editor::{EditorStyles, Paint};
 use theorem_workbench_panels::caret::caret_text;
+use theorem_workbench_text::visible::visible;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -149,13 +150,16 @@ impl Composer {
             DraftAttachmentState::Adding => "adding\u{2026}".to_owned(),
             DraftAttachmentState::Ready => "ready".to_owned(),
             DraftAttachmentState::Refused => {
-                format!("refused: {}", a.reason.as_deref().unwrap_or("not accepted"))
+                format!(
+                    "refused: {}",
+                    visible(a.reason.as_deref().unwrap_or("not accepted"))
+                )
             }
         };
         let mark = if self.chip == Some(i) { "\u{25B8}" } else { "" };
         format!(
             "[{mark}{} {}]",
-            clip(&a.name, CHIP_NAME),
+            clip(&visible(&a.name), CHIP_NAME),
             clip(&state, CHIP_STATE)
         )
     }
@@ -200,7 +204,7 @@ impl Composer {
     pub(crate) fn footer_left_options(&self) -> Vec<String> {
         let v = |a: &[&str]| a.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
         if let Some(n) = &self.notice {
-            return vec![n.clone()];
+            return vec![visible(n)];
         }
         if self.preedit.is_some() {
             return v(&[
@@ -433,7 +437,12 @@ impl Composer {
                     .map_or(Rect::new(r.x, r.y, 0, 1), |c| {
                         Rect::new(r.x + c.x, r.y, c.width, 1)
                     });
-                let mut n = Node::new(&format!("{p}:chip:{}", a.id), Role::Button, &a.name, rect);
+                let mut n = Node::new(
+                    &format!("{p}:chip:{}", a.id),
+                    Role::Button,
+                    &visible(&a.name),
+                    rect,
+                );
                 n.state.selected = self.chip == Some(i);
                 n.state.focused = self.focused && self.window_focused && self.chip == Some(i);
                 n.state.busy = a.state == DraftAttachmentState::Adding;
@@ -441,9 +450,10 @@ impl Composer {
                 n.state.description = Some(match a.state {
                     DraftAttachmentState::Adding => "adding".to_owned(),
                     DraftAttachmentState::Ready => "ready".to_owned(),
-                    DraftAttachmentState::Refused => {
-                        format!("refused: {}", a.reason.as_deref().unwrap_or("not accepted"))
-                    }
+                    DraftAttachmentState::Refused => visible(&format!(
+                        "refused: {}",
+                        a.reason.as_deref().unwrap_or("not accepted")
+                    )),
                 });
                 n.pos_in_set = u16::try_from(i + 1).ok();
                 n.set_size = u16::try_from(total).ok();

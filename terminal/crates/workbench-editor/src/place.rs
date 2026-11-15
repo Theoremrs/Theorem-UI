@@ -11,8 +11,8 @@ use theorem_workbench_text::{EditSession, Snap, Unit};
 
 /// The most scalars of text a reference carries as its excerpt. The range
 /// still names the whole selection; the excerpt is only what the turn says
-/// the person saw.
-pub const EXCERPT_LIMIT: usize = 4096;
+/// the person saw, and `excerpt_cut` says when it is shorter than that.
+pub use theorem_workbench_core::draft::EXCERPT_LIMIT;
 
 /// The reference for what is selected in `session`, or for the caret's line
 /// when nothing is. `path` is the file, relative to the workspace root.
@@ -71,6 +71,7 @@ pub fn reference_of(
         format!("{path}:{}-{}", first + 1, last + 1)
     };
     let excerpt: String = rope.slice(start..end).chars().take(EXCERPT_LIMIT).collect();
+    let excerpt_cut = end - start > EXCERPT_LIMIT;
     SourceReference {
         path: path.to_owned(),
         range: Some(Range {
@@ -79,6 +80,7 @@ pub fn reference_of(
         }),
         label: Some(label),
         excerpt: (!excerpt.is_empty()).then_some(excerpt),
+        excerpt_cut,
     }
 }
 

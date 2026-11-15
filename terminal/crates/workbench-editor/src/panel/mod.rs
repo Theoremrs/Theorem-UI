@@ -40,6 +40,7 @@ use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
     Composition, Ctx, EmitError, OpenTarget, Panel, PanelFactories, PanelMsg, TabLabel, ViewCtx,
 };
+use theorem_workbench_text::visible::visible;
 use theorem_workbench_text::{EditSession, OpId, Scroll, ViewSnapshot};
 
 use crate::actions::Choice;
@@ -250,8 +251,9 @@ impl Doc {
     }
 
     pub fn notice(&mut self, text: impl Into<String>, tone: Tone) {
+        // A notice carries file names and the owner's reasons: spelled out.
         self.notice = Some(Notice {
-            text: text.into(),
+            text: visible(&text.into()),
             tone,
         });
     }

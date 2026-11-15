@@ -42,6 +42,7 @@ use theorem_workbench_core::{
     Msg, OpenTarget, Outcome, Panel, PanelMsg, PanelPointer, PointerKind, ResourceRef, Revision,
     SourceReference, ViewCtx,
     completion::{CompletionPayload, FileKind, SideChatInfo},
+    draft::EXCERPT_LIMIT,
     effect::{
         ApprovalDecision, AttachRemove, AttachmentRef, ClipboardWrite, ConversationApproval,
         ConversationCancel, ConversationEdit, ConversationInput, ConversationRetry,
@@ -1138,12 +1139,16 @@ impl TheoPanel {
             .label
             .clone()
             .unwrap_or_else(|| reference.path.clone());
+        let cut = reference.excerpt_cut;
         let said = if self.kind == Kind::Side && !self.bound() {
             Err("not connected to a conversation yet".to_owned())
         } else {
             self.composer.borrow_mut().add_reference(reference)
         };
         let text = match said {
+            Ok(()) if cut => format!(
+                "added the first {EXCERPT_LIMIT} characters of the selection in {name} to the message"
+            ),
             Ok(()) => format!("added {name} to the message"),
             Err(why) => format!("not added: {name}: {why}"),
         };
@@ -2711,7 +2716,7 @@ impl ChooserRow {
             ),
             Self::Existing(at) => match existing.get(at) {
                 Some(chat) => (
-                    format!("Join {}", chat.conversation_id),
+                    format!("Join {}", visible(&chat.conversation_id)),
                     match chat.scope {
                         SideChatScope::Fresh => "a fresh side chat",
                         SideChatScope::Continued => "continues the main conversation",
@@ -4070,6 +4075,20 @@ mod tests {
     }
 
     #[test]
+    fn a_selection_over_the_excerpt_limit_says_only_the_first_part_was_added() {
+        let mut r = with_open_editor(&format!("{}\n", "x".repeat(EXCERPT_LIMIT + 10)));
+        r.key(Key::Char('a'), Mods::CTRL);
+        add_selection(&mut r);
+        let screen = r.drawn();
+        assert!(
+            screen.contains(&format!(
+                "added the first {EXCERPT_LIMIT} characters of the selection in a.txt"
+            )),
+            "{screen}"
+        );
+    }
+
+    #[test]
     fn a_second_identical_reference_follows_the_composers_own_rule_for_the_persons_insertion() {
         // The composer takes the same reference twice, as it does when the
         // person picks the same file twice with `@`: two held tokens.
@@ -4087,6 +4106,7 @@ mod tests {
             range: None,
             label: None,
             excerpt: None,
+            excerpt_cut: false,
         };
         composer.add_reference(reference.clone()).expect("first");
         composer.add_reference(reference).expect("second");
@@ -4111,6 +4131,7 @@ mod tests {
             range: None,
             label: Some("a.txt:1".into()),
             excerpt: Some("secret".into()),
+            excerpt_cut: false,
         });
         assert!(panel.composer.borrow().is_empty(), "nothing was added");
         let said = panel

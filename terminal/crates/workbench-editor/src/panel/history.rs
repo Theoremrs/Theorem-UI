@@ -719,7 +719,7 @@ impl EditorPanel {
             buf.set_style(p.header, cx.theme.line);
             let mut title = format!(
                 "History of {}",
-                shorten_path(&self.path, width.saturating_sub(12))
+                shorten_path(&visible(&self.path), width.saturating_sub(12))
             );
             if let Restoring::Unknown(_) = h.restoring {
                 title.push_str(" (unknown if restored)");
@@ -840,7 +840,7 @@ impl EditorPanel {
         let mut dialog = Node::new(
             "history",
             Role::Dialog,
-            &format!("History of {}", self.path),
+            &format!("History of {}", visible(&self.path)),
             rect,
         );
         dialog.binding = self.resource();

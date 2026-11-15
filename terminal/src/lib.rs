@@ -40,6 +40,8 @@ use ratzilla::{
 };
 use serde::Deserialize;
 use serde_json::json;
+use theorem_workbench_core::caret::escaped;
+use theorem_workbench_text::visible::visible;
 use tui_input::{Input, InputRequest};
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
@@ -303,6 +305,69 @@ struct Snapshot {
     references: Vec<String>,
     /// Where this reply's thread stands among its branches, when it has more than one.
     branches: Option<Branches>,
+}
+
+impl Snapshot {
+    /// Every word of the snapshot is the run's or the person's files', never
+    /// typed here: a control or hidden character in a message, a tool's name
+    /// or arguments, an approval or a reason is spelled out where it would
+    /// reorder or hide what is shown, so a tool argument cannot dress up an
+    /// approval prompt. Newline and tab keep their shape. What the run
+    /// identifies things by (ids, the path a tool row opens) is left as it is.
+    fn spell_out(&mut self) {
+        fn spell(text: &mut String) {
+            *text = escaped(&text.replace("\r\n", "\n"));
+        }
+        fn spell_tokens(lines: &mut [Vec<Token>]) {
+            lines.iter_mut().flatten().for_each(|t| spell(&mut t.t));
+        }
+        fn spell_diff(diff: &mut [DiffLine]) {
+            diff.iter_mut()
+                .for_each(|d| d.t.iter_mut().for_each(|t| spell(&mut t.t)));
+        }
+        fn spell_sent(sent: &mut Sent) {
+            spell(&mut sent.text);
+            sent.reason.iter_mut().for_each(spell);
+        }
+        self.error.iter_mut().for_each(spell);
+        self.activity.iter_mut().for_each(spell);
+        spell(&mut self.project);
+        self.references.iter_mut().for_each(spell);
+        if let Some(approval) = &mut self.approval {
+            spell(&mut approval.tool);
+            spell(&mut approval.summary);
+        }
+        self.outgoing.iter_mut().for_each(spell_sent);
+        for message in &mut self.messages {
+            message.attachments.iter_mut().for_each(spell);
+            for part in &mut message.parts {
+                match part {
+                    Part::Text { text } | Part::Reasoning { text } => spell(text),
+                    Part::Tool {
+                        name,
+                        summary,
+                        output,
+                        ..
+                    } => {
+                        spell(name);
+                        spell(summary);
+                        if let Some(output) = output {
+                            spell_tokens(&mut output.lines);
+                            spell_diff(&mut output.diff);
+                        }
+                    }
+                    Part::Program { lines, .. } => spell_tokens(lines),
+                    Part::Input(sent) => spell_sent(sent),
+                    Part::Code { lang, lines, diff } => {
+                        spell(lang);
+                        spell_tokens(lines);
+                        spell_diff(diff);
+                    }
+                    Part::Other => {}
+                }
+            }
+        }
+    }
 }
 
 /// The selected branch's place among the thread's branches, the root first, both counted from 1.
@@ -836,19 +901,19 @@ impl Session {
     }
 
     fn set_state(&mut self, json: &str) -> Result<(), serde_json::Error> {
-        self.snapshot = serde_json::from_str(json)?;
-        self.built_for = None;
+        self.set_snapshot(serde_json::from_str(json)?);
         Ok(())
     }
 
     /// Take a snapshot already read, as the workbench's conversation panel does.
-    fn set_snapshot(&mut self, snapshot: Snapshot) {
+    fn set_snapshot(&mut self, mut snapshot: Snapshot) {
+        snapshot.spell_out();
         self.snapshot = snapshot;
         self.built_for = None;
     }
 
     fn notify(&mut self, text: impl Into<String>) {
-        self.notice = Some((text.into(), now() + NOTICE_MS));
+        self.notice = Some((escaped(&text.into()), now() + NOTICE_MS));
     }
 
     fn build(&mut self, width: u16) {
@@ -1692,10 +1757,10 @@ impl App {
             .map(|entry| match old.iter().position(|s| s.id == entry.id) {
                 Some(at) => {
                     let mut session = old.swap_remove(at);
-                    session.title = entry.title;
+                    session.title = visible(&entry.title);
                     session
                 }
-                None => Session::new(entry.id, entry.title, tabbed),
+                None => Session::new(entry.id, visible(&entry.title), tabbed),
             })
             .collect();
         self.active = self
@@ -2366,6 +2431,45 @@ mod tests {
         let mut session = Session::new("t".into(), "T".into(), false);
         session.snapshot = serde_json::from_str(json).unwrap();
         session
+    }
+
+    #[test]
+    fn a_hostile_tool_name_and_summary_are_spelled_out_in_the_approval_row_and_never_reorder_it() {
+        let hostile = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+        let json = serde_json::json!({
+            "approval": {"tool": format!("rm{hostile}"), "summary": format!("tmp{hostile}")},
+            "error": format!("bad{hostile}"),
+        })
+        .to_string();
+        let mut s = Session::new("t".into(), "T".into(), false);
+        s.set_state(&json).unwrap();
+        let spelled = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+        assert_eq!(
+            s.snapshot.approval.as_ref().unwrap().tool,
+            format!("rm{spelled}")
+        );
+        assert_eq!(
+            s.snapshot.approval.as_ref().unwrap().summary,
+            format!("tmp{spelled}")
+        );
+        let area = Rect::new(0, 0, 120, 1);
+        let mut buf = Buffer::empty(area);
+        s.draw_status(&mut buf, area);
+        let shown: String = (0..120).map(|x| buf[(x, 0)].symbol()).collect();
+        assert!(shown.contains(&format!("rm{spelled}")), "{shown:?}");
+        assert!(
+            !shown
+                .chars()
+                .any(|c| c.is_control() || theorem_workbench_text::visible::hidden(c)),
+            "{shown:?}"
+        );
+    }
+
+    #[test]
+    fn a_notice_with_hostile_characters_is_spelled_out() {
+        let mut s = Session::new("t".into(), "T".into(), false);
+        s.notify("saved \u{202e}name\u{7}");
+        assert_eq!(s.notice.as_ref().unwrap().0, "saved \\u{202e}name\\u{7}");
     }
 
     // The status row as the plain terminal drew it before `hint_in_footer`

@@ -21,6 +21,7 @@ use crate::model::{Model, Notice};
 use crate::registry::Refusal;
 use crate::theme::Theme;
 use ratatui::style::Style;
+use theorem_workbench_text::visible::visible;
 
 /// How a notice reads. Each is a state role of the theme.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -217,8 +218,9 @@ impl Model {
     /// Show `notice` on the row, replacing a transient one.
     pub(crate) fn show_notice(&mut self, notice: &Notice) {
         if let Some((text, severity)) = describe(notice) {
+            // Names and reasons in a notice come from the host and the person's files.
             self.transient = Some(NoticeLine {
-                text,
+                text: visible(&text),
                 severity,
                 persistent: false,
             });

@@ -6,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 use serde_json::Value;
+use theorem_workbench_text::visible::visible;
 
 use crate::ids::ActionId;
 use crate::panel::{Ctx, Panel, PanelMsg, PickerView, ViewCtx};
@@ -82,7 +83,7 @@ impl Panel for Unavailable {
             cx.theme.text,
         );
         if area.height > 1 {
-            buf.set_stringn(area.x, area.y + 1, &self.reason, w, cx.theme.muted);
+            buf.set_stringn(area.x, area.y + 1, visible(&self.reason), w, cx.theme.muted);
         }
     }
 

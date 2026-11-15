@@ -438,6 +438,26 @@ impl MarkdownDoc {
         self.open.as_mut().map(|open| &mut open.session)
     }
 
+    /// Where the caret is, as a scalar offset in the document's text: inside
+    /// the open block when one is open (Visual mode keeps the caret there, and
+    /// the document session's own cursor stays where it was), else the
+    /// session's cursor.
+    pub fn caret_offset(&self) -> usize {
+        let Some(open) = &self.open else {
+            return self.session.cursor();
+        };
+        let start = match open.append {
+            true => self.session.rope().len_bytes(),
+            false => open.range.start,
+        };
+        let start = self
+            .session
+            .coords()
+            .to_scalar(start, Unit::Utf8, Snap::Backward)
+            .unwrap_or(0);
+        start + open.session.cursor()
+    }
+
     /// The open block's bytes in the document, if one is open.
     pub fn open_range(&self) -> Option<Range<usize>> {
         self.open.as_ref().map(|open| match open.append {

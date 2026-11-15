@@ -9,6 +9,7 @@ use crate::ids::PanelInstanceId;
 use crate::model::Model;
 use crate::panel::ViewCtx;
 use crate::theme::Theme;
+use theorem_workbench_text::visible::{hidden, joins_emoji};
 
 const CLOSE: &str = "\u{00d7}";
 /// Tabs are scrolled out of the strip on this side.
@@ -43,6 +44,29 @@ pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
     }
     draw_gutters(model, frame, buf, theme);
     draw_notice(model, area, buf, theme);
+    strip_unsafe(buf);
+}
+
+/// The last thing a frame does: no cell holds a control or hidden character
+/// (a bidi override, a zero-width mark), whichever panel wrote it. `Buffer`
+/// drops controls from a string itself, but a zero-width joiner or non-joiner
+/// is appended to the previous cell's symbol, and `set_symbol` and `set_char`
+/// take anything. What is left of a symbol keeps its combining marks and
+/// variation selectors; a symbol with nothing left is a blank cell. The one
+/// hidden character that stays is the joiner inside an emoji sequence: without
+/// it a family or a flag would fall apart into several glyphs in one cell.
+fn strip_unsafe(buf: &mut Buffer) {
+    let unsafe_char = |c: char| c.is_control() || hidden(c);
+    for cell in &mut buf.content {
+        if cell.symbol().chars().any(unsafe_char) {
+            let chars: Vec<char> = cell.symbol().chars().collect();
+            let kept: String = (0..chars.len())
+                .filter(|&i| !unsafe_char(chars[i]) || joins_emoji(&chars, i))
+                .map(|i| chars[i])
+                .collect();
+            cell.set_symbol(if kept.is_empty() { " " } else { &kept });
+        }
+    }
 }
 
 /// The notice line: the persistent row under the dock, or a transient notice

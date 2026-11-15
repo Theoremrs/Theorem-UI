@@ -5,6 +5,7 @@
 use ratatui::layout::Rect;
 use theorem_workbench_dock::{GroupFrame, GroupId, Role as DockRole, SolvedFrame, Suppressed};
 
+use crate::caret::escaped;
 use crate::ids::{ActionId, PanelInstanceId, ResourceRef};
 use crate::model::Model;
 use crate::panel::ViewCtx;
@@ -12,6 +13,7 @@ use crate::panels::{ACTION_TAB_CLOSE, ACTION_TAB_FOCUS};
 use crate::registry::Availability;
 use crate::semantics::{Node, NodeAction, NodeId, Role, SemanticTree};
 use crate::theme::Theme;
+use theorem_workbench_text::visible::visible;
 
 const ROOT: &str = "workbench";
 
@@ -130,9 +132,32 @@ pub fn semantics(model: &Model) -> SemanticTree {
     describe_frame(frame, &mut root);
     nodes.insert(0, root);
     title_actions(model, &mut nodes);
+    nodes.iter_mut().for_each(spell_out);
     SemanticTree {
         root: NodeId::new(ROOT),
         nodes,
+    }
+}
+
+/// What a reader or an agent is told is never raw. A name, a shortcut and an
+/// action's title or reason have their control and hidden characters spelled
+/// out, as `visible` does. A description and a text with no selection are
+/// several lines, so newline and tab keep their shape (`escaped`). A text with
+/// a selection is the panel's own escaped text (`caret_text`), whose offsets
+/// count into it, so it is left as it is. Ids are identifiers, never shown or
+/// spoken, and stay as they are.
+fn spell_out(node: &mut Node) {
+    let strict = |s: &mut String| *s = visible(s);
+    strict(&mut node.name);
+    node.shortcut.iter_mut().for_each(strict);
+    for action in &mut node.actions {
+        action.reason.iter_mut().for_each(strict);
+        action.title.iter_mut().for_each(strict);
+    }
+    let lines = |s: &mut String| *s = escaped(s);
+    node.state.description.iter_mut().for_each(lines);
+    if node.selection.is_none() {
+        node.text.iter_mut().for_each(lines);
     }
 }
 

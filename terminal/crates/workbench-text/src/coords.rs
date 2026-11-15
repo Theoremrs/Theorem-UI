@@ -74,6 +74,14 @@ pub fn stand_in(grapheme: &str) -> Option<char> {
     }
 }
 
+/// `text` with every cluster that has a [`stand_in`] replaced by it, for text
+/// that is drawn in one run (a preedit) and measured as drawn.
+pub fn with_stand_ins(text: &str) -> String {
+    text.graphemes(true)
+        .map(|g| stand_in(g).map_or_else(|| g.to_owned(), String::from))
+        .collect()
+}
+
 /// Width in cells of one grapheme cluster that starts at display column
 /// `at_cell`. A tab runs to the next tab stop; a stand-in takes one cell;
 /// everything else uses `unicode-width`, so wide characters take two cells and

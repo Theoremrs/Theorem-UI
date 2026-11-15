@@ -13,6 +13,7 @@ use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::Caret;
 use theorem_workbench_text::recovery::{self, snip};
+use theorem_workbench_text::visible::visible;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use super::language::{Popup, word};
@@ -791,8 +792,8 @@ impl EditorPanel {
         let mut attention = false;
         let mut flag = |long: String, short: &str, warn: bool, rank: Rank| {
             flags.push(Flag {
-                long,
-                short: short.to_owned(),
+                long: visible(&long),
+                short: visible(short),
                 rank,
             });
             attention |= warn;
@@ -860,7 +861,7 @@ impl EditorPanel {
     /// The left side in full: the path and the flags.
     fn status_left(&self, d: &Doc) -> (String, bool) {
         let (flags, attention) = self.status_flags(d);
-        let mut s = self.path.clone();
+        let mut s = self.shown_path();
         for f in &flags {
             s.push_str(&format!(" [{}]", f.long));
         }
@@ -884,8 +885,8 @@ impl EditorPanel {
                 .map(|f| format!(" [{}]", if short { &f.short } else { &f.long }))
                 .collect()
         };
-        let name_w = self
-            .path
+        let shown_path = self.shown_path();
+        let name_w = shown_path
             .rsplit('/')
             .next()
             .map_or(0, UnicodeWidthStr::width);
@@ -941,7 +942,7 @@ impl EditorPanel {
         });
         let gap = usize::from(!right.is_empty());
         let path_room = w.saturating_sub(right.width() + gap + flag_text.width());
-        let path = shorten_path(&self.path, path_room);
+        let path = shorten_path(&shown_path, path_room);
         let left = format!("{path}{flag_text}");
         let finding = d.finding_here().map(|f| {
             let tone = match f.severity {
@@ -949,7 +950,10 @@ impl EditorPanel {
                 Severity::Warning => Tone::Warn,
                 Severity::Info | Severity::Hint => Tone::Info,
             };
-            (format!("{}: {}", word(f.severity), f.message), tone)
+            (
+                visible(&format!("{}: {}", word(f.severity), f.message)),
+                tone,
+            )
         });
         // A failed keep keeps its reason in view when the flag had to say less.
         let not_kept = self
@@ -1312,7 +1316,21 @@ impl EditorPanel {
         (name_y, name_y + 1, name_y + 1 + error_rows)
     }
 
+    /// The path as it is shown: a file name is the host's, so a control or
+    /// hidden character in it is spelled out.
+    fn shown_path(&self) -> String {
+        visible(&self.path)
+    }
+
+    /// The lines of the message screen, every one spelled out: the path, the
+    /// owner's headline, reason and code are not typed here.
     fn message_lines(&self) -> Vec<(String, Tone)> {
+        let mut lines = self.message_lines_raw();
+        lines.iter_mut().for_each(|(text, _)| *text = visible(text));
+        lines
+    }
+
+    fn message_lines_raw(&self) -> Vec<(String, Tone)> {
         let path = (self.path.clone(), Tone::Info);
         if self.naming_idle() {
             let mut lines = vec![
@@ -1423,7 +1441,7 @@ impl EditorPanel {
             return vec![];
         };
         let at = d.view.position(&d.session);
-        let mut root = Node::new("text", Role::TextBox, &self.path, frame.text);
+        let mut root = Node::new("text", Role::TextBox, &self.shown_path(), frame.text);
         root.binding = self.resource();
         root.revision = Some(CoreRevision::Seq(d.session.accepted_revision()));
         root.state.focused = cx.focused && !d.in_find && d.rename.is_none() && d.history.is_none();

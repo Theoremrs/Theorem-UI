@@ -14,6 +14,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{Paragraph, Widget, Wrap};
+use theorem_workbench_text::coords::with_stand_ins;
 use theorem_workbench_text::{Caret, EditSession, RenderOptions, layout::line_rows, render};
 use tui_markdown::{Options, from_str_with_options};
 
@@ -52,7 +53,9 @@ impl Cache {
             .entry((source.to_string(), width))
             .or_insert_with(|| {
                 let options = Options::new(styles.clone()).table_width(width);
-                let text = owned(from_str_with_options(source, &options));
+                // A control or hidden character is parsed and drawn as its one-cell stand-in.
+                let source = with_stand_ins(source);
+                let text = owned(from_str_with_options(&source, &options));
                 let rows = Paragraph::new(text.clone())
                     .wrap(Wrap { trim: false })
                     .line_count(width.max(1))
