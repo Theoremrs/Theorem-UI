@@ -7,6 +7,7 @@ use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use theorem_workbench_core::OpenTarget;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
     Completion, CompletionPayload, DocumentConflicted, DocumentCurrent, DocumentEdited,
@@ -19,14 +20,18 @@ use theorem_workbench_core::effect::{
 use theorem_workbench_core::host::{HostMessage, TokenSpan};
 use theorem_workbench_core::ids::{ActionId, Actor, PanelInstanceId, ResourceRef, Revision};
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
+use theorem_workbench_core::panel::Composition;
 use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::results::SpanEncoding;
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
     DockMsg, Model, Msg, PanelFactories, Theme, ViewCtx, semantics, update,
 };
-use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
-use theorem_workbench_markdown_panel::{Drafts, extend_registry, register_with};
+use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset, Role};
+use theorem_workbench_markdown::MarkdownStyles;
+use theorem_workbench_markdown_panel::{
+    Drafts, MarkdownPanelStyles, extend_registry, register_with,
+};
 use unicode_width::UnicodeWidthStr;
 
 const CAPS: [&str; 11] = [
@@ -179,7 +184,7 @@ fn utf16_at(text: &str, needle: &str) -> u32 {
 
 impl Rig {
     fn start() -> Self {
-        Self::start_file(PATH, &Drafts::new(), 200)
+        Self::start_file(PATH, &Drafts::new(), 500)
     }
 
     /// The Files panel opens `path`; the panel the root chose asks the owner.
@@ -200,6 +205,7 @@ impl Rig {
                 FileEntry::new("a.md", FileKind::File),
                 FileEntry::new("b.txt", FileKind::File),
                 FileEntry::new("c.MDX", FileKind::File),
+                FileEntry::new("notes.md", FileKind::File),
             ],
             partial: false,
         }));
@@ -1625,6 +1631,28 @@ fn unchanged_lines_keep_their_colour_until_new_spans_arrive() {
 }
 
 #[test]
+fn spans_for_the_accepted_revision_show_at_once_with_an_edit_pending() {
+    let mut rig = source_at_end("fn a\nmid line\nfn z\n");
+    let plain = rig.style("mid");
+    // Change the middle line and leave the edit unanswered.
+    rig.key(Key::Up);
+    rig.key(Key::Up);
+    rig.key(Key::Home);
+    rig.key(Key::Char('Q'));
+    // The host's spans are for the accepted revision, which is not the text on
+    // screen: both outer lines keep their colour, the changed one is plain.
+    rig.host(tokens(
+        1,
+        SpanEncoding::Utf8Bytes,
+        &[(0, 2, "keyword"), (5, 8, "comment"), (14, 16, "keyword")],
+    ));
+    let keyword = rig.style("fn a");
+    assert_ne!(keyword, plain, "the leading line is coloured at once");
+    assert_eq!(rig.style("fn z"), keyword, "so is the trailing one");
+    assert_eq!(rig.style("Qmid"), plain, "the line between is plain");
+}
+
+#[test]
 fn split_colours_the_source_side_and_not_the_rendered_side() {
     let mut rig = source_at_end("# Title\n\nfn main\n\n");
     rig.alt('3');
@@ -1685,4 +1713,184 @@ fn the_chord_for_the_mode_already_shown_does_nothing() {
     let fx = rig.act("markdown.mode.visual");
     assert!(fx.is_empty());
     assert!(!rig.screen().contains("Already"), "{}", rig.screen());
+}
+
+// ---- 10: opener precedence, placement, theme roles, composition, tab label ---------
+
+fn file(path: &str) -> OpenTarget {
+    OpenTarget::File {
+        workspace: "w".into(),
+        path: path.into(),
+    }
+}
+
+#[test]
+fn markdown_wins_the_opener_whichever_registers_first() {
+    for markdown_first in [true, false] {
+        let mut factories = PanelFactories::new();
+        if markdown_first {
+            register_with(&mut factories, Drafts::new());
+            theorem_workbench_editor::register(&mut factories);
+        } else {
+            theorem_workbench_editor::register(&mut factories);
+            register_with(&mut factories, Drafts::new());
+        }
+        for path in ["a.md", "a.markdown", "a.mdx", "dir/A.MD"] {
+            let kind = factories.opener_of(&file(path)).map(|k| k.as_str());
+            assert_eq!(
+                kind,
+                Some("markdown"),
+                "{path}, markdown first: {markdown_first}"
+            );
+        }
+        let kind = factories.opener_of(&file("a.rs")).map(|k| k.as_str());
+        assert_eq!(kind, Some("document"), "markdown first: {markdown_first}");
+    }
+}
+
+#[test]
+fn a_markdown_file_opened_from_files_lands_in_the_tool_group() {
+    let rig = Rig::start_file("notes.md", &Drafts::new(), 200);
+    assert_eq!(rig.kind, "markdown");
+    let frame = rig.m.frame().expect("solved");
+    let group = frame
+        .groups
+        .iter()
+        .find(|g| g.active.as_ref().map(|a| a.0.as_str()) == Some(rig.id.as_str()))
+        .expect("the panel's group");
+    assert_eq!(group.role, Role::Tools);
+}
+
+/// The derivation `from_theme` had before the core theme had prose roles: the
+/// Markdown model's modifiers, with six chrome roles laid over them.
+fn derived_before(theme: &Theme) -> MarkdownStyles {
+    let mut markdown = MarkdownStyles::plain();
+    markdown.text = theme.text;
+    markdown.selection = theme.selected;
+    markdown.conflict = theme.error;
+    markdown.line_number = theme.muted;
+    markdown.editing = theme.focus;
+    markdown.held = theme.error;
+    markdown.divider = theme.line;
+    markdown.code = theme.muted;
+    markdown.quote = theme.muted;
+    markdown.table_border = theme.muted;
+    markdown
+}
+
+#[test]
+fn the_default_themes_give_the_styles_the_panel_had_before_the_prose_roles() {
+    use ratatui::style::Color;
+    let chrome = Theme::chrome(
+        Style::new().bg(Color::Rgb(10, 10, 10)),
+        Style::new().fg(Color::Rgb(220, 220, 220)),
+        Style::new().fg(Color::Rgb(130, 130, 130)),
+        Style::new().fg(Color::Rgb(60, 60, 60)),
+        Style::new().fg(Color::Rgb(90, 160, 250)),
+        Style::new().bg(Color::Rgb(40, 40, 60)),
+    );
+    for (name, theme) in [("plain", Theme::plain()), ("chrome", chrome)] {
+        let now = MarkdownPanelStyles::from_theme(&theme).markdown;
+        assert_eq!(now, derived_before(&theme), "{name}");
+    }
+}
+
+#[test]
+fn a_change_to_a_theme_role_changes_what_the_panel_draws() {
+    use ratatui::style::Color;
+    let rig = Rig::opened("body\n\n# Head\n");
+    let heading_in = |theme: &Theme| {
+        let b = rig.body();
+        let area = Rect::new(0, 0, b.width, b.height);
+        let mut buf = Buffer::empty(area);
+        let mut cx = ViewCtx::new(theme, rig.m.workspace());
+        cx.focused = false;
+        rig.m.panel(&rig.id).unwrap().view(area, &mut buf, &cx);
+        let rows: Vec<String> = (0..b.height)
+            .map(|y| {
+                (0..b.width)
+                    .map(|x| buf[(x, y)].symbol().to_owned())
+                    .collect()
+            })
+            .collect();
+        let (y, row) = rows
+            .iter()
+            .enumerate()
+            .find(|(_, r)| r.contains("Head"))
+            .expect("the heading is drawn");
+        buf[(row.find("Head").unwrap() as u16, y as u16)].style()
+    };
+    let plain = Theme::plain();
+    let mut changed = plain.clone();
+    changed.heading[0] = Style::new().fg(Color::Rgb(255, 0, 255));
+    assert_ne!(heading_in(&plain), heading_in(&changed));
+    assert_eq!(heading_in(&changed).fg, Some(Color::Rgb(255, 0, 255)));
+}
+
+#[test]
+fn composition_is_drawn_at_the_caret_and_only_its_end_enters_the_document() {
+    let mut rig = Rig::source("ab\n");
+    rig.key(Key::End);
+    rig.send(Msg::Composition(Composition::Start));
+    rig.send(Msg::Composition(Composition::Update { text: "ni".into() }));
+    assert!(rig.text().starts_with("abni"), "{}", rig.text());
+    assert!(
+        edits(&rig.tick()).is_empty(),
+        "the preedit is not the document"
+    );
+    rig.send(Msg::Composition(Composition::Update {
+        text: "ni h".into(),
+    }));
+    assert!(rig.text().starts_with("abni h"), "{}", rig.text());
+    assert!(edits(&rig.tick()).is_empty());
+    let mut fx = rig.send(Msg::Composition(Composition::End {
+        text: "\u{4f60}".into(),
+    }));
+    fx.extend(rig.tick());
+    let edit = the_edit(&fx);
+    assert_eq!(applied("ab\n", &edit), "ab\u{4f60}\n");
+    assert!(rig.text().starts_with("ab\u{4f60}"), "{}", rig.text());
+    assert!(!rig.text().contains("ni h"));
+}
+
+#[test]
+fn composition_in_an_open_block_stays_in_the_block_until_it_ends_and_the_block_closes() {
+    let mut rig = Rig::opened("# Title\n\npara\n");
+    assert_eq!(rig.mode(), "visual");
+    assert!(
+        rig.node("block")
+            .state
+            .description
+            .unwrap_or_default()
+            .contains("open for editing")
+    );
+    rig.send(Msg::Composition(Composition::Start));
+    rig.send(Msg::Composition(Composition::Update { text: "ni".into() }));
+    assert!(rig.screen().contains("ni"), "{}", rig.screen());
+    assert!(edits(&rig.tick()).is_empty(), "the preedit reaches nobody");
+    let mut fx = rig.send(Msg::Composition(Composition::End { text: "x".into() }));
+    fx.extend(rig.tick());
+    assert!(edits(&fx).is_empty(), "the block holds it until it closes");
+    assert!(rig.screen().contains('x'), "{}", rig.screen());
+    let mut fx = rig.key(Key::Esc);
+    fx.extend(rig.tick());
+    assert!(!applied("# Title\n\npara\n", &the_edit(&fx)).contains("ni"));
+    assert!(applied("# Title\n\npara\n", &the_edit(&fx)).contains('x'));
+}
+
+#[test]
+fn the_tab_label_is_the_file_name_and_the_modified_mark_and_follows_a_move() {
+    let mut rig = Rig::source("hello\n");
+    let label = |rig: &Rig| rig.m.tab_label(&rig.id, "Markdown");
+    let first = label(&rig);
+    assert_eq!((first.title.as_str(), first.modified), ("a.md", false));
+    rig.typed("x");
+    assert!(label(&rig).modified, "an unsaved edit marks the tab");
+    rig.host(HostMessage::DocumentMoved {
+        from: doc(),
+        to: doc_of("docs/renamed.md"),
+    });
+    let moved = label(&rig);
+    assert_eq!(moved.title, "renamed.md");
+    assert!(moved.modified);
 }

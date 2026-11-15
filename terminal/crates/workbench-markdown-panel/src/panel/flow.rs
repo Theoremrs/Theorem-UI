@@ -15,7 +15,7 @@ use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{Capability, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_editor::{
-    Held, Level, Owed, OwnerSync, SourceView, Step, resync, revision_number,
+    Held, Level, Owed, OwnerSync, SourceView, Step, TokenState, resync, revision_number,
 };
 use theorem_workbench_markdown::{BlockResolution, MarkdownDoc, MarkdownMode};
 use theorem_workbench_text::{PendingState, Resolution};
@@ -40,7 +40,7 @@ impl MarkdownPanel {
         self.relayout();
         self.pump(cx);
         if let Some(d) = self.doc_mut() {
-            d.refresh_tokens();
+            d.tokens.refresh(d.md.get_mut().session(), d.version);
             d.sync.settle_stale_save(d.md.get_mut().session());
         }
     }
@@ -246,8 +246,8 @@ impl MarkdownPanel {
             }),
             link: None,
             preedit: None,
-            tokens: None,
-            waiting: None,
+            tokens: TokenState::new(),
+            version: 0,
         };
         d.sync_read_only();
         self.phase = Phase::Ready(Box::new(d));
@@ -398,16 +398,8 @@ impl MarkdownPanel {
                     return;
                 };
                 if let Some(d) = self.doc_mut() {
-                    let accepted = d.md.get_mut().revision();
-                    // Spans for an older revision describe other text and are
-                    // not applied; newer ones wait for the text to catch up.
-                    if revision >= accepted {
-                        d.waiting = Some(super::tokens::Waiting {
-                            revision,
-                            encoding,
-                            spans,
-                        });
-                    }
+                    d.tokens
+                        .offer(d.md.get_mut().session(), revision, encoding, &spans);
                 }
             }
             _ => {}

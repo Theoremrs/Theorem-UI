@@ -15,7 +15,6 @@
 mod chrome;
 mod flow;
 mod input;
-mod tokens;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -30,7 +29,7 @@ use theorem_workbench_core::ids::{
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{Composition, Ctx, EmitError, Panel, PanelMsg, TabLabel, ViewCtx};
-use theorem_workbench_editor::{OwnerSync, SourceView};
+use theorem_workbench_editor::{EditorStyles, Mark, OwnerSync, SourceView, TokenState};
 use theorem_workbench_markdown::{MarkdownDoc, MarkdownMode, MarkdownViewState};
 use theorem_workbench_text::OpId;
 
@@ -136,12 +135,20 @@ pub(crate) struct Doc {
     /// Text an input method is composing at the caret: drawn there, and not
     /// in the session until the composition ends.
     pub preedit: Option<String>,
-    /// Syntax colour from the host, and spans for a revision not yet reached.
-    pub tokens: Option<tokens::Tokens>,
-    pub waiting: Option<tokens::Waiting>,
+    /// Syntax colour from the host, kept in step with the text.
+    pub tokens: TokenState,
+    /// Changes with every message that can change the text, so colour laid
+    /// out for earlier text is not drawn on this.
+    pub version: u64,
 }
 
 impl Doc {
+    /// The colour to draw in Source and on the source side of Split.
+    pub fn token_marks(&self, styles: &EditorStyles) -> Vec<Mark> {
+        self.tokens
+            .marks(self.md.borrow().session(), self.version, styles)
+    }
+
     /// Typed text that has not reached the owner's session: in the open block.
     pub fn block_dirty(&self) -> bool {
         self.md
@@ -437,6 +444,12 @@ impl MarkdownPanel {
 
 impl Panel for MarkdownPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
+        // A tick changes no text; every other message may.
+        if !matches!(msg, PanelMsg::Tick)
+            && let Some(d) = self.doc_mut()
+        {
+            d.version += 1;
+        }
         match msg {
             PanelMsg::Resize { area, .. } => self.body = (area.width, area.height),
             PanelMsg::Workspace(identity) => self.adopt(identity),

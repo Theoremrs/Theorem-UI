@@ -641,6 +641,14 @@ impl MarkdownPanel {
                         && shown.mode == MarkdownMode::Visual
                     {
                         buf.set_style(Rect::new(c.x, c.y, c.width.max(1), 1), styles.editor.caret);
+                        if let Some(composing) = d.preedit.as_deref().filter(|t| !t.is_empty()) {
+                            draw_preedit(
+                                buf,
+                                composing,
+                                (c.x, c.y, text.x + text.width),
+                                styles.markdown.preedit,
+                            );
+                        }
                     }
                 }
             }
@@ -1045,4 +1053,25 @@ impl MarkdownPanel {
         out.extend(kids);
         out
     }
+}
+
+/// Text being composed, put in at the caret of the open block: the rest of the
+/// row moves right to make room, as it does in Source mode, and what runs past
+/// the pane's edge is cut off.
+fn draw_preedit(
+    buf: &mut Buffer,
+    text: &str,
+    (x, y, end): (u16, u16, u16),
+    style: ratatui::style::Style,
+) {
+    let room = usize::from(end.saturating_sub(x));
+    let shift = text.width().min(room) as u16;
+    for col in (x + shift..end).rev() {
+        let moved = buf[(col - shift, y)].clone();
+        buf[(col, y)] = moved;
+    }
+    for col in x..x + shift {
+        buf[(col, y)].reset();
+    }
+    buf.set_stringn(x, y, text, room, style);
 }

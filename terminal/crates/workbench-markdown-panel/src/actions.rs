@@ -340,7 +340,7 @@ fn descriptor() -> PanelDescriptor {
         actions: vec![],
         requires: vec![theorem_workbench_core::Capability::new("documents")],
         min_size: CellSize { cols: 40, rows: 8 },
-        default_placement: Placement::Main,
+        default_placement: Placement::Tools,
         theme_roles: [
             "chrome.bg",
             "chrome.text",
