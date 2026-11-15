@@ -2257,6 +2257,9 @@ fn changing_the_added_role_of_the_theme_changes_what_the_panel_draws() {
         ),
     );
     rig.accept(&next[0], log_answer(&["x"]));
+    // The focused cursor row keeps its own ink under every role, so the cursor is moved
+    // off the added file.
+    rig.key(Key::Down);
     let plain = Theme::plain();
     let mut tinted = Theme::plain();
     tinted.change_added = ratatui::style::Style::default().fg(ratatui::style::Color::Green);

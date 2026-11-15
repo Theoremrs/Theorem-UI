@@ -7,7 +7,7 @@ mod common;
 use common::*;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Modifier;
+use ratatui::style::{Color, Modifier, Style};
 use theorem_workbench_changes::*;
 use unicode_width::UnicodeWidthStr;
 
@@ -227,6 +227,45 @@ fn the_cursor_row_is_marked_by_style_and_follows_focus() {
     model.draw(area, &mut message, &styles);
     // The commit box shows which part holds the keys.
     assert_ne!(files, message);
+}
+
+#[test]
+fn the_focused_cursor_row_keeps_its_own_ink_under_every_role() {
+    // The letter, the folder and the hint are role-colored against the pane; on the focus
+    // fill those colors fall under 4.5:1, so the row's ink is the only one there.
+    let mut model = small();
+    model.set_focus(Focus::Files);
+    model.move_cursor(1, false);
+    model.move_cursor(-1, false);
+    let area = Rect::new(0, 0, 60, 16);
+    let ink = Style::default().fg(Color::Black).bg(Color::Cyan);
+    let role = Style::default().fg(Color::DarkGray);
+    let styles = ChangesStyles {
+        cursor: ink,
+        muted: role,
+        letter_changed: Style::default().fg(Color::Yellow),
+        ..ChangesStyles::plain()
+    };
+    let mut buf = Buffer::empty(area);
+    model.draw(area, &mut buf, &styles);
+    let filled: Vec<u16> = (0..area.height)
+        .filter(|y| buf[(0, *y)].bg == Color::Cyan)
+        .collect();
+    assert_eq!(filled.len(), 1, "one cursor row");
+    let y = filled[0];
+    let row: String = (0..area.width).map(|x| buf[(x, y)].symbol()).collect();
+    assert!(row.contains("src"), "the folder is on the row: {row}");
+    assert!(row.contains("unstage"), "the hint is on the row: {row}");
+    for x in 0..area.width {
+        assert_eq!(buf[(x, y)].fg, Color::Black, "column {x} of {row:?}");
+    }
+    // Off the cursor row the roles keep their colors.
+    assert!(
+        (0..area.height)
+            .filter(|row| *row != y)
+            .any(|row| (0..area.width).any(|x| buf[(x, row)].fg == Color::Yellow)),
+        "another row's letter is still role-colored"
+    );
 }
 
 #[test]
