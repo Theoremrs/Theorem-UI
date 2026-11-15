@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::effect::TextChange;
+use crate::effect::{SideChatScope, TextChange};
 use crate::ids::{EffectId, Generation, ResourceRef, Revision};
 use crate::results::{
     LanguageCompletions, LanguageDiagnostics, LanguageHover, LanguageLocations, RunState,
@@ -149,6 +149,10 @@ pub enum CompletionPayload {
     /// effects for it name in their `conversation` resource. It never replaces
     /// the open thread, which is why it is not `conversationOpened`.
     ConversationSideOpened(ConversationOpened),
+    /// `conversationSideList`: the side chats that exist.
+    ConversationSideList(ConversationSideList),
+    /// `scmConflict`: the sides of one conflicted path.
+    ScmConflict(ConflictSides),
     /// `filesSearch`: rows with whole workspace paths, and the page's end.
     FileSearchPage(FileSearchPage),
     /// `artifactsList`.
@@ -315,6 +319,19 @@ pub struct DocumentOpened {
     #[cfg_attr(feature = "ts", ts(optional))]
     pub saved_revision: Option<Revision>,
     pub dirty: bool,
+    /// Present when the owner opened the document for reading only, with its
+    /// reason. Absent: the document takes edits.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub read_only: Option<ReadOnly>,
+}
+
+/// Why a document cannot be edited, in words a person can act on.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ReadOnly {
+    pub reason: String,
 }
 
 /// An edit the authority accepted. `operation_id` is the effect's own.
@@ -602,9 +619,33 @@ pub struct ScmDiscarded {
 #[serde(rename_all = "camelCase")]
 pub struct ScmMerged {
     pub merged: bool,
+    /// The paths the merge left conflicted, each with its sides (the same
+    /// object `scmConflict` answers). Empty when it merged cleanly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub conflicts: Vec<ConflictSides>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub state: Option<RepoState>,
+}
+
+/// One conflicted path: whether it is still in conflict and the text of each
+/// side. A side the host does not have (a file added on one branch has no
+/// `base`) is absent, not empty.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConflictSides {
+    pub path: String,
+    pub conflict: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub ours: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub theirs: Option<String>,
 }
 
 // ---- terminal ----------------------------------------------------------
@@ -756,6 +797,29 @@ pub struct ConversationApproved {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationOpened {
     pub conversation_id: String,
+}
+
+/// A side chat that exists.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatInfo {
+    pub conversation_id: String,
+    pub scope: SideChatScope,
+    /// The conversation a continued or forked side chat started from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub from: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub thread_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSideList {
+    pub chats: Vec<SideChatInfo>,
 }
 
 // ---- artifacts, language, run, search ----------------------------------
@@ -923,9 +987,13 @@ mod tests {
                 revision: seq(7),
                 saved_revision: Some(seq(6)),
                 dirty: true,
+                read_only: Some(ReadOnly {
+                    reason: "the file is locked".into(),
+                }),
             }),
             json!({
                 "type": "documentOpened", "text": "hi", "dirty": true,
+                "readOnly": {"reason": "the file is locked"},
                 "revision": {"scheme": "seq", "value": 7},
                 "savedRevision": {"scheme": "seq", "value": 6}
             }),
@@ -1123,6 +1191,7 @@ mod tests {
         shape(
             CompletionPayload::ScmMerged(ScmMerged {
                 merged: false,
+                conflicts: vec![],
                 state: None,
             }),
             json!({"type": "scmMerged", "merged": false}),

@@ -58,11 +58,12 @@ fn draw_group(
         .map(|g| g.tabs())
         .unwrap_or(&[]);
     for tab in &group.tabs {
-        let title = tabs
+        let registered = tabs
             .iter()
             .find(|t| t.panel == tab.panel)
             .map_or("", |t| t.title.as_str());
-        draw_tab(tab, title, group.focused && window, buf, theme);
+        let label = model.tab_label(&PanelInstanceId::new(tab.panel.0.clone()), registered);
+        draw_tab(tab, &label, group.focused && window, buf, theme);
     }
     draw_strip_marks(group, frame, buf, theme);
 
@@ -174,7 +175,13 @@ fn draw_strip_marks(group: &GroupFrame, frame: &SolvedFrame, buf: &mut Buffer, t
     }
 }
 
-fn draw_tab(tab: &TabFrame, title: &str, group_focused: bool, buf: &mut Buffer, theme: &Theme) {
+fn draw_tab(
+    tab: &TabFrame,
+    label: &crate::panel::TabLabel,
+    group_focused: bool,
+    buf: &mut Buffer,
+    theme: &Theme,
+) {
     if tab.rect.is_empty() {
         return;
     }
@@ -185,7 +192,10 @@ fn draw_tab(tab: &TabFrame, title: &str, group_focused: bool, buf: &mut Buffer, 
         (false, false, _) => theme.text,
     };
     let close = u16::from(!tab.close.is_empty());
-    let label = format!(" {title}");
+    // The mark takes the tab's leading space, so a title that fits the width
+    // the dock measured still fits with it.
+    let lead = if label.modified { MODIFIED } else { " " };
+    let label = format!("{lead}{}", label.title);
     buf.set_style(tab.rect, style);
     buf.set_stringn(
         tab.rect.x,
@@ -198,6 +208,9 @@ fn draw_tab(tab: &TabFrame, title: &str, group_focused: bool, buf: &mut Buffer, 
         buf.set_stringn(tab.close.x, tab.close.y, CLOSE, 1, style);
     }
 }
+
+/// Stands where a modified tab's leading space is.
+const MODIFIED: &str = "\u{25cf}";
 
 fn draw_gutters(model: &Model, frame: &SolvedFrame, buf: &mut Buffer, theme: &Theme) {
     for splitter in &frame.splitters {

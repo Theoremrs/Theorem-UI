@@ -12,6 +12,7 @@ use theorem_workbench_dock::{
 
 use crate::effect::EffectKind;
 use crate::factory::PanelFactories;
+use crate::host::HostMessage;
 use crate::ids::{
     ActionId, EffectId, EffectIds, PanelInstanceId, PanelKind, ResourceRef, WorkspaceIdentity,
 };
@@ -79,6 +80,62 @@ pub(crate) struct Entry {
     pub(crate) body: Option<Rect>,
     /// The workspace generation last announced to the panel.
     pub(crate) workspace_seen: Option<u64>,
+    /// The resource whose retained snapshot this panel was last handed (or
+    /// found none for), so each binding is replayed once.
+    pub(crate) replayed: Option<ResourceRef>,
+}
+
+/// How many conversations' latest snapshots the root keeps for panels that
+/// mount later, and how many workspaces' session lists. The oldest goes first.
+pub(crate) const RETAINED_SNAPSHOTS: usize = 32;
+pub(crate) const RETAINED_SESSION_LISTS: usize = 4;
+
+/// The latest state a panel mounted later needs and would otherwise have
+/// missed: one `ConversationSnapshot` per conversation resource and one
+/// `TerminalSessions` per workspace, oldest first, both bounded.
+#[derive(Default)]
+pub(crate) struct Retained {
+    pub(crate) snapshots: Vec<(ResourceRef, HostMessage)>,
+    pub(crate) sessions: Vec<(String, HostMessage)>,
+}
+
+impl Retained {
+    /// Keep `message` as the latest for `resource`, unless the one held is
+    /// newer (a late, older snapshot never replaces it).
+    pub(crate) fn keep_snapshot(&mut self, resource: &ResourceRef, message: &HostMessage) {
+        let incoming = match message {
+            HostMessage::ConversationSnapshot { revision, .. } => revision,
+            _ => return,
+        };
+        if let Some(at) = self.snapshots.iter().position(|(r, _)| r == resource) {
+            let newer = matches!(
+                &self.snapshots[at].1,
+                HostMessage::ConversationSnapshot { revision, .. }
+                    if revision.order(incoming) == Some(std::cmp::Ordering::Greater)
+            );
+            if newer {
+                return;
+            }
+            self.snapshots.remove(at);
+        }
+        self.snapshots.push((resource.clone(), message.clone()));
+        if self.snapshots.len() > RETAINED_SNAPSHOTS {
+            self.snapshots.remove(0);
+        }
+    }
+
+    pub(crate) fn keep_sessions(&mut self, workspace: &str, message: &HostMessage) {
+        self.sessions.retain(|(w, _)| w != workspace);
+        self.sessions.push((workspace.to_owned(), message.clone()));
+        if self.sessions.len() > RETAINED_SESSION_LISTS {
+            self.sessions.remove(0);
+        }
+    }
+
+    /// A conversation that was ended is forgotten.
+    pub(crate) fn forget(&mut self, resource: &ResourceRef) {
+        self.snapshots.retain(|(r, _)| r != resource);
+    }
 }
 
 impl Entry {
@@ -117,6 +174,7 @@ pub struct Model {
     pub(crate) origins: BTreeMap<EffectId, PanelInstanceId>,
     /// The panel that started each search whose pages are still arriving.
     pub(crate) searches: BTreeMap<String, PanelInstanceId>,
+    pub(crate) retained: Retained,
     pub(crate) queues: SourceQueues,
     /// The workspace and environment the host last named.
     pub(crate) workspace: WorkspaceIdentity,
@@ -169,6 +227,7 @@ impl Model {
             in_flight: InFlight::new(IN_FLIGHT_LIMIT),
             origins: BTreeMap::new(),
             searches: BTreeMap::new(),
+            retained: Retained::default(),
             queues: SourceQueues::new(QueueLimits::default()),
             workspace: WorkspaceIdentity::default(),
             destroying,
@@ -196,6 +255,18 @@ impl Model {
 
     pub fn keys(&self) -> &KeyTable {
         &self.keys
+    }
+
+    /// The title and modified mark a panel's tab shows: what it names itself
+    /// with, else `registered`, the title the dock holds for it.
+    pub fn tab_label(&self, panel: &PanelInstanceId, registered: &str) -> crate::panel::TabLabel {
+        self.panels
+            .get(panel)
+            .and_then(|e| e.panel.tab_label())
+            .unwrap_or_else(|| crate::panel::TabLabel {
+                title: registered.to_owned(),
+                modified: false,
+            })
     }
 
     pub fn capabilities(&self) -> &Capabilities {
@@ -458,6 +529,7 @@ impl Model {
                         available,
                         body: None,
                         workspace_seen: None,
+                        replayed: None,
                     },
                 );
             }

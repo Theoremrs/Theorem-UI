@@ -42,8 +42,8 @@ pub use ids::{
 pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
 pub use msg::{DockMsg, Inbound, Msg, Pointer};
 pub use panel::{
-    Button, Ctx, EmitError, OpenTarget, Panel, PanelMsg, PanelPointer, PickerView, PointerKind,
-    ViewCtx,
+    Button, Composition, Ctx, EmitError, OpenTarget, Panel, PanelMsg, PanelPointer, PickerView,
+    PointerKind, TabLabel, ViewCtx,
 };
 pub use theme::Theme;
 pub use tree::semantics;

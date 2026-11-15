@@ -16,4 +16,8 @@ ignored: boolean,
 /**
  * A dot-entry the host marks hidden.
  */
-hidden: boolean, };
+hidden: boolean, 
+/**
+ * A tab whose panel holds changes not yet saved.
+ */
+modified: boolean, };

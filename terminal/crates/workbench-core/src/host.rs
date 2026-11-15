@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::effect::{CoordinateUnit, TerminalBackend, TextChange};
 use crate::ids::{ResourceRef, Revision};
 use crate::registry::Capabilities;
-use crate::results::{ReadAt, SearchEnd, SearchRow, SearchState};
+use crate::results::{ReadAt, SearchEnd, SearchRow, SearchState, SpanEncoding};
 
 fn yes() -> bool {
     true
@@ -33,6 +33,19 @@ pub struct TerminalProfileInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub unavailable_reason: Option<String>,
+}
+
+/// A stretch of a document and the highlight class of its token.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TokenSpan {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub start: u64,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub end: u64,
+    /// The class string the TypeScript tokenizer emits.
+    pub class: String,
 }
 
 /// What the host says about a session's program, never read from its output.
@@ -247,6 +260,21 @@ pub enum HostMessage {
         workspace: String,
         profiles: Vec<TerminalProfileInfo>,
         sessions: Vec<TerminalSessionInfo>,
+    },
+    /// Syntax colour for a document: where each token is, and the highlight
+    /// class the tokenizer gave it, at `revision`. Offsets count in `encoding`
+    /// from the start of the document's text at that revision.
+    ///
+    /// Routed to the panels bound to `resource`. A message for a revision older
+    /// than the panel's accepted one is dropped and counted stale (the gate
+    /// every revisioned host message passes), because its offsets describe text
+    /// the panel no longer has; one for a newer revision is delivered, and the
+    /// panel decides whether to hold it until its text catches up.
+    DocumentTokens {
+        resource: ResourceRef,
+        revision: Revision,
+        encoding: SpanEncoding,
+        spans: Vec<TokenSpan>,
     },
     /// One page of a search's results, after the `searchStarted` completion
     /// that named `id`. The root delivers it to the panel that started the

@@ -105,6 +105,8 @@ pub struct NodeState {
     pub ignored: bool,
     /// A dot-entry the host marks hidden.
     pub hidden: bool,
+    /// A tab whose panel holds changes not yet saved.
+    pub modified: bool,
 }
 
 /// An action the node offers, by registry id, with its availability.

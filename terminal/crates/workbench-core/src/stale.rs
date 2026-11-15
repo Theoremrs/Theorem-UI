@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{Completion, Outcome};
+use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::effect::{Effect, EffectKind};
 use crate::ids::{EffectId, Generation, ResourceRef, Revision};
 
@@ -63,7 +63,19 @@ fn keeps_result(outcome: &Outcome) -> bool {
 
 /// Judge a completion against the pane's binding. The completion is a final
 /// outcome for its effect; an effect still in flight is checked by [`InFlight`].
+///
+/// Two answers are exceptions to the rules below:
+/// - A completion for [`ResourceRef::None`] is for no resource, so there is
+///   nothing it can be stale against: it applies, whatever its outcome (a
+///   refused or failed clipboard read reaches the panel that asked).
+/// - A `DocumentSaved` answer says that revision N reached the checkout, which
+///   stays true when the text has since moved on to N+1. It applies for the
+///   bound resource even when its revision is older than the binding's, and
+///   is dropped only for another resource or an older generation.
 pub fn judge(binding: &Binding, completion: &Completion) -> Verdict {
+    if completion.resource == ResourceRef::None {
+        return Verdict::Apply;
+    }
     if completion.resource != binding.resource {
         return if keeps_result(&completion.outcome) {
             Verdict::CacheOnly
@@ -75,6 +87,12 @@ pub fn judge(binding: &Binding, completion: &Completion) -> Verdict {
         && done < now
     {
         return Verdict::Drop(Stale::OlderGeneration);
+    }
+    if matches!(
+        completion.payload,
+        Some(CompletionPayload::DocumentSaved(_))
+    ) {
+        return Verdict::Apply;
     }
     if let (Some(done), Some(now)) = (&completion.revision, &binding.revision) {
         match done.order(now) {

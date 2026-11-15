@@ -242,6 +242,10 @@ pub enum PanelMsg {
     /// Text from the host input service (IME, dictation, typed text).
     Text(String),
     Paste(String),
+    /// A step of an IME composition (the browser's `compositionstart`,
+    /// `compositionupdate` and `compositionend`). Text typed during one is
+    /// not sent as `Text`.
+    Composition(Composition),
     Pointer(PanelPointer),
     /// The body the panel is drawn in, or its cell size, changed.
     ///
@@ -440,6 +444,27 @@ pub struct PickerView {
     pub pin_shortcut: Option<String>,
 }
 
+/// One step of an input-method composition.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Composition {
+    /// A composition began at the caret.
+    Start,
+    /// The preedit text now: it replaces the previous preedit, and is not yet
+    /// part of the document.
+    Update { text: String },
+    /// The composition ended with `text` committed (empty when it was
+    /// cancelled).
+    End { text: String },
+}
+
+/// What a tab shows for a panel that names itself (see [`Panel::tab_label`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TabLabel {
+    pub title: String,
+    /// Unsaved changes: the tab is marked.
+    pub modified: bool,
+}
+
 /// Read-only context for `view` and `semantics`.
 pub struct ViewCtx<'a> {
     pub theme: &'a Theme,
@@ -497,6 +522,14 @@ pub trait Panel {
 
     /// View state only, never the resource. Saved in the layout document.
     fn serialize(&self) -> Value;
+
+    /// What its tab says, when that is not the registry's static title: the
+    /// document's name and whether it has unsaved changes. The tab strip and
+    /// the semantic tree read it each time they draw, so it needs no message
+    /// to change. `None`: the registry's title, unmarked.
+    fn tab_label(&self) -> Option<TabLabel> {
+        None
+    }
 
     /// What the panel is bound to now, which every completion is judged
     /// against. `None` for a panel bound to nothing.

@@ -25,7 +25,8 @@ use theorem_workbench_core::{
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 
-const ALL: [&str; 15] = [
+const ALL: [&str; 16] = [
+    "conversation.side",
     "diagnostics.subscribe",
     "run.start",
     "run.subscribe",

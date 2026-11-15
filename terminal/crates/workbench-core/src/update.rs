@@ -29,12 +29,15 @@ use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::effect::Effect;
 use crate::host::HostMessage;
 use crate::ids::{
-    ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceRef, Revision, WorkspaceIdentity,
+    ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceKind, ResourceRef, Revision,
+    WorkspaceIdentity,
 };
 use crate::keys::{KeyContext, active_contexts};
 use crate::model::{Drag, Entry, Model, Notice, Viewport};
 use crate::msg::{DockMsg, Inbound, Msg, Pointer};
-use crate::panel::{Button, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind};
+use crate::panel::{
+    Button, Composition, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind,
+};
 use crate::panels::{PICKER_KIND, Unavailable};
 use crate::picker::{PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
@@ -52,6 +55,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Pointer(p) => model.on_pointer(p),
         Msg::Text(text) => model.on_text(text, false),
         Msg::Paste(text) => model.on_text(text, true),
+        Msg::Composition(event) => model.on_composition(event),
         Msg::Resize { area, metrics } => {
             model.viewport = Some(Viewport { area, metrics });
             vec![]
@@ -151,6 +155,7 @@ impl Model {
     /// and whether they own the keyboard. Neither can start work.
     pub(crate) fn settle(&mut self) {
         self.announce_workspace();
+        self.replay_retained();
         let Some(vp) = self.viewport else {
             self.frame = None;
             return;
@@ -223,8 +228,78 @@ impl Model {
             }
             let msg = PanelMsg::Workspace(identity.clone());
             self.call(&id, Mode::Silent, |p, cx| p.update(msg, cx));
+            self.replay_sessions(&id);
             self.dirty = true;
         }
+    }
+
+    /// Hand a panel the latest state it missed by mounting, or binding, after
+    /// it arrived: the retained conversation snapshot for the resource it is
+    /// bound to, and (once per workspace announcement) the workspace's
+    /// terminal sessions for a panel bound to terminals. Silent, and judged
+    /// by the same gate a live message passes, so a snapshot older than the
+    /// panel's revision is not replayed.
+    fn replay_retained(&mut self) {
+        let ids: Vec<PanelInstanceId> = self.panels.keys().cloned().collect();
+        for id in ids {
+            let Some(entry) = self.panels.get_mut(&id) else {
+                continue;
+            };
+            if !entry.available {
+                continue;
+            }
+            let binding = entry.binding();
+            if entry.replayed.as_ref() == Some(&binding.resource) {
+                continue;
+            }
+            entry.replayed = Some(binding.resource.clone());
+            let Some((_, message)) = self
+                .retained
+                .snapshots
+                .iter()
+                .find(|(r, _)| *r == binding.resource)
+            else {
+                continue;
+            };
+            let message = message.clone();
+            if let (Some(resource), Some(revision)) =
+                (host_route(&message).0, host_route(&message).1)
+            {
+                let probe = Completion::new(EffectId(0), resource.clone(), Outcome::Accepted)
+                    .with_revision(revision);
+                if let Verdict::Drop(_) = judge(&binding, &probe) {
+                    continue;
+                }
+            }
+            self.call(&id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Host(message), cx)
+            });
+            self.dirty = true;
+        }
+    }
+
+    /// The terminal sessions the host last listed for the workspace, to a
+    /// panel bound to terminals that has just been told the workspace.
+    fn replay_sessions(&mut self, id: &PanelInstanceId) {
+        let workspace = self.workspace.workspace.clone();
+        let terminal = self.panels.get(id).is_some_and(|e| {
+            e.available
+                && self
+                    .registry
+                    .get(&e.kind)
+                    .is_some_and(|d| d.binding == ResourceKind::Terminal)
+        });
+        if !terminal {
+            return;
+        }
+        let Some((_, message)) = self.retained.sessions.iter().find(|(w, _)| *w == workspace)
+        else {
+            return;
+        };
+        let message = message.clone();
+        self.call(id, Mode::Silent, |p, cx| {
+            p.update(PanelMsg::Host(message), cx)
+        });
     }
 
     // --- keys and text ---
@@ -295,6 +370,22 @@ impl Model {
         match self.focus_owner() {
             Some(id) if paste => self.send(&id, PanelMsg::Paste(text)),
             Some(id) => self.send(&id, PanelMsg::Text(text)),
+            None => vec![],
+        }
+    }
+
+    /// Composition goes to the panel that owns the keyboard. While the picker
+    /// is open it owns the keyboard: a committed text is typed into its filter
+    /// and the preedit is not shown.
+    pub(crate) fn on_composition(&mut self, event: Composition) -> Vec<Effect> {
+        if self.picker.is_open() {
+            return match event {
+                Composition::End { text } if !text.is_empty() => self.on_text(text, false),
+                _ => vec![],
+            };
+        }
+        match self.focus_owner() {
+            Some(id) => self.send(&id, PanelMsg::Composition(event)),
             None => vec![],
         }
     }
@@ -448,6 +539,7 @@ impl Model {
                         available,
                         body: None,
                         workspace_seen: None,
+                        replayed: None,
                     },
                 );
                 Some(id)
@@ -643,6 +735,9 @@ impl Model {
         let out = self.run_ctx(id, mode, |cx| entry.panel.teardown(cx, destroy));
         self.origins.retain(|e, _| self.in_flight.is_pending(*e));
         self.searches.retain(|_, panel| panel != id);
+        if destroy {
+            self.retained.forget(&entry.binding().resource);
+        }
         self.dirty = true;
         out.effects
     }
@@ -960,6 +1055,17 @@ impl Model {
             }
             return self.send(&panel, PanelMsg::Host(message));
         }
+        match &message {
+            HostMessage::ConversationSnapshot {
+                resource: resource @ ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            } if thread == conversation_id => self.retained.keep_snapshot(resource, &message),
+            HostMessage::TerminalSessions { workspace, .. } => {
+                self.retained.keep_sessions(workspace, &message);
+            }
+            _ => {}
+        }
         let mut effects = match &message {
             HostMessage::TerminalOutput {
                 resource,
@@ -1166,6 +1272,9 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
             resource, revision, ..
         }
         | DocumentResync {
+            resource, revision, ..
+        }
+        | DocumentTokens {
             resource, revision, ..
         }
         | ConversationSnapshot {

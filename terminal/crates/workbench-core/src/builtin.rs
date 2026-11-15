@@ -195,7 +195,7 @@ pub fn registry() -> Registry {
             min: (32, 8),
             role: Role::Region,
             theme_roles: CHROME,
-            requires: &[],
+            requires: &["conversation.side"],
         }
         .build(vec![
             ActionDescriptor::new("side-chat.choose", "Side chat", Open)

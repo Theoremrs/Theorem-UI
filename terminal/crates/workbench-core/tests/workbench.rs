@@ -162,6 +162,10 @@ impl Panel for TestPanel {
                     limit: 50,
                 }),
             ),
+            PanelMsg::Key(k) if k.key() == Key::Char('c') => {
+                let r = cx.emit(|id| Effect::new(id, ResourceRef::None, EffectBody::ClipboardRead));
+                self.log.borrow_mut().emits.push(r);
+            }
             PanelMsg::Key(k) if k.key() == Key::Char('x') => cx.open(OpenTarget::File {
                 workspace: "w".into(),
                 path: "docs/pic.png".into(),
@@ -174,6 +178,7 @@ impl Panel for TestPanel {
             PanelMsg::Action(id) => match id.as_str() {
                 "note.save" => self.try_emit(cx, EffectBody::DocumentSave),
                 "term.end" => self.try_emit(cx, EffectBody::TerminalEnd),
+                "chat.end" => cx.close_self(),
                 _ => {}
             },
             PanelMsg::Resize { .. } | PanelMsg::Focus(_) | PanelMsg::Tick if greedy => {
@@ -206,6 +211,13 @@ impl Panel for TestPanel {
 
     fn serialize(&self) -> Value {
         json!({"rev": self.rev, "doc": self.doc, "taps": self.taps})
+    }
+
+    fn tab_label(&self) -> Option<theorem_workbench_core::TabLabel> {
+        (self.kind == "note").then(|| theorem_workbench_core::TabLabel {
+            title: self.doc.clone(),
+            modified: self.taps > 0,
+        })
     }
 
     fn binding(&self) -> Option<Binding> {
@@ -255,7 +267,8 @@ fn descriptor(
     }
 }
 
-const ALL_CAPS: [&str; 15] = [
+const ALL_CAPS: [&str; 16] = [
+    "conversation.side",
     "diagnostics.subscribe",
     "run.start",
     "run.subscribe",
@@ -303,11 +316,11 @@ fn model(log: &Shared) -> Model {
         .register(descriptor(
             "chat",
             ResourceKind::Conversation,
-            vec![ActionDescriptor::new(
-                "chat.open",
-                "New chat",
-                ActionIntent::Open,
-            )],
+            vec![
+                ActionDescriptor::new("chat.open", "New chat", ActionIntent::Open),
+                ActionDescriptor::new("chat.end", "End chat", ActionIntent::Destroy)
+                    .emits(EffectKind::ConversationCancel),
+            ],
         ))
         .unwrap();
     let mut factories = PanelFactories::new();
@@ -1750,6 +1763,351 @@ fn search_pages_reach_only_the_panel_that_started_the_search_until_the_last_one(
     send(&mut m, Msg::Host(page("other", SearchState::More)));
     assert_eq!(pages(&log), 2);
     assert_eq!(m.counters().dropped, dropped + 2);
+}
+
+fn snapshot(thread: &str, rev: u64) -> Msg {
+    Msg::Host(HostMessage::ConversationSnapshot {
+        resource: ResourceRef::Conversation {
+            project: "p".into(),
+            thread: thread.into(),
+        },
+        revision: Revision::Seq(rev + 10), // the panel accepts 5
+        conversation_id: thread.into(),
+        snapshot: "{}".into(),
+    })
+}
+
+fn snapshots_seen(log: &Shared) -> usize {
+    msgs_of(log, "chat")
+        .into_iter()
+        .filter(|m| matches!(m, PanelMsg::Host(HostMessage::ConversationSnapshot { .. })))
+        .count()
+}
+
+#[test]
+fn a_chat_mounted_after_its_snapshot_is_handed_the_latest_one_without_emitting() {
+    let (mut m, log) = new_model();
+    send(&mut m, snapshot("t1", 1));
+    send(&mut m, snapshot("t1", 2));
+    // One whose conversation id is not its thread is dropped, not retained.
+    send(
+        &mut m,
+        Msg::Host(HostMessage::ConversationSnapshot {
+            resource: ResourceRef::Conversation {
+                project: "p".into(),
+                thread: "t1".into(),
+            },
+            revision: Revision::Seq(9),
+            conversation_id: "other".into(),
+            snapshot: "{}".into(),
+        }),
+    );
+    assert_eq!(snapshots_seen(&log), 0, "nobody is bound yet");
+    let fx = action(&mut m, "chat.open");
+    assert!(fx.is_empty() && log.borrow().emits.is_empty());
+    let seen: Vec<_> = msgs_of(&log, "chat")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Host(HostMessage::ConversationSnapshot { revision, .. }) => Some(revision),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(seen, vec![Revision::Seq(12)], "the latest, once");
+    // A second tick does not replay it again.
+    send(&mut m, Msg::Tick);
+    assert_eq!(snapshots_seen(&log), 1);
+}
+
+#[test]
+fn only_the_newest_conversations_are_kept_and_an_older_snapshot_never_replaces_a_newer() {
+    let (mut m, log) = new_model();
+    send(&mut m, snapshot("t1", 5));
+    send(&mut m, snapshot("t1", 3)); // late and older: ignored
+    for n in 0..40 {
+        send(&mut m, snapshot(&format!("x{n}"), 1));
+    }
+    // t1 was the oldest of 41 and is forgotten.
+    action(&mut m, "chat.open");
+    assert_eq!(snapshots_seen(&log), 0);
+
+    let (mut m, log) = new_model();
+    send(&mut m, snapshot("t1", 5));
+    send(&mut m, snapshot("t1", 3));
+    action(&mut m, "chat.open");
+    let revision = msgs_of(&log, "chat").into_iter().find_map(|m| match m {
+        PanelMsg::Host(HostMessage::ConversationSnapshot { revision, .. }) => Some(revision),
+        _ => None,
+    });
+    assert_eq!(revision, Some(Revision::Seq(15)));
+}
+
+#[test]
+fn a_conversation_that_was_ended_is_forgotten() {
+    let (mut m, log) = new_model();
+    send(&mut m, snapshot("t1", 1));
+    action(&mut m, "chat.open");
+    assert_eq!(snapshots_seen(&log), 1);
+    action(&mut m, "chat.end");
+    assert!(kinds(&m, "chat").is_empty());
+    action(&mut m, "chat.open");
+    assert_eq!(snapshots_seen(&log), 1, "nothing left to replay");
+}
+
+#[test]
+fn a_closed_but_not_ended_conversation_is_still_replayed_to_the_next_panel() {
+    let (mut m, log) = new_model();
+    send(&mut m, snapshot("t1", 1));
+    action(&mut m, "chat.open");
+    let chat = kinds(&m, "chat")[0].clone();
+    send(&mut m, Msg::Dock(DockMsg::ClosePanel(chat)));
+    action(&mut m, "chat.open");
+    assert_eq!(snapshots_seen(&log), 2);
+}
+
+#[test]
+fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace() {
+    let (mut m, log) = new_model();
+    send(&mut m, workspace("w", None));
+    let sessions = |name: &str| {
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![],
+            sessions: vec![theorem_workbench_core::host::TerminalSessionInfo {
+                session: name.into(),
+                profile: "Shell".into(),
+                backend: theorem_workbench_core::effect::TerminalBackend::Native,
+                workspace: "w".into(),
+                host: None,
+                program: None,
+                state: Default::default(),
+                controlled_elsewhere: false,
+            }],
+        })
+    };
+    send(&mut m, sessions("first"));
+    send(&mut m, sessions("second"));
+    action(&mut m, "term.open");
+    let told: Vec<String> = msgs_of(&log, "term")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Host(HostMessage::TerminalSessions { sessions, .. }) => {
+                Some(sessions[0].session.clone())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(told, vec!["second".to_owned()]);
+    // A panel of another binding is not told.
+    action(&mut m, "note.open");
+    assert!(
+        msgs_of(&log, "note")
+            .iter()
+            .all(|m| !matches!(m, PanelMsg::Host(HostMessage::TerminalSessions { .. })))
+    );
+}
+
+#[test]
+fn composition_steps_reach_the_panel_that_owns_the_keyboard_in_order() {
+    use theorem_workbench_core::Composition;
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    for step in [
+        Composition::Start,
+        Composition::Update { text: "ni".into() },
+        Composition::End {
+            text: "\u{4f60}".into(),
+        },
+    ] {
+        send(&mut m, Msg::Composition(step));
+    }
+    let got: Vec<_> = msgs_of(&log, "note")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Composition(c) => Some(c),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        got,
+        vec![
+            Composition::Start,
+            Composition::Update { text: "ni".into() },
+            Composition::End {
+                text: "\u{4f60}".into()
+            },
+        ]
+    );
+    // While the picker is open the committed text is its filter.
+    send(&mut m, Msg::Picker(PickerMsg::Open));
+    send(&mut m, Msg::Composition(Composition::Start));
+    send(
+        &mut m,
+        Msg::Composition(Composition::End { text: "fi".into() }),
+    );
+    assert_eq!(m.picker().filter(), "fi");
+}
+
+#[test]
+fn a_tab_shows_what_its_panel_names_itself_and_marks_unsaved_changes() {
+    let (mut m, _log) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    let theme = Theme::plain();
+    let area = Rect::new(0, 0, 200, 50);
+    let drawn = |m: &Model| {
+        let mut buf = Buffer::empty(area);
+        view(m, area, &mut buf, &theme);
+        (0..area.height)
+            .map(|y| {
+                (0..area.width)
+                    .map(|x| buf[(x, y)].symbol().to_owned())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let tab_node = |m: &Model| {
+        let tree = semantics(m);
+        tree.nodes
+            .iter()
+            .find(|n| n.id.as_str() == format!("tab:{}", note.as_str()))
+            .cloned()
+            .expect("the tab is in the tree")
+    };
+    let before = tab_node(&m);
+    assert_eq!(before.name, "a.md");
+    assert!(!before.state.modified);
+    assert!(!drawn(&m).contains('\u{25cf}'));
+
+    ch(&mut m, '+');
+    let after = tab_node(&m);
+    assert!(after.state.modified);
+    assert!(drawn(&m).contains('\u{25cf}'));
+    // A panel that names nothing keeps the registry's title.
+    action(&mut m, "term.open");
+    let term = kinds(&m, "term")[0].clone();
+    let tree = semantics(&m);
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == format!("tab:{}", term.as_str()))
+        .unwrap();
+    assert_eq!(node.name, "term");
+}
+
+#[test]
+fn an_answer_for_no_resource_reaches_the_panel_that_asked_on_the_same_turn_whatever_it_says() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let completions = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter(|m| matches!(m, PanelMsg::Completion(_)))
+            .count()
+    };
+    let cached = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter(|m| matches!(m, PanelMsg::Cached(_)))
+            .count()
+    };
+    for outcome in [
+        Outcome::Accepted,
+        Outcome::Refused {
+            code: "denied".into(),
+            reason: "the browser said no".into(),
+        },
+        Outcome::Failed {
+            reason: "no clipboard".into(),
+        },
+    ] {
+        let fx = ch(&mut m, 'c');
+        assert!(!fx.is_empty());
+        let before = completions(&log);
+        send(
+            &mut m,
+            Msg::Completion(Completion::new(
+                last_effect_id(&fx),
+                ResourceRef::None,
+                outcome,
+            )),
+        );
+        assert_eq!(completions(&log), before + 1);
+    }
+    assert_eq!(cached(&log), 0);
+}
+
+#[test]
+fn a_save_for_an_older_revision_is_still_delivered_but_other_older_answers_are_not() {
+    use theorem_workbench_core::completion::{CompletionPayload, DocumentSaved};
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let saved = action(&mut m, "note.save");
+    let save = last_effect_id(&saved);
+    ch(&mut m, '+'); // the text moved on to revision 6
+    send(
+        &mut m,
+        Msg::Completion(completion(save, "a.md", 5, Outcome::Accepted).with_payload(
+            CompletionPayload::DocumentSaved(DocumentSaved {
+                revision: Revision::Seq(5),
+            }),
+        )),
+    );
+    let delivered = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter(|m| matches!(m, PanelMsg::Completion(_)))
+            .count()
+    };
+    assert_eq!(delivered(&log), 1);
+    assert_eq!(m.counters().dropped, 0);
+
+    // The same answer without the saved payload is an older answer: dropped.
+    let again = action(&mut m, "note.save");
+    ch(&mut m, '+');
+    send(
+        &mut m,
+        Msg::Completion(completion(
+            last_effect_id(&again),
+            "a.md",
+            5,
+            Outcome::Accepted,
+        )),
+    );
+    assert_eq!(delivered(&log), 1);
+    assert_eq!(m.counters().dropped, 1);
+}
+
+#[test]
+fn syntax_colour_for_an_older_revision_is_dropped_and_for_the_bound_document_delivered() {
+    use theorem_workbench_core::host::TokenSpan;
+    use theorem_workbench_core::results::SpanEncoding;
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let tokens = |resource: &str, rev: u64| {
+        Msg::Host(HostMessage::DocumentTokens {
+            resource: doc(resource),
+            revision: Revision::Seq(rev),
+            encoding: SpanEncoding::Utf8Bytes,
+            spans: vec![TokenSpan {
+                start: 0,
+                end: 3,
+                class: "keyword".into(),
+            }],
+        })
+    };
+    let seen = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter(|m| matches!(m, PanelMsg::Host(HostMessage::DocumentTokens { .. })))
+            .count()
+    };
+    send(&mut m, tokens("a.md", 4)); // the panel is at 5
+    assert_eq!((seen(&log), m.counters().dropped), (0, 1));
+    send(&mut m, tokens("other.md", 9)); // nobody is bound to it
+    assert_eq!(seen(&log), 0);
+    send(&mut m, tokens("a.md", 5));
+    assert_eq!(seen(&log), 1);
 }
 
 #[test]

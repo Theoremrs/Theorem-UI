@@ -130,7 +130,7 @@ fn unshown_group(model: &Model, id: GroupId, reason: &str, out: &mut Vec<Node>) 
         let mut tab_node = Node::new(
             &format!("tab:{}", pid.as_str()),
             Role::Tab,
-            &tab.title,
+            &model.tab_label(&pid, &tab.title).title,
             Rect::default(),
         );
         tab_node.state.selected =
@@ -174,11 +174,18 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
         .unwrap_or(&[]);
     for tab in &group.tabs {
         let pid = PanelInstanceId::new(tab.panel.0.clone());
-        let title = tabs
+        let registered = tabs
             .iter()
             .find(|t| t.panel == tab.panel)
             .map_or("", |t| t.title.as_str());
-        let mut node = Node::new(&format!("tab:{}", pid.as_str()), Role::Tab, title, tab.rect);
+        let label = model.tab_label(&pid, registered);
+        let mut node = Node::new(
+            &format!("tab:{}", pid.as_str()),
+            Role::Tab,
+            &label.title,
+            tab.rect,
+        );
+        node.state.modified = label.modified;
         node.state.selected = tab.active;
         node.state.focused = tab.active && group.focused;
         node.state.disabled = tab.unavailable;
@@ -200,14 +207,15 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
 
     if let Some(active) = &group.active {
         let pid = PanelInstanceId::new(active.0.clone());
-        let title = tabs
+        let registered = tabs
             .iter()
             .find(|t| t.panel == *active)
             .map_or("", |t| t.title.as_str());
+        let title = model.tab_label(&pid, registered).title;
         let mut body = Node::new(
             &format!("body:{}", pid.as_str()),
             Role::TabPanel,
-            title,
+            &title,
             group.body,
         );
         body.state.focused = group.focused;

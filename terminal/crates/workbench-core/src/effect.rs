@@ -147,6 +147,12 @@ pub enum EffectBody {
     ScmMerge(ScmMerge),
     ScmBlame(FilesPath),
     ScmLog(ScmLog),
+    /// The three sides of a conflicted path (`scm.conflict`), answered by
+    /// `scmConflict`.
+    ScmConflict(FilesPath),
+    /// Settle a conflicted path (`scm.resolve`): take a side, or the text the
+    /// person merged. Answered by the repository state it left.
+    ScmResolve(ScmResolve),
 
     // Language (bound to a document and its revision)
     LanguageHover(LanguagePosition),
@@ -204,7 +210,9 @@ pub enum EffectBody {
     /// A second conversation beside this one (`Conversation.sideChat`), on its
     /// own runtime. Answered by `conversationSideOpened`; effects for it carry a
     /// `conversation` resource naming the id that answer returned.
-    ConversationSideChat,
+    ConversationSideChat(SideChatOpen),
+    /// The side chats that exist, answered by `conversationSideList`.
+    ConversationSideList,
     /// End the side chat the effect's `conversation` resource names
     /// (`SideChat.close`). Accepted with no payload; Intent `Destroy`.
     ConversationSideClose,
@@ -232,7 +240,9 @@ impl EffectKind {
             | DocumentReconcile | DocumentRevert | DocumentSettle => Owner::Documents,
             ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
             | ScmCommit | ScmAmend | ScmBranches | ScmDiffCommit | ScmShowRevision | ScmBranch
-            | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog => Owner::Scm,
+            | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog | ScmConflict | ScmResolve => {
+                Owner::Scm
+            }
             LanguageHover | LanguageComplete | LanguageNavigate | LanguageReferences
             | LanguageDiagnostics | LanguageFormat | LanguageRename | LanguageApplyPlan => {
                 Owner::Language
@@ -250,6 +260,7 @@ impl EffectKind {
             | ConversationSwitch
             | ConversationApproval
             | ConversationSideChat
+            | ConversationSideList
             | ConversationSideClose => Owner::Conversation,
             LayoutLoad | LayoutSave => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
@@ -506,6 +517,29 @@ pub struct ScmLog {
     pub max_count: u32,
 }
 
+/// Which side of a conflict wins.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ConflictTake {
+    Ours,
+    Theirs,
+    /// The text the person merged, in `ScmResolve.text`.
+    Merged,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmResolve {
+    pub path: String,
+    pub take: ConflictTake,
+    /// The merged text; the owner refuses `merged` without it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub text: Option<String>,
+}
+
 // ---- language ----------------------------------------------------------
 
 /// LSP position: `character` counts UTF-16 code units.
@@ -515,6 +549,30 @@ pub struct ScmLog {
 pub struct LanguagePosition {
     pub line: u32,
     pub character: u32,
+}
+
+/// What a side chat starts from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum SideChatScope {
+    /// No history: an empty conversation. What an absent scope means.
+    #[default]
+    Fresh,
+    /// The open conversation's history, carried on in the side chat.
+    Continued,
+    /// A copy of the open conversation at this moment, then its own.
+    Forked,
+}
+
+/// The payload of `conversationSideChat`. An empty one is a fresh side chat.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SideChatOpen {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub scope: Option<SideChatScope>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1081,6 +1139,9 @@ mod tests {
             (EffectKind::DocumentRevert, Owner::Documents),
             (EffectKind::DocumentSettle, Owner::Documents),
             (EffectKind::ConversationSideChat, Owner::Conversation),
+            (EffectKind::ConversationSideList, Owner::Conversation),
+            (EffectKind::ScmConflict, Owner::Scm),
+            (EffectKind::ScmResolve, Owner::Scm),
             (EffectKind::ConversationSideClose, Owner::Conversation),
         ] {
             assert_eq!(kind.owner(), owner);
@@ -1092,8 +1153,8 @@ mod tests {
         for (body, kind) in [
             (EffectBody::ScmBranches, "scmBranches"),
             (EffectBody::DocumentRevert, "documentRevert"),
-            (EffectBody::ConversationSideChat, "conversationSideChat"),
             (EffectBody::ConversationSideClose, "conversationSideClose"),
+            (EffectBody::ConversationSideList, "conversationSideList"),
         ] {
             let v = serde_json::to_value(Effect::new(EffectId(1), ResourceRef::None, body.clone()))
                 .unwrap();

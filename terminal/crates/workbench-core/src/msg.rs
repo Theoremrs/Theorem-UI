@@ -8,7 +8,7 @@ use theorem_workbench_dock::{CellMetrics, GroupId, NavDirection};
 use crate::completion::Completion;
 use crate::host::HostMessage;
 use crate::ids::{ActionId, Actor, PanelInstanceId};
-use crate::panel::PointerKind;
+use crate::panel::{Composition, PointerKind};
 use crate::picker::PickerMsg;
 
 /// A pointer event in whole cells from the grid's top left corner.
@@ -61,6 +61,8 @@ pub enum Msg {
     Pointer(Pointer),
     Text(String),
     Paste(String),
+    /// An IME composition step for the panel that owns the keyboard.
+    Composition(Composition),
     Resize {
         area: Rect,
         metrics: CellMetrics,

@@ -8,10 +8,12 @@ import type { Revision } from "./Revision";
 import type { SearchEnd } from "./SearchEnd";
 import type { SearchRow } from "./SearchRow";
 import type { SearchState } from "./SearchState";
+import type { SpanEncoding } from "./SpanEncoding";
 import type { TerminalBackend } from "./TerminalBackend";
 import type { TerminalProfileInfo } from "./TerminalProfileInfo";
 import type { TerminalSessionInfo } from "./TerminalSessionInfo";
 import type { TextChange } from "./TextChange";
+import type { TokenSpan } from "./TokenSpan";
 
 export type HostMessage = { "type": "documentChanged", resource: ResourceRef, revision: Revision, actor: string, operationId?: string, unit: CoordinateUnit, edits: Array<TextChange>, } | { "type": "documentAcknowledged", resource: ResourceRef, revision: Revision, operationId: string, } | { "type": "documentResync", resource: ResourceRef, revision: Revision, text: string, } | { "type": "documentConflict", resource: ResourceRef, revision: Revision, diskDeleted: boolean, } | { "type": "documentSaved", resource: ResourceRef, revision: Revision, } | { "type": "documentMoved", from: ResourceRef, to: ResourceRef, } | { "type": "documentRetired", resource: ResourceRef, } | { "type": "fileChanged", workspace: string, path: string, } | { "type": "terminalOutput", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalReset", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalResized", resource: ResourceRef, epoch?: number, cols: number, rows: number, } | { "type": "terminalOpened", resource: ResourceRef, epoch: number, program: number, backend: TerminalBackend, 
 /**
@@ -21,7 +23,7 @@ origin: string, cols: number, rows: number, } | { "type": "terminalExited", reso
 /**
  * `exited`, `killed`, `lost` or the core's word.
  */
-reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "searchPage", id: string, rows: Array<SearchRow>, 
+reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "documentTokens", resource: ResourceRef, revision: Revision, encoding: SpanEncoding, spans: Array<TokenSpan>, } | { "type": "searchPage", id: string, rows: Array<SearchRow>, 
 /**
  * Rows of a kind the owner does not read (the host's non-text rows).
  */
