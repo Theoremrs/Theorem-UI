@@ -108,6 +108,8 @@ function pointerJson(
     deltaX: 'deltaX' in event ? event.deltaX : 0,
     deltaY: 'deltaY' in event ? event.deltaY : 0,
     deltaMode: 'deltaMode' in event ? event.deltaMode : 0,
+    // The press count, as the DOM gives it; a pointer event that carries none is a single press.
+    detail: event.detail || 1,
     ctrlKey: event.ctrlKey,
     altKey: event.altKey,
     shiftKey: event.shiftKey,
@@ -122,9 +124,12 @@ function pointerJson(
  */
 export function WorkbenchSurface({
   connect,
+  onDrawn,
   children,
 }: {
   connect: (dispatch: Dispatch) => Adapter
+  /** Called once, after the first frame is on the page: what a story or an oracle waits for. */
+  onDrawn?: () => void
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const hostId = `workbench-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
@@ -132,8 +137,10 @@ export function WorkbenchSurface({
   const input = useRef<HTMLTextAreaElement>(null)
   const handle = useRef<WorkbenchHandle>(undefined)
   const latest = useRef(connect)
+  const drawn = useRef(onDrawn)
   useEffect(() => {
     latest.current = connect
+    drawn.current = onDrawn
   })
 
   const [feed] = useState(createFeed)
@@ -160,6 +167,9 @@ export function WorkbenchSurface({
       })
       sink.effect = (json) => adapter?.perform(JSON.parse(json) as Effect)
       mounted.resize()
+      mounted.when_drawn(() => {
+        if (!disposed) drawn.current?.()
+      })
     })
     const observer = new ResizeObserver(() => handle.current?.resize())
     observer.observe(element)
@@ -287,6 +297,22 @@ export function Workbench({
         workspaceId,
         csrfToken: async () => (await bootstrap()).csrfToken,
       })
+      // The core is told which workspace it shows as soon as it is known, and again when the
+      // host's environment (its epoch) changes.
+      let announced: string | undefined
+      const announce = () => {
+        const { workspaceId: workspace, epoch } = environment.identity
+        const key = `${workspace}/${epoch ?? ''}`
+        if (key === announced) return
+        announced = key
+        dispatch({
+          type: 'workspaceChanged',
+          workspace,
+          ...(epoch ? { environment: epoch } : {}),
+        })
+      }
+      announce()
+      const unsubscribe = environment.subscribe(announce)
       const adapter = createAdapter({
         environment,
         files: createFiles(environment),
@@ -297,6 +323,7 @@ export function Workbench({
       return {
         perform: adapter.perform,
         dispose() {
+          unsubscribe()
           adapter.dispose()
           live.close()
           void checkpoints.dispose()

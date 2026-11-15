@@ -208,6 +208,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "bstr"
+version = "1.13.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6bb31b46c14244e20ee9984b11bf5c992b91fb6939fea616e3512c8baecdbe5f"
+dependencies = [
+ "memchr",
+ "regex-automata",
+ "serde_core",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1669,6 +1680,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "similar"
+version = "3.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2f8bec09ae8fae0f4f265a4559a9334be3929d8504e9b536df0a41302bd1733"
+dependencies = [
+ "bstr",
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "siphasher"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1918,11 +1939,24 @@ dependencies = [
  "serde_json",
  "theorem-workbench-core",
  "theorem-workbench-dock",
+ "theorem-workbench-panels",
  "tui-input",
  "tui-markdown",
  "unicode-width",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "theorem-workbench-changes"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "serde",
+ "serde_json",
+ "similar",
+ "theorem-workbench-core",
+ "unicode-width",
 ]
 
 [[package]]

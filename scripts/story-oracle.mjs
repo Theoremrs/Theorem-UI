@@ -150,14 +150,19 @@ async function motion(story) {
 }
 
 const [command = 'list', target] = process.argv.slice(2)
-// Stories judged against a committed reference; the terminal's are scripts/stories/shoot.cjs's.
-const stories = (await list()).filter((story) => story.reference)
+// Every listed story can be shot; only those judged against a committed reference can be diffed or collaged.
+const listed = await list()
 if (command === 'list') {
-  for (const story of stories) console.log(`${story.id}\t${story.lane}\t${story.reference}`)
+  for (const story of listed) console.log(`${story.id}\t${story.lane}\t${story.reference ?? '-'}`)
   process.exit(0)
 }
+const needsReference = command === 'diff' || command === 'collage'
+const stories = needsReference ? listed.filter((story) => story.reference) : listed
 const chosen = target === 'all' ? stories : stories.filter((story) => story.id === target)
-if (chosen.length === 0) throw new Error(`No story named ${target}`)
+if (chosen.length === 0)
+  throw new Error(
+    `No story named ${target}${needsReference ? ' with a reference' : ''}`,
+  )
 const run = { shot, diff, collage, motion }[command]
 if (!run) throw new Error(`Unknown command ${command}`)
 for (const story of chosen) await run(story)

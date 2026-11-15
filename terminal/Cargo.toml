@@ -23,6 +23,7 @@ js-sys = "0.3"
 # Ratzilla's web-sys, plus the events the frame loop listens for and sends.
 web-sys = { version = "0.3", features = ["Event", "EventTarget", "Navigator"] }
 theorem-workbench-core = { path = "crates/workbench-core" }
+theorem-workbench-panels = { path = "crates/workbench-panels" }
 theorem-workbench-dock = { path = "crates/workbench-dock" }
 keybinds = "0.2"
 serde = { version = "1", features = ["derive"] }

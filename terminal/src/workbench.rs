@@ -24,12 +24,13 @@ use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    Button, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind,
-    Theme, builtin,
+    ActionId, Actor, Button, Capability, Effect, Inbound, Model, Msg, PanelFactories, Pointer,
+    PointerKind, Theme, builtin,
     keys::{KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
+    semantics,
     semantics::{Publish, SemanticPublisher},
-    semantics, update, view,
+    update, view,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use wasm_bindgen::prelude::*;
@@ -38,25 +39,42 @@ use crate::{Drawn, Palette, Screen, palette, run_frames};
 
 /// Where other crates' panels are registered as they land. The picker's panel
 /// and the placeholder for a kind this build cannot serve belong to the core
-/// itself, so today there is nothing to add.
+/// itself; the panels crate adds Files, whose opening and workspace identity go
+/// through the core.
 fn factories() -> PanelFactories {
-    PanelFactories::new()
+    let mut factories = PanelFactories::new();
+    theorem_workbench_panels::register(&mut factories);
+    factories
 }
 
 /// The core's style roles from the terminal's palette roles, so the workbench
-/// changes with the workspace's theme exactly as the agent terminal does.
+/// changes with the workspace's theme exactly as the agent terminal does. The
+/// state and diff roles take the palette field of the same name: a diff line is
+/// text on the line's tint, changed words on the stronger one.
 fn theme_of(p: &Palette) -> Theme {
-    Theme {
-        bg: Style::new().fg(p.ink).bg(p.bg),
-        text: Style::new().fg(p.ink),
-        muted: Style::new().fg(p.muted),
-        line: Style::new().fg(p.line),
-        focus: Style::new()
+    let on = |bg| Style::new().fg(p.ink).bg(bg);
+    Theme::chrome(
+        Style::new().fg(p.ink).bg(p.bg),
+        Style::new().fg(p.ink),
+        Style::new().fg(p.muted),
+        Style::new().fg(p.line),
+        Style::new()
             .fg(p.bg)
             .bg(p.focus)
             .add_modifier(Modifier::BOLD),
-        selected: Style::new().fg(p.bright).bg(p.selection),
-    }
+        Style::new().fg(p.bright).bg(p.selection),
+    )
+    .with_state(
+        Style::new().fg(p.error),
+        Style::new().fg(p.warning),
+        Style::new().fg(p.success),
+    )
+    .with_diff(
+        on(p.added_line),
+        on(p.removed_line),
+        on(p.added_words),
+        on(p.removed_words),
+    )
 }
 
 // --- key conversion -----------------------------------------------------------------------
@@ -163,6 +181,9 @@ struct PointerInput {
     /// `WheelEvent.deltaMode`: 0 pixels, 1 lines, 2 pages.
     #[serde(default)]
     delta_mode: u8,
+    /// `event.detail`: the press count. Absent or 0 is a single press.
+    #[serde(default)]
+    detail: u16,
     #[serde(flatten)]
     mods: Modifiers,
 }
@@ -202,6 +223,11 @@ fn wheel_cells(delta: f64, mode: u8, cell_px: f32, page_cells: u16) -> i16 {
     whole.clamp(f64::from(i16::MIN), f64::from(i16::MAX)) as i16
 }
 
+/// The press count the core takes: the DOM's `detail`, never below 1.
+fn clicks_of(detail: u16) -> u8 {
+    detail.clamp(1, u16::from(u8::MAX)) as u8
+}
+
 fn pointer_msg(
     input: &PointerInput,
     origin: (f64, f64),
@@ -229,6 +255,7 @@ fn pointer_msg(
         x,
         y,
         mods: input.mods.mods(platform),
+        clicks: clicks_of(input.detail),
     })
 }
 
@@ -245,6 +272,41 @@ fn inbound(json: &str) -> Result<Msg, String> {
 #[derive(Deserialize)]
 struct TextInput {
     text: String,
+}
+
+// --- first frame -------------------------------------------------------------------------
+
+/// Something that happens once, when a frame has first been drawn, for a
+/// callback that may be registered before or after it.
+struct FirstFrame<T> {
+    drawn: bool,
+    waiting: Option<T>,
+}
+
+impl<T> FirstFrame<T> {
+    fn new() -> Self {
+        Self {
+            drawn: false,
+            waiting: None,
+        }
+    }
+
+    /// A callback to run when the first frame is drawn. Returned back when it
+    /// is already drawn, for the caller to run now.
+    fn when_drawn(&mut self, callback: T) -> Option<T> {
+        if self.drawn {
+            Some(callback)
+        } else {
+            self.waiting = Some(callback);
+            None
+        }
+    }
+
+    /// A frame was drawn: the waiting callback, the first time only.
+    fn drew(&mut self) -> Option<T> {
+        self.drawn = true;
+        self.waiting.take()
+    }
 }
 
 // --- the core -----------------------------------------------------------------------------
@@ -269,6 +331,9 @@ struct Core {
     touched: bool,
     /// The grid was rebuilt blank or the theme changed: draw whatever the model says.
     repaint: bool,
+    /// The default layout's Files panel has been asked for (or a saved layout
+    /// replaced the default), so it is not asked for again.
+    files_opened: bool,
 }
 
 impl Core {
@@ -284,6 +349,7 @@ impl Core {
             cell: None,
             touched: true,
             repaint: true,
+            files_opened: false,
         }
     }
 
@@ -352,15 +418,22 @@ impl Core {
     /// coalesced into one redraw still publish every change.
     fn step(&mut self, area: Rect, cell: CellMetrics, theme: Theme) -> Step {
         let mut effects = self.resize(area, cell);
+        // Files is open in the default layout as soon as the host can serve it:
+        // the action is the core's own and is refused until `files` is granted.
+        if !self.files_opened && self.model.capabilities().has(&Capability::new("files")) {
+            self.files_opened = true;
+            effects.extend(self.update(Msg::Action {
+                id: ActionId::new("files.focus"),
+                actor: Actor::Human,
+            }));
+        }
         effects.extend(self.update(Msg::Tick));
         if theme != self.theme {
             self.theme = theme;
             self.repaint = true;
         }
         let redraw = self.model.take_dirty() | std::mem::take(&mut self.repaint);
-        let semantics = (redraw || self.touched)
-            .then(|| self.publish())
-            .flatten();
+        let semantics = (redraw || self.touched).then(|| self.publish()).flatten();
         self.touched = false;
         Step {
             effects,
@@ -414,6 +487,7 @@ struct Mounted {
     on_effect: js_sys::Function,
     on_semantics: js_sys::Function,
     cell: (f32, f32),
+    first_frame: Rc<RefCell<FirstFrame<js_sys::Function>>>,
 }
 
 impl Drawn for Mounted {
@@ -438,6 +512,13 @@ impl Drawn for Mounted {
 
     fn draw(&mut self, frame: &mut Frame) {
         self.core.borrow().draw(frame);
+    }
+
+    fn drawn(&mut self) {
+        let waiting = self.first_frame.borrow_mut().drew();
+        if let Some(callback) = waiting {
+            let _ = callback.call0(&JsValue::NULL);
+        }
     }
 
     fn repaint(&mut self) {
@@ -466,10 +547,20 @@ pub struct WorkbenchHandle {
     parent: web_sys::Element,
     on_effect: js_sys::Function,
     on_semantics: js_sys::Function,
+    first_frame: Rc<RefCell<FirstFrame<js_sys::Function>>>,
 }
 
 #[wasm_bindgen]
 impl WorkbenchHandle {
+    /// Calls `callback` once the first frame is on the page: at once if it
+    /// already is. A story or an oracle is ready from then, not from mount.
+    pub fn when_drawn(&self, callback: js_sys::Function) {
+        let now = self.first_frame.borrow_mut().when_drawn(callback);
+        if let Some(callback) = now {
+            let _ = callback.call0(&JsValue::NULL);
+        }
+    }
+
     fn send(&self, msg: Msg) {
         let effects = self.core.borrow_mut().update(msg);
         deliver(&self.on_effect, &self.on_semantics, &effects, None);
@@ -567,6 +658,7 @@ impl WorkbenchHandle {
         let value: Value = serde_json::from_str(json).map_err(js_error)?;
         let mut core = self.core.borrow_mut();
         core.touched = true;
+        core.files_opened = true;
         core.model.restore(value).map(|_| ()).map_err(js_error)
     }
 
@@ -591,6 +683,7 @@ pub fn mount_workbench(
     let platform = platform_of(&web_sys::window().ok_or("no window")?);
     let core = Rc::new(RefCell::new(Core::new(platform)));
     let parent = screen.parent.clone();
+    let first_frame = Rc::new(RefCell::new(FirstFrame::new()));
     run_frames(
         screen,
         Rc::new(RefCell::new(Mounted {
@@ -598,6 +691,7 @@ pub fn mount_workbench(
             on_effect: on_effect.clone(),
             on_semantics: on_semantics.clone(),
             cell: (0.0, 0.0),
+            first_frame: first_frame.clone(),
         })),
     );
     Ok(WorkbenchHandle {
@@ -605,13 +699,14 @@ pub fn mount_workbench(
         parent,
         on_effect,
         on_semantics,
+        first_frame,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use theorem_workbench_core::keys::parse_chord;
+    use theorem_workbench_core::{HostMessage, keys::parse_chord};
 
     const CELL: CellMetrics = CellMetrics {
         width_px: 8.0,
@@ -637,10 +732,16 @@ mod tests {
     #[test]
     fn dom_key_names_become_inputs() {
         let none = Mods::NONE;
-        assert_eq!(key_input("ArrowDown", none).map(|k| k.key()), Some(Key::Down));
+        assert_eq!(
+            key_input("ArrowDown", none).map(|k| k.key()),
+            Some(Key::Down)
+        );
         assert_eq!(key_input("Escape", none).map(|k| k.key()), Some(Key::Esc));
         assert_eq!(key_input("Enter", none).map(|k| k.key()), Some(Key::Enter));
-        assert_eq!(key_input("PageUp", none).map(|k| k.key()), Some(Key::PageUp));
+        assert_eq!(
+            key_input("PageUp", none).map(|k| k.key()),
+            Some(Key::PageUp)
+        );
         assert_eq!(key_input("F5", none).map(|k| k.key()), Some(Key::F5));
         assert_eq!(key_input(" ", none).map(|k| k.key()), Some(Key::Char(' ')));
         assert_eq!(key_input("+", none).map(|k| k.key()), Some(Key::Char('+')));
@@ -653,7 +754,16 @@ mod tests {
 
     #[test]
     fn keys_that_are_not_inputs_are_dropped() {
-        for key in ["Shift", "Control", "Alt", "Meta", "Dead", "Process", "Unidentified", ""] {
+        for key in [
+            "Shift",
+            "Control",
+            "Alt",
+            "Meta",
+            "Dead",
+            "Process",
+            "Unidentified",
+            "",
+        ] {
             assert_eq!(key_input(key, Mods::NONE), None, "{key}");
         }
         assert_eq!(key_input("NotAKey", Mods::NONE), None);
@@ -688,7 +798,10 @@ mod tests {
         assert_eq!(cell_at((100.0, 50.0), origin, CELL), (0, 0));
         assert_eq!(cell_at((107.9, 65.9), origin, CELL), (0, 0));
         assert_eq!(cell_at((108.0, 66.0), origin, CELL), (1, 1));
-        assert_eq!(cell_at((100.0 + 8.0 * 30.0 + 3.0, 50.0 + 16.0 * 7.0), origin, CELL), (30, 7));
+        assert_eq!(
+            cell_at((100.0 + 8.0 * 30.0 + 3.0, 50.0 + 16.0 * 7.0), origin, CELL),
+            (30, 7)
+        );
         // Left of or above the grid is the first cell; far past it is clamped.
         assert_eq!(cell_at((10.0, -5.0), origin, CELL), (0, 0));
         assert_eq!(cell_at((1e12, 1e12), origin, CELL), (u16::MAX, u16::MAX));
@@ -728,6 +841,7 @@ mod tests {
                 x: 3,
                 y: 2,
                 mods: Mods::CTRL,
+                clicks: 1,
             })
         );
         let wheel: PointerInput =
@@ -740,8 +854,87 @@ mod tests {
                 x: 0,
                 y: 0,
                 mods: Mods::NONE,
+                clicks: 1,
             })
         );
+    }
+
+    #[test]
+    fn the_press_count_is_the_dom_detail_and_never_below_one() {
+        assert_eq!(clicks_of(0), 1);
+        assert_eq!(clicks_of(1), 1);
+        assert_eq!(clicks_of(2), 2);
+        assert_eq!(clicks_of(3), 3);
+        assert_eq!(clicks_of(60000), u8::MAX);
+        let down = |extra: &str| -> u8 {
+            let json = format!(r#"{{"type":"down","clientX":0,"clientY":0{extra}}}"#);
+            let input: PointerInput = serde_json::from_str(&json).unwrap();
+            match pointer_msg(&input, (0.0, 0.0), CELL, 40, Platform::Other) {
+                Msg::Pointer(p) => p.clicks,
+                other => panic!("{other:?}"),
+            }
+        };
+        assert_eq!(down(""), 1);
+        assert_eq!(down(r#","detail":0"#), 1);
+        assert_eq!(down(r#","detail":2"#), 2);
+    }
+
+    #[test]
+    fn the_theme_takes_each_role_from_the_palette_field_of_the_same_name() {
+        use ratatui::style::Color;
+        let p = Palette::default();
+        let theme = theme_of(&p);
+        assert_eq!(theme.bg, Style::new().fg(p.ink).bg(p.bg));
+        assert_eq!(theme.muted, Style::new().fg(p.muted));
+        assert_eq!(theme.error, Style::new().fg(p.error));
+        assert_eq!(theme.warning, Style::new().fg(p.warning));
+        assert_eq!(theme.success, Style::new().fg(p.success));
+        assert_eq!(theme.added_line.bg, Some(p.added_line));
+        assert_eq!(theme.removed_line.bg, Some(p.removed_line));
+        assert_eq!(theme.added_words.bg, Some(p.added_words));
+        assert_eq!(theme.removed_words.bg, Some(p.removed_words));
+        // Added and removed are told apart, and no role is left at the plain theme's.
+        assert_ne!(theme.added_line, theme.removed_line);
+        assert_ne!(theme.error, Theme::plain().error);
+        assert_ne!(theme.added_words.bg, Some(Color::Reset));
+    }
+
+    #[test]
+    fn the_first_frame_callback_runs_once_whenever_it_was_registered() {
+        let mut early = FirstFrame::new();
+        assert!(early.when_drawn(1).is_none());
+        assert_eq!(early.drew(), Some(1));
+        assert_eq!(early.drew(), None);
+        let mut late = FirstFrame::new();
+        assert_eq!(late.drew(), None);
+        assert_eq!(late.when_drawn(2), Some(2));
+    }
+
+    #[test]
+    fn files_open_in_the_default_layout_once_the_host_grants_them() {
+        let mut core = core();
+        let files = |core: &Core| core.model.panel_ids().any(|(_, k)| k.as_str() == "files");
+        assert!(!files(&core));
+        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files"]),
+        }));
+        core.step(AREA, CELL, Theme::plain());
+        assert!(files(&core));
+        // Not asked for again once closed.
+        let count = core.model.panel_ids().count();
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(core.model.panel_ids().count(), count);
+    }
+
+    #[test]
+    fn a_workspace_message_reaches_the_core() {
+        let msg = inbound(
+            r#"{"channel":"host","type":"workspaceChanged","workspace":"w1","environment":"e1"}"#,
+        )
+        .unwrap();
+        let mut core = core();
+        core.update(msg);
+        assert_eq!(core.model.workspace().workspace, "w1");
     }
 
     #[test]
@@ -749,7 +942,11 @@ mod tests {
         let host = r#"{"channel":"host","type":"themeChanged","revision":2,"dark":true}"#;
         assert!(matches!(inbound(host), Ok(Msg::Host(_))));
         let completion = r#"{"channel":"completion","effect":1,"resource":{"type":"none"},"outcome":{"status":"accepted"}}"#;
-        assert!(matches!(inbound(completion), Ok(Msg::Completion(_))), "{:?}", inbound(completion));
+        assert!(
+            matches!(inbound(completion), Ok(Msg::Completion(_))),
+            "{:?}",
+            inbound(completion)
+        );
         assert!(inbound(r#"{"type":"themeChanged","revision":2,"dark":true}"#).is_err());
         assert!(inbound("not json").is_err());
     }
@@ -759,7 +956,11 @@ mod tests {
         let mut core = Core::new(Platform::Other);
         let step = core.step(AREA, CELL, Theme::plain());
         assert!(step.redraw);
-        assert!(step.semantics.as_deref().is_some_and(|s| s.contains(r#""type":"full""#)));
+        assert!(
+            step.semantics
+                .as_deref()
+                .is_some_and(|s| s.contains(r#""type":"full""#))
+        );
         assert_eq!(core.model.viewport().map(|v| v.area), Some(AREA));
     }
 
@@ -779,8 +980,12 @@ mod tests {
         let mut core = core();
         let before = core.publisher.current().cloned().unwrap();
         core.update(Msg::Picker(theorem_workbench_core::picker::PickerMsg::Open));
-        core.update(Msg::Picker(theorem_workbench_core::picker::PickerMsg::Filter("fi".into())));
-        core.update(Msg::Picker(theorem_workbench_core::picker::PickerMsg::Filter("fil".into())));
+        core.update(Msg::Picker(
+            theorem_workbench_core::picker::PickerMsg::Filter("fi".into()),
+        ));
+        core.update(Msg::Picker(
+            theorem_workbench_core::picker::PickerMsg::Filter("fil".into()),
+        ));
         let step = core.step(AREA, CELL, Theme::plain());
         assert!(step.redraw);
         let diff = step.semantics.expect("a diff");
