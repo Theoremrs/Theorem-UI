@@ -170,3 +170,12 @@ and [Liquid glass light](evidence/theme-glass/composer-liquid-light.png).
 The remaining browser reruns passed: seven navigation/export checks, 11
 Expressive/settings checks and three reversed custom-palette checks. The
 production Vite build and all 10 built composer interaction checks passed.
+
+The first GitHub run at `cbc4d12a` passed unit, built composer, palette and all
+56 interaction checks, then timed out locating Custom appearance in the
+continuity harness dialog. Its saved artifact confirmed the failing locator;
+the same run passed locally. Portability coverage now follows the dedicated
+`/settings/appearance` route after the editor/IME assertions, including actual
+page reload and reset. All 14 continuity checks pass locally with this change.
+Failures also print their exception and save a screenshot and visible text.
+See [route continuity evidence](evidence/theme-glass/chromium-continuity.json).
