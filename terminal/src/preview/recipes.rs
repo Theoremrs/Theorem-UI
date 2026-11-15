@@ -536,7 +536,11 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
         return None;
     }
     const ARROWS: [&str; 8] = ["-.->", "==>", "-->", "---", "-.-", "--o", "--x", "<-->"];
+    let mut statements = Vec::new();
     for line in lines {
+        statements.extend(graph_statements(line)?);
+    }
+    for line in statements.iter().map(String::as_str) {
         if line.starts_with("subgraph")
             || line == "end"
             || line.starts_with("classDef")
@@ -547,7 +551,12 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
         {
             continue;
         }
-        // Split the line on arrows, dropping |labels|.
+        // `A & B --> C` fans out; rather than guess, leave it to the
+        // type illustration.
+        if line.contains('&') {
+            return None;
+        }
+        // Split the statement on arrows; labels are already gone.
         let mut rest = line.to_owned();
         let mut ids = Vec::new();
         loop {
@@ -560,10 +569,6 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
                 None => (rest.clone(), None),
             };
             let head = head.trim();
-            let head = head
-                .strip_prefix('|')
-                .and_then(|h| h.split_once('|').map(|(_, r)| r.trim()))
-                .unwrap_or(head);
             let id: String = head
                 .chars()
                 .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
@@ -586,6 +591,45 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
         }
     }
     (!nodes.is_empty()).then_some((nodes, edges, lr))
+}
+
+/// One flowchart line as its statements: split on `;` outside labels, with
+/// every label's text (`[..]`, `(..)`, `{..}`, `"..."`, `|..|`) removed so an
+/// arrow written inside a label is never read as an edge. Unbalanced
+/// brackets or quotes are malformed: `None`.
+fn graph_statements(line: &str) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut closers: Vec<char> = Vec::new();
+    for c in line.chars() {
+        match closers.last() {
+            Some(&close) if c == close => {
+                closers.pop();
+            }
+            Some('"') | Some('|') => {}
+            _ => match c {
+                '[' => closers.push(']'),
+                '(' => closers.push(')'),
+                '{' => closers.push('}'),
+                '"' => closers.push('"'),
+                '|' => closers.push('|'),
+                ']' | ')' | '}' => return None,
+                ';' if closers.is_empty() => out.push(std::mem::take(&mut cur)),
+                _ if closers.is_empty() => cur.push(c),
+                _ => {}
+            },
+        }
+    }
+    if !closers.is_empty() {
+        return None;
+    }
+    out.push(cur);
+    Some(
+        out.into_iter()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty())
+            .collect(),
+    )
 }
 
 fn accepts_graph(source: &Source, _: bool) -> bool {
@@ -753,7 +797,13 @@ pub fn parse_series(text: &str) -> Option<Result<Vec<(String, f64)>, PreviewErro
         }
         out.push((k, n));
     }
-    if out.iter().map(|(_, v)| v).sum::<f64>() <= 0.0 {
+    let total = out.iter().map(|(_, v)| v).sum::<f64>();
+    if !total.is_finite() {
+        return Some(Err(PreviewError::Unsupported(
+            "the values are too large to total; a part-of-whole preview needs a finite sum".into(),
+        )));
+    }
+    if total <= 0.0 {
         return Some(Err(PreviewError::Unsupported(
             "the values sum to zero".into(),
         )));
@@ -770,6 +820,8 @@ pub const DONUT: (i32, i32, f64, f64) = (40, 42, 30.0, 15.0);
 
 /// Each annulus pixel's category: angle from 12 o'clock clockwise against
 /// cumulative fractions. Pixel centres are tested, so the grid is exact.
+/// When the fractions leave part of the whole uncovered (categories not
+/// shown), that arc is `fractions.len()`, never given to the last slice.
 pub fn donut_category(x: i32, y: i32, fractions: &[f64]) -> Option<usize> {
     let (cx, cy, ro, ri) = DONUT;
     let (dx, dy) = (
@@ -791,7 +843,11 @@ pub fn donut_category(x: i32, y: i32, fractions: &[f64]) -> Option<usize> {
             return Some(i);
         }
     }
-    Some(fractions.len() - 1)
+    if acc < 1.0 - 1e-9 {
+        Some(fractions.len())
+    } else {
+        Some(fractions.len() - 1)
+    }
 }
 
 fn run_chart(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError> {
@@ -805,9 +861,14 @@ fn run_chart(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewErro
     let mut counts = vec![0usize; shown];
     for y in 0..ARTBOARD.1 as i32 {
         for x in 0..80 {
-            if let Some(i) = donut_category(x, y, &fractions) {
-                b.set(x, y, CATEGORICAL[i]);
-                counts[i] += 1;
+            match donut_category(x, y, &fractions) {
+                // The share of the categories not shown: a neutral arc.
+                Some(i) if i == shown => b.set(x, y, ix::BASE_800),
+                Some(i) => {
+                    b.set(x, y, CATEGORICAL[i]);
+                    counts[i] += 1;
+                }
+                None => {}
             }
         }
     }
@@ -846,7 +907,13 @@ fn run_chart(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewErro
         notes.push(format!("Below preview resolution: {}.", below.join(", ")));
     }
     if series.len() > shown {
-        notes.push(format!("Shows {shown} of {} categories.", series.len()));
+        let rest: f64 = series[shown..].iter().map(|(_, v)| v).sum::<f64>() / total;
+        notes.push(format!(
+            "Shows {shown} of {} categories; the other {} ({:.0}%) are the grey arc.",
+            series.len(),
+            series.len() - shown,
+            rest * 100.0
+        ));
     }
     let limitation = (!notes.is_empty()).then(|| Limitation {
         code: "partial_chart".into(),
@@ -878,10 +945,18 @@ fn widgets(html: &str) -> Vec<Widget> {
     let mut rest = body;
     while let Some(i) = rest.find('<') {
         rest = &rest[i + 1..];
+        // A comment is not shown: skip it whole.
+        if let Some(after) = rest.strip_prefix("!--") {
+            rest = after.find("-->").map_or("", |end| &after[end + 3..]);
+            continue;
+        }
         let name: String = rest
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric())
             .collect();
+        // Step past the tag, quoted attribute values included, so markup
+        // written inside an attribute is never read as an element.
+        rest = &rest[tag_end(rest)..];
         let w = match name.as_str() {
             "h1" | "h2" | "h3" | "header" => Widget::Heading,
             "button" => Widget::Button,
@@ -903,6 +978,22 @@ fn widgets(html: &str) -> Vec<Widget> {
         out.push(w);
     }
     out
+}
+
+/// The byte just past the `>` that closes the tag `t` starts, ignoring any
+/// `>` inside a quoted attribute value; the end of `t` if it never closes.
+fn tag_end(t: &str) -> usize {
+    let mut quote = None;
+    for (i, c) in t.char_indices() {
+        match (quote, c) {
+            (Some(q), c) if c == q => quote = None,
+            (Some(_), _) => {}
+            (None, '"' | '\'') => quote = Some(c),
+            (None, '>') => return i + 1,
+            _ => {}
+        }
+    }
+    t.len()
 }
 
 fn accepts_app(source: &Source, _: bool) -> bool {
@@ -1145,6 +1236,61 @@ mod tests {
             None,
         );
         assert_eq!(p.recipe, "graph");
+    }
+
+    #[test]
+    fn graph_statements_and_labels_do_not_invent_edges() {
+        let (nodes, edges, _) = parse_graph("graph LR\nA-->B; D-->E\n").unwrap();
+        assert_eq!(nodes, ["A", "B", "D", "E"]);
+        assert_eq!(edges, [(0, 1), (2, 3)]);
+        let (nodes, edges, _) =
+            parse_graph("graph TD\nA[\"x --> y\"] -->|go --> on| B\n").unwrap();
+        assert_eq!(nodes, ["A", "B"]);
+        assert_eq!(edges, [(0, 1)]);
+        assert!(parse_graph("graph TD\nA & B --> C\n").is_none());
+        assert!(parse_graph("graph TD\nA[open --> B\n").is_none());
+    }
+
+    #[test]
+    fn omitted_categories_do_not_swell_the_last_slice() {
+        let mut t = String::from("pie\n");
+        for i in 0..9 {
+            t.push_str(&format!("\"C{i}\" : 1\n"));
+        }
+        let series = parse_series(&t).unwrap().unwrap();
+        let fr: Vec<f64> = series.iter().take(8).map(|_| 1.0 / 9.0).collect();
+        let mut counts = vec![0usize; 9];
+        for y in 0..84 {
+            for x in 0..80 {
+                if let Some(i) = donut_category(x, y, &fr) {
+                    counts[i] += 1;
+                }
+            }
+        }
+        let all: usize = counts.iter().sum();
+        let last = counts[7] as f64 / all as f64;
+        assert!((last - 1.0 / 9.0).abs() <= 0.03, "eighth slice {last}");
+        let p = render(&src("chart", "", &t), None);
+        assert!(p.limitation.unwrap().detail.contains("grey arc"));
+    }
+
+    #[test]
+    fn an_overflowing_total_falls_back() {
+        let p = render(&src("chart", "", "pie\n\"A\" : 1e308\n\"B\" : 1e308\n"), None);
+        assert_eq!(p.method, Method::TypeIllustration);
+        assert_eq!(p.limitation.unwrap().code, "unsupported");
+    }
+
+    #[test]
+    fn commented_and_attribute_markup_is_not_a_control() {
+        assert_eq!(
+            widgets("<body><!-- <button>Old</button> --><h1>Hello</h1></body>"),
+            [Widget::Heading]
+        );
+        assert_eq!(
+            widgets("<body><p title=\"<button>\">x</p></body>"),
+            [Widget::Text]
+        );
     }
 
     #[test]

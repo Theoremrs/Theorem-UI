@@ -154,8 +154,9 @@ pub fn convert(
     if pixel_art {
         // The largest integer step that fits; never upsampled past 1:1.
         let step = w.div_ceil(bw).max(h.div_ceil(bh)).max(1);
-        let (rw, rh) = (w / step, h / step);
-        let mut raster = Raster::new(rw.max(1) as u16, rh.max(1) as u16, ix::BLACK);
+        // A thin image still keeps one sampled row or column.
+        let (rw, rh) = ((w / step).max(1), (h / step).max(1));
+        let mut raster = Raster::new(rw as u16, rh as u16, ix::BLACK);
         for y in 0..rh {
             for x in 0..rw {
                 let i = ((y * step) * w + x * step) as usize * 4;
@@ -286,5 +287,19 @@ mod tests {
         assert_eq!((out.width, out.height), (16, 8));
         assert_eq!(out.get(0, 0), Some(ix::RED));
         assert_eq!(out.get(1, 0), Some(ix::BLACK));
+    }
+
+    #[test]
+    fn thin_pixel_art_keeps_a_row_and_a_column() {
+        let red = [0xD1u8, 0x4D, 0x41, 255];
+        let wide: Vec<u8> = (0..4000).flat_map(|_| red).collect();
+        let out = convert(&wide, 4000, 1, 96, 60, true).unwrap().raster;
+        assert_eq!(out.height, 1);
+        assert!(out.width >= 1 && out.width <= 96);
+        assert!(out.indices.iter().all(|i| *i == ix::RED), "{:?}", out.indices);
+        let tall = convert(&wide, 1, 4000, 96, 60, true).unwrap().raster;
+        assert_eq!(tall.width, 1);
+        assert!(tall.height >= 1 && tall.height <= 60);
+        assert!(tall.indices.iter().all(|i| *i == ix::RED));
     }
 }

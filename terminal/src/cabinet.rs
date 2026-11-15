@@ -157,6 +157,12 @@ pub(crate) struct Cabinet {
     /// Card height in rows, the last layout's.
     card_rows: u16,
     gallery_rows: u16,
+    /// Columns, card rows and gallery rows of the last layout: the selection
+    /// is brought into view only when these or the selection change, so free
+    /// scrolling is never undone by the next frame.
+    laid_out: (usize, u16, u16),
+    /// The selection changed outside a key or click and should be shown.
+    reveal_pending: bool,
     geometry: Option<Geometry>,
     epoch: u64,
     sent_epoch: u64,
@@ -240,6 +246,8 @@ impl Cabinet {
             columns: 1,
             card_rows: 1,
             gallery_rows: 1,
+            laid_out: (0, 0, 0),
+            reveal_pending: false,
             geometry: None,
             epoch: 0,
             sent_epoch: 0,
@@ -249,8 +257,11 @@ impl Cabinet {
 
     fn set_view(&mut self, json: &str) -> Result<(), serde_json::Error> {
         let view: View = serde_json::from_str(json)?;
-        if let Some(selected) = &view.selected {
+        if let Some(selected) = &view.selected
+            && self.selected.as_ref() != Some(selected)
+        {
             self.selected = Some(selected.clone());
+            self.reveal_pending = true;
         }
         // A selection whose card left the collection falls to its neighbour.
         if let Some(key) = &self.selected
@@ -266,6 +277,7 @@ impl Cabinet {
                 .entries
                 .get(old.min(view.entries.len().saturating_sub(1)))
                 .map(|e| e.key.clone());
+            self.reveal_pending = true;
         }
         self.view = view;
         Ok(())
@@ -283,12 +295,13 @@ impl Cabinet {
         Some(key)
     }
 
-    /// Scrolls so the card at `index` is wholly in view.
+    /// Scrolls so the card at `index` is wholly in view; a card taller than
+    /// the gallery shows its top.
     fn reveal(&mut self, index: usize) {
         let row = (index / self.columns.max(1)) as u16;
         let top = row * self.card_rows;
         let bottom = top + self.card_rows;
-        if top < self.scroll {
+        if self.card_rows >= self.gallery_rows || top < self.scroll {
             self.scroll = top;
         } else if bottom > self.scroll + self.gallery_rows {
             self.scroll = bottom.saturating_sub(self.gallery_rows);
@@ -665,10 +678,16 @@ impl Cabinet {
         self.columns = columns;
         self.card_rows = card_rows;
         self.gallery_rows = gallery.height.max(1);
-        // Keep the selection in view across a resize.
-        if let Some(index) = self.index_of_selected() {
+        // Keep the selection in view across a resize or a new selection, and
+        // only then: between those, scrolling is the reader's.
+        let laid_out = (columns, card_rows, self.gallery_rows);
+        if (self.laid_out != laid_out || self.reveal_pending)
+            && let Some(index) = self.index_of_selected()
+        {
             self.reveal(index);
         }
+        self.laid_out = laid_out;
+        self.reveal_pending = false;
         self.scroll_by(0);
 
         let mut slots = Vec::new();
@@ -683,8 +702,17 @@ impl Cabinet {
                 Rect::new(gallery.x, gallery.y + 1, gallery.width, 1),
             );
         }
-        let entries = self.view.entries.clone();
-        for (index, entry) in entries.iter().enumerate() {
+        // Only the rows in view are visited; entries are borrowed, not copied.
+        let first = usize::from(self.scroll / card_rows.max(1)) * columns;
+        let last = (usize::from((self.scroll + gallery.height) / card_rows.max(1)) + 1) * columns;
+        let entries = &self.view.entries;
+        let end = last.min(entries.len());
+        for (index, entry) in entries
+            .iter()
+            .enumerate()
+            .take(end)
+            .skip(first.min(end))
+        {
             let (r, c) = ((index / columns) as u16, (index % columns) as u16);
             let top = i32::from(r * card_rows) - i32::from(self.scroll);
             let bottom = top + i32::from(card_rows);
