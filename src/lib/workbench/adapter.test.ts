@@ -17,7 +17,13 @@ import {
 } from './environment/test-host'
 import { createLayout, WORKBENCH_SCHEMA } from './layout'
 import type { Checkpoints } from './layout'
-import type { Completion, Effect, EffectKind, HostMessage } from './wire'
+import type {
+  Completion,
+  Effect,
+  EffectKind,
+  HostMessage,
+  Inbound,
+} from './wire'
 
 // ---- one sample payload per kind; a kind added in Rust fails to compile here -------------------
 
@@ -31,6 +37,7 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   filesSearch: { query: 'a' },
   filesCreate: { path: 'new.txt', directory: false },
   filesRename: { from: 'a', to: 'b' },
+  filesCopy: { from: 'a', to: 'b', overwrite: false },
   filesDelete: { path: 'a' },
   documentCreate: { path: 'a.md' },
   documentOpen: {},
@@ -92,9 +99,12 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   terminalDetach: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
   terminalEnd: undefined,
   conversationCreate: undefined,
-  conversationSend: { text: 't' },
-  conversationInput: { runId: 'r', text: 't' },
+  conversationSend: { clientMessageId: 'c1', text: 't', attachments: [] },
+  conversationInput: { runId: 'r', clientMessageId: 'c2', text: 't' },
   conversationCancel: { runId: 'r' },
+  conversationRetry: { messageId: 'm' },
+  conversationEdit: { messageId: 'm', clientMessageId: 'c3', text: 't' },
+  conversationSwitch: { threadId: 'th' },
   conversationApproval: { runId: 'r', approvalId: 'a', decision: 'allow' },
   layoutLoad: undefined,
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
@@ -189,7 +199,13 @@ class FakePort {
     program: 1 as number | undefined,
     cols: 80 as number | undefined,
     rows: 24 as number | undefined,
+    offset: 0,
+    streamEpoch: 's-1' as string | undefined,
+    origin: 'launched' as string | undefined,
+    processOwnedBy: 'herdr-core' as string | undefined,
+    lease: { generation: 4 as number | undefined },
   }
+  seen: { input?: unknown[]; attach?: unknown[] } = {}
   constructor(private readonly calls: Call[]) {}
   subscribe = (listener: (event: never) => void) => {
     this.listeners.add(listener)
@@ -213,18 +229,22 @@ class FakePort {
       bindingEpoch: 2,
       program: 1,
     })
-  attach = () =>
-    this.answer('terminalAttach', {
+  attach = (...args: unknown[]) => {
+    this.seen.attach = args
+    return this.answer('terminalAttach', {
       terminalId: 't1',
       bindingEpoch: 2,
       program: 1,
     })
-  input = () =>
-    this.answer('terminalInput', {
+  }
+  input = (...args: unknown[]) => {
+    this.seen.input = args
+    return this.answer('terminalInput', {
       inputId: 'x',
       duplicate: false,
       discarded: false,
     })
+  }
   resize = () => this.answer('terminalResize', { cols: 100, rows: 30 })
   detach = () => this.answer('terminalDetach', { detached: true as const })
   kill = () =>
@@ -243,10 +263,18 @@ async function setup(
     'artifacts',
     'clipboard',
   ],
+  fileOverrides: Record<string, unknown> = {},
 ) {
   const calls: Call[] = []
-  const messages: (Completion | HostMessage)[] = []
-  const host = stubHost([op('workspace.files.list')])
+  const messages: Inbound[] = []
+  const host = stubHost(
+    [
+      'workspace.files.list',
+      'documents.open',
+      'scm.status',
+      'terminal.open',
+    ].map((name) => op(name)),
+  )
   const live = new FakeLive()
   const { environment } = testEnvironment(host, live)
   await environment.settled()
@@ -296,14 +324,18 @@ async function setup(
     environment,
     files: {
       list: filesCall('filesList'),
+      stat: filesCall('filesStat'),
+      search: filesCall('filesSearch'),
       create: filesCall('filesCreate'),
       rename: filesCall('filesRename'),
+      copy: filesCall('filesCopy'),
       delete: filesCall('filesDelete'),
       watch: (directory: string, listener: (event: never) => void) => {
         watchers.set(directory, listener)
         return () => void watchers.delete(directory)
       },
-    },
+      ...fileOverrides,
+    } as never,
     terminal: {
       create: () => port as unknown as TerminalPort,
       host: {
@@ -315,7 +347,7 @@ async function setup(
     },
     layout: { load: layoutCall('layoutLoad'), save: layoutCall('layoutSave') },
     ...Object.fromEntries(present.map((name) => [name, owner(name)])),
-    dispatch: (message: Completion | HostMessage) => messages.push(message),
+    dispatch: (message: Inbound) => messages.push(message),
     ...overrides,
   }
   const adapter = createAdapter(options)
@@ -335,8 +367,20 @@ async function setup(
       for (const listener of [...terminalHostListeners])
         listener(event as never)
     },
-    completions: () => messages.filter((m): m is Completion => 'effect' in m),
-    hostMessages: () => messages.filter((m): m is HostMessage => 'type' in m),
+    completions: () =>
+      messages.flatMap((m) => {
+        if (m.channel !== 'completion') return []
+        const { channel, ...completion } = m
+        void channel
+        return [completion satisfies Completion]
+      }),
+    hostMessages: () =>
+      messages.flatMap((m) => {
+        if (m.channel !== 'host') return []
+        const { channel, ...message } = m
+        void channel
+        return [message satisfies HostMessage]
+      }),
   }
 }
 
@@ -368,11 +412,6 @@ describe('routing', () => {
     for (const kind of KINDS) {
       const made = t.calls.filter((call) => call.kind === kind)
       const owners = new Set(made.map((call) => call.owner))
-      if (kind === 'filesStat' || kind === 'filesSearch') {
-        // The files owner has no such call yet: nothing is called, and the effect says so.
-        expect(made).toHaveLength(0)
-        continue
-      }
       expect({ kind, owners: [...owners] }).toEqual({
         kind,
         owners: [OWNER_OF(kind)],
@@ -497,15 +536,139 @@ describe('outcomes', () => {
     })
   })
 
-  test('files stat and search, which the files owner does not have, are refused as owner_unavailable', async () => {
-    const t = await setup()
+  test('a listing passes the host verdicts on ignored and hidden entries, and only those', async () => {
+    const t = await setup({}, undefined, {
+      list: async (request: { requestId: string }) => ({
+        workspaceId: 'w1',
+        requestId: request.requestId,
+        outcome: 'accepted' as const,
+        value: {
+          path: 'src',
+          rows: [
+            {
+              name: 'a',
+              path: 'src/a',
+              kind: 'file' as const,
+              ignored: true,
+              hidden: false,
+            },
+            { name: 'b', path: 'src/b', kind: 'directory' as const },
+          ],
+        },
+      }),
+    })
+    t.adapter.perform(effectOf(1, 'filesList'))
+    await t.settle()
+    expect(t.completions()[0]!.payload).toEqual({
+      type: 'files',
+      entries: [
+        { name: 'a', kind: 'file', ignored: true, hidden: false },
+        { name: 'b', kind: 'directory' },
+      ],
+      partial: false,
+    })
+  })
+
+  test('stat answers fileStat with the milliseconds under mtimeMs, and a missing path is an answer', async () => {
+    const answers = [
+      { path: 'a', kind: 'file', size: 3, modified: 1700, readonly: false },
+      { path: 'gone', kind: 'missing' },
+    ]
+    const t = await setup({}, undefined, {
+      stat: async (request: { requestId: string }) => ({
+        workspaceId: 'w1',
+        requestId: request.requestId,
+        outcome: 'accepted' as const,
+        value: answers.shift()!,
+      }),
+    })
     t.adapter.perform(effectOf(1, 'filesStat'))
+    t.adapter.perform(effectOf(2, 'filesStat'))
+    await t.settle()
+    expect(t.completions().map((c) => c.payload)).toEqual([
+      {
+        type: 'fileStat',
+        kind: 'file',
+        size: 3,
+        mtimeMs: 1700,
+        readonly: false,
+      },
+      { type: 'fileStat', kind: 'missing' },
+    ])
+  })
+
+  test('search answers the matching paths as a partial listing, and a host that cannot search refuses naming the operation', async () => {
+    const outcomes = [
+      {
+        outcome: 'accepted' as const,
+        value: {
+          rows: [{ name: 'a.ts', path: 'src/a.ts', kind: 'file' as const }],
+          partial: true,
+          next: 200,
+        },
+      },
+      {
+        outcome: 'refused' as const,
+        code: 'missing_capability',
+        reason: 'The host lists one directory; workspace.files.list is needed',
+      },
+    ]
+    const t = await setup({}, undefined, {
+      search: async (request: { requestId: string }) => ({
+        workspaceId: 'w1',
+        requestId: request.requestId,
+        ...outcomes.shift()!,
+      }),
+    })
+    t.adapter.perform(effectOf(1, 'filesSearch'))
     t.adapter.perform(effectOf(2, 'filesSearch'))
     await t.settle()
-    expect(t.completions().map((c) => c.outcome)).toEqual([
-      expect.objectContaining({ status: 'refused', code: 'owner_unavailable' }),
-      expect.objectContaining({ status: 'refused', code: 'owner_unavailable' }),
+    const [found, refused] = t.completions()
+    expect(found!.payload).toEqual({
+      type: 'files',
+      entries: [{ name: 'src/a.ts', kind: 'file' }],
+      partial: true,
+    })
+    expect(refused!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'missing_capability',
+    })
+    expect(refused!.payload).toBeUndefined()
+  })
+
+  test('copy is the files owner copy, with the overwrite flag', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'filesCopy'))
+    await t.settle()
+    expect(t.calls).toEqual([
+      { owner: 'files', kind: 'filesCopy', requestId: expect.any(String) },
     ])
+    expect(t.completions()[0]!.outcome).toEqual({ status: 'accepted' })
+  })
+
+  test('a refusal that carries owner state keeps it as the payload', async () => {
+    const t = await setup({
+      documents: {
+        perform: async () => ({
+          outcome: 'refused',
+          code: 'conflict',
+          reason: 'moved on',
+          value: {
+            type: 'documentConflicted',
+            operationId: 'o',
+            baseRevision: { scheme: 'seq', value: 1 },
+            current: { revision: { scheme: 'seq', value: 2 }, text: 'x' },
+            pending: [],
+          },
+        }),
+      },
+    })
+    t.adapter.perform(effectOf(1, 'documentEdit'))
+    await t.settle()
+    expect(t.completions()[0]).toMatchObject({
+      outcome: { status: 'refused', code: 'conflict' },
+      payload: { type: 'documentConflicted', operationId: 'o' },
+    })
   })
 })
 
@@ -538,7 +701,58 @@ describe('owners that do not exist yet', () => {
   })
 })
 
+describe('inbound channels', () => {
+  test('a completion is tagged completion and a host message is tagged host', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'scmStatus'))
+    await t.settle()
+    t.pushed.get('documents')!({ type: 'documentRetired', resource: WS })
+    expect(t.messages.filter((m) => m.channel === 'completion')).toHaveLength(1)
+    expect(t.messages.at(-1)).toEqual({
+      channel: 'host',
+      type: 'documentRetired',
+      resource: WS,
+    })
+  })
+})
+
 describe('layout', () => {
+  test('a load carries the record and its documents as layoutLoaded, and a first load carries none', async () => {
+    const t = await setup({
+      layout: {
+        load: async () => ({
+          workspaceId: 'w1',
+          requestId: 'r',
+          outcome: 'accepted' as const,
+          value: {
+            revision: 3,
+            document: {
+              current: { dock: 1 },
+              namedLayouts: { A: { dock: 2 } },
+            },
+          },
+        }),
+        save: async () => {
+          throw new Error('unused')
+        },
+      },
+    })
+    t.adapter.perform(effectOf(1, 'layoutLoad'))
+    await t.settle()
+    expect(t.completions()[0]!.payload).toEqual({
+      type: 'layoutLoaded',
+      revision: { scheme: 'seq', value: 3 },
+      document: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
+    })
+    const first = await setup()
+    first.adapter.perform(effectOf(1, 'layoutLoad'))
+    await first.settle()
+    expect(first.completions()[0]!.payload).toEqual({
+      type: 'layoutLoaded',
+      revision: { scheme: 'seq', value: 3 },
+    })
+  })
+
   test('a load reports the record revision on the completion', async () => {
     const t = await setup()
     t.adapter.perform(effectOf(1, 'layoutLoad'))
@@ -612,6 +826,10 @@ describe('layout', () => {
     expect(stale!.revision).toEqual({ scheme: 'seq', value: 4 })
     expect(good!.outcome).toEqual({ status: 'accepted' })
     expect(good!.revision).toEqual({ scheme: 'seq', value: 6 })
+    expect(good!.payload).toEqual({
+      type: 'layoutSaved',
+      revision: { scheme: 'seq', value: 6 },
+    })
   })
 })
 
@@ -630,12 +848,85 @@ describe('terminals', () => {
         backend: 'native',
         epoch: 2,
         program: 1,
-        processOwnedBy: 'host',
+        streamEpoch: 's-1',
+        origin: 'launched',
+        leaseGeneration: 4,
+        processOwnedBy: 'herdr-core',
       },
     })
     t.adapter.perform(effectOf(2, 'terminalResize'))
     await t.settle()
     expect(t.completions()[1]!.outcome).toEqual({ status: 'accepted' })
+  })
+
+  test('what the session did not report is left out of the binding, never filled in', async () => {
+    const t = await setup()
+    Object.assign(t.port.state, {
+      streamEpoch: undefined,
+      origin: undefined,
+      processOwnedBy: undefined,
+      lease: { generation: undefined },
+    })
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    expect(t.completions()[0]!.payload).toEqual({
+      type: 'terminal',
+      session: 't1',
+      cols: 80,
+      rows: 24,
+      backend: 'native',
+      epoch: 2,
+      program: 1,
+    })
+  })
+
+  test("input and attach hand the panel's input id, claim and attachment to the session as they are (AC-24)", async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    t.adapter.perform(effectOf(2, 'terminalInput'))
+    t.adapter.perform(effectOf(3, 'terminalAttach'))
+    await t.settle()
+    expect(t.port.seen.input).toEqual([
+      'ls\n',
+      'human',
+      {
+        inputId: 'i',
+        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+      },
+    ])
+    expect(t.port.seen.attach).toEqual([
+      { terminalId: 't1', fromOffset: 0, role: 'observer', attachment: 'a' },
+    ])
+  })
+
+  test('a reset replays the screen as terminalReset at the offset after it, and a resize is terminalResized', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    t.port.state.offset = 42
+    t.port.emit({ type: 'reset', formatted: 'screen', epoch: 3 })
+    t.port.emit({ type: 'resized', cols: 100, rows: 30 })
+    const heard = t
+      .hostMessages()
+      .filter((m) => m.type === 'terminalReset' || m.type === 'terminalResized')
+    expect(heard).toEqual([
+      {
+        type: 'terminalReset',
+        resource: TERMINAL,
+        epoch: 3,
+        offset: 42,
+        data: btoa('screen'),
+      },
+      {
+        type: 'terminalResized',
+        resource: TERMINAL,
+        epoch: 2,
+        cols: 100,
+        rows: 30,
+      },
+    ])
+    expect(t.hostMessages().some((m) => m.type === 'resync')).toBe(false)
   })
 
   test('an effect for a terminal this workbench never bound is refused, with no call', async () => {
@@ -780,6 +1071,45 @@ describe('host events', () => {
         ]),
       },
     })
+  })
+
+  test('capabilities are what the host advertises, whichever owners were passed in', async () => {
+    const t = await setup({}, [])
+    await t.settle()
+    const first = t.hostMessages().find((m) => m.type === 'capabilitiesChanged')
+    expect(first).toEqual({
+      type: 'capabilitiesChanged',
+      capabilities: {
+        granted: [
+          'environment',
+          'files',
+          'documents',
+          'scm',
+          'terminal',
+          'layout',
+        ],
+      },
+    })
+  })
+
+  test('the owners that are not host operations are granted from the owners the workbench has', async () => {
+    const t = await setup()
+    await t.settle()
+    const granted = t
+      .hostMessages()
+      .flatMap((m) =>
+        m.type === 'capabilitiesChanged' ? m.capabilities.granted : [],
+      )
+    expect(granted).toEqual(
+      expect.arrayContaining([
+        'layout',
+        'conversation',
+        'artifacts',
+        'clipboard',
+      ]),
+    )
+    // Search, run and language are the host's to advertise, and this host lists none of them.
+    expect(granted).not.toContain('search')
   })
 
   test('a pushed message from an owner is forwarded', async () => {

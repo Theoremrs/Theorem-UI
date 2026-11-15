@@ -7,10 +7,9 @@ import {
   stubHost,
   testEnvironment,
 } from '../environment/test-host'
-import type { Environment } from '../environment/environment'
 import type { Revision } from '../wire/Revision'
 import { createDocuments } from './documents'
-import type { DocumentEvent, DocumentsClient } from './documents'
+import type { DocumentEvent } from './documents'
 
 const ALL = [
   op('documents.open'),
@@ -65,9 +64,7 @@ async function setup(operations = ALL, text = 'hello') {
   const live = new FakeLive()
   const { environment } = testEnvironment(host, live)
   await environment.settled()
-  const documents = createDocuments(
-    environment as unknown as Environment<DocumentsClient>,
-  )
+  const documents = createDocuments(environment)
   const count = (name: string) =>
     calls.filter((call) => call.name === name).length
   const on = (

@@ -11,6 +11,7 @@ import { createFiles, rowsOf } from './files'
 
 const ALL = [
   op('workspace.files.list'),
+  op('workspace.files.stat'),
   op('workspace.files.read'),
   op('workspace.files.create'),
   op('workspace.files.rename'),
@@ -405,5 +406,108 @@ describe('watching a directory', () => {
     expect(live.closed).toBe(0)
     b()
     expect(live.closed).toBe(1)
+  })
+})
+
+describe('stat', () => {
+  test('says what a path is, with what the host gives', async () => {
+    const { host, files } = await setup()
+    host.on('filesStat', () => ({
+      type: 'file',
+      size: 12,
+      mtime_ms: 1700,
+      readonly: true,
+    }))
+    expect(
+      await files.stat({ requestId: 'r1', path: './a.txt' }),
+    ).toMatchObject({
+      outcome: 'accepted',
+      value: {
+        path: 'a.txt',
+        kind: 'file',
+        size: 12,
+        modified: 1700,
+        readonly: true,
+      },
+    })
+    expect(host.calls.at(-1)?.request).toMatchObject({
+      body: { path: 'a.txt' },
+      'Idempotency-Key': 'r1',
+    })
+  })
+
+  test('a missing path is an answer; a path outside the workspace is refused without a call', async () => {
+    const { host, files } = await setup()
+    host.on('filesStat', () => ({ type: 'missing' }))
+    expect(await files.stat({ requestId: 'r1', path: 'gone' })).toMatchObject({
+      outcome: 'accepted',
+      value: { kind: 'missing' },
+    })
+    expect(await files.stat({ requestId: 'r2', path: '../x' })).toMatchObject({
+      outcome: 'refused',
+      code: 'outside_workspace',
+    })
+    expect(host.count('filesStat')).toBe(1)
+  })
+
+  test('a host that does not list the operation is refused naming it', async () => {
+    const { files } = await setup([op('workspace.files.list')])
+    const done = await files.stat({ requestId: 'r1', path: 'a' })
+    expect(done).toMatchObject({ outcome: 'refused' })
+    expect(JSON.stringify(done)).toContain('workspace.files.stat')
+  })
+})
+
+describe('name search', () => {
+  const tree = {
+    directories: [{ path: 'src', kind: 'directory' }],
+    files: [
+      { path: 'src/Main.ts', kind: 'file', ignored: false },
+      { path: 'src/main.test.ts', kind: 'file' },
+      { path: 'readme.md', kind: 'file' },
+    ],
+  }
+
+  test('matches names case-insensitively, in pages, and always says partial', async () => {
+    const { host, files } = await setup()
+    host.on('filesList', () => tree)
+    const first = await files.search({
+      requestId: 'r1',
+      query: 'MAIN',
+      limit: 1,
+    })
+    expect(first).toMatchObject({
+      outcome: 'accepted',
+      value: { partial: true, next: 1 },
+    })
+    expect((first as { value: { rows: unknown[] } }).value.rows).toEqual([
+      expect.objectContaining({ name: 'Main.ts', path: 'src/Main.ts' }),
+    ])
+    const second = await files.search({
+      requestId: 'r2',
+      query: 'main',
+      limit: 1,
+      offset: 1,
+    })
+    expect(second).toMatchObject({ value: { partial: true } })
+    expect((second as { value: { next?: number } }).value.next).toBeUndefined()
+  })
+
+  test('a host that lists one directory at a time has nothing to search, and says so', async () => {
+    const { files } = await setup()
+    const done = await files.search({ requestId: 'r1', query: 'a' })
+    expect(done).toMatchObject({
+      outcome: 'refused',
+      code: 'missing_capability',
+    })
+    expect(JSON.stringify(done)).toContain('workspace.files.list')
+  })
+
+  test('an empty query is refused', async () => {
+    const { files } = await setup()
+    expect(await files.search({ requestId: 'r1', query: ' ' })).toMatchObject({
+      outcome: 'refused',
+      code: 'empty_query',
+    })
   })
 })

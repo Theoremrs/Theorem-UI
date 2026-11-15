@@ -24,8 +24,29 @@ export interface HostClient {
     TheoremClient['remoteWorkspaces'],
     'open' | 'capabilities'
   >
-  documentSessions: Pick<TheoremClient['documentSessions'], 'open'>
+  documentSessions: Pick<
+    TheoremClient['documentSessions'],
+    'open' | 'edit' | 'save' | 'close' | 'head' | 'reconcile'
+  >
   ide: {
+    scm: Pick<
+      TheoremClient['ide']['scm'],
+      | 'status'
+      | 'diff'
+      | 'show'
+      | 'branches'
+      | 'stage'
+      | 'unstage'
+      | 'discard'
+      | 'restore'
+      | 'commit'
+      | 'branch'
+      | 'merge'
+      | 'fetch'
+      | 'push'
+      | 'log'
+      | 'blame'
+    >
     workspace: Pick<
       TheoremClient['ide']['workspace'],
       | 'filesList'
@@ -110,6 +131,10 @@ export interface Environment<TClient extends HostClient = HostClient> {
   /** Resolves once the first attempt to open the workspace has either worked or failed. */
   settled: () => Promise<Availability>
   operation: (name: string) => OperationState
+  /** Every operation the host listed, as it stands now; empty until capabilities are read or when they could not be. Read again after a `capabilities` event. */
+  operations: () => readonly { name: string; state: OperationState }[]
+  /** The host backends its capabilities report ready (`herdr`); empty when it reports none, as older hosts do. */
+  backends: () => readonly string[]
   has: (name: string) => boolean
   /** The environment's availability for one operation: unavailable when the host is, or when it lists the operation as not usable (or, if `advertised`, does not list it). */
   availabilityFor: (name: string, advertised?: boolean) => Availability
@@ -385,6 +410,20 @@ export function createEnvironment<TClient extends HostClient>(
     },
     settled: () => firstAttempt,
     operation,
+    operations: () =>
+      (capabilities?.operations ?? []).map(({ operation: name }) => ({
+        name,
+        state: operation(name),
+      })),
+    backends: () => {
+      const reported = (
+        capabilities as
+          { backends?: Record<string, { ready?: unknown }> } | undefined
+      )?.backends
+      return Object.entries(reported ?? {})
+        .filter(([, backend]) => backend.ready === true)
+        .map(([name]) => name)
+    },
     has: (name) => operation(name).state === 'available',
     availabilityFor(name, advertised = false) {
       if (availability.status === 'unavailable') return availability

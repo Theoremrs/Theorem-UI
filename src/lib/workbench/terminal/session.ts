@@ -42,6 +42,8 @@ export interface TerminalState {
   bindingEpoch: number | undefined
   program: number | undefined
   origin: ProgramOrigin | undefined
+  /** What the host reported (`host` or `herdr-core`); absent when it did not. */
+  processOwnedBy: string | undefined
   lease: {
     role: LeaseRole
     generation: number | undefined
@@ -146,6 +148,7 @@ export class TerminalSession {
     bindingEpoch: undefined,
     program: undefined,
     origin: undefined,
+    processOwnedBy: undefined,
     lease: {
       role: 'unleased',
       generation: undefined,
@@ -205,6 +208,7 @@ export class TerminalSession {
       bindingEpoch: reply.binding?.epoch,
       program,
       origin: 'launched',
+      processOwnedBy: reply.process_owned_by,
       offset: 0,
     })
     this.listen()
@@ -219,11 +223,15 @@ export class TerminalSession {
     return this.catchUp({ role: options.role ?? 'controller', from: 0 })
   }
 
-  /** Reach a program that already exists, for example after a reload. Observing never moves the lease. */
+  /**
+   * Reach a program that already exists, for example after a reload. Observing never moves the lease.
+   * `attachment` is the caller's own, sent to the host unchanged; the session mints none.
+   */
   async attach(options: {
     terminalId: string
     fromOffset: number
     role?: 'controller' | 'observer'
+    attachment?: string
   }): Promise<Outcome<Bound>> {
     this.stopListening()
     Object.assign(this.current, {
@@ -232,6 +240,7 @@ export class TerminalSession {
       phase: 'opening',
       exit: undefined,
     })
+    if (options.attachment) this.current.lease.attachment = options.attachment
     this.listen()
     return this.catchUp({
       role: options.role ?? 'observer',
@@ -241,40 +250,49 @@ export class TerminalSession {
 
   /**
    * Type. Only the controller may; anyone else is refused here with the host's reason and nothing
-   * is sent. The id is fresh per call; on `uncertain`, `retryInput(inputId)` resends the same id.
+   * is sent. The caller mints `inputId` (the terminal panel does, once per logical input) and may
+   * name the `claim` it believes current; neither is rewritten. The id is fresh only when the caller
+   * names none. A repeat of an id whose acknowledgement was lost resends the original body, claim
+   * included, so the host writes it once; a repeat of an id already answered sends nothing.
    */
   async input(
     bytes: string,
     kind: InputKind = 'human',
+    options: {
+      inputId?: string
+      claim?: { attachment: string; leaseGeneration: number; epoch: number }
+    } = {},
   ): Promise<
     Outcome<{ inputId: string; duplicate: boolean; discarded: boolean }>
   > {
+    const inputId = options.inputId ?? crypto.randomUUID()
+    const known = this.ledger.get(inputId)
+    if (known) {
+      if (!known.uncertain) {
+        return this.answer<never>({
+          outcome: 'uncertain',
+          reason: 'the input was already answered; not resent',
+        })
+      }
+      return this.send(inputId, known)
+    }
     const unfit = this.unfit()
     if (unfit) {
       return unfit
     }
-    return this.send(crypto.randomUUID(), {
+    const { claim } = options
+    return this.send(inputId, {
       bytes,
       kind,
-      claim: this.claim(),
+      claim: claim
+        ? {
+            attachment: claim.attachment,
+            generation: claim.leaseGeneration,
+            epoch: claim.epoch,
+          }
+        : this.claim(),
       uncertain: false,
     })
-  }
-
-  /**
-   * Resend an input whose acknowledgement was lost, with its original id and claim. The host
-   * writes it once. Outside the ledger window nothing is resent and the outcome stays uncertain.
-   */
-  async retryInput(inputId: string) {
-    const sent = this.ledger.get(inputId)
-    if (!sent?.uncertain) {
-      return this.answer<never>({
-        outcome: 'uncertain',
-        reason:
-          'the input is outside the ledger window or already answered; not resent',
-      })
-    }
-    return this.send(inputId, sent)
   }
 
   async resize(
@@ -789,6 +807,7 @@ export function watchAnnouncements(
   listener: (announcement: {
     terminalId: string
     origin: ProgramOrigin | undefined
+    backend: string | undefined
     bindingEpoch: number | undefined
     program: number | undefined
     cols?: number
@@ -800,7 +819,7 @@ export function watchAnnouncements(
     if (event.kind !== 'terminal.opened') {
       return
     }
-    const { session, epoch, program, origin, cols, rows } = event.data
+    const { session, epoch, program, origin, backend, cols, rows } = event.data
     const key = `${session}:${epoch}:${program}`
     if (seen.has(key)) {
       return
@@ -809,6 +828,7 @@ export function watchAnnouncements(
     listener({
       terminalId: session,
       origin,
+      backend,
       bindingEpoch: epoch,
       program,
       ...(cols !== undefined ? { cols } : {}),

@@ -8,13 +8,13 @@
 // and its text is kept here until the caller settles it. This file maps the host's answers to that.
 
 import { scalarToUtf16, utf16ToScalar } from '@theoremharness/sdk'
-import type { TheoremClient, WorkspaceLiveEvents } from '@theoremharness/sdk'
+import type { WorkspaceLiveEvents } from '@theoremharness/sdk'
 import type {
   Environment,
   HostClient,
   LiveLease,
-  OperationHeaders,
 } from '../environment/environment'
+import { createRun } from '../environment/run'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
 import type { ReconcileKeep } from '../wire/ReconcileKeep'
@@ -22,14 +22,8 @@ import type { ResourceRef } from '../wire/ResourceRef'
 import type { Revision } from '../wire/Revision'
 import type { TextChange } from '../wire/TextChange'
 
-/** The calls the documents owner makes of a Theorem client; `TheoremClient` satisfies it, and a test stub can. */
-export interface DocumentsClient extends HostClient {
-  documentSessions: HostClient['documentSessions'] &
-    Pick<
-      TheoremClient['documentSessions'],
-      'edit' | 'save' | 'close' | 'head' | 'reconcile'
-    >
-}
+/** The calls the documents owner makes of a Theorem client are `HostClient`'s. */
+export type DocumentsClient = HostClient
 
 /** Why an edit is held: the caller's text is kept until `settle` is called for its operation. */
 export type PendingState =
@@ -295,32 +289,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
     return next
   }
 
-  /** One request: wait for the environment, refuse without sending when it or the operation is unavailable, then map the answer. */
-  async function run<T>(
-    requestId: string,
-    operation: string,
-    write: boolean,
-    call: (headers: OperationHeaders) => PromiseLike<T> | T,
-    idempotencyKey = requestId,
-  ): Promise<Completion<T>> {
-    const answers: Answers = { workspaceId, requestId }
-    await env.settled()
-    const availability = env.availabilityFor(operation)
-    if (availability.status === 'unavailable') {
-      return refused(
-        answers,
-        availability.cause === 'missing_capability'
-          ? 'missing_capability'
-          : 'environment_unavailable',
-        availability.reason,
-      )
-    }
-    try {
-      return accepted(answers, await call(env.headers(idempotencyKey)))
-    } catch (error) {
-      return failure(answers, error, write)
-    }
-  }
+  const run = createRun(env)
 
   /** Takes the host's head as the document's own. Returns whether what the caller sees changed. */
   function adopt(session: Session, head: Head): boolean {
@@ -610,7 +579,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
               once,
             ),
           // The operation id is the host's idempotency key.
-          operationId,
+          { idempotencyKey: operationId },
         )
         if (done.outcome === 'accepted') {
           const head = done.value as unknown as Head

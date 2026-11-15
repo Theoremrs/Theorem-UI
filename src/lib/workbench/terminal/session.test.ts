@@ -601,9 +601,9 @@ describe('lease and input', () => {
     const lost = await r.session.input('rm -i x\r')
     expect(lost.outcome).toBe('uncertain')
     r.handlers.input = () => ({ accepted: false, duplicate: true })
-    const retried = await r.session.retryInput(
-      r.of('input')[0]!.input_id as string,
-    )
+    const retried = await r.session.input('rm -i x\r', 'human', {
+      inputId: r.of('input')[0]!.input_id as string,
+    })
     expect(retried).toMatchObject({
       outcome: 'accepted',
       value: { duplicate: true },
@@ -617,27 +617,38 @@ describe('lease and input', () => {
     })
     // Answered now: a second retry sends nothing.
     expect(
-      (await r.session.retryInput(first!.input_id as string)).outcome,
+      (
+        await r.session.input('rm -i x\r', 'human', {
+          inputId: first!.input_id as string,
+        })
+      ).outcome,
     ).toBe('uncertain')
     expect(r.of('input')).toHaveLength(2)
   })
 
-  test('a retry past the 256-id window is not sent', async () => {
+  test('the caller names the id and the claim, and a repeat resends the original body', async () => {
     const r = rig()
     await opened(r)
     r.handlers.input = () => {
       throw new HostError(undefined)
     }
-    await r.session.input('first')
-    const firstId = r.of('input')[0]!.input_id as string
+    const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+    await r.session.input('first', 'human', { inputId: 'panel-1', claim })
     r.handlers.input = () => ({ accepted: true })
-    for (let n = 0; n < 256; n++) {
-      await r.session.input('k')
-    }
-    const sent = r.of('input').length
-    const result = await r.session.retryInput(firstId)
-    expect(result.outcome).toBe('uncertain')
-    expect(r.of('input')).toHaveLength(sent)
+    await r.session.input('changed', 'human', { inputId: 'panel-1' })
+    const [a, b] = r.of('input')
+    expect(a).toMatchObject({
+      input_id: 'panel-1',
+      attachment: 'ta-9',
+      generation: 4,
+      epoch: 1,
+    })
+    expect(b).toMatchObject({
+      input_id: 'panel-1',
+      bytes: 'first',
+      attachment: 'ta-9',
+      generation: 4,
+    })
   })
 
   test('an observer query reply the host discards is an acknowledgement, not an error', async () => {
@@ -789,6 +800,7 @@ describe('exit, loss and adoption', () => {
       epoch: 3,
       program: 1,
       origin: 'adopted',
+      backend: 'herdr',
       cols: 120,
       rows: 40,
     }
@@ -805,6 +817,7 @@ describe('exit, loss and adoption', () => {
       {
         terminalId: 'hc-9',
         origin: 'adopted',
+        backend: 'herdr',
         bindingEpoch: 3,
         program: 1,
         cols: 120,
@@ -813,6 +826,7 @@ describe('exit, loss and adoption', () => {
       {
         terminalId: 'hc-9',
         origin: 'adopted',
+        backend: 'herdr',
         bindingEpoch: 4,
         program: 1,
         cols: 120,
@@ -852,5 +866,22 @@ describe('exit, loss and adoption', () => {
       bindingEpoch: 4,
       program: 2,
     })
+  })
+
+  test("an attach names the caller's attachment and sends it unchanged", async () => {
+    const r = rig()
+    r.handlers.attach = () =>
+      attachReply({
+        session: 'hc-9',
+        epoch: 3,
+        binding: { epoch: 3, program: 1 },
+        control: control(0, false, false, 3),
+      })
+    await r.session.attach({
+      terminalId: 'hc-9',
+      fromOffset: 0,
+      attachment: 'att-mine',
+    })
+    expect(r.of('attach')[0]).toMatchObject({ attachment: 'att-mine' })
   })
 })

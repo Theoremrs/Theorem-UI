@@ -31,6 +31,13 @@ describe('opening the workspace', () => {
       reason: 'Copy is off',
     })
     expect(environment.operation('scm.status')).toEqual({ state: 'unlisted' })
+    expect(environment.operations()).toEqual([
+      { name: 'workspace.files.list', state: { state: 'available' } },
+      {
+        name: 'workspace.files.copy',
+        state: { state: 'unavailable', reason: 'Copy is off' },
+      },
+    ])
   })
 
   test('is unavailable while opening, and says so', async () => {

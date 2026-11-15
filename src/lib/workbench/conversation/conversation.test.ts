@@ -1,142 +1,9 @@
 // SOURCING: none — bun:test over ./conversation with a stub runtime shaped like assistant-ui's AssistantRuntime (thread and threads), no network
 
 import { describe, expect, test } from 'bun:test'
-import type { CreateAppendMessage, ThreadMessage } from '@assistant-ui/react'
 import { createConversation, snapshotMessage } from './conversation'
-import type {
-  ConversationRuntime,
-  ConversationServices,
-  ConversationSnapshot,
-} from './conversation'
-
-function assistant(
-  id: string,
-  text: string,
-  extra: Partial<{
-    status: unknown
-    parts: unknown[]
-    runId: string
-  }> = {},
-): ThreadMessage {
-  return {
-    id,
-    role: 'assistant',
-    createdAt: new Date(0),
-    content: [{ type: 'text', text }, ...(extra.parts ?? [])],
-    status: extra.status ?? { type: 'running' },
-    metadata: {
-      unstable_state: null,
-      unstable_annotations: [],
-      unstable_data: [],
-      steps: [],
-      custom: extra.runId ? { theoremRunId: extra.runId } : {},
-    },
-  } as unknown as ThreadMessage
-}
-
-function approvalPart() {
-  return {
-    type: 'tool-call',
-    toolCallId: 'tc1',
-    toolName: 'shell',
-    args: {},
-    argsText: '{}',
-    artifact: {
-      theoremApproval: {
-        approvalId: 'ap1',
-        toolCallId: 'tc1',
-        toolName: 'shell',
-        status: 'requires_action',
-        options: [
-          { optionId: 'yes', kind: 'allow_once', name: 'Allow' },
-          { optionId: 'no', kind: 'reject_once', name: 'Deny' },
-        ],
-      },
-    },
-  }
-}
-
-class StubRuntime {
-  messages: ThreadMessage[] = []
-  isRunning = false
-  threadId = 'thread-1'
-  remoteId: string | undefined = 'remote-1'
-  appends: unknown[] = []
-  cancels = 0
-  starts: unknown[] = []
-  /** Set to make append throw, or to drop the message instead of showing it. */
-  appendThrows: unknown
-  dropAppends = false
-  edit = true
-  private threadListeners = new Set<() => void>()
-  private threadsListeners = new Set<() => void>()
-
-  emit() {
-    for (const l of [...this.threadListeners]) l()
-  }
-  emitThreads() {
-    for (const l of [...this.threadsListeners]) l()
-  }
-  listenerCount() {
-    return this.threadListeners.size + this.threadsListeners.size
-  }
-
-  runtime: ConversationRuntime = {
-    thread: {
-      getState: () => ({
-        messages: this.messages,
-        isRunning: this.isRunning,
-        isLoading: false,
-        isDisabled: false,
-        capabilities: { edit: this.edit, reload: true },
-      }),
-      subscribe: (l) => {
-        this.threadListeners.add(l)
-        return () => this.threadListeners.delete(l)
-      },
-      append: (message: CreateAppendMessage) => {
-        this.appends.push(message)
-        if (this.appendThrows) throw this.appendThrows
-        if (this.dropAppends || typeof message === 'string') return
-        this.messages.push({
-          id: `u${this.appends.length}`,
-          role: 'user',
-          createdAt: new Date(0),
-          content: message.content,
-          attachments: message.attachments ?? [],
-          metadata: message.metadata ?? { custom: {} },
-        } as unknown as ThreadMessage)
-        this.emit()
-      },
-      startRun: (config) => {
-        this.starts.push(config)
-      },
-      cancelRun: () => {
-        this.cancels += 1
-      },
-    },
-    threads: {
-      getState: () => ({ mainThreadId: this.threadId }),
-      subscribe: (l) => {
-        this.threadsListeners.add(l)
-        return () => this.threadsListeners.delete(l)
-      },
-      mainItem: { getState: () => ({ remoteId: this.remoteId }) },
-      switchToThread: async (id) => {
-        this.threadId = id
-        this.remoteId = undefined
-        this.messages = []
-        this.emitThreads()
-      },
-      switchToNewThread: async () => {
-        this.threadId = 'new'
-        this.remoteId = undefined
-        this.messages = []
-        this.emitThreads()
-      },
-    },
-  }
-}
+import { StubRuntime, approvalPart, assistant } from './test-runtime'
+import type { ConversationServices, ConversationSnapshot } from './conversation'
 
 function setup() {
   const stub = new StubRuntime()
@@ -381,12 +248,142 @@ describe('send', () => {
     expect(inputs.length).toBe(1)
   })
 
-  test('side chat is refused as a missing capability', () => {
+  test('without a way to make a second runtime a side chat is refused as missing', async () => {
     const { conversation } = setup()
-    expect(conversation.sideChat(base('r'))).toMatchObject({
+    expect(await conversation.sideChat(base('r'))).toMatchObject({
       outcome: 'refused',
       code: 'missing_capability',
     })
+  })
+
+  test('input and stop for another run than the one working are stale', async () => {
+    const { stub, conversation, inputs } = setup()
+    stub.isRunning = true
+    stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    expect(
+      await conversation.input({
+        ...base('r1'),
+        clientMessageId: 'c1',
+        text: 'x',
+        runId: 'old',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_run' })
+    expect(inputs).toEqual([])
+    expect(
+      await conversation.stop({ ...base('r2'), runId: 'old' }),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_run' })
+    expect(stub.cancels).toBe(0)
+    expect(
+      await conversation.stop({ ...base('r3'), runId: 'run1' }),
+    ).toMatchObject({ outcome: 'accepted', value: { runId: 'run1' } })
+  })
+})
+
+describe('side chat', () => {
+  function withSide() {
+    const main = setup()
+    const side = new StubRuntime()
+    side.threadId = 'side-1'
+    side.remoteId = undefined
+    let closed = 0
+    let made = 0
+    const conversation = createConversation({
+      runtime: main.stub.runtime,
+      sideChats: {
+        open: async () => {
+          made += 1
+          return { runtime: side.runtime, close: () => void (closed += 1) }
+        },
+      },
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+      },
+      workspaceId: 'w1',
+      schedule: () => () => undefined,
+    })
+    return { main, side, conversation, closed: () => closed, made: () => made }
+  }
+
+  test('has its own conversation resource, and its sends never reach the main thread', async () => {
+    const t = withSide()
+    const done = await t.conversation.sideChat(base('r1'))
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    const chat = done.value
+    expect(chat.conversationId).toBe('side-1')
+    expect(chat.conversationId).not.toBe(
+      t.conversation.snapshot().conversationId,
+    )
+    expect(
+      await chat.conversation.send({
+        ...base('r2'),
+        clientMessageId: 'c1',
+        text: 'aside',
+      }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(t.side.appends).toHaveLength(1)
+    expect(t.main.stub.appends).toHaveLength(0)
+    // The main conversation's own send goes to the main runtime only.
+    await t.conversation.send({
+      ...base('r3'),
+      clientMessageId: 'c2',
+      text: 'main',
+    })
+    expect(t.main.stub.appends).toHaveLength(1)
+    expect(t.side.appends).toHaveLength(1)
+    // An action drawn against the main thread is stale for the side chat.
+    expect(
+      await chat.conversation.send({
+        ...base('r4'),
+        clientMessageId: 'c3',
+        text: 'x',
+        conversationId: t.conversation.snapshot().conversationId,
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_conversation' })
+  })
+
+  test('closing disposes its conversation and its runtime, once', async () => {
+    const t = withSide()
+    const done = await t.conversation.sideChat(base('r1'))
+    if (done.outcome !== 'accepted') throw new Error(done.outcome)
+    expect(t.side.listenerCount()).toBeGreaterThan(0)
+    done.value.close()
+    done.value.close()
+    expect(t.closed()).toBe(1)
+    expect(t.side.listenerCount()).toBe(0)
+    expect(
+      await done.value.conversation.send({
+        ...base('r2'),
+        clientMessageId: 'c1',
+        text: 'late',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'disposed' })
+  })
+
+  test('disposing the owner closes every side chat', async () => {
+    const t = withSide()
+    await t.conversation.sideChat(base('r1'))
+    t.conversation.dispose()
+    expect(t.closed()).toBe(1)
+  })
+
+  test('a runtime that cannot be made is a failure, not a refusal', async () => {
+    const main = setup()
+    const conversation = createConversation({
+      runtime: main.stub.runtime,
+      sideChats: {
+        open: async () => {
+          throw new Error('no runtime')
+        },
+      },
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+      },
+      workspaceId: 'w1',
+    })
+    expect((await conversation.sideChat(base('r'))).outcome).toBe('failed')
+    conversation.dispose()
   })
 })
 

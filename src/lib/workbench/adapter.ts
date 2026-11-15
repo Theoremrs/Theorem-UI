@@ -12,44 +12,23 @@ import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import type { Layout } from './layout'
+import { grantedCapabilities } from './capabilities'
+import { reply } from './port'
+import type { Of, OwnerPort, OwnerReply } from './port'
 import type {
   Capability,
   Completion,
   CompletionPayload,
   Effect,
   HostMessage,
+  Inbound,
+  LayoutDocument,
   ResourceRef,
   Revision,
   TerminalBackend,
 } from './wire'
 
-/** Effects whose kind starts with `prefix`: the slice of the wire one owner serves. */
-type Of<TPrefix extends string> = Extract<
-  Effect,
-  { kind: `${TPrefix}${string}` }
->
-
-/** What an owner answers with: the wire outcome, and for `accepted` the data and, if it moved, the revision. */
-export type OwnerReply =
-  | {
-      outcome: 'accepted'
-      value?: CompletionPayload
-      /** Set when the effect moved the resource's version; otherwise the effect's own is echoed. */
-      revision?: Revision
-    }
-  | { outcome: 'refused'; code: string; reason: string }
-  | { outcome: 'uncertain'; reason: string }
-  | { outcome: 'failed'; reason: string }
-
-/**
- * An owner that does not exist yet, as the adapter needs it: one method that performs an effect of
- * its kinds. `requestId` is stable per effect (a retry of the same effect reuses it), so an owner
- * that deduplicates can recognise it. `subscribe` is for owners that push host events.
- */
-export interface OwnerPort<TEffect extends Effect> {
-  perform: (effect: TEffect, requestId: string) => Promise<OwnerReply>
-  subscribe?: (listener: (message: HostMessage) => void) => () => void
-}
+export type { OwnerPort, OwnerReply }
 
 export type DocumentsPort = OwnerPort<Of<'document'>>
 export type ScmPort = OwnerPort<Of<'scm'>>
@@ -63,7 +42,7 @@ export type ClipboardPort = OwnerPort<Of<'clipboard'>>
 /** The files owner as the adapter calls it. `Files` satisfies it. */
 export type FilesPort = Pick<
   Files,
-  'list' | 'create' | 'rename' | 'delete' | 'watch'
+  'list' | 'stat' | 'search' | 'create' | 'rename' | 'copy' | 'delete' | 'watch'
 >
 
 /** One terminal binding as the adapter drives it. `TerminalSession` satisfies it. */
@@ -96,6 +75,8 @@ export type EnvironmentPort = Pick<
   | 'settled'
   | 'subscribe'
   | 'acquireLive'
+  | 'operations'
+  | 'backends'
 >
 
 export interface AdapterOptions {
@@ -112,8 +93,8 @@ export interface AdapterOptions {
   conversation?: ConversationPort
   artifacts?: ArtifactsPort
   clipboard?: ClipboardPort
-  /** The workbench handle's `dispatch`: it takes completions and host messages alike. */
-  dispatch: (message: Completion | HostMessage) => void
+  /** The workbench handle's `dispatch`: every message is an `Inbound`, tagged by its channel. */
+  dispatch: (message: Inbound) => void
 }
 
 export interface Adapter {
@@ -128,31 +109,6 @@ const unavailable = (owner: string, why?: string): OwnerReply => ({
   code: 'owner_unavailable',
   reason: why ?? `The ${owner} owner is not connected`,
 })
-
-/** Any owner module's outcome (this repo's modules share the discriminants) as an OwnerReply. */
-type Answered<T> =
-  | { outcome: 'accepted'; value: T }
-  | { outcome: 'refused'; code: string; reason: string }
-  | { outcome: 'uncertain'; reason: string }
-  | { outcome: 'failed'; reason: string }
-
-function reply<T>(
-  answer: Answered<T>,
-  accepted: (
-    value: T,
-  ) => Partial<Extract<OwnerReply, { outcome: 'accepted' }>> = () => ({}),
-): OwnerReply {
-  switch (answer.outcome) {
-    case 'accepted':
-      return { outcome: 'accepted', ...accepted(answer.value) }
-    case 'refused':
-      return { outcome: 'refused', code: answer.code, reason: answer.reason }
-    case 'uncertain':
-      return { outcome: 'uncertain', reason: answer.reason }
-    case 'failed':
-      return { outcome: 'failed', reason: answer.reason }
-  }
-}
 
 function base64(bytes: Uint8Array): string {
   let binary = ''
@@ -172,7 +128,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
   const stops: (() => void)[] = []
   let disposed = false
 
-  function send(message: Completion | HostMessage) {
+  function deliver(message: Inbound) {
     if (disposed) return
     try {
       dispatch(message)
@@ -180,6 +136,10 @@ export function createAdapter(options: AdapterOptions): Adapter {
       console.warn('The workbench rejected a message', error)
     }
   }
+  const send = (message: HostMessage) =>
+    deliver({ channel: 'host', ...message })
+  const complete = (message: Completion) =>
+    deliver({ channel: 'completion', ...message })
 
   // ---- terminals -------------------------------------------------------------------------
 
@@ -241,11 +201,13 @@ export function createAdapter(options: AdapterOptions): Adapter {
           })
           return
         case 'reset':
-          // The wire has no message for "replay this screen"; the core re-reads the terminal.
+          // The screen to replay, and the offset of the first byte after it.
           send({
-            type: 'resync',
-            workspace,
-            reason: `terminal_reset:${target.type === 'terminal' ? target.session : ''}`,
+            type: 'terminalReset',
+            resource: target,
+            epoch: event.epoch ?? epoch(),
+            offset: port.state.offset,
+            data: base64(new TextEncoder().encode(event.formatted)),
           })
           return
         case 'lease':
@@ -275,6 +237,16 @@ export function createAdapter(options: AdapterOptions): Adapter {
           })
           return
         case 'resized':
+          send({
+            type: 'terminalResized',
+            resource: target,
+            ...(port.state.bindingEpoch !== undefined
+              ? { epoch: port.state.bindingEpoch }
+              : {}),
+            cols: event.cols,
+            rows: event.rows,
+          })
+          return
         case 'reconnected':
           return
       }
@@ -316,7 +288,13 @@ export function createAdapter(options: AdapterOptions): Adapter {
       backend,
       epoch: state.bindingEpoch ?? 0,
       program: state.program ?? 0,
-      processOwnedBy: backend === 'herdr' ? 'herdr-core' : 'host',
+      // What the session did not report stays absent; the core derives the owner from the backend.
+      ...(state.streamEpoch ? { streamEpoch: state.streamEpoch } : {}),
+      ...(state.origin ? { origin: state.origin } : {}),
+      ...(state.lease.generation !== undefined
+        ? { leaseGeneration: state.lease.generation }
+        : {}),
+      ...(state.processOwnedBy ? { processOwnedBy: state.processOwnedBy } : {}),
     }
     reported.add(bindingKey(payload.session, state.bindingEpoch, state.program))
     return { value: payload }
@@ -375,6 +353,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
         terminalId: session,
         fromOffset: effect.payload.fromOffset,
         role: effect.payload.role,
+        attachment: effect.payload.attachment,
       })
       if (done.outcome === 'accepted' && !disposed) {
         terminals.set(session, { port, stop })
@@ -393,10 +372,13 @@ export function createAdapter(options: AdapterOptions): Adapter {
     if (!bound) return noTerminal(effect.resource)
     switch (effect.kind) {
       case 'terminalInput':
-        // The session numbers its own input (its ledger of 256 is what makes a resend a no-op),
-        // so the effect's `inputId` and `claim` are not used: the session holds the claim.
+        // The panel minted the id and named the claim; the session sends both as they are, so a
+        // resend of an uncertain input is the same input to the host.
         return reply(
-          await bound.port.input(effect.payload.bytes, effect.payload.kind),
+          await bound.port.input(effect.payload.bytes, effect.payload.kind, {
+            inputId: effect.payload.inputId,
+            claim: effect.payload.claim,
+          }),
         )
       case 'terminalResize':
         return reply(
@@ -449,7 +431,12 @@ export function createAdapter(options: AdapterOptions): Adapter {
           ({ rows }) => ({
             value: {
               type: 'files',
-              entries: rows.map(({ name, kind }) => ({ name, kind })),
+              entries: rows.map(({ name, kind, ignored, hidden }) => ({
+                name,
+                kind,
+                ...(ignored !== undefined ? { ignored } : {}),
+                ...(hidden !== undefined ? { hidden } : {}),
+              })),
               partial: false,
             },
           }),
@@ -476,11 +463,38 @@ export function createAdapter(options: AdapterOptions): Adapter {
           await files.delete({ requestId, path: effect.payload.path }),
         )
       case 'filesStat':
-      case 'filesSearch':
-        return unavailable(
-          'files',
-          `The files owner has no ${effect.kind === 'filesStat' ? 'stat' : 'name search'} yet`,
+        return reply(
+          await files.stat({ requestId, path: effect.payload.path }),
+          ({ kind, size, modified, readonly }) => ({
+            value: {
+              type: 'fileStat',
+              kind,
+              ...(size !== undefined ? { size } : {}),
+              ...(modified !== undefined ? { mtimeMs: modified } : {}),
+              ...(readonly !== undefined ? { readonly } : {}),
+            },
+          }),
         )
+      case 'filesSearch':
+        // The wire asks for a query and nothing else, so this is the first page; the page's
+        // `next` has nowhere to go, and `partial` says the list is not the whole answer.
+        return reply(
+          await files.search({ requestId, query: effect.payload.query }),
+          ({ rows, partial }) => ({
+            value: {
+              type: 'files',
+              entries: rows.map(({ path, kind, ignored, hidden }) => ({
+                name: path,
+                kind,
+                ...(ignored !== undefined ? { ignored } : {}),
+                ...(hidden !== undefined ? { hidden } : {}),
+              })),
+              partial,
+            },
+          }),
+        )
+      case 'filesCopy':
+        return reply(await files.copy({ requestId, ...effect.payload }))
     }
   }
 
@@ -493,9 +507,24 @@ export function createAdapter(options: AdapterOptions): Adapter {
     requestId: string,
   ): Promise<OwnerReply> {
     if (effect.kind === 'layoutLoad') {
-      return reply(await layout.load({ requestId }), ({ revision }) => ({
-        revision: seq(revision),
-      }))
+      return reply(
+        await layout.load({ requestId }),
+        ({ revision, document }) => ({
+          revision: seq(revision),
+          value: {
+            type: 'layoutLoaded',
+            revision: seq(revision),
+            ...(document
+              ? {
+                  document: {
+                    current: JSON.stringify(document.current),
+                    namedLayouts: JSON.stringify(document.namedLayouts),
+                  } satisfies LayoutDocument,
+                }
+              : {}),
+          },
+        }),
+      )
     }
     const { revision } = effect
     if (revision?.scheme !== 'seq') {
@@ -529,7 +558,10 @@ export function createAdapter(options: AdapterOptions): Adapter {
         { current, namedLayouts },
         { baseRevision: revision.value, requestId },
       ),
-      (record) => ({ revision: seq(record.revision) }),
+      (record) => ({
+        revision: seq(record.revision),
+        value: { type: 'layoutSaved', revision: seq(record.revision) },
+      }),
     )
   }
 
@@ -554,6 +586,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'filesSearch':
       case 'filesCreate':
       case 'filesRename':
+      case 'filesCopy':
       case 'filesDelete':
         return filesEffect(effect, requestId)
 
@@ -613,6 +646,9 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'conversationSend':
       case 'conversationInput':
       case 'conversationCancel':
+      case 'conversationRetry':
+      case 'conversationEdit':
+      case 'conversationSwitch':
       case 'conversationApproval':
         return route('conversation', options.conversation, effect, requestId)
 
@@ -657,7 +693,9 @@ export function createAdapter(options: AdapterOptions): Adapter {
           : answer.outcome === 'refused'
             ? { status: 'refused', code: answer.code, reason: answer.reason }
             : { status: answer.outcome, reason: answer.reason },
-      ...(answer.outcome === 'accepted' && answer.value
+      ...(answer.outcome !== 'uncertain' &&
+      answer.outcome !== 'failed' &&
+      answer.value
         ? { payload: answer.value }
         : {}),
     }
@@ -675,34 +713,18 @@ export function createAdapter(options: AdapterOptions): Adapter {
       // Nothing is retried here: a write may have been applied, and the owner says so itself.
       answer = { outcome: 'failed', reason: readableReason(error) }
     }
-    send(completion(effect, answer))
+    complete(completion(effect, answer))
   }
 
   // ---- host events -----------------------------------------------------------------------
 
-  /** Capabilities are the owners that can serve right now; the environment's availability gates the host's. */
+  /** What the host advertises, plus the owners that are the workbench's own rather than host operations. */
   function granted(): Capability[] {
-    const list: Capability[] = []
-    const host = env.availability.status === 'available'
-    if (host) {
-      list.push('environment')
-      if (env.availabilityFor('workspace.files.list').status === 'available')
-        list.push('files')
-      list.push('terminal')
-      for (const [name, port] of [
-        ['documents', options.documents],
-        ['scm', options.scm],
-        ['language', options.language],
-        ['run', options.run],
-        ['search', options.search],
-      ] as const) {
-        if (port) list.push(name)
-      }
-    }
-    list.push('layout')
-    if (options.conversation) list.push('conversation')
-    if (options.artifacts) list.push('artifacts')
-    return list
+    const local: Capability[] = ['layout']
+    if (options.conversation) local.push('conversation')
+    if (options.artifacts) local.push('artifacts')
+    if (options.clipboard) local.push('clipboard')
+    return grantedCapabilities(env, local)
   }
 
   let lastGranted = ''

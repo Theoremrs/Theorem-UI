@@ -1,12 +1,36 @@
 import type { AssistantRuntime } from '@assistant-ui/react'
-import { describeError, mutate, pendingSendText, TERMINAL_RUN_EVENTS, theorem } from './client'
+import {
+  describeError,
+  mutate,
+  pendingSendText,
+  TERMINAL_RUN_EVENTS,
+  theorem,
+} from './client'
 import { createRunInputQueue, inputReceipt, runInputReceipt } from './run-input'
 import { registerRunInputQueue, useRunInputs } from './run-input-store'
+
+/** Sends words to a working run; the idempotency key makes a repeat the same input. */
+export async function sendRunInput(runId: string, text: string, key: string) {
+  const event = await mutate((headers) =>
+    theorem().chat.runs.command(
+      { runId, command: 'input', ...headers, 'Idempotency-Key': key },
+      { additionalBodyParameters: { text } },
+    ),
+  )
+  const receipt = runInputReceipt(event)
+  if (!receipt) throw new Error('Theorem did not confirm this message')
+  return receipt
+}
 
 /** Binds native input to one assistant-ui observer without replacing its stream. */
 export function bindRunInput(
   runtime: Pick<AssistantRuntime, 'thread'>,
-  { threadKey, threadId, liveRuns, subscribe }: {
+  {
+    threadKey,
+    threadId,
+    liveRuns,
+    subscribe,
+  }: {
     threadKey: string
     threadId: () => string | undefined
     liveRuns: {
@@ -17,13 +41,16 @@ export function bindRunInput(
     subscribe?: (listener: () => void) => () => void
   },
 ) {
-  const visibleInputs = () => runtime.thread.getState().messages.flatMap((message) =>
-    message.content.flatMap((part) => {
-      const receipt = part.type === 'data' && part.name === 'theorem-user_input'
-        ? inputReceipt(part.data) : undefined
-      return receipt ? [receipt] : []
-    }),
-  )
+  const visibleInputs = () =>
+    runtime.thread.getState().messages.flatMap((message) =>
+      message.content.flatMap((part) => {
+        const receipt =
+          part.type === 'data' && part.name === 'theorem-user_input'
+            ? inputReceipt(part.data)
+            : undefined
+        return receipt ? [receipt] : []
+      }),
+    )
   const queue = createRunInputQueue({
     snapshot() {
       const remoteId = threadId()
@@ -36,43 +63,56 @@ export function bindRunInput(
         inputs: visibleInputs(),
         localUserTexts: state.messages.flatMap((message) =>
           message.role === 'user'
-            ? message.content.flatMap((part) => part.type === 'text' ? [part.text] : [])
-            : []),
+            ? message.content.flatMap((part) =>
+                part.type === 'text' ? [part.text] : [],
+              )
+            : [],
+        ),
       }
     },
     async refresh() {
       const remoteId = threadId()
-      if (!remoteId) throw new Error('The conversation has not been created yet')
+      if (!remoteId)
+        throw new Error('The conversation has not been created yet')
       const snapshot = await theorem().chat.threads.get({ threadId: remoteId })
       return {
-        active: Boolean(snapshot.liveRun || snapshot.thread.activeRunId || snapshot.thread.pendingTurn),
+        active: Boolean(
+          snapshot.liveRun ||
+          snapshot.thread.activeRunId ||
+          snapshot.thread.pendingTurn,
+        ),
         runId: snapshot.liveRun?.runId,
-        inputs: snapshot.messages.flatMap((message) => message.parts.flatMap((part) => {
-          const receipt = part.type === 'user_input' ? inputReceipt(part.payload) : undefined
-          return receipt ? [receipt] : []
-        })),
+        inputs: snapshot.messages.flatMap((message) =>
+          message.parts.flatMap((part) => {
+            const receipt =
+              part.type === 'user_input'
+                ? inputReceipt(part.payload)
+                : undefined
+            return receipt ? [receipt] : []
+          }),
+        ),
         userTexts: snapshot.messages.flatMap((message) =>
           message.role === 'user'
             ? message.parts.flatMap((part) => {
-                const text = part.type === 'text' && part.payload && typeof part.payload === 'object' && 'text' in part.payload
-                  ? part.payload.text
-                  : undefined
+                const text =
+                  part.type === 'text' &&
+                  part.payload &&
+                  typeof part.payload === 'object' &&
+                  'text' in part.payload
+                    ? part.payload.text
+                    : undefined
                 return typeof text === 'string' ? [text] : []
               })
-            : []),
+            : [],
+        ),
       }
     },
-    async send(runId, text, key) {
-      const event = await mutate((headers) => theorem().chat.runs.command(
-        { runId, command: 'input', ...headers, 'Idempotency-Key': key },
-        { additionalBodyParameters: { text } },
-      ))
-      const receipt = runInputReceipt(event)
-      if (!receipt) throw new Error('Theorem did not confirm this message')
-      return receipt
-    },
+    send: sendRunInput,
     async receipts(runId) {
-      const receipts = new Map<string, NonNullable<ReturnType<typeof inputReceipt>>>()
+      const receipts = new Map<
+        string,
+        NonNullable<ReturnType<typeof inputReceipt>>
+      >()
       const events = await theorem().chat.runs.events(
         { runId, after_seq: 0 },
         { abortSignal: AbortSignal.timeout(10_000) },
@@ -82,20 +122,27 @@ export function bindRunInput(
         if (TERMINAL_RUN_EVENTS.has(event.sourceEventType)) terminal = true
         if (event.sourceEventType !== 'CHAT.MESSAGE.PART') continue
         const receipt = runInputReceipt(event)
-        if (receipt) receipts.set(receipt.inputId, {
-          ...receipt,
-          requestKey: receipt.requestKey ?? receipts.get(receipt.inputId)?.requestKey,
-        })
+        if (receipt)
+          receipts.set(receipt.inputId, {
+            ...receipt,
+            requestKey:
+              receipt.requestKey ?? receipts.get(receipt.inputId)?.requestKey,
+          })
       }
-      if (!terminal) throw new Error('The response has not finished recording its input receipts')
+      if (!terminal)
+        throw new Error(
+          'The response has not finished recording its input receipts',
+        )
       return [...receipts.values()]
     },
     // A fallback belongs to its submitted text, not to references the person
     // may since have added to the next composer draft.
-    append: (text) => runtime.thread.append({
-      role: 'user', content: [{ type: 'text', text }],
-      runConfig: { custom: { theoremRunInput: true } },
-    }),
+    append: (text) =>
+      runtime.thread.append({
+        role: 'user',
+        content: [{ type: 'text', text }],
+        runConfig: { custom: { theoremRunInput: true } },
+      }),
     changed: (items) => useRunInputs.setState({ [threadKey]: items }),
     describeError,
     attemptId: threadKey,
@@ -116,5 +163,11 @@ export function bindRunInput(
     if (queue.getSnapshot().length) queue.observe()
   }, 2_000)
   queue.observe()
-  return () => { clearInterval(timer); stopThread(); stopRuns(); stopIdentity?.(); unregister() }
+  return () => {
+    clearInterval(timer)
+    stopThread()
+    stopRuns()
+    stopIdentity?.()
+    unregister()
+  }
 }

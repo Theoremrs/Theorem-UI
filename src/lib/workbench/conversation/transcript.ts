@@ -1,8 +1,8 @@
 // SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
 
 import type { ThreadMessage } from '@assistant-ui/react'
-import { approvalOutcome, readApproval } from '@/components/chat/theorem-parts'
-import type { TheoremApproval } from '@/components/chat/theorem-parts'
+import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
+import type { TheoremApproval } from '@/lib/theorem/approval'
 import { describeError } from '@/lib/theorem/client'
 import { inputReceipt } from '@/lib/theorem/run-input'
 

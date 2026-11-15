@@ -7,9 +7,7 @@ import {
   stubHost,
   testEnvironment,
 } from '../environment/test-host'
-import type { Environment } from '../environment/environment'
 import { createScm } from './scm'
-import type { ScmClient } from './scm'
 
 const METHODS = [
   'status',
@@ -68,12 +66,12 @@ async function setup(operations = ALL) {
   }
   host.client = {
     ...host.client,
-    ide: { workspace: (host.client as ScmClient).ide.workspace, scm },
+    ide: { workspace: host.client.ide.workspace, scm },
   } as never
   const { environment } = testEnvironment(host, new FakeLive())
   await environment.settled()
   return {
-    scm: createScm(environment as unknown as Environment<ScmClient>),
+    scm: createScm(environment),
     calls,
     count: (name: string) => calls.filter((call) => call.name === name).length,
     on: (

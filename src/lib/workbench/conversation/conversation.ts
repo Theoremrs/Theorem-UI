@@ -1,10 +1,10 @@
-// SOURCING: @assistant-ui/react's runtime API (thread.getState / subscribe / append / startRun / cancelRun and threads.switchToThread / switchToNewThread, the same calls components/terminal/terminal-screen.tsx makes) for the transcript and every turn; the chat's approvalChoice for which option an allow or deny sends. Run input and approval answers are not on the runtime (they are Theorem run commands), so they arrive as `services`. No model connection is opened here.
+// SOURCING: @assistant-ui/react's runtime API (thread.getState / subscribe / append / startRun / cancelRun and threads.switchToThread / switchToNewThread, the same calls components/terminal/terminal-screen.tsx makes) for the transcript and every turn; lib/theorem/approval's approvalChoice for which option an allow or deny sends. Run input and approval answers are not on the runtime (they are Theorem run commands), so they arrive as `services`. No model connection is opened here.
 
 import type { CreateAppendMessage, ThreadMessage } from '@assistant-ui/react'
 import type { Actor } from '../wire/Actor'
 import type { ApprovalDecision } from '../wire/ApprovalDecision'
 import type { HostMessage } from '../wire/HostMessage'
-import { approvalChoice } from '@/components/chat/theorem-parts'
+import { approvalChoice } from '@/lib/theorem/approval'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
 import { runIdOf, transcriptOf } from './transcript'
@@ -95,9 +95,17 @@ export interface Conversation {
   ) => Promise<Completion<Sent>>
   /** Words for the run that is working. */
   input: (
-    request: Request & { clientMessageId: string; text: string },
+    request: Request & {
+      clientMessageId: string
+      text: string
+      /** The run the person saw working; another one working now makes the input stale. */
+      runId?: string
+    },
   ) => Promise<Completion<Sent>>
-  stop: (request: Request) => Promise<Completion<{ runId?: string }>>
+  /** `runId` names the run the person saw; absent means whichever run the thread has now. */
+  stop: (
+    request: Request & { runId?: string },
+  ) => Promise<Completion<{ runId?: string }>>
   /** Runs the reply to a user message again as a new branch. */
   retry: (
     request: Request & { messageId: string },
@@ -115,19 +123,45 @@ export interface Conversation {
       approvalId: string
       decision: ApprovalDecision
       actor: Actor
+      /** The run that asked; a different one is stale. */
+      runId?: string
     },
   ) => Promise<Completion<{ approvalId: string }>>
   switchTo: (
     request: Request & { threadId: string },
   ) => Promise<Completion<{ conversationId: string }>>
   create: (request: Request) => Promise<Completion<{ conversationId: string }>>
-  /** The runtime has one open thread at a time; a second, concurrent one is not on offer. */
-  sideChat: (request: Request) => Completion<never>
+  /**
+   * A second conversation beside this one, on its own runtime and its own conversation resource.
+   * Nothing sent to it reaches this one's runtime. Closing it disposes its conversation and its runtime.
+   */
+  sideChat: (request: Request) => Promise<Completion<SideChat>>
   dispose: () => void
+}
+
+/** A runtime made for a side chat, and how to end it. */
+export interface SideRuntime {
+  runtime: ConversationRuntime
+  /** Ends the runtime; nothing more is sent through it. */
+  close: () => void
+}
+
+/** What makes side-chat runtimes: a second instance of the factory the main runtime came from. */
+export interface SideChats {
+  open: () => Promise<SideRuntime>
+}
+
+export interface SideChat {
+  /** The side chat's own conversation, with its own id, snapshots and actions. */
+  conversation: Conversation
+  conversationId: string
+  close: () => void
 }
 
 export interface ConversationOptions {
   runtime: ConversationRuntime
+  /** Absent when the host has no way to make a second runtime: a side chat is then refused as missing. */
+  sideChats?: SideChats
   services: ConversationServices
   workspaceId: string
   /** Runs `callback` at the next frame and returns its cancel. Defaults to requestAnimationFrame. */
@@ -157,6 +191,7 @@ export function snapshotMessage(
       project,
       thread: snapshot.conversationId,
     },
+    conversationId: snapshot.conversationId,
     revision: { scheme: 'seq', value: snapshot.revision },
     snapshot: JSON.stringify(snapshot),
   }
@@ -164,10 +199,12 @@ export function snapshotMessage(
 
 export function createConversation({
   runtime,
+  sideChats,
   services,
   workspaceId,
   schedule = nextFrame,
 }: ConversationOptions): Conversation {
+  const sides = new Set<SideChat>()
   const listeners = new Set<(snapshot: ConversationSnapshot) => void>()
   let disposed = false
   let pending: (() => void) | undefined
@@ -391,6 +428,12 @@ export function createConversation({
           : undefined
         if (!runId)
           return refused(answers, 'no_active_run', 'No run is working')
+        if (request.runId !== undefined && request.runId !== runId)
+          return refused(
+            answers,
+            'stale_run',
+            'That run is no longer the one working',
+          )
         outbox.set(id, {
           clientMessageId: id,
           text: request.text,
@@ -428,6 +471,12 @@ export function createConversation({
       if (!state.isRunning)
         return refused(answers, 'not_running', 'No run is working')
       const runId = lastRunId()
+      if (request.runId !== undefined && request.runId !== runId)
+        return refused(
+          answers,
+          'stale_run',
+          'That run is no longer the one working',
+        )
       try {
         runtime.thread.cancelRun()
       } catch (error) {
@@ -523,6 +572,12 @@ export function createConversation({
           'approval_not_pending',
           'That approval is not waiting for an answer',
         )
+      if (request.runId !== undefined && request.runId !== now.runId)
+        return refused(
+          answers,
+          'stale_run',
+          'That approval belongs to another run',
+        )
       const choice = approvalChoice(now.options, request.decision === 'allow')
       if (!choice)
         return refused(
@@ -569,21 +624,51 @@ export function createConversation({
       return accepted(answers, { conversationId: conversationId() })
     },
 
-    sideChat(request) {
+    async sideChat(request) {
       const { answers, refusal } = begin(request)
-      return (
-        refusal ??
-        refused(
+      if (refusal) return refusal
+      if (!sideChats)
+        return refused(
           answers,
           'missing_capability',
-          'The chat runtime keeps one open thread; forking or continuing a thread opens it in place of this one',
+          'This host makes no second runtime for a side chat',
         )
-      )
+      let side: SideRuntime
+      try {
+        side = await sideChats.open()
+      } catch (error) {
+        return failure(answers, error, false)
+      }
+      if (disposed) {
+        side.close()
+        return refused(answers, 'disposed', 'The conversation is closed')
+      }
+      const conversation = createConversation({
+        runtime: side.runtime,
+        services,
+        workspaceId,
+        schedule,
+      })
+      let closed = false
+      const chat: SideChat = {
+        conversation,
+        conversationId: conversation.snapshot().conversationId,
+        close() {
+          if (closed) return
+          closed = true
+          sides.delete(chat)
+          conversation.dispose()
+          side.close()
+        },
+      }
+      sides.add(chat)
+      return accepted(answers, chat)
     },
 
     dispose() {
       if (disposed) return
       disposed = true
+      for (const chat of [...sides]) chat.close()
       pending?.()
       pending = undefined
       offThread()

@@ -5,41 +5,20 @@
 // blame, merge or amend. ./blame-hunks is copied from the Theia extension. A diff is read as the
 // unified text plus the hunks the host already parses, so jsdiff (installed) is not needed here.
 
-import type { TheoremClient } from '@theoremharness/sdk'
 import type {
   Environment,
   HostClient,
   OperationHeaders,
 } from '../environment/environment'
-import { accepted, failure, refused } from '../environment/result'
+import { createRun } from '../environment/run'
+import { accepted, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
 import type { ResourceRef } from '../wire/ResourceRef'
 import type { ScmRef } from '../wire/ScmRef'
 import type { BlameHunk } from './blame-hunks'
 
-/** The calls the SCM owner makes of a Theorem client; `TheoremClient` satisfies it, and a test stub can. */
-export interface ScmClient extends HostClient {
-  ide: HostClient['ide'] & {
-    scm: Pick<
-      TheoremClient['ide']['scm'],
-      | 'status'
-      | 'diff'
-      | 'show'
-      | 'branches'
-      | 'stage'
-      | 'unstage'
-      | 'discard'
-      | 'restore'
-      | 'commit'
-      | 'branch'
-      | 'merge'
-      | 'fetch'
-      | 'push'
-      | 'log'
-      | 'blame'
-    >
-  }
-}
+/** The calls the SCM owner makes of a Theorem client are `HostClient`'s. */
+export type ScmClient = HostClient
 
 /**
  * What the host says about the repository when it answers: the state a result
@@ -262,38 +241,7 @@ export function createScm(env: Environment<ScmClient>): Scm {
     resourceId: path,
   })
 
-  /**
-   * One request: wait for the first open attempt, refuse without sending when
-   * the environment or the operation is unavailable, then map what the host
-   * answers. A write is sent once; a lost answer is `uncertain`, never retried.
-   * `advertised` makes an operation the host does not list unavailable (the
-   * ones the SDK's typed layer never covered).
-   */
-  async function run<T>(
-    requestId: string,
-    operation: string,
-    write: boolean,
-    call: (headers: OperationHeaders) => PromiseLike<T> | T,
-    advertised = false,
-  ): Promise<Completion<T>> {
-    const answers: Answers = { workspaceId, requestId }
-    await env.settled()
-    const availability = env.availabilityFor(operation, advertised)
-    if (availability.status === 'unavailable') {
-      return refused(
-        answers,
-        availability.cause === 'missing_capability'
-          ? 'missing_capability'
-          : 'environment_unavailable',
-        availability.reason,
-      )
-    }
-    try {
-      return accepted(answers, await call(env.headers(requestId)))
-    } catch (error) {
-      return failure(answers, error, write)
-    }
-  }
+  const run = createRun(env)
 
   const outside = (requestId: string, path: string) =>
     refused(
@@ -311,7 +259,7 @@ export function createScm(env: Environment<ScmClient>): Scm {
     shape: (answer: unknown) => T,
     advertised = false,
   ): Promise<Completion<T>> {
-    const done = await run(requestId, operation, write, call, advertised)
+    const done = await run(requestId, operation, write, call, { advertised })
     return done.outcome === 'accepted'
       ? accepted({ workspaceId, requestId }, shape(done.value))
       : done
@@ -471,7 +419,7 @@ export function createScm(env: Environment<ScmClient>): Scm {
                 ? { commit, staged: false }
                 : { commit, path, staged: false },
           }),
-        true,
+        { advertised: true },
       )
       if (done.outcome !== 'accepted') return done
       const answers: Answers = { workspaceId, requestId }

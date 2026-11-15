@@ -5,7 +5,8 @@
 
 import type { WorkspaceLiveEvents } from '@theoremharness/sdk'
 import type { Environment, OperationHeaders } from '../environment/environment'
-import { accepted, failure, refused } from '../environment/result'
+import { createRun } from '../environment/run'
+import { accepted, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
 import { childrenOf } from './directory-listing'
 import type { DirectoryListing } from './directory-listing'
@@ -27,6 +28,25 @@ export interface FileRow {
 export interface Listing {
   path: string
   rows: FileRow[]
+}
+
+export interface FileStat {
+  path: string
+  /** `missing` is an answer, not a failure. */
+  kind: 'file' | 'directory' | 'symlink' | 'missing'
+  size?: number
+  /** Milliseconds since the epoch, when the host gives it. */
+  modified?: number
+  readonly?: boolean
+}
+
+export interface SearchResult {
+  /** Rows whose name matches, with workspace-relative paths, in the host's order. */
+  rows: FileRow[]
+  /** Never read as exhaustive: the host's whole-tree listing leaves out its excludes, and the page may end before the matches do. */
+  partial: boolean
+  /** The `offset` of the next page; absent on the last. */
+  next?: number
 }
 
 export interface TextFile {
@@ -51,6 +71,15 @@ interface Request {
 export interface Files {
   list: (request: Request & { path: string }) => Promise<Completion<Listing>>
   read: (request: Request & { path: string }) => Promise<Completion<TextFile>>
+  /** What a path is now; a path that is not there is an answer (`missing`). */
+  stat: (request: Request & { path: string }) => Promise<Completion<FileStat>>
+  /**
+   * File names containing `query` (case-insensitive), over the host's whole-tree `workspace.files.list`;
+   * refused as `missing_capability` naming that operation when the host answers only one directory.
+   */
+  search: (
+    request: Request & { query: string; limit?: number; offset?: number },
+  ) => Promise<Completion<SearchResult>>
   create: (
     request: Request & {
       path: string
@@ -77,6 +106,8 @@ export interface Files {
 }
 
 const COPY = 'workspace.files.copy'
+/** Names returned per page of a name search. */
+const SEARCH_PAGE = 200
 
 interface RawRow {
   name?: unknown
@@ -154,36 +185,7 @@ export function createFiles(env: Environment): Files {
   const { workspaceId } = env
   const files = () => env.client.ide.workspace
 
-  /**
-   * One request: wait for the first open attempt, refuse without sending when the
-   * environment or the operation is unavailable, then map what the host answers.
-   * A write is sent once; a lost answer is `uncertain`, never retried here.
-   */
-  async function run<T>(
-    requestId: string,
-    operation: string,
-    write: boolean,
-    call: (headers: OperationHeaders) => PromiseLike<T> | T,
-    advertised = false,
-  ): Promise<Completion<T>> {
-    const answers: Answers = { workspaceId, requestId }
-    await env.settled()
-    const availability = env.availabilityFor(operation, advertised)
-    if (availability.status === 'unavailable') {
-      return refused(
-        answers,
-        availability.cause === 'missing_capability'
-          ? 'missing_capability'
-          : 'environment_unavailable',
-        availability.reason,
-      )
-    }
-    try {
-      return accepted(answers, await call(env.headers(requestId)))
-    } catch (error) {
-      return failure(answers, error, write)
-    }
-  }
+  const run = createRun(env)
 
   const outside = (requestId: string, path: string) =>
     refused(
@@ -205,6 +207,102 @@ export function createFiles(env: Environment): Files {
           body: { path: directory },
         })) as DirectoryListing
         return { path: directory, rows: rowsOf(listing, directory) }
+      })
+    },
+
+    async stat({ requestId, path }) {
+      const target = normalizePath(path)
+      if (!target || escapes(target)) return outside(requestId, path)
+      const done = await run(
+        requestId,
+        'workspace.files.stat',
+        false,
+        async (headers) =>
+          (await files().filesStat({
+            ...headers,
+            body: { path: target },
+          })) as Record<string, unknown> | undefined,
+        { advertised: true },
+      )
+      if (done.outcome !== 'accepted') return done
+      const raw = done.value ?? {}
+      const kind = raw.type ?? raw.kind
+      if (
+        kind !== 'file' &&
+        kind !== 'directory' &&
+        kind !== 'symlink' &&
+        kind !== 'missing'
+      ) {
+        return {
+          workspaceId,
+          requestId,
+          outcome: 'failed',
+          reason: 'The host answered a stat without saying what the path is',
+        }
+      }
+      return accepted(
+        { workspaceId, requestId },
+        {
+          path: target,
+          kind,
+          size: number(raw.size),
+          modified: number(raw.mtime_ms),
+          readonly: flag(raw.readonly),
+        },
+      )
+    },
+
+    async search({ requestId, query, limit = SEARCH_PAGE, offset = 0 }) {
+      const needle = query.trim().toLowerCase()
+      if (needle === '') {
+        return refused(
+          { workspaceId, requestId },
+          'empty_query',
+          'A name search needs something to look for',
+        )
+      }
+      const done = await run(
+        requestId,
+        'workspace.files.list',
+        false,
+        (headers) => files().filesList({ ...headers, body: {} }),
+      )
+      if (done.outcome !== 'accepted') return done
+      const answers: Answers = { workspaceId, requestId }
+      const listing = (done.value ?? {}) as DirectoryListing
+      if (!listing.files && !listing.directories) {
+        return refused(
+          answers,
+          'missing_capability',
+          'workspace.files.list: this host lists one directory at a time and has no whole-tree listing to search',
+        )
+      }
+      const rows: FileRow[] = []
+      for (const row of [
+        ...(listing.directories ?? []),
+        ...(listing.files ?? []),
+      ] as (RawRow & { path: string; kind: string })[]) {
+        const name = row.path.slice(row.path.lastIndexOf('/') + 1)
+        if (!name.toLowerCase().includes(needle)) continue
+        rows.push({
+          name,
+          path: row.path,
+          kind:
+            row.kind === 'directory' || row.kind === 'symlink'
+              ? row.kind
+              : 'file',
+          size: number(row.size),
+          modified: number(row.mtime_ms),
+          ignored: flag(row.ignored),
+          hidden: flag(row.hidden),
+        })
+      }
+      const page = rows.slice(offset, offset + limit)
+      const end = offset + page.length
+      return accepted(answers, {
+        rows: page,
+        partial: true,
+        ...(end < rows.length ? { next: end } : {}),
       })
     },
 
@@ -331,7 +429,7 @@ export function createFiles(env: Environment): Files {
           })
           return { from: source, to: target }
         },
-        true,
+        { advertised: true },
       )
     },
 
