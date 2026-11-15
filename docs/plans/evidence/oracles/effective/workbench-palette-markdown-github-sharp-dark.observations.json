@@ -1,5 +1,5 @@
 {
-  "source_revision": "123e1c609a20c3b08aa8fb643f67a7502f2f8420+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-markdown-github-sharp-dark",
   "environment": {
     "story": "workbench-palette-markdown-github-sharp-dark",
@@ -76,7 +76,7 @@
     "selection": {
       "kind": "rendered_web",
       "foreground": "#e6eaec",
-      "background": "#2a303b",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -92,18 +92,17 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-active": {
+    "mark": {
       "kind": "rendered_web",
-      "foreground": "#22272e",
-      "background": "#8aa8a0",
+      "foreground": "#e57f47",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -112,15 +111,38 @@
           "column": 110,
           "text": "g"
         },
-        "raw_foreground": "#22272e",
+        "raw_foreground": "#e57f47",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#e57f47",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-markdown-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "g"
+        },
+        "raw_foreground": "#e57f47",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -130,7 +152,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#e6eaec",
-      "background": "#2a303b",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -146,8 +168,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -183,8 +204,8 @@
     },
     "heading": {
       "kind": "rendered_web",
-      "foreground": "#e6eaec",
-      "background": "#2a303b",
+      "foreground": "#e57f47",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -193,73 +214,17 @@
           "column": 142,
           "text": "P"
         },
-        "raw_foreground": "#e6eaec",
+        "raw_foreground": "#e57f47",
         "palette_fields": {
           "fg": [
-            "bright",
-            "heading"
+            "mark"
           ],
           "bg": [
-            "raised",
-            "selection"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true
-      }
-    },
-    "selection-fill": {
-      "kind": "rendered_web",
-      "foreground": "#2a303b",
-      "background": "#22272e",
-      "provenance": {
-        "story": "workbench-palette-markdown-github-sharp-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 4,
-          "column": 4,
-          "text": "g"
-        },
-        "palette_fields": {
-          "fg": [
-            "bright",
-            "heading"
-          ],
-          "bg": [
-            "raised",
-            "selection"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "pane-bg"
-      }
-    },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#8aa8a0",
-      "background": "#2a303b",
-      "provenance": {
-        "story": "workbench-palette-markdown-github-sharp-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 110,
-          "text": "g"
-        },
-        "palette_fields": {
-          "fg": [
             "bg"
           ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
+          "matches": false
         },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
+        "bound_to_expected_palette_fields": false
       }
     },
     "separator": {
@@ -310,6 +275,16 @@
         "bound_to_expected_palette_fields": true
       }
     },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#e57f47",
+      "second": "#e6eaec",
+      "provenance": {
+        "story": "workbench-palette-markdown-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
+      }
+    },
     "derived-bg": {
       "kind": "rendered_web",
       "first": "#22272e",
@@ -320,10 +295,10 @@
         "method": "the role colour painted here and in the same mode of the next palette"
       }
     },
-    "derived-raised": {
+    "derived-mark": {
       "kind": "rendered_web",
-      "first": "#2a303b",
-      "second": "#2c2b28",
+      "first": "#e57f47",
+      "second": "#00a2cc",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "against": "workbench-palette-markdown-stone-dark",
@@ -360,30 +335,10 @@
         "method": "the role colour painted here and in the same mode of the next palette"
       }
     },
-    "derived-selection": {
-      "kind": "rendered_web",
-      "first": "#2a303b",
-      "second": "#2c2b28",
-      "provenance": {
-        "story": "workbench-palette-markdown-github-sharp-dark",
-        "against": "workbench-palette-markdown-stone-dark",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      }
-    },
     "fixed-warning": {
       "kind": "rendered_web",
       "first": "#d6bc8a",
       "second": "#d0b785",
-      "provenance": {
-        "story": "workbench-palette-markdown-github-sharp-dark",
-        "against": "workbench-palette-markdown-stone-dark",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      }
-    },
-    "fixed-accent": {
-      "kind": "rendered_web",
-      "first": "#8aa8a0",
-      "second": "#86a39c",
       "provenance": {
         "story": "workbench-palette-markdown-github-sharp-dark",
         "against": "workbench-palette-markdown-stone-dark",
@@ -410,6 +365,7 @@
     "heading": "#e6eaec",
     "accent": "#8aa8a0",
     "focus": "#8aa8a0",
+    "mark": "#e57f47",
     "selection": "#2a303b",
     "disabled": "#6e7478",
     "deep": "#14191f",
@@ -466,8 +422,20 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "mark",
+      "y": 0,
+      "x": 110,
+      "text": "guide.md",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
       ],
       "matches": true
     },
@@ -477,12 +445,10 @@
       "x": 110,
       "text": "guide.md",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -496,8 +462,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -522,44 +487,12 @@
       "x": 142,
       "text": "Preview Alt+4",
       "fg": [
-        "bright",
-        "heading"
+        "mark"
       ],
       "bg": [
-        "raised",
-        "selection"
-      ],
-      "matches": true
-    },
-    {
-      "role": "selection-fill",
-      "y": 4,
-      "x": 4,
-      "text": "guide.md",
-      "fg": [
-        "bright",
-        "heading"
-      ],
-      "bg": [
-        "raised",
-        "selection"
-      ],
-      "matches": true
-    },
-    {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 110,
-      "text": "guide.md",
-      "fg": [
         "bg"
       ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
-      ],
-      "matches": true
+      "matches": false
     },
     {
       "role": "separator",
@@ -596,24 +529,6 @@
       "glyph": " ",
       "dom": "#22272e",
       "pixel": "#22272e",
-      "equal": true
-    },
-    {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 109,
-      "glyph": " ",
-      "dom": "#8aa8a0",
-      "pixel": "#8aa8a0",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#2a303b",
-      "pixel": "#2a303b",
       "equal": true
     }
   ],

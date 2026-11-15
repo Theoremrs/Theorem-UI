@@ -1128,7 +1128,7 @@ impl EditorPanel {
                     Self::button_labels(&[Choice::Replace, Choice::ReplaceAll], rect.width);
                 for (choice, r, why) in self.find_buttons(d, rect) {
                     let style = if why.is_none() {
-                        cx.theme.selected
+                        cx.theme.selection
                     } else {
                         cx.theme.muted
                     };
@@ -1192,7 +1192,7 @@ impl EditorPanel {
             let labels = Self::button_labels(&strip.buttons, rect.width);
             for (choice, r, why) in self.strip_buttons(rect) {
                 let style = if why.is_none() {
-                    cx.theme.selected
+                    cx.theme.selection
                 } else {
                     cx.theme.muted
                 };
@@ -1288,7 +1288,7 @@ impl EditorPanel {
         let labels = Self::button_labels(&self.message_buttons(), area.width);
         for (choice, r, why) in self.message_laid_out(area) {
             let style = if why.is_none() {
-                cx.theme.selected
+                cx.theme.selection
             } else {
                 cx.theme.muted
             };
@@ -1406,7 +1406,7 @@ impl EditorPanel {
         let labels = Self::button_labels(&self.message_buttons(), area.width);
         for (choice, r, why) in self.message_laid_out(area) {
             let style = if why.is_none() {
-                cx.theme.selected
+                cx.theme.selection
             } else {
                 cx.theme.muted
             };

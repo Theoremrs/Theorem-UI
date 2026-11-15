@@ -3,7 +3,7 @@
   "skill_version": "1.0.0-portable",
   "policy_name": "workbench-palette:cabinet",
   "policy_version": "1.0",
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-cabinet-github-sharp-dark",
   "environment": {
     "story": "workbench-palette-cabinet-github-sharp-dark",
@@ -27,7 +27,7 @@
     "date": "2026-11-15"
   },
   "counts": {
-    "pass": 16,
+    "pass": 18,
     "fail": 0,
     "review": 2,
     "not_measurable": 3
@@ -92,15 +92,13 @@
           "column": 126,
           "text": "A"
         },
-        "raw_foreground": "#22272e",
+        "raw_foreground": "#e57f47",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
           "matches": true
         },
@@ -108,7 +106,41 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.859244282965189,
+        "value": 5.336245388330525,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.mark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-cabinet-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 126,
+          "text": "A"
+        },
+        "raw_foreground": "#e57f47",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.336245388330525,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -135,8 +167,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -144,7 +175,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 10.947452738455945,
+        "value": 12.409858804321477,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -364,38 +395,22 @@
       "status": "pass"
     },
     {
-      "id": "WB-UI.tab-fill",
+      "id": "WB-UI.tab-letters",
       "class": "standard",
-      "predicate": "contrast",
-      "observation": "tab-fill",
+      "predicate": "oklab_distance",
+      "observation": "tab-letters",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-cabinet-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 126,
-          "text": "A"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.168777572915887,
-        "minimum": 3.0,
-        "unit": "ratio"
+        "value": 0.27886137617525697,
+        "minimum": 0.1,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
       },
       "status": "pass"
     },
@@ -490,6 +505,26 @@
       "arithmetic": "pass",
       "detail": {
         "value": 0.03310700340602845,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-mark",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-cabinet-github-sharp-dark",
+        "against": "workbench-palette-cabinet-stone-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.2719335996891863,
         "minimum": 0.005,
         "maximum": 1.0,
         "unit": "delta_e_ok"

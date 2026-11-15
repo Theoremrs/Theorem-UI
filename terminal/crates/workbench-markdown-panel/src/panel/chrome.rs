@@ -706,10 +706,12 @@ impl MarkdownPanel {
         // The mode bar.
         if let Some(bar) = frame.bar {
             for (choice, r, text) in self.bar_buttons(bar) {
-                let style = if choice.mode() == Some(shown.mode) {
-                    cx.theme.selected
-                } else {
+                let style = if choice.mode() != Some(shown.mode) {
                     cx.theme.muted
+                } else if cx.focused {
+                    cx.theme.focus
+                } else {
+                    cx.theme.selected
                 };
                 buf.set_stringn(r.x, r.y, text, usize::from(r.width), style);
             }
@@ -764,7 +766,7 @@ impl MarkdownPanel {
             }
             for (choice, r, why) in self.strip_buttons(rect) {
                 let style = if why.is_none() {
-                    cx.theme.selected
+                    cx.theme.selection
                 } else {
                     cx.theme.muted
                 };
@@ -920,7 +922,7 @@ impl MarkdownPanel {
         }
         for (choice, r, why) in self.buttons_on(self.message_row(area), &self.message_buttons()) {
             let style = if why.is_none() {
-                cx.theme.selected
+                cx.theme.selection
             } else {
                 cx.theme.muted
             };

@@ -230,15 +230,16 @@ fn the_cursor_row_is_marked_by_style_and_follows_focus() {
 }
 
 #[test]
-fn the_focused_cursor_row_keeps_its_own_ink_under_every_role() {
-    // The letter, the folder and the hint are role-colored against the pane; on the focus
-    // fill those colors fall under 4.5:1, so the row's ink is the only one there.
+fn the_focused_cursor_row_is_in_the_cursor_colour_with_no_band_and_its_letter_and_hint_keep_their_roles()
+ {
     let mut model = small();
     model.set_focus(Focus::Files);
     model.move_cursor(1, false);
     model.move_cursor(-1, false);
     let area = Rect::new(0, 0, 60, 16);
-    let ink = Style::default().fg(Color::Black).bg(Color::Cyan);
+    let ink = Style::default()
+        .fg(Color::Cyan)
+        .add_modifier(Modifier::BOLD);
     let role = Style::default().fg(Color::DarkGray);
     let styles = ChangesStyles {
         cursor: ink,
@@ -248,24 +249,25 @@ fn the_focused_cursor_row_keeps_its_own_ink_under_every_role() {
     };
     let mut buf = Buffer::empty(area);
     model.draw(area, &mut buf, &styles);
-    let filled: Vec<u16> = (0..area.height)
-        .filter(|y| buf[(0, *y)].bg == Color::Cyan)
+    // The cursor row is the one that names the folder and offers the verbs.
+    let rows: Vec<u16> = (0..area.height)
+        .filter(|y| {
+            let row: String = (0..area.width).map(|x| buf[(x, *y)].symbol()).collect();
+            row.contains("src") && row.contains("unstage")
+        })
         .collect();
-    assert_eq!(filled.len(), 1, "one cursor row");
-    let y = filled[0];
+    assert_eq!(rows.len(), 1, "one cursor row");
+    let y = rows[0];
     let row: String = (0..area.width).map(|x| buf[(x, y)].symbol()).collect();
-    assert!(row.contains("src"), "the folder is on the row: {row}");
-    assert!(row.contains("unstage"), "the hint is on the row: {row}");
+    let at = |needle: &str| row.find(needle).expect(needle) as u16;
+    assert_eq!(buf[(at("main.rs"), y)].fg, Color::Cyan, "the name: {row}");
+    assert!(buf[(at("main.rs"), y)].modifier.contains(Modifier::BOLD));
+    assert_eq!(buf[(at("src"), y)].fg, Color::DarkGray, "the folder");
+    assert_eq!(buf[(at("unstage"), y)].fg, Color::DarkGray, "the hint");
+    assert_eq!(buf[(3, y)].fg, Color::Yellow, "the letter");
     for x in 0..area.width {
-        assert_eq!(buf[(x, y)].fg, Color::Black, "column {x} of {row:?}");
+        assert_eq!(buf[(x, y)].bg, Color::Reset, "no band at column {x}");
     }
-    // Off the cursor row the roles keep their colors.
-    assert!(
-        (0..area.height)
-            .filter(|row| *row != y)
-            .any(|row| (0..area.width).any(|x| buf[(x, row)].fg == Color::Yellow)),
-        "another row's letter is still role-colored"
-    );
 }
 
 #[test]

@@ -1510,7 +1510,7 @@ impl SearchPanel {
                 &FieldStyles {
                     text: if held { s.muted } else { s.text },
                     selection: s.selection,
-                    caret: s.cursor,
+                    caret: s.caret,
                     hint: s.muted,
                 },
                 focused && self.focus == *focus && !locked,

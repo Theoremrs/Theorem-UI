@@ -1,5 +1,5 @@
 {
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-cabinet-vitesse-dark",
   "environment": {
     "story": "workbench-palette-cabinet-vitesse-dark",
@@ -48,10 +48,10 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-active": {
+    "mark": {
       "kind": "rendered_web",
-      "foreground": "#272726",
-      "background": "#8aa9a0",
+      "foreground": "#8f91f4",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-cabinet-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -60,15 +60,38 @@
           "column": 126,
           "text": "A"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#8f91f4",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#8f91f4",
+      "background": "#272726",
+      "provenance": {
+        "story": "workbench-palette-cabinet-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 126,
+          "text": "A"
+        },
+        "raw_foreground": "#8f91f4",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -78,7 +101,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#eaeae9",
-      "background": "#30302f",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-cabinet-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -94,8 +117,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -261,33 +283,6 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#8aa9a0",
-      "background": "#30302f",
-      "provenance": {
-        "story": "workbench-palette-cabinet-vitesse-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 126,
-          "text": "A"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
-      }
-    },
     "separator": {
       "kind": "rendered_web",
       "foreground": "#444443",
@@ -336,10 +331,50 @@
         "bound_to_expected_palette_fields": true
       }
     },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#8f91f4",
+      "second": "#eaeae9",
+      "provenance": {
+        "story": "workbench-palette-cabinet-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
+      }
+    },
+    "raised": {
+      "kind": "rendered_web",
+      "foreground": "#8aa9a0",
+      "background": "#30302f",
+      "provenance": {
+        "story": "workbench-palette-cabinet-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 92,
+          "text": "s"
+        },
+        "palette_fields": {
+          "bg": [
+            "raised",
+            "selection"
+          ]
+        }
+      }
+    },
     "derived-raised": {
       "kind": "rendered_web",
       "first": "#30302f",
       "second": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-cabinet-vitesse-dark",
+        "against": "workbench-palette-cabinet-github-sharp-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      }
+    },
+    "derived-mark": {
+      "kind": "rendered_web",
+      "first": "#8f91f4",
+      "second": "#e57f47",
       "provenance": {
         "story": "workbench-palette-cabinet-vitesse-dark",
         "against": "workbench-palette-cabinet-github-sharp-dark",
@@ -416,6 +451,7 @@
     "heading": "#eaeae9",
     "accent": "#8aa9a0",
     "focus": "#8aa9a0",
+    "mark": "#8f91f4",
     "selection": "#30302f",
     "disabled": "#737372",
     "deep": "#191918",
@@ -450,17 +486,28 @@
       "matches": true
     },
     {
+      "role": "mark",
+      "y": 0,
+      "x": 126,
+      "text": "Artifacts",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
       "role": "tab-active",
       "y": 0,
       "x": 126,
       "text": "Artifacts",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -474,8 +521,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -567,21 +613,6 @@
       "matches": true
     },
     {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 126,
-      "text": "Artifacts",
-      "fg": [
-        "bg"
-      ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
-      ],
-      "matches": true
-    },
-    {
       "role": "separator",
       "y": 2,
       "x": 30,
@@ -616,24 +647,6 @@
       "glyph": " ",
       "dom": "#272726",
       "pixel": "#272726",
-      "equal": true
-    },
-    {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 125,
-      "glyph": " ",
-      "dom": "#8aa9a0",
-      "pixel": "#8aa9a0",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#30302f",
-      "pixel": "#30302f",
       "equal": true
     }
   ],

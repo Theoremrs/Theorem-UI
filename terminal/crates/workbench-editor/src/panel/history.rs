@@ -762,7 +762,9 @@ impl EditorPanel {
                     if entry.seq == Some(accepted) {
                         text.push_str(" (this text's revision)");
                     }
-                    let style = if chosen {
+                    let style = if chosen && cx.focused {
+                        cx.theme.focus
+                    } else if chosen {
                         cx.theme.selected
                     } else {
                         cx.theme.text

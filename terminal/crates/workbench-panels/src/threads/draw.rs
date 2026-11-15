@@ -231,7 +231,6 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
             break;
         }
         let here = cursor == Some(i);
-        let filled = here && cx.focused;
         let thread = match row {
             Row::Thread { idx, .. } => p.listing.as_ref().map(|l| &l.threads[*idx]),
             _ => None,
@@ -273,7 +272,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 if let Mode::Edit(edit) = &p.mode {
                     let x = x0 + 2;
                     let styles = FieldStyles {
-                        text: theme.focus,
+                        text: theme.field_focus,
                         selection: theme.selection,
                         caret: Style::new().add_modifier(Modifier::REVERSED),
                         hint: theme.muted,
@@ -320,7 +319,6 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                         base.patch(theme.muted),
                     )
                 };
-                let style = if filled { base } else { style };
                 let lw = width(&label) as u16;
                 let lx = right.saturating_sub(lw + 1).max(tx);
                 if lw > 0 {
@@ -347,11 +345,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 if let Some(name) = second
                     && y + 1 < bottom
                 {
-                    let sub = if filled {
-                        base
-                    } else {
-                        base.patch(theme.muted)
-                    };
+                    let sub = base.patch(theme.muted);
                     put(
                         buf,
                         tx,
@@ -364,11 +358,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
             }
             Row::Delegation { label, .. } => {
                 let x = put(buf, x0, y, right, "  ", line);
-                let style = if filled {
-                    line
-                } else {
-                    line.patch(theme.muted)
-                };
+                let style = line.patch(theme.muted);
                 put(
                     buf,
                     x,
@@ -393,11 +383,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 let ww = word.as_deref().map_or(0, |w| width(&visible(w))).min(14) as u16;
                 let wx = right.saturating_sub(ww + 1).max(tx);
                 if let Some(w) = &word {
-                    let style = if filled {
-                        base
-                    } else {
-                        base.patch(session_tone(theme, s))
-                    };
+                    let style = base.patch(session_tone(theme, s));
                     put(buf, wx, y, right, &fit(&visible(w), 14), style);
                 }
                 let room = usize::from(wx.saturating_sub(tx)).saturating_sub(1);
@@ -413,11 +399,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                             y,
                             right,
                             &fit(&visible(&cwd_tail(cwd)), left),
-                            if filled {
-                                base
-                            } else {
-                                base.patch(theme.muted)
-                            },
+                            base.patch(theme.muted),
                         );
                     }
                 }

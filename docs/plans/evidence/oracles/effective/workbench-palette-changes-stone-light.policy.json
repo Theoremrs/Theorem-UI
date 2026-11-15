@@ -10,7 +10,7 @@
     "link": "GitHub Dark's link blue, kept as the mention colour in every profile.",
     "warning": "pi slate's gold (terminal-theme.ts SLATE.gold), held at its slate hue and shifted only as far as readability on the profile's surfaces requires (status()).",
     "error": "pi slate's error red (SLATE.error), same rule as warning.",
-    "accent": "pi slate's sage (SLATE.sage), the focus and active-tab colour, same rule as warning.",
+    "accent": "pi slate's sage (SLATE.sage), the code and accent-text colour, same rule as warning.",
     "syntax": "The syntax roles are githubDarkTheme.tokens constants (terminal-roles.ts); the diff hues are GitHub Dark's red and green hues placed at a lightness that follows the profile's background."
   },
   "classes": {
@@ -62,7 +62,7 @@
         "changes"
       ],
       "minimum": 4.5,
-      "note": "WCAG 1.4.3 readable text, 4.5:1"
+      "note": "WCAG 1.4.3 readable text, 4.5:1: the focused panel's chosen row in the mark colour on the pane background"
     },
     {
       "id": "WB-TXT.tab-active",
@@ -78,7 +78,23 @@
         "terminal"
       ],
       "minimum": 4.5,
-      "note": "WCAG 1.4.3 readable text, 4.5:1"
+      "note": "WCAG 1.4.3 readable text, 4.5:1: the active tab's letters in the mark colour on the pane background"
+    },
+    {
+      "id": "WB-TXT.mark",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "mark",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1: the mark colour, the letters that tell the chosen or matched thing, on the pane background"
     },
     {
       "id": "WB-TXT.tab-inactive",
@@ -214,11 +230,11 @@
       "note": "WCAG 1.4.3 readable text, 4.5:1"
     },
     {
-      "id": "WB-UI.tab-fill",
+      "id": "WB-UI.tab-letters",
       "class": "standard",
-      "predicate": "contrast",
+      "predicate": "oklab_distance",
       "required_evidence": "rendered_web",
-      "observation": "tab-fill",
+      "observation": "tab-letters",
       "surfaces": [
         "chat",
         "markdown",
@@ -226,8 +242,9 @@
         "cabinet",
         "terminal"
       ],
-      "minimum": 3,
-      "note": "WCAG 1.4.11: the active tab's fill against the inactive tab's fill"
+      "minimum": 0.1,
+      "maximum": 1,
+      "note": "the active tab is told from the inactive by the colour of its letters: how far apart the two are painted (there is no tab fill)"
     },
     {
       "id": "WB-UI.separator",
@@ -304,11 +321,11 @@
       "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
     },
     {
-      "id": "WB-DONOR.derived-raised",
+      "id": "WB-DONOR.derived-mark",
       "class": "contract",
       "predicate": "oklab_distance",
       "required_evidence": "rendered_web",
-      "observation": "derived-raised",
+      "observation": "derived-mark",
       "surfaces": [
         "chat",
         "markdown",
@@ -411,23 +428,6 @@
       "observation": "fixed-error",
       "surfaces": [
         "changes",
-        "terminal"
-      ],
-      "minimum": 0,
-      "maximum": 0.05,
-      "note": "declared fixed (fixed_roles): stays the same colour across palettes, shifted at most as far as readability on the profile's surfaces requires"
-    },
-    {
-      "id": "WB-DONOR.fixed-accent",
-      "class": "contract",
-      "predicate": "oklab_distance",
-      "required_evidence": "rendered_web",
-      "observation": "fixed-accent",
-      "surfaces": [
-        "chat",
-        "markdown",
-        "changes",
-        "cabinet",
         "terminal"
       ],
       "minimum": 0,

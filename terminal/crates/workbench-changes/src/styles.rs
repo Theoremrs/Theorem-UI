@@ -15,9 +15,9 @@ pub struct ChangesStyles {
     pub muted: Style,
     /// The divider between the two sides of a split diff.
     pub line: Style,
-    /// The cursor row while the list holds focus.
+    /// The cursor row while the list holds focus: the mark colour, no band.
     pub cursor: Style,
-    /// The cursor row while another part holds focus.
+    /// The cursor row while another part holds focus: bright ink, no band.
     pub cursor_idle: Style,
     /// A selected row that is not the cursor row.
     pub selected: Style,
@@ -55,7 +55,7 @@ impl ChangesStyles {
             muted: theme.muted,
             line: theme.divider,
             cursor: theme.focus,
-            cursor_idle: theme.selection,
+            cursor_idle: theme.selected,
             selected: theme.selection,
             heading: theme.section_heading,
             letter_added: theme.change_added,

@@ -54,20 +54,10 @@ pub(crate) fn letter_style(styles: &ChangesStyles, section: Section, c: char) ->
     }
 }
 
-/// A role drawn on a row. The role colors are chosen against the pane; on the
-/// focus fill they fall under 4.5:1, so there the row's own ink stays and the
-/// role keeps only its modifiers.
-fn on_row(row: Style, role: Style, filled: bool) -> Style {
-    let out = row.patch(role);
-    if filled {
-        Style {
-            fg: row.fg,
-            bg: row.bg,
-            ..out
-        }
-    } else {
-        out
-    }
+/// A role drawn on a row: the row's style with the role over it, so a letter or a hint keeps
+/// its own colour on the cursor row.
+fn on_row(row: Style, role: Style) -> Style {
+    row.patch(role)
 }
 
 /// The verbs a row offers, as the cursor row's hint shows them.
@@ -300,9 +290,9 @@ impl Changes {
             } => {
                 let cursor = self.cursor.as_ref() == Some(key);
                 let selected = self.selected.contains(key);
-                let filled = cursor && self.focus == Focus::Files && self.mode == Mode::Changes;
+                let focused = self.focus == Focus::Files && self.mode == Mode::Changes;
                 let row_style = match (cursor, selected) {
-                    (true, _) if filled => styles.cursor,
+                    (true, _) if focused => styles.cursor,
                     (true, _) => styles.cursor_idle,
                     (false, true) => styles.selected,
                     (false, false) => styles.text,
@@ -317,7 +307,7 @@ impl Changes {
                     if *expanded { "v" } else { ">" },
                     row_style,
                 );
-                let letter_style = on_row(row_style, letter_style(styles, key.section, c), filled);
+                let letter_style = on_row(row_style, letter_style(styles, key.section, c));
                 put(buf, rect.x + 3, rect.y, 1, &c.to_string(), letter_style);
                 let hint = if cursor {
                     offered(key.section)
@@ -372,7 +362,7 @@ impl Changes {
                         rect.y,
                         tag_w,
                         tag,
-                        on_row(row_style, styles.warning, filled),
+                        on_row(row_style, styles.warning),
                     );
                     x += said as u16;
                     left = left.saturating_sub(said);
@@ -385,7 +375,7 @@ impl Changes {
                         rect.y,
                         left - 2,
                         &folder,
-                        on_row(row_style, styles.muted, filled),
+                        on_row(row_style, styles.muted),
                     );
                 }
                 if let Some(at) = hint_at {
@@ -395,7 +385,7 @@ impl Changes {
                         rect.y,
                         hint_w,
                         hint,
-                        on_row(row_style, styles.muted, filled),
+                        on_row(row_style, styles.muted),
                     );
                 }
             }
@@ -799,7 +789,7 @@ impl Changes {
             rect.y,
             7,
             &short,
-            on_row(style, styles.muted, cursor),
+            on_row(style, styles.muted),
         );
         let w = rect.width as usize;
         let author = printable(&entry.author);
@@ -816,7 +806,7 @@ impl Changes {
                 rect.y,
                 author_w,
                 &elide_middle(&author, author_w),
-                on_row(style, styles.muted, cursor),
+                on_row(style, styles.muted),
             );
         }
     }

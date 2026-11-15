@@ -1,5 +1,5 @@
 {
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-changes-vitesse-dark",
   "environment": {
     "story": "workbench-palette-changes-vitesse-dark",
@@ -75,8 +75,8 @@
     },
     "focused-row": {
       "kind": "rendered_web",
-      "foreground": "#272726",
-      "background": "#8aa9a0",
+      "foreground": "#8f91f4",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-changes-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -85,15 +85,38 @@
           "column": 130,
           "text": "m"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#8f91f4",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "mark": {
+      "kind": "rendered_web",
+      "foreground": "#8f91f4",
+      "background": "#272726",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 130,
+          "text": "m"
+        },
+        "raw_foreground": "#8f91f4",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -102,8 +125,8 @@
     },
     "tab-active": {
       "kind": "rendered_web",
-      "foreground": "#272726",
-      "background": "#8aa9a0",
+      "foreground": "#8f91f4",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-changes-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -112,15 +135,13 @@
           "column": 138,
           "text": "C"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#8f91f4",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
           "matches": true
         },
@@ -130,7 +151,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#eaeae9",
-      "background": "#30302f",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-changes-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -146,8 +167,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -234,8 +254,8 @@
     },
     "warning-on-focus": {
       "kind": "rendered_web",
-      "foreground": "#272726",
-      "background": "#8aa9a0",
+      "foreground": "#d7bd8a",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-changes-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -244,25 +264,25 @@
           "column": 128,
           "text": "M"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#d7bd8a",
         "palette_fields": {
           "fg": [
-            "bg"
+            "gold",
+            "warning",
+            "approval"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
-          "matches": false
+          "matches": true
         },
-        "bound_to_expected_palette_fields": false
+        "bound_to_expected_palette_fields": true
       }
     },
     "muted-on-focus": {
       "kind": "rendered_web",
-      "foreground": "#272726",
-      "background": "#8aa9a0",
+      "foreground": "#989796",
+      "background": "#272726",
       "provenance": {
         "story": "workbench-palette-changes-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -271,19 +291,17 @@
           "column": 151,
           "text": "d"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#989796",
         "palette_fields": {
           "fg": [
-            "bg"
+            "muted"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
-          "matches": false
+          "matches": true
         },
-        "bound_to_expected_palette_fields": false
+        "bound_to_expected_palette_fields": true
       }
     },
     "diff-added": {
@@ -386,33 +404,6 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#8aa9a0",
-      "background": "#30302f",
-      "provenance": {
-        "story": "workbench-palette-changes-vitesse-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 138,
-          "text": "C"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
-      }
-    },
     "separator": {
       "kind": "rendered_web",
       "foreground": "#444443",
@@ -510,6 +501,16 @@
         "bound_to_expected_palette_fields": true,
         "against": "pane-bg"
       }
+    },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#8f91f4",
+      "second": "#eaeae9",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
+      }
     }
   },
   "palette_in_use": {
@@ -531,6 +532,7 @@
     "heading": "#eaeae9",
     "accent": "#8aa9a0",
     "focus": "#8aa9a0",
+    "mark": "#8f91f4",
     "selection": "#30302f",
     "disabled": "#737372",
     "deep": "#191918",
@@ -583,12 +585,23 @@
       "x": 130,
       "text": "main.rs",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "mark",
+      "y": 8,
+      "x": 130,
+      "text": "main.rs",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
       ],
       "matches": true
     },
@@ -598,12 +611,10 @@
       "x": 138,
       "text": "Changes",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -617,8 +628,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -670,14 +680,14 @@
       "x": 128,
       "text": "M",
       "fg": [
-        "bg"
+        "gold",
+        "warning",
+        "approval"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
-      "matches": false
+      "matches": true
     },
     {
       "role": "muted-on-focus",
@@ -685,14 +695,12 @@
       "x": 151,
       "text": "diff  stage  discard",
       "fg": [
-        "bg"
+        "muted"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
-      "matches": false
+      "matches": true
     },
     {
       "role": "diff-added",
@@ -743,21 +751,6 @@
       ],
       "bg": [
         "removedWords"
-      ],
-      "matches": true
-    },
-    {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 138,
-      "text": "Changes",
-      "fg": [
-        "bg"
-      ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
       ],
       "matches": true
     },
@@ -825,39 +818,12 @@
       "equal": true
     },
     {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 137,
-      "glyph": " ",
-      "dom": "#8aa9a0",
-      "pixel": "#8aa9a0",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#30302f",
-      "pixel": "#30302f",
-      "equal": true
-    },
-    {
       "label": "removed words fill",
       "row": 11,
       "column": 138,
       "glyph": "p",
       "dom": "#721615",
       "pixel": "#721615",
-      "equal": true
-    },
-    {
-      "label": "focused row fill",
-      "row": 8,
-      "column": 129,
-      "glyph": " ",
-      "dom": "#8aa9a0",
-      "pixel": "#8aa9a0",
       "equal": true
     }
   ],

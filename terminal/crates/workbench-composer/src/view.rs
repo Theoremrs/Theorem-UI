@@ -283,7 +283,11 @@ impl Composer {
             for c in self.chip_cells(r.width) {
                 let a = &self.attachments[c.index];
                 let style = if self.chip == Some(c.index) {
-                    theme.popup_selected
+                    if self.focused {
+                        theme.focus
+                    } else {
+                        theme.selected
+                    }
                 } else {
                     match a.state {
                         DraftAttachmentState::Ready => theme.control,
@@ -347,27 +351,27 @@ impl Composer {
         let rows = usize::from(r.height);
         let labels = p.labels();
         let first = self.popup_first(rows);
+        // The list sits in rows of its own inside the box and covers nothing, so it needs no
+        // surface: a row is plain text, the chosen one and the word that says a search is
+        // running are told by the colour of their letters.
+        let searching = Style {
+            add_modifier: theme.focus.add_modifier - Modifier::BOLD,
+            ..theme.focus
+        };
         for i in 0..rows {
             let y = r.y + i as u16;
-            buf.set_style(Rect::new(r.x, y, r.width, 1), theme.popup);
             let idx = first + i;
-            let (text, chosen) = match labels.get(idx) {
-                Some(l) => (l.clone(), idx == p.selected()),
-                None if i == 0 => (
-                    match p {
-                        Popup::Files { rows: None, .. } => "Searching\u{2026}".to_owned(),
-                        _ => "No matches".to_owned(),
-                    },
-                    false,
-                ),
+            let label = labels.get(idx);
+            let chosen = label.is_some() && idx == p.selected();
+            let (text, style) = match label {
+                Some(l) if chosen => (l.clone(), theme.focus),
+                Some(l) => (l.clone(), theme.text),
+                None if i == 0 => match p {
+                    Popup::Files { rows: None, .. } => ("Searching\u{2026}".to_owned(), searching),
+                    _ => ("No matches".to_owned(), theme.muted),
+                },
                 None => continue,
             };
-            let style = if chosen {
-                theme.popup_selected
-            } else {
-                theme.popup
-            };
-            buf.set_style(Rect::new(r.x, y, r.width, 1), style);
             let marker = if chosen { "\u{25B8} " } else { "  " };
             let room = usize::from(r.width).saturating_sub(2);
             let shown = match p {

@@ -222,10 +222,14 @@ impl Rig {
     }
 
     fn draw(&self, theme: &Theme, width: u16, height: u16) -> Buffer {
+        self.draw_in(theme, width, height, true)
+    }
+
+    fn draw_in(&self, theme: &Theme, width: u16, height: u16, focused: bool) -> Buffer {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
         let mut cx = ViewCtx::new(theme, self.m.workspace());
-        cx.focused = true;
+        cx.focused = focused;
         self.m.panel(&self.id).unwrap().view(area, &mut buf, &cx);
         buf
     }
@@ -1567,14 +1571,17 @@ fn a_muted_entry_stays_muted_when_it_is_renamed_in_place() {
 // ---- theme roles for refusals and unknown results -----------------------------------
 
 #[test]
-fn on_the_focus_fill_a_problem_keeps_its_role_color_on_the_panes_background() {
-    // The role colors are chosen against the pane; on the focus fill they cannot be read.
+fn a_problem_on_the_focused_cursor_row_keeps_its_role_color_with_no_band_behind_it() {
+    // The cursor row is in the mark colour with no background, so a note on it keeps the role
+    // colour it has everywhere else, on the pane's own background.
     let mut r = rig();
     r.open_root();
     let theme = Theme {
         bg: Style::default().bg(Color::Blue),
         text: Style::default().fg(Color::White),
-        focus: Style::default().fg(Color::Black).bg(Color::Cyan),
+        focus: Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
         ..colored()
     };
     let rename = rename_a_txt(&mut r, "b.txt");
@@ -1593,6 +1600,46 @@ fn on_the_focus_fill_a_problem_keeps_its_role_color_on_the_panes_background() {
         "{}",
         r.screen()
     );
+}
+
+#[test]
+fn the_cursor_row_is_in_the_mark_colour_while_the_panel_has_focus_and_bright_bold_when_it_loses_it()
+{
+    let mark = Style::default()
+        .fg(Color::Rgb(0xe2, 0x81, 0x3f))
+        .add_modifier(Modifier::BOLD);
+    let bright = Style::default()
+        .fg(Color::Rgb(0xe4, 0xea, 0xee))
+        .add_modifier(Modifier::BOLD);
+    let theme = Theme {
+        bg: Style::default().bg(Color::Blue),
+        text: Style::default().fg(Color::White),
+        focus: mark,
+        selected: bright,
+        ..colored()
+    };
+    let mut r = rig();
+    r.open_root();
+    r.key(Key::Down);
+    let row_of = |buf: &Buffer, fg: Color| -> Vec<u16> {
+        (0..20)
+            .filter(|y| (0..90).any(|x| buf[(x, *y)].fg == fg))
+            .collect()
+    };
+    let focused = r.draw_in(&theme, 90, 20, true);
+    let rows = row_of(&focused, Color::Rgb(0xe2, 0x81, 0x3f));
+    assert_eq!(rows.len(), 1, "one accent row: {}", r.screen());
+    let y = rows[0];
+    let letters = (0..90).find(|x| focused[(*x, y)].fg == Color::Rgb(0xe2, 0x81, 0x3f));
+    let cell = &focused[(letters.unwrap(), y)];
+    assert!(cell.modifier.contains(Modifier::BOLD));
+    assert_eq!(cell.bg, Color::Blue, "no band: the pane's own background");
+    let idle = r.draw_in(&theme, 90, 20, false);
+    assert!(row_of(&idle, Color::Rgb(0xe2, 0x81, 0x3f)).is_empty());
+    assert_eq!(row_of(&idle, Color::Rgb(0xe4, 0xea, 0xee)), vec![y]);
+    let cell = &idle[(letters.unwrap(), y)];
+    assert!(cell.modifier.contains(Modifier::BOLD));
+    assert_eq!(cell.bg, Color::Blue);
 }
 
 #[test]

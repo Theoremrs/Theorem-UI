@@ -15,9 +15,11 @@ pub(crate) struct Styles {
     pub text: Style,
     pub muted: Style,
     pub bold: Style,
-    /// The row the cursor is on while the panel has focus.
+    /// The row the cursor is on while the panel has focus: the mark colour, no band.
     pub cursor: Style,
-    /// The row the cursor is on while it does not.
+    /// The caret of a field: a filled cell.
+    pub caret: Style,
+    /// The row the cursor is on while it does not: bright ink, no band.
     pub cursor_idle: Style,
     /// The text selected in a field.
     pub selection: Style,
@@ -43,9 +45,10 @@ impl Styles {
             muted: theme.muted,
             bold: theme.text.add_modifier(Modifier::BOLD),
             cursor: theme.focus,
+            caret: theme.caret,
             cursor_idle: theme.selected,
             selection: theme.selection,
-            on: theme.focus,
+            on: theme.control,
             error: theme.error,
             warning: theme.warning,
             finding_error: theme.diagnostic_error,

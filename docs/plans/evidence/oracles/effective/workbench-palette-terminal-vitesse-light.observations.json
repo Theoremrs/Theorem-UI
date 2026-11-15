@@ -1,5 +1,5 @@
 {
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-terminal-vitesse-light",
   "environment": {
     "story": "workbench-palette-terminal-vitesse-light",
@@ -73,10 +73,10 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-active": {
+    "mark": {
       "kind": "rendered_web",
-      "foreground": "#242728",
-      "background": "#8aa8a0",
+      "foreground": "#df78af",
+      "background": "#242728",
       "provenance": {
         "story": "workbench-palette-terminal-vitesse-light",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -85,15 +85,38 @@
           "column": 110,
           "text": "S"
         },
-        "raw_foreground": "#242728",
+        "raw_foreground": "#df78af",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#df78af",
+      "background": "#242728",
+      "provenance": {
+        "story": "workbench-palette-terminal-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "raw_foreground": "#df78af",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -103,7 +126,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#e8e9e9",
-      "background": "#2c3132",
+      "background": "#242728",
       "provenance": {
         "story": "workbench-palette-terminal-vitesse-light",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -119,8 +142,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -230,33 +252,6 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#8aa8a0",
-      "background": "#2c3132",
-      "provenance": {
-        "story": "workbench-palette-terminal-vitesse-light",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 110,
-          "text": "S"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
-      }
-    },
     "separator": {
       "kind": "rendered_web",
       "foreground": "#404546",
@@ -303,6 +298,16 @@
           "matches": true
         },
         "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#df78af",
+      "second": "#e8e9e9",
+      "provenance": {
+        "story": "workbench-palette-terminal-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
       }
     },
     "ansi-00": {
@@ -647,10 +652,10 @@
         "method": "the role colour painted here and in the same mode of the next palette"
       }
     },
-    "derived-raised": {
+    "derived-mark": {
       "kind": "rendered_web",
-      "first": "#2c3132",
-      "second": "#273042",
+      "first": "#df78af",
+      "second": "#e2813f",
       "provenance": {
         "story": "workbench-palette-terminal-vitesse-light",
         "against": "workbench-palette-terminal-github-sharp-light",
@@ -716,16 +721,6 @@
         "against": "workbench-palette-terminal-github-sharp-light",
         "method": "the role colour painted here and in the same mode of the next palette"
       }
-    },
-    "fixed-accent": {
-      "kind": "rendered_web",
-      "first": "#8aa8a0",
-      "second": "#8aa8a0",
-      "provenance": {
-        "story": "workbench-palette-terminal-vitesse-light",
-        "against": "workbench-palette-terminal-github-sharp-light",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      }
     }
   },
   "palette_in_use": {
@@ -747,6 +742,7 @@
     "heading": "#e8e9e9",
     "accent": "#8aa8a0",
     "focus": "#8aa8a0",
+    "mark": "#df78af",
     "selection": "#2c3132",
     "disabled": "#717373",
     "deep": "#16191a",
@@ -794,17 +790,28 @@
       "matches": true
     },
     {
+      "role": "mark",
+      "y": 0,
+      "x": 110,
+      "text": "Shell",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
       "role": "tab-active",
       "y": 0,
       "x": 110,
       "text": "Shell",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -818,8 +825,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -875,21 +881,6 @@
       ],
       "bg": [
         "bg"
-      ],
-      "matches": true
-    },
-    {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 110,
-      "text": "Shell",
-      "fg": [
-        "bg"
-      ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
       ],
       "matches": true
     },
@@ -1000,24 +991,6 @@
       "glyph": " ",
       "dom": "#242728",
       "pixel": "#242728",
-      "equal": true
-    },
-    {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 109,
-      "glyph": " ",
-      "dom": "#8aa8a0",
-      "pixel": "#8aa8a0",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#2c3132",
-      "pixel": "#2c3132",
       "equal": true
     }
   ],

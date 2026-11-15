@@ -367,3 +367,74 @@ fn a_hostile_placeholder_and_popup_rows_are_spelled_out() {
         r.dump()
     );
 }
+
+#[test]
+fn the_suggestion_list_is_told_by_its_letters_and_draws_no_band() {
+    use ratatui::buffer::Buffer;
+    use ratatui::style::{Color, Modifier, Style};
+    use theorem_workbench_core::Theme;
+    const BAND: Color = Color::Rgb(0x27, 0x30, 0x42);
+    const MARK: Color = Color::Rgb(0xe2, 0x81, 0x3f);
+    // A popup surface is set, to show the list inside the box does not use it.
+    let theme = Theme {
+        focus: Style::default().fg(MARK).add_modifier(Modifier::BOLD),
+        popup: Style::default().fg(Color::White).bg(BAND),
+        popup_selected: Style::default().fg(MARK).bg(BAND),
+        ..Theme::plain()
+    };
+    let mut r = rig(60, 10);
+    let draw = |r: &Rig| {
+        let mut buf = Buffer::empty(r.area);
+        r.c.draw(r.area, &mut buf, &theme);
+        buf
+    };
+    let row_of = |buf: &Buffer, needle: &str| -> u16 {
+        let rows: Vec<u16> = (0..buf.area.height)
+            .filter(|y| {
+                let row: String = (0..buf.area.width).map(|x| buf[(x, *y)].symbol()).collect();
+                row.contains(needle)
+            })
+            .collect();
+        assert_eq!(rows.len(), 1, "one row says {needle}");
+        rows[0]
+    };
+    let marked = |buf: &Buffer, y: u16| -> Vec<u16> {
+        (0..buf.area.width)
+            .filter(|x| buf[(*x, y)].fg == MARK)
+            .collect()
+    };
+    let no_band = |buf: &Buffer| {
+        for y in 0..buf.area.height {
+            for x in 0..buf.area.width {
+                assert_ne!(buf[(x, y)].bg, BAND, "({x}, {y}) has a band behind it");
+            }
+        }
+    };
+    r.press(Key::Char('@'));
+    // Still searching: the word itself is in the mark colour, not bold, with nothing behind it.
+    let out = r.press(Key::Char('s'));
+    let (_, token) = want(&out).expect("a search was asked for");
+    let buf = draw(&r);
+    let y = row_of(&buf, "Searching");
+    let letters = marked(&buf, y);
+    assert!(!letters.is_empty(), "{}", r.dump());
+    assert!(
+        letters
+            .iter()
+            .all(|x| !buf[(*x, y)].modifier.contains(Modifier::BOLD))
+    );
+    no_band(&buf);
+    r.c.files_found(token, vec!["src/a.rs".into(), "src/b.rs".into()]);
+    let buf = draw(&r);
+    // The chosen row is the mark colour and bold; no other row is in the mark colour.
+    let y = row_of(&buf, "src/a.rs");
+    let letters = marked(&buf, y);
+    assert!(!letters.is_empty(), "{}", r.dump());
+    assert!(
+        letters
+            .iter()
+            .all(|x| buf[(*x, y)].modifier.contains(Modifier::BOLD))
+    );
+    assert!(marked(&buf, row_of(&buf, "src/b.rs")).is_empty());
+    no_band(&buf);
+}

@@ -109,6 +109,9 @@ struct Palette {
     accent: Color,
     #[serde(deserialize_with = "colour")]
     focus: Color,
+    /// The letters of the thing that is chosen or matched.
+    #[serde(deserialize_with = "colour")]
+    mark: Color,
     #[serde(deserialize_with = "colour")]
     selection: Color,
     #[serde(deserialize_with = "colour")]
@@ -179,6 +182,7 @@ const SLATE: Palette = Palette {
     heading: Color::Rgb(0xe4, 0xea, 0xee),
     accent: Color::Rgb(0x8a, 0xa8, 0xa0),
     focus: Color::Rgb(0x8a, 0xa8, 0xa0),
+    mark: Color::Rgb(0xe2, 0x81, 0x3f),
     selection: Color::Rgb(0x27, 0x30, 0x42),
     disabled: Color::Rgb(0x6c, 0x74, 0x7c),
     deep: Color::Rgb(0x12, 0x19, 0x24),

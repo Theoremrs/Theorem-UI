@@ -3,7 +3,7 @@
   "skill_version": "1.0.0-portable",
   "policy_name": "workbench-palette:changes",
   "policy_version": "1.0",
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-changes-stone-light",
   "environment": {
     "story": "workbench-palette-changes-stone-light",
@@ -115,15 +115,13 @@
           "column": 130,
           "text": "m"
         },
-        "raw_foreground": "#292623",
+        "raw_foreground": "#00a8c9",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
           "matches": true
         },
@@ -131,7 +129,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.86712229691201,
+        "value": 5.333478978471017,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -151,15 +149,13 @@
           "column": 138,
           "text": "C"
         },
-        "raw_foreground": "#292623",
+        "raw_foreground": "#00a8c9",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
           "matches": true
         },
@@ -167,7 +163,41 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.86712229691201,
+        "value": 5.333478978471017,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.mark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 130,
+          "text": "m"
+        },
+        "raw_foreground": "#00a8c9",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.333478978471017,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -194,8 +224,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -203,7 +232,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 10.96743577004436,
+        "value": 12.432480724747448,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -328,23 +357,23 @@
           "column": 128,
           "text": "M"
         },
-        "raw_foreground": "#292623",
+        "raw_foreground": "#d6bc8a",
         "palette_fields": {
           "fg": [
-            "bg"
+            "gold",
+            "warning",
+            "approval"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
-          "matches": false
+          "matches": true
         },
-        "bound_to_expected_palette_fields": false
+        "bound_to_expected_palette_fields": true
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.86712229691201,
+        "value": 8.181346966964334,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -364,23 +393,21 @@
           "column": 151,
           "text": "d"
         },
-        "raw_foreground": "#292623",
+        "raw_foreground": "#999695",
         "palette_fields": {
           "fg": [
-            "bg"
+            "muted"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
-          "matches": false
+          "matches": true
         },
-        "bound_to_expected_palette_fields": false
+        "bound_to_expected_palette_fields": true
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.86712229691201,
+        "value": 5.123221353880435,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -523,38 +550,22 @@
       "status": "pass"
     },
     {
-      "id": "WB-UI.tab-fill",
+      "id": "WB-UI.tab-letters",
       "class": "standard",
-      "predicate": "contrast",
-      "observation": "tab-fill",
+      "predicate": "oklab_distance",
+      "observation": "tab-letters",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-changes-stone-light",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 138,
-          "text": "C"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.175739932440938,
-        "minimum": 3.0,
-        "unit": "ratio"
+        "value": 0.2878705575123349,
+        "minimum": 0.1,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
       },
       "status": "pass"
     },
@@ -713,10 +724,10 @@
       "status": "pass"
     },
     {
-      "id": "WB-DONOR.derived-raised",
+      "id": "WB-DONOR.derived-mark",
       "class": "contract",
       "predicate": "oklab_distance",
-      "observation": "derived-raised",
+      "observation": "derived-mark",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-changes-stone-light",
@@ -725,7 +736,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 0.015516006784939706,
+        "value": 0.2409991829021152,
         "minimum": 0.005,
         "maximum": 1.0,
         "unit": "delta_e_ok"
@@ -837,26 +848,6 @@
       "class": "contract",
       "predicate": "oklab_distance",
       "observation": "fixed-error",
-      "evidence_kind": "rendered_web",
-      "provenance": {
-        "story": "workbench-palette-changes-stone-light",
-        "against": "workbench-palette-changes-vitesse-light",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      },
-      "arithmetic": "pass",
-      "detail": {
-        "value": 0.0,
-        "minimum": 0.0,
-        "maximum": 0.05,
-        "unit": "delta_e_ok"
-      },
-      "status": "pass"
-    },
-    {
-      "id": "WB-DONOR.fixed-accent",
-      "class": "contract",
-      "predicate": "oklab_distance",
-      "observation": "fixed-accent",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-changes-stone-light",

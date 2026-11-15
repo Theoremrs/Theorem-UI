@@ -2,7 +2,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::completion::FileKind;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeId, Role};
@@ -93,7 +93,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                 muted,
                 ..
             } => {
-                // The cursor row keeps its own colors: it must stay legible.
+                // The cursor row keeps its own colors: it is the one in the focus colour.
                 let line = if *muted && !here {
                     line.patch(theme.muted)
                 } else {
@@ -106,27 +106,12 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     FileKind::File => name.clone(),
                 };
                 x = put(buf, x, y, right, &shown, line);
-                // Role colors are chosen against the pane and fall under 4.5:1 on the
-                // focus fill. There the mark beside the name takes the row's own ink, and
-                // a note, which says what happened in its role color, stands on the pane's
-                // background.
-                let filled = here && cx.focused;
                 if let Some(clip) = clip {
-                    let style = if filled {
-                        line
-                    } else {
-                        line.patch(theme.muted)
-                    };
+                    let style = line.patch(theme.muted);
                     x = put(buf, x, y, right, &format!(" ({clip})"), style);
                 }
                 if let Some(note) = note {
-                    let base = match (filled, line.bg) {
-                        (true, Some(_)) => Style {
-                            bg: Some(theme.bg.bg.unwrap_or(Color::Reset)),
-                            ..theme.text
-                        },
-                        _ => line,
-                    };
+                    let base = line;
                     let tone = match note {
                         NoteState::Pending(_) => Tone::Plain,
                         NoteState::Problem(p) => p.tone(),
@@ -161,7 +146,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     x = put(buf, x, y, right, field, line);
                     let width = usize::from(right.saturating_sub(x));
                     let styles = FieldStyles {
-                        text: theme.focus,
+                        text: theme.field_focus,
                         selection: theme.selection,
                         caret: Style::new().add_modifier(Modifier::REVERSED),
                         hint: theme.muted,

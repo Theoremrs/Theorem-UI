@@ -380,8 +380,8 @@ impl Theme {
     }
 
     /// Set the surface a popup's rows are drawn on (a menu, a completion list) and its chosen
-    /// row. Each carries a foreground and a background, so a row reads over whatever the popup
-    /// covers and the chosen one is told from the rest.
+    /// row. Both carry the popup's own background, so a row reads over whatever the popup
+    /// covers; the chosen one is told from the rest by its letters.
     pub fn with_popup(mut self, popup: Style, popup_selected: Style) -> Self {
         self.popup = popup;
         self.popup_selected = popup_selected;
@@ -488,6 +488,16 @@ mod tests {
                 assert_ne!(a, b);
             }
         }
+    }
+
+    #[test]
+    fn plain_tells_a_chosen_thing_with_focus_from_one_without_by_modifier() {
+        let t = Theme::plain();
+        assert_ne!(t.focus, t.selected);
+        assert_ne!(t.focus.add_modifier, t.selected.add_modifier);
+        assert_ne!(t.focus, t.text);
+        assert_ne!(t.selected, t.text);
+        assert_ne!((t.search_match, t.hunk_current), (t.text, t.text));
     }
 
     #[test]

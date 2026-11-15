@@ -3,7 +3,7 @@
   "skill_version": "1.0.0-portable",
   "policy_name": "workbench-palette:markdown",
   "policy_version": "1.0",
-  "source_revision": "123e1c609a20c3b08aa8fb643f67a7502f2f8420+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-markdown-vitesse-dark",
   "environment": {
     "story": "workbench-palette-markdown-vitesse-dark",
@@ -27,9 +27,9 @@
     "date": "2026-11-15"
   },
   "counts": {
-    "pass": 16,
+    "pass": 15,
     "fail": 0,
-    "review": 3,
+    "review": 2,
     "not_measurable": 0
   },
   "results": [
@@ -122,8 +122,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -131,7 +130,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 10.974651762261002,
+        "value": 12.420586778855178,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -151,15 +150,13 @@
           "column": 110,
           "text": "g"
         },
-        "raw_foreground": "#272726",
+        "raw_foreground": "#8f91f4",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
           ],
           "matches": true
         },
@@ -167,7 +164,41 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.883712374762804,
+        "value": 5.357506626136624,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.mark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-vitesse-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "g"
+        },
+        "raw_foreground": "#8f91f4",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.357506626136624,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -194,8 +225,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -203,7 +233,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 10.974651762261002,
+        "value": 12.420586778855178,
         "minimum": 4.5,
         "unit": "ratio"
       },
@@ -259,61 +289,43 @@
           "column": 142,
           "text": "P"
         },
-        "raw_foreground": "#eaeae9",
+        "raw_foreground": "#8f91f4",
         "palette_fields": {
           "fg": [
-            "bright",
-            "heading"
+            "mark"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
-          "matches": true
+          "matches": false
         },
-        "bound_to_expected_palette_fields": true
+        "bound_to_expected_palette_fields": false
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 10.974651762261002,
+        "value": 5.357506626136624,
         "minimum": 4.5,
         "unit": "ratio"
       },
       "status": "pass"
     },
     {
-      "id": "WB-UI.tab-fill",
+      "id": "WB-UI.tab-letters",
       "class": "standard",
-      "predicate": "contrast",
-      "observation": "tab-fill",
+      "predicate": "oklab_distance",
+      "observation": "tab-letters",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-markdown-vitesse-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 110,
-          "text": "g"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 5.198763595634179,
-        "minimum": 3.0,
-        "unit": "ratio"
+        "value": 0.2797805749875443,
+        "minimum": 0.1,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
       },
       "status": "pass"
     },
@@ -384,42 +396,6 @@
       "status": "review"
     },
     {
-      "id": "WB-UI.selection-fill",
-      "class": "diagnostic",
-      "predicate": "contrast",
-      "observation": "selection-fill",
-      "evidence_kind": "rendered_web",
-      "provenance": {
-        "story": "workbench-palette-markdown-vitesse-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 4,
-          "column": 4,
-          "text": "g"
-        },
-        "palette_fields": {
-          "fg": [
-            "bright",
-            "heading"
-          ],
-          "bg": [
-            "raised",
-            "selection"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "pane-bg"
-      },
-      "arithmetic": "fail",
-      "detail": {
-        "value": 1.1317522458039508,
-        "minimum": 3.0,
-        "unit": "ratio"
-      },
-      "status": "review"
-    },
-    {
       "id": "WB-DONOR.derived-bg",
       "class": "contract",
       "predicate": "oklab_distance",
@@ -440,10 +416,10 @@
       "status": "pass"
     },
     {
-      "id": "WB-DONOR.derived-raised",
+      "id": "WB-DONOR.derived-mark",
       "class": "contract",
       "predicate": "oklab_distance",
-      "observation": "derived-raised",
+      "observation": "derived-mark",
       "evidence_kind": "rendered_web",
       "provenance": {
         "story": "workbench-palette-markdown-vitesse-dark",
@@ -452,7 +428,7 @@
       },
       "arithmetic": "pass",
       "detail": {
-        "value": 0.023199134440017588,
+        "value": 0.25711897580509885,
         "minimum": 0.005,
         "maximum": 1.0,
         "unit": "delta_e_ok"
@@ -520,26 +496,6 @@
       "status": "pass"
     },
     {
-      "id": "WB-DONOR.derived-selection",
-      "class": "contract",
-      "predicate": "oklab_distance",
-      "observation": "derived-selection",
-      "evidence_kind": "rendered_web",
-      "provenance": {
-        "story": "workbench-palette-markdown-vitesse-dark",
-        "against": "workbench-palette-markdown-github-sharp-dark",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      },
-      "arithmetic": "pass",
-      "detail": {
-        "value": 0.023199134440017588,
-        "minimum": 0.005,
-        "maximum": 1.0,
-        "unit": "delta_e_ok"
-      },
-      "status": "pass"
-    },
-    {
       "id": "WB-DONOR.fixed-warning",
       "class": "contract",
       "predicate": "oklab_distance",
@@ -553,26 +509,6 @@
       "arithmetic": "pass",
       "detail": {
         "value": 0.003159285372728139,
-        "minimum": 0.0,
-        "maximum": 0.05,
-        "unit": "delta_e_ok"
-      },
-      "status": "pass"
-    },
-    {
-      "id": "WB-DONOR.fixed-accent",
-      "class": "contract",
-      "predicate": "oklab_distance",
-      "observation": "fixed-accent",
-      "evidence_kind": "rendered_web",
-      "provenance": {
-        "story": "workbench-palette-markdown-vitesse-dark",
-        "against": "workbench-palette-markdown-github-sharp-dark",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      },
-      "arithmetic": "pass",
-      "detail": {
-        "value": 0.0028603491843126006,
         "minimum": 0.0,
         "maximum": 0.05,
         "unit": "delta_e_ok"

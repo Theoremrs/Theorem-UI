@@ -49,7 +49,7 @@
       "story": "workbench-palette-cabinet-github-sharp-dark",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -88,7 +88,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -105,7 +122,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -218,21 +235,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.168777572915887,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27886137617525697,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -285,6 +299,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.03310700340602845,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.2719335996891863,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -372,7 +399,7 @@
       "story": "workbench-palette-cabinet-github-sharp-light",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -411,7 +438,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -428,7 +472,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -541,21 +585,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.157920576584213,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2807389763793916,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -608,6 +649,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.04373683454243845,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.26441881221407615,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -695,7 +749,7 @@
       "story": "workbench-palette-cabinet-stone-dark",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -734,7 +788,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -751,7 +822,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -864,21 +935,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.213159135746005,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.28275480583018636,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -931,6 +999,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.020163398016089976,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.13265142492510446,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -1018,7 +1099,7 @@
       "story": "workbench-palette-cabinet-stone-light",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -1057,7 +1138,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1074,7 +1172,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1187,21 +1285,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.175739932440938,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2878705575123349,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -1254,6 +1349,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.015516006784939706,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.2409991829021152,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -1341,7 +1449,7 @@
       "story": "workbench-palette-cabinet-vitesse-dark",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -1380,7 +1488,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1397,7 +1522,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1510,21 +1635,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.198763595634179,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2797805749875443,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -1577,6 +1699,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.023199134440017588,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.25711897580509885,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -1664,7 +1799,7 @@
       "story": "workbench-palette-cabinet-vitesse-light",
       "exit": 2,
       "counts": {
-        "pass": 16,
+        "pass": 18,
         "fail": 0,
         "review": 2,
         "not_measurable": 3
@@ -1703,7 +1838,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 126,
+            "text": "A"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1720,7 +1872,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -1833,21 +1985,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.142503118904171,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27037041420782154,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 126,
-            "text": "A"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -1900,6 +2049,19 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.031096863767800208,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.15184552575752067,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -2034,7 +2196,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2051,7 +2213,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2062,13 +2224,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.336245388330525,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2136,7 +2315,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 8.170361553289995,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2153,7 +2332,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.146798734310872,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2232,21 +2411,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.168777572915887,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27886137617525697,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -2330,13 +2506,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.03310700340602845,
+            "value": 0.2719335996891863,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -2419,19 +2595,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.015302386407240754,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -2488,7 +2651,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2505,7 +2668,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2516,13 +2679,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.320487571998259,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2590,7 +2770,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 8.160139164551675,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2607,7 +2787,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.121267568141515,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2686,21 +2866,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.157920576584213,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2807389763793916,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -2784,13 +2961,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.04373683454243845,
+            "value": 0.26441881221407615,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -2873,19 +3050,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -2942,7 +3106,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2959,7 +3123,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -2970,13 +3134,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.328804626915957,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3044,7 +3225,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 8.170309963668123,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3061,7 +3242,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.131656850714255,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3140,21 +3321,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.213159135746005,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.28275480583018636,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -3238,13 +3416,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.020163398016089976,
+            "value": 0.13265142492510446,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -3327,19 +3505,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.017792056997593605,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -3396,7 +3561,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3413,7 +3578,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3424,13 +3589,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.333478978471017,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3498,7 +3680,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 8.181346966964334,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3515,7 +3697,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.123221353880435,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3594,21 +3776,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.175739932440938,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2878705575123349,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -3692,13 +3871,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.015516006784939706,
+            "value": 0.2409991829021152,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -3781,19 +3960,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -3850,7 +4016,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3867,7 +4033,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3878,13 +4044,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.357506626136624,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3952,7 +4135,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 8.213424660592814,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -3969,7 +4152,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.128028772560591,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4048,21 +4231,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.198763595634179,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2797805749875443,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -4146,13 +4326,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.023199134440017588,
+            "value": 0.25711897580509885,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -4235,19 +4415,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.0028603491843126006,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -4304,7 +4471,7 @@
           "observation": "focused-row",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4321,7 +4488,7 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4332,13 +4499,30 @@
           }
         },
         {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.33234331810339,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 8,
+            "column": 130,
+            "text": "m"
+          }
+        },
+        {
           "id": "WB-TXT.tab-inactive",
           "class": "standard",
           "status": "pass",
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4406,7 +4590,7 @@
           "observation": "warning-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 8.180978022081975,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4423,7 +4607,7 @@
           "observation": "muted-on-focus",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.174300418852514,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4502,21 +4686,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.142503118904171,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27037041420782154,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 138,
-            "text": "C"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -4600,13 +4781,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.031096863767800208,
+            "value": 0.15184552575752067,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -4689,19 +4870,6 @@
             "maximum": 0.05,
             "unit": "delta_e_ok"
           }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
         }
       ]
     },
@@ -4711,9 +4879,9 @@
       "story": "workbench-palette-chat-github-sharp-dark",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -4758,7 +4926,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4775,7 +4943,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -4792,7 +4977,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5087,21 +5272,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.168777572915887,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27886137617525697,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -5118,23 +5300,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1335841406036333,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -5198,6 +5363,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.2719335996891863,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -5231,19 +5409,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.018894981946174685,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.03310700340602845,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -5309,9 +5474,9 @@
       "story": "workbench-palette-chat-github-sharp-light",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -5356,7 +5521,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5373,7 +5538,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5390,7 +5572,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5685,21 +5867,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.157920576584213,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2807389763793916,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -5716,23 +5895,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1345489666377988,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -5796,6 +5958,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.26441881221407615,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -5829,19 +6004,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.019269502357518474,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.04373683454243845,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -5907,9 +6069,9 @@
       "story": "workbench-palette-chat-stone-dark",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -5954,7 +6116,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5971,7 +6133,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -5988,7 +6167,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -6283,21 +6462,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.213159135746005,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.28275480583018636,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -6314,23 +6490,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1227376188876133,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -6394,6 +6553,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.13265142492510446,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -6427,19 +6599,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.015639095100120976,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.020163398016089976,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -6505,9 +6664,9 @@
       "story": "workbench-palette-chat-stone-light",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -6552,7 +6711,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -6569,7 +6728,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -6586,7 +6762,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -6881,21 +7057,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.175739932440938,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2878705575123349,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -6912,23 +7085,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1335813571577598,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -6992,6 +7148,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.2409991829021152,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -7025,19 +7194,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.007412794254803785,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.015516006784939706,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -7103,9 +7259,9 @@
       "story": "workbench-palette-chat-vitesse-dark",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -7150,7 +7306,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -7167,7 +7323,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -7184,7 +7357,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -7479,21 +7652,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.198763595634179,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2797805749875443,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -7510,23 +7680,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1317522458039508,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -7590,6 +7743,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.25711897580509885,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -7623,19 +7789,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.011006667375049472,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.023199134440017588,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -7701,9 +7854,9 @@
       "story": "workbench-palette-chat-vitesse-light",
       "exit": 2,
       "counts": {
-        "pass": 28,
+        "pass": 29,
         "fail": 0,
-        "review": 4,
+        "review": 3,
         "not_measurable": 5
       },
       "results": [
@@ -7748,7 +7901,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -7765,7 +7918,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 32,
+            "text": "T"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -7782,7 +7952,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8077,21 +8247,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.142503118904171,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27037041420782154,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 32,
-            "text": "T"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -8108,23 +8275,6 @@
             "row": 2,
             "column": 30,
             "text": "│"
-          }
-        },
-        {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1408564230940044,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 3,
-            "column": 128,
-            "text": "C"
           }
         },
         {
@@ -8188,6 +8338,19 @@
           }
         },
         {
+          "id": "WB-DONOR.derived-mark",
+          "class": "contract",
+          "status": "pass",
+          "observation": "derived-mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 0.15184552575752067,
+            "minimum": 0.005,
+            "maximum": 1,
+            "unit": "delta_e_ok"
+          }
+        },
+        {
           "id": "WB-DONOR.derived-line",
           "class": "contract",
           "status": "pass",
@@ -8221,19 +8384,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.01382214426996638,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.031096863767800208,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -8299,9 +8449,9 @@
       "story": "workbench-palette-markdown-github-sharp-dark",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -8346,7 +8496,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8363,7 +8513,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8380,7 +8547,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8414,7 +8581,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8425,21 +8592,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.168777572915887,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27886137617525697,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -8476,23 +8640,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1335841406036333,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -8506,13 +8653,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.03310700340602845,
+            "value": 0.2719335996891863,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -8558,19 +8705,6 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.03310700340602845,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
@@ -8578,19 +8712,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.016590699185258417,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.015302386407240754,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -8604,9 +8725,9 @@
       "story": "workbench-palette-markdown-github-sharp-light",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -8651,7 +8772,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8668,7 +8789,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8685,7 +8823,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8719,7 +8857,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8730,21 +8868,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.157920576584213,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2807389763793916,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -8781,23 +8916,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1345489666377988,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -8811,13 +8929,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.04373683454243845,
+            "value": 0.26441881221407615,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -8863,36 +8981,10 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.04373683454243845,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
           "observation": "fixed-warning",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,
@@ -8909,9 +9001,9 @@
       "story": "workbench-palette-markdown-stone-dark",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -8956,7 +9048,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8973,7 +9065,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -8990,7 +9099,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9024,7 +9133,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9035,21 +9144,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.213159135746005,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.28275480583018636,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -9086,23 +9192,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1227376188876133,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -9116,13 +9205,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.020163398016089976,
+            "value": 0.13265142492510446,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -9168,19 +9257,6 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.020163398016089976,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
@@ -9188,19 +9264,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.019530034584084324,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.017792056997593605,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -9214,9 +9277,9 @@
       "story": "workbench-palette-markdown-stone-light",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -9261,7 +9324,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9278,7 +9341,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9295,7 +9375,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9329,7 +9409,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9340,21 +9420,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.175739932440938,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2878705575123349,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -9391,23 +9468,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1335813571577598,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -9421,13 +9481,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.015516006784939706,
+            "value": 0.2409991829021152,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -9473,36 +9533,10 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.015516006784939706,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
           "observation": "fixed-warning",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,
@@ -9519,9 +9553,9 @@
       "story": "workbench-palette-markdown-vitesse-dark",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -9566,7 +9600,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9583,7 +9617,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9600,7 +9651,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9634,7 +9685,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9645,21 +9696,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.198763595634179,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2797805749875443,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -9696,23 +9744,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1317522458039508,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -9726,13 +9757,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.023199134440017588,
+            "value": 0.25711897580509885,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -9778,19 +9809,6 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.023199134440017588,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
@@ -9798,19 +9816,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.003159285372728139,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.0028603491843126006,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -9824,9 +9829,9 @@
       "story": "workbench-palette-markdown-vitesse-light",
       "exit": 0,
       "counts": {
-        "pass": 16,
+        "pass": 15,
         "fail": 0,
-        "review": 3,
+        "review": 2,
         "not_measurable": 0
       },
       "results": [
@@ -9871,7 +9876,7 @@
           "observation": "selection",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9888,7 +9893,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "g"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9905,7 +9927,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9939,7 +9961,7 @@
           "observation": "heading",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -9950,21 +9972,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.142503118904171,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27037041420782154,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "g"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -10001,23 +10020,6 @@
           }
         },
         {
-          "id": "WB-UI.selection-fill",
-          "class": "diagnostic",
-          "status": "review",
-          "observation": "selection-fill",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 1.1408564230940044,
-            "minimum": 3,
-            "unit": "ratio"
-          },
-          "provenance": {
-            "row": 4,
-            "column": 4,
-            "text": "g"
-          }
-        },
-        {
           "id": "WB-DONOR.derived-bg",
           "class": "contract",
           "status": "pass",
@@ -10031,13 +10033,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.031096863767800208,
+            "value": 0.15184552575752067,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -10083,36 +10085,10 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-selection",
-          "class": "contract",
-          "status": "pass",
-          "observation": "derived-selection",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.031096863767800208,
-            "minimum": 0.005,
-            "maximum": 1,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
           "id": "WB-DONOR.fixed-warning",
           "class": "contract",
           "status": "pass",
           "observation": "fixed-warning",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,
@@ -10176,7 +10152,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.859244282965189,
+            "value": 5.336245388330525,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.336245388330525,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -10193,7 +10186,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.947452738455945,
+            "value": 12.409858804321477,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -10272,21 +10265,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.168777572915887,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27886137617525697,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -10636,13 +10626,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.03310700340602845,
+            "value": 0.2719335996891863,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -10721,19 +10711,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.013748954564746639,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.015302386407240754,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -10822,7 +10799,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.851913460163458,
+            "value": 5.320487571998259,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.320487571998259,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -10839,7 +10833,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.897740551462233,
+            "value": 12.364020281348312,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -10918,21 +10912,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.157920576584213,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2807389763793916,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -11282,13 +11273,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.04373683454243845,
+            "value": 0.26441881221407615,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -11364,19 +11355,6 @@
           "class": "contract",
           "status": "pass",
           "observation": "fixed-error",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,
@@ -11468,7 +11446,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.853009874949678,
+            "value": 5.328804626915957,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.328804626915957,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -11485,7 +11480,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 11.024182123078434,
+            "value": 12.377263987048474,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -11564,21 +11559,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.213159135746005,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.28275480583018636,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -11928,13 +11920,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.020163398016089976,
+            "value": 0.13265142492510446,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -12013,19 +12005,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.015049427574718761,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.017792056997593605,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -12114,7 +12093,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.86712229691201,
+            "value": 5.333478978471017,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.333478978471017,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -12131,7 +12127,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.96743577004436,
+            "value": 12.432480724747448,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -12210,21 +12206,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.175739932440938,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2878705575123349,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -12574,13 +12567,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.015516006784939706,
+            "value": 0.2409991829021152,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -12656,19 +12649,6 @@
           "class": "contract",
           "status": "pass",
           "observation": "fixed-error",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,
@@ -12760,7 +12740,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.883712374762804,
+            "value": 5.357506626136624,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.357506626136624,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -12777,7 +12774,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.974651762261002,
+            "value": 12.420586778855178,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -12856,21 +12853,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.198763595634179,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.2797805749875443,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -13220,13 +13214,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.023199134440017588,
+            "value": 0.25711897580509885,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -13305,19 +13299,6 @@
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0.0017008014716719424,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0.0028603491843126006,
             "minimum": 0,
             "maximum": 0.05,
             "unit": "delta_e_ok"
@@ -13406,7 +13387,24 @@
           "observation": "tab-active",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.866857713982774,
+            "value": 5.33234331810339,
+            "minimum": 4.5,
+            "unit": "ratio"
+          },
+          "provenance": {
+            "row": 0,
+            "column": 110,
+            "text": "S"
+          }
+        },
+        {
+          "id": "WB-TXT.mark",
+          "class": "standard",
+          "status": "pass",
+          "observation": "mark",
+          "evidence_kind": "rendered_web",
+          "detail": {
+            "value": 5.33234331810339,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -13423,7 +13421,7 @@
           "observation": "tab-inactive",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 10.840570645432077,
+            "value": 12.367534650845503,
             "minimum": 4.5,
             "unit": "ratio"
           },
@@ -13502,21 +13500,18 @@
           }
         },
         {
-          "id": "WB-UI.tab-fill",
+          "id": "WB-UI.tab-letters",
           "class": "standard",
           "status": "pass",
-          "observation": "tab-fill",
+          "observation": "tab-letters",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 5.142503118904171,
-            "minimum": 3,
-            "unit": "ratio"
+            "value": 0.27037041420782154,
+            "minimum": 0.1,
+            "maximum": 1,
+            "unit": "delta_e_ok"
           },
-          "provenance": {
-            "row": 0,
-            "column": 110,
-            "text": "S"
-          }
+          "provenance": "the active tab's letters against the inactive tab's letters, as painted"
         },
         {
           "id": "WB-UI.separator",
@@ -13866,13 +13861,13 @@
           }
         },
         {
-          "id": "WB-DONOR.derived-raised",
+          "id": "WB-DONOR.derived-mark",
           "class": "contract",
           "status": "pass",
-          "observation": "derived-raised",
+          "observation": "derived-mark",
           "evidence_kind": "rendered_web",
           "detail": {
-            "value": 0.031096863767800208,
+            "value": 0.15184552575752067,
             "minimum": 0.005,
             "maximum": 1,
             "unit": "delta_e_ok"
@@ -13948,19 +13943,6 @@
           "class": "contract",
           "status": "pass",
           "observation": "fixed-error",
-          "evidence_kind": "rendered_web",
-          "detail": {
-            "value": 0,
-            "minimum": 0,
-            "maximum": 0.05,
-            "unit": "delta_e_ok"
-          }
-        },
-        {
-          "id": "WB-DONOR.fixed-accent",
-          "class": "contract",
-          "status": "pass",
-          "observation": "fixed-accent",
           "evidence_kind": "rendered_web",
           "detail": {
             "value": 0,

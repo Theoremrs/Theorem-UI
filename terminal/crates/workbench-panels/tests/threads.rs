@@ -7,6 +7,7 @@ use std::cell::RefCell;
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::{Color, Modifier, Style};
 use serde_json::{Value, json};
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
@@ -345,6 +346,17 @@ impl Rig {
             .panel_ids()
             .find(|(_, k)| k.as_str() == kind)
             .map(|(i, _)| i.clone())
+    }
+
+    /// The panel drawn in `theme`, with or without the keyboard.
+    fn cells(&self, theme: &Theme, focused: bool, width: u16, height: u16) -> Buffer {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let mut cx = ViewCtx::new(theme, self.m.workspace());
+        cx.focused = focused;
+        let id = self.id("threads").unwrap();
+        self.m.panel(&id).unwrap().view(area, &mut buf, &cx);
+        buf
     }
 
     fn text(&self, width: u16, height: u16) -> Vec<String> {
@@ -816,4 +828,45 @@ fn the_first_update_asks_for_the_list_when_the_host_has_none_to_say() {
     action(&mut m, "threads.focus");
     let fx = update(&mut m, Msg::Tick);
     assert!(kinds(&fx).contains(&"list"), "{fx:?}");
+}
+
+#[test]
+fn the_cursor_row_is_in_the_mark_colour_while_the_panel_has_focus_and_bright_bold_when_it_loses_it()
+{
+    const MARK: Color = Color::Rgb(0xe2, 0x81, 0x3f);
+    const BRIGHT: Color = Color::Rgb(0xe4, 0xea, 0xee);
+    let theme = Theme {
+        bg: Style::default().bg(Color::Blue),
+        text: Style::default().fg(Color::White),
+        focus: Style::default().fg(MARK).add_modifier(Modifier::BOLD),
+        selected: Style::default().fg(BRIGHT).add_modifier(Modifier::BOLD),
+        ..Theme::plain()
+    };
+    let r = Rig::new(&[]);
+    let rows = |buf: &Buffer, fg: Color| -> Vec<u16> {
+        (0..40)
+            .filter(|y| (0..60).any(|x| buf[(x, *y)].fg == fg))
+            .collect()
+    };
+    let focused = r.cells(&theme, true, 60, 40);
+    let at = rows(&focused, MARK);
+    assert_eq!(at.len(), 1, "one accent row: {:?}", r.text(60, 40));
+    let y = at[0];
+    let x = (0..60).find(|x| focused[(*x, y)].fg == MARK).unwrap();
+    assert!(focused[(x, y)].modifier.contains(Modifier::BOLD));
+    assert_eq!(
+        focused[(x, y)].bg,
+        Color::Blue,
+        "no band behind the letters"
+    );
+    let row: String = (0..60)
+        .map(|x| focused[(x, y)].symbol().to_owned())
+        .collect();
+    assert!(row.contains("Parent thread"), "the open thread: {row}");
+
+    let idle = r.cells(&theme, false, 60, 40);
+    assert!(rows(&idle, MARK).is_empty(), "no accent without focus");
+    assert_eq!(rows(&idle, BRIGHT), vec![y], "the same row, bright");
+    assert!(idle[(x, y)].modifier.contains(Modifier::BOLD));
+    assert_eq!(idle[(x, y)].bg, Color::Blue);
 }

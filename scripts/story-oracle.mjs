@@ -258,16 +258,20 @@ const effectsSince = (page, from = 0) => page.evaluate((n) => (window.__workbenc
 
 /**
  * The workbench's groups as the tab row draws them: each group's tabs in order, the active tab of each
- * (the tab with the strongest fill in its group) and the focused panel (the one tab with the accent fill).
+ * (the bold one; a chosen tab is drawn in letters, never a band) and the focused panel (the one bold tab in
+ * the mark colour, which is far from grey where the bright ink of an unfocused group's tab is not).
  * Read from the cell styles of the grid's first row; a group that is not on that row is not seen.
  */
 const layoutOf = (page) =>
   page.evaluate(() => {
     const grid = document.querySelector('[id$=_ratzilla_grid]')
-    const cells = [...grid.children[0].children].map((c) => ({ ch: c.textContent || ' ', bg: c.style.backgroundColor }))
+    const cells = [...grid.children[0].children].map((c) => {
+      const style = getComputedStyle(c)
+      return { ch: c.textContent || ' ', color: style.color, bold: Number(style.fontWeight) >= 600 }
+    })
     const text = cells.map((c) => c.ch).join('')
-    const strength = (bg) => {
-      const rgb = (bg.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+    const chroma = (color) => {
+      const rgb = (color.match(/\d+/g) ?? []).slice(0, 3).map(Number)
       return Math.max(...rgb) - Math.min(...rgb)
     }
     const groups = []
@@ -276,15 +280,19 @@ const layoutOf = (page) =>
       const tabs = []
       const re = /([^\s\u00d7][^\u00d7]*?) \u00d7/g
       let m
-      while ((m = re.exec(part))) tabs.push({ name: m[1].trim(), strength: strength(cells[from + m.index].bg) })
+      while ((m = re.exec(part))) {
+        const cell = cells[from + m.index]
+        tabs.push({ name: m[1].trim(), bold: cell.bold, chroma: chroma(cell.color) })
+      }
       from += part.length + 1
       if (tabs.length) groups.push(tabs)
     }
-    const focus = groups.flat().filter((t) => t.strength >= 25)
+    const focus = groups.flat().filter((t) => t.bold && t.chroma >= 60)
     const dividers = [...text].flatMap((c, i) => (c === '\u2502' ? [i] : []))
+    const rank = (t) => (t.bold ? 1000 : 0) + t.chroma
     return {
       dividers,
-      groups: groups.map((tabs) => ({ tabs: tabs.map((t) => t.name), active: tabs.reduce((a, b) => (b.strength > a.strength ? b : a)).name })),
+      groups: groups.map((tabs) => ({ tabs: tabs.map((t) => t.name), active: tabs.reduce((a, b) => (rank(b) > rank(a) ? b : a)).name })),
       focused: focus.length === 1 ? focus[0].name : focus.map((t) => t.name).join('+') || null,
     }
   })
@@ -316,16 +324,27 @@ const focusNow = (page) =>
       strays: on.filter((n) => !chrome.includes(n.role) && !owned(n)).map((n) => `${n.role}:${n.name}`),
     }
   })
-/** The cells of the grid in the leaf's row that are not the grid's ordinary background: a drawn fill (selection or caret). */
-const filledAt = (page, rect) =>
+/**
+ * How the leaf's row is drawn: the cells of it that are bold letters in an accent colour (far from grey; the mark
+ * colour), and the cells whose background is not the grid's ordinary one (a band behind the letters).
+ */
+const markedAt = (page, rect) =>
   page.evaluate((r) => {
     const grid = document.querySelector('[id$=_ratzilla_grid]')
     const row = grid.children[r.y]
-    if (!row) return 0
+    if (!row) return { marked: 0, band: 0 }
     const counts = new Map()
     for (const line of grid.children) for (const c of [...line.children].slice(r.x, r.x + r.width)) counts.set(c.style.backgroundColor, (counts.get(c.style.backgroundColor) ?? 0) + 1)
     const base = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
-    return [...row.children].slice(r.x, r.x + r.width).filter((c) => c.style.backgroundColor !== base).length
+    const cells = [...row.children].slice(r.x, r.x + r.width)
+    const chroma = (color) => {
+      const rgb = (color.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+      return Math.max(...rgb) - Math.min(...rgb)
+    }
+    return {
+      marked: cells.filter((c) => c.textContent.trim() && Number(getComputedStyle(c).fontWeight) >= 600 && chroma(getComputedStyle(c).color) >= 60).length,
+      band: cells.filter((c) => c.style.backgroundColor !== base).length,
+    }
   }, rect)
 const walkTo = async (page, wanted, key = 'ArrowDown', max = 30) => {
   let presses = 0
@@ -911,9 +930,12 @@ const SCENARIOS = {
         checks[`${label}: focus is in the ${panel} panel`] = where.panel === panel
         if (leaf) checks[`${label}: the focused item is ${leaf}`] = where.leaf === leaf
         checks[`${label}: focus is never lost (one focused panel, one focused group)`] = where.focusedTabs === 1 && where.focusedGroups === 1
-        checks[`${label}: focus is drawn (the ${panel} tab carries the accent fill)`] = drawn === panel
+        checks[`${label}: focus is drawn (the ${panel} tab is in the mark colour, bold)`] = drawn === panel
         if (where.leafRect && where.leaf?.startsWith('treeItem') | where.leaf?.startsWith('menuItem'))
-          checks[`${label}: the focused row is drawn with a fill`] = (await filledAt(page, where.leafRect)) > 0
+        {
+          const row = await markedAt(page, where.leafRect)
+          checks[`${label}: the focused row is in the mark colour, bold, with no band behind it`] = row.marked > 0 && row.band === 0
+        }
         return where
       }
       const documented = (action, chord) => {

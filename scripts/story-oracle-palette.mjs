@@ -52,24 +52,31 @@ export const ROLES = [
   text('selection', {
     chat: { text: 'Changes', ...TOOLS, ymin: 2, ymax: 4 },
     markdown: { text: 'guide.md', ...FILES, ymin: 2 },
-  }, { fg: ['bright'], bg: ['selection', 'raised'] }),
+  }, { fg: ['bright', 'mark'], bg: ['bg'] }),
   text('focused-row', {
     changes: { text: 'main.rs', ...TOOLS, ymin: 6, ymax: 10 },
-  }, { fg: ['bg'], bg: ['focus', 'accent'] }),
+  }, { fg: ['mark'], bg: ['bg'] }),
+  text('mark', {
+    chat: { text: 'Theo', ymax: 0 },
+    markdown: { text: 'guide.md', ymax: 0 },
+    changes: { text: 'main.rs', ...TOOLS, ymin: 6, ymax: 10 },
+    cabinet: { text: 'Artifacts', ymax: 0 },
+    terminal: { text: 'Shell', ymax: 0 },
+  }, { fg: ['mark'], bg: ['bg'] }),
   text('tab-active', {
     chat: { text: 'Theo', ymax: 0 },
     markdown: { text: 'guide.md', ymax: 0 },
     changes: { text: 'Changes', ymax: 0 },
     cabinet: { text: 'Artifacts', ymax: 0 },
     terminal: { text: 'Shell', ymax: 0 },
-  }, { fg: ['bg'], bg: ['focus', 'accent'] }),
+  }, { fg: ['mark'], bg: ['bg'] }),
   text('tab-inactive', {
     chat: { text: 'Files', ymax: 0 },
     markdown: { text: 'Files', ymax: 0 },
     changes: { text: 'Files', ymax: 0 },
     cabinet: { text: 'Files', ymax: 0 },
     terminal: { text: 'Files', ymax: 0 },
-  }, { fg: ['bright'], bg: ['raised', 'selection'] }),
+  }, { fg: ['bright'], bg: ['bg'] }),
   text('warning', {
     chat: { text: '? edit_file' },
     markdown: { text: 'connecting to the conversation' },
@@ -104,10 +111,10 @@ export const ROLES = [
   }, { fg: ['accent', 'sage', 'focus'], bg: ['bg'] }),
   text('warning-on-focus', {
     changes: { text: 'M', xmin: 128, xmax: 128, ymin: 8, ymax: 8 },
-  }, { fg: ['warning', 'gold', 'approval'], bg: ['accent', 'sage', 'focus'] }),
+  }, { fg: ['warning', 'gold', 'approval'], bg: ['bg'] }),
   text('muted-on-focus', {
     changes: { text: 'diff  stage  discard' },
-  }, { fg: ['muted'], bg: ['accent', 'sage', 'focus'] }),
+  }, { fg: ['muted'], bg: ['bg'] }),
   text('notice', {
     cabinet: { text: 'Reduced thumbnails' },
     terminal: { text: 'Adopted a terminal' },
@@ -136,18 +143,7 @@ const ui = (id, per, expect, vs) => ({ id, kind: 'ui', per, expect, vs })
 export const UI_ROLES = [
   ui('focus-indicator', {
     chat: { text: '╭─', ymin: 30 },
-  }, { fg: ['focus', 'accent'], bg: ['bg'] }),
-  ui('selection-fill', {
-    chat: { text: 'Changes', ...TOOLS, ymin: 2, ymax: 4 },
-    markdown: { text: 'guide.md', ...FILES, ymin: 2 },
-  }, { bg: ['selection', 'raised'] }, { what: 'pane-bg' }),
-  ui('tab-fill', {
-    chat: { text: 'Theo', ymax: 0 },
-    markdown: { text: 'guide.md', ymax: 0 },
-    changes: { text: 'Changes', ymax: 0 },
-    cabinet: { text: 'Artifacts', ymax: 0 },
-    terminal: { text: 'Shell', ymax: 0 },
-  }, { bg: ['focus', 'accent'] }, { what: 'inactive-tab-fill' }),
+  }, { fg: ['focus', 'accent', 'mark'], bg: ['bg'] }),
   ui('separator', {
     chat: { text: '│', ymin: 2, ymax: 2 },
     markdown: { text: '│', ymin: 2, ymax: 2 },
@@ -347,10 +343,6 @@ async function captureStory(ctx, story) {
       const f = locate(grid, { text: 'The build fails' }) ?? locate(grid, { text: 'Cargo.toml', xmax: 29 })
       return f ? cssHex(f.cell[2]) : undefined
     })()
-    const inactiveFill = (() => {
-      const f = locate(grid, { text: 'Files', ymax: 0 })
-      return f ? cssHex(f.cell[2]) : undefined
-    })()
     for (const role of UI_ROLES) {
       const spec = role.per[surface]
       if (!spec) continue
@@ -359,7 +351,7 @@ async function captureStory(ctx, story) {
       const bound = binds(role, found)
       const info = { cell: { row: found.y, column: found.x, text: found.cell[0] }, palette_fields: bound, bound_to_expected_palette_fields: bound.matches }
       if (role.vs) {
-        const second = role.vs.what === 'pane-bg' ? paneBg : inactiveFill
+        const second = paneBg
         if (!second) {
           notes.push(`${role.id}: no ${role.vs.what}`)
           continue
@@ -379,6 +371,27 @@ async function captureStory(ctx, story) {
         }
       }
       roles.push({ role: role.id, y: found.y, x: found.x, text: spec.text, ...bound })
+    }
+
+    // The active tab is told from the inactive by the colour of its letters alone: how far apart they are painted.
+    if (observations['tab-active'] && observations['tab-inactive'])
+      observations['tab-letters'] = {
+        kind: 'rendered_web',
+        first: observations['tab-active'].foreground,
+        second: observations['tab-inactive'].foreground,
+        provenance: meta(story, grid, { what: 'the active tab\'s letters against the inactive tab\'s letters, as painted' }),
+      }
+    // The raised surface, read from the first cell that carries text on it.
+    for (const [y, row] of grid.rows.entries()) {
+      const x = row.findIndex((cell) => cell[0].trim() && cssHex(cell[2]) === palette.raised)
+      if (x < 0) continue
+      observations.raised = {
+        kind: 'rendered_web',
+        foreground: colours(row[x]).foreground,
+        background: palette.raised,
+        provenance: meta(story, grid, { cell: { row: y, column: x, text: row[x][0] }, palette_fields: { bg: paletteKeys(palette, palette.raised) } }),
+      }
+      break
     }
 
     if (surface === 'chat') {
@@ -525,11 +538,9 @@ async function confirmPixels(page, png, grid, roles, story, surface) {
   const targets = []
   const wanted = [
     ['pane background', { text: 'Cargo.toml', xmax: 29 }],
-    ['active tab fill', { text: surface === 'chat' ? 'Theo' : surface === 'markdown' ? 'guide.md' : surface === 'changes' ? 'Changes' : surface === 'cabinet' ? 'Artifacts' : 'Shell', ymax: 0 }],
-    ['inactive tab fill', { text: 'Files', ymax: 0 }],
   ]
-  if (surface === 'chat') wanted.push(['added line fill', { text: 'let width = self.area.width', nth: 1 }], ['removed line fill', { text: 'let width = self.area.width', nth: 0 }], ['added words fill', { text: 'width;', offset: 5 }], ['selected row fill', { text: 'Changes', xmin: 125, ymin: 2, ymax: 4 }])
-  if (surface === 'changes') wanted.push(['removed words fill', { text: 'println!', xmin: 125 }], ['focused row fill', { text: 'main.rs', xmin: 125, ymin: 6, ymax: 10 }])
+  if (surface === 'chat') wanted.push(['added line fill', { text: 'let width = self.area.width', nth: 1 }], ['removed line fill', { text: 'let width = self.area.width', nth: 0 }], ['added words fill', { text: 'width;', offset: 5 }])
+  if (surface === 'changes') wanted.push(['removed words fill', { text: 'println!', xmin: 125 }])
   if (surface === 'terminal') {
     const find = (label) => locate(grid, { text: label, xmin: 90 })
     const bgRow = find('bg:')
@@ -623,11 +634,11 @@ async function capture(ctx, surface, profile) {
 /** The roles whose rendered colour must follow the profile, and where it is read from. */
 const DERIVED = {
   bg: (o) => o.ink?.background,
-  raised: (o) => o['tab-inactive']?.background,
+  raised: (o) => o.raised?.background,
+  mark: (o) => o.mark?.foreground,
   line: (o) => o.separator?.foreground,
   ink: (o) => o.ink?.foreground,
   muted: (o) => o.muted?.foreground,
-  selection: (o) => o.selection?.background,
 }
 /** Colours kept across profiles by design (declared in the policy's fixed_roles). */
 const FIXED = {
@@ -635,7 +646,7 @@ const FIXED = {
   warning: (o) => o.warning?.foreground,
   link: (o) => o.link?.foreground,
   error: (o) => o.error?.foreground,
-  accent: (o) => o['tab-active']?.background,
+  accent: (o) => o.code?.foreground,
 }
 
 function profileOrder(files) {

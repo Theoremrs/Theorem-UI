@@ -1,5 +1,5 @@
 {
-  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-terminal-stone-dark",
   "environment": {
     "story": "workbench-palette-terminal-stone-dark",
@@ -73,10 +73,10 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-active": {
+    "mark": {
       "kind": "rendered_web",
-      "foreground": "#232220",
-      "background": "#86a39c",
+      "foreground": "#00a2cc",
+      "background": "#232220",
       "provenance": {
         "story": "workbench-palette-terminal-stone-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -85,15 +85,38 @@
           "column": 110,
           "text": "S"
         },
-        "raw_foreground": "#232220",
+        "raw_foreground": "#00a2cc",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#00a2cc",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "raw_foreground": "#00a2cc",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -103,7 +126,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#e3e3e2",
-      "background": "#2c2b28",
+      "background": "#232220",
       "provenance": {
         "story": "workbench-palette-terminal-stone-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -119,8 +142,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -230,33 +252,6 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#86a39c",
-      "background": "#2c2b28",
-      "provenance": {
-        "story": "workbench-palette-terminal-stone-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 110,
-          "text": "S"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
-      }
-    },
     "separator": {
       "kind": "rendered_web",
       "foreground": "#403f3b",
@@ -303,6 +298,16 @@
           "matches": true
         },
         "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#00a2cc",
+      "second": "#e3e3e2",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
       }
     },
     "ansi-00": {
@@ -647,10 +652,10 @@
         "method": "the role colour painted here and in the same mode of the next palette"
       }
     },
-    "derived-raised": {
+    "derived-mark": {
       "kind": "rendered_web",
-      "first": "#2c2b28",
-      "second": "#30302f",
+      "first": "#00a2cc",
+      "second": "#8f91f4",
       "provenance": {
         "story": "workbench-palette-terminal-stone-dark",
         "against": "workbench-palette-terminal-vitesse-dark",
@@ -716,16 +721,6 @@
         "against": "workbench-palette-terminal-vitesse-dark",
         "method": "the role colour painted here and in the same mode of the next palette"
       }
-    },
-    "fixed-accent": {
-      "kind": "rendered_web",
-      "first": "#86a39c",
-      "second": "#8aa9a0",
-      "provenance": {
-        "story": "workbench-palette-terminal-stone-dark",
-        "against": "workbench-palette-terminal-vitesse-dark",
-        "method": "the role colour painted here and in the same mode of the next palette"
-      }
     }
   },
   "palette_in_use": {
@@ -747,6 +742,7 @@
     "heading": "#e3e3e2",
     "accent": "#86a39c",
     "focus": "#86a39c",
+    "mark": "#00a2cc",
     "selection": "#2c2b28",
     "disabled": "#6e6d6c",
     "deep": "#151412",
@@ -792,17 +788,28 @@
       "matches": true
     },
     {
+      "role": "mark",
+      "y": 0,
+      "x": 110,
+      "text": "Shell",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
       "role": "tab-active",
       "y": 0,
       "x": 110,
       "text": "Shell",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -816,8 +823,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -873,21 +879,6 @@
       ],
       "bg": [
         "bg"
-      ],
-      "matches": true
-    },
-    {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 110,
-      "text": "Shell",
-      "fg": [
-        "bg"
-      ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
       ],
       "matches": true
     },
@@ -998,24 +989,6 @@
       "glyph": " ",
       "dom": "#232220",
       "pixel": "#232220",
-      "equal": true
-    },
-    {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 109,
-      "glyph": " ",
-      "dom": "#86a39c",
-      "pixel": "#86a39c",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#2c2b28",
-      "pixel": "#2c2b28",
       "equal": true
     }
   ],

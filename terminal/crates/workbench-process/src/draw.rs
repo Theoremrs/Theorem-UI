@@ -268,6 +268,7 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             LineKind::Row => cx.theme.text,
         };
         let style = match (is_selected, enabled) {
+            (true, true) if cx.focused => cx.theme.focus,
             (true, true) => cx.theme.selected,
             (_, false) if line.row.is_some() => cx.theme.muted,
             _ => base,
@@ -281,9 +282,6 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             LineKind::RowDetail => format!("  {}", line.text),
             _ => line.text.clone(),
         };
-        if is_selected {
-            buf.set_style(Rect::new(area.x, y, area.width, 1), style);
-        }
         put(buf, area, y, &text, style);
     }
 }

@@ -121,8 +121,10 @@ fn process_styles() -> theorem_workbench_process::ProcessStyles {
         bg: p.bg,
         ansi,
         selection: Style::new().bg(p.selection),
-        search_match: Style::new().bg(p.disabled),
-        search_current: Style::new().bg(p.warning).fg(p.bg),
+        search_match: Style::new().fg(p.mark).add_modifier(Modifier::UNDERLINED),
+        search_current: Style::new()
+            .fg(p.mark)
+            .add_modifier(Modifier::BOLD | Modifier::UNDERLINED),
     })
 }
 
@@ -162,16 +164,23 @@ fn load_nonce() -> String {
 fn theme_of(p: &Palette) -> Theme {
     let on = |bg| Style::new().fg(p.ink).bg(bg);
     let fg = |color| Style::new().fg(color);
-    Theme::chrome(
+    // The chosen thing is told by its letters, never by a band behind them: the mark colour,
+    // bold, where the panel holds the keyboard; bright ink, bold, where it does not.
+    let mark = fg(p.mark).add_modifier(Modifier::BOLD);
+    let chosen = fg(p.bright).add_modifier(Modifier::BOLD);
+    // What still needs a fill to have an extent: the caret, a form field that holds focus and
+    // a button.
+    let filled = Style::new()
+        .fg(p.bg)
+        .bg(p.focus)
+        .add_modifier(Modifier::BOLD);
+    let theme = Theme::chrome(
         Style::new().fg(p.ink).bg(p.bg),
         Style::new().fg(p.ink),
         Style::new().fg(p.muted),
         Style::new().fg(p.line),
-        Style::new()
-            .fg(p.bg)
-            .bg(p.focus)
-            .add_modifier(Modifier::BOLD),
-        Style::new().fg(p.bright).bg(p.selection),
+        mark,
+        chosen,
     )
     .with_state(
         Style::new().fg(p.error),
@@ -194,15 +203,23 @@ fn theme_of(p: &Palette) -> Theme {
         fg(p.syntax_variable),
     )
     .with_ansi(ansi_of(p))
-    // A popup is ink on the raised surface. The palette's selection is that same surface, so
-    // the chosen row takes the focus fill instead: it has to differ from the rows around it.
-    .with_popup(
-        Style::new().fg(p.ink).bg(p.raised),
-        Style::new()
-            .fg(p.bg)
-            .bg(p.focus)
-            .add_modifier(Modifier::BOLD),
-    )
+    // A popup is ink on the raised surface; its chosen row is the mark colour on that same
+    // surface, so nothing is drawn behind the letters but the popup itself.
+    .with_popup(Style::new().fg(p.ink).bg(p.raised), mark.bg(p.raised))
+    // Every match is underlined in the mark colour; the current one is bold as well.
+    .with_search(
+        fg(p.mark).add_modifier(Modifier::UNDERLINED),
+        mark.add_modifier(Modifier::UNDERLINED),
+    );
+    Theme {
+        // Text a person selected stays a band: selected spaces would not show as letters.
+        selection: Style::new().fg(p.bright).bg(p.selection),
+        caret: filled,
+        field_focus: filled,
+        control: filled,
+        hunk_current: mark,
+        ..theme
+    }
 }
 
 // --- key conversion -----------------------------------------------------------------------
@@ -1477,7 +1494,57 @@ mod tests {
         // A popup's rows are text on a surface of their own: readable over what they cover.
         assert_eq!(theme.popup, Style::new().fg(p.ink).bg(p.raised));
         assert_ne!(theme.popup.fg, Some(p.line));
-        assert_ne!(theme.popup_selected.bg, theme.popup.bg);
+    }
+
+    #[test]
+    fn the_chosen_thing_is_told_by_its_letters_and_never_by_a_band() {
+        let p = Palette::default();
+        let theme = theme_of(&p);
+        let bold = Modifier::BOLD;
+        // Where the panel holds the keyboard: the mark colour, bold, no background.
+        assert_eq!(theme.focus, Style::new().fg(p.mark).add_modifier(bold));
+        assert_eq!(theme.hunk_current, theme.focus);
+        // Where it does not: bright ink, bold, no accent and no background.
+        assert_eq!(theme.selected, Style::new().fg(p.bright).add_modifier(bold));
+        // A popup's chosen row stands on the popup's own surface and nothing more.
+        assert_eq!(theme.popup_selected.fg, Some(p.mark));
+        assert_eq!(theme.popup_selected.bg, theme.popup.bg);
+        assert_ne!(theme.popup_selected, theme.popup);
+        // A search match is the mark colour, underlined; the current one is bold as well.
+        assert_eq!(theme.search_match.fg, Some(p.mark));
+        assert_eq!(theme.search_match.bg, None);
+        assert!(
+            theme
+                .search_match
+                .add_modifier
+                .contains(Modifier::UNDERLINED)
+        );
+        assert_eq!(theme.current_match.fg, Some(p.mark));
+        assert_eq!(theme.current_match.bg, None);
+        assert!(
+            theme
+                .current_match
+                .add_modifier
+                .contains(bold | Modifier::UNDERLINED)
+        );
+        // What needs an extent keeps its fill: the caret, a focused field, a button, selected text.
+        for filled in [theme.caret, theme.field_focus, theme.control] {
+            assert_eq!(filled.bg, Some(p.focus));
+        }
+        assert_eq!(theme.selection.bg, Some(p.selection));
+        // The bar beside the block being typed in is a glyph in the mark colour.
+        assert_eq!(theme.editing_bar.fg, Some(p.mark));
+        assert_eq!(theme.editing_bar.bg, None);
+    }
+
+    #[test]
+    fn the_terminal_pane_marks_a_match_in_letters_too() {
+        let p = Palette::default();
+        let styles = process_styles();
+        assert_eq!(styles.palette.search_match.bg, None);
+        assert_eq!(styles.palette.search_current.bg, None);
+        assert_eq!(styles.palette.search_match.fg, Some(p.mark));
+        assert_eq!(styles.palette.search_current.fg, Some(p.mark));
     }
 
     #[test]

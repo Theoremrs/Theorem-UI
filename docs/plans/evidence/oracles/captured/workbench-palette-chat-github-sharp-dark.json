@@ -1,5 +1,5 @@
 {
-  "source_revision": "123e1c609a20c3b08aa8fb643f67a7502f2f8420+worktree",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
   "fixture": "workbench-palette-chat-github-sharp-dark",
   "environment": {
     "story": "workbench-palette-chat-github-sharp-dark",
@@ -76,7 +76,7 @@
     "selection": {
       "kind": "rendered_web",
       "foreground": "#e6eaec",
-      "background": "#2a303b",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-chat-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -92,18 +92,17 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
         "bound_to_expected_palette_fields": true
       }
     },
-    "tab-active": {
+    "mark": {
       "kind": "rendered_web",
-      "foreground": "#22272e",
-      "background": "#8aa8a0",
+      "foreground": "#e57f47",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-chat-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -112,15 +111,38 @@
           "column": 32,
           "text": "T"
         },
-        "raw_foreground": "#22272e",
+        "raw_foreground": "#e57f47",
         "palette_fields": {
           "fg": [
-            "bg"
+            "mark"
           ],
           "bg": [
-            "sage",
-            "accent",
-            "focus"
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#e57f47",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 32,
+          "text": "T"
+        },
+        "raw_foreground": "#e57f47",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
           ],
           "matches": true
         },
@@ -130,7 +152,7 @@
     "tab-inactive": {
       "kind": "rendered_web",
       "foreground": "#e6eaec",
-      "background": "#2a303b",
+      "background": "#22272e",
       "provenance": {
         "story": "workbench-palette-chat-github-sharp-dark",
         "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
@@ -146,8 +168,7 @@
             "heading"
           ],
           "bg": [
-            "raised",
-            "selection"
+            "bg"
           ],
           "matches": true
         },
@@ -390,60 +411,6 @@
         "bound_to_expected_palette_fields": true
       }
     },
-    "selection-fill": {
-      "kind": "rendered_web",
-      "foreground": "#2a303b",
-      "background": "#22272e",
-      "provenance": {
-        "story": "workbench-palette-chat-github-sharp-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 3,
-          "column": 128,
-          "text": "C"
-        },
-        "palette_fields": {
-          "fg": [
-            "bright",
-            "heading"
-          ],
-          "bg": [
-            "raised",
-            "selection"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "pane-bg"
-      }
-    },
-    "tab-fill": {
-      "kind": "rendered_web",
-      "foreground": "#8aa8a0",
-      "background": "#2a303b",
-      "provenance": {
-        "story": "workbench-palette-chat-github-sharp-dark",
-        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
-        "cell": {
-          "row": 0,
-          "column": 32,
-          "text": "T"
-        },
-        "palette_fields": {
-          "fg": [
-            "bg"
-          ],
-          "bg": [
-            "sage",
-            "accent",
-            "focus"
-          ],
-          "matches": true
-        },
-        "bound_to_expected_palette_fields": true,
-        "against": "inactive-tab-fill"
-      }
-    },
     "separator": {
       "kind": "rendered_web",
       "foreground": "#3d4450",
@@ -516,6 +483,36 @@
         },
         "bound_to_expected_palette_fields": true,
         "against": "pane-bg"
+      }
+    },
+    "tab-letters": {
+      "kind": "rendered_web",
+      "first": "#e57f47",
+      "second": "#e6eaec",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
+      }
+    },
+    "raised": {
+      "kind": "rendered_web",
+      "foreground": "#8aa8a0",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 92,
+          "text": "s"
+        },
+        "palette_fields": {
+          "bg": [
+            "raised",
+            "selection"
+          ]
+        }
       }
     },
     "syntax-keyword": {
@@ -650,6 +647,7 @@
     "heading": "#e6eaec",
     "accent": "#8aa8a0",
     "focus": "#8aa8a0",
+    "mark": "#e57f47",
     "selection": "#2a303b",
     "disabled": "#6e7478",
     "deep": "#14191f",
@@ -706,8 +704,20 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "mark",
+      "y": 0,
+      "x": 32,
+      "text": "Theo",
+      "fg": [
+        "mark"
+      ],
+      "bg": [
+        "bg"
       ],
       "matches": true
     },
@@ -717,12 +727,10 @@
       "x": 32,
       "text": "Theo",
       "fg": [
-        "bg"
+        "mark"
       ],
       "bg": [
-        "sage",
-        "accent",
-        "focus"
+        "bg"
       ],
       "matches": true
     },
@@ -736,8 +744,7 @@
         "heading"
       ],
       "bg": [
-        "raised",
-        "selection"
+        "bg"
       ],
       "matches": true
     },
@@ -871,36 +878,6 @@
       "matches": true
     },
     {
-      "role": "selection-fill",
-      "y": 3,
-      "x": 128,
-      "text": "Changes",
-      "fg": [
-        "bright",
-        "heading"
-      ],
-      "bg": [
-        "raised",
-        "selection"
-      ],
-      "matches": true
-    },
-    {
-      "role": "tab-fill",
-      "y": 0,
-      "x": 32,
-      "text": "Theo",
-      "fg": [
-        "bg"
-      ],
-      "bg": [
-        "sage",
-        "accent",
-        "focus"
-      ],
-      "matches": true
-    },
-    {
       "role": "separator",
       "y": 2,
       "x": 30,
@@ -951,24 +928,6 @@
       "equal": true
     },
     {
-      "label": "active tab fill",
-      "row": 0,
-      "column": 31,
-      "glyph": " ",
-      "dom": "#8aa8a0",
-      "pixel": "#8aa8a0",
-      "equal": true
-    },
-    {
-      "label": "inactive tab fill",
-      "row": 0,
-      "column": 0,
-      "glyph": " ",
-      "dom": "#2a303b",
-      "pixel": "#2a303b",
-      "equal": true
-    },
-    {
       "label": "added line fill",
       "row": 12,
       "column": 41,
@@ -993,15 +952,6 @@
       "glyph": ";",
       "dom": "#014412",
       "pixel": "#014412",
-      "equal": true
-    },
-    {
-      "label": "selected row fill",
-      "row": 3,
-      "column": 127,
-      "glyph": " ",
-      "dom": "#2a303b",
-      "pixel": "#2a303b",
       "equal": true
     }
   ],
