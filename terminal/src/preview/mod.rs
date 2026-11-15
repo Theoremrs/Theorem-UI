@@ -153,11 +153,17 @@ pub const RECIPES: &[Recipe] = recipes::REGISTRY;
 /// with that failure as its limitation, so browsing never shows a blank
 /// success.
 pub fn render(source: &Source, pixels: Option<&Pixels>) -> Preview {
+    render_with(RECIPES, source, pixels)
+}
+
+/// `render` against any registry: the contribution seam. A new recipe is one
+/// more `Recipe` entry; nothing downstream branches on artifact kind.
+pub fn render_with(registry: &[Recipe], source: &Source, pixels: Option<&Pixels>) -> Preview {
     let source = &Source {
         text: source.text.as_ref().map(|t| clip(t, TEXT_LIMIT).to_owned()),
         ..source.clone()
     };
-    let Some(recipe) = RECIPES
+    let Some(recipe) = registry
         .iter()
         .find(|r| (r.accepts)(source, pixels.is_some()))
     else {
@@ -185,4 +191,69 @@ fn clip(text: &str, limit: usize) -> &str {
         end -= 1;
     }
     &text[..end]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn stripes(_: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError> {
+        let mut raster = raster::Raster::new(ARTBOARD.0, ARTBOARD.1, palette::ix::BLACK);
+        for x in (0..i32::from(ARTBOARD.0)).step_by(4) {
+            raster.set(x, 0, palette::ix::BASE_200);
+        }
+        Ok(Preview {
+            raster,
+            recipe: "stripes",
+            recipe_version: 1,
+            method: Method::StructuredRecipe,
+            limitation: None,
+        })
+    }
+
+    #[test]
+    fn a_seventh_recipe_joins_through_the_registry_alone() {
+        // A17: one more entry; the result is the standard Preview the
+        // cabinet already consumes, with no new kind branch anywhere.
+        let mut registry = vec![Recipe {
+            id: "stripes",
+            version: 1,
+            accepts: |s, _| s.kind == "timeline",
+            run: stripes,
+        }];
+        assert_eq!(RECIPES.len(), 6);
+        registry.extend(RECIPES.iter().map(|r| Recipe { ..*r }));
+        let source = Source {
+            kind: "timeline".into(),
+            ..Default::default()
+        };
+        let p = render_with(&registry, &source, None);
+        assert_eq!(p.recipe, "stripes");
+        assert_eq!((p.raster.width, p.raster.height), ARTBOARD);
+        // Without it, the same source is an honest type illustration.
+        assert_eq!(render(&source, None).method, Method::TypeIllustration);
+    }
+
+    #[test]
+    fn every_recipe_is_repeatable() {
+        // A21: same normalized input, same indices, every time.
+        for (kind, media, text) in [
+            ("document", "text/markdown", "# Title\n\nA paragraph.\n\n- a\n- b\n"),
+            ("diagram", "text/vnd.mermaid", "graph LR\nA-->B\nB-->C\n"),
+            ("chart", "", "pie\n\"A\" : 3\n\"B\" : 2\n"),
+            ("app", "text/html", "<body><h1>x</h1><button>a</button></body>"),
+            ("code", "", "fn main() {}\n"),
+        ] {
+            let s = Source {
+                kind: kind.into(),
+                media_type: media.into(),
+                text: Some(text.into()),
+                ..Default::default()
+            };
+            let a = render(&s, None);
+            for _ in 0..5 {
+                assert_eq!(render(&s, None).raster, a.raster, "{kind}");
+            }
+        }
+    }
 }

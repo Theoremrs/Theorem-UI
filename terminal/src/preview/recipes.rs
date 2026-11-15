@@ -1222,6 +1222,9 @@ mod tests {
         assert_eq!(p.limitation.unwrap().code, "unsupported");
         let zero = render(&src("chart", "", "pie\n\"A\" : 0\n"), None);
         assert_eq!(zero.method, Method::TypeIllustration);
+        let nan = render(&src("chart", "", "pie\n\"A\" : NaN\n\"B\" : 2\n"), None);
+        assert_eq!(nan.method, Method::TypeIllustration);
+        assert_eq!(nan.limitation.unwrap().code, "unsupported");
     }
 
     #[test]
