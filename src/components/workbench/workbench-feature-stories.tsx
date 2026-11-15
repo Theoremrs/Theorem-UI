@@ -299,8 +299,8 @@ export function WorkbenchPresentationStory() {
 
 /**
  * The layout a person saved with the delegation's changes panel in the tools group: the three ids a delegation
- * panel is bound by. (The compiled wasm's Theo panel has no delegation list yet, so the conversation cannot open
- * it; a saved layout is the way a delegation panel gets back on screen.)
+ * panel is bound by. This is the way a delegation panel comes back after a reload; `workbench-delegation-from-chat`
+ * is the way it is first opened.
  */
 const DELEGATION_LAYOUT = JSON.stringify({
   dock: {
@@ -403,6 +403,42 @@ export function WorkbenchDelegationStory() {
       arrangements
       script={[]}
       wait={['README.md']}
+    />
+  )
+}
+
+/**
+ * `workbench-delegation-from-chat`: the conversation's last answer made two delegations, and Theo lists them
+ * under the transcript. Alt+D takes the keys into that list and Enter opens the chosen one's changes panel.
+ */
+export function WorkbenchDelegationFromChatStory() {
+  return (
+    <FeatureStory
+      id="workbench-delegation-from-chat"
+      options={{
+        granted: EVERY_TOOL,
+        transcript: true,
+        idle: true,
+        delegations: [
+          {
+            delegationId: 'd1',
+            runId: 'run-1',
+            label: 'Panel build',
+            objective: 'Find why the panel build fails and fix it.',
+            state: 'completed',
+            verdict: 'accepted',
+          },
+          {
+            delegationId: 'd2',
+            runId: 'run-1',
+            label: 'Docs',
+            objective: 'Bring the guide in line with the new panel.',
+            state: 'running',
+          },
+        ],
+      }}
+      script={[]}
+      wait={['Delegations (2)']}
     />
   )
 }

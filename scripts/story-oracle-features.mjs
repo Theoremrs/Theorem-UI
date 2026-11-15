@@ -620,6 +620,44 @@ export function scenarios(h) {
     ],
     // Delegation changes panel: R17 (a read-only panel bound to a delegation resource), AC-19 (the changes are Changes' read-only cousin),
     // R40 for hostile path text. The panel comes back on screen from a saved layout (the compiled Theo panel has no delegation list yet).
+    // The first way in (R17): Theo lists the conversation's delegations; Alt+D, the arrows and Enter open one.
+    'workbench-delegation-from-chat': [
+      async (page) => {
+        await page.waitForTimeout(500)
+        await sees(page, 'Delegations (2)', 8000)
+        const rows = async () => (await nodes(page)).filter((n) => n.role === 'listItem' && /\/d:d[12]$/.test(n.id))
+        const before = await rows()
+        const list = (await nodes(page)).find((n) => n.role === 'list' && n.name === 'Delegations')
+        const mark = (await effects(page)).length
+        await page.keyboard.press('Alt+d')
+        await page.waitForTimeout(250)
+        const entered = await rows()
+        await keys(page, 'ArrowDown')
+        const down = await rows()
+        await keys(page, 'ArrowUp')
+        const up = await rows()
+        const quiet = (await effects(page)).slice(mark).map((e) => e.kind)
+        await snap(page, 'workbench-delegation-from-chat-list')
+        await keys(page, 'Enter')
+        await sees(page, 'files changed', 8000)
+        await page.waitForTimeout(300)
+        const all = await nodes(page)
+        const tab = all.find((n) => n.role === 'tab' && n.binding?.type === 'delegation')
+        const region = all.find((n) => n.role === 'region' && n.name === 'Delegation changes')
+        const reads = (await effects(page)).slice(mark).filter((e) => e.kind === 'delegationChanges')
+        await snap(page, 'workbench-delegation-from-chat-open')
+        return {
+          'Theo lists the two delegations as a list named "Delegations", each bound to its run and delegation': list?.state?.description?.includes('Alt+D') === true && before.length === 2 && before[0].binding.delegationId === 'd1' && before[0].binding.runId === 'run-1' && before[1].binding.delegationId === 'd2' && before[1].setSize === 2,
+          'before Alt+D no row is selected': before.every((n) => !n.state.selected),
+          'Alt+D takes the keys into the list: the first row is selected and focused': entered[0].state.selected === true && entered[0].state.focused === true && !entered[1].state.selected,
+          'Down chooses the second, Up the first again': down[1].state.selected === true && !down[0].state.selected && up[0].state.selected === true,
+          'choosing asks the host for nothing': quiet.every((k) => k === 'layoutSave'),
+          'Enter opens a tab of kind delegation bound to run-1 and d1, with the keyboard': tab?.binding?.runId === 'run-1' && tab.binding.delegationId === 'd1' && tab.state.focused === true && tab.state.selected === true,
+          'the panel is the read-only changes region and lists the changed files': region?.binding?.delegationId === 'd1' && (await hasRight(page, 'files changed. Enter shows a file')),
+          'opening asked the host for that delegation\'s changes once, with the two ids': reads.length === 1 && reads[0].payload.runId === 'run-1' && reads[0].payload.delegationId === 'd1',
+        }
+      },
+    ],
     'workbench-delegation': [
       // The panel, its list, and what it offers.
       async (page) => {

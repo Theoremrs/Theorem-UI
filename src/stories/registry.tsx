@@ -93,6 +93,7 @@ import {
   WorkbenchDocumentHistoryStory,
   WorkbenchPresentationStory,
   WorkbenchDelegationStory,
+  WorkbenchDelegationFromChatStory,
   WorkbenchReplaceStory,
 } from '@/components/workbench/workbench-feature-stories'
 import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
@@ -855,6 +856,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-document-history': WorkbenchDocumentHistoryStory,
   'workbench-presentation': WorkbenchPresentationStory,
   'workbench-delegation': WorkbenchDelegationStory,
+  'workbench-delegation-from-chat': WorkbenchDelegationFromChatStory,
   'workbench-replace': WorkbenchReplaceStory,
   'workbench-resize': WorkbenchResizeStory,
   'workbench-keyboard-journey': WorkbenchKeyboardJourneyStory,
