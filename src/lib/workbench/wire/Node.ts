@@ -27,6 +27,12 @@ setSize?: number,
  */
 shortcut?: string, 
 /**
+ * The text a region shows, for assistive technology to read (a terminal
+ * pane's visible screen). At most [`MAX_NODE_TEXT`] bytes; use
+ * [`Node::with_text`], which cuts to it.
+ */
+text?: string, 
+/**
  * Children in reading order. A node has exactly one parent.
  */
 children: Array<NodeId>, };

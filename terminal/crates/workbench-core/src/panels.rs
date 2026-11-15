@@ -10,7 +10,7 @@ use serde_json::Value;
 use crate::ids::ActionId;
 use crate::panel::{Ctx, Panel, PanelMsg, PickerView, ViewCtx};
 use crate::picker_layout::{
-    BACK, HEADING_MAIN, HEADING_MORE, Layout, NO_MATCH, PAD, PINNED, UNPINNED, row_text_with,
+    BACK, HEADING_MAIN, HEADING_MORE, Layout, NO_MATCH, PAD, PINNED, UNPINNED, row_text_in,
 };
 use crate::registry::Availability;
 use crate::semantics::{Node, NodeAction, Role};
@@ -151,7 +151,16 @@ impl Panel for PickerPanel {
                 buf.set_style(cell.rect, cx.theme.selected);
             }
             let pin_hint = selected.then_some(view.pin_shortcut.as_deref()).flatten();
-            let t = row_text_with(row, cell.rect.width, cell.pin.is_some(), pin_hint);
+            let t = row_text_in(
+                row,
+                cell.rect.width,
+                cell.pin.is_some(),
+                pin_hint,
+                layout.glyph_w,
+            );
+            if let Some(g) = &t.glyph {
+                draw(buf, cell.rect, t.glyph_at, g, quiet);
+            }
             draw(buf, cell.rect, t.label_at, &t.label, label);
             if let Some(q) = &t.qualifier {
                 draw(buf, cell.rect, t.qualifier_at, q, quiet);

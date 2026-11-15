@@ -3,4 +3,4 @@
 /**
  * The kind of resource a panel kind binds to, without the ids.
  */
-export type ResourceKind = "none" | "workspace" | "document" | "repository" | "terminal" | "conversation" | "project";
+export type ResourceKind = "none" | "workspace" | "document" | "repository" | "terminal" | "conversation" | "project" | "directory" | "commit" | "revision" | "untitled";

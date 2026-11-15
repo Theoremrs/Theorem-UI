@@ -173,9 +173,16 @@ pub enum EffectBody {
     TerminalOpen(TerminalOpen),
     TerminalAttach(TerminalAttach),
     TerminalInput(TerminalInput),
+    /// Input that is not text (a legacy mouse report): the bytes as base64,
+    /// beside `terminalInput`, which stays the text form.
+    TerminalInputBytes(TerminalInputBytes),
     TerminalResize(TerminalResize),
     TerminalDetach(TerminalClaim),
     TerminalEnd,
+    /// The pane that asked for `open` closed before `terminalOpened` came
+    /// back. The adapter ends whatever that open starts, whichever side of
+    /// this effect its answer falls on, so no process outlives its pane.
+    TerminalAbandonOpen(TerminalAbandonOpen),
 
     // Conversation and runs
     ConversationCreate,
@@ -232,8 +239,8 @@ impl EffectKind {
             }
             RunConfigure | RunStart | RunStop | RunPoll => Owner::Run,
             SearchQuery | SearchCancel => Owner::Search,
-            TerminalOpen | TerminalAttach | TerminalInput | TerminalResize | TerminalDetach
-            | TerminalEnd => Owner::Terminal,
+            TerminalOpen | TerminalAttach | TerminalInput | TerminalInputBytes | TerminalResize
+            | TerminalDetach | TerminalEnd | TerminalAbandonOpen => Owner::Terminal,
             ConversationCreate
             | ConversationSend
             | ConversationInput
@@ -608,6 +615,12 @@ pub struct TerminalOpen {
     pub name: Option<String>,
     pub cols: u16,
     pub rows: u16,
+    /// The attachment name to attach with once the program is running, so
+    /// opening and attaching are one effect. The answer carries it back. Absent:
+    /// the open only starts the program, and a `terminalAttach` follows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub attachment: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -668,6 +681,27 @@ pub struct TerminalInput {
     /// or a resend would be a new input and be written twice.
     pub input_id: String,
     pub claim: TerminalClaim,
+}
+
+/// [`TerminalInput`] for bytes that are not UTF-8. Same ledger, same claim:
+/// `input_id` is minted once per logical input and a retry re-emits it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalInputBytes {
+    /// Base64 of the bytes to write.
+    pub data: String,
+    pub kind: InputKind,
+    pub input_id: String,
+    pub claim: TerminalClaim,
+}
+
+/// The effect whose `terminalOpen` is to be undone.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalAbandonOpen {
+    pub open: crate::ids::EffectId,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

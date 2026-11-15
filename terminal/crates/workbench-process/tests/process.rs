@@ -167,6 +167,9 @@ fn opened(epoch: u64, program: u64, cols: u16, rows: u16, origin: &str) -> Termi
         origin: Some(origin.into()),
         lease_generation: Some(1),
         process_owned_by: None,
+        attachment: None,
+        controlling: None,
+        controlled: None,
     }
 }
 

@@ -22,4 +22,9 @@ humanOnly: boolean, picker?: PickerSlot,
  * What choosing it in the picker does, when that is more than its intent
  * says. Absent: the intent's own meaning.
  */
-choosing?: Chooses, };
+choosing?: Chooses, 
+/**
+ * A leading mark for the picker row: one or two cells wide (measured with
+ * unicode-width), a plain BMP symbol the terminal's font covers.
+ */
+glyph?: string, };

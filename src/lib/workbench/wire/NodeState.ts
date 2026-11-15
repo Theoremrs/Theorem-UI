@@ -4,4 +4,16 @@ export type NodeState = { focused: boolean, selected: boolean, disabled: boolean
 /**
  * Why the node is unavailable or refused, in words a person can act on.
  */
-description: string | null, };
+description: string | null, 
+/**
+ * A file-tree row that is a symbolic link.
+ */
+symlink: boolean, 
+/**
+ * A row the host's ignore rules cover.
+ */
+ignored: boolean, 
+/**
+ * A dot-entry the host marks hidden.
+ */
+hidden: boolean, };

@@ -67,6 +67,31 @@ pub struct PanelPointer {
 pub enum OpenTarget {
     /// A file of a workspace, as a document.
     File { workspace: String, path: String },
+    /// A file at a line and column (a transcript's file reference, a
+    /// diagnostic), both counted from 1. It is the same document as `File`, so
+    /// a panel already showing the file is focused.
+    FileAt {
+        workspace: String,
+        path: String,
+        line: u32,
+        column: u32,
+    },
+    /// A commit's diff in a repository (a history row).
+    Commit {
+        workspace: String,
+        repository: String,
+        commit: String,
+    },
+    /// A file as it was at a commit, read only (a history row's file).
+    Revision {
+        workspace: String,
+        repository: String,
+        commit: String,
+        path: String,
+    },
+    /// A new document with no path yet (New page), named by an id the asker
+    /// minted so a second New page is not the first.
+    Untitled { workspace: String, id: String },
 }
 
 impl OpenTarget {
@@ -74,9 +99,36 @@ impl OpenTarget {
     /// bound to it is focused instead of opening a second one.
     pub fn resource(&self) -> ResourceRef {
         match self {
-            Self::File { workspace, path } => ResourceRef::Document {
+            Self::File { workspace, path }
+            | Self::FileAt {
+                workspace, path, ..
+            } => ResourceRef::Document {
                 workspace: workspace.clone(),
                 resource_id: path.clone(),
+            },
+            Self::Commit {
+                workspace,
+                repository,
+                commit,
+            } => ResourceRef::Commit {
+                workspace: workspace.clone(),
+                repository: repository.clone(),
+                commit: commit.clone(),
+            },
+            Self::Revision {
+                workspace,
+                repository,
+                commit,
+                path,
+            } => ResourceRef::Revision {
+                workspace: workspace.clone(),
+                repository: repository.clone(),
+                commit: commit.clone(),
+                path: path.clone(),
+            },
+            Self::Untitled { workspace, id } => ResourceRef::Untitled {
+                workspace: workspace.clone(),
+                id: id.clone(),
             },
         }
     }
@@ -86,7 +138,11 @@ impl OpenTarget {
     /// can open it later.
     pub fn fallback_kind(&self) -> &'static str {
         match self {
-            Self::File { .. } => "document",
+            Self::File { .. }
+            | Self::FileAt { .. }
+            | Self::Revision { .. }
+            | Self::Untitled { .. } => "document",
+            Self::Commit { .. } => "diff",
         }
     }
 
@@ -96,18 +152,45 @@ impl OpenTarget {
             Self::File { workspace, path } => {
                 serde_json::json!({ "workspace": workspace, "path": path })
             }
+            Self::FileAt {
+                workspace,
+                path,
+                line,
+                column,
+            } => serde_json::json!({
+                "workspace": workspace, "path": path, "line": line, "column": column
+            }),
+            Self::Commit {
+                workspace,
+                repository,
+                commit,
+            } => serde_json::json!({
+                "workspace": workspace, "repository": repository, "commit": commit
+            }),
+            Self::Revision {
+                workspace,
+                repository,
+                commit,
+                path,
+            } => serde_json::json!({
+                "workspace": workspace, "repository": repository,
+                "commit": commit, "path": path, "revision": true
+            }),
+            Self::Untitled { workspace, id } => {
+                serde_json::json!({ "workspace": workspace, "untitled": id })
+            }
         }
     }
 
     /// A tab title: the last part of the path.
     pub fn title(&self) -> String {
         match self {
-            Self::File { path, .. } => path
-                .trim_end_matches('/')
-                .rsplit('/')
-                .next()
-                .unwrap_or(path)
-                .to_owned(),
+            Self::File { path, .. } | Self::FileAt { path, .. } => last_part(path),
+            Self::Commit { commit, .. } => short(commit),
+            Self::Revision { commit, path, .. } => {
+                format!("{} @ {}", last_part(path), short(commit))
+            }
+            Self::Untitled { .. } => "Untitled".to_owned(),
         }
     }
 
@@ -115,8 +198,29 @@ impl OpenTarget {
     pub fn describe(&self) -> String {
         match self {
             Self::File { path, .. } => format!("the file \"{path}\""),
+            Self::FileAt {
+                path, line, column, ..
+            } => format!("the file \"{path}\" at {line}:{column}"),
+            Self::Commit { commit, .. } => format!("the changes in commit {}", short(commit)),
+            Self::Revision { commit, path, .. } => {
+                format!("the file \"{path}\" at commit {}", short(commit))
+            }
+            Self::Untitled { .. } => "a new document".to_owned(),
         }
     }
+}
+
+fn last_part(path: &str) -> String {
+    path.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .unwrap_or(path)
+        .to_owned()
+}
+
+/// A commit id as people read it: its first seven characters.
+fn short(commit: &str) -> String {
+    commit.chars().take(7).collect()
 }
 
 /// Everything the root says to a panel.

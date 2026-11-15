@@ -1160,6 +1160,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | CapabilitiesChanged { .. }
         | WorkspaceChanged { .. }
         | ConnectionChanged { .. }
+        | TerminalSessions { .. }
         | Resync { .. } => (None, None),
     }
 }

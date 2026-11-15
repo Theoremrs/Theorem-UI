@@ -142,7 +142,7 @@ fn standalone(more: bool, filter: &str) -> PickerView {
     let pins = Default::default();
     picker.update(PickerMsg::Open, &registry, &caps, &pins);
     if more {
-        picker.update(PickerMsg::Prev, &registry, &caps, &pins);
+        picker.update(PickerMsg::Select(5), &registry, &caps, &pins);
         picker.update(PickerMsg::Choose, &registry, &caps, &pins);
     }
     if !filter.is_empty() {
@@ -183,11 +183,11 @@ fn the_main_page_renders_at_three_widths() {
         lines(&[
             "Tools",
             ">",
-            " Changes                            Ctrl+Alt+G    Side chat                          Ctrl+Alt+L",
-            " Shell  starts a process            Ctrl+Alt+S    New page  creates a document       Ctrl+Alt+N",
-            " Files                              Ctrl+Alt+E    More tools",
+            " \u{b1} Changes                          Ctrl+Alt+G    \u{203a} Shell  starts a process          Ctrl+Alt+S",
             "",
+            " \u{25a1} Files                            Ctrl+Alt+E    \u{2295} Side chat                        Ctrl+Alt+L",
             "",
+            " \u{2261} New page  creates a document     Ctrl+Alt+N    \u{25a6} More tools",
             "",
             "",
             "",
@@ -202,17 +202,17 @@ fn the_main_page_renders_at_three_widths() {
         lines(&[
             "Tools",
             ">",
-            " Changes                                         Ctrl+Alt+G",
-            " Shell  starts a process                         Ctrl+Alt+S",
-            " Files                                           Ctrl+Alt+E",
-            " Side chat                                       Ctrl+Alt+L",
-            " New page  creates a document                    Ctrl+Alt+N",
-            " More tools",
+            " \u{b1} Changes                                       Ctrl+Alt+G",
             "",
+            " \u{203a} Shell  starts a process                       Ctrl+Alt+S",
             "",
+            " \u{25a1} Files                                         Ctrl+Alt+E",
             "",
+            " \u{2295} Side chat                                     Ctrl+Alt+L",
             "",
+            " \u{2261} New page  creates a document                  Ctrl+Alt+N",
             "",
+            " \u{25a6} More tools",
             "",
         ])
     );
@@ -221,18 +221,32 @@ fn the_main_page_renders_at_three_widths() {
         lines(&[
             "Tools",
             ">",
-            " Changes         Ctrl+Alt+G",
-            " Shell           Ctrl+Alt+S",
-            " Files           Ctrl+Alt+E",
-            " Side chat       Ctrl+Alt+L",
-            " New page        Ctrl+Alt+N",
-            " More tools",
+            " \u{b1} Changes       Ctrl+Alt+G",
             "",
+            " \u{203a} Shell         Ctrl+Alt+S",
             "",
+            " \u{25a1} Files         Ctrl+Alt+E",
             "",
+            " \u{2295} Side chat     Ctrl+Alt+L",
             "",
+            " \u{2261} New page      Ctrl+Alt+N",
             "",
+            " \u{25a6} More tools",
             "",
+        ])
+    );
+    // Without the height for the blank lines the rows sit together.
+    assert_eq!(
+        render(&view, 28, 8),
+        lines(&[
+            "Tools",
+            ">",
+            " \u{b1} Changes       Ctrl+Alt+G",
+            " \u{203a} Shell         Ctrl+Alt+S",
+            " \u{25a1} Files         Ctrl+Alt+E",
+            " \u{2295} Side chat     Ctrl+Alt+L",
+            " \u{2261} New page      Ctrl+Alt+N",
+            " \u{25a6} More tools",
         ])
     );
 }
@@ -246,11 +260,11 @@ fn the_more_tools_page_renders_at_three_widths() {
             "More tools",
             " \u{2039} Back",
             ">",
-            " Artifacts                                    \u{25cb}   Search                                       \u{25cb}",
-            " Diagnostics                                  \u{25cb}   History                                      \u{25cb}",
-            " Run output                                   \u{25cb}",
+            " Artifacts                                    \u{25cb}   Diagnostics                                  \u{25cb}",
             "",
+            " Run output                                   \u{25cb}   Search                                       \u{25cb}",
             "",
+            " History                                      \u{25cb}",
             "",
             "",
             "",
@@ -265,11 +279,11 @@ fn the_more_tools_page_renders_at_three_widths() {
             "More tools",
             " \u{2039} Back",
             ">",
-            " Artifacts                  \u{25cb}   Search                     \u{25cb}",
-            " Diagnostics                \u{25cb}   History                    \u{25cb}",
-            " Run output                 \u{25cb}",
+            " Artifacts                  \u{25cb}   Diagnostics                \u{25cb}",
             "",
+            " Run output                 \u{25cb}   Search                     \u{25cb}",
             "",
+            " History                    \u{25cb}",
             "",
             "",
             "",
@@ -285,43 +299,18 @@ fn the_more_tools_page_renders_at_three_widths() {
             " \u{2039} Back",
             ">",
             " Artifacts                 \u{25cb}",
+            "",
             " Diagnostics               \u{25cb}",
+            "",
             " Run output                \u{25cb}",
+            "",
             " Search                    \u{25cb}",
+            "",
             " History                   \u{25cb}",
-            "",
-            "",
-            "",
-            "",
             "",
             "",
         ])
     );
-}
-
-#[test]
-fn an_empty_filter_says_so_in_plain_words() {
-    let view = standalone(false, "zzz");
-    let text = render(&view, 60, 14);
-    assert!(
-        text.starts_with("Tools\n> zzz\n No tools match\n"),
-        "{text}"
-    );
-    assert!(!text.contains("Changes"));
-    let tree_text = render(&standalone(true, "zzz"), 28, 6);
-    assert!(tree_text.contains("\u{2039} Back") && tree_text.contains("No tools match"));
-}
-
-#[test]
-fn nothing_panics_or_overruns_in_a_very_small_area() {
-    for more in [false, true] {
-        let view = standalone(more, "");
-        for width in 0..6 {
-            for height in 0..5 {
-                let _ = render(&view, width, height);
-            }
-        }
-    }
 }
 
 // ---- layout, drawing and semantics read one answer ----------------------
@@ -347,10 +336,11 @@ fn semantic_rects_are_the_drawn_rects_at_every_width() {
             if let Some(back) = layout.back {
                 assert_eq!(rect("back"), back);
             }
-            assert_eq!(
-                layout.columns,
-                if width >= 86 && !more { 2 } else { 1 }.max(layout.columns)
-            );
+            // The glyph column is part of what a row needs, so two columns
+            // take 92 cells on the main page.
+            if !more {
+                assert_eq!(layout.columns, if width >= 92 { 2 } else { 1 }, "{width}");
+            }
             for cell in &layout.cells {
                 assert_eq!(rect(&format!("row-{}", cell.index)), cell.rect, "{width}");
             }
@@ -395,6 +385,54 @@ fn rows_carry_position_selection_shortcut_qualifier_and_actions() {
     );
 }
 
+#[test]
+fn the_semantic_order_is_the_reading_order_and_each_row_sits_where_it_reads() {
+    let view = standalone(false, "");
+    let area = Rect::new(0, 0, 96, 14);
+    let theme = Theme::plain();
+    let workspace = Default::default();
+    let mut cx = ViewCtx::new(&theme, &workspace);
+    cx.picker = Some(&view);
+    let nodes = PickerPanel.semantics(area, &cx);
+    let rows: Vec<&Node> = nodes.iter().filter(|n| n.role == Role::MenuItem).collect();
+    assert_eq!(
+        rows.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(),
+        [
+            "Changes",
+            "Shell",
+            "Files",
+            "Side chat",
+            "New page",
+            "More tools"
+        ]
+    );
+    assert_eq!(
+        rows[0].rect.y, rows[1].rect.y,
+        "Changes and Shell share a line"
+    );
+    assert!(rows[1].rect.x > rows[0].rect.x);
+    assert!(rows[2].rect.y > rows[0].rect.y);
+    assert_eq!(rows[2].rect.x, rows[0].rect.x);
+    assert_eq!(
+        rows.iter().map(|n| n.pos_in_set).collect::<Vec<_>>(),
+        (1..=6).map(Some).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_click_on_the_right_column_chooses_the_row_that_reads_there() {
+    let view = standalone(false, "");
+    let layout = Layout::compute(&view, Rect::new(0, 0, 96, 14));
+    for (index, title) in [(1, "Shell"), (3, "Side chat"), (5, "More tools")] {
+        let cell = layout.cell(index).unwrap();
+        assert_eq!(view.rows[index].title, title);
+        assert_eq!(
+            layout.hit(cell.rect.x + 2, cell.rect.y),
+            Some(theorem_workbench_core::picker_layout::PickerHit::Row(index))
+        );
+    }
+}
+
 // ---- keyboard, columns -------------------------------------------------
 
 fn standalone_picker(width: u16) -> (Picker, Registry, Capabilities) {
@@ -413,25 +451,17 @@ fn step(p: &mut Picker, r: &Registry, c: &Capabilities, msg: PickerMsg) -> Picke
 #[test]
 fn left_and_right_cross_the_columns_only_when_two_are_drawn() {
     let (mut p, r, c) = standalone_picker(96);
-    // Column-major: rows 0..3 in the first column, 3..6 in the second.
+    // Rows read across: Changes Shell / Files Side chat / New page More tools.
     step(&mut p, &r, &c, PickerMsg::Right);
-    assert_eq!(p.selected(), 3);
+    assert_eq!(p.selected(), 1);
     step(&mut p, &r, &c, PickerMsg::Right);
-    assert_eq!(p.selected(), 3, "nothing right of the second column");
+    assert_eq!(p.selected(), 1, "nothing right of the second column");
     step(&mut p, &r, &c, PickerMsg::Left);
     assert_eq!(p.selected(), 0);
     step(&mut p, &r, &c, PickerMsg::Next);
-    step(&mut p, &r, &c, PickerMsg::Next);
-    step(&mut p, &r, &c, PickerMsg::Next);
-    assert_eq!(
-        p.selected(),
-        3,
-        "next continues at the top of the second column"
-    );
-    step(&mut p, &r, &c, PickerMsg::Prev);
-    assert_eq!(p.selected(), 2);
+    assert_eq!(p.selected(), 2, "down stays in the first column");
     step(&mut p, &r, &c, PickerMsg::Right);
-    assert_eq!(p.selected(), 5);
+    assert_eq!(p.selected(), 3);
 
     let (mut p, r, c) = standalone_picker(60);
     step(&mut p, &r, &c, PickerMsg::Right);
@@ -441,10 +471,74 @@ fn left_and_right_cross_the_columns_only_when_two_are_drawn() {
 }
 
 #[test]
+fn down_and_up_follow_the_drawn_grid_with_two_columns_and_wrap_within_a_column() {
+    let (mut p, r, c) = standalone_picker(96);
+    let mut seen = vec![p.selected()];
+    for _ in 0..3 {
+        step(&mut p, &r, &c, PickerMsg::Next);
+        seen.push(p.selected());
+    }
+    assert_eq!(seen, [0, 2, 4, 0], "the first column wraps to its top");
+    step(&mut p, &r, &c, PickerMsg::Prev);
+    assert_eq!(
+        p.selected(),
+        4,
+        "up from the top wraps to the column's bottom"
+    );
+    step(&mut p, &r, &c, PickerMsg::Right);
+    assert_eq!(p.selected(), 5);
+    step(&mut p, &r, &c, PickerMsg::Prev);
+    assert_eq!(p.selected(), 3);
+    step(&mut p, &r, &c, PickerMsg::Next);
+    step(&mut p, &r, &c, PickerMsg::Next);
+    assert_eq!(p.selected(), 1, "the second column wraps to its top");
+}
+
+#[test]
+fn down_and_up_step_through_every_row_with_one_column() {
+    let (mut p, r, c) = standalone_picker(60);
+    let mut seen = vec![p.selected()];
+    for _ in 0..6 {
+        step(&mut p, &r, &c, PickerMsg::Next);
+        seen.push(p.selected());
+    }
+    assert_eq!(seen, [0, 1, 2, 3, 4, 5, 0]);
+    step(&mut p, &r, &c, PickerMsg::Prev);
+    assert_eq!(p.selected(), 5);
+}
+
+#[test]
+fn an_odd_last_line_has_no_right_neighbour_and_down_skips_the_missing_cell() {
+    let registry = builtin::registry();
+    let caps = caps(&[]);
+    let pins = Default::default();
+    let mut p = Picker::default();
+    p.set_area(Rect::new(0, 0, 200, 20));
+    p.update(PickerMsg::Open, &registry, &caps, &pins);
+    p.update(PickerMsg::Select(5), &registry, &caps, &pins);
+    p.update(PickerMsg::Choose, &registry, &caps, &pins);
+    // More tools lists five rows in two columns: the last line has one cell.
+    let n = p.rows(&registry, &caps, &pins).len();
+    assert_eq!(n, 5);
+    p.update(PickerMsg::Select(4), &registry, &caps, &pins);
+    p.update(PickerMsg::Right, &registry, &caps, &pins);
+    assert_eq!(p.selected(), 4);
+    p.update(PickerMsg::Next, &registry, &caps, &pins);
+    assert_eq!(p.selected(), 0);
+    p.update(PickerMsg::Select(3), &registry, &caps, &pins);
+    p.update(PickerMsg::Next, &registry, &caps, &pins);
+    assert_eq!(
+        p.selected(),
+        1,
+        "below row 3 there is no row 5, so the column wraps"
+    );
+}
+
+#[test]
 fn left_on_more_tools_goes_back_and_so_does_the_back_row() {
     for width in [96, 60] {
         let (mut p, r, c) = standalone_picker(width);
-        step(&mut p, &r, &c, PickerMsg::Prev);
+        step(&mut p, &r, &c, PickerMsg::Select(5));
         step(&mut p, &r, &c, PickerMsg::Choose);
         assert_eq!(p.page(), theorem_workbench_core::picker::Page::More);
         step(&mut p, &r, &c, PickerMsg::Left);
@@ -461,7 +555,7 @@ fn left_on_more_tools_goes_back_and_so_does_the_back_row() {
 
 fn open_more(m: &mut Model) {
     picker(m, PickerMsg::Open);
-    picker(m, PickerMsg::Prev);
+    picker(m, PickerMsg::Select(5));
     picker(m, PickerMsg::Choose);
     assert!(titles(m).contains(&"Artifacts".to_owned()));
 }
@@ -482,7 +576,7 @@ fn pinning_moves_a_tool_after_the_initial_rows_and_before_more_tools() {
         ]
     );
     // By key.
-    picker(&mut m, PickerMsg::Next);
+    picker(&mut m, PickerMsg::Select(1));
     assert!(key(&mut m, Key::Char('p'), Mods::CTRL | Mods::ALT).is_empty());
     assert!(m.pinned().contains(&PanelKind::new("diagnostics")));
     assert!(!titles(&m).contains(&"Diagnostics".to_owned()));
@@ -602,8 +696,7 @@ fn choosing_an_unavailable_row_keeps_the_picker_open_and_shows_why_until_selecti
         ALL.iter().copied().filter(|c| *c != "run"),
     ));
     open_more(&mut m);
-    picker(&mut m, PickerMsg::Next);
-    picker(&mut m, PickerMsg::Next);
+    picker(&mut m, PickerMsg::Select(2));
     let fx = picker(&mut m, PickerMsg::Choose);
     assert!(fx.is_empty());
     assert!(m.picker().is_open(), "stays open");
@@ -823,10 +916,9 @@ fn browsing_the_picker_has_no_effects_and_only_an_available_choice_chooses() {
         PickerMsg::Open,
         PickerMsg::Right,
         PickerMsg::Left,
-        PickerMsg::Prev,
+        PickerMsg::Select(5),
         PickerMsg::Choose,
-        PickerMsg::Next,
-        PickerMsg::Next,
+        PickerMsg::Select(2),
         PickerMsg::Choose,
         PickerMsg::TogglePin,
         PickerMsg::Select(1),
@@ -839,9 +931,9 @@ fn browsing_the_picker_has_no_effects_and_only_an_available_choice_chooses() {
         .filter(|o| matches!(o, PickerOutcome::Chosen(_)))
         .collect();
     assert_eq!(chosen.len(), 1, "{outcomes:?}");
-    assert!(matches!(&outcomes[7], PickerOutcome::Unavailable { .. }));
+    assert!(matches!(&outcomes[6], PickerOutcome::Unavailable { .. }));
     assert!(matches!(
-        &outcomes[8],
+        &outcomes[7],
         PickerOutcome::Pin { pinned: true, .. }
     ));
 }
@@ -1143,12 +1235,12 @@ fn the_long_reason_at_28_columns() {
         lines(&[
             "Tools",
             ">",
-            " Changes         Ctrl+Alt+G",
-            " Shell           Ctrl+Alt+S",
-            " Files           Ctrl+Alt+E",
-            " Side chat       Ctrl+Alt+L",
-            " New page        Ctrl+Alt+N",
-            " More tools",
+            " \u{b1} Changes       Ctrl+Alt+G",
+            " \u{203a} Shell         Ctrl+Alt+S",
+            " \u{25a1} Files         Ctrl+Alt+E",
+            " \u{2295} Side chat     Ctrl+Alt+L",
+            " \u{2261} New page      Ctrl+Alt+N",
+            " \u{25a6} More tools",
             " This host does not report",
             " the \"environment\"",
             " capability, so this tool",

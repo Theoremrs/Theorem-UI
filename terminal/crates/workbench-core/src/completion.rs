@@ -629,6 +629,20 @@ pub struct TerminalOpened {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub process_owned_by: Option<String>,
+    /// The attachment the answer was made under: the one `terminalOpen` or
+    /// `terminalAttach` was given, or the host's when none was.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub attachment: Option<String>,
+    /// This attachment holds the control lease now (`control.controlling`),
+    /// so a restored pane knows whether it may type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub controlling: Option<bool>,
+    /// Somebody holds the lease (`control.controlled`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub controlled: Option<bool>,
 }
 
 impl TerminalOpened {
@@ -1213,6 +1227,9 @@ mod tests {
             origin: Some("replacement".into()),
             lease_generation: Some(5),
             process_owned_by: None,
+            attachment: None,
+            controlling: None,
+            controlled: None,
         };
         shape(
             CompletionPayload::Terminal(opened.clone()),

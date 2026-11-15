@@ -23,4 +23,18 @@ origin?: string, leaseGeneration?: number,
  * What the host reported (`host` or `herdr-core`). Absent when it did
  * not: [`TerminalOpened::process_owner`] derives it from the backend.
  */
-processOwnedBy?: string, };
+processOwnedBy?: string, 
+/**
+ * The attachment the answer was made under: the one `terminalOpen` or
+ * `terminalAttach` was given, or the host's when none was.
+ */
+attachment?: string, 
+/**
+ * This attachment holds the control lease now (`control.controlling`),
+ * so a restored pane knows whether it may type.
+ */
+controlling?: boolean, 
+/**
+ * Somebody holds the lease (`control.controlled`).
+ */
+controlled?: boolean, };

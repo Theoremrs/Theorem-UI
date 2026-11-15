@@ -5,4 +5,10 @@ export type TerminalOpen = { backend: TerminalBackend,
 /**
  * Herdr only; absent means the machine shell.
  */
-argv?: Array<string>, name?: string, cols: number, rows: number, };
+argv?: Array<string>, name?: string, cols: number, rows: number, 
+/**
+ * The attachment name to attach with once the program is running, so
+ * opening and attaching are one effect. The answer carries it back. Absent:
+ * the open only starts the program, and a `terminalAttach` follows.
+ */
+attachment?: string, };

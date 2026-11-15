@@ -99,6 +99,12 @@ pub struct NodeState {
     pub expanded: Option<bool>,
     /// Why the node is unavailable or refused, in words a person can act on.
     pub description: Option<String>,
+    /// A file-tree row that is a symbolic link.
+    pub symlink: bool,
+    /// A row the host's ignore rules cover.
+    pub ignored: bool,
+    /// A dot-entry the host marks hidden.
+    pub hidden: bool,
 }
 
 /// An action the node offers, by registry id, with its availability.
@@ -145,6 +151,12 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub shortcut: Option<String>,
+    /// The text a region shows, for assistive technology to read (a terminal
+    /// pane's visible screen). At most [`MAX_NODE_TEXT`] bytes; use
+    /// [`Node::with_text`], which cuts to it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub text: Option<String>,
     /// Children in reading order. A node has exactly one parent.
     pub children: Vec<NodeId>,
 }
@@ -176,9 +188,32 @@ impl Node {
             pos_in_set: None,
             set_size: None,
             shortcut: None,
+            text: None,
             children: vec![],
         }
     }
+
+    /// The node with `text` as what it shows, cut at a character boundary to
+    /// [`MAX_NODE_TEXT`] bytes, with an ellipsis when it was cut.
+    pub fn with_text(mut self, text: &str) -> Self {
+        self.text = Some(bounded_text(text));
+        self
+    }
+}
+
+/// The most text a node carries: a terminal screen of 200 by 60 cells with
+/// room to spare.
+pub const MAX_NODE_TEXT: usize = 16 * 1024;
+
+fn bounded_text(text: &str) -> String {
+    if text.len() <= MAX_NODE_TEXT {
+        return text.to_owned();
+    }
+    let mut end = MAX_NODE_TEXT - '\u{2026}'.len_utf8();
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}\u{2026}", &text[..end])
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -217,6 +252,10 @@ pub enum TreeError {
     /// A `pos_in_set` or `set_size` that cannot describe a place in a set:
     /// zero, past the end, or one given without the other.
     BadPosition {
+        id: NodeId,
+    },
+    /// A `text` longer than [`MAX_NODE_TEXT`].
+    TextTooLong {
         id: NodeId,
     },
 }
@@ -273,6 +312,11 @@ impl SemanticTree {
             };
             if !position_ok {
                 return Err(TreeError::BadPosition {
+                    id: node.id.clone(),
+                });
+            }
+            if node.text.as_ref().is_some_and(|t| t.len() > MAX_NODE_TEXT) {
+                return Err(TreeError::TextTooLong {
                     id: node.id.clone(),
                 });
             }
@@ -425,6 +469,7 @@ mod tests {
             pos_in_set: None,
             set_size: None,
             shortcut: None,
+            text: None,
             children: children.iter().map(|c| NodeId::new(*c)).collect(),
         }
     }
@@ -518,6 +563,48 @@ mod tests {
                 Err(TreeError::BadPosition { id: id.clone() })
             );
         }
+    }
+
+    #[test]
+    fn a_node_carries_bounded_text_and_file_row_flags() {
+        let mut t = tree();
+        let screen = "line\n".repeat(10);
+        t.nodes[1] = t.nodes[1].clone().with_text(&screen);
+        assert_eq!(t.nodes[1].text.as_deref(), Some(screen.as_str()));
+        assert_eq!(t.validate(), Ok(()));
+        let value = serde_json::to_value(&t.nodes[1]).unwrap();
+        assert_eq!(value["text"], screen);
+        assert_eq!(serde_json::from_value::<Node>(value).unwrap(), t.nodes[1]);
+        // Absent when not given.
+        assert!(
+            serde_json::to_value(&t.nodes[2])
+                .unwrap()
+                .get("text")
+                .is_none()
+        );
+
+        // Too much is cut on a character boundary, with an ellipsis.
+        let long = "\u{e9}".repeat(MAX_NODE_TEXT);
+        let cut = Node::new("n", Role::Log, "n", ratatui::layout::Rect::default()).with_text(&long);
+        let text = cut.text.unwrap();
+        assert!(text.len() <= MAX_NODE_TEXT && text.ends_with('\u{2026}'));
+        // A hand-set text past the bound does not validate.
+        let id = t.nodes[1].id.clone();
+        t.nodes[1].text = Some("x".repeat(MAX_NODE_TEXT + 1));
+        assert_eq!(t.validate(), Err(TreeError::TextTooLong { id }));
+
+        // Row flags default off and read back.
+        let mut state = NodeState::default();
+        assert!(!state.symlink && !state.ignored && !state.hidden);
+        state.symlink = true;
+        state.hidden = true;
+        let value = serde_json::to_value(&state).unwrap();
+        assert_eq!(value["symlink"], true);
+        assert_eq!(value["ignored"], false);
+        assert_eq!(serde_json::from_value::<NodeState>(value).unwrap(), state);
+        // A tree saved before the flags existed still reads.
+        let old: NodeState = serde_json::from_value(serde_json::json!({"focused": true})).unwrap();
+        assert!(old.focused && !old.symlink);
     }
 
     #[test]

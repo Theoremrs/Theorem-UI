@@ -190,6 +190,11 @@ pub struct ActionDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub choosing: Option<Chooses>,
+    /// A leading mark for the picker row: one or two cells wide (measured with
+    /// unicode-width), a plain BMP symbol the terminal's font covers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub glyph: Option<String>,
 }
 
 impl ActionDescriptor {
@@ -204,7 +209,14 @@ impl ActionDescriptor {
             human_only: false,
             picker: None,
             choosing: None,
+            glyph: None,
         }
+    }
+
+    /// The mark the picker draws before the label.
+    pub fn glyph(mut self, glyph: &str) -> Self {
+        self.glyph = Some(glyph.to_owned());
+        self
     }
 
     /// Choosing this in the picker makes a new `what`.
@@ -323,6 +335,8 @@ pub enum RegistryError {
     ActiveActionWithoutEffect(ActionId),
     ZeroSize(PanelKind),
     ZeroVersion(PanelKind),
+    /// `extend_actions` named a kind nobody registered.
+    UnknownKind(PanelKind),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -381,6 +395,10 @@ pub struct PickerRow {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub shortcut: Option<String>,
+    /// The action's leading mark, when it has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub glyph: Option<String>,
 }
 
 /// One action as the agent sees it (`workbench.act`).
@@ -415,8 +433,34 @@ impl Registry {
         if panel.min_size.cols == 0 || panel.min_size.rows == 0 {
             return Err(RegistryError::ZeroSize(panel.kind));
         }
+        self.check_actions(&panel.actions)?;
+        self.panels.push(panel);
+        Ok(())
+    }
+
+    /// Adds actions to a panel kind already registered, after the checks
+    /// `register` makes: no id may repeat among the new actions or any action
+    /// already registered, and an action names an effect exactly when its
+    /// intent may emit one. Nothing is added when any action fails.
+    pub fn extend_actions(
+        &mut self,
+        kind: &PanelKind,
+        actions: impl IntoIterator<Item = ActionDescriptor>,
+    ) -> Result<(), RegistryError> {
+        let actions: Vec<ActionDescriptor> = actions.into_iter().collect();
+        if self.get(kind).is_none() {
+            return Err(RegistryError::UnknownKind(kind.clone()));
+        }
+        self.check_actions(&actions)?;
+        if let Some(panel) = self.panels.iter_mut().find(|p| &p.kind == kind) {
+            panel.actions.extend(actions);
+        }
+        Ok(())
+    }
+
+    fn check_actions(&self, actions: &[ActionDescriptor]) -> Result<(), RegistryError> {
         let mut seen = BTreeSet::new();
-        for action in &panel.actions {
+        for action in actions {
             if self.action(&action.id).is_some() || !seen.insert(&action.id) {
                 return Err(RegistryError::DuplicateAction(action.id.clone()));
             }
@@ -430,7 +474,6 @@ impl Registry {
                 _ => {}
             }
         }
-        self.panels.push(panel);
         Ok(())
     }
 
@@ -512,6 +555,7 @@ impl Registry {
             chooses: action.chooses(),
             pinnable: action.picker == Some(PickerSlot::More),
             shortcut: None,
+            glyph: action.glyph.clone(),
         }
     }
 

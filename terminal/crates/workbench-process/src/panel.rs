@@ -219,6 +219,7 @@ impl ProcessPanel {
             name: Some(choice.id.clone()),
             cols,
             rows,
+            attachment: None,
         });
         let resource = ResourceRef::Workspace {
             workspace: self.identity.workspace.clone(),

@@ -109,6 +109,30 @@ pub enum ResourceRef {
     Project {
         project: String,
     },
+    /// A directory of a workspace, by its path (no trailing slash; the
+    /// workspace root is the empty path).
+    Directory {
+        workspace: String,
+        path: String,
+    },
+    /// A commit's diff in a repository, as the history rows open it.
+    Commit {
+        workspace: String,
+        repository: String,
+        commit: String,
+    },
+    /// A file as it was at a revision (read only).
+    Revision {
+        workspace: String,
+        repository: String,
+        commit: String,
+        path: String,
+    },
+    /// A new document that has no path yet, named by the id its opener minted.
+    Untitled {
+        workspace: String,
+        id: String,
+    },
 }
 
 /// The kind of resource a panel kind binds to, without the ids.
@@ -123,6 +147,10 @@ pub enum ResourceKind {
     Terminal,
     Conversation,
     Project,
+    Directory,
+    Commit,
+    Revision,
+    Untitled,
 }
 
 impl ResourceRef {
@@ -135,6 +163,10 @@ impl ResourceRef {
             Self::Terminal { .. } => ResourceKind::Terminal,
             Self::Conversation { .. } => ResourceKind::Conversation,
             Self::Project { .. } => ResourceKind::Project,
+            Self::Directory { .. } => ResourceKind::Directory,
+            Self::Commit { .. } => ResourceKind::Commit,
+            Self::Revision { .. } => ResourceKind::Revision,
+            Self::Untitled { .. } => ResourceKind::Untitled,
         }
     }
 }

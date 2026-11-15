@@ -82,6 +82,7 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("files.focus", "Files", Focus)
                 .row(3)
+                .glyph("\u{25a1}")
                 .key("Mod+Alt+E", KeyScope::Global),
         ]),
         Spec {
@@ -134,7 +135,9 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("picker.open", "Add tool", Open)
                 .key("Mod+Alt+T", KeyScope::Global),
-            ActionDescriptor::new("picker.more", "More tools", Open).row(6),
+            ActionDescriptor::new("picker.more", "More tools", Open)
+                .row(6)
+                .glyph("\u{25a6}"),
             // Escape is the picker's fixed way back and Left walks it
             // sideways; these are the same moves by name, for the agent and
             // the palette. Pinning takes a chord because typing is the filter.
@@ -156,6 +159,7 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("changes.open", "Changes", Open)
                 .row(1)
+                .glyph("\u{00b1}")
                 .key("Mod+Alt+G", KeyScope::Global),
         ]),
         Spec {
@@ -175,6 +179,7 @@ pub fn registry() -> Registry {
             ActionDescriptor::new("shell.choose", "Shell", Open)
                 .starts("process")
                 .row(2)
+                .glyph("\u{203a}")
                 .key("Mod+Alt+S", KeyScope::Global),
             ActionDescriptor::new("shell.start", "Start shell", Start)
                 .emits(EffectKind::TerminalOpen),
@@ -195,6 +200,7 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("side-chat.choose", "Side chat", Open)
                 .row(4)
+                .glyph("\u{2295}")
                 .key("Mod+Alt+L", KeyScope::Global),
             ActionDescriptor::new("side-chat.create", "New side chat", Create)
                 .emits(EffectKind::ConversationCreate),
@@ -216,6 +222,7 @@ pub fn registry() -> Registry {
             ActionDescriptor::new("page.new", "New page", Open)
                 .creates("document")
                 .row(5)
+                .glyph("\u{2261}")
                 .key("Mod+Alt+N", KeyScope::Global),
             ActionDescriptor::new("page.create", "Create page", Create)
                 .emits(EffectKind::DocumentCreate),

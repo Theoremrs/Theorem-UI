@@ -386,6 +386,7 @@ impl FilesPanel {
             | HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
             | HostMessage::TerminalControl { .. }
+            | HostMessage::TerminalSessions { .. }
             | HostMessage::ConversationSnapshot { .. }
             | HostMessage::ThemeChanged { .. }
             | HostMessage::WorkspaceChanged { .. } => {}

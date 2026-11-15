@@ -242,32 +242,30 @@ impl Picker {
                 self.reason = None;
                 PickerOutcome::Nothing
             }
-            PickerMsg::Next if self.open => {
-                let n = self.rows(registry, caps, pinned).len();
+            PickerMsg::Next | PickerMsg::Prev if self.open => {
+                let view = self.view(registry, caps, pinned);
+                let columns = usize::from(Layout::compute(&view, self.area).columns);
+                let n = view.rows.len();
                 if n > 0 {
-                    self.select((self.selected + 1) % n);
-                }
-                PickerOutcome::Nothing
-            }
-            PickerMsg::Prev if self.open => {
-                let n = self.rows(registry, caps, pinned).len();
-                if n > 0 {
-                    self.select((self.selected + n - 1) % n);
+                    let here = self.selected.min(n - 1);
+                    self.select(grid_step(n, columns, here, msg == PickerMsg::Next));
                 }
                 PickerOutcome::Nothing
             }
             PickerMsg::Left | PickerMsg::Right if self.open => {
                 let view = self.view(registry, caps, pinned);
                 let layout = Layout::compute(&view, self.area);
-                let (n, per) = (view.rows.len(), layout.per_column);
+                let n = view.rows.len();
                 let here = self.selected.min(n.saturating_sub(1));
                 if n == 0 {
                     return self.step_back_if_left(&msg, registry, caps, pinned);
                 }
                 let target = match msg {
-                    PickerMsg::Left if layout.columns == 2 && here >= per => Some(here - per),
-                    PickerMsg::Right if layout.columns == 2 && here < per => {
-                        Some((here + per).min(n - 1))
+                    PickerMsg::Left if layout.columns == 2 && here % 2 == 1 => Some(here - 1),
+                    PickerMsg::Right
+                        if layout.columns == 2 && here.is_multiple_of(2) && here + 1 < n =>
+                    {
+                        Some(here + 1)
                     }
                     _ => None,
                 };
@@ -368,6 +366,29 @@ impl Picker {
             }
             _ => PickerOutcome::Nothing,
         }
+    }
+}
+
+/// Down (or Up) in the grid the rows are drawn in: within the column, wrapping
+/// from the last row of the column to the first and back. One column steps
+/// through every row.
+fn grid_step(n: usize, columns: usize, here: usize, down: bool) -> usize {
+    let columns = columns.max(1);
+    if down {
+        if here + columns < n {
+            here + columns
+        } else {
+            here % columns
+        }
+    } else if here >= columns {
+        here - columns
+    } else {
+        // The last row of this column: the largest index with the same column.
+        let mut last = here;
+        while last + columns < n {
+            last += columns;
+        }
+        last
     }
 }
 

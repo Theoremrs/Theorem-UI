@@ -22,4 +22,8 @@ pinnable: boolean,
  * None: no binding, and the row shows no hint. The registry does not know
  * the bindings; the picker fills this in.
  */
-shortcut?: string, };
+shortcut?: string, 
+/**
+ * The action's leading mark, when it has one.
+ */
+glyph?: string, };

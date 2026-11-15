@@ -4,9 +4,10 @@
 //! what is drawn, what a click means and what an assistive reader is told
 //! cannot drift apart.
 //!
-//! Rows run down a column and the second column continues where the first ends
-//! (column-major), so "next" is always the row drawn below, and the last row of
-//! the first column is followed by the top of the second.
+//! Rows read across: with two columns the first line holds rows 0 and 1, the
+//! next 2 and 3, so the reading order (the semantic order) is the order of the
+//! registration, and Down and Up move within a column. A blank line separates
+//! the lines of rows when the area has the height for every row with it.
 
 use ratatui::layout::Rect;
 use ratatui::text::Span;
@@ -59,10 +60,32 @@ pub fn fit(text: &str, width: u16) -> String {
     out
 }
 
+/// The widest leading glyph among `rows`, at most two cells: the column every
+/// row's label starts after, so a row without a glyph still lines up.
+pub fn glyph_width(rows: &[PickerRow]) -> u16 {
+    rows.iter()
+        .filter_map(|r| r.glyph.as_deref())
+        .map(text_width)
+        .max()
+        .unwrap_or(0)
+        .min(2)
+}
+
+/// Cells a glyph column takes: the glyph and the cell after it, or nothing
+/// when no row has a glyph.
+pub fn glyph_column(glyph_w: u16) -> u16 {
+    if glyph_w == 0 { 0 } else { glyph_w + 1 }
+}
+
 /// The cells a row needs to show its label, qualifier, hint and pin control
 /// whole, but never fewer than [`MIN_HIT`].
 pub fn required_width(row: &PickerRow) -> u16 {
-    let mut w = PAD + text_width(&row.title) + PAD;
+    required_width_with(row, 0)
+}
+
+/// [`required_width`] when the rows share a glyph column of `glyph_w` cells.
+pub fn required_width_with(row: &PickerRow, glyph_w: u16) -> u16 {
+    let mut w = PAD + glyph_column(glyph_w) + text_width(&row.title) + PAD;
     if let Some(q) = row.chooses.qualifier() {
         w = w.saturating_add(SEP + text_width(&q));
     }
@@ -79,7 +102,8 @@ pub fn required_width(row: &PickerRow) -> u16 {
 /// in half the width (less the gap), else one.
 pub fn fit_columns(rows: &[PickerRow], width: u16) -> u8 {
     let half = width.saturating_sub(GAP) / 2;
-    if rows.len() >= 2 && rows.iter().all(|r| required_width(r) <= half) {
+    let glyph_w = glyph_width(rows);
+    if rows.len() >= 2 && rows.iter().all(|r| required_width_with(r, glyph_w) <= half) {
         2
     } else {
         1
@@ -107,8 +131,13 @@ pub enum PickerHit {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Layout {
     pub columns: u8,
-    /// Rows in each column but the last (the first column's length).
+    /// Lines of rows (the first column's length): rows read across, so row `i`
+    /// is on line `i / columns` in column `i % columns`.
     pub per_column: usize,
+    /// Blank lines between lines of rows: 1 when every row fits with them.
+    pub spacing: u16,
+    /// Cells of the leading glyph column every row shares (0: none).
+    pub glyph_w: u16,
     pub heading: Rect,
     pub back: Option<Rect>,
     pub filter: Rect,
@@ -165,8 +194,14 @@ impl Layout {
             wanted.min(room)
         };
         let visible = room - reason_rows;
-        let selected_line = view.selected.min(n.saturating_sub(1)) % per_column;
-        let offset = (selected_line + 1).saturating_sub(visible);
+        let spacing = u16::from(per_column >= 2 && visible >= 2 * per_column - 1);
+        let stride = usize::from(1 + spacing);
+        let selected_line = view.selected.min(n.saturating_sub(1)) / usize::from(columns);
+        let offset = if spacing == 1 {
+            0
+        } else {
+            (selected_line + 1).saturating_sub(visible)
+        };
 
         let col_width = if columns == 2 {
             area.width.saturating_sub(GAP) / 2
@@ -175,11 +210,11 @@ impl Layout {
         };
         let mut cells = vec![];
         for index in 0..n {
-            let (col, row_line) = (index / per_column, index % per_column);
+            let (col, row_line) = (index % usize::from(columns), index / usize::from(columns));
             if row_line < offset || row_line - offset >= visible {
                 continue;
             }
-            let Ok(dy) = u16::try_from(row_line - offset) else {
+            let Ok(dy) = u16::try_from((row_line - offset) * stride) else {
                 continue;
             };
             let x = area.x + (col_width + GAP) * u16::try_from(col).unwrap_or(0);
@@ -192,7 +227,12 @@ impl Layout {
                 .then(|| Rect::new(rect.right() - 1, rect.y, 1, 1));
             cells.push(Cell { index, rect, pin });
         }
-        let shown = per_column.saturating_sub(offset).min(visible);
+        let lines_shown = per_column.saturating_sub(offset).min(visible);
+        let shown = if lines_shown == 0 {
+            0
+        } else {
+            (lines_shown - 1) * stride + 1
+        };
         let below = top.saturating_add(u16::try_from(shown).unwrap_or(u16::MAX));
         let empty = (n == 0).then(|| line(area, top));
         let reason = (reason_rows > 0).then(|| {
@@ -206,6 +246,8 @@ impl Layout {
         Self {
             columns,
             per_column,
+            spacing,
+            glyph_w: glyph_width(&view.rows),
             heading,
             back,
             filter,
@@ -240,6 +282,9 @@ impl Layout {
 /// What a row says, cut to its cell. Pure, so the view and the tests agree.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RowText {
+    /// The leading glyph, cut to the glyph column.
+    pub glyph: Option<String>,
+    pub glyph_at: u16,
     pub label: String,
     pub qualifier: Option<String>,
     pub hint: Option<String>,
@@ -263,11 +308,28 @@ pub fn row_text(row: &PickerRow, width: u16, pin: bool) -> RowText {
     row_text_with(row, width, pin, None)
 }
 
+/// [`row_text_with`] with no shared glyph column.
+pub fn row_text_with(row: &PickerRow, width: u16, pin: bool, pin_hint: Option<&str>) -> RowText {
+    row_text_in(row, width, pin, pin_hint, 0)
+}
+
 /// [`row_text`] with the chord for pinning to show beside the pin mark when
 /// it fits after the label and the row's own hint.
-pub fn row_text_with(row: &PickerRow, width: u16, pin: bool, pin_hint: Option<&str>) -> RowText {
+pub fn row_text_in(
+    row: &PickerRow,
+    width: u16,
+    pin: bool,
+    pin_hint: Option<&str>,
+    glyph_w: u16,
+) -> RowText {
     let right = if pin { PIN_W } else { 0 };
-    let usable = width.saturating_sub(PAD * 2 + right);
+    let lead = glyph_column(glyph_w);
+    let usable = width.saturating_sub(PAD * 2 + right + lead);
+    let glyph = row
+        .glyph
+        .as_deref()
+        .filter(|g| glyph_w > 0 && text_width(g) <= glyph_w && lead + PAD < width)
+        .map(str::to_owned);
     let label = fit(&row.title, usable);
     let label_w = text_width(&label);
     let mut used = label_w;
@@ -295,8 +357,10 @@ pub fn row_text_with(row: &PickerRow, width: u16, pin: bool, pin_hint: Option<&s
         width.saturating_sub(PAD + right)
     };
     RowText {
-        label_at: PAD,
-        qualifier_at: PAD + label_w + SEP,
+        glyph,
+        glyph_at: PAD,
+        label_at: PAD + lead,
+        qualifier_at: PAD + lead + label_w + SEP,
         hint_at: hint_end.saturating_sub(hint_w),
         pin_hint_at,
         label,
@@ -323,6 +387,7 @@ mod tests {
             chooses,
             pinnable,
             shortcut: hint.map(str::to_owned),
+            glyph: None,
         }
     }
 
@@ -394,28 +459,52 @@ mod tests {
     }
 
     #[test]
-    fn rows_run_down_the_columns_and_the_cells_hit_test_back_to_their_rows() {
+    fn rows_read_across_the_columns_and_the_cells_hit_test_back_to_their_rows() {
         let v = view(main_rows(), false);
         let area = Rect::new(4, 2, 96, 14);
         let l = Layout::compute(&v, area);
         assert_eq!(l.columns, 2);
         assert_eq!(l.per_column, 3);
+        assert_eq!(l.spacing, 1);
         assert_eq!(l.heading, Rect::new(4, 2, 96, 1));
         assert_eq!(l.filter, Rect::new(4, 3, 96, 1));
         let at = |i: usize| l.cell(i).unwrap().rect;
+        // Changes, Shell / Files, Side chat / New page, More tools.
         assert_eq!(at(0), Rect::new(4, 4, 47, 1));
+        assert_eq!(at(1), Rect::new(53, 4, 47, 1));
         assert_eq!(at(2), Rect::new(4, 6, 47, 1));
-        assert_eq!(at(3), Rect::new(53, 4, 47, 1));
-        assert_eq!(at(5), Rect::new(53, 6, 47, 1));
+        assert_eq!(at(3), Rect::new(53, 6, 47, 1));
+        assert_eq!(at(4), Rect::new(4, 8, 47, 1));
+        assert_eq!(at(5), Rect::new(53, 8, 47, 1));
         for c in &l.cells {
             let (x, y) = (c.rect.x + 3, c.rect.y);
             assert_eq!(l.hit(x, y), Some(PickerHit::Row(c.index)));
         }
-        // The gap between the columns and the lines above the rows are nothing.
+        // The gap between the columns, the blank lines between rows and the
+        // lines above the rows are nothing.
         assert_eq!(l.hit(51, 4), None);
+        assert_eq!(l.hit(10, 5), None);
         assert_eq!(l.hit(10, 2), None);
         assert_eq!(l.hit(10, 3), None);
-        assert_eq!(l.hit(10, 7), None);
+        assert_eq!(l.hit(10, 9), None);
+    }
+
+    #[test]
+    fn rows_are_separated_by_a_blank_line_only_when_every_row_fits_with_it() {
+        let v = view(main_rows(), false);
+        // Two columns: three lines need 5 with the blanks.
+        let tight = Layout::compute(&v, Rect::new(0, 0, 96, 2 + 5));
+        assert_eq!(tight.spacing, 1);
+        assert_eq!(tight.cells.len(), 6);
+        let short = Layout::compute(&v, Rect::new(0, 0, 96, 2 + 4));
+        assert_eq!(short.spacing, 0);
+        assert_eq!(short.cells.len(), 6);
+        assert_eq!(short.cell(4).unwrap().rect.y, 4);
+        // One column: six rows need 11.
+        let one = Layout::compute(&v, Rect::new(0, 0, 60, 2 + 11));
+        assert_eq!((one.columns, one.spacing), (1, 1));
+        let packed = Layout::compute(&v, Rect::new(0, 0, 60, 2 + 10));
+        assert_eq!((packed.spacing, packed.cells.len()), (0, 6));
     }
 
     #[test]
@@ -424,9 +513,51 @@ mod tests {
         let l = Layout::compute(&v, Rect::new(0, 0, 60, 14));
         assert_eq!(l.columns, 1);
         assert_eq!(l.per_column, 6);
+        assert_eq!(l.spacing, 1);
+        for (i, c) in l.cells.iter().enumerate() {
+            assert_eq!(c.rect, Rect::new(0, 2 + 2 * i as u16, 60, 1));
+        }
+        // Without the height for the blanks the rows sit on consecutive lines.
+        let l = Layout::compute(&v, Rect::new(0, 0, 60, 8));
+        assert_eq!(l.spacing, 0);
         for (i, c) in l.cells.iter().enumerate() {
             assert_eq!(c.rect, Rect::new(0, 2 + i as u16, 60, 1));
         }
+    }
+
+    #[test]
+    fn a_glyph_column_is_shared_so_a_row_without_a_glyph_aligns_with_the_others() {
+        let mut rows = main_rows();
+        rows[0].glyph = Some("\u{00b1}".into());
+        rows[1].glyph = Some("\u{203a}".into());
+        assert_eq!(glyph_width(&rows), 1);
+        let with = row_text_in(&rows[0], 47, false, None, 1);
+        let without = row_text_in(&rows[2], 47, false, None, 1);
+        assert_eq!(with.glyph.as_deref(), Some("\u{00b1}"));
+        assert_eq!(without.glyph, None);
+        assert_eq!(with.label_at, without.label_at);
+        assert_eq!(with.label_at, PAD + 2);
+        // No row has a glyph: no column, labels where they were.
+        assert_eq!(
+            row_text_in(&main_rows()[0], 47, false, None, 0).label_at,
+            PAD
+        );
+        // A two-cell glyph is measured, not counted.
+        let mut wide = main_rows();
+        wide[0].glyph = Some("\u{3042}".into());
+        assert_eq!(glyph_width(&wide), 2);
+        // A glyph wider than two cells is not drawn.
+        wide[1].glyph = Some("abc".into());
+        assert_eq!(glyph_width(&wide), 2);
+        assert_eq!(row_text_in(&wide[1], 47, false, None, 2).glyph, None);
+    }
+
+    #[test]
+    fn the_glyph_column_counts_toward_the_width_a_row_needs() {
+        let mut rows = main_rows();
+        rows[4].glyph = Some("\u{2261}".into());
+        let base = required_width(&rows[4]);
+        assert_eq!(required_width_with(&rows[4], glyph_width(&rows)), base + 2);
     }
 
     #[test]
@@ -452,7 +583,8 @@ mod tests {
         let mut v = view(main_rows(), false);
         v.reason = Some("This host does not report the \"x\" capability.".into());
         let l = Layout::compute(&v, Rect::new(0, 0, 60, 14));
-        assert_eq!(l.reason, Some(Rect::new(0, 8, 60, 1)));
+        // Six rows with blanks take eleven lines, then the reason.
+        assert_eq!(l.reason, Some(Rect::new(0, 13, 60, 1)));
 
         let mut empty = view(vec![], false);
         empty.filter = "zzz".into();

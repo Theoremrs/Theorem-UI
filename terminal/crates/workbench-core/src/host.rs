@@ -7,6 +7,68 @@ use crate::effect::{CoordinateUnit, TerminalBackend, TextChange};
 use crate::ids::{ResourceRef, Revision};
 use crate::registry::Capabilities;
 
+fn yes() -> bool {
+    true
+}
+
+/// A profile a process may be started from (`TheoremTerminalProfile`). The
+/// backend is the profile's own and is never swapped for another: a Herdr
+/// profile the host reports not ready stays unavailable.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalProfileInfo {
+    pub id: String,
+    pub label: String,
+    pub backend: TerminalBackend,
+    /// Absent: the host machine's shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub argv: Option<Vec<String>>,
+    /// False when the host reports the backend not ready
+    /// (`backends.herdr.ready`).
+    #[serde(default = "yes")]
+    pub available: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub unavailable_reason: Option<String>,
+}
+
+/// What the host says about a session's program, never read from its output.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalSessionState {
+    #[default]
+    Running,
+    Exited,
+    Lost,
+}
+
+/// A terminal session of the workspace a pane may attach to.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalSessionInfo {
+    pub session: String,
+    /// The profile it was started from, as people name it.
+    pub profile: String,
+    pub backend: TerminalBackend,
+    pub workspace: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub host: Option<String>,
+    /// The program's incarnation: 1 is the original, plus one per replacement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+    pub program: Option<u64>,
+    #[serde(default)]
+    pub state: TerminalSessionState,
+    /// Another viewer holds the control lease.
+    #[serde(default)]
+    pub controlled_elsewhere: bool,
+}
+
 /// The live stream's state (`WorkspaceLive`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -175,6 +237,14 @@ pub enum HostMessage {
     ConnectionChanged {
         workspace: String,
         state: ConnectionState,
+    },
+    /// What the chooser offers: the profiles a process may be started from and
+    /// the terminal sessions of the workspace, as the host last said. Each
+    /// message replaces both lists.
+    TerminalSessions {
+        workspace: String,
+        profiles: Vec<TerminalProfileInfo>,
+        sessions: Vec<TerminalSessionInfo>,
     },
     /// The live stream says everything listeners know may be stale
     /// (`onResync`): `malformed_cursor`, `epoch_changed`, `cursor_ahead`,
