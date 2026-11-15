@@ -58,6 +58,7 @@ import type { ArrangementMsg, Effect, Inbound } from '@/lib/workbench/wire'
 import type { WorkbenchHandle } from '@/terminal-wasm/theorem_terminal'
 import { createArtifactsPort, createClipboardPort } from './ports'
 import { pointerJson } from './pointer-json'
+import { isMac, isPasteChord } from './paste-chord'
 import { WorkbenchCabinet } from '@/components/cabinet/workbench-cabinet'
 import { WorkbenchFace } from './workbench-face'
 import { SemanticOverlay } from './semantic-overlay'
@@ -281,6 +282,9 @@ export function WorkbenchSurface({
             event.nativeEvent.keyCode === 229
           )
             return
+          // The browser's paste chord is answered by its `paste` event, which carries the text;
+          // passing the key on too would paste twice.
+          if (isPasteChord(event.nativeEvent, isMac(navigator))) return
           if (handle.current?.key(event.nativeEvent)) {
             event.preventDefault()
             event.stopPropagation()
@@ -325,7 +329,9 @@ export function WorkbenchSurface({
           autoCorrect="off"
           spellCheck={false}
           rows={1}
-          className="sr-only"
+          // `sr-only` sets `white-space: nowrap`; WebKit then stores a typed space as U+00A0 so it
+          // survives collapsing. A text control keeps its own white space.
+          className="sr-only whitespace-pre-wrap!"
           onFocus={() => handle.current?.set_focused(true)}
           onBlur={() => handle.current?.set_focused(false)}
           onInput={(event) => {
