@@ -141,6 +141,7 @@ describe('query', () => {
           epoch: 'e1',
           generation: 0,
         },
+        encoding: 'utf16_code_units',
       },
     ])
   })
@@ -361,6 +362,7 @@ describe('the search port', () => {
         type: 'searchPage',
         id: 's9',
         state: 'complete',
+        encoding: 'utf16_code_units',
         readAt: { workspaceId: expect.any(String) },
       },
     ])

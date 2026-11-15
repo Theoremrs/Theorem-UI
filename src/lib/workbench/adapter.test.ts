@@ -83,6 +83,7 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   runStart: { name: 'n' },
   runStop: { handle: 'h' },
   runPoll: { handle: 'h' },
+  runList: undefined,
   searchQuery: {
     query: 'q',
     regex: false,
@@ -124,6 +125,11 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   conversationSideChat: {},
   conversationSideList: undefined,
   conversationSwitchBranch: { threadId: 't', branchId: 'b' },
+  conversationAttachPick: undefined,
+  conversationAttachRemove: { id: 'a' },
+  conversationModels: undefined,
+  conversationSetModel: { ref: 'p/m' },
+  conversationSetEffort: { level: 'low' },
   conversationSideClose: undefined,
   layoutLoad: undefined,
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
@@ -1386,6 +1392,15 @@ describe('host events', () => {
     expect(await granted({ ...owner, canSwitchBranch: true })).toContain(
       'conversation.branch',
     )
+    expect(await granted({ ...owner, canAttach: true })).toContain(
+      'conversation.attach',
+    )
+    expect(await granted({ ...owner, canPickModel: true })).toContain(
+      'conversation.model',
+    )
+    const plain = await granted(owner)
+    expect(plain).not.toContain('conversation.attach')
+    expect(plain).not.toContain('conversation.model')
   })
 
   test('a pushed message from an owner is forwarded', async () => {

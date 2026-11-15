@@ -20,6 +20,10 @@ export function createRunPort(runner: Runner): OwnerPort<Of<'run'>> {
           return reply(
             await runner.stop({ requestId, handle: effect.payload.handle }),
           )
+        case 'runList':
+          return reply(await runner.list({ requestId }), (runs) => ({
+            value: { type: 'runList', runs } as const,
+          }))
         case 'runPoll':
           return reply(
             await runner.poll({ requestId, handle: effect.payload.handle }),

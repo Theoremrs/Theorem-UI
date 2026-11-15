@@ -1,9 +1,18 @@
 // SOURCING: @assistant-ui/react's runtime API (thread.getState / subscribe / append / startRun / cancelRun and threads.switchToThread / switchToNewThread, the same calls components/terminal/terminal-screen.tsx makes) for the transcript and every turn; lib/theorem/approval's approvalChoice for which option an allow or deny sends. Run input and approval answers are not on the runtime (they are Theorem run commands), so they arrive as `services`. No model connection is opened here.
 
-import type { CreateAppendMessage, ThreadMessage } from '@assistant-ui/react'
+import type {
+  Attachment,
+  CreateAppendMessage,
+  ThreadMessage,
+} from '@assistant-ui/react'
+import type { TheoremContextReference } from '@theoremharness/sdk'
 import type { Actor } from '../wire/Actor'
 import type { ApprovalDecision } from '../wire/ApprovalDecision'
+import type { DraftAttachment } from '../wire/DraftAttachment'
 import type { HostMessage } from '../wire/HostMessage'
+import type { ModelChoice } from '../wire/ModelChoice'
+import type { SourceReference } from '../wire/SourceReference'
+import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
 import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
@@ -29,6 +38,23 @@ export interface ConversationRuntime {
     append: (message: CreateAppendMessage) => void
     startRun: (config: { parentId: string | null }) => void
     cancelRun: () => void
+  }
+  /** The thread composer: its draft attachments and the one send that uploads them. Absent: no draft attachments. */
+  composer?: {
+    getState: () => {
+      readonly text: string
+      readonly attachments: readonly Attachment[]
+      /** The adapter's `accept` list; `*` when the runtime has no attachment adapter. */
+      readonly attachmentAccept: string
+      /** The message the composer is preparing (uploading its files) before it hands it to the thread. */
+      readonly submission?: unknown
+      /** Messages handed to the thread that it does not show yet. */
+      readonly inTransit?: readonly unknown[] | undefined
+    }
+    setText: (text: string) => void
+    addAttachment: (file: File) => Promise<void>
+    removeAttachment: (id: string) => Promise<void>
+    send: () => void
   }
   threads: {
     getState: () => { readonly mainThreadId: string }
@@ -59,6 +85,50 @@ export interface ConversationServices {
   history?: (threadId: string) => Promise<ThreadTree | null>
   /** Makes a branch the thread's selected one, as the thread list does. */
   selectBranch?: (threadId: string, branchId: string) => Promise<unknown>
+  /** Puts context references in the composer's store, which the next turn carries as the React composer's do. */
+  references?: {
+    /** Returns the references that were not already there. */
+    add: (references: TheoremContextReference[]) => TheoremContextReference[]
+    remove: (references: TheoremContextReference[]) => void
+  }
+  /** The browser's file chooser, with the adapter's `accept` list. Resolves to nothing when the person cancels. */
+  pickFiles?: (accept: string) => Promise<File[]>
+  models?: ModelServices
+}
+
+/** One model of Theorem's catalog, as the picker reads it. */
+export interface ModelCatalogEntry {
+  ref: string
+  label: string
+  contextTokens?: number
+  /** The effort levels a turn can ask this model for; empty when it takes none. */
+  effortLevels: readonly string[]
+}
+
+/** What the picker's stores hold, as the owner reads and sets them. Never reaches a model provider. */
+export interface ModelServices {
+  catalog: () => Promise<{
+    models: readonly ModelCatalogEntry[]
+    defaultRef?: string
+  }>
+  /** The model the next turn runs on, when one was picked. */
+  selected: () => string | undefined
+  select: (ref: string) => void
+  /** The effort a turn from this thread asks for: its own, else the account's. `undefined` is the draft thread. */
+  effort: (thread: string | undefined) => string | undefined
+  setEffort: (thread: string | undefined, level: string) => void
+  /** Every level, for a model the catalog does not list. */
+  levels: readonly string[]
+  /** Called when the pick or any effort changes, wherever it was changed. */
+  subscribe: (listener: () => void) => () => void
+}
+
+/** What `conversationModels` carries. */
+export interface ModelsState {
+  models: ModelChoice[]
+  selected?: string
+  effort?: string
+  efforts: string[]
 }
 
 /** What a thread's history needs of its tree: the branches, which one is selected, and where the thread came from. */
@@ -97,6 +167,8 @@ export interface ConversationSnapshot extends Transcript {
   queued: QueuedInput[]
   /** The thread's versions and branches; absent until Theorem has answered, or for a thread it does not hold yet. */
   history?: ConversationHistory
+  /** How full the model's window was at its last request, as the run reported it; absent until a run reports both. */
+  context?: { usedTokens: number; windowTokens: number }
 }
 
 interface Request {
@@ -120,6 +192,9 @@ export interface Conversation {
       clientMessageId: string
       text: string
       attachments?: Extract<CreateAppendMessage, object>['attachments']
+      /** Draft attachments to send: exactly the ones the composer holds. Uploaded when the message goes. */
+      draftIds?: string[]
+      references?: SourceReference[]
     },
   ) => Promise<Completion<Sent>>
   /** Words for the run that is working. */
@@ -145,6 +220,7 @@ export interface Conversation {
       messageId: string
       clientMessageId: string
       text: string
+      references?: SourceReference[]
     },
   ) => Promise<Completion<Sent>>
   approve: (
@@ -185,6 +261,32 @@ export interface Conversation {
   sideChats: () => SideChatInfo[]
   /** Whether this host can make the second runtime a side chat needs. */
   canSideChat: boolean
+  /** The files in the draft of the next turn, in the order they were added, then the ones refused. */
+  attachments: () => DraftAttachment[]
+  /** Delivers the whole list after every change. */
+  onAttachments: (
+    listener: (attachments: DraftAttachment[]) => void,
+  ) => () => void
+  /** Opens the file chooser and adds what is chosen. Cancel adds nothing and is not a refusal. */
+  attachPick: (request: Request) => Promise<Completion<{ added: number }>>
+  /** Adds pasted or dropped files through the same path as the chooser. */
+  addFiles: (files: File[]) => Promise<void>
+  removeAttachment: (
+    request: Request & { id: string },
+  ) => Promise<Completion<{ id: string }>>
+  /** Whether draft attachments exist here: a composer and a file chooser. */
+  canAttach: boolean
+  /** Reads the catalog, the pick and the effort, and starts delivering them when they change. */
+  models: (request: Request) => Promise<Completion<ModelsState>>
+  setModel: (
+    request: Request & { ref: string },
+  ) => Promise<Completion<ModelsState>>
+  setEffort: (
+    request: Request & { level: string },
+  ) => Promise<Completion<ModelsState>>
+  onModels: (listener: (state: ModelsState) => void) => () => void
+  /** Whether a model can be picked here. */
+  canPickModel: boolean
   dispose: () => void
 }
 
@@ -272,6 +374,67 @@ export function snapshotMessage(
   }
 }
 
+/** The wire message that carries the draft's whole list. */
+export function attachmentsMessage(
+  project: string,
+  conversationId: string,
+  attachments: DraftAttachment[],
+): Extract<HostMessage, { type: 'conversationAttachments' }> {
+  return {
+    type: 'conversationAttachments',
+    resource: { type: 'conversation', project, thread: conversationId },
+    conversationId,
+    attachments,
+  }
+}
+
+/** The wire message that carries the models, the pick and the effort. */
+export function modelsMessage(
+  project: string,
+  conversationId: string,
+  state: ModelsState,
+): Extract<HostMessage, { type: 'conversationModels' }> {
+  return {
+    type: 'conversationModels',
+    resource: { type: 'conversation', project, thread: conversationId },
+    conversationId,
+    ...state,
+  }
+}
+
+/** A workspace file location as the SDK carries it as context. */
+export const contextReferenceOf = (
+  workspaceId: string,
+  { path, range, label, excerpt }: SourceReference,
+): TheoremContextReference => ({
+  location: {
+    resource: { kind: 'file', workspaceId, path },
+    ...(range ? { range: { ...range, unit: 'utf16' as const } } : {}),
+  },
+  ...(excerpt !== undefined ? { excerpt } : {}),
+  ...(label !== undefined ? { label } : {}),
+})
+
+const toDraft = (attachment: Attachment): DraftAttachment => {
+  const { status } = attachment
+  const size = (attachment as { file?: File }).file?.size
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    ...(attachment.contentType ? { contentType: attachment.contentType } : {}),
+    ...(size !== undefined ? { size } : {}),
+    state:
+      status.type === 'running'
+        ? 'adding'
+        : status.type === 'incomplete'
+          ? 'refused'
+          : 'ready',
+    ...(status.type === 'incomplete'
+      ? { reason: status.message ?? 'The file could not be added' }
+      : {}),
+  }
+}
+
 export function createConversation({
   runtime,
   sideChats,
@@ -303,6 +466,269 @@ export function createConversation({
   const conversationId = () =>
     runtime.threads.mainItem.getState().remoteId ??
     runtime.threads.getState().mainThreadId
+
+  // ---- draft attachments ------------------------------------------------------------------
+
+  const composer = runtime.composer
+  /** Files the composer turned away before it held them, by the id the draft names them with. */
+  const turnedAway = new Map<string, DraftAttachment>()
+  let turnedAwayFor = ''
+  const attachmentListeners = new Set<(list: DraftAttachment[]) => void>()
+  let attachmentsKey = '[]'
+
+  function draft(): DraftAttachment[] {
+    if (!composer) return []
+    if (turnedAwayFor !== conversationId()) turnedAway.clear()
+    return [
+      ...composer.getState().attachments.map(toDraft),
+      ...turnedAway.values(),
+    ]
+  }
+
+  function announceAttachments() {
+    if (disposed || attachmentListeners.size === 0) return
+    const list = draft()
+    const text = JSON.stringify(list)
+    if (text === attachmentsKey) return
+    attachmentsKey = text
+    for (const listener of [...attachmentListeners]) listener(list)
+  }
+
+  async function addFiles(files: File[]) {
+    if (!composer) return
+    for (const file of files) {
+      const known = new Set(composer.getState().attachments.map((a) => a.id))
+      try {
+        await composer.addAttachment(file)
+      } catch (error) {
+        const held = composer
+          .getState()
+          .attachments.some((attachment) => !known.has(attachment.id))
+        // The composer holds a file that failed in its adapter and says why itself; one it never took is ours to name.
+        if (!held) {
+          const id = crypto.randomUUID()
+          turnedAwayFor = conversationId()
+          turnedAway.set(id, {
+            id,
+            name: file.name,
+            ...(file.type ? { contentType: file.type } : {}),
+            size: file.size,
+            state: 'refused',
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+      announceAttachments()
+    }
+  }
+
+  /** Sends the composer's draft: the composer uploads its files, then hands the thread the message. */
+  function sendDraft(
+    answers: Answers,
+    request: { clientMessageId: string; text: string },
+    ids: string[],
+  ): Promise<Completion<Sent>> | Completion<Sent> {
+    if (!composer)
+      return refused(
+        answers,
+        'missing_capability',
+        'This conversation holds no draft attachments',
+      )
+    const held = composer.getState().attachments
+    const named = new Set(ids)
+    for (const id of named) {
+      const turned = turnedAway.get(id)
+      const attachment = held.find((a) => a.id === id)
+      if (turned)
+        return refused(
+          answers,
+          'attachment_refused',
+          `${turned.name} was refused: ${turned.reason ?? 'not accepted'}`,
+        )
+      if (!attachment)
+        return refused(
+          answers,
+          'unknown_attachment',
+          `No attachment ${id} is in the draft`,
+        )
+      const state = toDraft(attachment)
+      if (state.state !== 'ready')
+        return refused(
+          answers,
+          state.state === 'adding' ? 'attachment_adding' : 'attachment_refused',
+          state.state === 'adding'
+            ? `${attachment.name} is still being added`
+            : `${attachment.name} was refused: ${state.reason ?? 'not accepted'}`,
+        )
+    }
+    const extra = held.filter((attachment) => !named.has(attachment.id))
+    if (extra.length)
+      return refused(
+        answers,
+        'attachments_differ',
+        `The draft also holds ${extra.map((a) => a.name).join(', ')}, which this send does not name; remove them or name them`,
+      )
+    const before = new Set(
+      runtime.thread.getState().messages.map((message) => message.id),
+    )
+    const previous = composer.getState().text
+    try {
+      composer.setText(request.text)
+      composer.send()
+      // `send` takes the text at once; what the person had typed in the React composer goes back.
+      if (previous) composer.setText(previous)
+    } catch (error) {
+      return failure(answers, error, true)
+    }
+    return new Promise((resolve) => {
+      let off = () => {}
+      const settle = (completion: Completion<Sent>) => {
+        off()
+        pendingSends.delete(abandon)
+        resolve(remember(request.clientMessageId, completion))
+      }
+      const abandon = () =>
+        settle({
+          ...answers,
+          outcome: 'uncertain',
+          reason: 'The conversation closed before the message was shown',
+        })
+      const check = () => {
+        const state = runtime.thread.getState()
+        const fresh = state.messages.find(
+          (message) => message.role === 'user' && !before.has(message.id),
+        )
+        if (fresh) {
+          settle(
+            accepted(answers, {
+              clientMessageId: request.clientMessageId,
+              messageId: fresh.id,
+            }),
+          )
+          return
+        }
+        const now = composer.getState()
+        if (now.submission !== undefined || (now.inTransit?.length ?? 0) > 0)
+          return
+        // Nothing is being prepared and the thread shows nothing new.
+        const back = now.attachments.filter((a) => named.has(a.id))
+        const failed = back.find((a) => a.status.type === 'incomplete')
+        if (failed) {
+          // The composer returned the message to its draft: nothing went out.
+          if (now.text === request.text) composer.setText(previous)
+          settle({
+            ...answers,
+            outcome: 'failed',
+            reason:
+              (failed.status.type === 'incomplete' && failed.status.message) ||
+              `${failed.name} could not be uploaded`,
+          })
+          return
+        }
+        settle({
+          ...answers,
+          outcome: 'uncertain',
+          reason: 'The runtime did not show the message after it was sent',
+        })
+      }
+      pendingSends.add(abandon)
+      off = runtime.thread.subscribe(check)
+      check()
+    })
+  }
+  const pendingSends = new Set<() => void>()
+
+  // ---- references -------------------------------------------------------------------------
+
+  /** Puts a turn's references where the React composer's are, so the run that follows carries them. */
+  function carry(
+    answers: Answers,
+    references: SourceReference[] | undefined,
+  ): { added: TheoremContextReference[] } | Completion<never> {
+    if (!references?.length) return { added: [] }
+    if (!services.references)
+      return refused(
+        answers,
+        'missing_capability',
+        'This host cannot carry context references',
+      )
+    return {
+      added: services.references.add(
+        references.map((reference) =>
+          contextReferenceOf(workspaceId, reference),
+        ),
+      ),
+    }
+  }
+
+  /** A turn that was refused or failed cleanly leaves no reference it added behind. */
+  function withdraw(
+    added: TheoremContextReference[],
+    completion: Completion<Sent>,
+  ) {
+    if (
+      added.length &&
+      (completion.outcome === 'refused' || completion.outcome === 'failed')
+    )
+      services.references?.remove(added)
+    return completion
+  }
+
+  // ---- models -----------------------------------------------------------------------------
+
+  const modelListeners = new Set<(state: ModelsState) => void>()
+  let catalog: Awaited<ReturnType<ModelServices['catalog']>> | undefined
+  let modelsWanted = false
+  let modelsKey = ''
+  /** Held while this owner sets a pick itself, so the one message that follows comes from the setter. */
+  let muted = false
+
+  const openThread = () => runtime.threads.mainItem.getState().remoteId
+
+  function modelsState(): ModelsState | undefined {
+    const models = services.models
+    if (!models || !catalog) return undefined
+    const selected = models.selected() ?? catalog.defaultRef
+    const entry = catalog.models.find((model) => model.ref === selected)
+    const effort = models.effort(openThread())
+    return {
+      models: catalog.models.map((model) => ({
+        ref: model.ref,
+        label: model.label,
+        ...(model.contextTokens !== undefined
+          ? { contextTokens: model.contextTokens }
+          : {}),
+      })),
+      ...(selected ? { selected } : {}),
+      ...(effort ? { effort } : {}),
+      efforts: [...(entry ? entry.effortLevels : models.levels)],
+    }
+  }
+
+  function announceModels(force: boolean) {
+    if (disposed || !modelsWanted) return
+    const state = modelsState()
+    if (!state) return
+    const text = `${conversationId()}|${JSON.stringify(state)}`
+    if (!force && text === modelsKey) return
+    modelsKey = text
+    for (const listener of [...modelListeners]) listener(state)
+  }
+
+  async function readCatalog(answers: Answers) {
+    if (!services.models)
+      return refused(
+        answers,
+        'missing_capability',
+        'This host does not list models',
+      )
+    try {
+      catalog = await services.models.catalog()
+    } catch (error) {
+      return failure(answers, error, false)
+    }
+    return undefined
+  }
 
   /** The tree of the thread `history.thread`, read for the state `history.key` named. */
   let history:
@@ -361,12 +787,16 @@ export function createConversation({
         ),
       ),
     )
+    const used = contextOf(state.messages)
     const body = {
       conversationId: conversationId(),
       loading: state.isLoading,
       ...transcript,
       queued: [...outbox.values()].filter((q) => !shown.has(q.clientMessageId)),
       ...(historyOf() && { history: historyOf() }),
+      ...(used?.window !== undefined && {
+        context: { usedTokens: used.tokens, windowTokens: used.window },
+      }),
     }
     const text = JSON.stringify(body)
     if (text !== lastBody || !last) {
@@ -409,8 +839,19 @@ export function createConversation({
       })
   }
 
-  const offThread = runtime.thread.subscribe(changed)
-  const offThreads = runtime.threads.subscribe(changed)
+  const offThread = runtime.thread.subscribe(() => {
+    changed()
+    announceAttachments()
+    announceModels(false)
+  })
+  const offThreads = runtime.threads.subscribe(() => {
+    changed()
+    announceAttachments()
+    announceModels(false)
+  })
+  const offModels = services.models?.subscribe(() => {
+    if (!muted) announceModels(false)
+  })
 
   function begin(request: Request) {
     const answers: Answers = { workspaceId, requestId: request.requestId }
@@ -540,10 +981,29 @@ export function createConversation({
             'unavailable',
             'The conversation cannot take a message right now',
           )
-        return append(answers, request.clientMessageId, {
-          content: [{ type: 'text', text: request.text }],
-          attachments: request.attachments,
-        })
+        const carried = carry(answers, request.references)
+        if ('outcome' in carried) return carried
+        const { added } = carried
+        if (request.draftIds?.length) {
+          if (request.attachments?.length) {
+            if (added.length) services.references?.remove(added)
+            return refused(
+              answers,
+              'attachments_mixed',
+              'A send names draft attachments or uploaded ones, not both',
+            )
+          }
+          return Promise.resolve(
+            sendDraft(answers, request, request.draftIds),
+          ).then((completion) => withdraw(added, completion))
+        }
+        return withdraw(
+          added,
+          append(answers, request.clientMessageId, {
+            content: [{ type: 'text', text: request.text }],
+            attachments: request.attachments,
+          }),
+        )
       })
     },
 
@@ -666,11 +1126,16 @@ export function createConversation({
             'not_found',
             'That user message is not in the thread',
           )
-        return append(answers, request.clientMessageId, {
-          parentId: target.parentId,
-          sourceId: target.message.id,
-          content: [{ type: 'text', text: request.text }],
-        })
+        const carried = carry(answers, request.references)
+        if ('outcome' in carried) return carried
+        return withdraw(
+          carried.added,
+          append(answers, request.clientMessageId, {
+            parentId: target.parentId,
+            sourceId: target.message.id,
+            content: [{ type: 'text', text: request.text }],
+          }),
+        )
       })
     },
 
@@ -870,6 +1335,135 @@ export function createConversation({
       return accepted(answers, chat)
     },
 
+    attachments: () => draft(),
+    onAttachments(listener) {
+      attachmentListeners.add(listener)
+      return () => {
+        attachmentListeners.delete(listener)
+      }
+    },
+    addFiles,
+    canAttach: composer !== undefined && services.pickFiles !== undefined,
+
+    async attachPick(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      if (!composer || !services.pickFiles)
+        return refused(
+          answers,
+          'missing_capability',
+          'This conversation takes no attachments',
+        )
+      const accept = composer.getState().attachmentAccept
+      if (accept === '*')
+        return refused(
+          answers,
+          'missing_capability',
+          'This conversation has no attachment intake',
+        )
+      let files: File[]
+      try {
+        files = await services.pickFiles(accept)
+      } catch (error) {
+        return failure(answers, error, false)
+      }
+      // A cancelled chooser chose nothing; that is an answer, not a refusal.
+      await addFiles(files)
+      return accepted(answers, { added: files.length })
+    },
+
+    async removeAttachment(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      if (!composer)
+        return refused(
+          answers,
+          'missing_capability',
+          'This conversation takes no attachments',
+        )
+      if (turnedAway.delete(request.id)) {
+        announceAttachments()
+        return accepted(answers, { id: request.id })
+      }
+      if (!composer.getState().attachments.some((a) => a.id === request.id))
+        return refused(
+          answers,
+          'unknown_attachment',
+          `No attachment ${request.id} is in the draft`,
+        )
+      try {
+        await composer.removeAttachment(request.id)
+      } catch (error) {
+        return failure(answers, error, false)
+      }
+      announceAttachments()
+      return accepted(answers, { id: request.id })
+    },
+
+    async models(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      const unread = await readCatalog(answers)
+      if (unread) return unread
+      modelsWanted = true
+      const state = modelsState()!
+      announceModels(true)
+      return accepted(answers, state)
+    },
+
+    async setModel(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      const unread = await readCatalog(answers)
+      if (unread) return unread
+      if (!catalog!.models.some((model) => model.ref === request.ref))
+        return refused(
+          answers,
+          'unknown_model',
+          `The catalog has no model ${request.ref}`,
+        )
+      modelsWanted = true
+      muted = true
+      try {
+        services.models!.select(request.ref)
+      } finally {
+        muted = false
+      }
+      announceModels(true)
+      return accepted(answers, modelsState()!)
+    },
+
+    async setEffort(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      const unread = await readCatalog(answers)
+      if (unread) return unread
+      const before = modelsState()!
+      if (!before.efforts.includes(request.level))
+        return refused(
+          answers,
+          'unknown_effort',
+          `${request.level} is not an effort level of the selected model`,
+        )
+      modelsWanted = true
+      muted = true
+      try {
+        services.models!.setEffort(openThread(), request.level)
+      } finally {
+        muted = false
+      }
+      announceModels(true)
+      return accepted(answers, modelsState()!)
+    },
+
+    onModels(listener) {
+      modelListeners.add(listener)
+      return () => {
+        modelListeners.delete(listener)
+      }
+    },
+    canPickModel: services.models !== undefined,
+
     canSideChat: sideChats !== undefined,
     canSwitchBranch:
       services.history !== undefined && services.selectBranch !== undefined,
@@ -884,12 +1478,16 @@ export function createConversation({
     dispose() {
       if (disposed) return
       disposed = true
+      for (const abandon of [...pendingSends]) abandon()
       for (const chat of [...sides]) chat.close()
       pending?.()
       pending = undefined
       offThread()
       offThreads()
+      offModels?.()
       listeners.clear()
+      attachmentListeners.clear()
+      modelListeners.clear()
     },
   }
 }

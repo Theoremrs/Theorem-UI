@@ -2,7 +2,7 @@
 import type { Files } from '../files/files'
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
-import type { HostMessage, ResourceRef } from '../wire'
+import type { HostMessage, ResourceRef, Revision } from '../wire'
 import { tokenSpans } from './tokens'
 import type {
   DocumentEvent,
@@ -67,13 +67,49 @@ const hostMessage = (event: DocumentEvent): HostMessage => {
 const pathOf = (resource: ResourceRef): string | undefined =>
   resource.type === 'document' ? resource.resourceId : undefined
 
+/** A document this workbench holds open, with the text and revision the owner holds for it now. */
+export interface OpenDocument {
+  path: string
+  text: string
+  revision: Revision
+}
+
+/** What happened to the set of open documents or to one's revision. A `moved` document is the same document under a new path. */
+export type OpenDocumentChange =
+  | { kind: 'opened' | 'revised' | 'closed'; path: string }
+  | { kind: 'moved'; from: string; to: string }
+
+/** What other owners read of the documents open here: the language owner's diagnostics feed is the first reader. */
+export interface DocumentsView {
+  list: () => OpenDocument[]
+  on: (listener: (change: OpenDocumentChange) => void) => () => void
+}
+
 export function createDocumentsPort({
   documents,
   files,
-}: DocumentsPortOptions): OwnerPort<Of<'document'>> {
+}: DocumentsPortOptions): OwnerPort<Of<'document'>> & {
+  view: DocumentsView
+} {
   /** The handle this port holds per path: one holder, however many times the path is opened. */
   const held = new Map<string, { handle: DocumentHandle; stop: () => void }>()
   const listeners = new Set<(message: HostMessage) => void>()
+  const watchers = new Set<(change: OpenDocumentChange) => void>()
+  const changed = (change: OpenDocumentChange) => {
+    for (const watcher of [...watchers]) watcher(change)
+  }
+  const view: DocumentsView = {
+    list: () =>
+      [...held].map(([path, { handle }]) => ({
+        path,
+        text: handle.state.text,
+        revision: handle.state.revision,
+      })),
+    on(watcher) {
+      watchers.add(watcher)
+      return () => void watchers.delete(watcher)
+    },
+  }
 
   /** The revision whose tokens each path was last sent, so one revision is tokenized once. */
   const tokened = new Map<string, number>()
@@ -112,6 +148,7 @@ export function createDocumentsPort({
         held.delete(from)
         tokened.delete(from)
         held.set(to, entry)
+        changed({ kind: 'moved', from, to })
       }
     }
     const message = hostMessage(event)
@@ -122,7 +159,14 @@ export function createDocumentsPort({
       event.kind === 'resync'
     ) {
       const path = pathOf(event.resource)
-      if (path !== undefined) sendTokens(path)
+      if (path !== undefined) {
+        sendTokens(path)
+        changed({ kind: 'revised', path })
+      }
+    }
+    if (event.kind === 'retired') {
+      const path = pathOf(event.resource)
+      if (path !== undefined) changed({ kind: 'closed', path })
     }
   }
 
@@ -137,6 +181,7 @@ export function createDocumentsPort({
       if (done.outcome !== 'accepted') return reply(done)
       handle = done.value
       held.set(path, { handle, stop: handle.on(forward) })
+      changed({ kind: 'opened', path })
     }
     const { state } = handle
     // An open is a panel that has no spans yet, so this revision's are sent again.
@@ -182,6 +227,7 @@ export function createDocumentsPort({
   }
 
   return {
+    view,
     async perform(effect, requestId) {
       if (effect.kind === 'documentCreate') {
         const { path, seedText } = effect.payload
@@ -284,6 +330,7 @@ export function createDocumentsPort({
             entry.stop()
             held.delete(path)
             tokened.delete(path)
+            changed({ kind: 'closed', path })
           }
           return reply(done)
         }

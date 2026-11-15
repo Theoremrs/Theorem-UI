@@ -11,7 +11,7 @@ import type { Effect } from '../wire'
 import { createRunPort } from './port'
 import { createRunner } from './run'
 
-const METHODS = ['configure', 'start', 'stop', 'subscribe'] as const
+const METHODS = ['configure', 'start', 'stop', 'subscribe', 'list'] as const
 const ALL = METHODS.map((name) => op(`run.${name}`))
 
 async function setup(operations = ALL) {
@@ -269,5 +269,69 @@ describe('the run port', () => {
     expect(
       await port.perform(effect('runStop', { handle: 'h' }), 'q'),
     ).toMatchObject({ outcome: 'uncertain' })
+  })
+})
+
+describe('list', () => {
+  test('reads the host’s runs into the wire’s summaries and answers runList', async () => {
+    const { port, on, calls } = await setup()
+    on('list', () => ({
+      runs: [
+        {
+          handle: 'h1',
+          name: 'build',
+          argv: ['make', 'all'],
+          state: 'running',
+          started_at_ms: 1700,
+        },
+        { handle: 'h2', state: 'exited' },
+        { name: 'no handle' },
+      ],
+    }))
+    const done = await port.perform(
+      {
+        id: 1,
+        resource: { type: 'workspace', workspace: 'w1' },
+        kind: 'runList',
+      },
+      'l1',
+    )
+    expect(done).toEqual({
+      outcome: 'accepted',
+      value: {
+        type: 'runList',
+        runs: [
+          {
+            handle: 'h1',
+            name: 'build',
+            command: ['make', 'all'],
+            state: 'running',
+            startedAtMs: 1700,
+          },
+          { handle: 'h2', state: 'exited' },
+        ],
+      },
+    })
+    expect(calls[0]).toMatchObject({ name: 'list', request: { body: {} } })
+  })
+
+  test('an answer that lists only configurations is a failure, not an empty list of runs', async () => {
+    const { runner, on } = await setup()
+    on('list', () => ({ configurations: [{ name: 'build', argv: ['make'] }] }))
+    expect(await runner.list({ requestId: 'l1' })).toMatchObject({
+      outcome: 'failed',
+    })
+  })
+
+  test('a host without run.list refuses as missing', async () => {
+    const { runner } = await setup(
+      METHODS.filter((name) => name !== 'list').map((name) =>
+        op(`run.${name}`),
+      ),
+    )
+    expect(await runner.list({ requestId: 'l1' })).toMatchObject({
+      outcome: 'refused',
+      code: 'missing_capability',
+    })
   })
 })

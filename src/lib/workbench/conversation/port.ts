@@ -2,7 +2,11 @@
 import { refusal, reply } from '../port'
 import type { Of, OwnerPort } from '../port'
 import type { AttachmentRef, HostMessage, ResourceRef } from '../wire'
-import { snapshotMessage } from './conversation'
+import {
+  attachmentsMessage,
+  modelsMessage,
+  snapshotMessage,
+} from './conversation'
 import type {
   Conversation,
   ConversationSnapshot,
@@ -41,9 +45,16 @@ export function createConversationPort({
   canSideChat: boolean
   /** Whether branches can be selected here; the adapter grants `conversation.branch` on it. */
   canSwitchBranch: boolean
+  /** Whether files can be attached to the draft; the adapter grants `conversation.attach` on it. */
+  canAttach: boolean
+  /** Whether a model and an effort can be picked; the adapter grants `conversation.model` on it. */
+  canPickModel: boolean
+  /** Adds pasted or dropped files to the draft, the way the file chooser's are added. */
+  addFiles: Conversation['addFiles']
 } {
   /** Side chats by the id announced when they opened; that id never changes, whatever the thread behind it is called. */
   const sides = new Map<string, { chat: SideChat; stop: () => void }>()
+  const mainId = () => conversation.snapshot().conversationId
   const listeners = new Set<(message: HostMessage) => void>()
 
   /** A side chat's snapshot, named by its announced id and carrying its own revision sequence. */
@@ -58,6 +69,9 @@ export function createConversationPort({
     sideChats: () => conversation.sideChats(),
     canSideChat: conversation.canSideChat,
     canSwitchBranch: conversation.canSwitchBranch,
+    canAttach: conversation.canAttach,
+    canPickModel: conversation.canPickModel,
+    addFiles: (files) => conversation.addFiles(files),
 
     async perform(effect, requestId) {
       const thread = threadOf(effect.resource)
@@ -94,9 +108,16 @@ export function createConversationPort({
           if (done.outcome !== 'accepted') return reply(done)
           const chat = done.value
           const id = chat.conversationId
-          const stop = chat.conversation.subscribe((snapshot) =>
+          const stopSnapshots = chat.conversation.subscribe((snapshot) =>
             emit(sideMessage(id, snapshot)),
           )
+          const stopModels = chat.conversation.onModels((state) =>
+            emit(modelsMessage(project, id, state)),
+          )
+          const stop = () => {
+            stopSnapshots()
+            stopModels()
+          }
           sides.set(id, { chat, stop })
           emit(sideMessage(id, chat.conversation.snapshot()))
           return {
@@ -163,19 +184,45 @@ export function createConversationPort({
             opened,
           )
         case 'conversationSend': {
-          const { clientMessageId, text, attachments } = effect.payload
+          const { clientMessageId, text, attachments, references } =
+            effect.payload
+          // An id the draft holds is sent from the draft; any other names a file already uploaded.
+          const draft = new Set(target.attachments().map(({ id }) => id))
+          const named = attachments.filter(({ id }) => draft.has(id))
+          const uploaded = attachments.filter(({ id }) => !draft.has(id))
           return reply(
             await target.send({
               ...request,
               clientMessageId,
               text,
-              ...(attachments.length
-                ? { attachments: attachments.map(attachment) }
+              ...(uploaded.length
+                ? { attachments: uploaded.map(attachment) }
                 : {}),
+              ...(named.length ? { draftIds: named.map(({ id }) => id) } : {}),
+              ...(references?.length ? { references } : {}),
             }),
             sent,
           )
         }
+        case 'conversationAttachPick':
+          return reply(await target.attachPick(request))
+        case 'conversationAttachRemove':
+          return reply(
+            await target.removeAttachment({
+              ...request,
+              id: effect.payload.id,
+            }),
+          )
+        case 'conversationModels':
+          return reply(await target.models(request))
+        case 'conversationSetModel':
+          return reply(
+            await target.setModel({ ...request, ref: effect.payload.ref }),
+          )
+        case 'conversationSetEffort':
+          return reply(
+            await target.setEffort({ ...request, level: effect.payload.level }),
+          )
         case 'conversationInput':
           return reply(
             await target.input({ ...request, ...effect.payload }),
@@ -231,9 +278,17 @@ export function createConversationPort({
       const off = conversation.subscribe((snapshot) =>
         listener(snapshotMessage(project, snapshot)),
       )
+      const offAttachments = conversation.onAttachments((attachments) =>
+        listener(attachmentsMessage(project, mainId(), attachments)),
+      )
+      const offModels = conversation.onModels((state) =>
+        listener(modelsMessage(project, mainId(), state)),
+      )
       return () => {
         listeners.delete(listener)
         off()
+        offAttachments()
+        offModels()
       }
     },
   }

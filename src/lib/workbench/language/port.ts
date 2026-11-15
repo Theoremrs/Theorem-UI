@@ -2,12 +2,34 @@
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
 import type { Revision } from '../wire'
+import type { DocumentsView } from '../documents/port'
+import { startDiagnosticsFeed } from './feed'
+import type { DiagnosticsFeedOptions } from './feed'
 import type { Language } from './language'
+
+export interface LanguagePortOptions {
+  /** The documents open here. With it the port sends diagnostics for each one; without it, none. */
+  documents?: DocumentsView
+  feed?: Pick<
+    DiagnosticsFeedOptions,
+    'debounceMs' | 'partialMs' | 'partialRetries' | 'timer'
+  >
+}
 
 export function createLanguagePort(
   language: Language,
+  options: LanguagePortOptions = {},
 ): OwnerPort<Of<'language'>> {
   return {
+    subscribe: (listener) =>
+      options.documents
+        ? startDiagnosticsFeed({
+            language,
+            documents: options.documents,
+            emit: listener,
+            ...options.feed,
+          })
+        : () => {},
     async perform(effect, requestId): Promise<OwnerReply> {
       if (effect.kind === 'languageApplyPlan') {
         return reply(

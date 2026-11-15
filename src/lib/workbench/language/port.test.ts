@@ -144,3 +144,33 @@ describe('the language port', () => {
     expect(done.outcome === 'accepted' && done.revision).toBeUndefined()
   })
 })
+
+describe('diagnostics feed', () => {
+  test('a port given the open documents sends their diagnostics, and one without them sends none', async () => {
+    const language = {
+      workspaceId: 'w1',
+      diagnostics: async ({ requestId }: { requestId: string }) => ({
+        workspaceId: 'w1',
+        requestId,
+        outcome: 'accepted' as const,
+        value: { revision: 1, full: true, findings: [] },
+      }),
+    } as never
+    const documents = {
+      list: () => [
+        { path: 'a.ts', text: 'x', revision: { scheme: 'seq', value: 1 } },
+      ],
+      on: () => () => {},
+    } as never
+    const heard: unknown[] = []
+    const stop = createLanguagePort(language, { documents }).subscribe!((m) =>
+      heard.push(m),
+    )
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    stop()
+    expect(heard).toMatchObject([{ type: 'diagnosticsSet', path: 'a.ts' }])
+    expect(createLanguagePort(language).subscribe!(() => {})).toBeInstanceOf(
+      Function,
+    )
+  })
+})

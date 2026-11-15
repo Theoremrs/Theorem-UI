@@ -43,6 +43,10 @@ export type ConversationPort = OwnerPort<Of<'conversation'>> & {
   canSideChat?: boolean
   /** Branches can be selected here. */
   canSwitchBranch?: boolean
+  /** Files can be attached to the draft here. */
+  canAttach?: boolean
+  /** A model and an effort can be picked here. */
+  canPickModel?: boolean
 }
 export type ArtifactsPort = OwnerPort<Of<'artifact'>>
 export type ClipboardPort = OwnerPort<Of<'clipboard'>>
@@ -822,6 +826,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'runStart':
       case 'runStop':
       case 'runPoll':
+      case 'runList':
         return route('run', options.run, effect, requestId)
 
       case 'searchQuery':
@@ -849,6 +854,11 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'conversationSideChat':
       case 'conversationSideList':
       case 'conversationSwitchBranch':
+      case 'conversationAttachPick':
+      case 'conversationAttachRemove':
+      case 'conversationModels':
+      case 'conversationSetModel':
+      case 'conversationSetEffort':
       case 'conversationSideClose':
         return route('conversation', options.conversation, effect, requestId)
 
@@ -924,6 +934,8 @@ export function createAdapter(options: AdapterOptions): Adapter {
     if (options.conversation) local.push('conversation')
     if (options.conversation?.canSideChat) local.push('conversation.side')
     if (options.conversation?.canSwitchBranch) local.push('conversation.branch')
+    if (options.conversation?.canAttach) local.push('conversation.attach')
+    if (options.conversation?.canPickModel) local.push('conversation.model')
     if (options.artifacts) local.push('artifacts')
     if (options.clipboard) local.push('clipboard')
     return grantedCapabilities(env, local)

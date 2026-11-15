@@ -12,7 +12,7 @@ export type RunClient = HostClient & {
   ide: {
     run: Pick<
       TheoremClient['ide']['run'],
-      'configure' | 'start' | 'stop' | 'subscribe'
+      'configure' | 'start' | 'stop' | 'subscribe' | 'list'
     >
   }
 }
@@ -27,6 +27,16 @@ export interface RunState {
   stderr: string
   /** The host and generation this was read from; a poll is not tied to a document revision. */
   readAt: ReadAt
+}
+
+/** One run the host lists, as it names it. */
+export interface RunSummary {
+  handle: string
+  name?: string
+  command?: string[]
+  /** The host's word: `running` while it runs, another word once it has ended. */
+  state: string
+  startedAtMs?: number
 }
 
 interface Request {
@@ -47,6 +57,11 @@ export interface Runner {
     request: Request & { handle: string },
   ) => Promise<Completion<{ handle: string }>>
   poll: (request: Request & { handle: string }) => Promise<Completion<RunState>>
+  /**
+   * The runs the host holds, so one started elsewhere can be followed. Read from the answer's `runs`;
+   * an answer with no `runs` list (a host that lists only configurations) is `failed`, never an empty list.
+   */
+  list: (request: Request) => Promise<Completion<RunSummary[]>>
   /** Answers withheld because the environment had moved on. */
   dropped: () => number
   dispose: () => void
@@ -129,6 +144,43 @@ export function createRunner(env: Environment<RunClient>): Runner {
         (headers) => api().stop({ ...headers, body: { handle } }, once),
         () => ({ handle }),
       )
+    },
+
+    async list({ requestId }) {
+      const done = await ask(
+        requestId,
+        'run.list',
+        false,
+        (headers) => api().list({ ...headers, body: {} }),
+        (answer) => raw(answer).runs,
+      )
+      if (done.outcome !== 'accepted') return done
+      if (!Array.isArray(done.value))
+        return {
+          workspaceId,
+          requestId,
+          outcome: 'failed',
+          reason: 'The host’s run.list names no runs',
+        }
+      const runs = done.value.flatMap((entry): RunSummary[] => {
+        const body = raw(entry)
+        const handle = str(body.handle)
+        if (!handle) return []
+        const argv = body.command ?? body.argv
+        const startedAtMs = num(body.started_at_ms)
+        return [
+          {
+            handle,
+            ...(str(body.name) ? { name: str(body.name) } : {}),
+            ...(Array.isArray(argv) && argv.every((a) => typeof a === 'string')
+              ? { command: argv }
+              : {}),
+            state: str(body.state) ?? 'unknown',
+            ...(startedAtMs !== undefined ? { startedAtMs } : {}),
+          },
+        ]
+      })
+      return { ...done, value: runs }
     },
 
     poll({ requestId, handle }) {

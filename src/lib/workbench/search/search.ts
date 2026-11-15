@@ -43,6 +43,8 @@ export interface SearchPage {
   end?: SearchEnd
   /** The host and generation these rows were read from. */
   readAt: ReadAt
+  /** The unit `matches` count in: always UTF-16, because the host's Unicode-scalar columns are converted with the row's text. */
+  encoding: 'utf16_code_units'
 }
 
 export interface SearchRequest {
@@ -142,6 +144,7 @@ export function createSearch(
             ? 'complete'
             : 'more',
       readAt: at,
+      encoding: 'utf16_code_units',
     }
   }
 
@@ -184,6 +187,7 @@ export function createSearch(
             reason: done.reason,
           },
           readAt: readAt(),
+          encoding: 'utf16_code_units',
         })
         break
       }

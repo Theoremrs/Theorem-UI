@@ -489,3 +489,22 @@ describe('events', () => {
     })
   })
 })
+
+describe('view', () => {
+  test('lists the open documents with the owner’s text and revision, and says when one opens or closes', async () => {
+    const { port, perform } = await setup()
+    const changes: unknown[] = []
+    port.view.on((change) => changes.push(change))
+    expect(port.view.list()).toEqual([])
+    await perform('documentOpen', { payload: {} }, 'a.txt')
+    expect(port.view.list()).toEqual([
+      { path: 'a.txt', text: 'hello', revision: seq(1) },
+    ])
+    await perform('documentClose', {}, 'a.txt')
+    expect(port.view.list()).toEqual([])
+    expect(changes).toEqual([
+      { kind: 'opened', path: 'a.txt' },
+      { kind: 'closed', path: 'a.txt' },
+    ])
+  })
+})
