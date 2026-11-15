@@ -2339,3 +2339,164 @@ fn revoked_access_clears_the_document_and_stops_sending() {
     );
     assert!(rig.text().contains("kept text"));
 }
+
+// ---- recovered edits in every mode ------------------------------------------
+
+fn recovered_in(mode: char, base: u64, opened: u64) -> Rig {
+    let mut rig = Rig::start();
+    rig.answer_open_with(
+        "hello\n",
+        opened,
+        vec![
+            restored("r1", base, 0, 0, "X"),
+            restored("r2", base, 1, 1, "Y"),
+        ],
+    );
+    rig.alt(mode);
+    rig
+}
+
+fn bar_titles(rig: &Rig) -> Vec<String> {
+    let tree = semantics(&rig.m);
+    rig.node("strip")
+        .children
+        .iter()
+        .map(|id| tree.node(id).expect("a button").name.clone())
+        .collect()
+}
+
+#[test]
+fn recovered_edits_are_shown_held_and_chosen_about_in_visual_split_and_preview() {
+    for (mode, name) in [('1', "visual"), ('3', "split"), ('4', "preview")] {
+        // Placed: the recovered text is what the mode shows, with the bar.
+        let mut rig = recovered_in(mode, 1, 1);
+        let screen = words_on_screen(&rig, 80);
+        assert!(screen.contains("XYhello"), "{name}: {screen}");
+        assert!(
+            screen.contains("recovered from this device"),
+            "{name}: {screen}"
+        );
+        assert_eq!(
+            bar_titles(&rig),
+            ["Keep recovered", "Discard recovered", "Copy"],
+            "{name}"
+        );
+        rig.tree_ok();
+        // Nothing is sent by typing (where the mode takes it), a tick or a save.
+        let mut fx = rig.typed("Q");
+        fx.extend(rig.tick());
+        fx.extend(rig.act("markdown.save"));
+        assert!(fx.is_empty(), "{name}: {fx:#?}");
+        // Switching modes loses neither the held text nor the bar.
+        for other in ['2', '1', '3', '4', mode] {
+            rig.alt(other);
+            assert!(rig.has_node("strip"), "{name} via {other}");
+            let screen = words_on_screen(&rig, 80);
+            assert!(
+                screen.contains("XYhello") || screen.contains("XYQhello"),
+                "{name} via {other}: {screen}"
+            );
+        }
+        // Alt+G discards: only the settles go out, the text is the file's.
+        let mut rig = recovered_in(mode, 1, 1);
+        let fx = rig.alt('g');
+        assert_eq!(
+            settles(&fx),
+            vec!["r1".to_owned(), "r2".to_owned()],
+            "{name}"
+        );
+        none_of(&fx, EffectKind::DocumentEdit);
+        assert!(!rig.has_node("strip"), "{name}");
+        let screen = words_on_screen(&rig, 80);
+        assert!(
+            screen.contains("hello") && !screen.contains("XYhello"),
+            "{name}: {screen}"
+        );
+        // Alt+J keeps: the settles first, then the text, once.
+        let mut rig = recovered_in(mode, 1, 1);
+        let fx = rig.alt('j');
+        assert_eq!(
+            settles(&fx),
+            vec!["r1".to_owned(), "r2".to_owned()],
+            "{name}"
+        );
+        none_of(&fx, EffectKind::DocumentEdit);
+        let sent: Vec<Effect> = of_kind(&fx, EffectKind::DocumentSettle)
+            .into_iter()
+            .cloned()
+            .collect();
+        for s in &sent[..1] {
+            none_of(
+                &rig.answer(s, Outcome::Accepted, None),
+                EffectKind::DocumentEdit,
+            );
+        }
+        let mut fx = rig.answer(&sent[1], Outcome::Accepted, None);
+        fx.extend(rig.tick());
+        let mut text = "hello\n".to_owned();
+        let mut revision = 1;
+        while let Some(e) = edits(&fx).into_iter().next() {
+            text = applied(&text, &e);
+            revision += 1;
+            fx = rig.accept(&e, revision);
+            fx.extend(rig.tick());
+            assert!(revision < 6, "{name}: sent too often");
+        }
+        assert_eq!(text, "XYhello\n", "{name}");
+
+        // Not placed: the file's text, the bar with its three choices.
+        let mut rig = recovered_in(mode, 2, 5);
+        let screen = words_on_screen(&rig, 80);
+        assert!(
+            screen.contains("hello") && !screen.contains("XYhello"),
+            "{name}: {screen}"
+        );
+        assert!(screen.contains("not placed"), "{name}: {screen}");
+        assert_eq!(
+            bar_titles(&rig),
+            ["Take their text", "Keep both", "Copy my text"],
+            "{name}"
+        );
+        let mut fx = rig.typed("Q");
+        fx.extend(rig.tick());
+        assert!(fx.is_empty(), "{name}: {fx:#?}");
+        for other in ['2', '1', '3', '4', mode] {
+            rig.alt(other);
+            assert!(rig.has_node("strip"), "{name} via {other}");
+        }
+        // Unplaced, keep and discard are the conflict's words: Alt+J and Alt+G
+        // are refused, Alt+T drops them and Alt+B adds them after the text.
+        let mut rig = recovered_in(mode, 2, 5);
+        assert!(rig.alt('j').is_empty() && rig.alt('g').is_empty(), "{name}");
+        assert!(rig.has_node("strip"), "{name}");
+        let fx = rig.alt('t');
+        assert_eq!(settles(&fx).len(), 2, "{name}");
+        assert!(!rig.has_node("strip"), "{name}");
+        let mut rig = recovered_in(mode, 2, 5);
+        let fx = rig.alt('b');
+        assert_eq!(settles(&fx).len(), 2, "{name}");
+        none_of(&fx, EffectKind::DocumentEdit);
+    }
+}
+
+#[test]
+fn the_caret_after_recovery_is_after_the_last_change_in_every_mode_that_has_one() {
+    // Source and Split take typing at the source caret.
+    for mode in ['2', '3'] {
+        let mut rig = recovered_in(mode, 1, 1);
+        rig.typed("Q");
+        let screen = words_on_screen(&rig, 80);
+        assert!(screen.contains("XYQhello"), "mode {mode}: {screen}");
+    }
+    // Visual has the block the caret is in open, and its caret is there too.
+    let mut rig = recovered_in('1', 1, 1);
+    let mut fx = rig.typed("Q");
+    fx.extend(rig.tick());
+    assert!(
+        fx.is_empty(),
+        "nothing is sent while the edits wait: {fx:#?}"
+    );
+    let screen = words_on_screen(&rig, 80);
+    assert!(screen.contains("XYQhello"), "visual: {screen}");
+    assert!(rig.has_node("strip"));
+}

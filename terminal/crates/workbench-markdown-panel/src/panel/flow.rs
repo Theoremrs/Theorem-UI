@@ -18,7 +18,7 @@ use theorem_workbench_editor::{
     Held, Level, Owed, OwnerSync, SourceView, Step, TokenState, resync, revision_number,
 };
 use theorem_workbench_markdown::{BlockResolution, MarkdownDoc, MarkdownMode};
-use theorem_workbench_text::{PendingState, Resolution};
+use theorem_workbench_text::{PendingState, Resolution, Snap, Unit};
 
 use super::{Clip, Doc, MarkdownPanel, Notice, Phase, Problem, Task, Tone};
 
@@ -268,6 +268,29 @@ impl MarkdownPanel {
         // they were made against it, and wait there for the person's choice.
         if let Some(n) = md.apply_local(|s| sync.recover(s, &opened.pending, revision, !restored)) {
             note = Some(n.text);
+        }
+        // Visual had a block open at the start of the text before the edits
+        // went in: open the one the caret is in now, with the caret there, at
+        // the end of the last recovered change.
+        if sync
+            .restored
+            .as_ref()
+            .is_some_and(|r| r.moved_from.is_none())
+            && md.mode() == MarkdownMode::Visual
+        {
+            md.commit_block();
+            md.open_at_cursor();
+            let cursor = md.cursor_byte();
+            if let Some(range) = md.open_range()
+                && let Some(block) = md.block_session()
+                && let Some(at) = block.coords().to_scalar(
+                    cursor.saturating_sub(range.start),
+                    Unit::Utf8,
+                    Snap::Backward,
+                )
+            {
+                block.set_selection(at, at);
+            }
         }
         if let Some(r) = opened.read_only {
             md.apply_local(|s| sync.make_read_only(s, r.reason));
@@ -532,12 +555,23 @@ impl MarkdownPanel {
     /// against the current revision, once the owner has let go of the old ones.
     pub(super) fn settle_recovered(&mut self, keep: bool, cx: &mut Ctx) {
         let Some(d) = self.doc_mut() else { return };
-        let step = d.md.get_mut().apply_local(|s| {
-            if keep {
+        let md = d.md.get_mut();
+        // Preview takes no typing, but keeping recovered text is the person's
+        // choice, not typing: the session is open to it for that one step.
+        let preview = md.mode() == MarkdownMode::Preview && d.sync.read_only.is_none();
+        let step = md.apply_local(|s| {
+            if preview {
+                s.set_read_only(false);
+            }
+            let step = if keep {
                 d.sync.keep_restored(s)
             } else {
                 d.sync.discard_restored(s)
+            };
+            if preview {
+                s.set_read_only(true);
             }
+            step
         });
         self.show(step, cx);
     }
