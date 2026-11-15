@@ -1,0 +1,19 @@
+[package]
+name = "theorem-workbench-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "Interaction core types for the Theo Web terminal workbench: effects, completions, staleness gate, queues, panel registry, keybindings and the semantic tree"
+
+[features]
+# Derives the TypeScript declarations for every wire type. Off in the wasm build.
+ts = ["dep:ts-rs"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+strum = { version = "0.28", features = ["derive"] }
+keybinds = "0.2"
+ts-rs = { version = "12", optional = true }
+
+[dev-dependencies]
+serde_json = "1"

@@ -1,0 +1,509 @@
+//! The panel registry (ARCHITECTURE section 6, R05). The picker, command
+//! palette, shortcuts, context actions and the agent's `workbench.act` all
+//! resolve the same descriptors; nothing keeps a second list.
+//!
+//! Descriptors are data. A panel's state serializer and factory live with the
+//! panel (`workbench-panels`); the descriptor's `version` is what lets a saved
+//! layout fail safely when it names a panel version nobody serves (R48).
+
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+
+use crate::effect::EffectKind;
+use crate::ids::{ActionId, Actor, Capability, PanelKind, ResourceKind};
+use crate::keys::{KeyContext, Shortcut};
+use crate::semantics::Role;
+
+/// What the host reports it can do. Gates panels and actions.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Capabilities {
+    pub granted: BTreeSet<Capability>,
+}
+
+impl Capabilities {
+    pub fn of<I: IntoIterator<Item = &'static str>>(names: I) -> Self {
+        Self {
+            granted: names.into_iter().map(Capability::new).collect(),
+        }
+    }
+
+    pub fn has(&self, capability: &Capability) -> bool {
+        self.granted.contains(capability)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Availability {
+    Available,
+    /// With the reason a person can act on. Unavailable rows stay listed.
+    Unavailable {
+        reason: String,
+    },
+}
+
+impl Availability {
+    pub fn is_available(&self) -> bool {
+        matches!(self, Self::Available)
+    }
+}
+
+fn availability_of(requires: &[Capability], caps: &Capabilities) -> Availability {
+    match requires.iter().find(|c| !caps.has(c)) {
+        None => Availability::Available,
+        Some(missing) => Availability::Unavailable {
+            reason: format!(
+                "This host does not report the \"{}\" capability.",
+                missing.as_str()
+            ),
+        },
+    }
+}
+
+/// How an action relates to the world. Only `Create`, `Start` and `Destroy`
+/// may emit a domain effect, and only when the entry is chosen (R07).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ActionIntent {
+    /// Bring an existing view forward.
+    Focus,
+    /// Open something that already exists, or a chooser for one.
+    Open,
+    Create,
+    Start,
+    Destroy,
+}
+
+impl ActionIntent {
+    pub fn may_emit_effect(self) -> bool {
+        matches!(self, Self::Create | Self::Start | Self::Destroy)
+    }
+}
+
+/// Where a default shortcut applies, before the panel kind is known.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum KeyScope {
+    Global,
+    /// Only while this action's panel has focus.
+    Panel,
+    TextEntry,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DefaultKey {
+    /// `Mod+Shift+G` and the like; `Mod` is Cmd on Mac, Ctrl elsewhere.
+    pub chord: String,
+    pub scope: KeyScope,
+}
+
+/// Where an action appears in the tool picker.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum PickerSlot {
+    /// A main row; rows sort by `order`.
+    Row { order: u8 },
+    /// Under More tools.
+    More,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ActionDescriptor {
+    pub id: ActionId,
+    pub title: String,
+    pub intent: ActionIntent,
+    #[serde(default)]
+    pub requires: Vec<Capability>,
+    /// The effect choosing this action produces. Present exactly when the
+    /// intent may emit one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub emits: Option<EffectKind>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub default_key: Option<DefaultKey>,
+    /// Approvals and the like: a model-origin request is refused, whatever id
+    /// it names (R34).
+    #[serde(default)]
+    pub human_only: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub picker: Option<PickerSlot>,
+}
+
+impl ActionDescriptor {
+    pub fn new(id: &str, title: &str, intent: ActionIntent) -> Self {
+        Self {
+            id: ActionId::new(id),
+            title: title.to_owned(),
+            intent,
+            requires: vec![],
+            emits: None,
+            default_key: None,
+            human_only: false,
+            picker: None,
+        }
+    }
+
+    pub fn requires(mut self, capability: &str) -> Self {
+        self.requires.push(Capability::new(capability));
+        self
+    }
+
+    pub fn emits(mut self, kind: EffectKind) -> Self {
+        self.emits = Some(kind);
+        self
+    }
+
+    pub fn key(mut self, chord: &str, scope: KeyScope) -> Self {
+        self.default_key = Some(DefaultKey {
+            chord: chord.to_owned(),
+            scope,
+        });
+        self
+    }
+
+    pub fn human_only(mut self) -> Self {
+        self.human_only = true;
+        self
+    }
+
+    pub fn row(mut self, order: u8) -> Self {
+        self.picker = Some(PickerSlot::Row { order });
+        self
+    }
+
+    pub fn more(mut self) -> Self {
+        self.picker = Some(PickerSlot::More);
+        self
+    }
+}
+
+/// Ratatui cells, or a DOM region placed on Rust-reported geometry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum BodyKind {
+    Drawn,
+    Hosted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum Placement {
+    Left,
+    Main,
+    Tools,
+}
+
+/// A size in terminal cells.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct CellSize {
+    pub cols: u16,
+    pub rows: u16,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct PanelDescriptor {
+    pub kind: PanelKind,
+    /// Bumped when the panel's saved view state changes shape.
+    pub version: u32,
+    pub title: String,
+    pub icon: String,
+    pub body: BodyKind,
+    pub binding: ResourceKind,
+    pub actions: Vec<ActionDescriptor>,
+    #[serde(default)]
+    pub requires: Vec<Capability>,
+    pub min_size: CellSize,
+    pub default_placement: Placement,
+    /// Terminal roles the panel paints with (`chrome.bg`, `diff.addedLine`).
+    pub theme_roles: Vec<String>,
+    pub semantic_role: Role,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RegistryError {
+    DuplicateKind(PanelKind),
+    DuplicateAction(ActionId),
+    /// A `Focus` or `Open` action names an effect.
+    EffectOnPassiveAction(ActionId),
+    /// A `Create`, `Start` or `Destroy` action names none.
+    ActiveActionWithoutEffect(ActionId),
+    ZeroSize(PanelKind),
+    ZeroVersion(PanelKind),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum VersionCheck {
+    Current,
+    /// Saved by an older panel version: restore through its migration.
+    Older,
+    /// Saved by a newer one than this build serves: keep the binding, show the
+    /// panel as unavailable, do not guess.
+    Newer,
+    UnknownKind,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Refusal {
+    UnknownAction(ActionId),
+    Unavailable {
+        reason: String,
+    },
+    /// An agent asked for a human-only action.
+    HumanOnly(ActionId),
+}
+
+/// An action resolved against the registry and the host's capabilities.
+#[derive(Clone, Copy, Debug)]
+pub struct Resolved<'a> {
+    pub panel: &'a PanelDescriptor,
+    pub action: &'a ActionDescriptor,
+}
+
+impl Resolved<'_> {
+    pub fn emits(&self) -> Option<EffectKind> {
+        self.action.emits
+    }
+}
+
+/// One row of the tool picker or of More tools.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct PickerRow {
+    pub action: ActionId,
+    pub panel: PanelKind,
+    pub title: String,
+    pub intent: ActionIntent,
+    pub availability: Availability,
+    pub pinned: bool,
+}
+
+/// One action as the agent sees it (`workbench.act`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogEntry {
+    pub action: ActionId,
+    pub panel: PanelKind,
+    pub title: String,
+    pub intent: ActionIntent,
+    pub availability: Availability,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct Registry {
+    panels: Vec<PanelDescriptor>,
+}
+
+impl Registry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register(&mut self, panel: PanelDescriptor) -> Result<(), RegistryError> {
+        if self.get(&panel.kind).is_some() {
+            return Err(RegistryError::DuplicateKind(panel.kind));
+        }
+        if panel.version == 0 {
+            return Err(RegistryError::ZeroVersion(panel.kind));
+        }
+        if panel.min_size.cols == 0 || panel.min_size.rows == 0 {
+            return Err(RegistryError::ZeroSize(panel.kind));
+        }
+        let mut seen = BTreeSet::new();
+        for action in &panel.actions {
+            if self.action(&action.id).is_some() || !seen.insert(&action.id) {
+                return Err(RegistryError::DuplicateAction(action.id.clone()));
+            }
+            match (action.intent.may_emit_effect(), action.emits) {
+                (false, Some(_)) => {
+                    return Err(RegistryError::EffectOnPassiveAction(action.id.clone()));
+                }
+                (true, None) => {
+                    return Err(RegistryError::ActiveActionWithoutEffect(action.id.clone()));
+                }
+                _ => {}
+            }
+        }
+        self.panels.push(panel);
+        Ok(())
+    }
+
+    pub fn get(&self, kind: &PanelKind) -> Option<&PanelDescriptor> {
+        self.panels.iter().find(|p| &p.kind == kind)
+    }
+
+    pub fn panels(&self) -> &[PanelDescriptor] {
+        &self.panels
+    }
+
+    pub fn action(&self, id: &ActionId) -> Option<(&PanelDescriptor, &ActionDescriptor)> {
+        self.panels
+            .iter()
+            .find_map(|p| p.actions.iter().find(|a| &a.id == id).map(|a| (p, a)))
+    }
+
+    fn actions(&self) -> impl Iterator<Item = (&PanelDescriptor, &ActionDescriptor)> {
+        self.panels
+            .iter()
+            .flat_map(|p| p.actions.iter().map(move |a| (p, a)))
+    }
+
+    pub fn panel_availability(
+        &self,
+        kind: &PanelKind,
+        caps: &Capabilities,
+    ) -> Option<Availability> {
+        self.get(kind).map(|p| availability_of(&p.requires, caps))
+    }
+
+    /// An action is available when its panel is and its own capabilities are.
+    pub fn action_availability(
+        &self,
+        panel: &PanelDescriptor,
+        action: &ActionDescriptor,
+        caps: &Capabilities,
+    ) -> Availability {
+        match availability_of(&panel.requires, caps) {
+            Availability::Available => availability_of(&action.requires, caps),
+            unavailable => unavailable,
+        }
+    }
+
+    /// Resolve an action id for an actor. Every entry point (a picker row, the
+    /// palette, a shortcut, the agent) goes through here.
+    pub fn resolve(
+        &self,
+        id: &ActionId,
+        actor: &Actor,
+        caps: &Capabilities,
+    ) -> Result<Resolved<'_>, Refusal> {
+        let (panel, action) = self
+            .action(id)
+            .ok_or_else(|| Refusal::UnknownAction(id.clone()))?;
+        if action.human_only && matches!(actor, Actor::Agent { .. }) {
+            return Err(Refusal::HumanOnly(id.clone()));
+        }
+        match self.action_availability(panel, action, caps) {
+            Availability::Available => Ok(Resolved { panel, action }),
+            Availability::Unavailable { reason } => Err(Refusal::Unavailable { reason }),
+        }
+    }
+
+    fn row(
+        &self,
+        panel: &PanelDescriptor,
+        action: &ActionDescriptor,
+        caps: &Capabilities,
+        pinned: bool,
+    ) -> PickerRow {
+        PickerRow {
+            action: action.id.clone(),
+            panel: panel.kind.clone(),
+            title: action.title.clone(),
+            intent: action.intent,
+            availability: self.action_availability(panel, action, caps),
+            pinned,
+        }
+    }
+
+    /// The picker's rows: the main rows in order, then the user's pinned tools.
+    /// Unavailable rows stay, with their reason.
+    pub fn picker_rows(&self, caps: &Capabilities, pinned: &BTreeSet<PanelKind>) -> Vec<PickerRow> {
+        let mut main: Vec<(u8, PickerRow)> = self
+            .actions()
+            .filter_map(|(p, a)| match a.picker {
+                Some(PickerSlot::Row { order }) => Some((order, self.row(p, a, caps, false))),
+                _ => None,
+            })
+            .collect();
+        main.sort_by_key(|(order, _)| *order);
+        let mut rows: Vec<PickerRow> = main.into_iter().map(|(_, row)| row).collect();
+        rows.extend(
+            self.more_entries(caps, pinned)
+                .into_iter()
+                .filter(|r| r.pinned),
+        );
+        rows
+    }
+
+    /// Everything under More tools that is not pinned.
+    pub fn more_tools(&self, caps: &Capabilities, pinned: &BTreeSet<PanelKind>) -> Vec<PickerRow> {
+        self.more_entries(caps, pinned)
+            .into_iter()
+            .filter(|r| !r.pinned)
+            .collect()
+    }
+
+    fn more_entries(&self, caps: &Capabilities, pinned: &BTreeSet<PanelKind>) -> Vec<PickerRow> {
+        self.actions()
+            .filter(|(_, a)| a.picker == Some(PickerSlot::More))
+            .map(|(p, a)| self.row(p, a, caps, pinned.contains(&p.kind)))
+            .collect()
+    }
+
+    /// What the agent may ask for: every action it is allowed to invoke, with
+    /// its availability. Human-only actions are not listed.
+    pub fn agent_catalog(&self, caps: &Capabilities) -> Vec<CatalogEntry> {
+        self.actions()
+            .filter(|(_, a)| !a.human_only)
+            .map(|(p, a)| CatalogEntry {
+                action: a.id.clone(),
+                panel: p.kind.clone(),
+                title: a.title.clone(),
+                intent: a.intent,
+                availability: self.action_availability(p, a, caps),
+            })
+            .collect()
+    }
+
+    /// The shortcuts the descriptors ship with, scoped to their panel.
+    pub fn default_shortcuts(&self) -> Vec<Shortcut> {
+        self.actions()
+            .filter_map(|(p, a)| {
+                let key = a.default_key.as_ref()?;
+                let context = match key.scope {
+                    KeyScope::Global => KeyContext::Global,
+                    KeyScope::Panel => KeyContext::Panel {
+                        kind: p.kind.clone(),
+                    },
+                    KeyScope::TextEntry => KeyContext::TextEntry,
+                };
+                Some(Shortcut {
+                    chord: key.chord.clone(),
+                    context,
+                    action: a.id.clone(),
+                })
+            })
+            .collect()
+    }
+
+    /// Whether a saved panel (kind and version) can be restored by this build.
+    pub fn check_version(&self, kind: &PanelKind, saved: u32) -> VersionCheck {
+        match self.get(kind) {
+            None => VersionCheck::UnknownKind,
+            Some(p) if saved == p.version => VersionCheck::Current,
+            Some(p) if saved < p.version => VersionCheck::Older,
+            Some(_) => VersionCheck::Newer,
+        }
+    }
+}

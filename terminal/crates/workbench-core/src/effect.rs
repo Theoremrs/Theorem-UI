@@ -1,0 +1,724 @@
+//! What `update` asks the host to do. Every effect carries the same envelope
+//! (ARCHITECTURE section 3) and a closed, owner-grouped body.
+//!
+//! Payload fields come from the Gate 0 owner inventory
+//! (`gate-0/owners-documents-and-persistence.md`, `gate-0/terminal-path.md`).
+//! A panel that is not built yet gets a placeholder with only the fields the
+//! inventory already fixes; no endpoint shape is invented here.
+
+use serde::{Deserialize, Serialize};
+use strum::EnumDiscriminants;
+
+use crate::ids::{EffectId, Generation, ResourceRef, Revision};
+
+/// Which owner performs an effect. The adapter routes by this
+/// (`src/lib/workbench/{files,documents,scm,...}`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum Owner {
+    Files,
+    Documents,
+    Scm,
+    Language,
+    Run,
+    Search,
+    Terminal,
+    Conversation,
+    Layout,
+    Artifacts,
+    /// Clipboard and other browser services.
+    Host,
+}
+
+/// An effect: the envelope plus a body. `kind` and `payload` sit beside the
+/// envelope fields on the wire.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Effect {
+    pub id: EffectId,
+    pub resource: ResourceRef,
+    /// The revision the effect was computed against; the owner's `base_revision`
+    /// or `If-Match`. Absent for resources without one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub revision: Option<Revision>,
+    /// The pane's binding generation when the effect was emitted. For terminals
+    /// this is the binding epoch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub generation: Option<Generation>,
+    #[serde(flatten)]
+    pub body: EffectBody,
+}
+
+impl Effect {
+    pub fn new(id: EffectId, resource: ResourceRef, body: EffectBody) -> Self {
+        Self {
+            id,
+            resource,
+            revision: None,
+            generation: None,
+            body,
+        }
+    }
+
+    pub fn with_revision(mut self, revision: Revision) -> Self {
+        self.revision = Some(revision);
+        self
+    }
+
+    pub fn with_generation(mut self, generation: Generation) -> Self {
+        self.generation = Some(generation);
+        self
+    }
+
+    pub fn kind(&self) -> EffectKind {
+        EffectKind::from(&self.body)
+    }
+
+    pub fn owner(&self) -> Owner {
+        self.kind().owner()
+    }
+}
+
+/// The closed set of effects, grouped by owner. `EffectKind` (generated) is the
+/// same list without payloads, for the registry and the semantic tree.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, EnumDiscriminants)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "kind", content = "payload", rename_all = "camelCase")]
+#[strum_discriminants(name(EffectKind))]
+#[strum_discriminants(derive(Hash, Serialize, Deserialize))]
+#[strum_discriminants(serde(rename_all = "camelCase"))]
+#[cfg_attr(feature = "ts", strum_discriminants(derive(ts_rs::TS)))]
+pub enum EffectBody {
+    // Files
+    FilesList(FilesPath),
+    FilesStat(FilesPath),
+    /// Name search. Cached results may be partial; the completion says so.
+    FilesSearch(FilesSearch),
+    FilesCreate(FilesCreate),
+    FilesRename(FilesRename),
+    FilesDelete(FilesPath),
+
+    // Documents (the SDK `DocumentSession`)
+    /// Explicit creation, as New page does after its name prompt.
+    DocumentCreate(DocumentCreate),
+    DocumentOpen(DocumentOpen),
+    /// Edits against the effect's `revision`, in the stated unit.
+    DocumentEdit(DocumentEdit),
+    DocumentSave,
+    DocumentClose,
+    DocumentReconcile(DocumentReconcile),
+
+    // SCM
+    ScmStatus,
+    ScmDiff(ScmDiff),
+    ScmShow(ScmShow),
+    ScmStage(ScmPaths),
+    ScmUnstage(ScmPaths),
+    ScmDiscard(FilesPath),
+    ScmRestore(ScmRestore),
+    ScmCommit(ScmCommit),
+    ScmBranch(ScmBranch),
+    ScmFetch(ScmRemote),
+    ScmPush(ScmPush),
+    ScmMerge(ScmMerge),
+    ScmBlame(FilesPath),
+    ScmLog(ScmLog),
+
+    // Language (bound to a document and its revision)
+    LanguageHover(LanguagePosition),
+    LanguageComplete(LanguagePosition),
+    LanguageNavigate(LanguageNavigate),
+    LanguageReferences(LanguagePosition),
+    LanguageDiagnostics,
+    LanguageFormat,
+    LanguageRename(LanguageRename),
+    LanguageApplyPlan(LanguageApplyPlan),
+
+    // Run
+    RunConfigure(RunConfigure),
+    RunStart(RunStart),
+    RunStop(RunHandle),
+    RunPoll(RunHandle),
+
+    // Search
+    SearchQuery(SearchQuery),
+    SearchCancel(SearchCancel),
+
+    // Terminal. Detach and End are separate on purpose: closing a view only
+    // ever detaches (R29).
+    TerminalOpen(TerminalOpen),
+    TerminalAttach(TerminalAttach),
+    TerminalInput(TerminalInput),
+    TerminalResize(TerminalResize),
+    TerminalDetach(TerminalClaim),
+    TerminalEnd,
+
+    // Conversation and runs
+    ConversationCreate,
+    ConversationSend(ConversationSend),
+    /// Steer a running run (`runs.command` `input`).
+    ConversationInput(ConversationInput),
+    ConversationCancel(RunRef),
+    /// Human-only: the registry refuses it from an agent actor.
+    ConversationApproval(ConversationApproval),
+
+    // Layout (`client.workbench.get/save`, revisioned with `If-Match`)
+    LayoutLoad,
+    LayoutSave(LayoutSave),
+
+    // Artifacts (the cabinet's catalog)
+    ArtifactsList(ArtifactsList),
+    ArtifactRead(ArtifactRead),
+
+    // Clipboard and host
+    ClipboardWrite(ClipboardWrite),
+    ClipboardRead,
+}
+
+impl EffectKind {
+    pub fn owner(self) -> Owner {
+        use EffectKind::*;
+        match self {
+            FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesDelete => {
+                Owner::Files
+            }
+            DocumentCreate | DocumentOpen | DocumentEdit | DocumentSave | DocumentClose
+            | DocumentReconcile => Owner::Documents,
+            ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
+            | ScmCommit | ScmBranch | ScmFetch | ScmPush | ScmMerge | ScmBlame | ScmLog => {
+                Owner::Scm
+            }
+            LanguageHover | LanguageComplete | LanguageNavigate | LanguageReferences
+            | LanguageDiagnostics | LanguageFormat | LanguageRename | LanguageApplyPlan => {
+                Owner::Language
+            }
+            RunConfigure | RunStart | RunStop | RunPoll => Owner::Run,
+            SearchQuery | SearchCancel => Owner::Search,
+            TerminalOpen | TerminalAttach | TerminalInput | TerminalResize | TerminalDetach
+            | TerminalEnd => Owner::Terminal,
+            ConversationCreate | ConversationSend | ConversationInput | ConversationCancel
+            | ConversationApproval => Owner::Conversation,
+            LayoutLoad | LayoutSave => Owner::Layout,
+            ArtifactsList | ArtifactRead => Owner::Artifacts,
+            ClipboardWrite | ClipboardRead => Owner::Host,
+        }
+    }
+}
+
+// ---- files -------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FilesPath {
+    pub path: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FilesSearch {
+    pub query: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FilesCreate {
+    pub path: String,
+    pub directory: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FilesRename {
+    pub from: String,
+    pub to: String,
+}
+
+// ---- documents ---------------------------------------------------------
+
+/// The unit an offset is counted in. Never interchangeable (R13).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum CoordinateUnit {
+    Utf16,
+    Scalar,
+    Utf8Bytes,
+}
+
+/// One edit against the text before the whole change set.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TextChange {
+    pub start: u32,
+    pub end: u32,
+    pub insert: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentCreate {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub seed_text: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentOpen {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub seed_text: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentEdit {
+    /// Doubles as the host's idempotency key.
+    pub operation_id: String,
+    pub unit: CoordinateUnit,
+    pub edits: Vec<TextChange>,
+}
+
+/// Which side a conflict resolves to (`documents.reconcile` `keep`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ReconcileKeep {
+    Disk,
+    Authority,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentReconcile {
+    pub keep: ReconcileKeep,
+}
+
+// ---- scm ---------------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmPaths {
+    pub paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmDiff {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub path: Option<String>,
+    pub staged: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ScmRef {
+    Head,
+    Index,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmShow {
+    pub path: String,
+    pub reference: ScmRef,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmRestore {
+    pub restore_id: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmCommit {
+    pub message: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmBranch {
+    pub name: String,
+    pub create: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmRemote {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub remote: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmPush {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub remote: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub reference: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmMerge {
+    pub branch: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ScmLog {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub path: Option<String>,
+    pub max_count: u32,
+}
+
+// ---- language ----------------------------------------------------------
+
+/// LSP position: `character` counts UTF-16 code units.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LanguagePosition {
+    pub line: u32,
+    pub character: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageNavigate {
+    /// The SDK's `navigate(kind)` word; the host owns the set.
+    pub kind: String,
+    pub position: LanguagePosition,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageRename {
+    pub position: LanguagePosition,
+    pub new_name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageApplyPlan {
+    pub plan_id: String,
+}
+
+// ---- run and search ----------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunConfigure {
+    pub name: String,
+    pub argv: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunStart {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunHandle {
+    pub handle: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SearchQuery {
+    pub query: String,
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub whole_word: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub include: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub exclude: Option<String>,
+    pub limit: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SearchCancel {
+    pub id: String,
+}
+
+// ---- terminal ----------------------------------------------------------
+
+/// Named explicitly on every open: there is no silent fallback from Herdr to
+/// native (R25).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalBackend {
+    Native,
+    Herdr,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalOpen {
+    pub backend: TerminalBackend,
+    /// Herdr only; absent means the machine shell.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub argv: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub name: Option<String>,
+    pub cols: u16,
+    pub rows: u16,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum TerminalRole {
+    Controller,
+    Observer,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalAttach {
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub from_offset: u64,
+    pub role: TerminalRole,
+    pub attachment: String,
+}
+
+/// The claim a controller presents with input and resize: its attachment and
+/// the lease generation and binding epoch it believes are current.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalClaim {
+    pub attachment: String,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub lease_generation: u64,
+    #[cfg_attr(feature = "ts", ts(type = "number"))]
+    pub epoch: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum InputKind {
+    Human,
+    Reply,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalInput {
+    pub bytes: String,
+    pub kind: InputKind,
+    /// The host remembers the last 256 per binding epoch and writes a repeat
+    /// once. Uncertain input is never replayed past that window.
+    pub input_id: String,
+    pub claim: TerminalClaim,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalResize {
+    pub cols: u16,
+    pub rows: u16,
+    pub claim: TerminalClaim,
+}
+
+// ---- conversation ------------------------------------------------------
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSend {
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationInput {
+    pub run_id: String,
+    pub text: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunRef {
+    pub run_id: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ApprovalDecision {
+    Allow,
+    Deny,
+}
+
+/// Records the exact operation approved, so the receipt can name it (spec 13).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationApproval {
+    pub run_id: String,
+    pub approval_id: String,
+    pub decision: ApprovalDecision,
+}
+
+// ---- layout, artifacts, clipboard --------------------------------------
+
+/// The workbench record's two opaque documents, as JSON text. The core does
+/// not interpret them.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LayoutSave {
+    pub current: String,
+    pub named_layouts: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactsList {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub query: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub category: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub cursor: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ArtifactRead {
+    pub key: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ClipboardWrite {
+    pub text: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ids::EffectIds;
+    use serde_json::json;
+
+    #[test]
+    fn effect_json_shape() {
+        let mut ids = EffectIds::default();
+        let effect = Effect::new(
+            ids.mint(),
+            ResourceRef::Document {
+                workspace: "w1".into(),
+                resource_id: "docs/a.md".into(),
+            },
+            EffectBody::DocumentEdit(DocumentEdit {
+                operation_id: "op-1".into(),
+                unit: CoordinateUnit::Utf16,
+                edits: vec![TextChange {
+                    start: 0,
+                    end: 0,
+                    insert: "hi".into(),
+                }],
+            }),
+        )
+        .with_revision(Revision::Seq(7))
+        .with_generation(Generation(2));
+        assert_eq!(
+            serde_json::to_value(&effect).unwrap(),
+            json!({
+                "id": 1,
+                "resource": {"type": "document", "workspace": "w1", "resourceId": "docs/a.md"},
+                "revision": {"scheme": "seq", "value": 7},
+                "generation": 2,
+                "kind": "documentEdit",
+                "payload": {
+                    "operationId": "op-1",
+                    "unit": "utf16",
+                    "edits": [{"start": 0, "end": 0, "insert": "hi"}]
+                }
+            })
+        );
+        let round: Effect = serde_json::from_value(serde_json::to_value(&effect).unwrap()).unwrap();
+        assert_eq!(round, effect);
+    }
+
+    #[test]
+    fn unit_effects_carry_no_payload() {
+        let effect = Effect::new(EffectId(3), ResourceRef::None, EffectBody::ClipboardRead);
+        let value = serde_json::to_value(&effect).unwrap();
+        assert_eq!(value["kind"], "clipboardRead");
+        assert!(value.get("payload").is_none());
+        assert!(value.get("revision").is_none());
+    }
+
+    #[test]
+    fn every_kind_has_one_owner() {
+        // Detach and End are distinct kinds in the terminal group (R29).
+        assert_eq!(EffectKind::TerminalDetach.owner(), Owner::Terminal);
+        assert_eq!(EffectKind::TerminalEnd.owner(), Owner::Terminal);
+        assert_ne!(EffectKind::TerminalDetach, EffectKind::TerminalEnd);
+        assert_eq!(EffectKind::ClipboardWrite.owner(), Owner::Host);
+        assert_eq!(EffectKind::LayoutSave.owner(), Owner::Layout);
+    }
+}
