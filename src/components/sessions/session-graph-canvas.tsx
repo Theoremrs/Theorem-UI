@@ -1,4 +1,4 @@
-// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls with a ControlButton to lay the graph out again, dotted Background, fitView), laid out by elkjs through lib/theorem/session-graph-layout, which also decides what may move so that what is on screen stays put; a re-formed tree glides there on lib/motion's glide spring (anime.js), immediately under reduced motion; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
+// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls with a ControlButton to lay the graph out again, dotted Background, fitView), laid out by elkjs through lib/theorem/session-graph-layout, which also decides what may move so that what is on screen stays put; a re-formed tree moves there on lib/motion's shift spring (anime.js, 220ms, critically damped), immediately under reduced motion; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
 import {
   Background,
   BackgroundVariant,
@@ -701,7 +701,7 @@ function Flow({
       const progress = { t: 0 }
       glide.current = animate(progress, {
         t: 1,
-        ease: springs.glide,
+        ease: springs.shift,
         onUpdate: () => show(between(from, next, progress.t)),
         onComplete: () => {
           glide.current = undefined

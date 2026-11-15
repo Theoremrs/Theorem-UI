@@ -255,8 +255,10 @@ chat header and the sessions panel when that session was.
   - "Lay the graph out again" (the canvas controls) lays everything out
     fresh, and the dragged nodes join the layout again, which marks a saved
     view unsaved.
-  - A re-formed tree glides to its new places on `springs.glide` from
-    `lib/motion` (anime.js, no overshoot). A glide that is interrupted turns
+  - A re-formed tree glides to its new places on `springs.shift` from
+    `lib/motion`: anime.js, 220ms (DESIGN.md's structural band), critically
+    damped (stiffness 815.7, damping 57.1, mass 1), so it is about 99% of the
+    way there at 220ms and never overshoots. A glide that is interrupted turns
     from where each node is drawn. Under reduced motion the new places are
     shown at once.
 - **View:** `src/components/sessions/session-graph-canvas.tsx`, React Flow 12.
