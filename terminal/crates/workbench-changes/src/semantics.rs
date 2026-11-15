@@ -14,7 +14,7 @@ use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role, Semantic
 use crate::layout::{Row, banner_rows, banners, regions, rows};
 use crate::model::{Changes, Confirm, Focus, LogState, Mode, PanelState, ReadBody};
 use crate::status::{LISTED, RowKey, Section, letter, shown};
-use crate::text::visible;
+use theorem_workbench_text::visible::visible;
 
 /// The actions the panel registers, by id. Each is a registry action the core resolves
 /// for a person or the agent and delivers to the panel as `PanelMsg::Action`; see

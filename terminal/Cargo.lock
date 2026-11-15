@@ -2018,6 +2018,7 @@ dependencies = [
  "textwrap",
  "theorem-workbench-core",
  "theorem-workbench-dock",
+ "theorem-workbench-text",
  "tui-input",
  "unicode-width",
 ]
@@ -2160,6 +2161,7 @@ dependencies = [
  "serde_json",
  "theorem-workbench-core",
  "theorem-workbench-dock",
+ "theorem-workbench-text",
  "tui-input",
 ]
 
@@ -2178,6 +2180,7 @@ dependencies = [
  "theorem-workbench-dock",
  "theorem-workbench-text",
  "theorem-workbench-vt",
+ "unicode-segmentation",
 ]
 
 [[package]]

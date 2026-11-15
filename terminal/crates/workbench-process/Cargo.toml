@@ -10,6 +10,8 @@ theorem-workbench-core = { path = "../workbench-core" }
 theorem-workbench-vt = { path = "../workbench-vt" }
 # Word wrap by display cells (`layout::line_rows`), the one the editors use.
 theorem-workbench-text = { path = "../workbench-text" }
+# Whole grapheme clusters, for counting the cells of a cut row as the editors do.
+unicode-segmentation = "1.13"
 ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
 ratatui = { version = "0.30.1", default-features = false }
 serde = { version = "1", features = ["derive"] }

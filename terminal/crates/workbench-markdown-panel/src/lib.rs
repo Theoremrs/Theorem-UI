@@ -15,7 +15,6 @@ mod actions;
 mod links;
 mod panel;
 mod styles;
-mod visible;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;

@@ -19,6 +19,7 @@ pub mod layout;
 pub mod recovery;
 pub mod render;
 pub mod session;
+pub mod visible;
 
 pub use change::{ChangeError, ScalarChange, TextChange};
 pub use coords::{Coords, LineCol, Snap, Unit};

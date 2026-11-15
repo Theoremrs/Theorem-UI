@@ -35,7 +35,8 @@ use crate::diff::{Hunk, Parsed, parse};
 use crate::documents::{Landed, OpenDocument, Receipt};
 use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
 use crate::status::{Basis, Change, Groups, Head, RowKey, Section, is_folder, loss, shown};
-use crate::text::{Withheld, visible};
+use crate::text::Withheld;
+use theorem_workbench_text::visible::visible;
 
 /// A subject's comfortable length, and its most (donor `SUBJECT`).
 pub const SUBJECT: (usize, usize) = (50, 72);

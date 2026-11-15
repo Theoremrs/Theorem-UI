@@ -8,6 +8,8 @@ description = "The Changes (source control) model and view for the Theo Web term
 
 [dependencies]
 theorem-workbench-core = { path = "../workbench-core" }
+# The one `visible()` that spells out control and hidden characters.
+theorem-workbench-text = { path = "../workbench-text" }
 # KeyInput, Key and Mods in PanelMsg::Key.
 keybinds = "0.2"
 # The commit subject, each body line and the branch prompt: a text buffer with a cursor and

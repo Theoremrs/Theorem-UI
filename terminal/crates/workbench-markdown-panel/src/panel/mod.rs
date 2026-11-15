@@ -188,7 +188,7 @@ impl Doc {
 
     pub fn notice(&mut self, text: impl Into<String>, tone: Tone) {
         self.notice = Some(Notice {
-            text: crate::visible::visible(&text.into()),
+            text: theorem_workbench_text::visible::visible(&text.into()),
             tone,
         });
     }

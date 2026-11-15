@@ -8,6 +8,7 @@ use std::ops::Range;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use theorem_workbench_text::visible::hidden;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 pub(crate) fn width(text: &str) -> usize {
@@ -22,41 +23,6 @@ impl std::fmt::Debug for Withheld {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "<{} bytes withheld>", self.0)
     }
-}
-
-/// A character a terminal or a reader would act on or hide, beyond the control
-/// characters: bidirectional overrides and isolates, zero-width and joiner marks,
-/// the soft hyphen and the BOM. The standard library has no test for the Unicode
-/// format category, so the ranges are listed.
-pub(crate) fn hidden(c: char) -> bool {
-    matches!(
-        c,
-        '\u{ad}'
-            | '\u{61c}'
-            | '\u{180e}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{2028}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}'
-            | '\u{feff}'
-            | '\u{fff9}'..='\u{fffb}'
-    )
-}
-
-/// `text` for a line of words (a reason, a banner, a node's name): every control
-/// or hidden character is spelled out as `\u{..}`, so what is shown is what is there.
-pub(crate) fn visible(text: &str) -> String {
-    if !text.chars().any(|c| c.is_control() || hidden(c)) {
-        return text.to_owned();
-    }
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_control() || hidden(c) {
-            out.push_str(&format!("\\u{{{:x}}}", u32::from(c)));
-        } else {
-            out.push(c);
-        }
-    }
-    out
 }
 
 /// A text a cell can hold: tabs become spaces, other control characters a mark.

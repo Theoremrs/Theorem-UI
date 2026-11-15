@@ -19,9 +19,9 @@
 //! host sent without its two status letters is kept in its own group and never guessed
 //! into another. A path is a string, so the donor's non-UTF-8 octal escapes are not needed.
 
-use crate::text::hidden;
 use serde::{Deserialize, Serialize};
 use theorem_workbench_core::completion::{BranchState, RepoState, ScmChange, ScmStatus};
+use theorem_workbench_text::visible::hidden;
 
 /// The most files a section lists. The donor draws every row each frame and so caps it.
 pub const LISTED: usize = 500;

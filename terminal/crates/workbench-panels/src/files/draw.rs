@@ -9,8 +9,8 @@ use theorem_workbench_core::semantics::{Node, NodeId, Role};
 use theorem_workbench_core::{Theme, ViewCtx};
 
 use super::tree::{NoteState, Row, Tone};
-use super::visible::visible;
 use super::{Edit, FilesPanel, Mode};
+use theorem_workbench_text::visible::visible;
 
 /// Write `text` from `x`, stopping at `limit`; returns the next free column.
 ///

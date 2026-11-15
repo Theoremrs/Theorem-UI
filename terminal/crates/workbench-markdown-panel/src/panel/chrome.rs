@@ -224,7 +224,7 @@ impl MarkdownPanel {
         let d = self.doc()?;
         let make = |text: String, tone, buttons, conflict| {
             Some(Strip {
-                text: crate::visible::visible(&text),
+                text: theorem_workbench_text::visible::visible(&text),
                 tone,
                 buttons,
                 conflict,
@@ -604,7 +604,7 @@ impl MarkdownPanel {
     }
 
     fn status_flags(&self, d: &Doc, local: Option<(&str, bool)>) -> (String, bool) {
-        let mut s = crate::visible::visible(&self.path);
+        let mut s = theorem_workbench_text::visible::visible(&self.path);
         let mut attention = false;
         let mut flag = |text: String, warn: bool| {
             s.push_str(&format!(" [{text}]"));
@@ -837,7 +837,7 @@ impl MarkdownPanel {
     }
 
     fn message_lines(&self) -> Vec<(String, Tone)> {
-        let vis = crate::visible::visible;
+        let vis = theorem_workbench_text::visible::visible;
         let path = (vis(&self.path), Tone::Info);
         match &self.phase {
             Phase::Waiting if self.path.is_empty() => vec![
@@ -949,7 +949,7 @@ impl MarkdownPanel {
         let mut root = Node::new(
             "markdown",
             Role::Document,
-            &crate::visible::visible(&self.path),
+            &theorem_workbench_text::visible::visible(&self.path),
             area,
         );
         root.binding = self.resource();

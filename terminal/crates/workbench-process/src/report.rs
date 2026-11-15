@@ -6,13 +6,12 @@
 //! lease role, and nothing here reads it as an action. Every character of it
 //! is hostile: control and bidirectional characters are spelled out, rows are
 //! bounded, and the terminal grid never changes size because of it.
-//!
-//! `visible` below is a fourth copy of the helper the changes, markdown and
-//! files panels each keep `pub(crate)` in their own crates: none is exported,
-//! and this crate depends on none of those panels. Promote one to
-//! `theorem-workbench-text` and delete the copies when that crate may change.
 
 use theorem_workbench_core::host::{ProgramReport, ProgramState, ProgramStatus};
+
+use theorem_workbench_text::coords::grapheme_cells;
+use theorem_workbench_text::visible::visible;
+use unicode_segmentation::UnicodeSegmentation;
 
 use crate::bound::Bound;
 use crate::wrap::wrap;
@@ -25,36 +24,6 @@ pub(crate) const DESCRIPTION_LIMIT: usize = 4096;
 /// The most scalars a chooser row shows of a report.
 const COMPACT_LIMIT: usize = 120;
 const MORE: &str = "(more)";
-
-/// A character a terminal or a reader would act on or hide, beyond the
-/// control characters: bidirectional overrides and isolates, zero-width and
-/// joiner marks, the soft hyphen and the BOM.
-fn hidden(c: char) -> bool {
-    matches!(
-        c,
-        '\u{ad}'
-            | '\u{61c}'
-            | '\u{180e}'
-            | '\u{200b}'..='\u{200f}'
-            | '\u{2028}'..='\u{202e}'
-            | '\u{2060}'..='\u{206f}'
-            | '\u{feff}'
-            | '\u{fff9}'..='\u{fffb}'
-    )
-}
-
-/// `text` with every control or hidden character spelled out as `\u{..}`.
-pub(crate) fn visible(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for c in text.chars() {
-        if c.is_control() || hidden(c) {
-            out.push_str(&format!("\\u{{{:x}}}", u32::from(c)));
-        } else {
-            out.push(c);
-        }
-    }
-    out
-}
 
 fn state_word(state: ProgramState) -> &'static str {
     match state {
@@ -160,13 +129,15 @@ pub(crate) fn rows(text: &str, width: u16, max_rows: u16) -> Vec<String> {
         let room = usize::from(width).saturating_sub(MORE.len() + 1);
         let mut kept = String::new();
         let mut used = 0usize;
-        for c in last.chars() {
-            let w = if c.is_ascii() { 1 } else { 2 };
+        // By display cells and whole grapheme clusters, as the editors count
+        // them: a combining mark takes none, a wide character two.
+        for g in last.graphemes(true) {
+            let w = grapheme_cells(g, 0, 4);
             if used + w > room {
                 break;
             }
             used += w;
-            kept.push(c);
+            kept.push_str(g);
         }
         *last = if kept.is_empty() {
             MORE.to_owned()
@@ -209,14 +180,9 @@ pub(crate) fn band(
 
 #[cfg(test)]
 mod tests {
-    use super::{cut, rows, visible};
-
-    #[test]
-    fn controls_and_bidi_are_spelled_out() {
-        assert_eq!(visible("a\x1b[2Jb"), "a\\u{1b}[2Jb");
-        assert_eq!(visible("\u{202e}x\n"), "\\u{202e}x\\u{a}");
-        assert_eq!(visible("plain"), "plain");
-    }
+    use super::{cut, rows};
+    use theorem_workbench_text::coords::grapheme_cells;
+    use unicode_segmentation::UnicodeSegmentation;
 
     #[test]
     fn a_cut_text_ends_in_the_marker_and_stays_within_the_bound() {
@@ -224,6 +190,32 @@ mod tests {
         assert_eq!(c.chars().count(), 50);
         assert!(c.ends_with("(more)"));
         assert_eq!(cut("short", 50), "short");
+    }
+
+    fn cells(row: &str) -> usize {
+        row.graphemes(true).map(|g| grapheme_cells(g, 0, 4)).sum()
+    }
+
+    #[test]
+    fn a_cut_row_is_counted_in_display_cells_not_characters() {
+        // Narrow non-ASCII letters and a combining mark take one cell (none).
+        let narrow = "\u{e9}t\u{e9} \u{e9}t\u{e9} e\u{301}e\u{301}e\u{301} \u{e9}t\u{e9} \u{e9}t\u{e9} e\u{301}e\u{301}e\u{301}";
+        let r = rows(narrow, 14, 1);
+        assert!(r[0].ends_with("(more)"), "{r:?}");
+        assert!(cells(&r[0]) <= 14, "{r:?}");
+        assert!(
+            r[0].starts_with("\u{e9}t\u{e9} \u{e9}t\u{e9}"),
+            "narrow letters were counted as two cells: {r:?}"
+        );
+        // A wide character takes two, and is never split to fit.
+        let wide = "\u{65e5}\u{672c}\u{8a9e}\u{306e}\u{30d5}\u{30a1}\u{30a4}\u{30eb}\u{540d}\u{524d}\u{3092}\u{66f8}\u{304f}";
+        for width in 8..16u16 {
+            let r = rows(wide, width, 1);
+            assert!(cells(&r[0]) <= usize::from(width), "{width}: {r:?}");
+            assert!(r[0].ends_with("(more)"), "{r:?}");
+        }
+        let r = rows(wide, 11, 1);
+        assert_eq!(r[0], "\u{65e5}\u{672c} (more)", "{r:?}");
     }
 
     #[test]

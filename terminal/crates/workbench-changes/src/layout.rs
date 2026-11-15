@@ -19,7 +19,8 @@ use crate::model::{
     ReadKind, SUBJECT,
 };
 use crate::status::{Change, LISTED, RowKey, Section};
-use crate::text::{visible, width, wrap};
+use crate::text::{width, wrap};
+use theorem_workbench_text::visible::visible;
 
 /// How a line of text is toned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
