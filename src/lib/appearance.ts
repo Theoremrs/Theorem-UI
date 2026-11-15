@@ -159,7 +159,8 @@ const presetDefaults = {
       ...flatMaterials,
       canvas: 'paper',
       navigation: 'glass',
-      composer: 'paper',
+      // The composer and the side panel are the same frost over the Life field.
+      composer: 'glass',
       'user-message': 'paper',
     },
     life: true,

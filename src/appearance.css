@@ -6,7 +6,9 @@
   --appearance-scale-content: 1;
   --appearance-scale-ui: 1;
   --appearance-scale-code: 1;
-  --appearance-prose-line-height: calc(1.5rem * var(--appearance-scale-content));
+  --appearance-prose-line-height: calc(
+    1.5rem * var(--appearance-scale-content)
+  );
   --recipe-prose: 400 1rem / 1.5 var(--font-sans);
   --recipe-composer-content: var(--recipe-prose);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
@@ -152,15 +154,17 @@
   color: var(--appearance-ink);
 }
 
-/* Let the established glass renderer paint the whole composer. Interior paint
-   hid the refraction and replaced the renderer's stronger ink. Custom palettes
-   retain their validated solid reading planes; forced colors below still wins. */
+/* Let the established glass renderer paint the whole composer, and the side
+   panel's frost (styles.css glass-panel) paint the whole panel, so the Life
+   field shows through both. Interior paint hid the refraction and replaced the
+   renderer's stronger ink. Custom palettes retain their validated solid
+   reading planes; forced colors below still wins. */
 :where(
     :root:not([data-palette='custom'])
-      .appearance-composer-box:is(
-        [data-material='glass'],
-        [data-material='liquid']
-      )
+      :is(
+        .appearance-composer-box,
+        .appearance-surface[data-surface-role='navigation']
+      ):is([data-material='glass'], [data-material='liquid'])
   )
   .appearance-reading-plane {
   background: transparent;
@@ -224,12 +228,32 @@
 .appearance-surface[data-surface-role='user-message'] {
   border-color: var(--line-control);
 }
+/* The composer is focused nearly always (it takes focus on load and after
+   every send), so its focus edge is a quiet step up from rest rather than the
+   accent: the caret is the focus mark, and an accent ring that never goes
+   away reads as decoration. Glass and liquid keep their own edges (styles.css
+   --glass-edge-focus). Forced colors still draws Highlight below. */
 .appearance-surface[data-surface-role='composer']:focus-within {
-  border-color: var(--focus);
+  border-color: color-mix(in oklab, var(--line-control), var(--ink) 22%);
 }
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ) {
+  border-color: var(--glass-edge);
+}
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ):focus-within {
+  border-color: var(--glass-edge-focus);
+}
+/* The person's turn is a soft fill with no outline: the reply beside it is
+   the heavier of the two. The border stays, transparent, so the box keeps its
+   size and forced colors can still draw it. */
 .appearance-surface[data-surface-role='user-message'] {
   background: var(--surface-user-message);
-  border-color: var(--line-separator);
+  border-color: transparent;
   border-radius: var(--appearance-radius-message);
   font: var(--recipe-prose);
 }
@@ -592,7 +616,9 @@
 }
 .appearance-composer-toolbar [data-slot='combobox-trigger'] {
   min-inline-size: var(--appearance-control-min);
-  max-inline-size: min(12rem, 100%);
+  /* Room for a default model's name and its "(default)" note; it still
+     shrinks first when the composer is narrow. */
+  max-inline-size: min(15rem, 100%);
 }
 .appearance-composer-toolbar > :is(div) {
   max-inline-size: 100%;
@@ -605,11 +631,17 @@
 }
 
 /* Non-composer roles have opaque paint. Texture, frost and liquid accents
-   affect their perimeter without putting text over a changing backdrop. */
-.appearance-surface:is(
-  [data-surface-role='navigation'],
-  [data-surface-role='user-message']
-),
+   affect their perimeter without putting text over a changing backdrop. The
+   side panel is the exception: as glass it is the sheet frosted over the Life
+   field (styles.css glass-panel draws its veil), unless a custom palette asks
+   for its validated solid fill. */
+.appearance-surface[data-surface-role='user-message'],
+.appearance-surface[data-surface-role='navigation']:not(
+    [data-material='glass'],
+    [data-material='liquid']
+  ),
+:root[data-palette='custom']
+  .appearance-surface[data-surface-role='navigation'],
 [data-appearance-part='popover'],
 [data-appearance-part='tooltip'],
 [data-appearance-part='artifact'],
@@ -623,10 +655,7 @@
   position: relative;
   z-index: 1;
 }
-.appearance-surface:is(
-    [data-surface-role='navigation'],
-    [data-surface-role='user-message']
-  )[data-material='paper'],
+.appearance-surface[data-surface-role='navigation'][data-material='paper'],
 :root[data-material-popover='paper']
   :is([data-appearance-part='popover'], [data-appearance-part='tooltip']),
 :root[data-material-artifact='paper'] [data-appearance-part='artifact'],
@@ -699,7 +728,8 @@
 .appearance-composer-toolbar
   :is(.aui-composer-send, .appearance-destructive-action),
 .appearance-composer-toolbar
-  :is(.aui-composer-send, .appearance-destructive-action) * {
+  :is(.aui-composer-send, .appearance-destructive-action)
+  * {
   transition-property: transform, scale, rotate, translate, box-shadow;
 }
 .appearance-composer-toolbar .appearance-destructive-action {

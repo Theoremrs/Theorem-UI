@@ -294,7 +294,7 @@
   --color-separator: var(--line-separator);
   --color-control: var(--line-control);
   --color-redwood: var(--redwood);
-  --color-folder: var(--redwood);
+  --color-folder: var(--ink-muted);
   --color-folder-agent: var(--folder-agent);
   --color-redwood-hover: var(--redwood-hover);
   --color-redwood-pressed: var(--redwood-pressed);
@@ -1250,6 +1250,26 @@
     flex-shrink: 0;
     background-color: currentColor;
     mask: var(--icon-mask) center / contain no-repeat;
+  }
+
+  /* Optical size. Streamline's one-colour marks (icons.tsx masked) are drawn
+     to the edge of their 48px box, where the Noun, Lucide and message-bar
+     marks they sit beside keep about an eighth of the box clear. Measured at
+     16px: Streamline's ink ran 15.5-16px against 11-14.5px for its
+     neighbours, so Copy stood a third larger than Read aloud beside it. The
+     mask is inset to the others' margin, so a row of mixed marks is one size.
+     The coloured, layered marks (.rail-mark) only sit among their own family
+     and keep the full box. */
+  svg.icon-mask {
+    mask-size: 84%;
+  }
+
+  /* Lucide's stand-ins default to a 2-unit line, heavier than the Streamline
+     Light and Noun marks around them (the Gallery toggle carried twice the
+     ink of the Follow and Panels marks beside it). Where a caller chose a
+     weight it is 1.75, so that is every default-weight Lucide mark's weight. */
+  svg.lucide[stroke-width='2'] {
+    stroke-width: 1.75;
   }
 
   /* Without CSS masks (Servo 0.7) the mask would leave a solid square.

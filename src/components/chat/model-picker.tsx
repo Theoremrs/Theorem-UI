@@ -57,23 +57,46 @@ function pickerGroups(
   ]
 }
 
-function pickerSelection(selectedRef: string | undefined, byRef: ReadonlyMap<string, ModelOption>) {
-  return selectedRef ? (byRef.get(selectedRef) ?? modelStub(selectedRef)) : DEFAULT_ITEM
+function pickerSelection(
+  selectedRef: string | undefined,
+  byRef: ReadonlyMap<string, ModelOption>,
+) {
+  return selectedRef
+    ? (byRef.get(selectedRef) ?? modelStub(selectedRef))
+    : DEFAULT_ITEM
 }
 
-function pickerLabel(selected: ModelOption | undefined, defaultName: string | undefined) {
+/** The model's name, with "(default)" a step quieter when Theorem chose it. */
+function pickerLabel(
+  selected: ModelOption | undefined,
+  defaultName: string | undefined,
+) {
   if (selected?.ref) return selected.name
-  return defaultName ? `${defaultName} (default)` : selected?.name ?? 'Model'
+  if (!defaultName) return selected?.name ?? 'Model'
+  return (
+    <>
+      {defaultName}
+      <span className="text-ink-faint"> (default)</span>
+    </>
+  )
 }
 
-function PickerOption({ model, defaultName }: { model: ModelOption; defaultName?: string }) {
+function PickerOption({
+  model,
+  defaultName,
+}: {
+  model: ModelOption
+  defaultName?: string
+}) {
   return (
     <ComboboxItem value={model} className="py-1.5">
       <div className="flex items-center gap-2">
         <VendorMark vendor={model.vendor} />
         <span className="min-w-0 flex-1 truncate">{model.name}</span>
         {!model.ref && defaultName && (
-          <span className="min-w-0 truncate text-xs text-ink-muted">{defaultName}</span>
+          <span className="min-w-0 truncate text-xs text-ink-muted">
+            {defaultName}
+          </span>
         )}
         {model.contextLength && (
           <span className="shrink-0 text-xs text-ink-muted tabular-nums">
@@ -111,7 +134,9 @@ export function ModelPicker() {
   }, [pickIsGone, select])
   const selected = pickerSelection(selectedRef, byRef)
   // What Theorem's choice resolves to, so the person knows what an unpinned turn runs on.
-  const defaultName = list?.defaultRef ? byRef.get(list.defaultRef)?.name : undefined
+  const defaultName = list?.defaultRef
+    ? byRef.get(list.defaultRef)?.name
+    : undefined
 
   return (
     <Combobox<ModelOption>
@@ -126,12 +151,16 @@ export function ModelPicker() {
         aria-label="Model"
         data-appearance-recipe="ui.label"
         {...appearancePair('secondary', 'composer')}
-        className="flex h-8 max-w-48 min-w-0 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
+        className="flex h-8 max-w-60 min-w-0 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
       >
         <span className="truncate">{pickerLabel(selected, defaultName)}</span>
         <Icon.UpDown className="size-3.5 shrink-0" />
       </ComboboxTrigger>
-      <ComboboxPopup side="top" align="start" className="w-80 appearance-model-popup">
+      <ComboboxPopup
+        side="top"
+        align="start"
+        className="w-80 appearance-model-popup"
+      >
         <div className="border-b border-separator p-1.5">
           <ComboboxInput
             size="sm"
@@ -142,19 +171,31 @@ export function ModelPicker() {
             startAddon={<Icon.Search className="size-3.5" />}
           />
         </div>
-        {issue && <p role="alert" className="px-3 py-2 text-sm text-ink-muted">{issue}</p>}
+        {issue && (
+          <p role="alert" className="px-3 py-2 text-sm text-ink-muted">
+            {issue}
+          </p>
+        )}
         <ComboboxEmpty className="px-3 py-4 text-sm text-ink-muted not-empty:block hidden">
           No model matches.
         </ComboboxEmpty>
         <ComboboxList className="overflow-y-auto p-1">
           {(group: Group) => (
             <ComboboxGroup key={group.label} items={group.items}>
-              <ComboboxGroupLabel data-appearance-recipe="metadata" {...appearancePair('secondary', 'popover')} className="px-2 pt-1.5 pb-1 text-xs text-ink-muted">
+              <ComboboxGroupLabel
+                data-appearance-recipe="metadata"
+                {...appearancePair('secondary', 'popover')}
+                className="px-2 pt-1.5 pb-1 text-xs text-ink-muted"
+              >
                 {group.label}
               </ComboboxGroupLabel>
               <ComboboxCollection>
                 {(model: ModelOption) => (
-                  <PickerOption key={model.ref} model={model} defaultName={defaultName} />
+                  <PickerOption
+                    key={model.ref}
+                    model={model}
+                    defaultName={defaultName}
+                  />
                 )}
               </ComboboxCollection>
             </ComboboxGroup>

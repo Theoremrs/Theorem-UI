@@ -426,11 +426,11 @@ function ProjectNode({
         open={editingState}
         onOpenChange={setEditingState}
       />
-      {/* The project's new thread sits where a count would: the count is in the row's tooltip. */}
+      {/* The project's new thread sits where a count would: the count is in the row's tooltip. It shows under the pointer or keyboard, as Linear's and Claude's row actions do, so a list of projects is not a column of repeated buttons. */}
       <SidebarMenuAction
         aria-label={`New thread in ${project.title}`}
         title={`New thread in ${project.title}`}
-        className="top-0.5 text-ink-muted hover:bg-selected hover:text-ink"
+        className="top-0.5 text-ink-muted transition-opacity hover:bg-selected hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:opacity-0 pointer-coarse:opacity-100"
         onClick={() => onNewThread(project.projectId)}
       >
         <Icon.NewChat className="size-3.5" />
