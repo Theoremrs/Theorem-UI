@@ -17,7 +17,7 @@ use ratatui::{
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph},
 };
 use ratzilla::{
     event::{KeyCode, KeyEvent},
@@ -44,6 +44,8 @@ const COLUMNS_EXPANDED: usize = 3;
 const ART_W: f32 = 128.0;
 const ART_H: f32 = 84.0;
 const DESCRIPTION_LINES: usize = 3;
+/// Below this the header is compacted so the gallery keeps rows to scroll.
+const MIN_GALLERY_ROWS: u16 = 6;
 
 /// One card as the controller projects it.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
@@ -89,6 +91,10 @@ struct View {
     entries: Vec<Entry>,
     /// The card to select when the view arrives, if the controller has one.
     selected: Option<String>,
+    /// The host's minimum target in CSS px (24, or 44 for a coarse pointer).
+    /// Controls drawn on separate rows are spaced so their grown targets do
+    /// not overlap.
+    target_px: f32,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
@@ -170,6 +176,13 @@ pub(crate) struct Cabinet {
     epoch: u64,
     sent_epoch: u64,
     on_geometry: js_sys::Function,
+}
+
+/// Rows between the centres of two stacked controls so that neither grown
+/// target (`target_px`, 24 when unset) reaches into the other.
+pub(crate) fn target_pitch(target_px: f32, cell_h: f32) -> u16 {
+    let target = if target_px > 0.0 { target_px } else { 24.0 };
+    ((target / cell_h.max(1.0)).ceil() as u16).max(1)
 }
 
 /// §4.2: n = max(1, min(n_max, floor((W + g) / (m + g)))).
@@ -357,10 +370,21 @@ impl Cabinet {
         self.scroll = (i32::from(self.scroll) + rows).clamp(0, i32::from(max)) as u16;
     }
 
-    fn draw_header(&self, frame: &mut Frame, area: Rect, controls: &mut Vec<Control>) -> u16 {
+    /// Draws the header and returns its height in rows. `compact` drops the
+    /// scope and the spacer rows, for a window too short to show a card
+    /// beneath the full header.
+    fn draw_header(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        controls: &mut Vec<Control>,
+        compact: bool,
+    ) -> u16 {
         let p = palette();
         let (x, w) = (area.x, area.width);
-        let mut y = area.y + 1;
+        let pitch = target_pitch(self.view.target_px, self.cell.1);
+        let spacer = u16::from(!compact);
+        let mut y = area.y + spacer;
         let line = |frame: &mut Frame, y: u16, left: Line, right: Line| {
             let rw = right.width() as u16;
             frame.render_widget(
@@ -391,16 +415,18 @@ impl Cabinet {
             },
         );
         y += 1;
-        for scope in wrap(&self.view.scope, w as usize, 2) {
-            line(
-                frame,
-                y,
-                Line::styled(scope, Style::new().fg(p.muted)),
-                Line::default(),
-            );
+        if !compact {
+            for scope in wrap(&self.view.scope, w as usize, 2) {
+                line(
+                    frame,
+                    y,
+                    Line::styled(scope, Style::new().fg(p.muted)),
+                    Line::default(),
+                );
+                y += 1;
+            }
             y += 1;
         }
-        y += 1;
         // The preference control: drawn here, operated by the host's select.
         let pref = format!(" {} ▾ ", self.view.preference_label);
         let pref_w = pref.width() as u16;
@@ -427,7 +453,8 @@ impl Cabinet {
                 },
             });
         }
-        y += 1;
+        // The search input's row is two below; more when the targets need it.
+        y += 1 + pitch.saturating_sub(2);
         // Search: a bordered field; the host's input sits in its inner row.
         let search = Rect::new(x, y, w, 3);
         frame.render_widget(
@@ -456,7 +483,7 @@ impl Cabinet {
                 },
             });
         }
-        y += 4;
+        y += 3 + spacer + pitch.saturating_sub(3);
         // Filters, then the one ordering this collection has.
         // Filters wrap onto further rows rather than drop off the edge; the
         // ordering takes the first row's right end when there is room.
@@ -477,9 +504,10 @@ impl Cabinet {
             } else {
                 w
             };
+            // A wrapped row sits a full target below the one above it.
             if cx > x && cx + lw > x + room {
                 cx = x;
-                y += 1;
+                y += pitch;
             }
             frame.render_widget(
                 Paragraph::new(Span::styled(
@@ -520,7 +548,7 @@ impl Cabinet {
             y += 1;
         }
         if status.is_empty() {
-            y += 1;
+            y += spacer;
         }
         y - area.y
     }
@@ -668,8 +696,19 @@ impl Cabinet {
         let pad = ((PAD_PX / cw).round() as u16).max(1);
         let inner = Rect::new(pad, 0, area.width.saturating_sub(pad * 2), area.height);
         let mut controls = Vec::new();
-        let header_rows = self.draw_header(frame, inner, &mut controls);
-        let footer_rows = if area.height > 24 { 3 } else { 2 };
+        let mut header_rows = self.draw_header(frame, inner, &mut controls, false);
+        let mut footer_rows = if area.height > 24 { 3 } else { 2 };
+        // A short window (or large text) must still leave room for cards:
+        // redraw a compact header and a one-line footer rather than let the
+        // gallery reach zero rows.
+        if area.height.saturating_sub(header_rows + footer_rows) < MIN_GALLERY_ROWS {
+            let drawn = Rect::new(0, 0, area.width, header_rows.min(area.height));
+            frame.render_widget(Clear, drawn);
+            frame.render_widget(Block::new().style(Style::new().bg(p.bg).fg(p.ink)), drawn);
+            controls.clear();
+            header_rows = self.draw_header(frame, inner, &mut controls, true);
+            footer_rows = 2;
+        }
         let gallery = Rect::new(
             inner.x,
             header_rows,
@@ -890,6 +929,17 @@ mod tests {
             columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 7.5), 2),
             2
         );
+    }
+
+    #[test]
+    fn stacked_targets_get_their_own_rows() {
+        // 17 px cells: a 24 px target needs two rows, a 44 px one three.
+        assert_eq!(target_pitch(24.0, 17.0), 2);
+        assert_eq!(target_pitch(44.0, 17.0), 3);
+        // At 200 % text a cell already exceeds the fine-pointer minimum.
+        assert_eq!(target_pitch(24.0, 30.0), 1);
+        // Unset falls back to the fine-pointer minimum.
+        assert_eq!(target_pitch(0.0, 17.0), 2);
     }
 
     #[test]

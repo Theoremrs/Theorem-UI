@@ -124,6 +124,13 @@ messages and upload content paths, without switching the foreground thread
 - State vocabulary: a failed load says the collection is unavailable, never
   empty; a refresh failure keeps the last collection and says so; a failed
   preview names why and that the original still opens.
+- Short windows: when the full header would leave the gallery under six
+  rows, the header redraws compact (no scope, no spacer rows), so a short
+  window at 200 % text still shows a card (`evidence/g14-short-200.png`).
+  Stacked controls, wrapped filter rows included, sit a full target apart, so
+  grown targets never overlap: filter rows 25 px apart with 25 px targets
+  (fine), 50 px apart with 44 px targets (coarse) (`g14-wrap-*.png`,
+  `scripts/targets.cjs`).
 
 ## Acceptance report (A01–A40)
 

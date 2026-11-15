@@ -476,6 +476,8 @@ export function Cabinet({
         ? 'Loading more…'
         : ''
 
+  const coarse = useMediaQuery('(pointer: coarse)', { noSsr: true })
+  const target = coarse ? 44 : 24
   useEffect(() => {
     if (!handle) return
     handle.set_view(
@@ -495,6 +497,7 @@ export function Cabinet({
         query,
         expanded,
         status,
+        targetPx: target,
         footerNote:
           mode === 'pixel'
             ? 'Pixel previews are representations. Opening reveals the original.'
@@ -602,8 +605,6 @@ export function Cabinet({
     observer.observe(element)
     return () => observer.disconnect()
   }, [])
-  const coarse = useMediaQuery('(pointer: coarse)', { noSsr: true })
-  const target = coarse ? 44 : 24
   const searchArea = control('search')
   const prefArea = control('preference')
 
