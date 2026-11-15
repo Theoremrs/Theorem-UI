@@ -6,7 +6,7 @@ const out = __dirname + '/evidence/'
 async function openCabinet(page) {
   await page.goto(`${BASE}/projects/${projectId}`, { waitUntil: 'networkidle' })
   if (!(await page.locator('[data-artifact-cabinet]').count()))
-    await page.getByRole('button', { name: /^Cabinet$/ }).first().click()
+    await page.getByRole('button', { name: /^Gallery$/ }).first().click()
   await page.waitForSelector('[data-artifact-cabinet]')
   await page.waitForFunction(() => document.querySelectorAll('[data-cabinet-card]').length >= 1, null, { timeout: 30000 })
   await page.waitForTimeout(1500)

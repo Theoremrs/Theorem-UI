@@ -128,9 +128,60 @@ messages and upload content paths, without switching the foreground thread
   rows, the header redraws compact (no scope, no spacer rows), so a short
   window at 200 % text still shows a card (`evidence/g14-short-200.png`).
   Stacked controls, wrapped filter rows included, sit a full target apart, so
-  grown targets never overlap: filter rows 25 px apart with 25 px targets
-  (fine), 50 px apart with 44 px targets (coarse) (`g14-wrap-*.png`,
+  grown targets never overlap: filter rows 28 px apart with 28 px targets
+  (fine), 56 px apart with 44 px targets (coarse), remeasured at the 1.5
+  line pitch (`g14-wrap-*.png`,
   `scripts/targets.cjs`).
+
+## Gallery: typography and spacing (design-oracles pass)
+
+The owner renamed the cabinet **Gallery** in everything a person reads (tab,
+title, drawer title, width handle, search label, dock tooltip, original-view
+caption). Code identifiers, files and `data-artifact-cabinet` keep the
+cabinet name. The grid stays Ratatui in JetBrains Mono, which CDP confirms is
+the rendered face (`JetBrainsMono` 808 glyphs, DejaVu Sans Mono 2 for one
+missing symbol).
+
+A rendered-web audit (`evidence/oracles/`: policy, before/after observations
+and reports, Playwright Chromium 1536 × 1000, DPR 1) found that one size and
+weight carried everything, the rows sat at 1.36 of the text size, the header
+groups were not spaced by kind, and the tab strip used a different size from
+the grid and started 3 px off the content edge. Changes:
+
+- Line pitch 1.5: `src/components/terminal/cell-grid.css` sets
+  `line-height: 1.5` on the gallery's and the agent terminal's grid `pre`s.
+  Ratzilla's cell probe is one of them, so the measured cell (18.75 px) and
+  the drawn rows agree and box frames still join.
+- Weight scale from the two style hooks Ratatui has: BOLD renders 600 (title,
+  every card title, the active filter, the `/` key glyph) and, in the gallery
+  only, DIM renders 300 at full opacity (the Previews label, card ordinals)
+  so muted contrast holds. Card titles are semibold whether or not selected;
+  selection changes colour only, so nothing reflows when it moves.
+- Spacing hierarchy in rows: within a group 0, related controls 1 (search to
+  filters), between groups 2 (identity, controls, gallery). The preview
+  preference shares the filter row when it fits; the separate mode row and
+  the `Recent ↓` label are gone, and the scope says `newest first` (order is
+  unchanged). Compact mode drops the scope and the gaps.
+- The tab strip uses the grid's size and starts its first label on the
+  gallery's content inset (`--gallery-inset`, set from the measured cell).
+- Card descriptions drop Markdown markers (`plainText` in `catalog.ts`).
+- Fixed a card frame whose top border stopped one column short of its right
+  side (pre-existing; `a_card_frame_closes_on_its_own_corner`).
+
+| Check                                       | Before               | After         |
+| ------------------------------------------- | -------------------- | ------------- |
+| TYP-01 host recipe (tab vs grid)            | fail (12 vs 12.5 px) | pass          |
+| TYP-01 mono face                            | pass                 | pass          |
+| TYP-01 code size vs 13 px recipe            | review (0.96)        | review (0.96) |
+| TYP-01 line pitch 1.45–1.6                  | review (1.36)        | pass (1.50)   |
+| COL-01 ink, heading, muted, accent, control | pass                 | pass          |
+| COL-02 frame lines (decorative)             | review (1.53)        | review (1.53) |
+| SPC-01 header rhythm (whole rows, ordered)  | review               | pass          |
+| SPC-03 tab and content share a start edge   | fail (3 px)          | pass          |
+
+Weights by character: before 400 × 738, 700 × 15; after 300 × 12,
+400 × 656, 600 × 47. The SPC-01 token set is "whole rows", so v2 of the policy
+lists 18.75 px multiples where v1 listed 17 px ones; both are kept.
 
 ## Acceptance report (A01–A40)
 

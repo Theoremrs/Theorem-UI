@@ -3,7 +3,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { ProjectOutput } from '@/lib/theorem/organization'
 import { previewNote } from './previews'
-import { toEntry } from './catalog'
+import { plainText, toEntry } from './catalog'
 
 const output = (o: Partial<ProjectOutput>): ProjectOutput => ({
   outputId: 'x',
@@ -89,5 +89,23 @@ describe('preview notes', () => {
     })
     expect(note).toContain('the content could not be read')
     expect(note).toContain('original can still be opened')
+  })
+})
+
+describe('card descriptions', () => {
+  test('Markdown markers are dropped and the words kept', () => {
+    expect(
+      plainText(
+        '# Field notes: Headland\n\n- **Tide** at `06:10`\n> calm\n\n| Site | Depth |\n| --- | --- |\n| North | 4 m |\n\nSee [the map](x.png).',
+      ),
+    ).toBe(
+      'Field notes: Headland Tide at 06:10 calm Site · Depth North · 4 m See the map.',
+    )
+  })
+
+  test('prose passes through unchanged', () => {
+    expect(plainText('A survey of the headland at dusk.')).toBe(
+      'A survey of the headland at dusk.',
+    )
   })
 })

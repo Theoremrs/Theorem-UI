@@ -44,6 +44,8 @@ const COLUMNS_EXPANDED: usize = 3;
 const ART_W: f32 = 128.0;
 const ART_H: f32 = 84.0;
 const DESCRIPTION_LINES: usize = 3;
+/// Blank rows between header groups (identity, controls, gallery).
+const GROUP_ROWS: u16 = 2;
 /// Below this the header is compacted so the gallery keeps rows to scroll.
 const MIN_GALLERY_ROWS: u16 = 6;
 
@@ -77,8 +79,6 @@ struct View {
     /// "06 objects", "24 of 80 loaded", "loaded only": the controller words
     /// exact, loaded and unknown counts.
     count: String,
-    /// "pixel interpretations" | "original thumbnails"
-    mode_label: String,
     /// The preference control's text: "Theme default", "Pixel", "Original".
     preference_label: String,
     filters: Vec<Filter>,
@@ -370,8 +370,13 @@ impl Cabinet {
         self.scroll = (i32::from(self.scroll) + rows).clamp(0, i32::from(max)) as u16;
     }
 
-    /// Draws the header and returns its height in rows. `compact` drops the
-    /// scope and the spacer rows, for a window too short to show a card
+    /// Draws the header and returns its height in rows.
+    ///
+    /// Three groups, separated by a spacing hierarchy measured in rows:
+    /// lines within a group touch (0), related controls sit one row apart
+    /// (search and filters), and groups sit two rows apart (identity,
+    /// controls, gallery). `compact` keeps the title, search and filters but
+    /// drops the scope and the gaps, for a window too short to show a card
     /// beneath the full header.
     fn draw_header(
         &self,
@@ -383,8 +388,8 @@ impl Cabinet {
         let p = palette();
         let (x, w) = (area.x, area.width);
         let pitch = target_pitch(self.view.target_px, self.cell.1);
-        let spacer = u16::from(!compact);
-        let mut y = area.y + spacer;
+        let (group, related) = if compact { (0, 0) } else { (GROUP_ROWS, 1) };
+        let mut y = area.y + u16::from(!compact);
         let line = |frame: &mut Frame, y: u16, left: Line, right: Line| {
             let rw = right.width() as u16;
             frame.render_widget(
@@ -395,6 +400,7 @@ impl Cabinet {
                 frame.render_widget(Paragraph::new(right), Rect::new(x + w - rw, y, rw, 1));
             }
         };
+        // Identity: the title (semibold) with its count, then the scope.
         // The count gives way to the title when both do not fit; the footer
         // repeats it.
         let title_w = 2 + self.view.title.width() + 1 + self.view.count.width();
@@ -425,37 +431,10 @@ impl Cabinet {
                 );
                 y += 1;
             }
-            y += 1;
         }
-        // The preference control: drawn here, operated by the host's select.
-        let pref = format!(" {} ▾ ", self.view.preference_label);
-        let pref_w = pref.width() as u16;
-        line(
-            frame,
-            y,
-            Line::from(vec![
-                Span::styled("■ ", Style::new().fg(p.accent)),
-                Span::styled(self.view.mode_label.clone(), Style::new().fg(p.muted)),
-            ]),
-            Line::from(vec![
-                Span::styled("Previews ", Style::new().fg(p.muted)),
-                Span::styled(pref, Style::new().fg(p.ink).bg(p.raised)),
-            ]),
-        );
-        if pref_w < w {
-            controls.push(Control {
-                id: "preference".into(),
-                area: Area {
-                    x: (x + w - pref_w).into(),
-                    y: y.into(),
-                    w: pref_w,
-                    h: 1,
-                },
-            });
-        }
-        // The search input's row is two below; more when the targets need it.
-        y += 1 + pitch.saturating_sub(2);
-        // Search: a bordered field; the host's input sits in its inner row.
+        y += group;
+        // Controls: search, then the filters with the preview preference.
+        // Search is a bordered field; the host's input sits in its inner row.
         let search = Rect::new(x, y, w, 3);
         frame.render_widget(
             Block::new()
@@ -470,7 +449,10 @@ impl Cabinet {
         );
         if w > 8 {
             frame.render_widget(
-                Paragraph::new(Span::styled("/", Style::new().fg(p.muted))),
+                Paragraph::new(Span::styled(
+                    "/",
+                    Style::new().fg(p.muted).add_modifier(Modifier::BOLD),
+                )),
                 Rect::new(x + w - 3, y + 1, 1, 1),
             );
             controls.push(Control {
@@ -483,13 +465,11 @@ impl Cabinet {
                 },
             });
         }
-        y += 3 + spacer + pitch.saturating_sub(3);
-        // Filters, then the one ordering this collection has.
-        // Filters wrap onto further rows rather than drop off the edge; the
-        // ordering takes the first row's right end when there is room.
-        let order = "Recent ↓";
-        let ow = order.width() as u16;
-        let first_y = y;
+        // The filter row's centre must sit a full target below the input's.
+        y += 3 + related.max(pitch.saturating_sub(3));
+        // Filters wrap onto further rows, a full target apart, rather than
+        // drop off the edge. The active one is semibold, accented and
+        // bracketed, so it reads without colour.
         let mut cx = x;
         for filter in &self.view.filters {
             let active = filter.id == self.view.filter;
@@ -499,13 +479,7 @@ impl Cabinet {
                 filter.label.clone()
             };
             let lw = label.width() as u16;
-            let room = if y == first_y {
-                w.saturating_sub(ow + 2)
-            } else {
-                w
-            };
-            // A wrapped row sits a full target below the one above it.
-            if cx > x && cx + lw > x + room {
+            if cx > x && cx + lw > x + w {
                 cx = x;
                 y += pitch;
             }
@@ -513,9 +487,9 @@ impl Cabinet {
                 Paragraph::new(Span::styled(
                     label,
                     if active {
-                        Style::new().fg(p.accent)
+                        Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
                     } else {
-                        Style::new().fg(p.muted)
+                        Style::new().fg(p.ink)
                     },
                 )),
                 Rect::new(cx, y, lw, 1),
@@ -531,24 +505,50 @@ impl Cabinet {
             });
             cx += lw + 2;
         }
-        if ow < w {
+        // The preview preference: drawn here, operated by the host's select.
+        // It takes the right end of the last filter row when there is room,
+        // otherwise a row of its own a full target below.
+        let label = "Previews ";
+        let pref = format!(" {} ▾ ", self.view.preference_label);
+        let (label_w, pref_w) = (label.width() as u16, pref.width() as u16);
+        if label_w + pref_w < w {
+            if cx + 2 + label_w + pref_w > x + w {
+                y += pitch;
+            }
+            let px = x + w - pref_w;
             frame.render_widget(
-                Paragraph::new(Span::styled(order, Style::new().fg(p.muted))),
-                Rect::new(x + w - ow, first_y, ow, 1),
+                Paragraph::new(Line::from(vec![
+                    Span::styled(label, Style::new().fg(p.muted).add_modifier(Modifier::DIM)),
+                    Span::styled(pref, Style::new().fg(p.ink).bg(p.raised)),
+                ])),
+                Rect::new(px - label_w, y, label_w + pref_w, 1),
             );
+            controls.push(Control {
+                id: "preference".into(),
+                area: Area {
+                    x: px.into(),
+                    y: y.into(),
+                    w: pref_w,
+                    h: 1,
+                },
+            });
         }
         y += 1;
-        // The status (loading, unavailable, stale) gets up to two rows.
+        // The status (loading, unavailable, stale) gets up to two rows inside
+        // the gap before the gallery.
         let status = wrap(&self.view.status, w as usize, 2);
-        for row in &status {
-            frame.render_widget(
-                Paragraph::new(Span::styled(row.clone(), Style::new().fg(p.warning))),
-                Rect::new(x, y, w, 1),
-            );
-            y += 1;
-        }
         if status.is_empty() {
-            y += spacer;
+            y += group;
+        } else {
+            y += u16::from(!compact);
+            for row in &status {
+                frame.render_widget(
+                    Paragraph::new(Span::styled(row.clone(), Style::new().fg(p.warning))),
+                    Rect::new(x, y, w, 1),
+                );
+                y += 1;
+            }
+            y += u16::from(!compact);
         }
         y - area.y
     }
@@ -617,14 +617,14 @@ impl Cabinet {
         let w = card.width as usize;
         let number = format!("{:02}", index + 1);
         let top_left = if selected { "┌▸" } else { "┌─" };
-        let fill = w.saturating_sub(top_left.width() + number.width() + 3);
+        let fill = w.saturating_sub(top_left.width() + number.width() + "─┐".width());
         put(
             frame,
             card.y,
             Line::from(vec![
                 Span::styled(top_left, border),
                 Span::styled("─".repeat(fill), border),
-                Span::styled(number, Style::new().fg(p.muted)),
+                Span::styled(number, Style::new().fg(p.muted).add_modifier(Modifier::DIM)),
                 Span::styled("─┐", border),
             ]),
         );
@@ -665,10 +665,12 @@ impl Cabinet {
             Line::styled(format!("└{}┘", "─".repeat(w.saturating_sub(2))), border),
         );
         let mut y = card.y + i32::from(preview_rows);
+        // Every title is semibold; selection changes colour only, so the
+        // title does not reflow when the selection moves.
         let title_style = if selected {
             Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
         } else {
-            Style::new().fg(p.bright)
+            Style::new().fg(p.bright).add_modifier(Modifier::BOLD)
         };
         put(
             frame,
@@ -940,6 +942,106 @@ mod tests {
         assert_eq!(target_pitch(24.0, 30.0), 1);
         // Unset falls back to the fine-pointer minimum.
         assert_eq!(target_pitch(0.0, 17.0), 2);
+    }
+
+    /// Draws the gallery at 456 × 1000 px with 7.5 × 18.75 px cells.
+    fn render(view: serde_json::Value) -> ratatui::buffer::Buffer {
+        use wasm_bindgen::JsCast;
+        let mut cabinet = Cabinet::new(wasm_bindgen::JsValue::NULL.unchecked_into());
+        cabinet.cell = (7.5, 18.75);
+        cabinet.set_view(&view.to_string()).unwrap();
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(60, 53)).unwrap();
+        terminal
+            .draw(|frame| {
+                cabinet.layout_and_draw(frame);
+            })
+            .unwrap();
+        terminal.backend().buffer().clone()
+    }
+
+    fn sample() -> serde_json::Value {
+        serde_json::json!({
+            "title": "Gallery",
+            "scope": "Headland survey · every session · newest first",
+            "count": "02 objects",
+            "preferenceLabel": "Default",
+            "filters": [
+                {"id": "all", "label": "All"},
+                {"id": "docs", "label": "Docs"},
+                {"id": "images", "label": "Images"},
+                {"id": "apps", "label": "Apps"}
+            ],
+            "filter": "all",
+            "targetPx": 24,
+            "entries": [
+                {"key": "a", "revision": "1", "title": "headland-at-dusk.png", "meta": "Image", "description": "At dusk.", "state": "ready"},
+                {"key": "b", "revision": "1", "title": "field-notes.md", "meta": "Document", "description": "Notes.", "state": "ready"}
+            ]
+        })
+    }
+
+    fn rows(buffer: &ratatui::buffer::Buffer) -> Vec<String> {
+        (0..buffer.area.height)
+            .map(|y| {
+                (0..buffer.area.width)
+                    .map(|x| buffer[(x, y)].symbol().to_owned())
+                    .collect::<String>()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_card_frame_closes_on_its_own_corner() {
+        let rows = rows(&render(sample()));
+        let top = rows
+            .iter()
+            .position(|r| r.contains("01─┐"))
+            .expect("first card's top border");
+        let corner = rows[top].chars().position(|c| c == '┐').unwrap();
+        let side = rows[top + 1].chars().position(|c| c == '│').unwrap();
+        let right_side = rows[top + 1]
+            .chars()
+            .skip(side + 1)
+            .position(|c| c == '│')
+            .unwrap()
+            + side
+            + 1;
+        assert_eq!(
+            corner, right_side,
+            "top-right corner sits over the right side"
+        );
+    }
+
+    #[test]
+    fn header_groups_sit_two_rows_apart_and_related_controls_one() {
+        let rows = rows(&render(sample()));
+        let find = |pred: &dyn Fn(&str) -> bool| rows.iter().position(|r| pred(r)).unwrap();
+        let title = find(&|r| r.contains("Gallery"));
+        let scope = find(&|r| r.contains("newest first"));
+        let search = find(&|r| r.contains('⌕'));
+        let filters = find(&|r| r.contains("[All]"));
+        let gallery = find(&|r| r.contains("01─┐"));
+        assert_eq!(scope - title, 1, "title and scope touch");
+        assert_eq!(
+            search - 1 - scope - 1,
+            2,
+            "two rows between identity and search"
+        );
+        assert_eq!(
+            filters - (search + 1) - 1,
+            1,
+            "one row between search and filters"
+        );
+        assert!(
+            rows[filters].contains("Previews"),
+            "the preference shares the filter row"
+        );
+        assert_eq!(
+            gallery - filters - 1,
+            2,
+            "two rows between controls and gallery"
+        );
     }
 
     #[test]

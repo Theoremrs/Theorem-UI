@@ -27,6 +27,7 @@ import { leftoversOf, snapshotOf } from './terminal-transcript'
 import type { Approval, Outgoing } from './terminal-transcript'
 import type * as TerminalWasm from '@/terminal-wasm/theorem_terminal'
 import type { TerminalRoles } from './terminal-roles'
+import './cell-grid.css'
 
 /** The terminal runs agent work: coding execution, not the front conversation. */
 const TURN_OPTIONS: TurnOptions = { executionMode: 'coding' }
@@ -591,6 +592,7 @@ export function TerminalScreen({
         onWheel={(event) => handle.current?.scroll(event.deltaY > 0 ? 3 : -3)}
         onFocus={() => handle.current?.set_focused(true)}
         onBlur={() => handle.current?.set_focused(false)}
+        data-terminal-grid=""
         className="relative min-h-0 flex-1 cursor-default overflow-hidden bg-term font-mono text-[12.5px] whitespace-pre text-term-ink outline-none"
       />
       {/* Over the header bar's last columns, which the terminal leaves

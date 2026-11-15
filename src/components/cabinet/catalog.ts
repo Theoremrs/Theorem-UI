@@ -185,3 +185,28 @@ export async function readLatestArtifact(
     }
   return latest
 }
+
+/**
+ * A card describes its artifact in prose, so Markdown markers (headings,
+ * list bullets, quotes, emphasis, table rules and pipes, fences) are dropped
+ * and the words kept.
+ */
+export function plainText(text: string): string {
+  return text
+    .split('\n')
+    .map((line) =>
+      line
+        .replace(/^\s{0,3}(#{1,6}\s+|>\s?|[-*+]\s+|\d+[.)]\s+)/, '')
+        .replace(
+          /^\s*(```.*|\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)*\|?)\s*$/,
+          '',
+        )
+        .replace(/^\s*\|\s*|\s*\|\s*$/g, '')
+        .replace(/\s*\|\s*/g, ' · ')
+        .replace(/(\*\*|__|`)(.+?)\1/g, '$2')
+        .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+        .trim(),
+    )
+    .filter(Boolean)
+    .join(' ')
+}

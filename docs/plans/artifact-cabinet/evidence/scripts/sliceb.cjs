@@ -28,7 +28,7 @@ const log = (...a) => console.log(...a)
   await page.keyboard.type(DRAFT)
 
   // Open the cabinet through the UI.
-  const toggle = page.getByRole('button', { name: /^Cabinet$/ }).first()
+  const toggle = page.getByRole('button', { name: /^Gallery$/ }).first()
   await toggle.click()
   await page.waitForSelector('[data-artifact-cabinet]')
   await page.waitForFunction(

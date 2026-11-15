@@ -6,7 +6,7 @@ const BASE = 'http://localhost:3000'
 const log = (...a) => console.log(...a)
 async function openCabinet(page) {
   await page.goto(`${BASE}/projects/${projectId}`, { waitUntil: 'networkidle' })
-  if (!(await page.locator('[data-artifact-cabinet]').count())) await page.getByRole('button', { name: /^Cabinet$/ }).first().click()
+  if (!(await page.locator('[data-artifact-cabinet]').count())) await page.getByRole('button', { name: /^Gallery$/ }).first().click()
   await page.waitForSelector('[data-artifact-cabinet]')
   await page.waitForFunction(() => document.querySelectorAll('[data-cabinet-card]').length >= 1, null, { timeout: 30000 })
   await page.waitForTimeout(1500)
@@ -24,7 +24,7 @@ async function openCabinet(page) {
   await page.goto(`${BASE}/projects/${projectId}`, { waitUntil: 'networkidle' })
   const t0 = await page.evaluate(() => performance.now())
   await page.evaluate(() => (window.__long = []))
-  await page.getByRole('button', { name: /^Cabinet$/ }).first().click()
+  await page.getByRole('button', { name: /^Gallery$/ }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('[data-artifact-cabinet] canvas').length >= 2)
   await page.waitForFunction(() => [...document.querySelectorAll('[data-artifact-cabinet] canvas')].every((c) => c.width > 0))
   const t1 = await page.evaluate(() => performance.now())
@@ -34,7 +34,7 @@ async function openCabinet(page) {
   await page.getByRole('tab', { name: 'Terminal' }).click()
   await page.waitForTimeout(500)
   const w0 = await page.evaluate(() => performance.now())
-  await page.getByRole('tab', { name: 'Cabinet' }).click()
+  await page.getByRole('tab', { name: 'Gallery' }).click()
   await page.waitForFunction(() => [...document.querySelectorAll('[data-artifact-cabinet] canvas')].length >= 2 && [...document.querySelectorAll('[data-artifact-cabinet] canvas')].every((c) => c.width > 0))
   log('A38 warm reopen ms', Math.round((await page.evaluate(() => performance.now())) - w0))
   const mem = await page.evaluate(() => performance.memory && Math.round(performance.memory.usedJSHeapSize / 1e6))
@@ -63,13 +63,13 @@ async function openCabinet(page) {
   })
   const termBefore = await term()
   const sessionsBefore = await page.evaluate(() => performance.getEntriesByType('resource').filter((r) => /threads$|sessions|\/runs/.test(r.name) && r.initiatorType === 'fetch').length)
-  await page.getByRole('tab', { name: 'Cabinet' }).click(); await page.waitForTimeout(1200)
+  await page.getByRole('tab', { name: 'Gallery' }).click(); await page.waitForTimeout(1200)
   await page.getByRole('tab', { name: 'Terminal' }).click(); await page.waitForTimeout(800)
   const termAfter = await term()
   log('A11', JSON.stringify({ sameScreen: termBefore === termAfter, sample: termBefore.slice(0, 120) }))
 
   // A27: the original image in the dialog is the source bytes, unwashed.
-  await page.getByRole('tab', { name: 'Cabinet' }).click(); await page.waitForTimeout(1200)
+  await page.getByRole('tab', { name: 'Gallery' }).click(); await page.waitForTimeout(1200)
   await page.locator('[data-cabinet-card*="8fb305"]').click()
   await page.locator('[data-cabinet-original] img').waitFor()
   const px = await page.evaluate(async () => {

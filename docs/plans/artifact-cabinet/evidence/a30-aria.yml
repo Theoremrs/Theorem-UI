@@ -1,4 +1,4 @@
-- searchbox "Search the artifact cabinet"
+- searchbox "Search the gallery"
 - combobox "Preview style":
   - option "Theme default (original)" [selected]
   - option "Pixel"
