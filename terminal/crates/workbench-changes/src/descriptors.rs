@@ -172,8 +172,11 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
     ]
 }
 
-/// Adds the panel's workflow actions to the registry's "changes" kind. Call it on the
+/// Adds the panel's workflow actions to the registry's "changes" kind, and registers the
+/// "delegation" kind (see [`crate::DelegationPanel`]). Call it on the
 /// registry before building the `Model`; the kind comes from the core's builtin registry.
 pub fn extend_registry(registry: &mut Registry) -> Result<(), RegistryError> {
-    registry.extend_actions(&PanelKind::new(crate::panel::KIND), descriptors())
+    registry.extend_actions(&PanelKind::new(crate::panel::KIND), descriptors())?;
+    // The read-only delegation panel is a kind of its own, so it is registered here too.
+    registry.register(crate::delegation::descriptor())
 }

@@ -8,6 +8,7 @@
 
 mod diagnostics;
 mod field;
+mod replace;
 mod run;
 mod search;
 mod styles;

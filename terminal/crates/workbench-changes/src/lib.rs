@@ -10,6 +10,7 @@
 //! and ELY-Open-Source/Ely-GPUI-Components at 294a8323c08a06bd8e7782d16acee43b6bb0c5eb
 //! (both MIT; see `LICENSE-ELY` and the header of each file).
 
+mod delegation;
 mod descriptors;
 mod diff;
 mod documents;
@@ -24,6 +25,10 @@ mod styles;
 mod text;
 mod view_state;
 
+pub use delegation::{
+    DelegationPanel, MAX_LINE_CHARS, MAX_LISTED, MAX_SIDE_BYTES, MAX_SIDE_LINES,
+    actions as delegation_actions, descriptor as delegation_descriptor,
+};
 pub use descriptors::{descriptors, extend_registry};
 pub use diff::{
     DiffLine, Hunk, LineKind, ParseError, Parsed, mark_words, pair_places, pairs, parse,

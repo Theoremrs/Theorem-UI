@@ -52,6 +52,7 @@ pub fn register(factories: &mut PanelFactories) {
     factories.register(KIND, |state, _version| {
         Box::new(ChangesPanel::restore(state))
     });
+    crate::delegation::register(factories);
 }
 
 /// The panel. Public so a host can build one directly; the workbench builds it through

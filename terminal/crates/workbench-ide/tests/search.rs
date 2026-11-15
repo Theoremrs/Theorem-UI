@@ -96,6 +96,7 @@ fn typing_a_query_and_pressing_enter_sends_one_search_with_the_toggles_and_globs
     rig.mods(Key::Char('r'), Mods::ALT);
     rig.mods(Key::Char('w'), Mods::ALT);
     rig.key(Key::Tab);
+    rig.key(Key::Tab);
     rig.typed("src/**/*.rs, docs/**");
     rig.key(Key::Tab);
     rig.typed("**/target/**");
@@ -471,7 +472,7 @@ fn a_match_that_starts_inside_a_character_marks_the_whole_character_in_every_enc
             Theme::plain().with_search(Style::new().bg(Color::Green), Style::new().bg(Color::Blue));
         let buf = rig.cells(&theme, 80, 24);
         assert_eq!(
-            marked(&buf, row_with(&buf, "y"), Color::Green),
+            marked(&buf, row_with(&buf, "x\u{65E5}y"), Color::Green),
             "\u{65E5}",
             "{encoding:?}"
         );
@@ -497,6 +498,7 @@ fn the_query_toggles_and_scroll_are_saved_and_restoring_them_starts_no_search() 
     let mut rig = rig();
     rig.typed("needle");
     rig.mods(Key::Char('c'), Mods::ALT);
+    rig.key(Key::Tab);
     rig.key(Key::Tab);
     rig.typed("src/**");
     let saved = rig.panel().serialize();
@@ -624,8 +626,8 @@ fn search_at_80_by_24_draws_the_form_the_status_and_the_grouped_results() {
     assert_eq!(screen.len(), 24);
     assert!(screen[0].starts_with("Find"), "{screen:?}");
     assert!(screen[0].contains("needle") && screen[0].contains("[.*]"));
-    assert!(screen[3].contains("3 matches in 2 files.") && screen[3].contains("[Search]"));
-    assert!(screen[4].starts_with("src/lib.rs (2)"));
+    assert!(screen[4].contains("3 matches in 2 files.") && screen[4].contains("[Search]"));
+    assert!(screen[5].starts_with("src/lib.rs (2)"));
     assert!(screen.iter().any(|l| l.contains("a   needle b")));
 }
 

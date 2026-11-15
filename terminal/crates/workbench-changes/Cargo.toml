@@ -20,6 +20,9 @@ serde_json = "1"
 ratatui = { version = "0.30.1", default-features = false }
 serde = { version = "1", features = ["derive"] }
 unicode-width = "0.2"
+# The rows a diff line wraps to are `theorem_workbench_text::layout::line_rows`, which takes a
+# rope. Same version and features as workbench-text.
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
 # Words wrapped on spaces to the pane, as the editor does for its notices. Same version and
 # features as workbench-editor, so the lock gains no package.
 textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }

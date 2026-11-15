@@ -7,6 +7,10 @@ description = "The Search, Diagnostics and Run output panels of the Theo Web ter
 
 [dependencies]
 theorem-workbench-core = { path = "../workbench-core" }
+# Untrusted text spelled out before it is shown (`visible`) and the line and UTF-16 coordinates
+# a replace is checked and placed with. The text crate depends on nothing of ours.
+theorem-workbench-text = { path = "../workbench-text" }
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
 ratatui = { version = "0.30.1", default-features = false }
 # The query, include and exclude fields and the run's name and command: a text buffer with a
 # cursor and word motions, as the Files and Changes panels use.

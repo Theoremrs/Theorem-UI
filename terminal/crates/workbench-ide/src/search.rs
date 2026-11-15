@@ -33,13 +33,17 @@ use theorem_workbench_core::{
     Button, Ctx, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, TabLabel,
     ViewCtx,
 };
+use theorem_workbench_text::visible::visible;
 
 use crate::field::{Field, Look};
+use crate::replace::{self, Group, Plan, Row, Run, Scope, Summary};
 use crate::styles::Styles;
 use crate::text;
 
 pub const KIND: &str = "search";
 pub const CAPABILITY: &str = "search.query";
+/// What the replace writes through: the documents owner.
+const DOCUMENTS: &str = "documents";
 
 /// The action ids of the panel, as `descriptors` registers them.
 pub mod actions {
@@ -53,6 +57,16 @@ pub mod actions {
     pub const CURSOR_DOWN: &str = "search.cursor-down";
     pub const OPEN_RESULT: &str = "search.open-result";
     pub const CLEAR: &str = "search.clear";
+    /// Ask to replace every match of the finished search. The person only.
+    pub const REPLACE_ALL: &str = "search.replaceAll";
+    /// Ask to replace the matches in the selected result's file. The person only.
+    pub const REPLACE_IN_FILE: &str = "search.replaceInFile";
+    /// Answer yes to the question the two above ask. The person only.
+    pub const REPLACE_CONFIRM: &str = "search.replaceConfirm";
+    /// Stop after the file in hand, or call off the question.
+    pub const REPLACE_STOP: &str = "search.replaceStop";
+    /// Put the summary of a finished replace away.
+    pub const REPLACE_DISMISS: &str = "search.replaceDismiss";
 }
 
 /// Files the host scans per call. The owner pages through the rest on its own.
@@ -66,6 +80,7 @@ const PAGE: isize = 10;
 #[serde(default, rename_all = "camelCase")]
 struct ViewState {
     query: String,
+    replacement: String,
     regex: bool,
     case_sensitive: bool,
     whole_word: bool,
@@ -84,6 +99,7 @@ pub fn register(factories: &mut PanelFactories) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Focus {
     Query,
+    Replace,
     Include,
     Exclude,
     Results,
@@ -122,20 +138,6 @@ enum Status {
     Told(Told),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Row {
-    line: u32,
-    text: String,
-    matches: Vec<(u32, u32)>,
-    text_offset: u32,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct Group {
-    path: String,
-    rows: Vec<Row>,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Item {
     Header(usize),
@@ -146,6 +148,9 @@ enum Item {
 struct Layout {
     query: Rect,
     chips: [Rect; 3],
+    replace: Rect,
+    /// `[All]` and `[File]` at the end of the replace row.
+    replace_chips: [Rect; 2],
     include: Rect,
     exclude: Rect,
     status: Rect,
@@ -159,9 +164,19 @@ const CHIPS: [(&str, &str); 3] = [
     ("[W]", "Whole word"),
 ];
 const CHIP_WIDTH: u16 = 8;
+const REPLACE_CHIPS: [(&str, &str); 2] = [
+    ("[All]", "Replace all matches"),
+    ("[File]", "Replace in the selected file"),
+];
 
 /// The rows the status line may take when it is long.
 const STATUS_ROWS: usize = 3;
+/// And while a replace is asked, running or summarised: its words are the ones to read.
+const STATUS_ROWS_REPLACE: usize = 5;
+/// Columns of one line of a replace preview before it wraps onto an indented line.
+const WRAP_INDENT: &str = "    ";
+/// The most characters of one line a preview shows.
+const PREVIEW_CHARS: usize = 1_000;
 
 fn layout(area: Rect, status_rows: u16) -> Layout {
     let at = |row: u16, x: u16, w: u16| {
@@ -185,21 +200,32 @@ fn layout(area: Rect, status_rows: u16) -> Layout {
         chips[i] = at(0, x, glyph.len() as u16);
         x += glyph.len() as u16;
     }
-    let list_top = (3 + status_rows).min(area.height);
+    let list_top = (4 + status_rows).min(area.height);
+    let rest = area.width.saturating_sub(label);
+    let rchips_w: u16 = REPLACE_CHIPS.iter().map(|c| c.0.len() as u16).sum::<u16>() + 1;
+    let replace_w = rest.saturating_sub(rchips_w).max(1);
+    let mut replace_chips = [Rect::default(); 2];
+    let mut rx = label + replace_w + 1;
+    for (i, (glyph, _)) in REPLACE_CHIPS.iter().enumerate() {
+        replace_chips[i] = at(1, rx, glyph.len() as u16);
+        rx += glyph.len() as u16;
+    }
     Layout {
         query: at(0, label, query_w),
         chips,
-        include: at(1, label, area.width.saturating_sub(label)),
-        exclude: at(2, label, area.width.saturating_sub(label)),
+        replace: at(1, label, replace_w),
+        replace_chips,
+        include: at(2, label, rest),
+        exclude: at(3, label, rest),
         status: {
             let w = area.width.saturating_sub(CHIP_WIDTH + 1);
-            let mut r = at(3, 0, w);
+            let mut r = at(4, 0, w);
             r.height = status_rows
-                .min(area.height.saturating_sub(3))
+                .min(area.height.saturating_sub(4))
                 .max(u16::from(r.width > 0));
             r
         },
-        chip: at(3, area.width.saturating_sub(CHIP_WIDTH), CHIP_WIDTH),
+        chip: at(4, area.width.saturating_sub(CHIP_WIDTH), CHIP_WIDTH),
         list: Rect::new(
             area.x,
             area.y + list_top,
@@ -209,8 +235,31 @@ fn layout(area: Rect, status_rows: u16) -> Layout {
     }
 }
 
+/// Where a replace stands.
+enum Job {
+    Idle,
+    /// The question: how many matches in how many files, and the preview.
+    Confirm(Plan),
+    Running(Box<Run>),
+    /// How it ended. Stays until dismissed.
+    Done(Summary),
+}
+
+impl Job {
+    /// The keys belong to the question or the run, not to the fields.
+    fn modal(&self) -> bool {
+        matches!(self, Job::Confirm(_) | Job::Running(_))
+    }
+}
+
 pub struct SearchPanel {
     query: Field,
+    replacement: Field,
+    job: Job,
+    /// The first logical line of the replace preview, progress or summary on screen.
+    job_top: usize,
+    docs_ok: bool,
+    runs: u64,
     include: Field,
     exclude: Field,
     regex: bool,
@@ -248,6 +297,11 @@ impl SearchPanel {
         let saved: ViewState = serde_json::from_value(state.clone()).unwrap_or_default();
         let mut panel = Self {
             query: Field::new(&saved.query),
+            replacement: Field::new(&saved.replacement),
+            job: Job::Idle,
+            job_top: 0,
+            docs_ok: true,
+            runs: 0,
             include: Field::new(&saved.include.join(", ")),
             exclude: Field::new(&saved.exclude.join(", ")),
             regex: saved.regex,
@@ -296,7 +350,12 @@ impl SearchPanel {
     fn lay(&self, area: Rect, caps_ok: bool) -> Layout {
         let width = area.width.saturating_sub(CHIP_WIDTH + 1) as usize;
         let words = self.status_text(caps_ok).0;
-        let rows = text::wrap(&words, width, STATUS_ROWS).len().max(1);
+        let cap = if matches!(self.job, Job::Idle) {
+            STATUS_ROWS
+        } else {
+            STATUS_ROWS_REPLACE
+        };
+        let rows = text::wrap(&words, width, cap).len().max(1);
         layout(area, rows as u16)
     }
 
@@ -436,6 +495,12 @@ impl SearchPanel {
             self.shown = None;
             self.status = Status::Idle;
             self.notice = None;
+            match &mut self.job {
+                // The run keeps the workspace it began in; what is in flight is answered.
+                Job::Running(run) => run.stop("The workspace changed, so the run stopped."),
+                Job::Confirm(_) => self.job = Job::Idle,
+                _ => {}
+            }
         }
         self.identity = identity.clone();
     }
@@ -446,6 +511,13 @@ impl SearchPanel {
 
     fn run(&mut self, cx: &mut Ctx) {
         self.notice = None;
+        if !matches!(self.job, Job::Idle) {
+            self.notice = Some(
+                "A replace is open: answer it or dismiss it (Esc) before searching again."
+                    .to_owned(),
+            );
+            return;
+        }
         if !self.caps_ok {
             self.notice = Some(self.unavailable());
             return;
@@ -495,6 +567,11 @@ impl SearchPanel {
     // ---- what comes back ---------------------------------------------------------------
 
     fn on_completion(&mut self, completion: Completion) {
+        if let Job::Running(run) = &mut self.job
+            && run.on_completion(&completion)
+        {
+            return;
+        }
         if let Some(id) = self.cancels.remove(&completion.effect) {
             self.notice = match completion.outcome {
                 Outcome::Accepted => None,
@@ -682,7 +759,13 @@ impl SearchPanel {
     }
 
     fn next_focus(&mut self, back: bool) {
-        let order = [Focus::Query, Focus::Include, Focus::Exclude, Focus::Results];
+        let order = [
+            Focus::Query,
+            Focus::Replace,
+            Focus::Include,
+            Focus::Exclude,
+            Focus::Results,
+        ];
         let at = order.iter().position(|f| *f == self.focus).unwrap_or(0);
         let next = if back {
             (at + order.len() - 1) % order.len()
@@ -693,8 +776,12 @@ impl SearchPanel {
     }
 
     fn field_mut(&mut self) -> Option<&mut Field> {
+        if self.job.modal() {
+            return None;
+        }
         match self.focus {
             Focus::Query => Some(&mut self.query),
+            Focus::Replace => Some(&mut self.replacement),
             Focus::Include => Some(&mut self.include),
             Focus::Exclude => Some(&mut self.exclude),
             Focus::Results => None,
@@ -718,6 +805,11 @@ impl SearchPanel {
                 self.move_by(1)
             }
             actions::OPEN_RESULT => self.open(cx),
+            actions::REPLACE_ALL => self.ask(false),
+            actions::REPLACE_IN_FILE => self.ask(true),
+            actions::REPLACE_CONFIRM => self.confirm(),
+            actions::REPLACE_STOP => self.stop_job(),
+            actions::REPLACE_DISMISS => self.dismiss(),
             actions::CLEAR => {
                 self.leave_search(Some(cx));
                 self.clear_results();
@@ -731,13 +823,24 @@ impl SearchPanel {
 
     fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let mods = key.mods();
+        if self.job.modal() {
+            return self.on_job_key(&key);
+        }
+        if replace_in_file_chord(&key) {
+            return self.ask(true);
+        }
         if let Some(which) = toggle_chord(&key) {
             return self.toggle(which);
         }
         match key.key() {
             Key::Tab => return self.next_focus(mods.contains(Mods::SHIFT)),
+            Key::Enter if matches!(self.job, Job::Done(_)) && self.focus == Focus::Results => {
+                return self.dismiss();
+            }
             Key::Enter if self.focus == Focus::Results => return self.open(cx),
+            Key::Enter if self.focus == Focus::Replace => return self.ask(false),
             Key::Enter => return self.run(cx),
+            Key::Esc if matches!(self.job, Job::Done(_)) => return self.dismiss(),
             Key::Esc => {
                 if self.running() {
                     return self.cancel(cx);
@@ -754,6 +857,9 @@ impl SearchPanel {
             _ => {}
         }
         if self.focus == Focus::Results {
+            if !matches!(self.job, Job::Idle) {
+                return self.scroll_job(&key);
+            }
             let page = (self.list_height().max(2) - 1) as isize;
             match key.key() {
                 Key::Up => self.move_by(-1),
@@ -791,6 +897,10 @@ impl SearchPanel {
                 && y == i32::from(r.y - self.area.y)
         };
         match p.kind {
+            PointerKind::Wheel { dy, .. } if !matches!(self.job, Job::Idle) => {
+                let max = self.overlay().len().saturating_sub(1) as isize;
+                self.job_top = (self.job_top as isize + isize::from(dy) * 3).clamp(0, max) as usize;
+            }
             PointerKind::Wheel { dy, .. } => {
                 let h = self.list_height();
                 let max = self.flat.len().saturating_sub(h);
@@ -798,8 +908,17 @@ impl SearchPanel {
                 self.top = next as usize;
             }
             PointerKind::Down(Button::Left) => {
+                if self.job.modal() {
+                    return;
+                }
+                for (i, chip) in lay.replace_chips.iter().enumerate() {
+                    if inside(*chip) {
+                        return self.ask(i == 1);
+                    }
+                }
                 for (focus, rect) in [
                     (Focus::Query, lay.query),
+                    (Focus::Replace, lay.replace),
                     (Focus::Include, lay.include),
                     (Focus::Exclude, lay.exclude),
                 ] {
@@ -826,6 +945,9 @@ impl SearchPanel {
                     };
                 }
                 let list = lay.list;
+                if !matches!(self.job, Job::Idle) {
+                    return;
+                }
                 if list.height > 0
                     && y >= i32::from(list.y - self.area.y)
                     && y < i32::from(list.y - self.area.y + list.height)
@@ -847,6 +969,312 @@ impl SearchPanel {
             }
             _ => {}
         }
+    }
+
+    // ---- replace --------------------------------------------------------------------------
+
+    /// Why a replace cannot be asked for now, in words.
+    fn replace_blocker(&self, in_file: bool) -> Option<String> {
+        if !self.docs_ok {
+            return Some(
+                "Replace is unavailable: this host does not report the \"documents\" capability."
+                    .to_owned(),
+            );
+        }
+        match &self.job {
+            Job::Idle => {}
+            Job::Confirm(_) => return Some("A replace is waiting for your answer.".to_owned()),
+            Job::Running(_) => return Some("A replace is already running.".to_owned()),
+            Job::Done(_) => {
+                return Some("Dismiss the summary of the last replace first (Esc).".to_owned());
+            }
+        }
+        if !self.identity.is_set() {
+            return Some("No workspace is open yet.".to_owned());
+        }
+        match &self.status {
+            Status::Complete => {}
+            Status::Idle => {
+                return Some("Search first: replace works on a finished search.".to_owned());
+            }
+            Status::Starting(_) | Status::Reading(_) => {
+                return Some(
+                    "The search is still running. Replace waits for it to finish.".to_owned(),
+                );
+            }
+            Status::Cancelled | Status::Told(_) => {
+                return Some(
+                    "The search did not finish, so its matches are partial. Search again first."
+                        .to_owned(),
+                );
+            }
+        }
+        if self.truncated {
+            return Some(format!(
+                "Only the first {MAX_ROWS} rows of the search are kept, so replacing all would miss matches. Narrow the search."
+            ));
+        }
+        if self
+            .shown
+            .as_ref()
+            .is_some_and(|shown| *shown != self.spec())
+        {
+            return Some(
+                "The query or its options changed since the search. Press Enter in Find to search again."
+                    .to_owned(),
+            );
+        }
+        if self.groups.is_empty() {
+            return Some("There are no results to replace.".to_owned());
+        }
+        if in_file && self.sel.is_none() {
+            return Some("Select a result first.".to_owned());
+        }
+        None
+    }
+
+    /// Asks the question: how many matches in how many files, with the preview.
+    fn ask(&mut self, in_file: bool) {
+        self.notice = None;
+        if let Some(why) = self.replace_blocker(in_file) {
+            self.notice = Some(why);
+            return;
+        }
+        let scope = match (in_file, self.sel) {
+            (true, Some((g, _))) => Scope::File(self.groups[g].path.clone()),
+            _ => Scope::All,
+        };
+        let plan = Plan::new(&self.groups, scope, self.replacement.value());
+        if plan.matches == 0 {
+            self.notice =
+                Some("There is nothing to replace: no result has a marked match.".to_owned());
+            return;
+        }
+        self.job = Job::Confirm(plan);
+        self.job_top = 0;
+    }
+
+    fn confirm(&mut self) {
+        if !matches!(self.job, Job::Confirm(_)) {
+            self.notice = Some("There is nothing to confirm.".to_owned());
+            return;
+        }
+        let Job::Confirm(plan) = std::mem::replace(&mut self.job, Job::Idle) else {
+            return;
+        };
+        self.runs += 1;
+        self.job = Job::Running(Box::new(Run::new(
+            plan,
+            &self.identity.workspace,
+            self.identity.generation,
+            self.runs,
+        )));
+        self.job_top = 0;
+    }
+
+    /// Stops after the file in hand, calls off the question, or puts a summary away.
+    fn stop_job(&mut self) {
+        match &mut self.job {
+            Job::Running(run) => run.stop("Stopped by you; what was done stays done."),
+            Job::Confirm(_) => self.job = Job::Idle,
+            Job::Done(_) => self.job = Job::Idle,
+            Job::Idle => self.notice = Some("No replace is running.".to_owned()),
+        }
+        self.settle_job();
+    }
+
+    fn dismiss(&mut self) {
+        match self.job {
+            Job::Confirm(_) | Job::Done(_) => {
+                self.job = Job::Idle;
+                self.job_top = 0;
+            }
+            Job::Running(_) => self.notice = Some("A replace is running; Esc stops it.".to_owned()),
+            Job::Idle => self.notice = Some("There is no replace summary to dismiss.".to_owned()),
+        }
+    }
+
+    /// A run that has nothing left to do becomes its summary.
+    fn settle_job(&mut self) {
+        if matches!(&self.job, Job::Running(run) if run.finished())
+            && let Job::Running(run) = std::mem::replace(&mut self.job, Job::Idle)
+        {
+            self.job = Job::Done((*run).summary());
+            self.job_top = 0;
+        }
+    }
+
+    /// Sends what the run owes. Every message that may start work comes here.
+    fn drive(&mut self, cx: &mut Ctx, tick: bool) {
+        if let Job::Running(run) = &mut self.job {
+            if tick {
+                run.tick();
+            }
+            run.pump(cx);
+        }
+        self.settle_job();
+    }
+
+    fn on_job_key(&mut self, key: &KeyInput) {
+        match key.key() {
+            Key::Enter => {
+                if matches!(self.job, Job::Confirm(_)) {
+                    self.confirm();
+                }
+            }
+            Key::Esc => self.stop_job(),
+            _ => self.scroll_job(key),
+        }
+    }
+
+    fn scroll_job(&mut self, key: &KeyInput) {
+        let h = self.list_height().max(2) as isize;
+        let delta = match key.key() {
+            Key::Up => -1,
+            Key::Down => 1,
+            Key::PageUp => -(h - 1),
+            Key::PageDown => h - 1,
+            Key::Home => -1_000_000,
+            Key::End => 1_000_000,
+            _ => return,
+        };
+        let max = self.overlay().len().saturating_sub(1) as isize;
+        self.job_top = (self.job_top as isize + delta).clamp(0, max) as usize;
+    }
+
+    /// The preview, the progress or the summary, as lines to wrap and draw.
+    fn overlay(&self) -> Vec<(Tone, String)> {
+        let mut out = vec![];
+        match &self.job {
+            Job::Idle => {}
+            Job::Confirm(plan) => {
+                let gutter = (self.max_line.max(100).ilog10() + 1) as usize;
+                for file in &plan.files {
+                    let n: usize = file.rows.iter().map(|r| r.matches.len()).sum();
+                    out.push((
+                        Tone::Bold,
+                        format!(
+                            "{} ({n} {})",
+                            visible(&file.path),
+                            replace::plural(n, "match", "matches")
+                        ),
+                    ));
+                    for row in &file.rows {
+                        let cut = if row.text_offset > 0 { "\u{2026}" } else { "" };
+                        let before = preview_line(&row.text);
+                        let after = preview_line(&replace::replaced(row, &plan.replacement));
+                        out.push((
+                            Tone::Before,
+                            format!("{:>gutter$} - {cut}{before}", row.line),
+                        ));
+                        out.push((Tone::After, format!("{:>gutter$} + {cut}{after}", "")));
+                    }
+                }
+            }
+            Job::Running(run) => {
+                for e in run.entries() {
+                    out.push((Tone::of(&e.result), e.words()));
+                }
+                if let Some(g) = run.current() {
+                    let (k, m) = run.position();
+                    out.push((
+                        Tone::Bold,
+                        format!("Now, file {k} of {m}: {}", visible(&g.path)),
+                    ));
+                    let after = m.saturating_sub(k);
+                    if after > 0 {
+                        out.push((
+                            Tone::Muted,
+                            format!(
+                                "{after} more {} waiting.",
+                                replace::plural(after, "file", "files")
+                            ),
+                        ));
+                    }
+                }
+            }
+            Job::Done(sum) => {
+                let section =
+                    |out: &mut Vec<(Tone, String)>, title: &str, es: Vec<&replace::Entry>, tone| {
+                        if es.is_empty() {
+                            return;
+                        }
+                        out.push((Tone::Bold, format!("{title} {}:", es.len())));
+                        for e in es {
+                            out.push((tone, format!("  {}", e.words())));
+                        }
+                    };
+                section(&mut out, "Changed", sum.changed(), Tone::Good);
+                section(&mut out, "Skipped", sum.skipped(), Tone::Plain);
+                section(&mut out, "Failed", sum.failed(), Tone::Problem);
+                section(
+                    &mut out,
+                    "Unknown (may have changed; nothing was retried)",
+                    sum.unknown(),
+                    Tone::Problem,
+                );
+                if !sum.not_started.is_empty() {
+                    out.push((
+                        Tone::Bold,
+                        format!("Not started {}:", sum.not_started.len()),
+                    ));
+                    for p in &sum.not_started {
+                        out.push((Tone::Muted, format!("  {}", visible(p))));
+                    }
+                }
+                if out.is_empty() {
+                    out.push((Tone::Plain, "Nothing was changed.".to_owned()));
+                }
+            }
+        }
+        out
+    }
+
+    fn overlay_title(&self) -> &'static str {
+        match self.job {
+            Job::Idle => "",
+            Job::Confirm(_) => "Replace preview",
+            Job::Running(_) => "Replace progress",
+            Job::Done(_) => "Replace summary",
+        }
+    }
+
+    /// The status line while a replace is asked, running or summarised.
+    fn job_status(&self) -> Option<(String, StatusTone)> {
+        let locked =
+            "Find and Replace are locked until it ends, so the matches stay as you confirmed.";
+        Some(match &self.job {
+            Job::Idle => return None,
+            Job::Confirm(plan) => {
+                let mut s = plan.question();
+                if self.regex && plan.replacement.contains(['$', '\\']) {
+                    s.push_str(" The replacement is inserted as typed: capture references such as $1 are not expanded.");
+                }
+                if plan.unmarked > 0 {
+                    s.push_str(&format!(
+                        " {} {} with no marked match {} left alone.",
+                        plan.unmarked,
+                        replace::plural(plan.unmarked, "row", "rows"),
+                        replace::plural(plan.unmarked, "is", "are"),
+                    ));
+                }
+                (s, StatusTone::Quiet)
+            }
+            Job::Running(run) => {
+                let (k, m) = run.position();
+                let mut s = if run.stopping {
+                    format!("Stopping after file {k} of {m}; what was done stays done. {locked}")
+                } else {
+                    format!("Replacing, file {k} of {m}. Esc stops after this file. {locked}")
+                };
+                if let Some(n) = &run.notice {
+                    s.push(' ');
+                    s.push_str(n);
+                }
+                (s, StatusTone::Quiet)
+            }
+            Job::Done(sum) => (sum.headline(), StatusTone::Quiet),
+        })
     }
 
     // ---- words --------------------------------------------------------------------------
@@ -871,6 +1299,9 @@ impl SearchPanel {
         }
         if let Some(notice) = &self.notice {
             return (notice.clone(), StatusTone::Problem);
+        }
+        if let Some(words) = self.job_status() {
+            return words;
         }
         let changed = self
             .shown
@@ -959,7 +1390,7 @@ impl SearchPanel {
             enabled: reason.is_none(),
             reason,
         };
-        vec![
+        let mut all = vec![
             item(actions::RUN, run),
             item(actions::CANCEL, cancel),
             item(actions::TOGGLE_REGEX, None),
@@ -974,14 +1405,45 @@ impl SearchPanel {
                 (self.flat.is_empty() && !self.running())
                     .then(|| "There is nothing to clear.".to_owned()),
             ),
+            item(actions::REPLACE_ALL, self.replace_blocker(false)),
+            item(actions::REPLACE_IN_FILE, self.replace_blocker(true)),
+        ];
+        all.extend(self.job_actions());
+        all
+    }
+
+    /// The actions that answer a question, stop a run or put a summary away.
+    fn job_actions(&self) -> Vec<NodeAction> {
+        let item = |id: &str, reason: Option<&str>| NodeAction {
+            id: ActionId::new(id),
+            enabled: reason.is_none(),
+            reason: reason.map(str::to_owned),
+        };
+        vec![
+            item(
+                actions::REPLACE_CONFIRM,
+                (!matches!(self.job, Job::Confirm(_))).then_some("There is nothing to confirm."),
+            ),
+            item(
+                actions::REPLACE_STOP,
+                matches!(self.job, Job::Idle | Job::Done(_))
+                    .then_some("No replace is running or waiting."),
+            ),
+            item(
+                actions::REPLACE_DISMISS,
+                matches!(self.job, Job::Idle | Job::Running(_))
+                    .then_some("There is no summary to dismiss."),
+            ),
         ]
     }
 
     fn draw(&self, area: Rect, buf: &mut Buffer, focused: bool, caps_ok: bool, s: &Styles) {
         let lay = self.lay(area, caps_ok);
         buf.set_style(area, s.text);
+        let locked = self.job.modal();
         let rows = [
             ("Find", Focus::Query, lay.query),
+            ("Replace", Focus::Replace, lay.replace),
             ("Include", Focus::Include, lay.include),
             ("Exclude", Focus::Exclude, lay.exclude),
         ];
@@ -998,23 +1460,27 @@ impl SearchPanel {
             }
             let field = match focus {
                 Focus::Query => &self.query,
+                Focus::Replace => &self.replacement,
                 Focus::Include => &self.include,
                 _ => &self.exclude,
             };
             let placeholder = match focus {
                 Focus::Query => "",
+                Focus::Replace => "replacement, inserted as typed",
                 Focus::Include => "all files, e.g. src/**/*.rs",
                 _ => "none, e.g. **/target/**",
             };
+            // Find and Replace do not take keys while a replace is asked or running.
+            let held = locked && matches!(focus, Focus::Query | Focus::Replace);
             field.draw(
                 buf,
                 *rect,
                 Look {
-                    text: s.text,
+                    text: if held { s.muted } else { s.text },
                     caret: s.cursor,
                     hint: s.muted,
                 },
-                focused && self.focus == *focus,
+                focused && self.focus == *focus && !locked,
                 placeholder,
             );
         }
@@ -1027,6 +1493,20 @@ impl SearchPanel {
                 rect.width as usize,
                 CHIPS[i].0,
                 if on { s.on } else { s.muted },
+            );
+        }
+        for (i, rect) in lay.replace_chips.iter().enumerate() {
+            text::put(
+                buf,
+                rect.x,
+                rect.y,
+                rect.width as usize,
+                REPLACE_CHIPS[i].0,
+                if self.replace_blocker(i == 1).is_none() {
+                    s.on
+                } else {
+                    s.muted
+                },
             );
         }
         // The status line and the one control that starts or stops.
@@ -1071,7 +1551,30 @@ impl SearchPanel {
                 },
             );
         }
-        self.draw_list(lay.list, buf, focused, s);
+        if matches!(self.job, Job::Idle) {
+            self.draw_list(lay.list, buf, focused, s);
+        } else {
+            self.draw_overlay(lay.list, buf, s);
+        }
+    }
+
+    /// The preview, the progress or the summary: whole lines, wrapped, never clipped.
+    fn draw_overlay(&self, list: Rect, buf: &mut Buffer, s: &Styles) {
+        let width = list.width as usize;
+        if width == 0 || list.height == 0 {
+            return;
+        }
+        let mut y = 0u16;
+        for (tone, line) in self.overlay().iter().skip(self.job_top) {
+            let opts = textwrap::Options::new(width).subsequent_indent(WRAP_INDENT);
+            for row in textwrap::wrap(line, opts) {
+                if y >= list.height {
+                    return;
+                }
+                text::put(buf, list.x, list.y + y, width, &row, tone.style(s));
+                y += 1;
+            }
+        }
     }
 
     fn draw_list(&self, list: Rect, buf: &mut Buffer, focused: bool, s: &Styles) {
@@ -1174,6 +1677,13 @@ impl SearchPanel {
                 &self.query,
             ),
             (
+                "replacement",
+                "Replacement text",
+                Focus::Replace,
+                lay.replace,
+                &self.replacement,
+            ),
+            (
                 "include",
                 "Files to include",
                 Focus::Include,
@@ -1190,6 +1700,13 @@ impl SearchPanel {
         ] {
             let mut node = Node::new(id, Role::TextBox, name, rect).with_text(field.value());
             node.state.focused = focused && self.focus == focus;
+            if self.job.modal() && matches!(focus, Focus::Query | Focus::Replace) {
+                node.state.disabled = true;
+                node.state.description = Some(
+                    "Locked while a replace is asked or running, so the matches stay as confirmed."
+                        .to_owned(),
+                );
+            }
             child(&mut root, node, &mut out);
         }
         for (i, (id, action)) in [
@@ -1209,6 +1726,23 @@ impl SearchPanel {
             }];
             child(&mut root, node, &mut out);
         }
+        for (i, (id, action)) in [
+            ("replace-all", actions::REPLACE_ALL),
+            ("replace-file", actions::REPLACE_IN_FILE),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let reason = self.replace_blocker(i == 1);
+            let mut node = Node::new(id, Role::Button, REPLACE_CHIPS[i].1, lay.replace_chips[i]);
+            node.state.disabled = reason.is_some();
+            node.actions = vec![NodeAction {
+                id: ActionId::new(action),
+                enabled: reason.is_none(),
+                reason,
+            }];
+            child(&mut root, node, &mut out);
+        }
         let mut status = Node::new("status", Role::Status, &words, lay.status);
         status.state.busy = self.running();
         if tone == StatusTone::Problem {
@@ -1216,6 +1750,39 @@ impl SearchPanel {
         }
         child(&mut root, status, &mut out);
 
+        if !matches!(self.job, Job::Idle) {
+            let lines = self.overlay();
+            let mut node = Node::new("replace-lines", Role::List, self.overlay_title(), lay.list);
+            node.state.description = Some(words.clone());
+            node.state.busy = matches!(self.job, Job::Running(_));
+            node.actions = self.job_actions();
+            let size = lines.len().min(u16::MAX as usize) as u16;
+            let mut all = vec![];
+            for (i, (_, line)) in lines
+                .iter()
+                .enumerate()
+                .skip(self.job_top)
+                .take(lay.list.height as usize)
+            {
+                let rect = Rect::new(
+                    lay.list.x,
+                    lay.list.y + (i - self.job_top) as u16,
+                    lay.list.width,
+                    1,
+                );
+                let mut item = Node::new(&format!("replace-line:{i}"), Role::ListItem, line, rect);
+                item.pos_in_set = Some((i + 1).min(size as usize) as u16);
+                item.set_size = Some(size);
+                node.children.push(item.id.clone());
+                all.push(item);
+            }
+            root.children.push(node.id.clone());
+            let mut every = vec![root];
+            every.extend(out);
+            every.push(node);
+            every.extend(all);
+            return every;
+        }
         let mut results = Node::new("results", Role::Tree, "Search results", lay.list);
         results.state.description = Some(self.counted());
         results.state.focused = focused && self.focus == Focus::Results;
@@ -1268,6 +1835,59 @@ fn plural<'a>(n: usize, one: &'a str, many: &'a str) -> &'a str {
     if n == 1 { one } else { many }
 }
 
+/// How a line looks in the preview: tabs are four spaces, controls are spelled out, and a
+/// very long line is cut and says so.
+fn preview_line(line: &str) -> String {
+    let kept: String = line
+        .replace('\t', "    ")
+        .chars()
+        .take(PREVIEW_CHARS)
+        .collect();
+    let lost = line.chars().count().saturating_sub(PREVIEW_CHARS);
+    let mut out = visible(&kept);
+    if lost > 0 {
+        out.push_str(&format!(" [{lost} more characters not shown]"));
+    }
+    out
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tone {
+    Plain,
+    Bold,
+    Muted,
+    Before,
+    After,
+    Good,
+    Problem,
+}
+
+impl Tone {
+    fn of(result: &replace::Done) -> Self {
+        match result {
+            replace::Done::Changed(_) => Tone::Good,
+            replace::Done::Skipped(_) => Tone::Plain,
+            _ => Tone::Problem,
+        }
+    }
+
+    fn style(self, s: &Styles) -> Style {
+        match self {
+            Tone::Plain => s.text,
+            Tone::Bold => s.bold,
+            Tone::Muted => s.muted,
+            Tone::Before => s.error,
+            Tone::After | Tone::Good => s.success,
+            Tone::Problem => s.error,
+        }
+    }
+}
+
+/// Alt+Enter asks to replace in the selected result's file.
+fn replace_in_file_chord(key: &KeyInput) -> bool {
+    key.key() == Key::Enter && key.mods().contains(Mods::ALT)
+}
+
 /// The globs of a field: comma separated, each trimmed, none empty.
 fn globs(value: &str) -> Vec<String> {
     value
@@ -1293,6 +1913,8 @@ impl Panel for SearchPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
         self.adopt(cx.workspace());
         self.caps_ok = cx.capabilities().has(&Capability::new(CAPABILITY));
+        self.docs_ok = cx.capabilities().has(&Capability::new("documents"));
+        let tick = matches!(msg, PanelMsg::Tick);
         let quiet = matches!(
             msg,
             PanelMsg::Resize { .. }
@@ -1329,6 +1951,7 @@ impl Panel for SearchPanel {
         }
         if !quiet {
             self.flush(cx);
+            self.drive(cx, tick);
         }
     }
 
@@ -1357,6 +1980,7 @@ impl Panel for SearchPanel {
         let spec = self.spec();
         serde_json::to_value(ViewState {
             query: spec.query,
+            replacement: self.replacement.value().to_owned(),
             regex: spec.regex,
             case_sensitive: spec.case_sensitive,
             whole_word: spec.whole_word,
@@ -1388,11 +2012,16 @@ impl Panel for SearchPanel {
     }
 
     fn text_entry(&self) -> bool {
-        self.focus != Focus::Results
+        self.focus != Focus::Results && !self.job.modal()
+    }
+
+    /// Escape also calls off a question, stops a run and puts a summary away.
+    fn holds_escape(&self) -> bool {
+        self.text_entry() || !matches!(self.job, Job::Idle)
     }
 
     fn takes_chord(&self, key: &KeyInput) -> bool {
-        toggle_chord(key).is_some()
+        toggle_chord(key).is_some() || replace_in_file_chord(key)
     }
 }
 
@@ -1430,5 +2059,37 @@ pub(crate) fn descriptors() -> Vec<ActionDescriptor> {
             "Open the selected result in the editor",
         ),
         local(actions::CLEAR, "Clear the results"),
+        // The two that ask only show the question and the preview; the person's answer is the
+        // one that sends. All three are the person's: an agent's request is refused.
+        local(
+            actions::REPLACE_ALL,
+            "Replace every match of the search (asks first)",
+        )
+        .requires(DOCUMENTS)
+        .human_only(),
+        local(
+            actions::REPLACE_IN_FILE,
+            "Replace the matches in the selected file (asks first)",
+        )
+        .requires(DOCUMENTS)
+        .human_only(),
+        ActionDescriptor::new(
+            actions::REPLACE_CONFIRM,
+            "Confirm the replace",
+            ActionIntent::Start,
+        )
+        .requires(CAPABILITY)
+        .requires(DOCUMENTS)
+        .emits(EffectKind::DocumentOpen)
+        .emits(EffectKind::DocumentEdit)
+        .emits(EffectKind::DocumentSave)
+        .emits(EffectKind::DocumentClose)
+        .emits(EffectKind::DocumentSettle)
+        .human_only(),
+        local(
+            actions::REPLACE_STOP,
+            "Stop the replace after the file in hand",
+        ),
+        local(actions::REPLACE_DISMISS, "Put the replace summary away"),
     ]
 }
