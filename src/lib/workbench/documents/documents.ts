@@ -170,6 +170,20 @@ export interface DocumentHandle {
       edits: TextChange[]
     }[],
   ) => void
+  /**
+   * Resolves once every edit sent from here has been answered. Accepted when nothing is left unaccepted (no pending
+   * edit, none held behind one); refused `pending_edits` when something is, which only the person can settle. It sends
+   * nothing: edits reach the host as the editor sends them.
+   */
+  flushed: (request: Request) => Promise<Completion<{ revision: Revision }>>
+  /**
+   * Reads the host's head again after something other than this session's own edits moved the document (a restore).
+   * What changed reaches the listeners as a resync, as the live stream's `document.changed` would have; when the stream
+   * got there first nothing is sent twice.
+   */
+  refresh: (
+    request: Request,
+  ) => Promise<Completion<{ revision: Revision; text: string }>>
   /** Resolves when every checkpoint write asked for so far has finished, with where the work stands. */
   flushLocal: () => Promise<LocalState>
   on: (listener: (event: DocumentEvent) => void) => () => void
@@ -979,6 +993,34 @@ export function createDocuments(
           })
         }
         remember(session)
+      },
+      flushed: ({ requestId }) => {
+        if (released) return Promise.resolve(gone(requestId))
+        return serial(session, async () => {
+          const answers: Answers = { workspaceId, requestId }
+          const held = session.pending.size + session.behind.size
+          return held > 0
+            ? refused(
+                answers,
+                'pending_edits',
+                `${session.path} has ${held} edit${held === 1 ? '' : 's'} the host has not accepted`,
+              )
+            : accepted(answers, { revision: seq(session.revision) })
+        })
+      },
+      refresh: ({ requestId }) => {
+        if (released) return Promise.resolve(gone(requestId))
+        return serial(session, async () => {
+          try {
+            await reread(session, 'head')
+          } catch (error) {
+            return failure({ workspaceId, requestId }, error, false)
+          }
+          return accepted(
+            { workspaceId, requestId },
+            { revision: seq(session.revision), text: session.text },
+          )
+        })
       },
       flushLocal: async () => {
         await session.localQueue

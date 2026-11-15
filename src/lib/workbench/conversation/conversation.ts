@@ -14,6 +14,7 @@ import type { ModelChoice } from '../wire/ModelChoice'
 import type { SourceReference } from '../wire/SourceReference'
 import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
+import { workingRuns } from '@/lib/theorem/working-runs'
 import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
@@ -286,6 +287,10 @@ export interface Conversation {
     request: Request & { level: string },
   ) => Promise<Completion<ModelsState>>
   onModels: (listener: (state: ModelsState) => void) => () => void
+  /** The runs a working turn's edits come from (its own and its delegations'), by Follow the Agent's rule; empty while none works. */
+  followedRuns: () => string[]
+  /** Delivers the followed runs when the set changes, never when it is the same again. */
+  onFollowedRuns: (listener: (runs: string[]) => void) => () => void
   /** Whether a model can be picked here. */
   canPickModel: boolean
   dispose: () => void
@@ -840,7 +845,22 @@ export function createConversation({
       })
   }
 
+  const runsListeners = new Set<(runs: string[]) => void>()
+  const runsNow = () => {
+    const joined = workingRuns(runtime.thread.getState().messages)
+    return joined ? joined.split(' ') : []
+  }
+  let announcedRuns = runsNow().join(' ')
+  function announceRuns() {
+    if (disposed) return
+    const runs = runsNow()
+    if (runs.join(' ') === announcedRuns) return
+    announcedRuns = runs.join(' ')
+    for (const listener of [...runsListeners]) listener(runs)
+  }
+
   const offThread = runtime.thread.subscribe(() => {
+    announceRuns()
     changed()
     announceAttachments()
     announceModels(false)
@@ -1457,6 +1477,11 @@ export function createConversation({
       return accepted(answers, modelsState()!)
     },
 
+    followedRuns: runsNow,
+    onFollowedRuns(listener) {
+      runsListeners.add(listener)
+      return () => void runsListeners.delete(listener)
+    },
     onModels(listener) {
       modelListeners.add(listener)
       return () => {
@@ -1489,6 +1514,7 @@ export function createConversation({
       listeners.clear()
       attachmentListeners.clear()
       modelListeners.clear()
+      runsListeners.clear()
     },
   }
 }

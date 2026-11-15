@@ -1,9 +1,11 @@
 // SOURCING: none — thin mapping from the wire's document effects to ./documents (the owner); no behavior of its own beyond remembering which handle each open path holds
 import type { Files } from '../files/files'
+import type { Outcome } from '../environment/result'
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
 import type { HostMessage, ResourceRef, Revision } from '../wire'
 import { tokenSpans } from './tokens'
+import type { DocumentHistory } from './history'
 import type { LocalState } from './local'
 import type {
   DocumentEvent,
@@ -16,7 +18,22 @@ export interface DocumentsPortOptions {
   documents: Documents
   /** `documentCreate` makes the file first: the documents owner opens files, it does not make them. */
   files: Pick<Files, 'create' | 'delete'>
+  /**
+   * The history owner, built over the flush this port serves (the open session's edits answered, or refused
+   * `pending_edits`). Absent: the history effects are refused `owner_unavailable`.
+   */
+  history?: (
+    flush: HistoryFlush,
+  ) => Pick<DocumentHistory, 'list' | 'preview' | 'restore'>
 }
+
+/** What the history owner calls before a restore: the document's own session says whether it holds unaccepted edits. */
+export type HistoryFlush = (
+  document: string,
+  request: { requestId: string },
+) => Promise<Outcome<unknown>>
+
+const seq = (value: number): Revision => ({ scheme: 'seq', value })
 
 const hostMessage = (event: DocumentEvent): HostMessage => {
   switch (event.kind) {
@@ -97,6 +114,7 @@ export interface DocumentsView {
 export function createDocumentsPort({
   documents,
   files,
+  history: buildHistory,
 }: DocumentsPortOptions): OwnerPort<Of<'document'>> & {
   view: DocumentsView
   /** Where one open document's unaccepted work stands now; `undefined` for a path not open here. */
@@ -200,6 +218,15 @@ export function createDocumentsPort({
     }
   }
 
+  /** The session's edits answered; a document not open here holds none. */
+  const flush: HistoryFlush = async (path, { requestId }) => {
+    const handle = held.get(path)?.handle
+    return handle
+      ? handle.flushed({ requestId })
+      : { outcome: 'accepted', value: undefined }
+  }
+  const history = buildHistory?.(flush)
+
   const noDocument = (path: string): OwnerReply =>
     refusal('document_not_open', `${path} is not open in this workbench`)
 
@@ -294,6 +321,50 @@ export function createDocumentsPort({
           'wrong_resource',
           'A document effect needs a document resource',
         )
+
+      switch (effect.kind) {
+        case 'documentHistoryList':
+        case 'documentHistoryPreview':
+        case 'documentHistoryRestore': {
+          if (!history)
+            return refusal(
+              'owner_unavailable',
+              'The document history owner is not available',
+            )
+          if (effect.kind === 'documentHistoryList')
+            return reply(await history.list(path, { requestId }), (list) => ({
+              value: {
+                type: 'documentHistory',
+                entries: list.entries.map(({ point, revision }) => ({
+                  point,
+                  revision: seq(revision),
+                })),
+              },
+            }))
+          if (effect.kind === 'documentHistoryPreview')
+            return reply(
+              await history.preview(path, effect.payload.point, { requestId }),
+              ({ text }) => ({ value: { type: 'documentPreview', text } }),
+            )
+          const opened = held.get(path)
+          if (!opened) return noDocument(path)
+          const done = await history.restore(path, effect.payload.point, {
+            requestId,
+          })
+          if (done.outcome === 'accepted') {
+            // The restore arrives as a new revision on the live stream; this reads the head so the core hears it
+            // now even if the stream is late. A failed read is not a failed restore: the stream still delivers it.
+            const read = await opened.handle.refresh({
+              requestId: `${requestId}:refresh`,
+            })
+            if (read.outcome !== 'accepted')
+              console.warn(
+                `${path} was restored but its head could not be read: ${read.outcome}`,
+              )
+          }
+          return reply(done)
+        }
+      }
 
       if (effect.kind === 'documentOpen') {
         // The owner opens what the checkout has; it has no text to seed a document with.

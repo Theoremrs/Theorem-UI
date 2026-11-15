@@ -64,6 +64,9 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
       },
     ],
   },
+  documentHistoryList: undefined,
+  documentHistoryPreview: { point: 'p1' },
+  documentHistoryRestore: { point: 'p1' },
   scmStatus: undefined,
   scmDiff: { staged: false },
   scmShow: { path: 'a', reference: 'head' },
@@ -148,6 +151,13 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
   artifactsList: {},
   artifactRead: { key: 'k' },
+  delegationChanges: { runId: 'r1', delegationId: 'd1' },
+  delegationContent: {
+    runId: 'r1',
+    delegationId: 'd1',
+    path: 'a.ts',
+    side: 'after',
+  },
   clipboardWrite: { text: 't' },
   clipboardRead: undefined,
   appearanceApply: { appearance: '{"preset":"calm","overrides":{}}' },
@@ -205,7 +215,9 @@ const OWNER_OF = (kind: EffectKind) =>
                       ? 'artifacts'
                       : kind.startsWith('appearance')
                         ? 'appearance'
-                        : 'clipboard'
+                        : kind.startsWith('delegation')
+                          ? 'delegations'
+                          : 'clipboard'
 
 const WS = { type: 'workspace', workspace: 'w1' } as const
 const TERMINAL = { type: 'terminal', workspace: 'w1', session: 't1' } as const
@@ -322,6 +334,7 @@ async function setup(
     'search',
     'conversation',
     'artifacts',
+    'delegations',
     'clipboard',
     'appearance',
   ],
@@ -839,6 +852,7 @@ describe('owners that do not exist yet', () => {
         'search',
         'conversation',
         'artifacts',
+        'delegations',
         'clipboard',
         'appearance',
       ].includes(OWNER_OF(kind)),

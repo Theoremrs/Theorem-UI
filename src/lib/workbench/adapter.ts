@@ -58,6 +58,7 @@ export type ConversationPort = OwnerPort<Of<'conversation'>> & {
   canPickModel?: boolean
 }
 export type ArtifactsPort = OwnerPort<Of<'artifact'>>
+export type DelegationsPort = OwnerPort<Of<'delegation'>>
 export type ClipboardPort = OwnerPort<Of<'clipboard'>>
 
 /** The files owner as the adapter calls it. `Files` satisfies it. */
@@ -128,6 +129,7 @@ export interface AdapterOptions {
   search?: SearchPort
   conversation?: ConversationPort
   artifacts?: ArtifactsPort
+  delegations?: DelegationsPort
   clipboard?: ClipboardPort
   /** Applies the theme a saved arrangement carries. Absent, that effect is refused `owner_unavailable`. */
   appearance?: AppearancePort
@@ -1052,6 +1054,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'documentRevert':
       case 'documentSettle':
       case 'documentKeep':
+      case 'documentHistoryList':
+      case 'documentHistoryPreview':
+      case 'documentHistoryRestore':
         return route('documents', options.documents, effect, requestId)
 
       case 'scmStatus':
@@ -1133,6 +1138,10 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'artifactsList':
       case 'artifactRead':
         return route('artifacts', options.artifacts, effect, requestId)
+
+      case 'delegationChanges':
+      case 'delegationContent':
+        return route('delegations', options.delegations, effect, requestId)
 
       case 'clipboardWrite':
       case 'clipboardRead':
@@ -1303,6 +1312,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     options.search,
     options.conversation,
     options.artifacts,
+    options.delegations,
     options.clipboard,
   ]) {
     const stop = port?.subscribe?.(send)

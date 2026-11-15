@@ -247,7 +247,10 @@ describe('snapshots', () => {
   test('a subscriber is given the current snapshot, then each change, named by project and thread', async () => {
     const { port, stub, perform, runFrame } = setup()
     const heard: HostMessage[] = []
-    port.subscribe?.((message) => heard.push(message))
+    // The followed runs have their own tests below.
+    port.subscribe?.(
+      (message) => message.type !== 'followedRuns' && heard.push(message),
+    )
     expect(heard).toHaveLength(1)
     expect(heard[0]).toMatchObject({
       type: 'conversationSnapshot',
@@ -573,5 +576,63 @@ describe('switching a branch through the port', () => {
       outcome: 'refused',
       code: 'unknown_branch',
     })
+  })
+})
+
+describe('followed runs', () => {
+  const delegation = (childRunId: string) => ({
+    type: 'data',
+    name: 'theorem-delegation',
+    data: {
+      delegationId: 'd1',
+      parentRunId: 'run-1',
+      childRunId,
+      state: 'started',
+      intent: {},
+    },
+  })
+  const followed = (heard: HostMessage[]) =>
+    heard.flatMap((message) =>
+      message.type === 'followedRuns' ? [message.runs] : [],
+    )
+
+  test('the core hears the set once on connect, then each time it changes, and not when it is the same again', () => {
+    const { port, stub } = setup()
+    const heard: HostMessage[] = []
+    port.subscribe?.((message) => heard.push(message))
+    expect(followed(heard)).toEqual([[]])
+
+    stub.messages = [assistant('m1', 'working', { runId: 'run-1' })]
+    stub.emit()
+    stub.emit()
+    expect(followed(heard)).toEqual([[], ['run-1']])
+
+    stub.messages = [
+      assistant('m1', 'working', {
+        runId: 'run-1',
+        parts: [delegation('child-1')],
+      }),
+    ]
+    stub.emit()
+    expect(followed(heard)).toEqual([[], ['run-1'], ['run-1', 'child-1']])
+
+    stub.messages = [
+      assistant('m1', 'done', {
+        runId: 'run-1',
+        status: { type: 'complete', reason: 'stop' },
+      }),
+    ]
+    stub.emit()
+    expect(followed(heard).at(-1)).toEqual([])
+  })
+
+  test('a stopped subscription hears no more', () => {
+    const { port, stub } = setup()
+    const heard: HostMessage[] = []
+    const stop = port.subscribe?.((message) => heard.push(message))
+    stop?.()
+    stub.messages = [assistant('m1', 'working', { runId: 'run-1' })]
+    stub.emit()
+    expect(followed(heard)).toEqual([[]])
   })
 })

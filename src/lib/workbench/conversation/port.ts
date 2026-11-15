@@ -284,11 +284,17 @@ export function createConversationPort({
       const offModels = conversation.onModels((state) =>
         listener(modelsMessage(project, mainId(), state)),
       )
+      // The core follows these runs' edits; it hears the set once on connect and again each time it changes.
+      const followed = (runs: string[]) =>
+        listener({ type: 'followedRuns', runs })
+      followed(conversation.followedRuns())
+      const offRuns = conversation.onFollowedRuns(followed)
       return () => {
         listeners.delete(listener)
         off()
         offAttachments()
         offModels()
+        offRuns()
       }
     },
   }

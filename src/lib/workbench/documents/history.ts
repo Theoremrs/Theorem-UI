@@ -3,7 +3,7 @@
 import type { TheoremClient } from '@theoremharness/sdk-ide'
 import type { Environment, HostClient } from '../environment/environment'
 import { refused, statusOf } from '../environment/result'
-import type { Completion } from '../environment/result'
+import type { Completion, Outcome } from '../environment/result'
 import { createAsk, num, outsideWorkspace, raw, str } from '../ask'
 
 /** The calls the history owner makes of a Theorem client. */
@@ -71,7 +71,7 @@ export interface HistoryOptions {
   flush: (
     document: string,
     request: { requestId: string },
-  ) => Promise<Completion<unknown>>
+  ) => Promise<Outcome<unknown>>
 }
 
 export function createHistory(
