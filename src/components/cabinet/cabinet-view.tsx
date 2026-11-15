@@ -80,7 +80,19 @@ type CabinetAction =
   | { type: 'open'; key: string; revision: string }
 
 /** One cabinet mount per host element; frames stop when it leaves the page. */
-const mounts = new WeakMap<HTMLElement, Promise<CabinetHandle>>()
+const mounts = new WeakMap<HTMLElement, Promise<CabinetHandle | undefined>>()
+
+/** An object URL for `blob` that lives exactly as long as its user. */
+function useObjectUrl(blob: Blob | undefined) {
+  const [url, setUrl] = useState<string>()
+  useEffect(() => {
+    if (!blob) return setUrl(undefined)
+    const u = URL.createObjectURL(blob)
+    setUrl(u)
+    return () => URL.revokeObjectURL(u)
+  }, [blob])
+  return url
+}
 
 const px = (a: Area, [cw, ch]: [number, number]): CSSProperties => ({
   left: a.x * cw,
@@ -196,9 +208,9 @@ function OriginalView({
     staleTime: Infinity,
     queryFn: async (): Promise<
       | { type: 'artifact'; artifact: TheoremArtifact }
-      | { type: 'image'; url: string }
+      | { type: 'image'; blob: Blob }
       | { type: 'text'; text: string; markdown: boolean }
-      | { type: 'file'; url: string }
+      | { type: 'file'; blob: Blob }
     > => {
       const e = entry!
       if (e.source.type === 'artifact') {
@@ -217,20 +229,31 @@ function OriginalView({
         throw new Error('A review opens in its own pane.')
       const blob = await readUpload(uploadContentPath(e.source.uploadId))
       const media = e.mediaType || blob.type
-      if (media.startsWith('image/'))
-        return { type: 'image', url: URL.createObjectURL(blob) }
+      if (media.startsWith('image/')) return { type: 'image', blob }
       if (media.startsWith('text/') || /json|markdown|xml/.test(media))
         return {
           type: 'text',
           text: await blob.text(),
           markdown: /markdown/.test(media),
         }
-      return { type: 'file', url: URL.createObjectURL(blob) }
+      return { type: 'file', blob }
     },
   })
   const data = original.data
+  // The dialog owns the blob's URL and releases it when it stops showing it.
+  const url = useObjectUrl(
+    data?.type === 'image' || data?.type === 'file' ? data.blob : undefined,
+  )
   return (
-    <Dialog open={entry !== undefined} onOpenChange={(o) => !o && onClose()}>
+    <Dialog
+      open={entry !== undefined}
+      onOpenChange={(o) => {
+        if (o) return
+        // Each opening starts at the revision its card shows.
+        setLatest(undefined)
+        onClose()
+      }}
+    >
       <DialogContent
         data-cabinet-original=""
         className="flex max-h-[88vh] w-[min(960px,94vw)] max-w-none flex-col gap-3 overflow-hidden"
@@ -261,7 +284,7 @@ function OriginalView({
             </OpenLatestContext.Provider>
           ) : data.type === 'image' ? (
             <img
-              src={data.url}
+              src={url}
               alt={entry?.title ?? ''}
               className="mx-auto max-h-[70vh] object-contain"
             />
@@ -276,7 +299,7 @@ function OriginalView({
               <pre className="text-xs whitespace-pre-wrap">{data.text}</pre>
             )
           ) : (
-            <a href={data.url} download={entry?.title} className="underline">
+            <a href={url} download={entry?.title} className="underline">
               Download {entry?.title}
             </a>
           )}
@@ -361,8 +384,12 @@ export function Cabinet({
   // Every open goes through here: a review opens where reviews are read,
   // anything else in the original view at the card's revision.
   const open = (entry: CatalogEntry) => {
-    if (entry.source.type === 'review') openReview(entry.source.reviewId)
-    else setOpened(entry)
+    if (entry.source.type === 'review') {
+      // The review pane lives in the workspace an expanded cabinet covers:
+      // restore the dock first so the review can be seen and used.
+      useShell.getState().setCabinetExpanded(false)
+      openReview(entry.source.reviewId)
+    } else setOpened(entry)
   }
 
   const actions = useRef<(a: CabinetAction) => void>(() => {})
@@ -384,6 +411,13 @@ export function Cabinet({
     let mount = mounts.get(element)
     if (!mount) {
       mount = loadWasm().then((wasm) => {
+        // The project may have changed while the module loaded: a host that
+        // left the page must not mount into its successor's element.
+        if (
+          !element.isConnected ||
+          document.getElementById(HOST_ID) !== element
+        )
+          return undefined
         return wasm.mount_cabinet(
           HOST_ID,
           (json: string) => actions.current(JSON.parse(json) as CabinetAction),
