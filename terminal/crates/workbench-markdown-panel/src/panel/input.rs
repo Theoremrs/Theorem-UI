@@ -81,7 +81,9 @@ impl MarkdownPanel {
         match self.shown(d).mode {
             MarkdownMode::Source | MarkdownMode::Split => true,
             // A block held open on a read-only document takes no text.
-            MarkdownMode::Visual => d.read_only.is_none() && d.md.borrow().open_range().is_some(),
+            MarkdownMode::Visual => {
+                d.sync.read_only.is_none() && d.md.borrow().open_range().is_some()
+            }
             MarkdownMode::Preview => false,
         }
     }
@@ -207,8 +209,11 @@ impl MarkdownPanel {
     pub(super) fn edit_error(&self, error: &EditError) -> String {
         match error {
             EditError::ReadOnly => match self.doc() {
-                Some(d) if d.read_only.is_some() => {
-                    format!("Read-only: {}", d.read_only.clone().unwrap_or_default())
+                Some(d) if d.sync.read_only.is_some() => {
+                    format!(
+                        "Read-only: {}",
+                        d.sync.read_only.clone().unwrap_or_default()
+                    )
                 }
                 Some(d) if d.md.borrow().mode() == MarkdownMode::Preview => {
                     "Preview shows the document and does not edit it: choose another mode."
@@ -412,7 +417,9 @@ impl MarkdownPanel {
         }
         if let Some(reason) = self.unavailable(choice) {
             // Esc with nothing to dismiss is not a request.
-            if choice != Choice::Dismiss && choice != Choice::CloseBlock {
+            // Nor is the chord for the mode already shown: it does nothing.
+            if choice != Choice::Dismiss && choice != Choice::CloseBlock && choice.mode().is_none()
+            {
                 let title = choice.descriptor().title;
                 self.say(format!("{title}: {reason}"), Tone::Warn);
             }
@@ -423,7 +430,7 @@ impl MarkdownPanel {
             return;
         }
         match choice {
-            Choice::Save => self.save(cx),
+            Choice::Save => self.save(),
             Choice::ToggleCheckbox => self.toggle_checkbox(),
             Choice::OpenBlock => self.open_block(),
             Choice::CloseBlock => {
@@ -443,7 +450,7 @@ impl MarkdownPanel {
             Choice::CopyMine => {
                 let Some(d) = self.doc_mut() else { return };
                 let md = d.md.get_mut();
-                let text = match (md.block_conflict(), d.recoverable.clone()) {
+                let text = match (md.block_conflict(), d.sync.recoverable.clone()) {
                     (Some(k), _) => k.mine,
                     (None, Some(set_aside)) => set_aside,
                     (None, None) => md.text(),
@@ -452,9 +459,9 @@ impl MarkdownPanel {
             }
             Choice::Resend => {
                 if let Some(d) = self.doc_mut()
-                    && let Some(u) = d.unknown.take()
+                    && let Some(u) = d.sync.unknown.take()
                 {
-                    d.inflight = None;
+                    d.sync.inflight = None;
                     let _ = d.md.get_mut().requeue(&u.op);
                     d.notice("Sending the edit again under its own id.", Tone::Info);
                 }
@@ -464,7 +471,7 @@ impl MarkdownPanel {
             Choice::Dismiss => {
                 if let Some(d) = self.doc_mut() {
                     d.notice = None;
-                    d.recoverable = None;
+                    d.sync.recoverable = None;
                     d.link = None;
                 }
             }
@@ -511,7 +518,7 @@ impl MarkdownPanel {
         self.committed(outcome);
     }
 
-    fn save(&mut self, cx: &mut Ctx) {
+    fn save(&mut self) {
         let Some(d) = self.doc_mut() else { return };
         // What is typed in an open block is part of the document the person
         // is saving: write it back, then save once the owner has it.
@@ -524,16 +531,14 @@ impl MarkdownPanel {
             }
         }
         let Some(d) = self.doc_mut() else { return };
+        // The save is of the revision the owner has accepted; it goes now, or
+        // once the edits typed so far are accepted.
+        d.sync.want_save();
         if d.md.get_mut().session().has_pending() {
-            // The save is of the revision the owner has accepted; the edits
-            // typed so far are not in it until the owner says so.
-            d.save.wanted = true;
             d.notice(
                 "Saving as soon as the owner has accepted the edits.",
                 Tone::Info,
             );
-        } else {
-            self.send_save(cx);
         }
     }
 

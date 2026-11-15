@@ -15,6 +15,7 @@
 mod chrome;
 mod flow;
 mod input;
+mod tokens;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -29,7 +30,7 @@ use theorem_workbench_core::ids::{
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{Composition, Ctx, EmitError, Panel, PanelMsg, TabLabel, ViewCtx};
-use theorem_workbench_editor::SourceView;
+use theorem_workbench_editor::{OwnerSync, SourceView};
 use theorem_workbench_markdown::{MarkdownDoc, MarkdownMode, MarkdownViewState};
 use theorem_workbench_text::OpId;
 
@@ -117,37 +118,6 @@ impl Problem {
     }
 }
 
-/// Text the owner refused, held in the session until the person chooses.
-#[derive(Clone, Debug)]
-pub(crate) struct Held {
-    pub reason: String,
-    /// What the owner has now where the person's edit was.
-    pub theirs: Option<theorem_workbench_editor::Changed>,
-    pub conflict: bool,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Disk {
-    pub revision: u64,
-    pub deleted: bool,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Unknown {
-    pub op: OpId,
-    pub reason: String,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct Saving {
-    /// A save is wanted once the pending edits are accepted.
-    pub wanted: bool,
-    /// The revision of the save in flight.
-    pub inflight: Option<u64>,
-    /// The last save's outcome is unknown.
-    pub unknown: Option<String>,
-}
-
 /// An open document.
 pub(crate) struct Doc {
     /// The one document session, with the Visual block that is open in it.
@@ -158,25 +128,17 @@ pub(crate) struct Doc {
     pub source: SourceView,
     /// The same widget over the open block's session.
     pub block: SourceView,
-    /// The revision the owner says the checkout holds. `None`: unknown, which
-    /// counts as modified.
-    pub saved: Option<u64>,
-    pub read_only: Option<String>,
-    pub inflight: Option<OpId>,
-    pub unknown: Option<Unknown>,
-    /// The text is behind the owner's: no edit is sent until its resync.
-    pub desync: Option<String>,
-    pub held: Option<Held>,
-    pub disk: Option<Disk>,
-    pub save: Saving,
+    /// What the owner has said about the document, and what is owed it.
+    pub sync: OwnerSync,
     pub notice: Option<Notice>,
-    /// Text set aside by a resolution, kept so it can be copied.
-    pub recoverable: Option<String>,
     /// The link Tab last selected, by its index among the text's links.
     pub link: Option<usize>,
     /// Text an input method is composing at the caret: drawn there, and not
     /// in the session until the composition ends.
     pub preedit: Option<String>,
+    /// Syntax colour from the host, and spans for a revision not yet reached.
+    pub tokens: Option<tokens::Tokens>,
+    pub waiting: Option<tokens::Waiting>,
 }
 
 impl Doc {
@@ -189,18 +151,14 @@ impl Doc {
     }
 
     pub fn dirty(&self) -> bool {
-        let (pending, revision) = {
-            let md = self.md.borrow();
-            (md.session().has_pending(), md.revision())
-        };
-        pending || self.saved != Some(revision) || self.block_dirty()
+        self.sync.dirty(self.md.borrow().session()) || self.block_dirty()
     }
 
     /// The session takes no edits while the owner says read-only or Preview
     /// shows the document.
     pub fn sync_read_only(&mut self) {
         let md = self.md.get_mut();
-        let read_only = self.read_only.is_some() || md.mode() == MarkdownMode::Preview;
+        let read_only = self.sync.read_only.is_some() || md.mode() == MarkdownMode::Preview;
         md.apply_local(|s| s.set_read_only(read_only));
     }
 
@@ -271,13 +229,6 @@ pub struct MarkdownPanel {
     need_pump: bool,
     /// A place to put the caret (`PanelMsg::Reveal`), kept until the text is here.
     reveal: Option<(u32, u32)>,
-}
-
-fn seq(r: &CoreRevision) -> Option<u64> {
-    match r {
-        CoreRevision::Seq(n) => Some(*n),
-        CoreRevision::Opaque(_) => None,
-    }
 }
 
 impl MarkdownPanel {
@@ -497,7 +448,7 @@ impl Panel for MarkdownPanel {
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Completion(c) => self.on_completion(c, false, cx),
             PanelMsg::Cached(c) => self.on_completion(c, true, cx),
-            PanelMsg::Host(message) => self.on_host(message),
+            PanelMsg::Host(message) => self.on_host(message, cx),
             PanelMsg::Action(id) => {
                 if let Some(choice) = Choice::from_id(id.as_str()) {
                     self.choose(choice, cx);

@@ -6,6 +6,7 @@
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::Style;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
     Completion, CompletionPayload, DocumentConflicted, DocumentCurrent, DocumentEdited,
@@ -15,10 +16,11 @@ use theorem_workbench_core::completion::{
 use theorem_workbench_core::effect::{
     CoordinateUnit, Effect, EffectBody, EffectKind, TextChange as CoreChange,
 };
-use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::host::{HostMessage, TokenSpan};
 use theorem_workbench_core::ids::{ActionId, Actor, PanelInstanceId, ResourceRef, Revision};
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
 use theorem_workbench_core::registry::Capabilities;
+use theorem_workbench_core::results::SpanEncoding;
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
     DockMsg, Model, Msg, PanelFactories, Theme, ViewCtx, semantics, update,
@@ -1481,4 +1483,206 @@ fn the_four_modes_at_eighty_by_twenty_four() {
         assert!(rows[23].contains(PATH), "{name}: {}", rows[23]);
     }
     println!("{out}");
+}
+
+// ---- syntax colour ------------------------------------------------------------
+
+fn tokens(revision: u64, encoding: SpanEncoding, spans: &[(u64, u64, &str)]) -> HostMessage {
+    HostMessage::DocumentTokens {
+        resource: doc(),
+        revision: seq(revision),
+        encoding,
+        spans: spans
+            .iter()
+            .map(|(start, end, class)| TokenSpan {
+                start: *start,
+                end: *end,
+                class: (*class).to_owned(),
+            })
+            .collect(),
+    }
+}
+
+impl Rig {
+    /// The style of the first cell of `needle` on the first row that has it,
+    /// counting the cells before it as one each (the rows here are ASCII before
+    /// the needle), left of `before` when given so a Split pane can be chosen.
+    fn style_of(&self, needle: &str, pane: std::ops::Range<u16>) -> Style {
+        let b = self.body();
+        let buf = self.draw(b.width, b.height);
+        let rows = self.rows(b.width, b.height);
+        for (y, row) in rows.iter().enumerate() {
+            let chars: Vec<char> = row.chars().collect();
+            let want: Vec<char> = needle.chars().collect();
+            for x in pane.start as usize..(pane.end as usize).min(chars.len()) {
+                if chars[x..].starts_with(&want) {
+                    return buf[(x as u16, y as u16)].style();
+                }
+            }
+        }
+        panic!("{needle:?} is not drawn in {pane:?}:\n{}", rows.join("\n"));
+    }
+
+    fn style(&self, needle: &str) -> Style {
+        self.style_of(needle, 0..u16::MAX)
+    }
+}
+
+const CODE: &str = "fn main() {}\nplain words\n";
+
+/// Source mode with the caret on the empty last line, so no word is drawn
+/// under it.
+fn source_at_end(text: &str) -> Rig {
+    let mut rig = Rig::source(text);
+    rig.mods(Key::End, Mods::CTRL);
+    rig
+}
+
+#[test]
+fn source_is_coloured_by_the_hosts_spans_for_the_revision_it_holds() {
+    let mut rig = source_at_end(CODE);
+    let plain = rig.style("plain");
+    assert_eq!(rig.style("fn"), plain, "no spans yet: no colour");
+    rig.host(tokens(
+        1,
+        SpanEncoding::Utf8Bytes,
+        &[(0, 2, "keyword"), (3, 7, "comment")],
+    ));
+    assert_ne!(rig.style("fn"), plain, "fn is a keyword");
+    assert_ne!(rig.style("main"), plain);
+    assert_ne!(
+        rig.style("fn"),
+        rig.style("main"),
+        "two classes, two styles"
+    );
+    assert_eq!(rig.style("plain"), plain, "words with no span stay plain");
+}
+
+#[test]
+fn spans_are_read_in_the_encoding_they_name() {
+    // "\u{e9}" is two bytes and one scalar; the keyword starts after it.
+    let text = "\u{e9} fn x\n\n";
+    for (encoding, start, end) in [
+        (SpanEncoding::Utf8Bytes, 3, 5),
+        (SpanEncoding::Utf16CodeUnits, 2, 4),
+        (SpanEncoding::UnicodeScalars, 2, 4),
+    ] {
+        let mut rig = source_at_end(text);
+        let plain = rig.style("x");
+        rig.host(tokens(1, encoding, &[(start, end, "keyword")]));
+        assert_ne!(rig.style("fn"), plain, "{encoding:?}");
+        assert_eq!(rig.style("x"), plain, "{encoding:?}: only fn");
+    }
+    // A span inside a scalar is not a place in the text: it is dropped.
+    let mut rig = source_at_end(text);
+    let plain = rig.style("fn");
+    rig.host(tokens(1, SpanEncoding::Utf8Bytes, &[(1, 5, "keyword")]));
+    assert_eq!(rig.style("fn"), plain);
+}
+
+#[test]
+fn spans_for_another_revision_are_not_applied_and_a_later_one_waits() {
+    let mut rig = source_at_end(CODE);
+    let plain = rig.style("plain");
+    // An older revision: other text, never applied.
+    rig.host(tokens(0, SpanEncoding::Utf8Bytes, &[(0, 2, "keyword")]));
+    assert_eq!(rig.style("fn"), plain);
+    // A later one waits until the text has caught up with it.
+    rig.host(tokens(2, SpanEncoding::Utf8Bytes, &[(0, 2, "keyword")]));
+    assert_eq!(rig.style("fn"), plain, "revision 2 is not held yet");
+    rig.host(remote_insert(2, 12, "!"));
+    assert_ne!(rig.style("fn"), plain, "now it is");
+}
+
+#[test]
+fn unchanged_lines_keep_their_colour_until_new_spans_arrive() {
+    let mut rig = source_at_end(CODE);
+    let plain = rig.style("plain");
+    rig.host(tokens(
+        1,
+        SpanEncoding::Utf8Bytes,
+        &[(0, 2, "keyword"), (13, 24, "comment")],
+    ));
+    let (kw, cm) = (rig.style("fn"), rig.style("words"));
+    assert_ne!(kw, plain);
+    assert_ne!(cm, plain, "the second line has a comment span");
+    // An edit on the second line, not yet accepted: the first keeps its colour,
+    // the line that changed is plain.
+    rig.key(Key::Up);
+    rig.key(Key::Home);
+    let fx = rig.key(Key::Char('Z'));
+    assert_eq!(rig.style("fn"), kw);
+    assert_eq!(rig.style("words"), plain, "the changed line has no colour");
+    // The host's spans for the new revision colour it again.
+    let e = the_edit(&fx);
+    rig.accept(&e, 2);
+    rig.host(tokens(
+        2,
+        SpanEncoding::Utf8Bytes,
+        &[(0, 2, "keyword"), (13, 25, "comment")],
+    ));
+    assert_eq!(rig.style("words"), cm);
+}
+
+#[test]
+fn split_colours_the_source_side_and_not_the_rendered_side() {
+    let mut rig = source_at_end("# Title\n\nfn main\n\n");
+    rig.alt('3');
+    let width = rig.body().width;
+    let left = 0..width / 2;
+    let right = width / 2 + 1..width;
+    let rendered = rig.style_of("Title", right.clone());
+    let source_plain = rig.style_of("main", left.clone());
+    rig.host(tokens(1, SpanEncoding::Utf8Bytes, &[(0, 7, "keyword")]));
+    assert_ne!(
+        rig.style_of("# Title", left),
+        source_plain,
+        "the source side is coloured"
+    );
+    assert_eq!(
+        rig.style_of("Title", right),
+        rendered,
+        "the rendered side is drawn by the Markdown model, not by the spans"
+    );
+}
+
+// ---- 8: nothing remote is fetched or opened ---------------------------------------
+
+#[test]
+fn a_remote_image_and_a_remote_link_emit_nothing_on_open_preview_or_tab() {
+    let text =
+        "# Page\n\nSee [site](https://example.com/x) and ![pic](https://example.com/i.png).\n";
+    let mut rig = Rig::start();
+    let mut all = rig.answer_open(text, 1);
+    for mode in ['4', '3', '1', '4'] {
+        all.extend(rig.alt(mode));
+        all.extend(rig.tick());
+    }
+    all.extend(rig.key(Key::Tab));
+    all.extend(rig.mods(Key::Tab, Mods::SHIFT));
+    all.extend(rig.key(Key::Tab));
+    assert!(
+        rig.screen().contains("not opened or fetched"),
+        "{}",
+        rig.screen()
+    );
+    all.extend(rig.mods(Key::Enter, Mods::ALT));
+    assert!(all.is_empty(), "nothing was sent: {all:#?}");
+    assert!(!rig.m.panel_ids().any(|(_, k)| k.as_str() == "browser"));
+}
+
+// ---- 9: a chord for the mode already shown ----------------------------------------
+
+#[test]
+fn the_chord_for_the_mode_already_shown_does_nothing() {
+    let mut rig = Rig::opened("# Title\n");
+    assert_eq!(rig.mode(), "visual");
+    let before = rig.screen();
+    let fx = rig.alt('1');
+    assert!(fx.is_empty(), "{fx:#?}");
+    assert!(!rig.screen().contains("Already"), "{}", rig.screen());
+    assert_eq!(rig.screen(), before);
+    let fx = rig.act("markdown.mode.visual");
+    assert!(fx.is_empty());
+    assert!(!rig.screen().contains("Already"), "{}", rig.screen());
 }

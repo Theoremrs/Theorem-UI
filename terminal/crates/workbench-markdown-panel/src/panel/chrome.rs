@@ -144,7 +144,7 @@ impl MarkdownPanel {
                 md.is_held(),
             )
         };
-        let read_only = || d.read_only.clone().map(|r| format!("Read-only: {r}"));
+        let read_only = || d.sync.read_only.clone().map(|r| format!("Read-only: {r}"));
         let preview = || {
             (mode == MarkdownMode::Preview)
                 .then(|| "Preview shows the document and does not edit it.".to_owned())
@@ -161,9 +161,10 @@ impl MarkdownPanel {
                     Some("The document service is not available.".to_owned())
                 } else if has_conflict {
                     Some("Settle the held text first.".to_owned())
-                } else if d.desync.is_some() {
+                } else if d.sync.desync.is_some() {
                     Some("Waiting for the owner's text.".to_owned())
-                } else if d.save.inflight == Some(md.revision()) && !md.session().has_pending() {
+                } else if d.sync.save.inflight == Some(md.revision()) && !md.session().has_pending()
+                {
                     Some("A save of this revision is already in flight.".to_owned())
                 } else if !dirty {
                     Some("There is nothing to save.".to_owned())
@@ -190,18 +191,20 @@ impl MarkdownPanel {
                 }
             }
             Choice::TakeTheirs | Choice::KeepBoth => conflict(),
-            Choice::CopyMine => (!has_conflict && d.recoverable.is_none())
+            Choice::CopyMine => (!has_conflict && d.sync.recoverable.is_none())
                 .then(|| "There is no held text.".to_owned()),
             Choice::Resend => d
+                .sync
                 .unknown
                 .is_none()
                 .then(|| "No edit is waiting on an unknown answer.".to_owned()),
             Choice::KeepDisk | Choice::KeepAuthority => d
+                .sync
                 .disk
                 .is_none()
                 .then(|| "The file on disk has not changed under the panel.".to_owned()),
             Choice::Dismiss => {
-                (!(d.notice.is_some() || d.recoverable.is_some() || d.link.is_some()))
+                (!(d.notice.is_some() || d.sync.recoverable.is_some() || d.link.is_some()))
                     .then(|| "There is nothing to dismiss.".to_owned())
             }
             Choice::Retry => Some("Nothing failed.".to_owned()),
@@ -221,7 +224,7 @@ impl MarkdownPanel {
                 conflict,
             })
         };
-        let buttons_for_conflict = if d.read_only.is_some() {
+        let buttons_for_conflict = if d.sync.read_only.is_some() {
             vec![Choice::TakeTheirs, Choice::CopyMine]
         } else {
             vec![
@@ -249,14 +252,15 @@ impl MarkdownPanel {
             );
         }
         let session = md.session();
-        if session.has_conflict() || d.held.is_some() {
+        if session.has_conflict() || d.sync.held.is_some() {
             let reason = d
+                .sync
                 .held
                 .as_ref()
                 .map(|h| h.reason.clone())
                 .or_else(|| session.conflict().map(|c| c.reason))
                 .unwrap_or_default();
-            let conflict = d.held.as_ref().is_none_or(|h| h.conflict);
+            let conflict = d.sync.held.as_ref().is_none_or(|h| h.conflict);
             let mine = session
                 .conflict()
                 .map(|c| {
@@ -267,7 +271,7 @@ impl MarkdownPanel {
                         .join(" ")
                 })
                 .unwrap_or_default();
-            let theirs = match d.held.as_ref().and_then(|h| h.theirs.as_ref()) {
+            let theirs = match d.sync.held.as_ref().and_then(|h| h.theirs.as_ref()) {
                 Some(t) if t.inserted.is_empty() && !t.removed.is_empty() => "(deleted)".to_owned(),
                 Some(t) => snip(&t.inserted, 24),
                 None if conflict => "(the owner sent no text)".to_owned(),
@@ -288,7 +292,7 @@ impl MarkdownPanel {
             };
             return make(body, Tone::Error, buttons_for_conflict, true);
         }
-        if let Some(disk) = &d.disk {
+        if let Some(disk) = &d.sync.disk {
             let what = if disk.deleted {
                 "The file was deleted on disk."
             } else {
@@ -304,7 +308,7 @@ impl MarkdownPanel {
                 false,
             );
         }
-        if let Some(u) = &d.unknown {
+        if let Some(u) = &d.sync.unknown {
             return make(
                 format!(
                     "Unknown whether the owner took an edit: {} Nothing is sent behind it.",
@@ -315,7 +319,7 @@ impl MarkdownPanel {
                 false,
             );
         }
-        if d.recoverable.is_some() {
+        if d.sync.recoverable.is_some() {
             return make(
                 "Their text was taken. Your text is kept.".to_owned(),
                 Tone::Info,
@@ -323,7 +327,7 @@ impl MarkdownPanel {
                 false,
             );
         }
-        if let Some(why) = &d.desync {
+        if let Some(why) = &d.sync.desync {
             return make(why.clone(), Tone::Warn, vec![], false);
         }
         if let Some(i) = d.link {
@@ -524,27 +528,27 @@ impl MarkdownPanel {
         if d.dirty() {
             flag("modified".to_owned(), false);
         }
-        if let Some(r) = &d.read_only {
+        if let Some(r) = &d.sync.read_only {
             flag(format!("read-only: {r}"), true);
         }
         if d.md.borrow().is_held() {
             flag("block held".to_owned(), true);
         }
-        if d.save.inflight.is_some() {
+        if d.sync.save.inflight.is_some() {
             flag("saving".to_owned(), false);
         }
-        if d.save.unknown.is_some() {
+        if d.sync.save.unknown.is_some() {
             flag("save unknown".to_owned(), true);
         }
-        if d.unknown.is_some() {
+        if d.sync.unknown.is_some() {
             flag("edit unknown".to_owned(), true);
-        } else if d.inflight.is_some() {
+        } else if d.sync.inflight.is_some() {
             flag("sending".to_owned(), false);
         }
-        if d.desync.is_some() {
+        if d.sync.desync.is_some() {
             flag("out of sync".to_owned(), true);
         }
-        if d.save.wanted {
+        if d.sync.save.wanted {
             flag("save waits for edits".to_owned(), false);
         }
         match self.connection {
@@ -712,8 +716,10 @@ impl MarkdownPanel {
         styles: &MarkdownPanelStyles,
     ) {
         let md = d.md.borrow();
+        let tokens = d.token_marks(&styles.editor);
         let paint = Paint {
             focused: cx.focused,
+            tokens: &tokens,
             preedit: d.preedit.as_deref(),
             ..Paint::new(&styles.editor)
         };
@@ -834,7 +840,7 @@ impl MarkdownPanel {
         root.revision = Some(CoreRevision::Seq(revision));
         root.state.focused = cx.focused;
         root.state.modified = d.dirty();
-        root.state.busy = d.inflight.is_some() || d.save.inflight.is_some();
+        root.state.busy = d.sync.inflight.is_some() || d.sync.save.inflight.is_some();
         let mut words = vec![
             format!("mode: {}", mode_title(shown.mode).to_lowercase()),
             if d.dirty() { "modified" } else { "saved" }.to_owned(),
@@ -842,7 +848,7 @@ impl MarkdownPanel {
         if let Some(note) = &shown.note {
             words.push(note.clone());
         }
-        if let Some(r) = &d.read_only {
+        if let Some(r) = &d.sync.read_only {
             words.push(format!("read-only: {r}"));
         }
         if let Some((i, n, kind)) = self.block_words(d) {
@@ -928,7 +934,7 @@ impl MarkdownPanel {
                 &format!("Block {i} of {n}: {kind}"),
                 frame.text,
             );
-            b.state.description = match &d.read_only {
+            b.state.description = match &d.sync.read_only {
                 Some(why) => Some(format!("read-only: {why}")),
                 None => {
                     d.md.borrow()

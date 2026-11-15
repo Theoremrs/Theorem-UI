@@ -1,37 +1,26 @@
 //! The answers: completions of the effects the panel emitted, host messages
 //! for its document, and the sending of its edits.
 //!
-//! The flow is the editor panel's, over the Markdown model's session. The
-//! editor's own flow is private to its panel, so this is the same flow written
-//! against `MarkdownDoc`; the helpers that fold the owner's text into a session
-//! (`resync`, `step_before`, `apply_owner_change`) are the editor crate's.
+//! What the owner owes and answers is the editor crate's `OwnerSync`, run over
+//! the Markdown model's session through `apply_local`, so an open block hears
+//! of every change the owner makes to the text and is merged or held, never
+//! dropped. This file emits what `OwnerSync` says is owed and shows what its
+//! steps say; the block rule and the tokens are the panel's own.
 
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
 use theorem_workbench_core::effect::{
-    ClipboardWrite, CoordinateUnit, DocumentEdit, DocumentReconcile, DocumentSettle, EffectBody,
-    ReconcileKeep, TextChange as CoreChange,
+    ClipboardWrite, DocumentReconcile, DocumentSettle, EffectBody, ReconcileKeep,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{Capability, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
-use theorem_workbench_editor::{SourceView, apply_owner_change, resync, step_before};
-use theorem_workbench_markdown::{BlockResolution, MarkdownDoc, MarkdownMode};
-use theorem_workbench_text::{OpId, PendingState, Resolution, SessionConfig, SyncError};
-
-use super::{
-    Clip, Disk, Doc, Held, MarkdownPanel, Notice, Phase, Problem, Saving, Task, Tone, Unknown, seq,
+use theorem_workbench_editor::{
+    Held, Level, Owed, OwnerSync, SourceView, Step, resync, revision_number,
 };
+use theorem_workbench_markdown::{BlockResolution, MarkdownDoc, MarkdownMode};
+use theorem_workbench_text::{PendingState, Resolution};
 
-fn core_changes(edit: &theorem_workbench_text::LocalEdit) -> Vec<CoreChange> {
-    edit.changes
-        .iter()
-        .map(|c| CoreChange {
-            start: c.start as u32,
-            end: c.end as u32,
-            insert: c.insert.clone(),
-        })
-        .collect()
-}
+use super::{Clip, Doc, MarkdownPanel, Notice, Phase, Problem, Task, Tone};
 
 pub(super) fn emit_notice(error: EmitError) -> String {
     match error {
@@ -51,12 +40,8 @@ impl MarkdownPanel {
         self.relayout();
         self.pump(cx);
         if let Some(d) = self.doc_mut() {
-            // A save of an older revision is judged stale once edits are
-            // accepted past it, so its answer will not come: stop showing it.
-            let accepted = d.md.get_mut().revision();
-            if d.save.inflight.is_some_and(|r| r < accepted) {
-                d.save.inflight = None;
-            }
+            d.refresh_tokens();
+            d.sync.settle_stale_save(d.md.get_mut().session());
         }
     }
 
@@ -66,81 +51,82 @@ impl MarkdownPanel {
     /// save once every edit is accepted. A call that cannot emit (a silent
     /// message) leaves the need for the next tick.
     pub(super) fn pump(&mut self, cx: &mut Ctx) {
-        let save_due = {
+        let owed = {
             let Phase::Ready(d) = &mut self.phase else {
                 return;
             };
-            if d.desync.is_some() {
-                return;
-            }
-            let next = if d.inflight.is_none() && d.unknown.is_none() {
-                d.md.get_mut().take_next_to_send()
+            let md = d.md.get_mut();
+            // Nothing is owed without a pending edit or a wanted save, and
+            // asking through the model costs a read of the text while a block
+            // is open.
+            if md.session().has_pending() || d.sync.save.wanted {
+                md.apply_local(|s| d.sync.owed(s))
             } else {
                 None
-            };
-            if let Some(edit) = next {
-                let base = edit.base_revision;
-                let op = edit.op_id.clone();
-                let body = EffectBody::DocumentEdit(DocumentEdit {
-                    operation_id: op.0.clone(),
-                    unit: CoordinateUnit::Utf16,
-                    edits: core_changes(&edit),
-                });
-                d.inflight = Some(op.clone());
-                if let Err(error) = self.start(cx, Task::Edit(op.clone()), body, Some(base)) {
+            }
+        };
+        match owed {
+            Some(Owed::Edit { op, base, body }) => {
+                let sent = self.start(
+                    cx,
+                    Task::Edit(op.clone()),
+                    EffectBody::DocumentEdit(body),
+                    Some(base),
+                );
+                if let Err(error) = sent {
                     self.need_pump = true;
-                    if let Phase::Ready(d) = &mut self.phase {
-                        d.inflight = None;
-                        let _ = d.md.get_mut().requeue(&op);
+                    if let Some(d) = self.doc_mut() {
+                        d.md.get_mut().apply_local(|s| d.sync.edit_not_sent(s, &op));
                         if !matches!(error, EmitError::Silent) {
                             d.notice(emit_notice(error), Tone::Warn);
                         }
                     }
                 }
-                return;
             }
-            let md = d.md.get_mut();
-            d.save.wanted
-                && d.save.inflight.is_none()
-                && !md.session().has_pending()
-                && !md.session().has_conflict()
-        };
-        if save_due {
-            self.send_save(cx);
+            Some(Owed::Save { revision }) => {
+                let sent = self.start(
+                    cx,
+                    Task::Save(revision),
+                    EffectBody::DocumentSave,
+                    Some(revision),
+                );
+                if let Err(error) = sent {
+                    self.need_pump = true;
+                    if let Some(d) = self.doc_mut() {
+                        d.sync.save_not_sent();
+                        if !matches!(error, EmitError::Silent) {
+                            d.notice(emit_notice(error), Tone::Warn);
+                        }
+                    }
+                }
+            }
+            None => {}
         }
     }
 
-    pub(super) fn send_save(&mut self, cx: &mut Ctx) {
-        let Some(d) = self.doc_mut() else { return };
-        let revision = d.md.get_mut().revision();
-        d.save.wanted = false;
-        match self.start(
-            cx,
-            Task::Save(revision),
-            EffectBody::DocumentSave,
-            Some(revision),
-        ) {
-            Ok(_) => {
-                if let Some(d) = self.doc_mut() {
-                    d.save.inflight = Some(revision);
-                    d.save.unknown = None;
-                }
+    /// Show what a step says and let the owner go of what it settled.
+    fn show(&mut self, step: Step, cx: &mut Ctx) {
+        if let Some(d) = self.doc_mut() {
+            for note in step.notes {
+                let tone = match note.level {
+                    Level::Info => Tone::Info,
+                    Level::Warn => Tone::Warn,
+                    Level::Error => Tone::Error,
+                };
+                d.notice(note.text, tone);
             }
-            Err(error) => {
-                self.need_pump = true;
-                if let Some(d) = self.doc_mut() {
-                    d.save.wanted = true;
-                    if !matches!(error, EmitError::Silent) {
-                        d.notice(emit_notice(error), Tone::Warn);
-                    }
-                }
+        }
+        for op in step.settle {
+            let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op.0 });
+            if let Ok(id) = self.emit(cx, self.resource(), body, None) {
+                self.outstanding.insert(id, Task::Release);
             }
         }
     }
 
     // ---- completions ------------------------------------------------------
 
-    pub(super) fn on_completion(&mut self, c: Completion, cached: bool, _cx: &mut Ctx) {
+    pub(super) fn on_completion(&mut self, c: Completion, cached: bool, cx: &mut Ctx) {
         let Some(task) = self.outstanding.remove(&c.effect) else {
             return;
         };
@@ -152,9 +138,25 @@ impl MarkdownPanel {
             // state, so not shown.
             _ if cached => {}
             Task::Open => self.on_open(c),
-            Task::Edit(op) => self.on_edit(op, c),
-            Task::Save(revision) => self.on_save(revision, c),
-            Task::Reconcile(keep) => self.on_reconcile(keep, c),
+            Task::Edit(op) => {
+                let Some(d) = self.doc_mut() else { return };
+                let step =
+                    d.md.get_mut()
+                        .apply_local(|s| d.sync.edit_answered(s, op, c));
+                self.show(step, cx);
+            }
+            Task::Save(revision) => {
+                let Some(d) = self.doc_mut() else { return };
+                let step = d.sync.save_answered(revision, c);
+                self.show(step, cx);
+            }
+            Task::Reconcile(keep) => {
+                let Some(d) = self.doc_mut() else { return };
+                let step =
+                    d.md.get_mut()
+                        .apply_local(|s| d.sync.reconcile_answered(s, keep, c));
+                self.show(step, cx);
+            }
             Task::Release => {}
         }
     }
@@ -168,7 +170,7 @@ impl MarkdownPanel {
                 return;
             }
         };
-        let Some(revision) = seq(&opened.revision) else {
+        let Some(revision) = revision_number(&opened.revision) else {
             self.phase = Phase::Failed(Problem::plain(
                 "This panel cannot show the document",
                 "The owner numbers its revisions with an opaque token, and the panel needs an ordered one."
@@ -181,7 +183,7 @@ impl MarkdownPanel {
             opened
                 .saved_revision
                 .as_ref()
-                .and_then(seq)
+                .and_then(revision_number)
                 .filter(|s| *s != revision)
         } else {
             Some(revision)
@@ -223,30 +225,29 @@ impl MarkdownPanel {
             }
             _ => {}
         }
-        let held = md.session().conflict().map(|k| Held {
+        let mut sync = OwnerSync::new(saved);
+        // Text the last panel left held is held still.
+        sync.held = md.session().conflict().map(|k| Held {
             reason: k.reason,
             theirs: None,
             conflict: true,
         });
+        if let Some(r) = opened.read_only {
+            md.apply_local(|s| sync.make_read_only(s, r.reason));
+        }
         let mut d = Doc {
             md: std::cell::RefCell::new(md),
             source: SourceView::new(),
             block: SourceView::new(),
-            saved,
-            read_only: opened.read_only.map(|r| r.reason),
-            inflight: None,
-            unknown: None,
-            desync: None,
-            held,
-            disk: None,
-            save: Saving::default(),
+            sync,
             notice: note.map(|text| Notice {
                 text,
                 tone: Tone::Warn,
             }),
-            recoverable: None,
             link: None,
             preedit: None,
+            tokens: None,
+            waiting: None,
         };
         d.sync_read_only();
         self.phase = Phase::Ready(Box::new(d));
@@ -258,179 +259,6 @@ impl MarkdownPanel {
     /// effect envelope does not carry, so the effect id and the resource do.
     fn panel_name(&self) -> String {
         format!("{}:{}", self.workspace, self.path)
-    }
-
-    /// The owner accepted `op` as `revision`.
-    pub(super) fn acknowledge(&mut self, op: &OpId, revision: u64) {
-        let Some(d) = self.doc_mut() else { return };
-        let md = d.md.get_mut();
-        let mut result = md.acknowledge(op, revision);
-        if matches!(result, Err(SyncError::RevisionGap { .. })) {
-            // The revisions in between were other people's. Their text is not
-            // known here, so no edit goes out until the owner's resync.
-            let _ = md.apply_local(|s| step_before(s, revision));
-            result = md.acknowledge(op, revision);
-            d.desync = Some(format!(
-                "Revisions before {revision} were not seen; waiting for the owner's resync."
-            ));
-        }
-        match result {
-            Ok(()) => {
-                if d.inflight.as_ref() == Some(op) {
-                    d.inflight = None;
-                }
-                if d.unknown.as_ref().is_some_and(|u| &u.op == op) {
-                    d.unknown = None;
-                }
-            }
-            // Already seen on the live stream, or never ours: nothing to do.
-            Err(SyncError::UnknownOperation(_)) => {}
-            Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-        }
-    }
-
-    fn on_edit(&mut self, op: OpId, c: Completion) {
-        let revision_stamp = c.revision.as_ref().and_then(seq);
-        let Phase::Ready(d) = &mut self.phase else {
-            return;
-        };
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, payload) => {
-                let revision = match payload {
-                    Some(CompletionPayload::DocumentEdited(e)) => seq(&e.revision),
-                    _ => revision_stamp,
-                };
-                match revision {
-                    Some(r) => self.acknowledge(&op, r),
-                    None => {
-                        d.inflight = None;
-                        d.desync = Some(
-                            "The owner accepted an edit without saying at which revision; waiting for its resync."
-                                .into(),
-                        );
-                    }
-                }
-            }
-            (Outcome::Refused { code, reason }, payload) => {
-                d.inflight = None;
-                let md = d.md.get_mut();
-                let _ = md.refuse(&op, reason.clone());
-                d.save.wanted = false;
-                if let Some(CompletionPayload::DocumentConflicted(dc)) = payload {
-                    let theirs = match seq(&dc.current.revision) {
-                        Some(r) => match md.apply_local(|s| resync(s, &dc.current.text, r)) {
-                            Ok(changed) => Some(changed),
-                            Err(e) => {
-                                d.desync = Some(format!("{e}; waiting for the owner's resync."));
-                                None
-                            }
-                        },
-                        None => {
-                            d.desync = Some("The owner's current revision is opaque.".into());
-                            None
-                        }
-                    };
-                    d.held = Some(Held {
-                        reason,
-                        theirs,
-                        conflict: true,
-                    });
-                } else if code == "conflict" {
-                    d.desync = Some(
-                        "The owner refused the edit as stale and sent no current text; waiting for its resync."
-                            .into(),
-                    );
-                    d.held = Some(Held {
-                        reason,
-                        theirs: None,
-                        conflict: true,
-                    });
-                } else {
-                    let low = code.to_lowercase();
-                    if ["read", "permission", "denied", "forbidden"]
-                        .iter()
-                        .any(|w| low.contains(w))
-                    {
-                        d.read_only = Some(reason.clone());
-                        d.sync_read_only();
-                    }
-                    d.held = Some(Held {
-                        reason,
-                        theirs: None,
-                        conflict: false,
-                    });
-                }
-            }
-            (Outcome::Failed { reason }, _) => {
-                d.inflight = None;
-                let _ = d.md.get_mut().refuse(&op, reason.clone());
-                d.save.wanted = false;
-                d.held = Some(Held {
-                    reason,
-                    theirs: None,
-                    conflict: false,
-                });
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                // In flight stays in flight: the owner may have it. Nothing
-                // is sent behind it, and nothing sends it again unless asked.
-                d.unknown = Some(Unknown { op, reason });
-            }
-        }
-    }
-
-    fn on_save(&mut self, revision: u64, c: Completion) {
-        let Some(d) = self.doc_mut() else { return };
-        if d.save.inflight == Some(revision) {
-            d.save.inflight = None;
-        }
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, payload) => {
-                let at = match payload {
-                    Some(CompletionPayload::DocumentSaved(s)) => seq(&s.revision),
-                    _ => None,
-                }
-                .unwrap_or(revision);
-                d.saved = Some(at);
-                d.save.unknown = None;
-                d.notice(format!("Saved revision {at}."), Tone::Info);
-            }
-            (Outcome::Refused { reason, .. } | Outcome::Failed { reason }, _) => {
-                d.notice(format!("Not saved: {reason}"), Tone::Error);
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                d.save.unknown = Some(reason.clone());
-                d.notice(format!("Unknown whether it saved: {reason}"), Tone::Warn);
-            }
-        }
-    }
-
-    fn on_reconcile(&mut self, keep: ReconcileKeep, c: Completion) {
-        let Some(d) = self.doc_mut() else { return };
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, Some(CompletionPayload::DocumentReconciled(r))) => {
-                let Some(revision) = seq(&r.revision) else {
-                    return;
-                };
-                match d.md.get_mut().apply_local(|s| resync(s, &r.text, revision)) {
-                    Ok(_) => {
-                        d.disk = None;
-                        if keep == ReconcileKeep::Disk {
-                            d.saved = Some(revision);
-                        }
-                        d.notice("Settled with the file on disk.", Tone::Info);
-                    }
-                    Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-                }
-            }
-            (Outcome::Accepted, _) => d.disk = None,
-            (Outcome::Refused { reason, .. } | Outcome::Failed { reason }, _) => {
-                d.notice(format!("Not settled: {reason}"), Tone::Error);
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                d.notice(format!("Unknown whether it settled: {reason}"), Tone::Warn);
-            }
-        }
     }
 
     fn on_clip(&mut self, clip: Clip, c: Completion) {
@@ -528,80 +356,19 @@ impl MarkdownPanel {
 
     // ---- host messages ----------------------------------------------------
 
-    pub(super) fn on_host(&mut self, message: HostMessage) {
+    pub(super) fn on_host(&mut self, message: HostMessage, cx: &mut Ctx) {
         match message {
-            HostMessage::DocumentChanged {
-                revision,
-                operation_id,
-                unit,
-                edits,
-                ..
-            } => {
-                let Some(revision) = seq(&revision) else {
-                    return;
-                };
-                let Some(d) = self.doc_mut() else { return };
-                let md = d.md.get_mut();
-                if let Some(op) = operation_id.map(OpId)
-                    && md.pending().iter().any(|p| p.op_id == op)
-                {
-                    self.acknowledge(&op, revision);
-                    return;
-                }
-                let accepted = md.revision();
-                if revision <= accepted {
-                    return;
-                }
-                if revision > accepted + 1 {
-                    d.desync = Some(format!(
-                        "Revisions {}..{} were not seen; waiting for the owner's resync.",
-                        accepted + 1,
-                        revision - 1
-                    ));
-                    return;
-                }
-                // The change reaches the open block through the model, which
-                // merges it or holds the block; nothing typed is dropped.
-                if let Err(e) = md.apply_local(|s| apply_owner_change(s, unit, &edits, revision)) {
-                    d.desync = Some(format!("{e}; waiting for the owner's resync."));
-                }
-            }
-            HostMessage::DocumentAcknowledged {
-                revision,
-                operation_id,
-                ..
-            } => {
-                if let Some(revision) = seq(&revision) {
-                    self.acknowledge(&OpId(operation_id), revision);
-                }
-            }
-            HostMessage::DocumentResync { revision, text, .. } => {
-                let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) else {
-                    return;
-                };
-                match d.md.get_mut().apply_local(|s| resync(s, &text, revision)) {
-                    Ok(_) => d.desync = None,
-                    // An older resync than what is shown is not news.
-                    Err(SyncError::StaleRevision { .. }) => {}
-                    Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-                }
-            }
-            HostMessage::DocumentConflict {
-                revision,
-                disk_deleted,
-                ..
-            } => {
-                if let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) {
-                    d.disk = Some(Disk {
-                        revision,
-                        deleted: disk_deleted,
-                    });
-                }
-            }
-            HostMessage::DocumentSaved { revision, .. } => {
-                if let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) {
-                    d.saved = Some(revision);
-                    d.save.unknown = None;
+            // What the owner says of the document goes through the sync, over
+            // the model's session so an open block hears of any change.
+            HostMessage::DocumentChanged { .. }
+            | HostMessage::DocumentAcknowledged { .. }
+            | HostMessage::DocumentResync { .. }
+            | HostMessage::DocumentConflict { .. }
+            | HostMessage::DocumentSaved { .. }
+            | HostMessage::DocumentRetired { .. } => {
+                if let Some(d) = self.doc_mut() {
+                    let step = d.md.get_mut().apply_local(|s| d.sync.host(s, &message));
+                    self.show(step, cx);
                 }
             }
             HostMessage::DocumentMoved { from, to } => {
@@ -615,16 +382,34 @@ impl MarkdownPanel {
                     self.path = resource_id;
                 }
             }
-            HostMessage::DocumentRetired { .. } => {
-                if let Some(d) = self.doc_mut() {
-                    d.read_only = Some("The owner retired this document.".to_owned());
-                    d.sync_read_only();
-                }
-            }
             HostMessage::CapabilitiesChanged { capabilities } => {
                 self.documents = capabilities.has(&Capability::new("documents"));
             }
             HostMessage::ConnectionChanged { state, .. } => self.connection = Some(state),
+            HostMessage::DocumentTokens {
+                resource,
+                revision,
+                encoding,
+                spans,
+            } => {
+                let (Some(revision), true) =
+                    (revision_number(&revision), resource == self.resource())
+                else {
+                    return;
+                };
+                if let Some(d) = self.doc_mut() {
+                    let accepted = d.md.get_mut().revision();
+                    // Spans for an older revision describe other text and are
+                    // not applied; newer ones wait for the text to catch up.
+                    if revision >= accepted {
+                        d.waiting = Some(super::tokens::Waiting {
+                            revision,
+                            encoding,
+                            spans,
+                        });
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -645,7 +430,7 @@ impl MarkdownPanel {
             };
             match d.md.get_mut().resolve_block_conflict(which) {
                 Ok(set_aside) => {
-                    d.recoverable = set_aside;
+                    d.sync.recoverable = set_aside;
                     d.notice(
                         match how {
                             Resolution::KeepMine => {
@@ -665,44 +450,20 @@ impl MarkdownPanel {
             }
             return;
         }
-        let held: Vec<OpId> =
-            d.md.get_mut()
-                .session()
-                .conflict()
-                .map(|c| c.op_ids)
-                .unwrap_or_default();
-        let result = d.md.get_mut().resolve_conflict(how);
-        let settled = result.is_ok();
-        match result {
-            Ok(dropped) => {
-                d.held = None;
-                if dropped.is_some() {
-                    d.recoverable = dropped;
-                }
-                d.notice(
-                    match how {
-                        Resolution::KeepMine => "Your text will be sent again on top of theirs.",
-                        Resolution::TakeTheirs => {
-                            "Took their text. Yours is kept: Alt+Y copies it."
-                        }
-                        Resolution::KeepBoth => "Kept their text and added yours next to it.",
-                    },
-                    Tone::Info,
-                );
-            }
-            Err(e) => {
-                d.held = None;
-                d.notice(e.to_string(), Tone::Warn);
-            }
+        let step = d.md.get_mut().apply_local(|s| d.sync.resolve(s, how));
+        self.show_resolved(step, how, cx);
+    }
+
+    /// A resolution's notes name the panel's own key for copying what was set
+    /// aside; the editor's note is neutral.
+    fn show_resolved(&mut self, mut step: Step, how: Resolution, cx: &mut Ctx) {
+        if how == Resolution::TakeTheirs
+            && let Some(last) = step.notes.last_mut()
+            && last.level == Level::Info
+        {
+            last.text.push_str(" Alt+Y copies it.");
         }
-        if settled {
-            for op in held {
-                let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op.0 });
-                if let Ok(id) = self.emit(cx, self.resource(), body, None) {
-                    self.outstanding.insert(id, Task::Release);
-                }
-            }
-        }
+        self.show(step, cx);
     }
 
     pub(super) fn reconcile(&mut self, keep: ReconcileKeep, cx: &mut Ctx) {
@@ -729,10 +490,4 @@ impl MarkdownPanel {
         self.outstanding.insert(id, Task::Clip(task));
         Ok(())
     }
-}
-
-/// The client id of a session this panel makes.
-#[allow(dead_code)]
-fn config(client: &str) -> SessionConfig {
-    SessionConfig::new(client)
 }
