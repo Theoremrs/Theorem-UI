@@ -6,6 +6,7 @@
 // rather than trusting a message.
 
 import { statusOf } from './environment/result'
+import { reason as readableReason } from './environment/workspace-recovery'
 
 /** What the session says about who is signed in. `session.bootstrap` returns these two among others. */
 export interface AccountIdentity {
@@ -106,7 +107,7 @@ export function createAccountWatch(options: AccountWatchOptions): AccountWatch {
       }
       return {
         state: 'unknown',
-        reason: error instanceof Error ? error.message : String(error),
+        reason: readableReason(error),
       }
     }
   }

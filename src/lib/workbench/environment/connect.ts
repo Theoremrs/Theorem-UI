@@ -55,6 +55,10 @@ export function connectTerminalHost(environment: Environment<TheoremClient>): {
         await environment.settled()
         return environment.has(operation)
       },
+      backend: async (name) => {
+        await environment.settled()
+        return environment.backend(name)
+      },
     }),
     stop: () => live.close(),
   }

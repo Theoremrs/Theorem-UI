@@ -16,6 +16,7 @@ import type {
 } from '../environment/environment'
 import { createRun } from '../environment/run'
 import { accepted, failure, refused } from '../environment/result'
+import { reason as readableReason } from '../environment/workspace-recovery'
 import type { Answers, Completion, Outcome } from '../environment/result'
 import type { DraftStore, LocalProblem, LocalState } from './local'
 import type { ReconcileKeep } from '../wire/ReconcileKeep'
@@ -509,7 +510,10 @@ export function createDocuments(
     try {
       await reread(session, 'head')
     } catch (error) {
-      console.warn('The document head could not be read', error)
+      console.warn(
+        'The document head could not be read:',
+        readableReason(error),
+      )
     }
   }
 
@@ -617,7 +621,10 @@ export function createDocuments(
     if (event.type !== 'reopened') return
     for (const session of sessions.values()) {
       void reread(session, 'seat').catch((error) =>
-        console.warn('The document could not be seated again', error),
+        console.warn(
+          'The document could not be seated again:',
+          readableReason(error),
+        ),
       )
     }
   })

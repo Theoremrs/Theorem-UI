@@ -18,6 +18,7 @@ import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
+import { reason as readableReason } from '../environment/workspace-recovery'
 import { runIdOf, transcriptOf } from './transcript'
 import type { Transcript } from './transcript'
 
@@ -514,7 +515,7 @@ export function createConversation({
             ...(file.type ? { contentType: file.type } : {}),
             size: file.size,
             state: 'refused',
-            reason: error instanceof Error ? error.message : String(error),
+            reason: readableReason(error),
           })
         }
       }

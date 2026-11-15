@@ -8,6 +8,7 @@
 // *****************************************************************************
 
 import type { TerminalOpenRequest } from '@theoremharness/sdk-ide'
+import { herdrIdentity } from './protocol'
 
 /** Which host terminal backend runs the program. `native` is the host's own PTY. */
 export type TerminalBackend = 'native' | 'herdr'
@@ -38,14 +39,15 @@ export const DEFAULT_PROFILE_ID = 'Shell'
 
 /**
  * Whether a workspace capabilities reply says the host can start Herdr terminals now. The host
- * reports `backends.herdr.ready` only for a core it can reach; older hosts report no backends, and
- * would silently start a native shell for a Herdr request, so absence means not ready.
+ * reports `backends.herdr.ready` only for a core it can reach, and this client uses only the core it
+ * is pinned to (./protocol); older hosts report no backends, and would silently start a native shell
+ * for a Herdr request, so absence, or a core it was not built for, means not ready.
  */
 export function herdrReady(capabilities: unknown): boolean {
   const backends = (
-    capabilities as { backends?: { herdr?: { ready?: unknown } } } | undefined
+    capabilities as { backends?: { herdr?: unknown } } | undefined
   )?.backends
-  return backends?.herdr?.ready === true
+  return herdrIdentity(backends?.herdr).supported
 }
 
 /** Native profiles first, then the Herdr ones, which wait for the host to report Herdr ready. */

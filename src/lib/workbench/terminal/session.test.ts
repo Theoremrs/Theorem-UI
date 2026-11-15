@@ -80,6 +80,11 @@ function rig(options: { offers?: boolean | string[] } = {}) {
     },
     workspaceId: 'ws-1',
     csrfToken: () => 'csrf-1',
+    backend: async () => ({
+      ready: true,
+      generation: 1,
+      version: '0.1.17',
+    }),
     offers: async (operation: string) =>
       options.offers === false
         ? false

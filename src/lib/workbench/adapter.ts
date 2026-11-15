@@ -11,6 +11,7 @@ import type { Files } from './files/files'
 import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
+import { herdrIdentity } from './terminal/protocol'
 import { profileById, TERMINAL_PROFILES } from './terminal'
 import type {
   TerminalAdoption,
@@ -113,6 +114,7 @@ export type EnvironmentPort = Pick<
   | 'acquireLive'
   | 'operations'
   | 'backends'
+  | 'backend'
 >
 
 export interface AdapterOptions {
@@ -379,6 +381,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
 
   function profiles(): TerminalProfileInfo[] {
     const herdr = env.backends().includes('herdr')
+    // Not ready and not the pinned core are different facts; the identity says which, so a host
+    // that reports ready is never told it is not ready.
+    const identity = herdrIdentity(env.backend('herdr'))
     // Herdr's terminals cannot be reached while the host cannot read the core's inventory: that is
     // stated here, on the profile the wire already gives a reason to, never as an empty list.
     const unreachable = adoption?.state === 'unavailable' ? adoption : undefined
@@ -387,7 +392,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const reason = !herdrProfile
         ? undefined
         : !herdr
-          ? 'The host reports Herdr terminals not ready'
+          ? identity.supported
+            ? 'The host reports Herdr terminals not ready'
+            : identity.reason
           : unreachable?.reason
       return {
         id: profile.id,

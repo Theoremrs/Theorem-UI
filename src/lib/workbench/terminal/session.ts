@@ -1,8 +1,11 @@
 // SOURCING: hand-roll — the binding state machine (four separate versions, lease, reset, input ledger) is Theorem's own host contract; the SDK's TerminalChannel (0.6.0-alpha.8) now tracks epochs, leases and kill, but answers a bare boolean, reports a refused claim to a listener, mints its own input ids and has no `uncertain`, while this workbench needs the panel's `input_id` and claim and four outcomes. Transport is the SDK (host.ts); profiles are terminal-profile.ts.
 import { terminalHost } from './host'
 import type { InputBody, TerminalDeps, TerminalHost } from './host'
+import { readable } from '../environment/redact'
 import { openBody } from './terminal-profile'
 import type { TheoremTerminalProfile } from './terminal-profile'
+import { reason as readableReason } from '../environment/workspace-recovery'
+import type { HerdrIdentity } from './protocol'
 import { classify } from './wire'
 import type {
   AttachReply,
@@ -115,6 +118,65 @@ export interface Bound {
 const decode = (base64: string) =>
   Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
 
+/** The bytes of a frame the host sent as base64, or undefined when it is not base64: never a guess at another encoding. */
+function frameBytes(data: unknown): Uint8Array | undefined {
+  if (typeof data !== 'string') return undefined
+  try {
+    return decode(data)
+  } catch {
+    return undefined
+  }
+}
+
+const quoted = (value: unknown) => readable(String(value))
+
+/**
+ * Why a host answer is not from the backend that was asked for, or undefined when it is (or names
+ * no backend at all; capabilities, read before a Herdr launch, are the positive evidence).
+ */
+function backendMismatch(
+  wanted: 'native' | 'herdr',
+  reply: {
+    backend?: unknown
+    binding?: { backend?: unknown } | undefined
+    process_owned_by?: unknown
+  },
+): string | undefined {
+  const owner = wanted === 'herdr' ? 'herdr-core' : 'host'
+  const told = [
+    ['backend', reply.backend, wanted],
+    ['binding.backend', reply.binding?.backend, wanted],
+    ['process_owned_by', reply.process_owned_by, owner],
+  ] as const
+  const wrong = told.find(
+    ([, value, expected]) => value !== undefined && value !== expected,
+  )
+  return wrong
+    ? `${wrong[0]} is "${quoted(wrong[1])}", not "${wrong[2]}"`
+    : undefined
+}
+
+/** Why an attach answer cannot be read as the host's JSON reply, or undefined when it can. */
+function attachProblem(reply: unknown): string | undefined {
+  if (!reply || typeof reply !== 'object' || Array.isArray(reply)) {
+    return 'it is not a JSON object'
+  }
+  const { offset_start, offset_end, data, epoch } = reply as Record<
+    string,
+    unknown
+  >
+  if (!Number.isFinite(offset_start) || !Number.isFinite(offset_end)) {
+    return 'it carries no byte offsets'
+  }
+  if (data !== undefined && frameBytes(data) === undefined) {
+    return 'its data is not base64'
+  }
+  if (epoch !== undefined && typeof epoch !== 'number') {
+    return 'its epoch is not a number'
+  }
+  return undefined
+}
+
 function programOf(binding: Pick<WireBinding, 'program'> | undefined): {
   program?: number
   origin?: ProgramOrigin
@@ -170,6 +232,8 @@ export class TerminalSession {
   private readonly listeners = new Set<(event: TerminalEvent) => void>()
   private readonly stops: (() => void)[] = []
   private readonly ledger = new Map<string, Sent>()
+  /** Names this session sent that the host replaced with one it minted, with the binding epoch they were replaced in. */
+  private readonly superseded = new Map<string, number | undefined>()
   private catchingUp: Promise<Outcome<Bound>> | undefined
   private linkWasDown = false
 
@@ -196,6 +260,23 @@ export class TerminalSession {
   async open(options: OpenOptions): Promise<Outcome<Bound>> {
     this.current.profile = options.profile
     this.current.phase = 'opening'
+    const wanted = options.profile?.backend ?? 'native'
+    if (wanted === 'herdr') {
+      // A Herdr terminal is started only on a host that reports the core this client is pinned to;
+      // otherwise nothing is sent, and no native shell stands in for it.
+      const core = await this.host.herdr().catch((error): HerdrIdentity => ({
+        supported: false,
+        reason: `The host's Herdr identity could not be read: ${readableReason(error)}`,
+      }))
+      if (!core.supported) {
+        this.current.phase = 'idle'
+        return this.answer({
+          outcome: 'refused',
+          code: 'terminal_protocol_unsupported',
+          reason: core.reason,
+        })
+      }
+    }
     const body = {
       ...openBody(options.profile, options.cols, options.rows),
       ...(options.name ? { name: options.name } : {}),
@@ -209,6 +290,16 @@ export class TerminalSession {
     } catch (error) {
       this.current.phase = 'idle'
       return this.answer(classify(error))
+    }
+    const mismatch = backendMismatch(wanted, reply)
+    if (mismatch) {
+      this.current.phase = 'idle'
+      // The host has started something, but not what was asked for: it is not bound, attached or typed to.
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_reply_mismatch',
+        reason: `A ${wanted} terminal was asked for and the host answered as another backend (${mismatch}); terminal ${quoted(reply.session)} is not attached and nothing is sent to it`,
+      })
     }
     const { program } = programOf(reply.binding)
     Object.assign(this.current, {
@@ -245,6 +336,7 @@ export class TerminalSession {
     attachment?: string
   }): Promise<Outcome<Bound>> {
     this.stopListening()
+    this.superseded.clear()
     Object.assign(this.current, {
       terminalId: options.terminalId,
       offset: options.fromOffset,
@@ -340,10 +432,12 @@ export class TerminalSession {
     if ('outcome' in chosen) {
       return this.answer(chosen)
     }
+    const claim = this.claim(options.claim)
+    if ('outcome' in claim) return claim
     return this.send(inputId, {
       body: chosen,
       kind,
-      claim: this.claim(options.claim),
+      claim,
       uncertain: false,
     })
   }
@@ -357,12 +451,14 @@ export class TerminalSession {
     if (unfit) {
       return unfit
     }
+    const claim = this.claim(options.claim)
+    if ('outcome' in claim) return claim
     return this.write(async (id) => {
       await this.host.resize({
         session: id,
         cols,
         rows,
-        ...this.claim(options.claim),
+        ...claim,
       })
       this.current.cols = cols
       this.current.rows = rows
@@ -375,11 +471,13 @@ export class TerminalSession {
     if (unfit) {
       return unfit
     }
+    const claim = this.claim()
+    if ('outcome' in claim) return claim
     return this.write(async (id) => {
       const reply = (await this.host.paste({
         session: id,
         text,
-        ...this.claim(),
+        ...claim,
       })) as { accepted?: boolean } | undefined
       return { accepted: reply?.accepted !== false }
     })
@@ -461,20 +559,47 @@ export class TerminalSession {
     }
   }
 
-  /** The claim a write presents: the one the caller names as it is, else the session's own. */
-  private claim(supplied?: SuppliedClaim): WriteClaim {
-    if (supplied)
+  /**
+   * The claim a write presents. The host's own name for this attachment (the one its attach reply
+   * returned) is what goes out. A caller's claim that names a name this session sent and the host
+   * replaced is translated only when the replacement, the claim and the binding are the same epoch;
+   * across epochs it is refused here and never guessed. Any other name is the caller's own.
+   */
+  private claim(supplied?: SuppliedClaim): WriteClaim | Outcome<never> {
+    const { lease, bindingEpoch } = this.current
+    if (!supplied) {
       return {
-        attachment: supplied.attachment,
+        attachment: lease.attachment,
+        generation: lease.generation,
+        epoch: bindingEpoch,
+      }
+    }
+    const name = supplied.attachment
+    if (!this.superseded.has(name) || name === lease.attachment) {
+      return {
+        attachment: name,
         generation: supplied.leaseGeneration,
         epoch: supplied.epoch,
       }
-    const { lease, bindingEpoch } = this.current
-    return {
-      attachment: lease.attachment,
-      generation: lease.generation,
-      epoch: bindingEpoch,
     }
+    const replacedIn = this.superseded.get(name)
+    if (
+      lease.attachment &&
+      replacedIn !== undefined &&
+      replacedIn === supplied.epoch &&
+      supplied.epoch === bindingEpoch
+    ) {
+      return {
+        attachment: lease.attachment,
+        generation: supplied.leaseGeneration,
+        epoch: supplied.epoch,
+      }
+    }
+    return this.answer({
+      outcome: 'refused',
+      code: 'terminal_attachment_superseded',
+      reason: `The write named attachment "${name}" at binding epoch ${supplied.epoch}; the host replaced it with "${lease.attachment ?? 'none'}" (replaced in epoch ${replacedIn ?? 'unknown'}, binding is now epoch ${bindingEpoch ?? 'unknown'}), so nothing was sent`,
+    })
   }
 
   /** The local refusal for a call that needs the lease, or a failure when there is no live program to write to. */
@@ -624,6 +749,18 @@ export class TerminalSession {
       }
       return this.answer(failure)
     }
+    const wanted = this.current.profile?.backend
+    const problem =
+      attachProblem(reply) ??
+      (wanted ? backendMismatch(wanted, reply) : undefined)
+    if (problem) {
+      // No bytes of this answer reach the screen, and it is not asked for again in another encoding.
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_reply_mismatch',
+        reason: `The host's attach reply was not read (${problem}); none of it was applied`,
+      })
+    }
     this.apply(reply)
     return this.accepted({
       terminalId: id,
@@ -640,16 +777,29 @@ export class TerminalSession {
       epoch !== undefined &&
       state.bindingEpoch !== undefined &&
       epoch !== state.bindingEpoch
+    const before = state.lease.attachment
+    // The lease control names the attachment the host holds; a bare `attachment` is only an echo.
     if (reply.control) {
       const { control } = reply
       state.lease = {
         role: control.controlling ? 'controller' : 'observer',
         generation: control.generation,
         held: control.controlled === true,
-        attachment: reply.attachment ?? control.attachment,
+        // Older hosts omit it from the control; the bare field is then the host's name.
+        attachment:
+          (control as { attachment?: string }).attachment ?? reply.attachment,
       }
     } else if (reply.attachment) {
       state.lease.attachment = reply.attachment
+    }
+    const named = state.lease.attachment
+    if (before && named && before !== named) {
+      // The host minted its own name: ours is not one it knows from now on.
+      this.superseded.set(
+        before,
+        rebound ? state.bindingEpoch : (state.bindingEpoch ?? epoch),
+      )
+      this.superseded.delete(named)
     }
     const { program, origin } = programOf(reply.binding)
     if (program !== undefined) {
@@ -806,11 +956,11 @@ export class TerminalSession {
           void this.catchUp({ from: 0 })
           return
         }
-        this.output(
-          event.data.offset,
-          decode(event.data.data),
-          state.bindingEpoch,
-        )
+        {
+          const bytes = frameBytes(event.data.data)
+          // A frame that is not base64 is dropped, not guessed at; the gap it leaves is caught up by an attach.
+          if (bytes) this.output(event.data.offset, bytes, state.bindingEpoch)
+        }
         return
       case 'terminal.resized':
         state.cols = event.data.cols

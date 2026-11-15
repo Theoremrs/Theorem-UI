@@ -5,6 +5,8 @@ import type {
   TheoremClient,
   WorkspaceLive,
 } from '@theoremharness/sdk-ide'
+import { herdrIdentity } from './protocol'
+import type { HerdrIdentity } from './protocol'
 import { isTerminalEvent } from './wire'
 import type {
   AttachReply,
@@ -45,6 +47,11 @@ export interface TerminalDeps {
    * lists them; absent, none of the three is offered.
    */
   offers?: (operation: string) => Promise<boolean>
+  /**
+   * What the host's capabilities say about one backend (the environment's `backend`, once the
+   * workspace is open). Without it nothing identifies a Herdr core, so Herdr terminals are not opened.
+   */
+  backend?: (name: string) => Promise<unknown>
 }
 
 export interface AttachRequest {
@@ -85,6 +92,8 @@ export interface TerminalHost {
   /** Whether bytes may be sent as `bytes_base64`; a host that does not list `terminal.input.bytes` reads text only. */
   canInputBytes: () => Promise<boolean>
   canList: () => Promise<boolean>
+  /** Whether the host reports the Herdr core this client is pinned to, and if not what it offered. */
+  herdr: () => Promise<HerdrIdentity>
   onEvent: (listener: (event: TerminalLiveEvent) => void) => () => void
   onResync: (
     listener: (resync: { epoch: string }) => void | Promise<void>,
@@ -133,6 +142,9 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
     canKill: () => offers('terminal.kill'),
     canInputBytes: () => offers('terminal.input.bytes'),
     canList: () => offers('terminal.list'),
+    async herdr() {
+      return herdrIdentity(await deps.backend?.('herdr'))
+    },
     onEvent(listener) {
       return deps.live.onAny((event) => {
         if (isTerminalEvent(event)) listener(event)

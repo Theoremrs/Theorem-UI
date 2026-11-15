@@ -1,5 +1,6 @@
 // SOURCING: @theoremharness/sdk-ide for the host's terminal types (attach reply, binding, lease, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
 import type { Theorem, WorkspaceLiveEvent } from '@theoremharness/sdk-ide'
+import { reason as readableReason } from '../environment/workspace-recovery'
 
 /** The five reasons the host refuses a keystroke, paste or resize with `terminal_control_refused`. */
 export type LeaseRefusalReason =
@@ -94,6 +95,12 @@ export type Refusal =
   | { code: 'missing_capability'; reason: string }
   /** The host does not advertise `terminal.kill`, or no generic operation call was supplied. */
   | { code: 'kill_unavailable'; reason: string }
+  /** The host reports no Herdr core this client is pinned to; nothing was sent and no native shell stands in for it. */
+  | { code: 'terminal_protocol_unsupported'; reason: string }
+  /** The host answered a launch or attach as a different backend or in a shape this client does not read; nothing it sent was applied. */
+  | { code: 'terminal_reply_mismatch'; reason: string }
+  /** A write named an attachment this session no longer holds and it could not be shown to be the current one; nothing was sent. */
+  | { code: 'terminal_attachment_superseded'; reason: string }
 
 /** Which terminal and binding epoch an outcome answers. */
 export interface Answers {
@@ -123,21 +130,6 @@ const LEASE_REASONS: ReadonlySet<string> = new Set([
   'unknown_attachment',
 ])
 
-function describe(error: unknown, body: unknown): string {
-  if (body && typeof body === 'object') {
-    const text =
-      (body as { message?: unknown; cause?: unknown; reason?: unknown })
-        .message ?? (body as { cause?: unknown }).cause
-    if (typeof text === 'string' && text) {
-      return text
-    }
-  }
-  if (typeof body === 'string' && body) {
-    return body
-  }
-  return error instanceof Error ? error.message : String(error)
-}
-
 /**
  * What an SDK error means. The host's three terminal codes become typed refusals; a reply that never
  * came (no status, a timeout, a gateway timeout) is uncertain, because the host may have acted.
@@ -147,7 +139,7 @@ export function classify(error: unknown): Failure {
   const record =
     body && typeof body === 'object' ? (body as Record<string, unknown>) : {}
   const code = record.code ?? record.error
-  const reason = describe(error, body)
+  const reason = readableReason(error)
   if (typeof statusCode !== 'number') {
     return { outcome: 'uncertain', reason }
   }

@@ -316,7 +316,7 @@ async function setup(
   ],
   fileOverrides: Record<string, unknown> = {},
   terminalList: Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
-    herdr?: boolean
+    herdr?: boolean | Record<string, unknown>
   } = {},
 ) {
   const calls: Call[] = []
@@ -329,7 +329,16 @@ async function setup(
       'scm.status',
       'terminal.open',
     ].map((name) => op(name)),
-    herdr ? { backends: { herdr: { ready: true } } } : {},
+    herdr
+      ? {
+          backends: {
+            herdr:
+              typeof herdr === 'object'
+                ? (herdr as { ready: boolean })
+                : { ready: true, generation: 1, version: '0.1.17' },
+          },
+        }
+      : {},
   )
   const live = new FakeLive()
   const { environment } = testEnvironment(host, live)
@@ -1019,6 +1028,40 @@ describe('terminals', () => {
     })
   })
 
+  test('an attach answer carries the attachment, generation and epoch the host returned, not the ones the pane asked with', async () => {
+    const t = await setup()
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    const attach = t.port.attach
+    t.port.attach = (...args: unknown[]) => {
+      const done = attach(...args)
+      Object.assign(t.port.state, {
+        bindingEpoch: 3,
+        lease: {
+          generation: 9,
+          role: 'controller',
+          held: true,
+          attachment: 'ta-minted-by-host',
+        },
+      })
+      return done
+    }
+    t.adapter.perform({
+      ...effectOf(2, 'terminalAttach'),
+      payload: { fromOffset: 0, role: 'controller', attachment: 'pane-asked' },
+    } as never)
+    await t.settle()
+    expect(t.port.seen.attach).toEqual([
+      expect.objectContaining({ attachment: 'pane-asked' }),
+    ])
+    const answer = t.completions().at(-1)!.payload
+    expect(answer).toMatchObject({
+      attachment: 'ta-minted-by-host',
+      leaseGeneration: 9,
+      epoch: 3,
+    })
+  })
+
   test('abandoning an open ends the program it started and forgets the binding; an open that was refused has nothing to undo; an unknown open is refused', async () => {
     const t = await setup()
     t.adapter.perform(effectOf(7, 'terminalOpen'))
@@ -1502,6 +1545,31 @@ describe('host events', () => {
           .at(-1)!
           .sessions.map((s) => s.session),
       ).toEqual(['hc-1', 'pty-1'])
+    })
+
+    test('a host that reports Herdr ready with a core this client is not pinned to is told so, not that Herdr is not ready', async () => {
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          herdr: { ready: true, generation: 1, version: '9.9.9' },
+          canList: async () => true,
+          list: async () => ({
+            sessions: [row('pty-1', 'native')],
+            adoption: { state: 'settled' },
+          }),
+        },
+      )
+      await t.settle()
+      const herdr = sessionLists(t)
+        .at(-1)!
+        .profiles.filter((p) => p.backend === 'herdr')
+      expect(herdr.every((p) => !p.available)).toBe(true)
+      for (const p of herdr) {
+        expect(p.unavailableReason).toContain('herdr-core 9.9.9')
+        expect(p.unavailableReason).not.toContain('terminals not ready')
+      }
     })
 
     test('an unavailable adoption is stated on the Herdr profiles with its reason, and no session is dropped', async () => {

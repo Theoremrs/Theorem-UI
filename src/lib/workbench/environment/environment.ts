@@ -15,7 +15,8 @@ import type {
 } from '@theoremharness/sdk-ide'
 import { availabilityOf } from './result'
 import type { Availability, UnavailableCause } from './result'
-import { openUntilReady, recoveringSend } from './workspace-recovery'
+import { herdrIdentity } from '../terminal/protocol'
+import { openUntilReady, reason, recoveringSend } from './workspace-recovery'
 import type { Send } from './workspace-recovery'
 
 /** The calls the workbench makes of a Theorem client; `TheoremClient` satisfies it, and a test stub can. */
@@ -137,6 +138,8 @@ export interface Environment<TClient extends HostClient = HostClient> {
   operations: () => readonly { name: string; state: OperationState }[]
   /** The host backends its capabilities report ready (`herdr`); empty when it reports none, as older hosts do. */
   backends: () => readonly string[]
+  /** What the host's capabilities say about one backend, as sent; undefined when they say nothing. */
+  backend: (name: string) => unknown
   has: (name: string) => boolean
   /** The environment's availability for one operation: unavailable when the host is, or when it lists the operation as not usable (or, if `advertised`, does not list it). */
   availabilityFor: (name: string, advertised?: boolean) => Availability
@@ -347,7 +350,9 @@ export function createEnvironment<TClient extends HostClient>(
       if (!stopped && !disposed)
         channel
           .start()
-          .catch((error) => console.warn('The live stream ended', error))
+          .catch((error) =>
+            console.warn('The live stream ended:', reason(error)),
+          )
     })
     live = {
       channel,
@@ -417,13 +422,21 @@ export function createEnvironment<TClient extends HostClient>(
         name,
         state: operation(name),
       })),
+    backend: (name) =>
+      (capabilities as { backends?: Record<string, unknown> } | undefined)
+        ?.backends?.[name],
+    // Herdr counts as ready only when its core is the one this client is pinned to (../terminal/protocol).
     backends: () => {
       const reported = (
         capabilities as
           { backends?: Record<string, { ready?: unknown }> } | undefined
       )?.backends
       return Object.entries(reported ?? {})
-        .filter(([, backend]) => backend.ready === true)
+        .filter(([name, backend]) =>
+          name === 'herdr'
+            ? herdrIdentity(backend).supported
+            : backend.ready === true,
+        )
         .map(([name]) => name)
     },
     has: (name) => operation(name).state === 'available',

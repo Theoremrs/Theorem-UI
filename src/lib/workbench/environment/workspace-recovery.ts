@@ -7,6 +7,8 @@
 // SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import { readable } from './redact'
+
 export type Send = (
   input: RequestInfo | URL,
   init?: RequestInit,
@@ -145,27 +147,67 @@ export interface Opening {
 /** The waits between failed attempts; the last repeats. */
 export const RETRY_DELAYS = [1000, 2000, 4000, 8000, 15000, 30000]
 
+/** The fields a problem body or an error object keeps its words in, in the order they are read. */
+const WORDS = [
+  'detail',
+  'title',
+  'message',
+  'cause',
+  'reason',
+  'error',
+] as const
+
+/** The first readable sentence in `value`, looking a few levels into nested bodies and errors. */
+function wordsIn(value: unknown, depth = 0): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined
+  if (!value || typeof value !== 'object' || depth > 3) return undefined
+  const record = value as Record<string, unknown>
+  for (const name of WORDS) {
+    const found = wordsIn(record[name], depth + 1)
+    if (found) return found
+  }
+  return wordsIn(record.body, depth + 1)
+}
+
+/** An SDK error's message is its own words, then `Status code:` and `Body:` lines that dump the raw response. Only the words stay. */
+function ownWords(message: string): string {
+  const lines = message.split('\n')
+  const dump = lines.findIndex((line) => /^(Status code|Body):/.test(line))
+  return (dump === -1 ? lines : lines.slice(0, dump)).join(' ').trim()
+}
+
 /**
  * What went wrong, in words a person can read: a problem body's detail or title, as the Theorem UI
- * describes its own errors, rather than the SDK's dump of the status and raw body.
+ * describes its own errors, rather than the SDK's dump of the status and raw body. The line is one
+ * short sentence with credential-shaped text masked (R42): an error that echoes what was sent never
+ * carries the content or a key into an outcome or a log. An object with no words of its own is
+ * described by its code and status, never as `[object Object]`, and a stack is never included.
  */
 export function reason(error: unknown): string {
-  const body =
-    error && typeof error === 'object' && 'body' in error
-      ? error.body
-      : undefined
-  const field = (name: string) => {
-    const value =
-      body && typeof body === 'object'
-        ? (body as Record<string, unknown>)[name]
-        : undefined
-    return typeof value === 'string' && value.trim() ? value.trim() : undefined
-  }
-  return (
-    field('detail') ??
-    field('title') ??
-    (error instanceof Error ? error.message : String(error))
-  )
+  const { statusCode, status, code } = (error ?? {}) as Record<string, unknown>
+  const answered = typeof statusCode === 'number' ? statusCode : status
+  const body = (error as { body?: unknown } | undefined)?.body
+  const bodyCode = (body as { code?: unknown } | undefined)?.code
+  const named = typeof bodyCode === 'string' ? bodyCode : code
+  // A string body is a raw page or payload, never words to show.
+  const words =
+    (body && typeof body === 'object' ? wordsIn(body) : undefined) ??
+    (error instanceof Error
+      ? ownWords(error.message)
+      : typeof error === 'string'
+        ? error
+        : wordsIn(error))
+  const text =
+    words ||
+    [
+      typeof answered === 'number'
+        ? `The host answered ${answered}`
+        : 'The request failed',
+      typeof named === 'string' && named ? `(${named})` : '',
+    ]
+      .join(' ')
+      .trim()
+  return readable(text)
 }
 
 /**
