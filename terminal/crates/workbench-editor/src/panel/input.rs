@@ -290,6 +290,28 @@ impl EditorPanel {
             ..p
         };
         let Some(d) = self.doc_mut() else { return };
+        // A popup is over the text: its rows take the pointer first.
+        if let Some(popup) = d.popup.as_mut() {
+            let caret = d.view.caret_cell(&d.session, frame.text);
+            let place = super::chrome::popup_place(popup, caret, frame.text);
+            let over = place.filter(|(r, _)| inside(*r));
+            match (p.kind, over) {
+                (PointerKind::Wheel { dy, .. }, Some(_)) => {
+                    popup.scroll(isize::from(dy.signum()) * 3, usize::from(frame.text.height));
+                    return;
+                }
+                (PointerKind::Down(Button::Left), Some((r, first))) => {
+                    if popup.selected().is_some() {
+                        popup.select(first + usize::try_from(p.y - i32::from(r.y)).unwrap_or(0));
+                        self.accept_popup(cx);
+                    }
+                    return;
+                }
+                // A press anywhere else puts the popup away and goes on.
+                (PointerKind::Down(_), None) => d.popup = None,
+                _ => {}
+            }
+        }
         match p.kind {
             PointerKind::Down(Button::Left) => {
                 if frame.find.is_some_and(inside) {

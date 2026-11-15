@@ -1,16 +1,18 @@
 //! The actions the editor answers to, by id.
 //!
 //! The panel answers an id when `PanelMsg::Action` carries one, and offers
-//! every one in its semantic nodes with its availability. The registry routes
-//! an action to the panel only when its intent may emit an effect, so
-//! [`extend_registry`] registers the actions that do (save, format, the
-//! choices over held text, and the rest listed with `routed`); the others
-//! (undo, find, the popups) are panel-local and are reached by their chord and
-//! by their node's action id, never by the palette.
+//! every one in its semantic nodes with its availability. [`extend_registry`]
+//! lists them with the registry: the ones that start an effect, and the ones
+//! the panel handles itself (`Local`). The undo, redo and find family carry
+//! their chord as a default key; the others keep an in-panel chord, because
+//! a bare Enter or Esc means different things by state (replace, retry,
+//! create, close a popup) and a registry key would take it from typing.
 
 use theorem_workbench_core::effect::EffectKind;
 use theorem_workbench_core::ids::{ActionId, PanelKind};
-use theorem_workbench_core::registry::{ActionDescriptor, ActionIntent, Registry, RegistryError};
+use theorem_workbench_core::registry::{
+    ActionDescriptor, ActionIntent, KeyScope, Registry, RegistryError,
+};
 
 use crate::panel::KIND;
 
@@ -60,9 +62,21 @@ pub struct Descriptor {
     pub requires: Option<&'static str>,
     /// The effect the action sends, when choosing it sends one.
     pub emits: Option<EffectKind>,
-    /// Whether [`extend_registry`] adds it: the action sends an effect and the
-    /// registry does not list it already.
-    pub routed: bool,
+    /// How [`extend_registry`] lists it.
+    pub listed: Listed,
+}
+
+/// How an action reaches the registry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Listed {
+    /// Not added: the registry has it already, or it belongs to a strip only.
+    No,
+    /// Starts an effect, so the root routes it to the panel.
+    Sends,
+    /// The panel handles it itself, with no effect of its own.
+    Local,
+    /// The same, and `chord` is its default key while the panel has focus.
+    Keyed,
 }
 
 const fn d(
@@ -79,7 +93,22 @@ const fn d(
         chord,
         requires,
         emits: None,
-        routed: false,
+        listed: Listed::No,
+    }
+}
+
+/// The same, for an action the panel handles itself.
+const fn local(
+    choice: Choice,
+    id: &'static str,
+    title: &'static str,
+    chord: &'static str,
+    requires: Option<&'static str>,
+    listed: Listed,
+) -> Descriptor {
+    Descriptor {
+        listed,
+        ..d(choice, id, title, chord, requires)
     }
 }
 
@@ -94,7 +123,7 @@ const fn sends(
 ) -> Descriptor {
     Descriptor {
         emits: Some(effect),
-        routed: true,
+        listed: Listed::Sends,
         ..d(choice, id, title, chord, requires)
     }
 }
@@ -108,43 +137,69 @@ const TABLE: [Descriptor; 28] = [
         Some("documents"),
         EffectKind::DocumentSave,
     ),
-    d(Choice::Undo, "document.undo", "Undo", "Mod+Z", None),
-    d(Choice::Redo, "document.redo", "Redo", "Mod+Shift+Z", None),
-    d(Choice::Find, "document.find", "Find in file", "Mod+F", None),
-    d(
+    local(
+        Choice::Undo,
+        "document.undo",
+        "Undo",
+        "Mod+Z",
+        None,
+        Listed::Keyed,
+    ),
+    local(
+        Choice::Redo,
+        "document.redo",
+        "Redo",
+        "Mod+Y",
+        None,
+        Listed::Keyed,
+    ),
+    local(
+        Choice::Find,
+        "document.find",
+        "Find in file",
+        "Mod+F",
+        None,
+        Listed::Keyed,
+    ),
+    local(
         Choice::FindNext,
         "document.findNext",
         "Next match",
         "F3",
         None,
+        Listed::Keyed,
     ),
-    d(
+    local(
         Choice::FindPrevious,
         "document.findPrevious",
         "Previous match",
         "Shift+F3",
         None,
+        Listed::Keyed,
     ),
-    d(
+    local(
         Choice::FindReplace,
         "document.findReplace",
         "Replace in file",
         "Mod+H",
         None,
+        Listed::Keyed,
     ),
-    d(
+    local(
         Choice::Replace,
         "document.replace",
         "Replace",
         "Enter",
         None,
+        Listed::Local,
     ),
-    d(
+    local(
         Choice::ReplaceAll,
         "document.replaceAll",
         "Replace all",
         "Alt+Enter",
         None,
+        Listed::Local,
     ),
     sends(
         Choice::Rename,
@@ -277,15 +332,30 @@ const TABLE: [Descriptor; 28] = [
             Some("documents"),
         )
     },
-    d(Choice::Dismiss, "document.dismiss", "Dismiss", "Esc", None),
-    d(
+    local(
+        Choice::Dismiss,
+        "document.dismiss",
+        "Dismiss",
+        "Esc",
+        None,
+        Listed::Local,
+    ),
+    local(
         Choice::Retry,
         "document.retry",
         "Try again",
         "Enter",
         Some("documents"),
+        Listed::Local,
     ),
-    d(Choice::Close, "document.close", "Close", "", None),
+    local(
+        Choice::Close,
+        "document.close",
+        "Close",
+        "",
+        None,
+        Listed::Local,
+    ),
 ];
 
 /// The descriptors the registry's `document` kind needs for the editor.
@@ -293,19 +363,27 @@ pub fn descriptors() -> &'static [Descriptor] {
     &TABLE
 }
 
-/// The actions [`extend_registry`] adds, as the registry takes them: each
-/// starts an effect, so the root routes it to the panel as `PanelMsg::Action`.
+/// The actions [`extend_registry`] adds, as the registry takes them: those
+/// that start an effect are routed to the panel as `PanelMsg::Action`, and
+/// the panel's own are `Local`, which the root delivers the same way.
 pub fn actions() -> Vec<ActionDescriptor> {
     TABLE
         .iter()
-        .filter(|d| d.routed)
+        .filter(|d| d.listed != Listed::No)
         .map(|d| {
-            let mut action = ActionDescriptor::new(d.id, d.title, ActionIntent::Start);
+            let mut action = if d.listed == Listed::Sends {
+                ActionDescriptor::new(d.id, d.title, ActionIntent::Start)
+            } else {
+                ActionDescriptor::local(d.id, d.title)
+            };
             if let Some(effect) = d.emits {
                 action = action.emits(effect);
             }
             if let Some(capability) = d.requires {
                 action = action.requires(capability);
+            }
+            if d.listed == Listed::Keyed {
+                action = action.key(d.chord, KeyScope::Panel);
             }
             action
         })

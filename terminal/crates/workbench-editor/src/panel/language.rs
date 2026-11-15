@@ -31,18 +31,22 @@ pub(crate) enum Popup {
         revision: u64,
         version: u64,
         contents: String,
+        /// The first line shown.
+        top: usize,
     },
     Completions {
         revision: u64,
         version: u64,
         items: Vec<CompletionItem>,
         selected: usize,
+        top: usize,
     },
     Places {
         title: &'static str,
         revision: u64,
         rows: Vec<Place>,
         selected: usize,
+        top: usize,
     },
 }
 
@@ -87,8 +91,64 @@ impl Popup {
         if n == 0 {
             return;
         }
-        if let Popup::Completions { selected, .. } | Popup::Places { selected, .. } = self {
+        if let Popup::Completions { selected, top, .. } | Popup::Places { selected, top, .. } = self
+        {
             *selected = (*selected as isize + by).clamp(0, n - 1) as usize;
+            // The row the keys are on stays in view.
+            if *selected < *top {
+                *top = *selected;
+            } else if *selected >= *top + LIST_ROWS {
+                *top = *selected + 1 - LIST_ROWS;
+            }
+        }
+    }
+
+    fn top_mut(&mut self) -> &mut usize {
+        match self {
+            Popup::Hover { top, .. }
+            | Popup::Completions { top, .. }
+            | Popup::Places { top, .. } => top,
+        }
+    }
+
+    /// How many rows a popup of this kind shows at most.
+    pub fn cap(&self) -> usize {
+        if self.selected().is_some() {
+            LIST_ROWS
+        } else {
+            10
+        }
+    }
+
+    /// The first row shown and how many, in `height` rows of room.
+    pub fn window(&self, height: usize) -> (usize, usize) {
+        let total = match self {
+            Popup::Hover { contents, .. } => hover_lines(contents).len(),
+            _ => self.len(),
+        };
+        let shown = total.min(self.cap()).min(height);
+        let top = match self {
+            Popup::Hover { top, .. }
+            | Popup::Completions { top, .. }
+            | Popup::Places { top, .. } => *top,
+        };
+        (top.min(total - shown), shown)
+    }
+
+    /// The wheel: the rows move and the choice stays where it is.
+    pub fn scroll(&mut self, by: isize, height: usize) {
+        let (first, shown) = self.window(height);
+        let total = match self {
+            Popup::Hover { contents, .. } => hover_lines(contents).len(),
+            _ => self.len(),
+        };
+        *self.top_mut() = (first as isize + by).clamp(0, (total - shown) as isize) as usize;
+    }
+
+    /// Choose the row at `index` of the whole list.
+    pub fn select(&mut self, index: usize) {
+        if let Popup::Completions { selected, .. } | Popup::Places { selected, .. } = self {
+            *selected = index;
         }
     }
 
@@ -635,6 +695,7 @@ impl EditorPanel {
                         revision,
                         version,
                         contents: h.contents,
+                        top: 0,
                     });
                 }
             }
@@ -664,6 +725,7 @@ impl EditorPanel {
                         version,
                         items: list.items,
                         selected: 0,
+                        top: 0,
                     });
                 }
             }
@@ -703,6 +765,7 @@ impl EditorPanel {
                     revision,
                     rows,
                     selected: 0,
+                    top: 0,
                 });
             }
             (outcome, _) => self.not_answered(what, outcome),
@@ -780,6 +843,7 @@ impl EditorPanel {
                 version,
                 items,
                 selected,
+                ..
             } => {
                 let Some(item) = items.into_iter().nth(selected) else {
                     return;

@@ -15,7 +15,7 @@ use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_text::Caret;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::language::{LIST_ROWS, Popup, word};
+use super::language::{Popup, word};
 use super::{Doc, EditorPanel, Phase, Tone};
 use crate::actions::Choice;
 use crate::styles::EditorStyles;
@@ -1210,28 +1210,27 @@ fn draw_name(
 
 /// A popup next to the caret: below it when there is room, above it when not.
 /// A list shows the rows around the one the Enter key takes.
-fn draw_popup(
+/// Where a popup is and which of its rows it shows: below the caret when
+/// there is room, above it when not. `None` when there is nothing to draw.
+pub(super) fn popup_place(
     popup: &Popup,
     caret: Option<Caret>,
     area: Rect,
-    buf: &mut Buffer,
-    styles: &EditorStyles,
-) {
-    let rows = popup.rows();
-    if rows.is_empty() || area.width == 0 || area.height == 0 {
-        return;
+) -> Option<(Rect, usize)> {
+    if area.width == 0 || area.height == 0 {
+        return None;
     }
-    let cap = if popup.selected().is_some() {
-        LIST_ROWS
-    } else {
-        10
-    };
-    let shown = rows.len().min(cap).min(usize::from(area.height));
-    let first = popup
-        .selected()
-        .map_or(0, |s| (s + 1).saturating_sub(shown));
-    let window = &rows[first..first + shown];
-    let widest = window.iter().map(|r| r.width()).max().unwrap_or(0) + 2;
+    let rows = popup.rows();
+    let (first, shown) = popup.window(usize::from(area.height));
+    if shown == 0 {
+        return None;
+    }
+    let widest = rows[first..first + shown]
+        .iter()
+        .map(|r| r.width())
+        .max()
+        .unwrap_or(0)
+        + 2;
     let width = widest.min(70).min(usize::from(area.width)) as u16;
     let height = shown as u16;
     let anchor = caret.unwrap_or(Caret {
@@ -1246,6 +1245,24 @@ fn draw_popup(
         anchor.y.saturating_sub(height).max(area.y)
     };
     let x = anchor.x.min(area.x + area.width - width);
+    Some((Rect::new(x, y, width, height), first))
+}
+
+/// A popup next to the caret. A list shows the rows from where the wheel or
+/// the keys left it.
+fn draw_popup(
+    popup: &Popup,
+    caret: Option<Caret>,
+    area: Rect,
+    buf: &mut Buffer,
+    styles: &EditorStyles,
+) {
+    let Some((place, first)) = popup_place(popup, caret, area) else {
+        return;
+    };
+    let rows = popup.rows();
+    let window = &rows[first..first + usize::from(place.height)];
+    let (x, y, width) = (place.x, place.y, place.width);
     for (i, text) in window.iter().enumerate() {
         let selected = popup.selected() == Some(first + i);
         let style = if selected {

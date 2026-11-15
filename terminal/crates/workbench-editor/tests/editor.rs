@@ -2154,3 +2154,205 @@ fn token_spans_colour_the_text_for_their_revision_and_not_for_another() {
     let kept = bold_cols(&rig);
     assert!(kept.contains(&3) && kept.contains(&4), "{kept:?}");
 }
+
+// ---- panel-local actions and popup pointer ---------------------------------
+
+fn act(rig: &mut Rig, id: &str) -> Vec<Effect> {
+    rig.send(Msg::Action {
+        id: ActionId::new(id),
+        actor: Actor::Human,
+    })
+}
+
+#[test]
+fn the_panels_own_actions_are_registered_and_reach_it_as_actions() {
+    let mut registry = builtin::registry();
+    theorem_workbench_editor::extend_registry(&mut registry).unwrap();
+    for id in [
+        "document.undo",
+        "document.redo",
+        "document.find",
+        "document.findNext",
+        "document.findPrevious",
+        "document.findReplace",
+        "document.replace",
+        "document.replaceAll",
+        "document.dismiss",
+        "document.retry",
+        "document.close",
+    ] {
+        assert!(registry.action(&ActionId::new(id)).is_some(), "{id}");
+    }
+    let mut rig = Rig::opened("cat cat\n");
+    let e = the_edit(&rig.typed("x"));
+    rig.accept(&e, 2);
+    act(&mut rig, "document.undo");
+    assert_eq!(rig.text(), "cat cat");
+    act(&mut rig, "document.redo");
+    assert_eq!(rig.text(), "xcat cat");
+    act(&mut rig, "document.findReplace");
+    assert!(rig.screen().contains("Replace"), "{}", rig.screen());
+    act(&mut rig, "document.dismiss");
+    assert!(!rig.screen().contains("Replace "), "{}", rig.screen());
+    act(&mut rig, "document.find");
+    rig.typed("cat");
+    act(&mut rig, "document.findNext");
+    act(&mut rig, "document.findPrevious");
+    assert!(rig.screen().contains("of 2"), "{}", rig.screen());
+}
+
+#[test]
+fn replace_and_replace_all_are_reached_by_their_action_ids() {
+    let mut rig = Rig::opened("cat cat\n");
+    act(&mut rig, "document.findReplace");
+    rig.typed("cat");
+    rig.key(Key::Tab);
+    rig.typed("dog");
+    let one_edit = the_edit(&act(&mut rig, "document.replace"));
+    rig.accept(&one_edit, 2);
+    let all = the_edit(&act(&mut rig, "document.replaceAll"));
+    assert_eq!(changes(&all).len(), 1);
+    act(&mut rig, "document.dismiss");
+    assert_eq!(rig.text(), "dog dog");
+}
+
+#[test]
+fn the_default_keys_come_from_the_registry_without_conflicts() {
+    let mut registry = builtin::registry();
+    theorem_workbench_editor::extend_registry(&mut registry).unwrap();
+    let (table, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
+    assert!(issues.is_empty(), "{issues:?}");
+    let _ = table;
+    let keyed: Vec<_> = registry
+        .default_shortcuts()
+        .into_iter()
+        .filter(|s| s.action.as_str().starts_with("document."))
+        .map(|s| s.action.as_str().to_owned())
+        .collect();
+    for id in [
+        "document.undo",
+        "document.find",
+        "document.findNext",
+        "document.findReplace",
+    ] {
+        assert!(keyed.iter().any(|k| k == id), "{id} in {keyed:?}");
+    }
+}
+
+fn completions(rig: &mut Rig, n: usize) {
+    let ask = ask(
+        rig,
+        Key::Char(' '),
+        Mods::CTRL,
+        EffectKind::LanguageComplete,
+    );
+    let items = (0..n)
+        .map(|i| CompletionItem {
+            label: format!("item{i:02}"),
+            kind: None,
+            detail: None,
+            documentation: None,
+            insert_text: Some(format!("item{i:02}")),
+            range: None,
+            item_id: None,
+        })
+        .collect();
+    rig.answer(
+        &ask,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageCompletions(
+            LanguageCompletions { items },
+        )),
+    );
+}
+
+fn row_of(rig: &Rig, needle: &str) -> Option<(u16, u16)> {
+    let b = rig.body();
+    rig.rows(b.width, b.height)
+        .iter()
+        .enumerate()
+        .find_map(|(y, r)| r.find(needle).map(|x| (x as u16, y as u16)))
+}
+
+fn wheel(rig: &mut Rig, x: u16, y: u16, dy: i16) {
+    let b = rig.body();
+    rig.send(Msg::Pointer(Pointer {
+        kind: PointerKind::Wheel { dx: 0, dy },
+        x: b.x + x,
+        y: b.y + y,
+        mods: Mods::NONE,
+        clicks: 1,
+    }));
+}
+
+#[test]
+fn a_click_on_a_completion_row_chooses_it() {
+    let mut rig = Rig::opened("\n");
+    completions(&mut rig, 5);
+    let (x, y) = row_of(&rig, "item03").expect("the row is drawn");
+    let mut fx = rig.click(x, y, 1);
+    fx.extend(rig.tick());
+    let e = the_edit(&fx);
+    assert_eq!(changes(&e), vec![(0, 0, "item03".to_owned())]);
+    assert!(row_of(&rig, "item04").is_none(), "the popup is gone");
+}
+
+#[test]
+fn the_wheel_scrolls_a_long_list_without_changing_the_choice() {
+    let mut rig = Rig::opened("\n");
+    completions(&mut rig, 20);
+    assert!(row_of(&rig, "item00").is_some());
+    assert!(row_of(&rig, "item09").is_none(), "only eight rows show");
+    let (x, y) = row_of(&rig, "item00").unwrap();
+    wheel(&mut rig, x, y, 1);
+    assert!(row_of(&rig, "item00").is_none(), "{}", rig.screen());
+    assert!(row_of(&rig, "item09").is_some(), "{}", rig.screen());
+    // Enter still takes the row the keys were on.
+    let e = the_edit(&rig.key(Key::Enter));
+    assert_eq!(changes(&e), vec![(0, 0, "item00".to_owned())]);
+}
+
+#[test]
+fn a_press_outside_a_popup_puts_it_away() {
+    let mut rig = Rig::opened("hello\n");
+    completions(&mut rig, 3);
+    assert!(row_of(&rig, "item01").is_some());
+    let b = rig.body();
+    rig.click(b.width - 1, 0, 1);
+    assert!(row_of(&rig, "item01").is_none(), "{}", rig.screen());
+}
+
+#[test]
+fn a_click_on_a_location_row_goes_there() {
+    let mut rig = Rig::opened("one\ntwo\nthree\n");
+    let ask1 = ask(
+        &mut rig,
+        Key::F12,
+        Mods::SHIFT,
+        EffectKind::LanguageReferences,
+    );
+    let loc = |l: u32| LocationRow {
+        resource_id: Some(PATH.into()),
+        uri: None,
+        range: Some(range(l, 0, 0)),
+        span: None,
+        revision: None,
+    };
+    rig.answer(
+        &ask1,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageLocations(LanguageLocations {
+            locations: vec![loc(0), loc(2)],
+        })),
+    );
+    let rows = rig.rows(rig.body().width, rig.body().height);
+    let second = rows
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.contains("a.txt"))
+        .nth(1)
+        .map(|(y, r)| (r.find("a.txt").unwrap() as u16, y as u16))
+        .expect("two rows");
+    rig.click(second.0, second.1, 1);
+    assert!(rig.status().contains("Ln 3"), "{}", rig.status());
+}
