@@ -18,11 +18,18 @@ pub type Constructor = Box<dyn Fn(&Value, u32) -> Box<dyn Panel>>;
 /// from [`OpenTarget::state`].
 pub type Opener = Box<dyn Fn(&OpenTarget) -> bool>;
 
+/// The priority `register_opener` gives: what a catch-all opener has.
+pub const OPENER_DEFAULT: i32 = 0;
+/// The priority of an opener for a narrower set of targets than a catch-all,
+/// such as Markdown for its file extensions.
+pub const OPENER_SPECIFIC: i32 = 100;
+
 #[derive(Default)]
 pub struct PanelFactories {
     constructors: BTreeMap<PanelKind, Constructor>,
-    /// In registration order: the first kind that claims a target opens it.
-    openers: Vec<(PanelKind, Opener)>,
+    /// The kind with the highest priority that claims a target opens it; of
+    /// equal priority, the first registered.
+    openers: Vec<(PanelKind, i32, Opener)>,
 }
 
 impl PanelFactories {
@@ -44,17 +51,33 @@ impl PanelFactories {
     /// `cx.open(target)` reaches it without the root naming any kind. Register
     /// the kind's constructor too. A kind may register once.
     pub fn register_opener(&mut self, kind: &str, opens: impl Fn(&OpenTarget) -> bool + 'static) {
+        self.register_opener_with(kind, OPENER_DEFAULT, opens);
+    }
+
+    /// As [`register_opener`](Self::register_opener), with a priority: when
+    /// several kinds claim a target the highest wins whatever the order they
+    /// were registered in. A specific opener (Markdown for `.md`) registers
+    /// at [`OPENER_SPECIFIC`]; a catch-all editor at the default.
+    pub fn register_opener_with(
+        &mut self,
+        kind: &str,
+        priority: i32,
+        opens: impl Fn(&OpenTarget) -> bool + 'static,
+    ) {
         let kind = PanelKind::new(kind);
-        self.openers.retain(|(k, _)| *k != kind);
-        self.openers.push((kind, Box::new(opens)));
+        self.openers.retain(|(k, _, _)| *k != kind);
+        self.openers.push((kind, priority, Box::new(opens)));
     }
 
     /// The kind that opens `target`, if any is registered.
     pub fn opener_of(&self, target: &OpenTarget) -> Option<&PanelKind> {
+        // `max_by_key` keeps the last of equals; reverse so the first wins.
         self.openers
             .iter()
-            .find(|(_, opens)| opens(target))
-            .map(|(kind, _)| kind)
+            .rev()
+            .filter(|(_, _, opens)| opens(target))
+            .max_by_key(|(_, priority, _)| *priority)
+            .map(|(kind, _, _)| kind)
     }
 
     pub fn has(&self, kind: &PanelKind) -> bool {

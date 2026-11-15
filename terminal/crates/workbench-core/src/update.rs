@@ -158,6 +158,7 @@ impl Model {
         self.announce_workspace();
         self.replay_retained();
         self.sync_tab_titles();
+        self.follow_focus_for_picker();
         let Some(vp) = self.viewport else {
             self.frame = None;
             return;
@@ -327,7 +328,7 @@ impl Model {
     // --- keys and text ---
 
     pub(crate) fn on_key(&mut self, key: KeyInput) -> Vec<Effect> {
-        if self.picker.is_open() {
+        if self.picker.holds_keys() {
             return self.picker_key(key);
         }
         let owner = self.focus_owner();
@@ -384,7 +385,7 @@ impl Model {
     }
 
     pub(crate) fn on_text(&mut self, text: String, paste: bool) -> Vec<Effect> {
-        if self.picker.is_open() {
+        if self.picker.holds_keys() {
             let text: String = text.chars().filter(|c| !c.is_control()).collect();
             let filter = format!("{}{text}", self.picker.filter());
             return self.picker_msg(PickerMsg::Filter(filter));
@@ -400,7 +401,7 @@ impl Model {
     /// is open it owns the keyboard: a committed text is typed into its filter
     /// and the preedit is not shown.
     pub(crate) fn on_composition(&mut self, event: Composition) -> Vec<Effect> {
-        if self.picker.is_open() {
+        if self.picker.holds_keys() {
             return match event {
                 Composition::End { text } if !text.is_empty() => self.on_text(text, false),
                 _ => vec![],
@@ -604,7 +605,7 @@ impl Model {
     }
 
     /// A panel asked to show `target`. Focus the panel already bound to it;
-    /// else open the kind a registered opener names, in the main region; else
+    /// else open the kind a registered opener names, where its descriptor places it; else
     /// the placeholder, with the reason. Never an effect: the new panel loads
     /// on its own first tick (R06).
     fn open_target(&mut self, target: OpenTarget) {
@@ -618,7 +619,9 @@ impl Model {
             Some(id) => Some(id),
             None => match self.factories.opener_of(&target).cloned() {
                 Some(kind) if self.registry.get(&kind).is_some() => {
-                    self.open_panel_with(&kind, &target.state(), Some(dock::Role::Main))
+                    // Where the kind says it opens (its descriptor's placement):
+                    // documents, Changes and artifacts in the tool group.
+                    self.open_panel_with(&kind, &target.state(), None)
                 }
                 _ => self.open_unavailable(&target),
             },
@@ -663,7 +666,7 @@ impl Model {
             &target.title(),
             panel,
             false,
-            dock::Role::Main,
+            dock::Role::Tools,
         )
     }
 
@@ -694,17 +697,25 @@ impl Model {
     }
 
     pub(crate) fn picker_msg(&mut self, msg: PickerMsg) -> Vec<Effect> {
-        let opening = msg == PickerMsg::Open;
+        let resting = msg == PickerMsg::Rest;
+        let opening = resting || msg == PickerMsg::Open;
+        if opening {
+            self.note_focus_before_picker();
+        }
         let outcome = self
             .picker
             .update(msg, &self.registry, &self.caps, &self.pinned);
         if opening {
             self.show_picker_panel();
+            if resting {
+                self.refocus_before_picker();
+            }
         }
         match outcome {
             PickerOutcome::Nothing => vec![],
             PickerOutcome::Closed => {
                 self.close_picker_panels();
+                self.refocus_before_picker();
                 vec![]
             }
             PickerOutcome::Unavailable { reason } => {
@@ -721,6 +732,48 @@ impl Model {
                 self.close_picker_panels();
                 effects
             }
+        }
+    }
+
+    fn is_picker_panel(&self, id: &PanelInstanceId) -> bool {
+        self.panels
+            .get(id)
+            .is_some_and(|e| e.kind.as_str() == PICKER_KIND)
+    }
+
+    /// Remember where the keyboard is, unless it is already on the picker.
+    fn note_focus_before_picker(&mut self) {
+        if let Some(owner) = self.focus_owner().filter(|id| !self.is_picker_panel(id)) {
+            self.before_picker = Some(owner);
+        }
+    }
+
+    /// Put the keyboard back where it was before the picker took it, when that
+    /// panel is still open.
+    fn refocus_before_picker(&mut self) {
+        let Some(id) = self.before_picker.clone() else {
+            return;
+        };
+        if self.panels.contains_key(&id) {
+            let r = self.dock.focus_panel(&Self::dock_id(&id));
+            self.dock_result(r);
+        }
+    }
+
+    /// A resting picker whose panel now owns the keyboard (its chord, a click
+    /// on it, focus moving to its group) takes the keys from here on; anything
+    /// else that owns the keyboard is where Esc will return to.
+    fn follow_focus_for_picker(&mut self) {
+        let Some(owner) = self.focus_owner() else {
+            return;
+        };
+        if self.is_picker_panel(&owner) {
+            if self.picker.is_resting() {
+                self.picker
+                    .update(PickerMsg::Take, &self.registry, &self.caps, &self.pinned);
+            }
+        } else {
+            self.before_picker = Some(owner);
         }
     }
 
@@ -990,6 +1043,17 @@ impl Model {
         };
         let hit = Layout::compute(&view, body).hit(p.x, p.y);
         let msg = match (p.kind, hit) {
+            (PointerKind::Down(Button::Left), _) if self.picker.is_resting() => {
+                // A click on a resting picker takes the keyboard, then acts.
+                self.picker
+                    .update(PickerMsg::Take, &self.registry, &self.caps, &self.pinned);
+                return match hit {
+                    Some(PickerHit::Row(i)) => self.picker_msg(PickerMsg::ChooseAt(i)),
+                    Some(PickerHit::Pin(i)) => self.picker_msg(PickerMsg::TogglePinAt(i)),
+                    Some(PickerHit::Back) => self.picker_msg(PickerMsg::Back),
+                    None => vec![],
+                };
+            }
             (PointerKind::Down(Button::Left), Some(PickerHit::Row(i))) => PickerMsg::ChooseAt(i),
             (PointerKind::Down(Button::Left), Some(PickerHit::Pin(i))) => PickerMsg::TogglePinAt(i),
             (PointerKind::Down(Button::Left), Some(PickerHit::Back)) => PickerMsg::Back,

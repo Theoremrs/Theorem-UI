@@ -17,6 +17,9 @@ pub struct Group {
     pub(crate) tabs: Vec<Tab>,
     pub(crate) active: Option<usize>,
     pub(crate) hidden: bool,
+    /// Made empty on purpose (`split_empty`): it is shown with no tabs. Any
+    /// other empty tool group is not shown at all.
+    pub(crate) keep_empty: bool,
     /// Preferred width in CSS px while the group is a direct child of a
     /// horizontal split. Dragging its splitter turns it into a plain ratio.
     pub(crate) pinned_px: Option<f32>,
@@ -29,6 +32,7 @@ impl Group {
             tabs: Vec::new(),
             active: None,
             hidden: false,
+            keep_empty: false,
             pinned_px,
         }
     }
@@ -47,6 +51,11 @@ impl Group {
 
     pub fn is_hidden(&self) -> bool {
         self.hidden
+    }
+
+    /// Whether it was made empty on purpose, and so is shown with no tabs.
+    pub fn keeps_empty(&self) -> bool {
+        self.keep_empty
     }
 
     pub fn pinned_px(&self) -> Option<f32> {
@@ -193,14 +202,19 @@ impl Dock {
         Ok(group)
     }
 
-    /// An empty group beside `group`, as the picker's empty tool destination.
+    /// An empty group beside `group`, kept on show while it has no tabs: a
+    /// destination someone asked for.
     pub fn split_empty(
         &mut self,
         group: GroupId,
         side: NavDirection,
         role: Option<Role>,
     ) -> Result<GroupId, DockError> {
-        self.split_group(group, side, role)
+        let id = self.split_group(group, side, role)?;
+        if let Some(g) = self.groups.get_mut(&id) {
+            g.keep_empty = true;
+        }
+        Ok(id)
     }
 
     /// Rename a tab. The strip measures tabs from their titles, so the next

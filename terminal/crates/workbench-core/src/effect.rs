@@ -205,6 +205,9 @@ pub enum EffectBody {
     ConversationEdit(ConversationEdit),
     /// Make another thread of the project the open one.
     ConversationSwitch(ConversationSwitch),
+    /// Select a branch of a reply in a thread: answered as `ConversationSwitch`
+    /// is (with the thread's snapshot).
+    ConversationSwitchBranch(ConversationSwitchBranch),
     /// Human-only: the registry refuses it from an agent actor.
     ConversationApproval(ConversationApproval),
     /// A second conversation beside this one (`Conversation.sideChat`), on its
@@ -258,6 +261,7 @@ impl EffectKind {
             | ConversationRetry
             | ConversationEdit
             | ConversationSwitch
+            | ConversationSwitchBranch
             | ConversationApproval
             | ConversationSideChat
             | ConversationSideList
@@ -845,6 +849,14 @@ pub struct ConversationSwitch {
     pub thread_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSwitchBranch {
+    pub thread_id: String,
+    pub branch_id: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -1037,6 +1049,14 @@ mod tests {
             json!({"messageId": "m", "clientMessageId": "c3", "text": "t"}),
         );
         round_trip(
+            EffectBody::ConversationSwitchBranch(ConversationSwitchBranch {
+                thread_id: "t1".into(),
+                branch_id: "b2".into(),
+            }),
+            "conversationSwitchBranch",
+            serde_json::json!({"threadId": "t1", "branchId": "b2"}),
+        );
+        round_trip(
             EffectBody::ConversationSwitch(ConversationSwitch {
                 thread_id: "t1".into(),
             }),
@@ -1176,6 +1196,7 @@ mod tests {
             EffectKind::ConversationRetry,
             EffectKind::ConversationEdit,
             EffectKind::ConversationSwitch,
+            EffectKind::ConversationSwitchBranch,
             EffectKind::ConversationCancel,
         ] {
             assert_eq!(kind.owner(), Owner::Conversation);

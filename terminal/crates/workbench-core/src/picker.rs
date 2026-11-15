@@ -28,6 +28,11 @@ pub enum Page {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PickerMsg {
     Open,
+    /// Show the picker without taking the keyboard.
+    Rest,
+    /// A resting picker takes the keyboard (its chord, a click, focus moving
+    /// to it). Nothing when it is not resting.
+    Take,
     /// Escape: back from More tools first, then close.
     Back,
     Close,
@@ -73,6 +78,9 @@ pub enum PickerOutcome {
 #[derive(Clone, Debug)]
 pub struct Picker {
     open: bool,
+    /// Shown but not holding the keyboard: the picker as the tool
+    /// destination's first content. `open` is also true.
+    resting: bool,
     page: Page,
     filter: String,
     selected: usize,
@@ -89,6 +97,7 @@ impl Default for Picker {
     fn default() -> Self {
         Self {
             open: false,
+            resting: false,
             page: Page::Main,
             filter: String::new(),
             selected: 0,
@@ -101,8 +110,19 @@ impl Default for Picker {
 }
 
 impl Picker {
+    /// Shown, whether or not it holds the keyboard.
     pub fn is_open(&self) -> bool {
         self.open
+    }
+
+    /// Shown and not holding the keyboard.
+    pub fn is_resting(&self) -> bool {
+        self.open && self.resting
+    }
+
+    /// Open and owning the keys: the modal state.
+    pub fn holds_keys(&self) -> bool {
+        self.open && !self.resting
     }
 
     pub fn page(&self) -> Page {
@@ -218,6 +238,16 @@ impl Picker {
             PickerMsg::Open => {
                 self.reset();
                 self.open = true;
+                PickerOutcome::Nothing
+            }
+            PickerMsg::Rest => {
+                self.reset();
+                self.open = true;
+                self.resting = true;
+                PickerOutcome::Nothing
+            }
+            PickerMsg::Take => {
+                self.resting = false;
                 PickerOutcome::Nothing
             }
             PickerMsg::Back if self.open && self.page == Page::More => {

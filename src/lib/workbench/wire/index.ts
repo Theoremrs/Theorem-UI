@@ -42,6 +42,7 @@ export type { ConversationSent } from "./ConversationSent";
 export type { ConversationSideList } from "./ConversationSideList";
 export type { ConversationStopped } from "./ConversationStopped";
 export type { ConversationSwitch } from "./ConversationSwitch";
+export type { ConversationSwitchBranch } from "./ConversationSwitchBranch";
 export type { CoordinateUnit } from "./CoordinateUnit";
 export type { DefaultKey } from "./DefaultKey";
 export type { DiffHunk } from "./DiffHunk";

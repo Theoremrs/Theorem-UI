@@ -32,6 +32,8 @@ pub struct GroupDoc {
     pub active: Option<PanelId>,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub keep_empty: bool,
     #[serde(default)]
     pub pinned_px: Option<f32>,
 }
@@ -78,6 +80,7 @@ impl Dock {
                         .collect(),
                     active: g.active.map(|i| g.tabs[i].panel.clone()),
                     hidden: g.hidden,
+                    keep_empty: g.keep_empty,
                     pinned_px: g.pinned_px,
                 };
                 (*id, doc)
@@ -165,6 +168,7 @@ impl Dock {
                     tabs,
                     active,
                     hidden: g.hidden,
+                    keep_empty: g.keep_empty,
                     pinned_px,
                 },
             );

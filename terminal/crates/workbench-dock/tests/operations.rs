@@ -376,21 +376,67 @@ fn hit_testing_finds_tabs_close_buttons_splitters_and_bodies() {
 #[test]
 fn presets_arrange_the_three_regions() {
     let a = area(200, 40);
+    // A tool group with no tabs that nobody asked for is not shown, so the
+    // bare presets show their files and main groups only.
     for (preset, visible) in [
-        (Preset::Default, 3),
+        (Preset::Default, 2),
         (Preset::EditorCentered, 2),
-        (Preset::AgentCentered, 2),
+        (Preset::AgentCentered, 1),
         (Preset::Minimal, 1),
     ] {
-        let (d, r) = Dock::from_preset(DockConfig::default(), preset);
+        let (mut d, r) = Dock::from_preset(DockConfig::default(), preset);
         let f = d.solve(a, m());
         assert_eq!(f.groups.len(), visible, "{preset:?}");
+        assert!(f.group(r.tools).is_none(), "{preset:?}");
+        // With a tool open in a shown tool group it takes its room again.
+        if matches!(preset, Preset::Default | Preset::AgentCentered) {
+            d.open_panel(tab("t"), OpenAt::Group(r.tools)).unwrap();
+            let f = d.solve(a, m());
+            assert_eq!(f.groups.len(), visible + 1, "{preset:?}");
+        }
         assert_exact_tiling(&f);
         assert!(f.group(r.main).is_some());
     }
-    let (d, r) = Dock::from_preset(DockConfig::default(), Preset::AgentCentered);
+    let (mut d, r) = Dock::from_preset(DockConfig::default(), Preset::AgentCentered);
+    d.open_panel(tab("t"), OpenAt::Group(r.tools)).unwrap();
     let f = d.solve(a, m());
     // 3:1 of a 199-cell remainder, less the gutter.
     assert_eq!(f.group(r.main).unwrap().rect.width, 149);
     assert_eq!(f.group(r.tools).unwrap().rect.width, 50);
+}
+
+#[test]
+fn an_empty_tool_group_is_shown_only_when_someone_made_it_on_purpose() {
+    let a = area(200, 40);
+    let (mut d, r) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    d.open_panel(tab("doc"), OpenAt::Group(r.main)).unwrap();
+    // The preset's own empty tool group takes no room: main has the width.
+    let f = d.solve(a, m());
+    assert!(f.group(r.tools).is_none());
+    assert_eq!(f.groups.len(), 2);
+    assert_exact_tiling(&f);
+    assert!(f.group(r.main).unwrap().rect.width > 140);
+    assert!(f.suppressed.iter().any(|(g, _)| *g == r.tools));
+    // Its first tool brings it back, and closing that tool removes it again.
+    d.open_panel(tab("tool"), OpenAt::Group(r.tools)).unwrap();
+    assert!(d.solve(a, m()).group(r.tools).is_some());
+    d.close_tab(&pid("tool")).unwrap();
+    assert!(d.solve(a, m()).group(r.tools).is_none());
+    // A destination a person made on purpose stays, empty.
+    let made = d
+        .split_empty(r.main, NavDirection::Right, Some(Role::Tools))
+        .unwrap();
+    assert!(d.group(made).unwrap().keeps_empty());
+    let f = d.solve(a, m());
+    assert!(f.group(made).is_some());
+    assert!(f.group(made).unwrap().tabs.is_empty());
+    assert_exact_tiling(&f);
+}
+
+#[test]
+fn a_dock_with_nothing_else_to_show_still_shows_its_empty_tool_group() {
+    let (d, r) = Dock::from_preset(DockConfig::default(), Preset::Minimal);
+    let f = d.solve(area(100, 20), m());
+    assert!(!f.groups.is_empty());
+    let _ = r;
 }

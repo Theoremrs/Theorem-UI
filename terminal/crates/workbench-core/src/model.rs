@@ -65,7 +65,7 @@ pub struct Focus {
     pub group: GroupId,
     /// The active panel of the focused group.
     pub panel: Option<PanelInstanceId>,
-    /// The picker is open and owns the keys.
+    /// The picker is open and owns the keys (not while it only rests).
     pub modal: bool,
     /// The window has focus.
     pub window: bool,
@@ -185,6 +185,9 @@ pub struct Model {
     pub(crate) frame: Option<SolvedFrame>,
     pub(crate) window_focused: bool,
     pub(crate) announced_focus: Option<PanelInstanceId>,
+    /// The last panel other than the picker that owned the keyboard: where
+    /// focus goes back to when the picker closes.
+    pub(crate) before_picker: Option<PanelInstanceId>,
     pub(crate) drag: Option<Drag>,
     /// The panel holding the pointer between a press in its body and the release.
     pub(crate) capture: Option<PanelInstanceId>,
@@ -235,6 +238,7 @@ impl Model {
             frame: None,
             window_focused: true,
             announced_focus: None,
+            before_picker: None,
             drag: None,
             capture: None,
             counters: Counters::default(),
@@ -365,7 +369,7 @@ impl Model {
         Focus {
             group: self.dock.focused(),
             panel: self.focus_owner(),
-            modal: self.picker.is_open(),
+            modal: self.picker.holds_keys(),
             window: self.window_focused,
         }
     }
@@ -398,6 +402,21 @@ impl Model {
         let group = self.dock.group(self.dock.focused())?;
         let tab = group.active()?;
         Some(PanelInstanceId::new(tab.panel.0.clone()))
+    }
+
+    /// Show the picker in the tool destination without taking the keyboard:
+    /// the default composition's starting state. Opening it has no effect.
+    pub fn rest_picker(&mut self) {
+        let _ = self.picker_msg(crate::picker::PickerMsg::Rest);
+        self.settle();
+        self.dirty = true;
+    }
+
+    /// As [`rest_picker`](Self::rest_picker), saying whether the picker is
+    /// now resting.
+    pub fn rest_picker_now(&mut self) -> bool {
+        self.rest_picker();
+        self.picker.is_resting()
     }
 
     pub(crate) fn picker_view(&self) -> Option<PickerView> {
@@ -565,7 +584,7 @@ impl Model {
             // A saved picker tab is the picker, open and empty. No effect:
             // opening the picker has none (R07).
             self.picker.update(
-                crate::picker::PickerMsg::Open,
+                crate::picker::PickerMsg::Rest,
                 &self.registry,
                 &self.caps,
                 &self.pinned,

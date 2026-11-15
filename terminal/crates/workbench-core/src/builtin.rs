@@ -107,6 +107,8 @@ pub fn registry() -> Registry {
                 .emits(EffectKind::ConversationEdit),
             ActionDescriptor::new("theo.switch", "Switch conversation", Start)
                 .emits(EffectKind::ConversationSwitch),
+            ActionDescriptor::new("theo.branch", "Select branch", Start)
+                .emits(EffectKind::ConversationSwitchBranch),
             ActionDescriptor::new("theo.new", "New conversation", Create)
                 .emits(EffectKind::ConversationCreate),
             // Stopping a run is destroying: closing the view must never do it.

@@ -310,3 +310,14 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_group_made_empty_on_purpose_stays_kept_through_a_round_trip() {
+    let (mut d, r) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let made = d
+        .split_empty(r.main, NavDirection::Right, Some(Role::Tools))
+        .unwrap();
+    let back = roundtrip(&d);
+    assert!(back.group(made).unwrap().keeps_empty());
+    assert!(!back.group(r.tools).unwrap().keeps_empty());
+}

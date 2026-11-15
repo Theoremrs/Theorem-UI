@@ -488,7 +488,7 @@ fn picker_messages_produce_zero_effects() {
             let fx = send(&mut m, Msg::Picker(msg.clone()));
             assert!(fx.is_empty(), "{msg:?} returned {fx:?}");
         }
-        assert!(m.in_flight().is_empty());
+        assert_eq!(m.in_flight().len(), 0);
     }
 
     // Choosing each of the main rows only opens a tool: nothing starts.
@@ -500,7 +500,7 @@ fn picker_messages_produce_zero_effects() {
         }
         let fx = send(&mut m, Msg::Picker(PickerMsg::Choose));
         assert!(fx.is_empty(), "row {row} returned {fx:?}");
-        assert!(m.in_flight().is_empty());
+        assert_eq!(m.in_flight().len(), 0);
     }
 
     // The same rows chosen by a pointer click.
@@ -510,7 +510,7 @@ fn picker_messages_produce_zero_effects() {
         send(&mut m, Msg::Picker(PickerMsg::Select(row)));
         let fx = send(&mut m, Msg::Picker(PickerMsg::ChooseAt(row)));
         assert!(fx.is_empty(), "row {row} returned {fx:?}");
-        assert!(m.in_flight().is_empty());
+        assert_eq!(m.in_flight().len(), 0);
     }
 
     // The same through keys and text, which is how a person reaches them.
@@ -570,7 +570,7 @@ fn focus_and_open_actions_produce_zero_effects() {
     ] {
         let fx = action(&mut m, id);
         assert!(fx.is_empty(), "{id} returned {fx:?}");
-        assert!(m.in_flight().is_empty());
+        assert_eq!(m.in_flight().len(), 0);
     }
     assert_eq!(kinds(&m, "note").len(), 2);
     // Focus on a kind that is open focuses it; it does not open another.
@@ -615,6 +615,109 @@ fn action_msgs(log: &Shared, kind: &str, id: &str) -> usize {
         .into_iter()
         .filter(|m| matches!(m, PanelMsg::Action(a) if a.as_str() == id))
         .count()
+}
+
+fn tab_rect(m: &Model, id: &PanelInstanceId) -> (u16, u16) {
+    let node = semantics(m)
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == format!("tab:{}", id.as_str()))
+        .cloned()
+        .expect("tab");
+    (node.rect.x + 1, node.rect.y)
+}
+
+#[test]
+fn a_resting_picker_is_shown_without_the_keyboard_and_text_reaches_the_focused_panel() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    assert!(m.rest_picker_now());
+    assert!(m.picker().is_resting() && m.picker().is_open());
+    assert_eq!(kinds(&m, "picker").len(), 1, "shown in the tool group");
+    assert_eq!(m.focus().panel, Some(note.clone()));
+    assert!(!m.focus().modal);
+    let keys_before = msgs_of(&log, "note")
+        .iter()
+        .filter(|m| matches!(m, PanelMsg::Key(_)))
+        .count();
+    let fx = ch(&mut m, 'a');
+    assert!(fx.is_empty());
+    let keys_after = msgs_of(&log, "note")
+        .iter()
+        .filter(|m| matches!(m, PanelMsg::Key(_)))
+        .count();
+    assert_eq!(keys_after, keys_before + 1, "the key reached the panel");
+    assert_eq!(m.picker().filter(), "");
+    send(&mut m, Msg::Text("hi".into()));
+    assert_eq!(m.picker().filter(), "");
+}
+
+#[test]
+fn the_chord_a_click_or_focus_moving_to_it_takes_the_resting_picker_and_esc_gives_it_back() {
+    // The chord.
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    m.rest_picker_now();
+    key(&mut m, Key::Char('t'), Mods::CTRL | Mods::ALT);
+    assert!(m.focus().modal && !m.picker().is_resting());
+    ch(&mut m, 'z');
+    assert_eq!(m.picker().filter(), "z");
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.picker().filter(), "", "Esc goes back a step");
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert!(!m.picker().is_open());
+    assert!(kinds(&m, "picker").is_empty());
+    assert_eq!(m.focus().panel, Some(note.clone()), "focus is where it was");
+
+    // A click on the picker's tab.
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    m.rest_picker_now();
+    let picker = kinds(&m, "picker")[0].clone();
+    let (x, y) = tab_rect(&m, &picker);
+    click(&mut m, x, y);
+    assert!(m.focus().modal, "a click takes it");
+    assert_eq!(m.focus().panel, Some(picker));
+    ch(&mut m, 'q');
+    assert_eq!(m.picker().filter(), "q");
+    key(&mut m, Key::Esc, Mods::NONE);
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.focus().panel, Some(note), "Esc restores focus");
+
+    // Focus moving to it.
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    m.rest_picker_now();
+    let picker = kinds(&m, "picker")[0].clone();
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(picker)));
+    assert!(m.focus().modal);
+}
+
+#[test]
+fn opening_a_resting_picker_has_no_domain_effects() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    assert!(m.rest_picker_now());
+    assert_eq!(m.in_flight().len(), 0);
+}
+
+#[test]
+fn a_tool_group_nobody_asked_for_is_not_shown_and_comes_back_with_its_first_tool() {
+    let (mut m, _) = new_model();
+    let roles = |m: &Model| {
+        m.frame()
+            .unwrap()
+            .groups
+            .iter()
+            .map(|g| g.role)
+            .collect::<Vec<_>>()
+    };
+    assert!(!roles(&m).contains(&theorem_workbench_dock::Role::Tools));
+    action(&mut m, "note.open");
+    assert!(roles(&m).contains(&theorem_workbench_dock::Role::Tools));
 }
 
 #[test]
@@ -846,7 +949,7 @@ fn a_stale_completion_is_dropped_and_a_matching_one_is_applied() {
             .iter()
             .any(|m| matches!(m, PanelMsg::Completion(c) if c.effect == e2))
     );
-    assert!(m.in_flight().is_empty());
+    assert_eq!(m.in_flight().len(), 0);
 
     // An answer to an effect nobody asked for is dropped.
     send(
@@ -915,7 +1018,7 @@ fn a_completion_for_a_closed_view_is_dropped_and_settled() {
         Outcome::Accepted,
     );
     send(&mut m, Msg::Completion(done));
-    assert!(m.in_flight().is_empty());
+    assert_eq!(m.in_flight().len(), 0);
     assert_eq!(m.counters().dropped, 1);
 }
 
@@ -1647,6 +1750,7 @@ fn the_conversation_actions_are_start_destroy_or_create_never_focus_or_open() {
         ("theo.retry", EffectKind::ConversationRetry),
         ("theo.edit", EffectKind::ConversationEdit),
         ("theo.switch", EffectKind::ConversationSwitch),
+        ("theo.branch", EffectKind::ConversationSwitchBranch),
         ("theo.new", EffectKind::ConversationCreate),
         ("theo.stop", EffectKind::ConversationCancel),
     ] {
@@ -1756,7 +1860,7 @@ fn role_of(m: &Model, id: &PanelInstanceId) -> theorem_workbench_dock::Role {
 }
 
 #[test]
-fn a_panel_opens_what_a_registered_opener_serves_in_main_and_focuses_it() {
+fn a_panel_opens_what_a_registered_opener_serves_where_its_kind_places_it_and_focuses_it() {
     let (mut m, log) = new_model();
     action(&mut m, "note.open");
     let first = kinds(&m, "note")[0].clone();
@@ -1768,7 +1872,7 @@ fn a_panel_opens_what_a_registered_opener_serves_in_main_and_focuses_it() {
     assert_eq!(notes.len(), 2);
     let opened = notes.iter().find(|id| **id != first).unwrap().clone();
     assert_eq!(m.focus().panel, Some(opened.clone()));
-    assert_eq!(role_of(&m, &opened), theorem_workbench_dock::Role::Main);
+    assert_eq!(role_of(&m, &opened), theorem_workbench_dock::Role::Tools);
     assert!(!m.is_unavailable(&opened));
     // Built from the target, bound to its document, and nothing was emitted.
     assert_eq!(

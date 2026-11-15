@@ -210,10 +210,28 @@ impl Dock {
             return frame;
         }
 
+        // A tool group with no tabs that nobody asked for takes no room: the
+        // main pane keeps the width. Only when something else is left to show.
+        let unasked: Vec<GroupId> = self
+            .groups
+            .iter()
+            .filter(|(id, g)| {
+                g.role == Role::Tools && g.tabs.is_empty() && !g.keep_empty && !hidden.contains(id)
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        let others_shown = self
+            .groups
+            .keys()
+            .any(|id| !hidden.contains(id) && !unasked.contains(id));
+        let mut excluded = hidden.clone();
+        if others_shown {
+            excluded.extend(unasked.iter().copied());
+        }
         let mut ctx = Ctx {
             dock: self,
             m,
-            excluded: hidden.clone(),
+            excluded,
         };
         let mut collapsed_files: Vec<GroupId> = Vec::new();
         if !ctx.fits(area) {
@@ -277,7 +295,7 @@ impl Dock {
         }
 
         for id in self.layout.pane_ids() {
-            if hidden.contains(&id) {
+            if hidden.contains(&id) || (others_shown && unasked.contains(&id)) {
                 frame.suppressed.push((id, Suppressed::Hidden));
             }
         }
