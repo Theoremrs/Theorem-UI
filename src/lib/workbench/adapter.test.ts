@@ -140,6 +140,7 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   artifactRead: { key: 'k' },
   clipboardWrite: { text: 't' },
   clipboardRead: undefined,
+  appearanceApply: { appearance: '{"preset":"calm","overrides":{}}' },
 } as never
 
 const KINDS = Object.keys(SAMPLES) as EffectKind[]
@@ -192,7 +193,9 @@ const OWNER_OF = (kind: EffectKind) =>
                     ? 'layout'
                     : kind.startsWith('artifact')
                       ? 'artifacts'
-                      : 'clipboard'
+                      : kind.startsWith('appearance')
+                        ? 'appearance'
+                        : 'clipboard'
 
 const WS = { type: 'workspace', workspace: 'w1' } as const
 const TERMINAL = { type: 'terminal', workspace: 'w1', session: 't1' } as const
@@ -309,6 +312,7 @@ async function setup(
     'conversation',
     'artifacts',
     'clipboard',
+    'appearance',
   ],
   fileOverrides: Record<string, unknown> = {},
   terminalList: Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
@@ -805,6 +809,7 @@ describe('owners that do not exist yet', () => {
         'conversation',
         'artifacts',
         'clipboard',
+        'appearance',
       ].includes(OWNER_OF(kind)),
     )
     missing.forEach((kind, index) => t.adapter.perform(effectOf(index, kind)))

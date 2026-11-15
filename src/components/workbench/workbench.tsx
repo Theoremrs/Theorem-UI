@@ -12,6 +12,11 @@ import type { ReactNode } from 'react'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { bootstrap } from '@/lib/theorem/client'
 import { createAdapter } from '@/lib/workbench/adapter'
+import { useAppearance } from '@/lib/appearance'
+import {
+  createAppearancePort,
+  tellAppearance,
+} from '@/lib/workbench/appearance/appearance'
 import type { AccountAdapter, Adapter } from '@/lib/workbench/adapter'
 import { SignIn } from '@/components/auth/sign-in'
 import { accountKey, createAccountWatch } from '@/lib/workbench/account'
@@ -379,6 +384,11 @@ export function Workbench({
       let current: Owners | undefined
       /** Effects asked for while no adapter serves (before the account is known, or between accounts). */
       let waiting: Effect[] = []
+      // The core keeps the person's current appearance so a saved arrangement can carry it: told
+      // now, before any save or the arrangements load, and again on every change.
+      const stopTelling = tellAppearance(useAppearance, (value) =>
+        surface.arrangement({ type: 'appearance', value }),
+      )
 
       async function build(force: boolean): Promise<Owners> {
         const identity = await bootstrap(force)
@@ -447,6 +457,7 @@ export function Workbench({
           }),
           artifacts: createArtifactsPort(projectId),
           clipboard: createClipboardPort(),
+          appearance: createAppearancePort(useAppearance),
           dispatch,
           account: watch,
           retiring: [store, { retire: () => documentOwner.dispose() }],
@@ -510,6 +521,7 @@ export function Workbench({
         },
         dispose() {
           disposed = true
+          stopTelling()
           waiting = []
           current?.stop()
           current = undefined

@@ -46,6 +46,7 @@ export type DocumentsPort = OwnerPort<Of<'document'>>
 export type ScmPort = OwnerPort<Of<'scm'>>
 export type LanguagePort = OwnerPort<Of<'language'>>
 export type RunPort = OwnerPort<Of<'run'>>
+export type AppearancePort = OwnerPort<Of<'appearance'>>
 export type SearchPort = OwnerPort<Of<'search'>>
 export type ConversationPort = OwnerPort<Of<'conversation'>> & {
   /** Side chats can be created here. */
@@ -128,6 +129,8 @@ export interface AdapterOptions {
   conversation?: ConversationPort
   artifacts?: ArtifactsPort
   clipboard?: ClipboardPort
+  /** Applies the theme a saved arrangement carries. Absent, that effect is refused `owner_unavailable`. */
+  appearance?: AppearancePort
   /** The workbench handle's `dispatch`: every message is an `Inbound`, tagged by its channel. */
   dispatch: (message: Inbound) => void
   /**
@@ -184,6 +187,33 @@ function base64(bytes: Uint8Array): string {
 
 const plainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** The wire completion of an effect an owner has answered: what the core is told. */
+export function completionFor(effect: Effect, answer: OwnerReply): Completion {
+  const revision =
+    answer.outcome === 'accepted' && answer.revision
+      ? answer.revision
+      : effect.revision
+  return {
+    effect: effect.id,
+    resource: effect.resource,
+    ...(revision ? { revision } : {}),
+    ...(effect.generation !== undefined
+      ? { generation: effect.generation }
+      : {}),
+    outcome:
+      answer.outcome === 'accepted'
+        ? { status: 'accepted' }
+        : answer.outcome === 'refused'
+          ? { status: 'refused', code: answer.code, reason: answer.reason }
+          : { status: answer.outcome, reason: answer.reason },
+    ...(answer.outcome !== 'uncertain' &&
+    answer.outcome !== 'failed' &&
+    answer.value
+      ? { payload: answer.value }
+      : {}),
+  }
+}
 
 export function createAdapter(options: AdapterOptions): AccountAdapter {
   const { environment: env, files, layout, dispatch } = options
@@ -1081,6 +1111,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'clipboardRead':
         return route('clipboard', options.clipboard, effect, requestId)
 
+      case 'appearanceApply':
+        return route('appearance', options.appearance, effect, requestId)
+
       default: {
         const unrouted: never = effect
         return Promise.resolve({
@@ -1092,35 +1125,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     }
   }
 
-  function completion(effect: Effect, answer: OwnerReply): Completion {
-    const revision =
-      answer.outcome === 'accepted' && answer.revision
-        ? answer.revision
-        : effect.revision
-    return {
-      effect: effect.id,
-      resource: effect.resource,
-      ...(revision ? { revision } : {}),
-      ...(effect.generation !== undefined
-        ? { generation: effect.generation }
-        : {}),
-      outcome:
-        answer.outcome === 'accepted'
-          ? { status: 'accepted' }
-          : answer.outcome === 'refused'
-            ? { status: 'refused', code: answer.code, reason: answer.reason }
-            : { status: answer.outcome, reason: answer.reason },
-      ...(answer.outcome !== 'uncertain' &&
-      answer.outcome !== 'failed' &&
-      answer.value
-        ? { payload: answer.value }
-        : {}),
-    }
-  }
-
   async function run(effect: Effect) {
     if (retired) {
-      complete(completion(effect, refusal(retired.code, retired.reason)))
+      complete(completionFor(effect, refusal(retired.code, retired.reason)))
       return
     }
     inflight.set(effect.id, effect)
@@ -1137,7 +1144,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     }
     // Retired while it ran: the retirement already answered it `uncertain`, and this result is not applied.
     if (!inflight.delete(effect.id)) return
-    complete(completion(effect, answer))
+    complete(completionFor(effect, answer))
     if (answer.outcome === 'refused' && answer.code === 'signed_out') {
       if (options.account) void options.account.refresh()
       else retire({ code: 'signed_out', reason: answer.reason })
@@ -1166,7 +1173,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     send({ type: 'connectionChanged', workspace, state: 'closed' })
     for (const effect of answering) {
       complete(
-        completion(effect, {
+        completionFor(effect, {
           outcome: 'uncertain',
           reason: `${next.reason}; this request was not completed for the new session and its result was not applied`,
         }),
