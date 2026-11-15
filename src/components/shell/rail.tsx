@@ -390,7 +390,9 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
     else destinations.current.delete(value)
   }
   const [junction, setJunction] = useState<Omit<Junction, 'joins'>>()
-  const joins = !collapsible || panelOpen ? 'navigation' : 'sheet'
+  // On the desktop the Vault lays the sheet over the panel, so the tab joins the sheet there.
+  const covered = collapsible && navigatorMode(mode) !== mode
+  const joins = !collapsible || (panelOpen && !covered) ? 'navigation' : 'sheet'
   useLayoutEffect(() => {
     const rail = railRef.current
     const active = destinations.current.get(mode)

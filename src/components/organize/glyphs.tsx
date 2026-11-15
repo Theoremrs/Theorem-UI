@@ -1,9 +1,14 @@
 // SOURCING: the owner's Streamline Ultimate file marks (components/icons, traced by scripts/rail-icons.mjs) for session types and the states that outrank them, lucide-react file marks (FileTerminal, FileCog) for the two types Streamline was not given, components/icons for the folder and the rest of the owned set. The owner's review on 2026-11-14: the Streamline marks are used by state, the four pages in a square when others were forked from a session. A row's icon says what kind of thing it is, and the person decides that: a project is a folder; a session wears its chosen type (lib/theorem/sidebar-prefs), a Conversation until one is chosen. The Librarian's topic glyph is no longer drawn as the icon; it stays in the organization record as metadata.
+import { useQuery } from '@tanstack/react-query'
 import { FileCog, FileTerminal } from 'lucide-react'
 import type { ComponentProps, ComponentType } from 'react'
 import { Icon } from '@/components/icons'
-import { useOrganizedViews } from '@/lib/theorem/organization'
-import type { OrganizedViews, ThreadEntry } from '@/lib/theorem/organization'
+import { organizationQuery } from '@/lib/theorem/organization'
+import type {
+  Organization,
+  OrganizedViews,
+  ThreadEntry,
+} from '@/lib/theorem/organization'
 import { useSessionType } from '@/lib/theorem/sidebar-prefs'
 import type { TypeMark } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
@@ -83,6 +88,31 @@ export function sessionState(
   return undefined
 }
 
+const statesByRead = new WeakMap<object, ReadonlyMap<string, SessionState>>()
+
+/**
+ * Every session's state, worked out once per organization read however many
+ * marks ask for it: a project page draws one mark per session.
+ */
+export function sessionStates(
+  read: Pick<Organization, 'threads'>,
+): ReadonlyMap<string, SessionState> {
+  const known = statesByRead.get(read)
+  if (known) return known
+  const forkedFrom = new Set(
+    read.threads.flatMap((thread) =>
+      thread.origin?.kind === 'forked' ? [thread.origin.threadId] : [],
+    ),
+  )
+  const states = new Map<string, SessionState>()
+  for (const thread of read.threads) {
+    const state = sessionState(thread, { forkedFrom })
+    if (state) states.set(thread.threadId, state)
+  }
+  statesByRead.set(read, states)
+  return states
+}
+
 /**
  * A session's mark: the four pages when others were forked from it, the
  * pair when it continues another, the empty page before it starts, and
@@ -94,8 +124,10 @@ export function SessionGlyph({
   ...props
 }: MarkProps & { threadId: string }) {
   const type = useSessionType(threadId)
-  const views = useOrganizedViews()
-  const state = sessionState(views.byId.get(threadId), views)
+  const { data: state } = useQuery({
+    ...organizationQuery(),
+    select: (read) => sessionStates(read).get(threadId),
+  })
   if (!state)
     return <TypeMarkIcon mark={type.mark} className={className} {...props} />
   const Mark = STATE_MARK[state]
