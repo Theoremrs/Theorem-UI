@@ -95,7 +95,7 @@ fn model(caps: &[&'static str], drafts: &Drafts) -> Model {
     update(
         &mut m,
         Msg::Resize {
-            area: Rect::new(0, 0, 200, 50),
+            area: Rect::new(0, 0, 400, 50),
             metrics: CellMetrics::new(8.0, 16.0),
         },
     );
@@ -2355,4 +2355,77 @@ fn a_click_on_a_location_row_goes_there() {
         .expect("two rows");
     rig.click(second.0, second.1, 1);
     assert!(rig.status().contains("Ln 3"), "{}", rig.status());
+}
+
+// ---- redo, however the shifted letter arrives ------------------------------
+
+fn undone() -> Rig {
+    let mut rig = Rig::opened("ab\n");
+    rig.typed("x");
+    rig.chord('z');
+    assert_eq!(rig.text(), "ab");
+    rig
+}
+
+#[test]
+fn redo_by_an_upper_case_letter_with_the_command_key() {
+    let mut rig = undone();
+    rig.mods(Key::Char('Z'), Mods::CTRL);
+    assert_eq!(rig.text(), "xab");
+}
+
+#[test]
+fn redo_by_an_upper_case_letter_with_shift_held() {
+    let mut rig = undone();
+    rig.mods(Key::Char('Z'), Mods::CTRL | Mods::SHIFT);
+    assert_eq!(rig.text(), "xab");
+}
+
+#[test]
+fn redo_by_ctrl_y() {
+    let mut rig = undone();
+    rig.chord('y');
+    assert_eq!(rig.text(), "xab");
+}
+
+// ---- the save message, and undo grouping -----------------------------------
+
+#[test]
+fn the_saved_message_goes_away_with_the_next_edit() {
+    let mut rig = Rig::opened("hello\n");
+    let e = the_edit(&rig.typed("x"));
+    rig.accept(&e, 2);
+    let save = one(&rig.chord('s'), EffectKind::DocumentSave);
+    rig.answer(
+        &save,
+        Outcome::Accepted,
+        Some(CompletionPayload::DocumentSaved(DocumentSaved {
+            revision: seq(2),
+        })),
+    );
+    assert!(
+        rig.status().contains("Saved revision 2"),
+        "{}",
+        rig.status()
+    );
+    rig.typed("y");
+    assert!(!rig.status().contains("Saved revision"), "{}", rig.status());
+    assert!(rig.status().contains("modified"), "{}", rig.status());
+}
+
+#[test]
+fn typing_is_undone_a_run_of_one_kind_of_character_at_a_time() {
+    // The rule is workbench-text's: consecutive inserts that touch and are of
+    // one class (word characters, white space, anything else) are one step.
+    // A pause does not end a run; a newline always does.
+    let mut rig = Rig::opened("\n");
+    rig.typed("ab cd");
+    let mut seen = vec![rig.text()];
+    for _ in 0..4 {
+        rig.chord('z');
+        seen.push(rig.text());
+    }
+    // A burst of "ab cd" is not one undo step: the first undo keeps "ab".
+    assert_eq!(seen[1], "ab", "{seen:?}");
+    assert_eq!(seen[4], "", "{seen:?}");
 }

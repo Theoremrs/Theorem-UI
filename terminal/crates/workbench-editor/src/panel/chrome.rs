@@ -113,7 +113,7 @@ impl EditorPanel {
                 _ => Some("No document is open.".to_owned()),
             };
         };
-        let read_only = || d.read_only.clone().map(|r| format!("Read-only: {r}"));
+        let read_only = || d.sync.read_only.clone().map(|r| format!("Read-only: {r}"));
         let language = || {
             if !self.language {
                 Some("No language service in this workspace.".to_owned())
@@ -123,7 +123,7 @@ impl EditorPanel {
                 Some("Settle the held text first.".to_owned())
             } else if d.session.has_pending() {
                 Some("Wait until the owner has accepted the edits.".to_owned())
-            } else if d.desync.is_some() {
+            } else if d.sync.desync.is_some() {
                 Some("Waiting for the owner's text.".to_owned())
             } else if d.busy.is_some() {
                 Some("Another request is in flight.".to_owned())
@@ -138,9 +138,9 @@ impl EditorPanel {
                     Some("The document service is not available.".to_owned())
                 } else if d.session.has_conflict() {
                     Some("Settle the held text first.".to_owned())
-                } else if d.desync.is_some() {
+                } else if d.sync.desync.is_some() {
                     Some("Waiting for the owner's text.".to_owned())
-                } else if d.save.inflight == Some(d.session.accepted_revision())
+                } else if d.sync.save.inflight == Some(d.session.accepted_revision())
                     && !d.session.has_pending()
                 {
                     Some("A save of this revision is already in flight.".to_owned())
@@ -173,7 +173,7 @@ impl EditorPanel {
                     Some("Wait until the owner has accepted the edits.".to_owned())
                 } else if d.session.has_conflict() {
                     Some("Settle the held text first.".to_owned())
-                } else if d.desync.is_some() {
+                } else if d.sync.desync.is_some() {
                     Some("Waiting for the owner's text.".to_owned())
                 } else {
                     None
@@ -202,20 +202,22 @@ impl EditorPanel {
                 }
             }
             Choice::TakeTheirs | Choice::KeepBoth => conflict(),
-            Choice::CopyMine => (!d.session.has_conflict() && d.recoverable.is_none())
+            Choice::CopyMine => (!d.session.has_conflict() && d.sync.recoverable.is_none())
                 .then(|| "There is no held text.".to_owned()),
             Choice::Resend => d
+                .sync
                 .unknown
                 .is_none()
                 .then(|| "No edit is waiting on an unknown answer.".to_owned()),
             Choice::KeepDisk | Choice::KeepAuthority => d
+                .sync
                 .disk
                 .is_none()
                 .then(|| "The file on disk has not changed under the editor.".to_owned()),
             Choice::Dismiss => (!(d.find.is_open()
                 || d.popup.is_some()
                 || d.notice.is_some()
-                || d.recoverable.is_some()
+                || d.sync.recoverable.is_some()
                 || d.plan.is_some()))
             .then(|| "There is nothing to dismiss.".to_owned()),
             Choice::Retry => Some("Nothing failed.".to_owned()),
@@ -245,14 +247,15 @@ impl EditorPanel {
                 buttons: vec![],
             });
         }
-        if d.session.has_conflict() || d.held.is_some() {
+        if d.session.has_conflict() || d.sync.held.is_some() {
             let reason = d
+                .sync
                 .held
                 .as_ref()
                 .map(|h| h.reason.clone())
                 .or_else(|| d.session.conflict().map(|c| c.reason))
                 .unwrap_or_default();
-            let conflict = d.held.as_ref().is_none_or(|h| h.conflict);
+            let conflict = d.sync.held.as_ref().is_none_or(|h| h.conflict);
             let mine = d
                 .session
                 .conflict()
@@ -264,7 +267,7 @@ impl EditorPanel {
                         .join(" ")
                 })
                 .unwrap_or_default();
-            let theirs = match d.held.as_ref().and_then(|h| h.theirs.as_ref()) {
+            let theirs = match d.sync.held.as_ref().and_then(|h| h.theirs.as_ref()) {
                 Some(t) if t.inserted.is_empty() && !t.removed.is_empty() => "(deleted)".to_owned(),
                 Some(t) => snip(&t.inserted, 24),
                 None if conflict => "(the owner sent no text)".to_owned(),
@@ -283,7 +286,7 @@ impl EditorPanel {
             } else {
                 format!("{head} {reason} Mine, kept here: \"{}\"", snip(&mine, 24))
             };
-            let buttons = if d.read_only.is_some() {
+            let buttons = if d.sync.read_only.is_some() {
                 vec![Choice::TakeTheirs, Choice::CopyMine]
             } else {
                 vec![
@@ -295,7 +298,7 @@ impl EditorPanel {
             };
             return text(body, Tone::Error, buttons);
         }
-        if let Some(disk) = &d.disk {
+        if let Some(disk) = &d.sync.disk {
             let what = if disk.deleted {
                 "The file was deleted on disk."
             } else {
@@ -310,7 +313,7 @@ impl EditorPanel {
                 vec![Choice::KeepDisk, Choice::KeepAuthority],
             );
         }
-        if let Some(u) = &d.unknown {
+        if let Some(u) = &d.sync.unknown {
             return text(
                 format!(
                     "Unknown whether the owner took an edit: {} Nothing is sent behind it.",
@@ -327,14 +330,14 @@ impl EditorPanel {
                 vec![Choice::ApplyPlan, Choice::Dismiss],
             );
         }
-        if d.recoverable.is_some() {
+        if d.sync.recoverable.is_some() {
             return text(
                 "Their text was taken. Your text is kept.".to_owned(),
                 Tone::Info,
                 vec![Choice::CopyMine, Choice::Dismiss],
             );
         }
-        if let Some(why) = &d.desync {
+        if let Some(why) = &d.sync.desync {
             return text(why.clone(), Tone::Warn, vec![]);
         }
         None
@@ -446,24 +449,24 @@ impl EditorPanel {
         if d.dirty() {
             flag("modified".to_owned(), false);
         }
-        if let Some(r) = &d.read_only {
+        if let Some(r) = &d.sync.read_only {
             flag(format!("read-only: {r}"), true);
         }
-        if d.save.inflight.is_some() {
+        if d.sync.save.inflight.is_some() {
             flag("saving".to_owned(), false);
         }
-        if d.save.unknown.is_some() {
+        if d.sync.save.unknown.is_some() {
             flag("save unknown".to_owned(), true);
         }
-        if d.unknown.is_some() {
+        if d.sync.unknown.is_some() {
             flag("edit unknown".to_owned(), true);
-        } else if d.inflight.is_some() {
+        } else if d.sync.inflight.is_some() {
             flag("sending".to_owned(), false);
         }
-        if d.desync.is_some() {
+        if d.sync.desync.is_some() {
             flag("out of sync".to_owned(), true);
         }
-        if d.save.wanted {
+        if d.sync.save.wanted {
             flag("save waits for edits".to_owned(), false);
         }
         if let Some(b) = d.busy {
@@ -900,13 +903,14 @@ impl EditorPanel {
         root.binding = self.resource();
         root.revision = Some(CoreRevision::Seq(d.session.accepted_revision()));
         root.state.focused = cx.focused && !d.in_find && d.rename.is_none();
-        root.state.busy = d.inflight.is_some() || d.save.inflight.is_some() || d.busy.is_some();
+        root.state.busy =
+            d.sync.inflight.is_some() || d.sync.save.inflight.is_some() || d.busy.is_some();
         let selected = d.session.selection().map_or(0, |(a, b)| {
             let c = d.session.coords();
             c.grapheme_index(b) - c.grapheme_index(a)
         });
         let mut words = vec![if d.dirty() { "modified" } else { "saved" }.to_owned()];
-        if let Some(r) = &d.read_only {
+        if let Some(r) = &d.sync.read_only {
             words.push(format!("read-only: {r}"));
         }
         words.push(format!(

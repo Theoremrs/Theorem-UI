@@ -42,8 +42,8 @@ use theorem_workbench_text::{EditSession, OpId, Scroll, ViewSnapshot};
 use crate::actions::Choice;
 use crate::field::Field;
 use crate::find::Find;
+use crate::owner::OwnerSync;
 use crate::styles::EditorStyles;
-use crate::sync::Changed;
 use crate::widget::SourceView;
 use create::Naming;
 use language::{Findings, Popup, Tokens};
@@ -176,28 +176,6 @@ impl Problem {
     }
 }
 
-/// Text the owner refused, held in the session until the person chooses.
-#[derive(Clone, Debug)]
-pub(crate) struct Held {
-    pub reason: String,
-    /// What the owner has now where the person's edit was. `None` when the
-    /// refusal was not a conflict, or the owner sent no current text.
-    pub theirs: Option<Changed>,
-    pub conflict: bool,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Disk {
-    pub revision: u64,
-    pub deleted: bool,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Unknown {
-    pub op: OpId,
-    pub reason: String,
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct Plan {
     pub id: String,
@@ -205,33 +183,14 @@ pub(crate) struct Plan {
     pub revision: u64,
 }
 
-#[derive(Debug, Default)]
-pub(crate) struct Saving {
-    /// A save is wanted once the pending edits are accepted.
-    pub wanted: bool,
-    /// The revision of the save in flight.
-    pub inflight: Option<u64>,
-    /// The last save's outcome is unknown.
-    pub unknown: Option<String>,
-}
-
 /// An open document.
 pub(crate) struct Doc {
     pub session: EditSession,
     pub view: SourceView,
-    /// The revision the owner says the checkout holds. `None`: unknown, which
-    /// counts as modified.
-    pub saved: Option<u64>,
     /// Counts local changes of the text, so a search is found again.
     pub version: u64,
-    pub read_only: Option<String>,
-    pub inflight: Option<OpId>,
-    pub unknown: Option<Unknown>,
-    /// The text is behind the owner's: no edit is sent until its resync.
-    pub desync: Option<String>,
-    pub held: Option<Held>,
-    pub disk: Option<Disk>,
-    pub save: Saving,
+    /// The owner's side: what is in flight, held, saved, behind.
+    pub sync: OwnerSync,
     pub notice: Option<Notice>,
     pub find: Find,
     pub in_find: bool,
@@ -249,18 +208,21 @@ pub(crate) struct Doc {
     pub waiting: Option<language::Waiting>,
     /// Text an input method is composing at the caret.
     pub preedit: Option<String>,
-    /// The whole text from before "take theirs", kept so it can be copied.
-    pub recoverable: Option<String>,
     pub busy: Option<&'static str>,
 }
 
 impl Doc {
     pub fn dirty(&self) -> bool {
-        self.session.has_pending() || self.saved != Some(self.session.accepted_revision())
+        self.sync.dirty(&self.session)
     }
 
+    /// The text changed: a search is found again, and what was said about the
+    /// last save is no longer true.
     pub fn touch(&mut self) {
         self.version += 1;
+        if self.notice.as_ref().is_some_and(|n| n.tone == Tone::Info) {
+            self.notice = None;
+        }
     }
 
     pub fn notice(&mut self, text: impl Into<String>, tone: Tone) {
@@ -356,12 +318,7 @@ fn reveal_offset(text: &str, line: u32, column: u32) -> usize {
     at
 }
 
-fn seq(r: &CoreRevision) -> Option<u64> {
-    match r {
-        CoreRevision::Seq(n) => Some(*n),
-        CoreRevision::Opaque(_) => None,
-    }
-}
+use crate::owner::revision_number as seq;
 
 impl EditorPanel {
     /// Build from the saved view state (`{"workspace", "path", ...}`; `Null`
@@ -596,7 +553,7 @@ impl Panel for EditorPanel {
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Completion(c) => self.on_completion(c, false, cx),
             PanelMsg::Cached(c) => self.on_completion(c, true, cx),
-            PanelMsg::Host(message) => self.on_host(message),
+            PanelMsg::Host(message) => self.on_host(message, cx),
             PanelMsg::Action(id) => {
                 if let Some(choice) = Choice::from_id(id.as_str()) {
                     self.choose(choice, cx);

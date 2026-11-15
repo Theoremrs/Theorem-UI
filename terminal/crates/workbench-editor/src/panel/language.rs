@@ -628,7 +628,7 @@ impl EditorPanel {
             && !d.findings.inflight
             && !d.session.has_pending()
             && !d.session.has_conflict()
-            && d.desync.is_none();
+            && d.sync.desync.is_none();
         if due {
             self.check(cx, false);
         }

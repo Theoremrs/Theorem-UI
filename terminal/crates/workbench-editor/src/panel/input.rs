@@ -242,7 +242,7 @@ impl EditorPanel {
             EditError::ReadOnly => {
                 let why = self
                     .doc()
-                    .and_then(|d| d.read_only.clone())
+                    .and_then(|d| d.sync.read_only.clone())
                     .unwrap_or_else(|| "the owner does not allow edits here".to_owned());
                 format!("Read-only: {why}")
             }
@@ -385,7 +385,7 @@ impl EditorPanel {
             return;
         }
         match choice {
-            Choice::Save => self.save(cx),
+            Choice::Save => self.save(),
             Choice::Undo => self.local(|s| s.undo()),
             Choice::Redo => self.local(|s| s.redo()),
             Choice::Find => {
@@ -428,14 +428,18 @@ impl EditorPanel {
             Choice::KeepBoth => self.resolve(Resolution::KeepBoth, cx),
             Choice::CopyMine => {
                 let Some(d) = self.doc() else { return };
-                let text = d.recoverable.clone().unwrap_or_else(|| d.session.text());
+                let text = d
+                    .sync
+                    .recoverable
+                    .clone()
+                    .unwrap_or_else(|| d.session.text());
                 self.write_clipboard(text, Clip::Copy, cx);
             }
             Choice::Resend => {
                 if let Some(d) = self.doc_mut()
-                    && let Some(u) = d.unknown.take()
+                    && let Some(u) = d.sync.unknown.take()
                 {
-                    d.inflight = None;
+                    d.sync.inflight = None;
                     let _ = d.session.requeue(&u.op);
                     d.notice("Sending the edit again under its own id.", Tone::Info);
                 }
@@ -452,7 +456,7 @@ impl EditorPanel {
                         d.in_replace = false;
                     } else {
                         d.notice = None;
-                        d.recoverable = None;
+                        d.sync.recoverable = None;
                         d.plan = None;
                     }
                 }
@@ -465,18 +469,19 @@ impl EditorPanel {
         matches!(&self.phase, Phase::Failed(p) if p.can_retry)
     }
 
-    fn save(&mut self, cx: &mut Ctx) {
+    fn save(&mut self) {
         let Some(d) = self.doc_mut() else { return };
         if d.session.has_pending() {
             // The save is of the revision the owner has accepted; the edits
             // typed so far are not in it until the owner says so.
-            d.save.wanted = true;
+            d.sync.want_save();
             d.notice(
                 "Saving as soon as the owner has accepted the edits.",
                 Tone::Info,
             );
         } else {
-            self.send_save(cx);
+            // Sent by the pump that follows this message.
+            d.sync.want_save();
         }
     }
 

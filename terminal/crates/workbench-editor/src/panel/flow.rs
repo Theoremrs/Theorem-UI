@@ -3,34 +3,19 @@
 
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
 use theorem_workbench_core::effect::{
-    ClipboardWrite, CoordinateUnit, DocumentEdit, DocumentReconcile, DocumentSettle, EffectBody,
-    LanguageApplyPlan, LanguagePosition, LanguageRename, ReconcileKeep, TextChange as CoreChange,
+    ClipboardWrite, DocumentReconcile, DocumentSettle, EffectBody, LanguageApplyPlan,
+    LanguagePosition, LanguageRename, ReconcileKeep,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{Capability, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
-use theorem_workbench_text::{
-    EditSession, OpId, PendingState, Resolution, SessionConfig, SyncError,
-};
+use theorem_workbench_text::{EditSession, OpId, PendingState, Resolution, SessionConfig};
 
-use super::{
-    Clip, Disk, Doc, EditorPanel, Held, Notice, Phase, Plan, Problem, Task, Tone, Unknown,
-    language, seq,
-};
+use super::{Clip, Doc, EditorPanel, Notice, Phase, Plan, Problem, Task, Tone, language, seq};
 use crate::find::Find;
-use crate::sync::{apply_owner_change, resync, step_before};
+use crate::owner::{Level, Owed, OwnerSync, Step};
+use crate::sync::resync;
 use crate::widget::SourceView;
-
-fn core_changes(edit: &theorem_workbench_text::LocalEdit) -> Vec<CoreChange> {
-    edit.changes
-        .iter()
-        .map(|c| CoreChange {
-            start: c.start as u32,
-            end: c.end as u32,
-            insert: c.insert.clone(),
-        })
-        .collect()
-}
 
 pub(super) fn emit_notice(error: EmitError) -> String {
     match error {
@@ -55,10 +40,8 @@ impl EditorPanel {
             d.refresh_tokens();
             // A save of an older revision is judged stale once edits are
             // accepted past it, so its answer will not come: stop showing it.
+            d.sync.settle_stale_save(&d.session);
             let accepted = d.session.accepted_revision();
-            if d.save.inflight.is_some_and(|r| r < accepted) {
-                d.save.inflight = None;
-            }
             // A hover or a completion list belongs to the text it was asked
             // about; a place list does not move with the caret.
             let version = d.version;
@@ -83,77 +66,74 @@ impl EditorPanel {
 
     // ---- sending ----------------------------------------------------------
 
-    /// Send what is owed: the next edit when none is in flight, then a wanted
-    /// save once every edit is accepted. A call that cannot emit (a silent
-    /// message) leaves the need for the next tick.
+    /// Send what the owner is owed: the next edit when none is in flight, then
+    /// a wanted save once every edit is accepted. A call that cannot emit (a
+    /// silent message) leaves the need for the next tick.
     pub(super) fn pump(&mut self, cx: &mut Ctx) {
-        let save_due = {
+        let owed = {
             let Phase::Ready(d) = &mut self.phase else {
                 return;
             };
-            if d.desync.is_some() {
-                return;
-            }
-            let next = if d.inflight.is_none() && d.unknown.is_none() {
-                d.session.take_next_to_send()
-            } else {
-                None
-            };
-            if let Some(edit) = next {
-                let base = edit.base_revision;
-                let op = edit.op_id.clone();
-                let body = EffectBody::DocumentEdit(DocumentEdit {
-                    operation_id: op.0.clone(),
-                    unit: CoordinateUnit::Utf16,
-                    edits: core_changes(&edit),
-                });
-                d.inflight = Some(op.clone());
-                if let Err(error) = self.start(cx, Task::Edit(op.clone()), body, Some(base)) {
+            d.sync.owed(&mut d.session)
+        };
+        match owed {
+            Some(Owed::Edit { op, base, body }) => {
+                let result = self.start(
+                    cx,
+                    Task::Edit(op.clone()),
+                    EffectBody::DocumentEdit(body),
+                    Some(base),
+                );
+                if let Err(error) = result {
                     self.need_pump = true;
                     if let Phase::Ready(d) = &mut self.phase {
-                        d.inflight = None;
-                        let _ = d.session.requeue(&op);
+                        d.sync.edit_not_sent(&mut d.session, &op);
                         if !matches!(error, EmitError::Silent) {
                             d.notice(emit_notice(error), Tone::Warn);
                         }
                     }
                 }
-                return;
             }
-            d.save.wanted
-                && d.save.inflight.is_none()
-                && !d.session.has_pending()
-                && !d.session.has_conflict()
-        };
-        if save_due {
-            self.send_save(cx);
+            Some(Owed::Save { revision }) => {
+                let result = self.start(
+                    cx,
+                    Task::Save(revision),
+                    EffectBody::DocumentSave,
+                    Some(revision),
+                );
+                if let Err(error) = result {
+                    self.need_pump = true;
+                    if let Some(d) = self.doc_mut() {
+                        d.sync.save_not_sent();
+                        if !matches!(error, EmitError::Silent) {
+                            d.notice(emit_notice(error), Tone::Warn);
+                        }
+                    }
+                }
+            }
+            None => {}
         }
     }
 
-    pub(super) fn send_save(&mut self, cx: &mut Ctx) {
-        let Some(d) = self.doc_mut() else { return };
-        let revision = d.session.accepted_revision();
-        d.save.wanted = false;
-        match self.start(
-            cx,
-            Task::Save(revision),
-            EffectBody::DocumentSave,
-            Some(revision),
-        ) {
-            Ok(_) => {
-                if let Some(d) = self.doc_mut() {
-                    d.save.inflight = Some(revision);
-                    d.save.unknown = None;
-                }
+    /// What a transition of the owner's state asks of the panel.
+    pub(super) fn apply_step(&mut self, step: Step, cx: &mut Ctx) {
+        if let Some(d) = self.doc_mut() {
+            if step.text_changed {
+                d.touch();
             }
-            Err(error) => {
-                self.need_pump = true;
-                if let Some(d) = self.doc_mut() {
-                    d.save.wanted = true;
-                    if !matches!(error, EmitError::Silent) {
-                        d.notice(emit_notice(error), Tone::Warn);
-                    }
-                }
+            for n in &step.notes {
+                let tone = match n.level {
+                    Level::Info => Tone::Info,
+                    Level::Warn => Tone::Warn,
+                    Level::Error => Tone::Error,
+                };
+                d.notice(n.text.clone(), tone);
+            }
+        }
+        for op in step.settle {
+            let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op.0 });
+            if let Ok(id) = self.emit(cx, self.resource(), body, None) {
+                self.outstanding.insert(id, Task::Release);
             }
         }
     }
@@ -175,9 +155,9 @@ impl EditorPanel {
             // state, so not shown.
             _ if cached => {}
             Task::Open => self.on_open(c, cx),
-            Task::Edit(op) => self.on_edit(op, c),
-            Task::Save(revision) => self.on_save(revision, c),
-            Task::Reconcile(keep) => self.on_reconcile(keep, c),
+            Task::Edit(op) => self.on_edit(op, c, cx),
+            Task::Save(revision) => self.on_save(revision, c, cx),
+            Task::Reconcile(keep) => self.on_reconcile(keep, c, cx),
             Task::Rename(revision) => self.on_rename(revision, c),
             Task::Apply => self.on_apply(c),
             Task::Format => self.on_format(c),
@@ -249,7 +229,7 @@ impl EditorPanel {
         if let Some(view) = self.restore.take() {
             session.restore_view(&view);
         }
-        let held = session.conflict().map(|k| Held {
+        let held = session.conflict().map(|k| crate::owner::Held {
             reason: k.reason,
             theirs: None,
             conflict: true,
@@ -257,15 +237,11 @@ impl EditorPanel {
         let mut d = Doc {
             session,
             view: SourceView::new(),
-            saved,
             version: 0,
-            read_only: None,
-            inflight: None,
-            unknown: None,
-            desync: None,
-            held,
-            disk: None,
-            save: Default::default(),
+            sync: OwnerSync {
+                held,
+                ..OwnerSync::new(saved)
+            },
             notice: note.map(|text| Notice {
                 text,
                 tone: Tone::Warn,
@@ -280,12 +256,10 @@ impl EditorPanel {
             tokens: None,
             waiting: None,
             preedit: None,
-            recoverable: None,
             busy: None,
         };
         if let Some(r) = &opened.read_only {
-            d.read_only = Some(r.reason.clone());
-            d.session.set_read_only(true);
+            d.sync.make_read_only(&mut d.session, r.reason.clone());
         }
         let (w, h) = self.body;
         d.view.resize(&mut d.session, w, h);
@@ -293,177 +267,24 @@ impl EditorPanel {
         self.place_reveal();
     }
 
-    /// The owner accepted `op` as `revision`.
-    pub(super) fn acknowledge(&mut self, op: &OpId, revision: u64) {
-        let Some(d) = self.doc_mut() else { return };
-        let mut result = d.session.acknowledge(op, revision);
-        if matches!(result, Err(SyncError::RevisionGap { .. })) {
-            // The revisions in between were other people's. Their text is not
-            // known here, so no edit goes out until the owner's resync.
-            let _ = step_before(&mut d.session, revision);
-            result = d.session.acknowledge(op, revision);
-            d.desync = Some(format!(
-                "Revisions before {revision} were not seen; waiting for the owner's resync."
-            ));
-        }
-        match result {
-            Ok(()) => {
-                if d.inflight.as_ref() == Some(op) {
-                    d.inflight = None;
-                }
-                if d.unknown.as_ref().is_some_and(|u| &u.op == op) {
-                    d.unknown = None;
-                }
-            }
-            // Already seen on the live stream, or never ours: nothing to do.
-            Err(SyncError::UnknownOperation(_)) => {}
-            Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-        }
-    }
-
-    fn on_edit(&mut self, op: OpId, c: Completion) {
-        let revision_stamp = c.revision.as_ref().and_then(seq);
+    fn on_edit(&mut self, op: OpId, c: Completion, cx: &mut Ctx) {
         let Phase::Ready(d) = &mut self.phase else {
             return;
         };
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, payload) => {
-                let revision = match payload {
-                    Some(CompletionPayload::DocumentEdited(e)) => seq(&e.revision),
-                    _ => revision_stamp,
-                };
-                match revision {
-                    Some(r) => self.acknowledge(&op, r),
-                    None => {
-                        d.inflight = None;
-                        d.desync = Some(
-                            "The owner accepted an edit without saying at which revision; waiting for its resync."
-                                .into(),
-                        );
-                    }
-                }
-            }
-            (Outcome::Refused { code, reason }, payload) => {
-                d.inflight = None;
-                let _ = d.session.refuse(&op, reason.clone());
-                d.save.wanted = false;
-                if let Some(CompletionPayload::DocumentConflicted(dc)) = payload {
-                    let theirs = match seq(&dc.current.revision) {
-                        Some(r) => match resync(&mut d.session, &dc.current.text, r) {
-                            Ok(changed) => Some(changed),
-                            Err(e) => {
-                                d.desync = Some(format!("{e}; waiting for the owner's resync."));
-                                None
-                            }
-                        },
-                        None => {
-                            d.desync = Some("The owner's current revision is opaque.".into());
-                            None
-                        }
-                    };
-                    d.touch();
-                    d.held = Some(Held {
-                        reason,
-                        theirs,
-                        conflict: true,
-                    });
-                } else if code == "conflict" {
-                    d.desync = Some(
-                        "The owner refused the edit as stale and sent no current text; waiting for its resync."
-                            .into(),
-                    );
-                    d.held = Some(Held {
-                        reason,
-                        theirs: None,
-                        conflict: true,
-                    });
-                } else {
-                    let low = code.to_lowercase();
-                    if ["read", "permission", "denied", "forbidden"]
-                        .iter()
-                        .any(|w| low.contains(w))
-                    {
-                        d.read_only = Some(reason.clone());
-                        d.session.set_read_only(true);
-                    }
-                    d.held = Some(Held {
-                        reason,
-                        theirs: None,
-                        conflict: false,
-                    });
-                }
-            }
-            (Outcome::Failed { reason }, _) => {
-                d.inflight = None;
-                let _ = d.session.refuse(&op, reason.clone());
-                d.save.wanted = false;
-                d.held = Some(Held {
-                    reason,
-                    theirs: None,
-                    conflict: false,
-                });
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                // In flight stays in flight: the owner may have it. Nothing
-                // is sent behind it, and nothing sends it again unless asked.
-                d.unknown = Some(Unknown { op, reason });
-            }
-        }
+        let step = d.sync.edit_answered(&mut d.session, op, c);
+        self.apply_step(step, cx);
     }
 
-    fn on_save(&mut self, revision: u64, c: Completion) {
+    fn on_save(&mut self, revision: u64, c: Completion, cx: &mut Ctx) {
         let Some(d) = self.doc_mut() else { return };
-        if d.save.inflight == Some(revision) {
-            d.save.inflight = None;
-        }
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, payload) => {
-                let at = match payload {
-                    Some(CompletionPayload::DocumentSaved(s)) => seq(&s.revision),
-                    _ => None,
-                }
-                .unwrap_or(revision);
-                d.saved = Some(at);
-                d.save.unknown = None;
-                d.notice(format!("Saved revision {at}."), Tone::Info);
-            }
-            (Outcome::Refused { reason, .. } | Outcome::Failed { reason }, _) => {
-                d.notice(format!("Not saved: {reason}"), Tone::Error);
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                d.save.unknown = Some(reason.clone());
-                d.notice(format!("Unknown whether it saved: {reason}"), Tone::Warn);
-            }
-        }
+        let step = d.sync.save_answered(revision, c);
+        self.apply_step(step, cx);
     }
 
-    fn on_reconcile(&mut self, keep: ReconcileKeep, c: Completion) {
+    fn on_reconcile(&mut self, keep: ReconcileKeep, c: Completion, cx: &mut Ctx) {
         let Some(d) = self.doc_mut() else { return };
-        match (c.outcome, c.payload) {
-            (Outcome::Accepted, Some(CompletionPayload::DocumentReconciled(r))) => {
-                let Some(revision) = seq(&r.revision) else {
-                    return;
-                };
-                match resync(&mut d.session, &r.text, revision) {
-                    Ok(_) => {
-                        d.touch();
-                        d.disk = None;
-                        if keep == ReconcileKeep::Disk {
-                            d.saved = Some(revision);
-                        }
-                        d.notice("Settled with the file on disk.", Tone::Info);
-                    }
-                    Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-                }
-            }
-            (Outcome::Accepted, _) => d.disk = None,
-            (Outcome::Refused { reason, .. } | Outcome::Failed { reason }, _) => {
-                d.notice(format!("Not settled: {reason}"), Tone::Error);
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                d.notice(format!("Unknown whether it settled: {reason}"), Tone::Warn);
-            }
-        }
+        let step = d.sync.reconcile_answered(&mut d.session, keep, c);
+        self.apply_step(step, cx);
     }
 
     fn on_rename(&mut self, revision: u64, c: Completion) {
@@ -595,86 +416,17 @@ impl EditorPanel {
 
     // ---- host messages ----------------------------------------------------
 
-    pub(super) fn on_host(&mut self, message: HostMessage) {
+    pub(super) fn on_host(&mut self, message: HostMessage, cx: &mut Ctx) {
         match message {
-            HostMessage::DocumentChanged {
-                revision,
-                operation_id,
-                unit,
-                edits,
-                ..
-            } => {
-                let Some(revision) = seq(&revision) else {
-                    return;
-                };
+            m @ (HostMessage::DocumentChanged { .. }
+            | HostMessage::DocumentAcknowledged { .. }
+            | HostMessage::DocumentResync { .. }
+            | HostMessage::DocumentConflict { .. }
+            | HostMessage::DocumentSaved { .. }
+            | HostMessage::DocumentRetired { .. }) => {
                 let Some(d) = self.doc_mut() else { return };
-                if let Some(op) = operation_id.map(OpId)
-                    && d.session.pending().iter().any(|p| p.op_id == op)
-                {
-                    self.acknowledge(&op, revision);
-                    return;
-                }
-                let accepted = d.session.accepted_revision();
-                if revision <= accepted {
-                    return;
-                }
-                if revision > accepted + 1 {
-                    d.desync = Some(format!(
-                        "Revisions {}..{} were not seen; waiting for the owner's resync.",
-                        accepted + 1,
-                        revision - 1
-                    ));
-                    return;
-                }
-                match apply_owner_change(&mut d.session, unit, &edits, revision) {
-                    Ok(()) => d.touch(),
-                    Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-                }
-            }
-            HostMessage::DocumentAcknowledged {
-                revision,
-                operation_id,
-                ..
-            } => {
-                if let Some(revision) = seq(&revision) {
-                    self.acknowledge(&OpId(operation_id), revision);
-                }
-            }
-            HostMessage::DocumentResync { revision, text, .. } => {
-                let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) else {
-                    return;
-                };
-                match resync(&mut d.session, &text, revision) {
-                    Ok(_) => {
-                        d.desync = None;
-                        d.touch();
-                    }
-                    // An older resync than what is shown is not news.
-                    Err(SyncError::StaleRevision { .. }) => {}
-                    Err(e) => d.desync = Some(format!("{e}; waiting for the owner's resync.")),
-                }
-            }
-            HostMessage::DocumentConflict {
-                revision,
-                disk_deleted,
-                ..
-            } => {
-                if let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) {
-                    d.disk = Some(Disk {
-                        revision,
-                        deleted: disk_deleted,
-                    });
-                }
-            }
-            HostMessage::DocumentSaved { revision, .. } => {
-                if let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) {
-                    // A save of an older revision says that revision is on
-                    // disk; the mark stays if the text has moved past it.
-                    if d.saved.is_none_or(|s| s < revision) {
-                        d.saved = Some(revision);
-                    }
-                    d.save.unknown = None;
-                }
+                let step = d.sync.host(&mut d.session, &m);
+                self.apply_step(step, cx);
             }
             HostMessage::DocumentTokens {
                 resource,
@@ -710,12 +462,6 @@ impl EditorPanel {
                     self.path = resource_id;
                 }
             }
-            HostMessage::DocumentRetired { .. } => {
-                if let Some(d) = self.doc_mut() {
-                    d.session.set_read_only(true);
-                    d.read_only = Some("The owner retired this document.".to_owned());
-                }
-            }
             HostMessage::CapabilitiesChanged { capabilities } => {
                 self.documents = capabilities.has(&Capability::new("documents"));
                 self.language = capabilities.has(&Capability::new("language"));
@@ -732,40 +478,8 @@ impl EditorPanel {
     /// once the session has taken the person's choice.
     pub(super) fn resolve(&mut self, how: Resolution, cx: &mut Ctx) {
         let Some(d) = self.doc_mut() else { return };
-        let held: Vec<OpId> = d.session.conflict().map(|c| c.op_ids).unwrap_or_default();
-        let result = d.session.resolve_conflict(how);
-        let settled = result.is_ok();
-        match result {
-            Ok(dropped) => {
-                d.held = None;
-                d.touch();
-                if dropped.is_some() {
-                    d.recoverable = dropped;
-                }
-                d.notice(
-                    match how {
-                        Resolution::KeepMine => "Your text will be sent again on top of theirs.",
-                        Resolution::TakeTheirs => {
-                            "Took their text. Yours is kept: Alt+Y copies it."
-                        }
-                        Resolution::KeepBoth => "Kept their text and added yours next to it.",
-                    },
-                    Tone::Info,
-                );
-            }
-            Err(e) => {
-                d.held = None;
-                d.notice(e.to_string(), Tone::Warn);
-            }
-        }
-        if settled {
-            for op in held {
-                let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op.0 });
-                if let Ok(id) = self.emit(cx, self.resource(), body, None) {
-                    self.outstanding.insert(id, Task::Release);
-                }
-            }
-        }
+        let step = d.sync.resolve(&mut d.session, how);
+        self.apply_step(step, cx);
     }
 
     pub(super) fn reconcile(&mut self, keep: ReconcileKeep, cx: &mut Ctx) {
