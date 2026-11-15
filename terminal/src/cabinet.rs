@@ -35,6 +35,9 @@ const PAD_PX: f32 = 20.0;
 const GAP_DOCKED_PX: f32 = 14.0;
 const GAP_EXPANDED_PX: f32 = 22.0;
 const CARD_MIN_PX: f32 = 178.0;
+/// A card never narrows below this many cells, so enlarged text (§9, 200%)
+/// drops columns instead of cutting every title to a stub.
+const CARD_MIN_CELLS: f32 = 22.0;
 const COLUMNS_DOCKED: usize = 2;
 const COLUMNS_EXPANDED: usize = 3;
 /// The preview artboard's aspect: 128 × 84.
@@ -368,6 +371,9 @@ impl Cabinet {
                 frame.render_widget(Paragraph::new(right), Rect::new(x + w - rw, y, rw, 1));
             }
         };
+        // The count gives way to the title when both do not fit; the footer
+        // repeats it.
+        let title_w = 2 + self.view.title.width() + 1 + self.view.count.width();
         line(
             frame,
             y,
@@ -378,16 +384,23 @@ impl Cabinet {
                     Style::new().fg(p.heading).add_modifier(Modifier::BOLD),
                 ),
             ]),
-            Line::styled(self.view.count.clone(), Style::new().fg(p.muted)),
+            if title_w <= w as usize {
+                Line::styled(self.view.count.clone(), Style::new().fg(p.muted))
+            } else {
+                Line::default()
+            },
         );
         y += 1;
-        line(
-            frame,
-            y,
-            Line::styled(self.view.scope.clone(), Style::new().fg(p.muted)),
-            Line::default(),
-        );
-        y += 2;
+        for scope in wrap(&self.view.scope, w as usize, 2) {
+            line(
+                frame,
+                y,
+                Line::styled(scope, Style::new().fg(p.muted)),
+                Line::default(),
+            );
+            y += 1;
+        }
+        y += 1;
         // The preference control: drawn here, operated by the host's select.
         let pref = format!(" {} ▾ ", self.view.preference_label);
         let pref_w = pref.width() as u16;
@@ -445,6 +458,11 @@ impl Cabinet {
         }
         y += 4;
         // Filters, then the one ordering this collection has.
+        // Filters wrap onto further rows rather than drop off the edge; the
+        // ordering takes the first row's right end when there is room.
+        let order = "Recent ↓";
+        let ow = order.width() as u16;
+        let first_y = y;
         let mut cx = x;
         for filter in &self.view.filters {
             let active = filter.id == self.view.filter;
@@ -454,8 +472,10 @@ impl Cabinet {
                 filter.label.clone()
             };
             let lw = label.width() as u16;
-            if cx + lw >= x + w.saturating_sub(10) {
-                break;
+            let room = if y == first_y { w.saturating_sub(ow + 2) } else { w };
+            if cx > x && cx + lw > x + room {
+                cx = x;
+                y += 1;
             }
             frame.render_widget(
                 Paragraph::new(Span::styled(
@@ -479,12 +499,10 @@ impl Cabinet {
             });
             cx += lw + 2;
         }
-        let order = "Recent ↓";
-        let ow = order.width() as u16;
         if ow < w {
             frame.render_widget(
                 Paragraph::new(Span::styled(order, Style::new().fg(p.muted))),
-                Rect::new(x + w - ow, y, ow, 1),
+                Rect::new(x + w - ow, first_y, ow, 1),
             );
         }
         y += 1;
@@ -668,7 +686,7 @@ impl Cabinet {
             (GAP_DOCKED_PX, COLUMNS_DOCKED)
         };
         let width_px = f32::from(gallery.width) * cw;
-        let columns = columns_for(width_px, gap_px, CARD_MIN_PX, max);
+        let columns = columns_for(width_px, gap_px, CARD_MIN_PX.max(CARD_MIN_CELLS * cw), max);
         let gap = ((gap_px / cw).round() as u16).max(1);
         let card_w = (gallery.width.saturating_sub(gap * (columns as u16 - 1))) / columns as u16;
         // The preview keeps the artboard's aspect in pixels, then rounds to rows.
@@ -860,6 +878,10 @@ mod tests {
         // Expanded caps at three.
         assert_eq!(columns_for(1400.0, 22.0, 178.0, 3), 3);
         assert_eq!(columns_for(10.0, 14.0, 178.0, 2), 1);
+        // 200% text: 15 px cells make the minimum 330 px, so one column.
+        assert_eq!(columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 15.0), 2), 1);
+        // Normal text keeps the pixel minimum.
+        assert_eq!(columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 7.5), 2), 2);
     }
 
     #[test]

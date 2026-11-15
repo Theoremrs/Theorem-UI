@@ -4,7 +4,11 @@ import type { TheoremContextReference } from '@theoremharness/sdk'
 import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { createDraggable } from 'animejs'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import type { CSSProperties, RefObject } from 'react'
+import type {
+  CSSProperties,
+  KeyboardEvent as ReactKeyboardEvent,
+  RefObject,
+} from 'react'
 import { CabinetView } from '@/components/cabinet/cabinet-view'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
@@ -46,12 +50,14 @@ function WidthHandle({
   cabinet: boolean
 }) {
   const handle = useRef<HTMLDivElement>(null)
+  const drag = useRef<ReturnType<typeof createDraggable> | undefined>(undefined)
+  const min = cabinet ? CABINET_MIN : MIN_WIDTH
+  const current = useShell((s) => (cabinet ? s.cabinetWidth : s.sideWidth))
 
   useEffect(() => {
     const element = handle.current
     if (!element) return
     const shell = useShell.getState()
-    const min = cabinet ? CABINET_MIN : MIN_WIDTH
     const draggable = createDraggable(element, {
       // The handle itself stays put; only the popup's width follows x.
       x: { mapTo: '--drag-x' },
@@ -74,19 +80,53 @@ function WidthHandle({
       },
     })
     draggable.setX(-(cabinet ? shell.cabinetWidth : shell.sideWidth), true)
+    drag.current = draggable
     return () => {
+      drag.current = undefined
       draggable.revert()
     }
-  }, [popup, cabinet])
+  }, [popup, cabinet, min])
+
+  // The keyboard equivalent of dragging (CAB-020): arrows step the edge,
+  // Shift steps further, Home and End go to the limits.
+  const onKeyDown = (event: ReactKeyboardEvent) => {
+    const step = event.shiftKey ? 64 : 16
+    const next =
+      event.key === 'ArrowLeft'
+        ? current + step
+        : event.key === 'ArrowRight'
+          ? current - step
+          : event.key === 'Home'
+            ? maxWidth()
+            : event.key === 'End'
+              ? min
+              : undefined
+    if (next === undefined) return
+    event.preventDefault()
+    const clamped = Math.round(Math.min(maxWidth(), Math.max(min, next)))
+    drag.current?.setX(-clamped, true)
+    popup.current?.style.setProperty('--side-width', `${clamped}px`)
+    if (cabinet && document.documentElement.dataset.cabinet === 'docked')
+      reserve(clamped)
+    if (cabinet) useShell.getState().setCabinetWidth(clamped)
+    else useShell.getState().setSideWidth(clamped)
+  }
 
   return (
     <div
       ref={handle}
-      aria-hidden="true"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={cabinet ? 'Cabinet width' : 'Terminal width'}
+      aria-valuemin={min}
+      aria-valuemax={typeof window === 'undefined' ? undefined : maxWidth()}
+      aria-valuenow={current}
+      tabIndex={0}
+      onKeyDown={onKeyDown}
       data-base-ui-swipe-ignore=""
-      className="group flex w-3 shrink-0 touch-none items-center justify-center"
+      className="group relative flex w-3 shrink-0 touch-none items-center justify-center outline-none z-10 before:absolute before:inset-y-0 before:left-0 before:-right-3 before:content-[''] focus-visible:outline-1 focus-visible:outline-term-sage"
     >
-      <span className="h-9 w-1 rounded-full bg-term-line transition-[height,background-color] duration-(--duration-snap) ease-snap group-hover:h-14 group-hover:bg-term-muted" />
+      <span className="h-9 w-1 rounded-full bg-term-line transition-[height,background-color] duration-(--duration-snap) ease-snap group-hover:h-14 group-hover:bg-term-muted group-focus-visible:h-14 group-focus-visible:bg-term-muted" />
     </div>
   )
 }
@@ -226,7 +266,7 @@ function HostViews({
   expanded: boolean
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 font-mono text-[12px]">
+    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 font-mono text-[0.75rem]">
       <div role="tablist" aria-label="Right-hand views" className="flex gap-1">
         {HOST_VIEWS.map((v) => (
           <button
@@ -235,7 +275,7 @@ function HostViews({
             role="tab"
             aria-selected={view === v.id}
             onClick={() => useShell.getState().setSideDrawer(v.id)}
-            className="rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
+            className="min-h-6 rounded px-2 py-0.5 text-term-muted outline-none pointer-coarse:min-h-11 hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
           >
             {v.label}
           </button>
@@ -246,7 +286,7 @@ function HostViews({
           type="button"
           aria-pressed={expanded}
           onClick={() => useShell.getState().setCabinetExpanded(!expanded)}
-          className="ms-auto rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage"
+          className="ms-auto min-h-6 rounded px-2 py-0.5 text-term-muted pointer-coarse:min-h-11 outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage"
         >
           {expanded ? 'Restore' : 'Expand'}
         </button>

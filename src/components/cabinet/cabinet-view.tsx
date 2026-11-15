@@ -10,6 +10,7 @@
 // and scroll, and this host lays inert pictures and semantic controls exactly
 // over what Ratatui drew. It replaces the outputs drawer: one collection
 // browser.
+import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -105,6 +106,23 @@ const px = (a: Area, [cw, ch]: [number, number]): CSSProperties => ({
   width: a.w * cw,
   height: a.h * ch,
 })
+
+/**
+ * A control's hit box: its drawn cells, grown evenly around them to the touch
+ * target minimum (§9: 24 CSS px, 44 px for coarse pointers), so a one-row
+ * control stays easy to hit without moving what the terminal drew.
+ */
+const hit = (a: Area, cell: [number, number], min: number): CSSProperties => {
+  const box = px(a, cell)
+  const w = a.w * cell[0]
+  const h = a.h * cell[1]
+  return {
+    left: w < min ? a.x * cell[0] - (min - w) / 2 : box.left,
+    top: h < min ? a.y * cell[1] - (min - h) / 2 : box.top,
+    width: Math.max(w, min),
+    height: Math.max(h, min),
+  }
+}
 
 /**
  * A preview painted on its rectangle. Pixel art is drawn at the largest whole
@@ -563,19 +581,41 @@ export function Cabinet({
     }
   }
 
+  // Ratzilla measures its cell only on a window resize, so a change of text
+  // size (browser setting, 200% zoom of text) is passed on as one (§9).
+  const probe = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    const element = probe.current
+    if (!element) return
+    let last = ''
+    const observer = new ResizeObserver(() => {
+      const size = `${element.offsetWidth}x${element.offsetHeight}`
+      if (last && size !== last) window.dispatchEvent(new Event('resize'))
+      last = size
+    })
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
+  const coarse = useMediaQuery('(pointer: coarse)', { noSsr: true })
+  const target = coarse ? 44 : 24
   const searchArea = control('search')
   const prefArea = control('preference')
 
   return (
     <div
       data-artifact-cabinet=""
-      className="relative min-h-0 flex-1 overflow-hidden bg-term font-mono text-[12.5px] text-term-ink"
+      className="relative min-h-0 flex-1 overflow-hidden bg-term font-mono text-[0.78125rem] text-term-ink"
       onWheel={(event) => handle?.scroll(Math.sign(event.deltaY) * 3)}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
       onTouchEnd={() => (touchY.current = undefined)}
       style={{ touchAction: 'pinch-zoom' }}
     >
+      <span
+        ref={probe}
+        aria-hidden="true"
+        className="pointer-events-none invisible absolute h-[1em] w-[1ch]"
+      />
       <div
         id={HOST_ID}
         ref={host}
@@ -597,7 +637,7 @@ export function Cabinet({
             }
           }}
           data-cabinet-search=""
-          style={px(searchArea, cell)}
+          style={hit(searchArea, cell, target)}
           className="absolute bg-transparent p-0 text-term-ink outline-none placeholder:text-term-muted"
         />
       )}
@@ -612,7 +652,7 @@ export function Cabinet({
                 v === 'theme' ? undefined : (v as 'pixel' | 'full_fidelity'),
             })
           }}
-          style={px(prefArea, cell)}
+          style={hit(prefArea, cell, target)}
           className="absolute cursor-pointer opacity-0"
         >
           <option value="theme">
@@ -636,7 +676,7 @@ export function Cabinet({
                 type="button"
                 aria-pressed={filter === f.id}
                 onClick={() => setFilter(f.id)}
-                style={px(area, cell)}
+                style={hit(area, cell, target)}
                 className="absolute cursor-pointer opacity-0 focus-visible:opacity-100 focus-visible:outline-1 focus-visible:outline-term-sage"
               >
                 {f.label}
@@ -737,7 +777,7 @@ export function CabinetView({ expanded = false }: { expanded?: boolean }) {
       expanded={expanded}
     />
   ) : (
-    <p className="p-5 font-mono text-[12.5px] text-term-muted">
+    <p className="p-5 font-mono text-[0.78125rem] text-term-muted">
       Open a project to browse what its sessions made.
     </p>
   )
