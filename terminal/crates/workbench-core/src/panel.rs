@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use keybinds::{KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use theorem_workbench_dock::CellMetrics;
 
@@ -364,6 +365,8 @@ pub struct Ctx<'a> {
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
+    /// The in-flight bound refused an emit: the limit it hit.
+    pub(crate) full: Option<usize>,
 }
 
 impl Ctx<'_> {
@@ -404,9 +407,10 @@ impl Ctx<'_> {
         {
             return Err(EmitError::Forbidden(effect.kind()));
         }
-        self.in_flight
-            .register(&effect)
-            .map_err(EmitError::InFlightFull)?;
+        if let Err(full) = self.in_flight.register(&effect) {
+            self.full = Some(full.limit);
+            return Err(EmitError::InFlightFull(full));
+        }
         self.origins.insert(effect.id, self.panel.clone());
         let id = effect.id;
         self.effects.push(effect);
@@ -462,6 +466,41 @@ pub enum Composition {
     /// The composition ended with `text` committed (empty when it was
     /// cancelled).
     End { text: String },
+}
+
+/// How the caret is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum CaretShape {
+    /// An outlined cell: the composer's caret, never a character of the text.
+    HollowBlock,
+    FilledBlock,
+    Bar,
+}
+
+/// Whether the caret shows. `Blinking` is the panel asking to blink; the root
+/// answers `Steady` instead while the person asked for reduced motion.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum CaretPhase {
+    Steady,
+    Blinking,
+    /// Another control owns input, or the caret is not shown at the moment.
+    Hidden,
+}
+
+/// Where the text caret is, as a cell in absolute frame coordinates. The
+/// hidden input field the IME candidate window attaches to sits at `x`, `y`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct Caret {
+    pub x: u16,
+    pub y: u16,
+    pub shape: CaretShape,
+    pub phase: CaretPhase,
 }
 
 /// What a tab shows for a panel that names itself (see [`Panel::tab_label`]).
@@ -541,6 +580,15 @@ pub trait Panel {
     /// What the panel is bound to now, which every completion is judged
     /// against. `None` for a panel bound to nothing.
     fn binding(&self) -> Option<Binding> {
+        None
+    }
+
+    /// Where the text caret is, for the body `area` the panel was last drawn
+    /// in (absolute frame coordinates). `None`: no caret. The root reports it
+    /// only for the panel that owns text input, only while the window has
+    /// focus and no modal owns input, and only when the cell lies inside
+    /// `area`: a caret scrolled out of view is not drawn at the edge.
+    fn caret(&self, _area: Rect) -> Option<Caret> {
         None
     }
 

@@ -48,6 +48,10 @@ pub enum Role {
     Separator,
     /// A diff or a rendered Markdown block.
     Document,
+    /// A list of rows that are not a tree or a menu (search results,
+    /// findings, runs).
+    List,
+    ListItem,
 }
 
 impl Role {
@@ -73,6 +77,8 @@ impl Role {
             Self::Dialog => "dialog",
             Self::Separator => "separator",
             Self::Document => "document",
+            Self::List => "list",
+            Self::ListItem => "listitem",
         }
     }
 }
@@ -121,6 +127,19 @@ pub struct NodeAction {
     pub reason: Option<String>,
 }
 
+/// The selection inside a text node's `text`, in UTF-16 code units: the unit
+/// the browser's accessible text fields count in (`selectionStart`,
+/// `selectionEnd`). `anchor` is where the selection began and `focus` is the
+/// caret, so `anchor == focus` is a caret with nothing selected. Both lie on a
+/// character boundary, at most the length of `text` in UTF-16 units.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TextSelection {
+    pub anchor: u32,
+    pub focus: u32,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +178,11 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub text: Option<String>,
+    /// The caret and selection within `text`, on a text-edit node. UTF-16 code
+    /// units; see [`TextSelection`]. Only with `text`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub selection: Option<TextSelection>,
     /// Children in reading order. A node has exactly one parent.
     pub children: Vec<NodeId>,
 }
@@ -191,6 +215,7 @@ impl Node {
             set_size: None,
             shortcut: None,
             text: None,
+            selection: None,
             children: vec![],
         }
     }
@@ -260,6 +285,11 @@ pub enum TreeError {
     TextTooLong {
         id: NodeId,
     },
+    /// A `selection` without `text`, past its end in UTF-16 units, or inside
+    /// a surrogate pair.
+    BadSelection {
+        id: NodeId,
+    },
 }
 
 /// The change from one published tree to the next, for the host to patch the
@@ -321,6 +351,22 @@ impl SemanticTree {
                 return Err(TreeError::TextTooLong {
                     id: node.id.clone(),
                 });
+            }
+            if let Some(sel) = node.selection {
+                let ok = node.text.as_deref().is_some_and(|t| {
+                    let mut boundaries = vec![0u32];
+                    let mut at = 0u32;
+                    for c in t.chars() {
+                        at += c.len_utf16() as u32;
+                        boundaries.push(at);
+                    }
+                    boundaries.contains(&sel.anchor) && boundaries.contains(&sel.focus)
+                });
+                if !ok {
+                    return Err(TreeError::BadSelection {
+                        id: node.id.clone(),
+                    });
+                }
             }
         }
         let mut owned: BTreeSet<&NodeId> = BTreeSet::new();
@@ -472,6 +518,7 @@ mod tests {
             set_size: None,
             shortcut: None,
             text: None,
+            selection: None,
             children: children.iter().map(|c| NodeId::new(*c)).collect(),
         }
     }
@@ -594,6 +641,38 @@ mod tests {
         let id = t.nodes[1].id.clone();
         t.nodes[1].text = Some("x".repeat(MAX_NODE_TEXT + 1));
         assert_eq!(t.validate(), Err(TreeError::TextTooLong { id }));
+
+        // A selection is UTF-16 units within the text, on a character boundary.
+        let mut s = t.clone();
+        let id = s.nodes[1].id.clone();
+        s.nodes[1].text = Some("a\u{1f600}b".into()); // 1 + 2 + 1 units
+        s.nodes[1].selection = Some(TextSelection {
+            anchor: 1,
+            focus: 3,
+        });
+        assert_eq!(s.validate(), Ok(()));
+        s.nodes[1].selection = Some(TextSelection {
+            anchor: 4,
+            focus: 4,
+        });
+        assert_eq!(s.validate(), Ok(()), "the end is a boundary");
+        for bad in [(2, 2), (0, 5)] {
+            s.nodes[1].selection = Some(TextSelection {
+                anchor: bad.0,
+                focus: bad.1,
+            });
+            assert_eq!(
+                s.validate(),
+                Err(TreeError::BadSelection { id: id.clone() }),
+                "{bad:?}"
+            );
+        }
+        s.nodes[1].text = None;
+        s.nodes[1].selection = Some(TextSelection {
+            anchor: 0,
+            focus: 0,
+        });
+        assert_eq!(s.validate(), Err(TreeError::BadSelection { id }));
 
         // Row flags default off and read back.
         let mut state = NodeState::default();

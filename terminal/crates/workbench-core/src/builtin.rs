@@ -311,6 +311,76 @@ pub fn registry() -> Registry {
         .build(vec![
             ActionDescriptor::new("history.open", "History", Open).more(),
         ]),
+        // The workbench's own actions: no panel of this kind is ever opened.
+        // They move focus and panels between groups, resize and maximise from
+        // the keyboard, and apply a preset.
+        Spec {
+            kind: crate::panels::WORKBENCH_KIND,
+            title: "Workbench",
+            icon: "layout",
+            binding: R::None,
+            placement: Main,
+            min: (1, 1),
+            role: Role::Region,
+            theme_roles: CHROME,
+            requires: &[],
+        }
+        .build(vec![
+            ActionDescriptor::new("workbench.focus.left", "Focus the group to the left", Focus)
+                .key("Mod+Alt+Left", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.focus.right",
+                "Focus the group to the right",
+                Focus,
+            )
+            .key("Mod+Alt+Right", KeyScope::Global),
+            ActionDescriptor::new("workbench.focus.up", "Focus the group above", Focus)
+                .key("Mod+Alt+Up", KeyScope::Global),
+            ActionDescriptor::new("workbench.focus.down", "Focus the group below", Focus)
+                .key("Mod+Alt+Down", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.move.left",
+                "Move the panel to the group on the left",
+                Focus,
+            )
+            .key("Mod+Alt+Shift+Left", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.move.right",
+                "Move the panel to the group on the right",
+                Focus,
+            )
+            .key("Mod+Alt+Shift+Right", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.move.up",
+                "Move the panel to the group above",
+                Focus,
+            )
+            .key("Mod+Alt+Shift+Up", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.move.down",
+                "Move the panel to the group below",
+                Focus,
+            )
+            .key("Mod+Alt+Shift+Down", KeyScope::Global),
+            ActionDescriptor::new("workbench.resize.wider", "Make the group wider", Focus)
+                .key("Mod+Alt+]", KeyScope::Global),
+            ActionDescriptor::new(
+                "workbench.resize.narrower",
+                "Make the group narrower",
+                Focus,
+            )
+            .key("Mod+Alt+[", KeyScope::Global),
+            ActionDescriptor::new("workbench.resize.taller", "Make the group taller", Focus)
+                .key("Mod+Alt+PageUp", KeyScope::Global),
+            ActionDescriptor::new("workbench.resize.shorter", "Make the group shorter", Focus)
+                .key("Mod+Alt+PageDown", KeyScope::Global),
+            ActionDescriptor::new("workbench.maximize", "Maximise or restore the group", Focus)
+                .key("Mod+Alt+M", KeyScope::Global),
+            ActionDescriptor::new("workbench.layout.default", "Layout: Default", Focus),
+            ActionDescriptor::new("workbench.layout.editor", "Layout: Editor-centred", Focus),
+            ActionDescriptor::new("workbench.layout.agent", "Layout: Agent-centred", Focus),
+            ActionDescriptor::new("workbench.layout.minimal", "Layout: Minimal", Focus),
+        ]),
     ];
     let mut reg = Registry::new();
     for panel in panels {

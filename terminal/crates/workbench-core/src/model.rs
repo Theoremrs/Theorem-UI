@@ -26,6 +26,8 @@ use crate::stale::{Binding, InFlight, Stale};
 
 /// Effects that may be outstanding at once, across every panel.
 pub const IN_FLIGHT_LIMIT: usize = 256;
+/// How many notices wait to be taken.
+pub const NOTICE_LIMIT: usize = 16;
 
 pub const DOCUMENT_SCHEMA: &str = "theorem.workbench";
 pub const DOCUMENT_VERSION: u32 = 1;
@@ -47,6 +49,12 @@ pub struct Counters {
     /// Completions and host messages dropped as stale (AC-43).
     pub dropped: u64,
     pub last_drop: Option<Stale>,
+    /// Effects a panel emitted that the in-flight bound refused.
+    pub refused_full: u64,
+    /// Retained host messages pushed out by their bounds, oldest first.
+    pub evicted: u64,
+    /// Notices pushed out of a full queue (told by `Notice::Overflow`).
+    pub notices_dropped: u64,
 }
 
 /// Why the last operation did nothing. Read it with [`Model::take_notice`].
@@ -57,6 +65,17 @@ pub enum Notice {
     /// A `Create`, `Start` or `Destroy` action named a kind with no open panel
     /// to supply its payload.
     NoPanel(ActionId),
+    /// Too many effects were waiting for answers: this one was not sent. The
+    /// ones already waiting are untouched.
+    EffectsFull {
+        limit: usize,
+    },
+    /// Notices were lost because none was taken in time.
+    Overflow {
+        dropped: u32,
+    },
+    /// What a saved arrangement did or could not do.
+    Arrangement(crate::arrangement::ArrangementNotice),
 }
 
 /// Where keys and focus are now.
@@ -104,6 +123,8 @@ pub(crate) struct Retained {
     pub(crate) models: Vec<(ResourceRef, HostMessage)>,
     /// The latest `DiagnosticsSet` per path, oldest first.
     pub(crate) diagnostics: Vec<(String, HostMessage)>,
+    /// How many held messages their bounds have pushed out, oldest first.
+    pub(crate) evicted: u64,
 }
 
 impl Retained {
@@ -127,6 +148,7 @@ impl Retained {
         }
         self.snapshots.push((resource.clone(), message.clone()));
         if self.snapshots.len() > RETAINED_SNAPSHOTS {
+            self.evicted += 1;
             self.snapshots.remove(0);
         }
     }
@@ -135,6 +157,7 @@ impl Retained {
         self.sessions.retain(|(w, _)| w != workspace);
         self.sessions.push((workspace.to_owned(), message.clone()));
         if self.sessions.len() > RETAINED_SESSION_LISTS {
+            self.evicted += 1;
             self.sessions.remove(0);
         }
     }
@@ -158,6 +181,7 @@ impl Retained {
         }
         self.diagnostics.push((path.clone(), message.clone()));
         if self.diagnostics.len() > RETAINED_DIAGNOSTIC_PATHS {
+            self.evicted += 1;
             self.diagnostics.remove(0);
         }
         true
@@ -170,12 +194,12 @@ impl Retained {
     /// Keep the latest draft attachment list for `resource`; each message is
     /// the whole list, so it replaces the one held.
     pub(crate) fn keep_attachments(&mut self, resource: &ResourceRef, message: &HostMessage) {
-        keep_latest(&mut self.attachments, resource, message);
+        self.evicted += u64::from(keep_latest(&mut self.attachments, resource, message));
     }
 
     /// Keep the latest model list for `resource`.
     pub(crate) fn keep_models(&mut self, resource: &ResourceRef, message: &HostMessage) {
-        keep_latest(&mut self.models, resource, message);
+        self.evicted += u64::from(keep_latest(&mut self.models, resource, message));
     }
 
     /// A conversation that was ended is forgotten.
@@ -190,12 +214,14 @@ fn keep_latest(
     held: &mut Vec<(ResourceRef, HostMessage)>,
     resource: &ResourceRef,
     message: &HostMessage,
-) {
+) -> bool {
     held.retain(|(r, _)| r != resource);
     held.push((resource.clone(), message.clone()));
-    if held.len() > RETAINED_SNAPSHOTS {
+    let full = held.len() > RETAINED_SNAPSHOTS;
+    if full {
         held.remove(0);
     }
+    full
 }
 
 impl Entry {
@@ -254,11 +280,21 @@ pub struct Model {
     /// focus goes back to when the picker closes.
     pub(crate) before_picker: Option<PanelInstanceId>,
     pub(crate) drag: Option<Drag>,
+    /// The panel that had the keyboard when the drawer opened: where Esc
+    /// returns it.
+    pub(crate) before_drawer: Option<PanelInstanceId>,
+    /// The account's saved arrangements, and the layout effects the root has
+    /// out for them.
+    pub(crate) arrangements: crate::arrangement::Arrangements,
+    pub(crate) layout_pending: BTreeMap<EffectId, crate::arrangement::LayoutOp>,
     /// The panel holding the pointer between a press in its body and the release.
     pub(crate) capture: Option<PanelInstanceId>,
 
     pub(crate) counters: Counters,
-    pub(crate) notice: Option<Notice>,
+    /// Notices not yet taken, oldest first, at most [`NOTICE_LIMIT`].
+    pub(crate) notices: std::collections::VecDeque<Notice>,
+    /// How many were pushed out of a full queue, told by a `Notice::Overflow`.
+    pub(crate) notices_overflowed: u32,
     pub(crate) dirty: bool,
 }
 
@@ -308,9 +344,13 @@ impl Model {
             announced_focus: None,
             before_picker: None,
             drag: None,
+            before_drawer: None,
+            arrangements: Default::default(),
+            layout_pending: BTreeMap::new(),
             capture: None,
             counters: Counters::default(),
-            notice: None,
+            notices: std::collections::VecDeque::new(),
+            notices_overflowed: 0,
             dirty: true,
         };
         model.sync_shortcuts();
@@ -421,7 +461,10 @@ impl Model {
     }
 
     pub fn counters(&self) -> Counters {
-        self.counters
+        Counters {
+            evicted: self.retained.evicted,
+            ..self.counters
+        }
     }
 
     /// The dock as last solved, for hit testing and drawing.
@@ -442,6 +485,39 @@ impl Model {
         }
     }
 
+    /// The text caret of the panel that owns text input, as of the last
+    /// solved frame. `None` while the window is unfocused, while an open
+    /// picker owns input (a resting one does not), when the focused panel
+    /// reports none, and when its cell lies outside the panel's visible body.
+    /// A blinking caret is steady while the person asked for reduced motion.
+    pub fn caret(&self) -> Option<crate::panel::Caret> {
+        use crate::panel::CaretPhase;
+        if !self.window_focused || self.picker.holds_keys() {
+            return None;
+        }
+        let owner = self.focus_owner()?;
+        let entry = self.panels.get(&owner)?;
+        if !entry.available {
+            return None;
+        }
+        let frame = self.frame.as_ref()?;
+        let focused = self.dock.focused();
+        let group = frame.groups.iter().find(|g| g.id == focused)?;
+        let body = group.body.intersection(frame.area);
+        let mut caret = entry.panel.caret(group.body)?;
+        let inside = caret.x >= body.x
+            && caret.x < body.x.saturating_add(body.width)
+            && caret.y >= body.y
+            && caret.y < body.y.saturating_add(body.height);
+        if !inside {
+            return None;
+        }
+        if caret.phase == CaretPhase::Blinking && self.reduced_motion {
+            caret.phase = CaretPhase::Steady;
+        }
+        Some(caret)
+    }
+
     pub fn panel(&self, id: &PanelInstanceId) -> Option<&dyn Panel> {
         self.panels.get(id).map(|e| e.panel.as_ref())
     }
@@ -456,8 +532,26 @@ impl Model {
         self.panels.get(id).is_some_and(|e| !e.available)
     }
 
+    /// The oldest notice not yet taken. When the queue overflowed, a
+    /// `Notice::Overflow` comes first and says how many were lost.
     pub fn take_notice(&mut self) -> Option<Notice> {
-        self.notice.take()
+        if self.notices_overflowed > 0 {
+            let dropped = std::mem::take(&mut self.notices_overflowed);
+            return Some(Notice::Overflow { dropped });
+        }
+        self.notices.pop_front()
+    }
+
+    /// Queue a notice. A full queue pushes its oldest out and counts it, so
+    /// the loss is told and never silent.
+    pub(crate) fn notify(&mut self, notice: Notice) {
+        if self.notices.len() >= NOTICE_LIMIT {
+            self.notices.pop_front();
+            self.notices_overflowed = self.notices_overflowed.saturating_add(1);
+            self.counters.notices_dropped += 1;
+        }
+        self.notices.push_back(notice);
+        self.dirty = true;
     }
 
     /// Whether a redraw is owed, clearing the flag. The host calls this once
@@ -525,7 +619,7 @@ impl Model {
     }
 
     /// Why this build cannot serve `kind` at `version`, or `None` when it can.
-    fn unserved(&self, kind: &PanelKind, version: u32) -> Option<String> {
+    pub(crate) fn unserved(&self, kind: &PanelKind, version: u32) -> Option<String> {
         match self.registry.check_version(kind, version) {
             VersionCheck::UnknownKind => {
                 Some(format!("This build has no panel \"{}\".", kind.as_str()))

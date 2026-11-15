@@ -157,6 +157,11 @@ impl InFlight {
         Ok(())
     }
 
+    /// Every effect still waiting, taken: the tracker is empty after it.
+    pub fn take_all(&mut self) -> Vec<(EffectId, Pending)> {
+        std::mem::take(&mut self.pending).into_iter().collect()
+    }
+
     pub fn is_pending(&self, id: EffectId) -> bool {
         self.pending.contains_key(&id)
     }

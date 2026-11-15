@@ -41,7 +41,7 @@ use crate::panel::{
 use crate::panels::{PICKER_KIND, Unavailable};
 use crate::picker::{PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
-use crate::queue::{Popped, PtyFrame, Push};
+use crate::queue::{Popped, PtyFrame, Push, QueueLimits, SourceQueues};
 use crate::registry::{ActionIntent, Placement, Refusal};
 use crate::results::SearchState;
 use crate::stale::{Binding, Stale, Verdict, judge};
@@ -74,6 +74,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::ActionOn { id, actor, panel } => model.run_action(id, actor, Some(panel)),
         Msg::Picker(msg) => model.picker_msg(msg),
         Msg::Dock(msg) => model.on_dock(msg),
+        Msg::Arrangement(msg) => model.on_arrangement(msg),
         Msg::Tick => model.on_tick(),
     };
     model.settle();
@@ -97,7 +98,12 @@ pub(crate) struct CtxOut {
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
+    pub(crate) full: Option<usize>,
 }
+
+/// How far the keyboard moves a splitter at a time.
+const RESIZE_COLS: i32 = 2;
+const RESIZE_ROWS: i32 = 1;
 
 impl Model {
     // --- calling panels ---
@@ -116,6 +122,7 @@ impl Model {
             opens: vec![],
             close: false,
             invalidated: false,
+            full: None,
         };
         f(&mut cx);
         CtxOut {
@@ -123,6 +130,7 @@ impl Model {
             opens: cx.opens,
             close: cx.close,
             invalidated: cx.invalidated,
+            full: cx.full,
         }
     }
 
@@ -142,6 +150,12 @@ impl Model {
         let out = self.run_ctx(id, mode, |cx| f(entry.panel.as_mut(), cx));
         self.panels.insert(id.clone(), entry);
         self.dirty |= out.invalidated;
+        if let Some(limit) = out.full {
+            // Told, not swallowed: the effect was not sent and the ones
+            // already waiting for answers are untouched.
+            self.counters.refused_full += 1;
+            self.notify(Notice::EffectsFull { limit });
+        }
         let mut effects = out.effects;
         for target in out.opens {
             self.open_target(target);
@@ -414,6 +428,9 @@ impl Model {
         if self.picker.holds_keys() {
             return self.picker_key(key);
         }
+        if key.key() == Key::Esc && key.mods().is_empty() && self.close_transient() {
+            return vec![];
+        }
         let owner = self.focus_owner();
         let (kind, text_entry) = match owner.as_ref().and_then(|id| self.panels.get(id)) {
             Some(e) => (Some(e.kind.clone()), e.panel.text_entry()),
@@ -518,12 +535,15 @@ impl Model {
         let (kind, intent, title) = match self.registry.resolve(&id, &actor, &self.caps) {
             Ok(r) => (r.panel.kind.clone(), r.action.intent, r.panel.title.clone()),
             Err(refusal) => {
-                self.notice = Some(Notice::Refused(refusal));
+                self.notify(Notice::Refused(refusal));
                 return vec![];
             }
         };
         if kind.as_str() == PICKER_KIND {
             return self.picker_msg(PickerMsg::Open);
+        }
+        if kind.as_str() == crate::panels::WORKBENCH_KIND {
+            return self.workbench_action(id.as_str());
         }
         match intent {
             ActionIntent::Focus => {
@@ -550,7 +570,7 @@ impl Model {
                     }),
                 };
                 let Some(target) = target else {
-                    self.notice = Some(Notice::Refused(Refusal::Unavailable {
+                    self.notify(Notice::Refused(Refusal::Unavailable {
                         reason: format!("Focus a {title} panel first."),
                     }));
                     return vec![];
@@ -561,7 +581,7 @@ impl Model {
             }
             ActionIntent::Create | ActionIntent::Start | ActionIntent::Destroy => {
                 let Some(target) = self.target_of_kind(&kind) else {
-                    self.notice = Some(Notice::NoPanel(id));
+                    self.notify(Notice::NoPanel(id));
                     return vec![];
                 };
                 let mode = if intent == ActionIntent::Destroy {
@@ -681,7 +701,7 @@ impl Model {
                 Some(id)
             }
             Err(e) => {
-                self.notice = Some(Notice::Dock(e));
+                self.notify(Notice::Dock(e));
                 None
             }
         }
@@ -779,7 +799,7 @@ impl Model {
             _ => return None,
         };
         if !self.set_pin(&PanelKind::new(kind), pinned) {
-            self.notice = Some(Notice::Refused(Refusal::UnknownAction(id.clone())));
+            self.notify(Notice::Refused(Refusal::UnknownAction(id.clone())));
         }
         Some(vec![])
     }
@@ -807,7 +827,7 @@ impl Model {
                 vec![]
             }
             PickerOutcome::Unavailable { reason } => {
-                self.notice = Some(Notice::Refused(Refusal::Unavailable { reason }));
+                self.notify(Notice::Refused(Refusal::Unavailable { reason }));
                 vec![]
             }
             PickerOutcome::Pin { panel, pinned } => {
@@ -894,11 +914,11 @@ impl Model {
             .collect();
         // The picker's tab is housekeeping: failing to remove the last one is
         // not something to tell the person about.
-        let notice = self.notice.take();
+        let mark = self.notices.len();
         for id in ids {
             self.close_panel(&id, false);
         }
-        self.notice = notice;
+        self.notices.truncate(mark);
     }
 
     // --- closing ---
@@ -908,7 +928,7 @@ impl Model {
     /// it a destroying effect is refused (R36).
     pub(crate) fn close_panel(&mut self, id: &PanelInstanceId, destroy: bool) -> Vec<Effect> {
         if let Err(e) = self.dock.close_tab(&Self::dock_id(id)) {
-            self.notice = Some(Notice::Dock(e));
+            self.notify(Notice::Dock(e));
             return vec![];
         }
         let Some(mut entry) = self.panels.remove(id) else {
@@ -935,11 +955,126 @@ impl Model {
         out.effects
     }
 
+    // --- the keyboard's way around the dock ---
+
+    /// Escape closes the innermost transient that is open: the picker first
+    /// (it holds the keys, so it never gets here), then a splitter being
+    /// dragged, then the drawer. Returns whether there was one; if not, the
+    /// key goes on to the panel.
+    fn close_transient(&mut self) -> bool {
+        if self.drag.take().is_some() {
+            self.capture = None;
+            return true;
+        }
+        if self.dock.drawer().is_some() {
+            self.close_drawer();
+            return true;
+        }
+        false
+    }
+
+    /// Close the drawer and put the keyboard back where it was when it opened.
+    fn close_drawer(&mut self) {
+        self.dock.close_drawer();
+        if let Some(id) = self.before_drawer.take()
+            && self.panels.contains_key(&id)
+        {
+            let r = self.dock.focus_panel(&Self::dock_id(&id));
+            self.dock_result(r);
+        }
+    }
+
+    /// One of the workbench's own actions, by its name after `workbench.`.
+    fn workbench_action(&mut self, id: &str) -> Vec<Effect> {
+        use dock::NavDirection::{Down, Left, Right, Up};
+        let direction = |s: &str| match s {
+            "left" => Some(Left),
+            "right" => Some(Right),
+            "up" => Some(Up),
+            "down" => Some(Down),
+            _ => None,
+        };
+        let name = id.strip_prefix("workbench.").unwrap_or(id);
+        let (verb, arg) = name.split_once('.').unwrap_or((name, ""));
+        match (verb, arg) {
+            ("focus", d) => {
+                if let Some(d) = direction(d) {
+                    return self.on_dock(DockMsg::FocusDirection(d));
+                }
+            }
+            ("move", d) => {
+                if let Some(d) = direction(d) {
+                    self.move_panel_toward(d);
+                }
+            }
+            ("resize", "wider") => self.resize_focused([Right, Left], RESIZE_COLS),
+            ("resize", "narrower") => self.resize_focused([Right, Left], -RESIZE_COLS),
+            ("resize", "taller") => self.resize_focused([Down, Up], RESIZE_ROWS),
+            ("resize", "shorter") => self.resize_focused([Down, Up], -RESIZE_ROWS),
+            ("maximize", _) => {
+                if self.dock.maximized().is_some() {
+                    self.dock.unmaximize();
+                } else {
+                    let r = self.dock.maximize(self.dock.focused());
+                    self.dock_result(r);
+                }
+            }
+            ("layout", preset) => {
+                return self.on_arrangement(crate::arrangement::ArrangementMsg::Apply {
+                    name: preset.to_owned(),
+                });
+            }
+            _ => {}
+        }
+        vec![]
+    }
+
+    /// Move the active panel of the focused group into the nearest group in
+    /// `dir`, and keep the keyboard on it. Refused (in a notice) when there is
+    /// no group that way, and then nothing moves.
+    fn move_panel_toward(&mut self, dir: dock::NavDirection) {
+        let (Some(vp), Some(panel)) = (self.viewport, self.focus_owner()) else {
+            return;
+        };
+        let from = self.dock.focused();
+        match self.dock.focus_direction(dir, vp.area, vp.metrics) {
+            Ok(to) => {
+                let r = self.dock.move_tab(&Self::dock_id(&panel), to, None);
+                if r.is_err() {
+                    let _ = self.dock.focus_group(from);
+                }
+                self.dock_result(r);
+                let r = self.dock.focus_panel(&Self::dock_id(&panel));
+                self.dock_result(r);
+            }
+            Err(e) => self.notify(Notice::Dock(e)),
+        }
+    }
+
+    /// Grow (or shrink) the focused group on the first of `edges` that has a
+    /// splitter.
+    fn resize_focused(&mut self, edges: [dock::NavDirection; 2], grow: i32) {
+        let Some(vp) = self.viewport else {
+            return;
+        };
+        let group = self.dock.focused();
+        let mut result = Err(dock::DockError::NoSplitter(edges[0]));
+        for edge in edges {
+            result = self
+                .dock
+                .resize_group_edge(group, edge, grow, vp.area, vp.metrics);
+            if !matches!(result, Err(dock::DockError::NoSplitter(_))) {
+                break;
+            }
+        }
+        self.dock_result(result);
+    }
+
     // --- the dock ---
 
     fn dock_result<T>(&mut self, result: Result<T, dock::DockError>) {
         if let Err(e) = result {
-            self.notice = Some(Notice::Dock(e));
+            self.notify(Notice::Dock(e));
         }
     }
 
@@ -985,10 +1120,13 @@ impl Model {
                 self.dock_result(r);
             }
             DockMsg::OpenDrawer(g) => {
+                if self.dock.drawer().is_none() {
+                    self.before_drawer = self.focus_owner();
+                }
                 let r = self.dock.open_drawer(g);
                 self.dock_result(r);
             }
-            DockMsg::CloseDrawer => self.dock.close_drawer(),
+            DockMsg::CloseDrawer => self.close_drawer(),
             DockMsg::ResizeSplit { path, delta } => {
                 if let Some(vp) = vp {
                     let r = self.dock.resize_split(&path, delta, vp.area, vp.metrics);
@@ -1186,6 +1324,9 @@ impl Model {
     // --- completions and host messages ---
 
     pub(crate) fn on_completion(&mut self, completion: Completion) -> Vec<Effect> {
+        if let Some(effects) = self.on_layout_completion(&completion) {
+            return effects;
+        }
         let origin = self.origins.remove(&completion.effect);
         let verdict = match origin.as_ref().and_then(|id| self.panels.get(id)) {
             Some(entry) => self.in_flight.settle(&entry.binding(), &completion),
@@ -1229,9 +1370,56 @@ impl Model {
         vec![]
     }
 
+    /// The account changed: nothing held for the old one may reach the new.
+    /// What a panel was waiting for is told as uncertain (it may have been
+    /// done), silently, so a retry is the person's. Everything the root kept
+    /// is dropped; a later completion of an old effect finds nothing in
+    /// flight and is dropped as stale.
+    fn on_account_changed(&mut self, account: String) -> Vec<Effect> {
+        if self.workspace.account == account {
+            return vec![];
+        }
+        let waiting = self.in_flight.take_all();
+        let origins = std::mem::take(&mut self.origins);
+        for (effect, pending) in waiting {
+            let Some(panel) = origins.get(&effect).cloned() else {
+                continue;
+            };
+            let told = Completion::new(
+                effect,
+                pending.resource,
+                Outcome::Uncertain {
+                    reason: "The account changed before this was answered.".into(),
+                },
+            );
+            self.call(&panel, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Completion(told), cx)
+            });
+        }
+        self.searches.clear();
+        self.retained = Default::default();
+        self.queues = SourceQueues::new(QueueLimits::default());
+        self.diagnostics_told.clear();
+        self.forget_arrangements();
+        for entry in self.panels.values_mut() {
+            entry.replayed = None;
+        }
+        self.workspace = WorkspaceIdentity {
+            account,
+            workspace: String::new(),
+            environment: None,
+            generation: self.workspace.generation.next(),
+        };
+        self.dirty = true;
+        vec![]
+    }
+
     pub(crate) fn on_host(&mut self, message: HostMessage) -> Vec<Effect> {
         if let HostMessage::CapabilitiesChanged { capabilities } = &message {
             self.caps = capabilities.clone();
+        }
+        if let HostMessage::AccountChanged { account } = &message {
+            return self.on_account_changed(account.clone());
         }
         if let HostMessage::WorkspaceChanged {
             workspace,
@@ -1242,6 +1430,7 @@ impl Model {
             if self.workspace.workspace != *workspace || self.workspace.environment != *environment
             {
                 self.workspace = WorkspaceIdentity {
+                    account: self.workspace.account.clone(),
                     workspace: workspace.clone(),
                     environment: environment.clone(),
                     generation: self.workspace.generation.next(),
@@ -1532,6 +1721,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | ThemeChanged { .. }
         | CapabilitiesChanged { .. }
         | WorkspaceChanged { .. }
+        | AccountChanged { .. }
         | ConnectionChanged { .. }
         | TerminalSessions { .. }
         | SearchPage { .. }

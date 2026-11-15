@@ -214,6 +214,8 @@ impl Generation {
 /// empty and the generation 0.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct WorkspaceIdentity {
+    /// The account the host is signed in as. Empty until it says.
+    pub account: String,
     pub workspace: String,
     pub environment: Option<String>,
     pub generation: Generation,

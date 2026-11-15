@@ -7,12 +7,14 @@
 
 use std::path::PathBuf;
 use theorem_workbench_core::{
+    arrangement::ArrangementMsg,
     completion::Completion,
     effect::Effect,
     host::HostMessage,
     ids::Actor,
     keys::{KeyIssue, Overrides, Shortcut},
     msg::Inbound,
+    panel::Caret,
     registry::{CatalogEntry, PanelDescriptor, PickerRow},
     semantics::{SemanticDiff, SemanticTree},
     stale::Stale,
@@ -56,6 +58,8 @@ fn export_wire_types() {
     SemanticDiff::export_all(&cfg).unwrap();
     Actor::export_all(&cfg).unwrap();
     Stale::export_all(&cfg).unwrap();
+    Caret::export_all(&cfg).unwrap();
+    ArrangementMsg::export_all(&cfg).unwrap();
 
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .unwrap()

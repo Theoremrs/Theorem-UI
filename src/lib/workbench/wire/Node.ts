@@ -6,6 +6,7 @@ import type { NodeState } from "./NodeState";
 import type { ResourceRef } from "./ResourceRef";
 import type { Revision } from "./Revision";
 import type { Role } from "./Role";
+import type { TextSelection } from "./TextSelection";
 
 export type Node = { id: NodeId, role: Role, name: string, state: NodeState, rect: CellRect, actions: Array<NodeAction>, binding: ResourceRef, revision?: Revision, 
 /**
@@ -32,6 +33,11 @@ shortcut?: string,
  * [`Node::with_text`], which cuts to it.
  */
 text?: string, 
+/**
+ * The caret and selection within `text`, on a text-edit node. UTF-16 code
+ * units; see [`TextSelection`]. Only with `text`.
+ */
+selection?: TextSelection, 
 /**
  * Children in reading order. A node has exactly one parent.
  */

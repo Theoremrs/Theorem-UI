@@ -280,6 +280,13 @@ pub enum HostMessage {
         #[cfg_attr(feature = "ts", ts(optional))]
         environment: Option<String>,
     },
+    /// The account the workbench belongs to changed (signed out, switched).
+    /// The core forgets what it held for the old one: outstanding effects,
+    /// searches, retained host messages, saved arrangements. It names no
+    /// workspace until the host sends `workspaceChanged`.
+    AccountChanged {
+        account: String,
+    },
     ConnectionChanged {
         workspace: String,
         state: ConnectionState,

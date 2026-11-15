@@ -5,6 +5,7 @@ use ratatui::layout::Rect;
 use serde::{Deserialize, Serialize};
 use theorem_workbench_dock::{CellMetrics, GroupId, NavDirection};
 
+use crate::arrangement::ArrangementMsg;
 use crate::completion::Completion;
 use crate::host::HostMessage;
 use crate::ids::{ActionId, Actor, PanelInstanceId};
@@ -88,6 +89,8 @@ pub enum Msg {
     },
     Picker(PickerMsg),
     Dock(DockMsg),
+    /// Saved arrangements: load, save, apply, rename, delete.
+    Arrangement(ArrangementMsg),
     Tick,
 }
 

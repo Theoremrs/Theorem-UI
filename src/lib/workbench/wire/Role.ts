@@ -3,4 +3,4 @@
 /**
  * The roles the spec's surfaces need, each mapping onto one ARIA role.
  */
-export type Role = "application" | "region" | "toolbar" | "group" | "heading" | "button" | "menu" | "menuItem" | "tabList" | "tab" | "tabPanel" | "tree" | "treeItem" | "textBox" | "log" | "status" | "alert" | "dialog" | "separator" | "document";
+export type Role = "application" | "region" | "toolbar" | "group" | "heading" | "button" | "menu" | "menuItem" | "tabList" | "tab" | "tabPanel" | "tree" | "treeItem" | "textBox" | "log" | "status" | "alert" | "dialog" | "separator" | "document" | "list" | "listItem";

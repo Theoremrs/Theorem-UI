@@ -52,6 +52,9 @@ struct Log {
     caps_at_tick: Vec<usize>,
     /// Whether a panel read `search.query` from its `ViewCtx` while drawing.
     search_in_view: Option<bool>,
+    /// What a "note" or "chat" panel reports as its caret: a offset from
+    /// the top left of its body, and how it shows.
+    caret: Option<(u16, u16, theorem_workbench_core::CaretPhase)>,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -219,6 +222,16 @@ impl Panel for TestPanel {
         (self.kind == "note").then(|| theorem_workbench_core::TabLabel {
             title: self.doc.clone(),
             modified: self.taps > 0,
+        })
+    }
+
+    fn caret(&self, area: Rect) -> Option<theorem_workbench_core::Caret> {
+        let (dx, dy, phase) = self.log.borrow().caret?;
+        matches!(self.kind, "note" | "chat").then_some(theorem_workbench_core::Caret {
+            x: area.x + dx,
+            y: area.y + dy,
+            shape: theorem_workbench_core::CaretShape::HollowBlock,
+            phase,
         })
     }
 
@@ -3315,4 +3328,787 @@ fn the_diagnostics_messages_round_trip() {
     let cleared = json!({"type": "diagnosticsCleared", "path": "a.rs"});
     let msg: HostMessage = serde_json::from_value(cleared.clone()).unwrap();
     assert_eq!(serde_json::to_value(&msg).unwrap(), cleared);
+}
+
+// ---- the caret report (batch eight) -------------------------------------
+
+#[test]
+fn the_caret_of_the_panel_that_owns_input_is_reported_inside_its_body() {
+    use theorem_workbench_core::{CaretPhase, CaretShape};
+    let (mut m, log) = new_model();
+    assert_eq!(m.caret(), None, "no panel, no caret");
+    action(&mut m, "chat.open");
+    assert_eq!(m.caret(), None, "the panel reports none");
+    log.borrow_mut().caret = Some((3, 1, CaretPhase::Steady));
+    let body = m
+        .frame()
+        .unwrap()
+        .groups
+        .iter()
+        .find(|g| g.focused)
+        .unwrap()
+        .body;
+    let caret = m.caret().expect("a caret");
+    assert_eq!((caret.x, caret.y), (body.x + 3, body.y + 1));
+    assert_eq!(caret.shape, CaretShape::HollowBlock);
+    assert_eq!(caret.phase, CaretPhase::Steady);
+    // Another panel owning input moves the answer: the note reports too.
+    action(&mut m, "note.open");
+    let now = m.caret().unwrap();
+    assert_eq!(m.focus().panel, Some(kinds(&m, "note")[0].clone()));
+    let nb = m
+        .frame()
+        .unwrap()
+        .groups
+        .iter()
+        .find(|g| g.focused)
+        .unwrap()
+        .body;
+    assert_eq!((now.x, now.y), (nb.x + 3, nb.y + 1));
+}
+
+#[test]
+fn no_caret_while_the_window_is_unfocused_or_a_modal_owns_input() {
+    use theorem_workbench_core::CaretPhase;
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open");
+    log.borrow_mut().caret = Some((0, 0, CaretPhase::Blinking));
+    assert!(m.caret().is_some());
+    send(&mut m, Msg::Focus(false));
+    assert_eq!(m.caret(), None, "unfocused window");
+    send(&mut m, Msg::Focus(true));
+    assert!(m.caret().is_some());
+    send(&mut m, Msg::Picker(PickerMsg::Open));
+    assert!(m.focus().modal);
+    assert_eq!(m.caret(), None, "an open picker owns input");
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert!(m.caret().is_some(), "and gives it back");
+}
+
+#[test]
+fn a_resting_picker_does_not_own_input_so_the_composers_caret_is_still_reported() {
+    use theorem_workbench_core::CaretPhase;
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open");
+    log.borrow_mut().caret = Some((2, 0, CaretPhase::Steady));
+    assert!(m.rest_picker_now());
+    assert!(!m.focus().modal);
+    assert!(m.caret().is_some());
+}
+
+#[test]
+fn a_caret_outside_the_visible_body_is_not_drawn_at_the_edge() {
+    use theorem_workbench_core::CaretPhase;
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open");
+    let body = m
+        .frame()
+        .unwrap()
+        .groups
+        .iter()
+        .find(|g| g.focused)
+        .unwrap()
+        .body;
+    for (dx, dy) in [(body.width, 0), (0, body.height), (body.width + 40, 2)] {
+        log.borrow_mut().caret = Some((dx, dy, CaretPhase::Steady));
+        assert_eq!(m.caret(), None, "({dx}, {dy}) is out of view");
+    }
+    // The last visible cell is still inside.
+    log.borrow_mut().caret = Some((body.width - 1, body.height - 1, CaretPhase::Steady));
+    assert!(m.caret().is_some());
+}
+
+#[test]
+fn a_blinking_caret_is_steady_while_motion_is_reduced() {
+    use theorem_workbench_core::CaretPhase;
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open");
+    log.borrow_mut().caret = Some((0, 0, CaretPhase::Blinking));
+    assert_eq!(m.caret().unwrap().phase, CaretPhase::Blinking);
+    send(&mut m, Msg::ReducedMotion(true));
+    assert_eq!(m.caret().unwrap().phase, CaretPhase::Steady);
+    log.borrow_mut().caret = Some((0, 0, CaretPhase::Hidden));
+    assert_eq!(
+        m.caret().unwrap().phase,
+        CaretPhase::Hidden,
+        "hidden stays hidden"
+    );
+}
+
+// ---- Gate 5: saved arrangements, account change, bounds, keyboard ----------
+
+use theorem_workbench_core::ArrangementMsg;
+use theorem_workbench_core::ArrangementNotice;
+use theorem_workbench_core::completion::{
+    CompletionPayload, LayoutDocument, LayoutLoaded, LayoutSaved,
+};
+
+fn notices(m: &mut Model) -> Vec<Notice> {
+    std::iter::from_fn(|| m.take_notice()).collect()
+}
+
+fn arrangement_notices(m: &mut Model) -> Vec<ArrangementNotice> {
+    notices(m)
+        .into_iter()
+        .filter_map(|n| match n {
+            Notice::Arrangement(a) => Some(a),
+            _ => None,
+        })
+        .collect()
+}
+
+fn arrange(m: &mut Model, msg: ArrangementMsg) -> Vec<Effect> {
+    send(m, Msg::Arrangement(msg))
+}
+
+fn save_text(effects: &[Effect]) -> (String, String) {
+    match &effects.last().expect("an effect").body {
+        EffectBody::LayoutSave(s) => (s.current.clone(), s.named_layouts.clone()),
+        other => panic!("not a layout save: {other:?}"),
+    }
+}
+
+fn saved(effect: EffectId, revision: u64) -> Msg {
+    Msg::Completion(
+        Completion::new(effect, ResourceRef::None, Outcome::Accepted).with_payload(
+            CompletionPayload::LayoutSaved(LayoutSaved {
+                revision: Revision::Seq(revision),
+            }),
+        ),
+    )
+}
+
+fn loaded(effect: EffectId, revision: u64, current: &str, named: &str) -> Msg {
+    Msg::Completion(
+        Completion::new(effect, ResourceRef::None, Outcome::Accepted).with_payload(
+            CompletionPayload::LayoutLoaded(LayoutLoaded {
+                revision: Revision::Seq(revision),
+                document: Some(LayoutDocument {
+                    current: current.into(),
+                    named_layouts: named.into(),
+                }),
+            }),
+        ),
+    )
+}
+
+fn named_item(name: &str, document: &Value) -> String {
+    json!({
+        "schema": "theorem.workbench.arrangements", "version": 1,
+        "items": [{"name": name, "document": document}]
+    })
+    .to_string()
+}
+
+#[test]
+fn arrangements_are_saved_listed_applied_renamed_and_deleted_through_the_layout_owner() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+
+    // The presets come first and are always there.
+    let names: Vec<_> = m
+        .arrangements()
+        .into_iter()
+        .map(|a| (a.name, a.builtin))
+        .collect();
+    assert_eq!(names.len(), 4);
+    assert!(names.iter().all(|(_, builtin)| *builtin));
+
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Writing".into(),
+        },
+    );
+    assert_eq!(fx.len(), 1);
+    assert_eq!(fx[0].kind(), EffectKind::LayoutSave);
+    assert_eq!(fx[0].revision, None, "nothing was read yet");
+    let (current, named) = save_text(&fx);
+    assert_eq!(
+        serde_json::from_str::<Value>(&current).unwrap(),
+        m.document()
+    );
+    assert_eq!(
+        serde_json::from_str::<Value>(&named).unwrap()["items"][0]["name"],
+        "Writing"
+    );
+    assert!(
+        m.arrangements()
+            .iter()
+            .any(|a| a.name == "Writing" && !a.builtin)
+    );
+
+    // A change made while a save is out waits for its answer, then goes out
+    // against the revision that answer gave.
+    let held = arrange(
+        &mut m,
+        ArrangementMsg::Rename {
+            from: "writing".into(),
+            to: "Notes".into(),
+        },
+    );
+    assert!(held.is_empty());
+    let next = send(&mut m, saved(fx[0].id, 7));
+    assert_eq!(next.len(), 1);
+    assert_eq!(next[0].revision, Some(Revision::Seq(7)));
+    let (_, named) = save_text(&next);
+    assert_eq!(
+        serde_json::from_str::<Value>(&named).unwrap()["items"][0]["name"],
+        "Notes"
+    );
+    send(&mut m, saved(next[0].id, 8));
+
+    let del = arrange(
+        &mut m,
+        ArrangementMsg::Delete {
+            name: "Notes".into(),
+        },
+    );
+    assert_eq!(del[0].revision, Some(Revision::Seq(8)));
+    assert!(m.arrangements().iter().all(|a| a.builtin));
+    send(&mut m, saved(del[0].id, 9));
+    assert!(m.in_flight().is_empty());
+
+    // Names are checked: empty, a preset's, one that is not there.
+    notices(&mut m);
+    assert!(arrange(&mut m, ArrangementMsg::Save { name: "  ".into() }).is_empty());
+    assert!(
+        arrange(
+            &mut m,
+            ArrangementMsg::Save {
+                name: "minimal".into()
+            }
+        )
+        .is_empty()
+    );
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "nope".into(),
+        },
+    );
+    let told = arrangement_notices(&mut m);
+    assert!(matches!(told[0], ArrangementNotice::BadName { .. }));
+    assert!(matches!(told[1], ArrangementNotice::NameTaken { .. }));
+    assert!(matches!(told[2], ArrangementNotice::Unknown { .. }));
+}
+
+#[test]
+fn a_save_the_owner_refuses_is_told_and_the_arrangement_stays_here() {
+    let (mut m, _) = new_model();
+    let fx = arrange(&mut m, ArrangementMsg::Save { name: "A".into() });
+    notices(&mut m);
+    send(
+        &mut m,
+        Msg::Completion(Completion::new(
+            fx[0].id,
+            ResourceRef::None,
+            Outcome::Refused {
+                code: "stale_revision".into(),
+                reason: "Someone else saved first.".into(),
+            },
+        )),
+    );
+    let told = arrangement_notices(&mut m);
+    assert_eq!(
+        told,
+        vec![ArrangementNotice::NotSaved {
+            reason: "Someone else saved first.".into()
+        }]
+    );
+    assert!(m.arrangements().iter().any(|a| a.name == "A"));
+    // The next change is not held behind the refused one.
+    assert_eq!(
+        arrange(&mut m, ArrangementMsg::Save { name: "B".into() }).len(),
+        1
+    );
+}
+
+#[test]
+fn applying_an_arrangement_never_closes_a_panel_or_drops_its_state() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "term.open");
+    action(&mut m, "note.open");
+    ch(&mut m, '+');
+    ch(&mut m, '+');
+    let before: Vec<_> = m
+        .panel_ids()
+        .map(|(id, k)| (id.clone(), k.clone()))
+        .collect();
+    let dirty = m.focus().panel.unwrap();
+    let kept = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Spread".into(),
+        },
+    );
+    send(&mut m, saved(kept[0].id, 1));
+
+    for target in ["minimal", "agent", "editor", "default", "Spread", "minimal"] {
+        let fx = arrange(
+            &mut m,
+            ArrangementMsg::Apply {
+                name: target.into(),
+            },
+        );
+        assert!(fx.is_empty(), "{target} emitted {fx:?}");
+        let after: Vec<_> = m
+            .panel_ids()
+            .map(|(id, k)| (id.clone(), k.clone()))
+            .collect();
+        assert_eq!(after, before, "{target} changed what is open");
+        for (id, _) in &before {
+            let tab = theorem_workbench_dock::PanelId(id.as_str().to_owned());
+            assert!(
+                m.dock().find_panel(&tab).is_some(),
+                "{target} left {id:?} in no group"
+            );
+        }
+        assert_eq!(
+            m.panel(&dirty).unwrap().serialize()["taps"],
+            2,
+            "{target} lost the draft"
+        );
+        assert!(m.in_flight().is_empty());
+    }
+    assert!(log.borrow().teardowns.is_empty(), "no panel was torn down");
+    // Minimal shows one group; the panels of the hidden ones are in it.
+    let shown = m
+        .dock()
+        .group_ids()
+        .into_iter()
+        .filter(|g| !m.dock().group(*g).unwrap().is_hidden())
+        .count();
+    assert_eq!(shown, 1);
+}
+
+#[test]
+fn a_saved_arrangement_comes_back_as_it_was_saved() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "note.open");
+    let path = m.frame().unwrap().splitters[0].path.clone();
+    send(&mut m, Msg::Dock(DockMsg::ResizeSplit { path, delta: 6 }));
+    arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Wide".into(),
+        },
+    );
+    let wide = m.document();
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    assert_ne!(m.document()["dock"], wide["dock"]);
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "wide".into(),
+        },
+    );
+    assert_eq!(m.document()["dock"], wide["dock"]);
+    assert_eq!(
+        arrangement_notices(&mut m).last(),
+        Some(&ArrangementNotice::Applied {
+            name: "Wide".into()
+        })
+    );
+}
+
+#[test]
+fn an_arrangement_from_another_version_or_naming_an_unknown_kind_restores_what_it_can_and_says_so()
+{
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let mut doc = m.document();
+    // A tab of a kind this build lacks, in the first group.
+    let first = doc["dock"]["groups"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    doc["dock"]["groups"][&first]["tabs"].as_array_mut().unwrap().push(json!({
+        "panel": "g1", "kind": {"name": "ghost", "version": 3}, "title": "Ghost", "view_state": {"k": 1}
+    }));
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    assert_eq!(load[0].kind(), EffectKind::LayoutLoad);
+    send(
+        &mut m,
+        loaded(load[0].id, 4, "", &named_item("Ghosts", &doc)),
+    );
+    assert!(m.arrangements().iter().any(|a| a.name == "Ghosts"));
+    notices(&mut m);
+
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Ghosts".into(),
+        },
+    );
+    let told = arrangement_notices(&mut m);
+    let [ArrangementNotice::Partial { unavailable, .. }] = told.as_slice() else {
+        panic!("{told:?}");
+    };
+    assert_eq!(unavailable, &["ghost".to_owned()]);
+    let ghost = m
+        .panel_ids()
+        .find(|(_, k)| k.as_str() == "ghost")
+        .map(|(id, _)| id.clone())
+        .unwrap();
+    assert!(
+        m.is_unavailable(&ghost),
+        "kept as a placeholder holding its state"
+    );
+    assert_eq!(kinds(&m, "note").len(), 1, "the open note is still there");
+
+    // Saved by a newer version of the layout: read as far as it goes, told.
+    let mut newer = m.document();
+    newer["version"] = json!(9);
+    newer["dock"]["version"] = json!(4);
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded(load[0].id, 5, "", &named_item("Newer", &newer)),
+    );
+    notices(&mut m);
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Newer".into(),
+        },
+    );
+    let told = arrangement_notices(&mut m);
+    let [ArrangementNotice::Partial { caveats, .. }] = told.as_slice() else {
+        panic!("{told:?}");
+    };
+    assert_eq!(caveats.len(), 2);
+
+    // One that cannot be read at all changes nothing.
+    let layout = m.document();
+    let junk = json!({"schema": "theorem.workbench", "version": 1, "dock": {"not": "a dock"}});
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded(load[0].id, 6, "", &named_item("Junk", &junk)),
+    );
+    notices(&mut m);
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Junk".into(),
+        },
+    );
+    assert!(matches!(
+        arrangement_notices(&mut m)[0],
+        ArrangementNotice::Unreadable { .. }
+    ));
+    assert_eq!(m.document(), layout);
+}
+
+#[test]
+fn loading_the_record_restores_the_layout_it_was_left_in_without_closing_what_is_open() {
+    let (mut a, _) = new_model();
+    action(&mut a, "note.open");
+    action(&mut a, "term.open");
+    arrange(
+        &mut a,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    let left = a.document().to_string();
+
+    let (mut b, _) = new_model();
+    action(&mut b, "chat.open");
+    let open = kinds(&b, "chat");
+    let load = arrange(&mut b, ArrangementMsg::Load);
+    send(&mut b, loaded(load[0].id, 3, &left, ""));
+    assert!(!kinds(&b, "note").is_empty() && !kinds(&b, "term").is_empty());
+    assert_eq!(kinds(&b, "chat"), open, "what was already open stays");
+    assert!(b.in_flight().is_empty());
+
+    // A record that cannot be read is told; the arrangements are not guessed.
+    let load = arrange(&mut b, ArrangementMsg::Load);
+    notices(&mut b);
+    send(&mut b, loaded(load[0].id, 4, "", "not json"));
+    assert!(matches!(
+        arrangement_notices(&mut b)[0],
+        ArrangementNotice::LoadedWithLoss { .. }
+    ));
+}
+
+#[test]
+fn an_account_change_drops_what_the_old_account_held_and_its_late_answers_are_stale() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "chat.open");
+    send(&mut m, snapshot("t1", 5));
+    let waiting = action(&mut m, "note.save");
+    let id = last_effect_id(&waiting);
+    let save = arrange(&mut m, ArrangementMsg::Save { name: "Old".into() });
+    assert_eq!(m.in_flight().len(), 2);
+    send(
+        &mut m,
+        Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w1".into(),
+            environment: None,
+        }),
+    );
+    let generation = m.workspace().generation.0;
+
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    assert_eq!(m.workspace().account, "bob");
+    assert!(
+        !m.workspace().is_set(),
+        "no workspace until the host names one"
+    );
+    assert!(m.workspace().generation.0 > generation);
+    assert!(m.in_flight().is_empty());
+    assert!(
+        m.arrangements().iter().all(|a| a.builtin),
+        "the old account's arrangements are gone"
+    );
+    // What the panel was waiting for is told as unknown, not left spinning.
+    let told = msgs_of(&log, "note").into_iter().any(|msg| matches!(
+        msg,
+        PanelMsg::Completion(c) if c.effect == id && matches!(c.outcome, Outcome::Uncertain { .. })
+    ));
+    assert!(told);
+
+    // Late answers for the old account find nothing in flight.
+    let dropped = m.counters().dropped;
+    send(
+        &mut m,
+        Msg::Completion(completion(id, "a.md", 5, Outcome::Accepted)),
+    );
+    send(&mut m, saved(save[0].id, 99));
+    assert_eq!(m.counters().dropped, dropped + 2);
+    assert_eq!(m.counters().last_drop, Some(Stale::UnknownEffect));
+    // The revision it carried did not reach the new account's record.
+    let again = arrange(&mut m, ArrangementMsg::Save { name: "New".into() });
+    assert_eq!(again[0].revision, None);
+
+    // The conversation retained for a mount later is gone too.
+    action(&mut m, "chat.open");
+    assert_eq!(
+        snapshots_seen(&log),
+        1,
+        "only the one the first chat was given"
+    );
+
+    // The same account again changes nothing.
+    let n = m.workspace().generation.0;
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    assert_eq!(m.workspace().generation.0, n);
+}
+
+#[test]
+fn the_bounds_hold_and_hitting_one_is_told() {
+    // Effects in flight: the 257th is refused, the 256 already waiting stay.
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    for _ in 0..300 {
+        ch(&mut m, 'q');
+    }
+    assert_eq!(m.in_flight().len(), 256);
+    assert_eq!(m.counters().refused_full, 44);
+    let refused = log
+        .borrow()
+        .emits
+        .iter()
+        .filter(|r| matches!(r, Err(EmitError::InFlightFull(_))))
+        .count();
+    assert_eq!(refused, 44);
+    // Told, and the queue of notices is itself bounded and says what it lost.
+    let told = notices(&mut m);
+    assert!(told.len() <= 17, "{}", told.len());
+    assert!(
+        told.iter()
+            .any(|n| matches!(n, Notice::EffectsFull { limit: 256 }))
+    );
+    let lost = told.iter().find_map(|n| match n {
+        Notice::Overflow { dropped } => Some(*dropped),
+        _ => None,
+    });
+    assert_eq!(
+        u64::from(lost.expect("the overflow is told")),
+        m.counters().notices_dropped
+    );
+    assert!(m.counters().notices_dropped >= 28);
+
+    // Retained host messages: the oldest of 41 conversations is pushed out and counted.
+    let (mut m, _) = new_model();
+    for n in 0..41 {
+        send(&mut m, snapshot(&format!("x{n}"), 1));
+    }
+    assert_eq!(m.counters().evicted, 9);
+
+    // Arrangements: the 33rd is refused, in a notice, and nothing is sent.
+    let (mut m, _) = new_model();
+    for n in 0..32 {
+        let fx = arrange(
+            &mut m,
+            ArrangementMsg::Save {
+                name: format!("L{n}"),
+            },
+        );
+        send(&mut m, saved(fx[0].id, n + 1));
+    }
+    notices(&mut m);
+    assert!(
+        arrange(
+            &mut m,
+            ArrangementMsg::Save {
+                name: "one more".into()
+            }
+        )
+        .is_empty()
+    );
+    assert_eq!(
+        arrangement_notices(&mut m),
+        vec![ArrangementNotice::StoreFull { limit: 32 }]
+    );
+    assert_eq!(m.arrangements().len(), 4 + 32);
+    // Replacing one that is kept is not a new one.
+    assert_eq!(
+        arrange(&mut m, ArrangementMsg::Save { name: "l3".into() }).len(),
+        1
+    );
+}
+
+fn chord(m: &mut Model, k: Key, mods: Mods) -> Vec<Effect> {
+    key(m, k, mods)
+}
+
+const CA: Mods = Mods::CTRL.union(Mods::ALT);
+
+#[test]
+fn the_keyboard_moves_focus_between_groups_and_moves_the_panel_with_it() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let note = m.focus().panel.unwrap();
+    assert_eq!(role_of(&m, &note), theorem_workbench_dock::Role::Tools);
+    let tools = m.focus().group;
+
+    chord(&mut m, Key::Left, CA);
+    assert_ne!(
+        m.focus().group,
+        tools,
+        "focus moved to the group on the left"
+    );
+    chord(&mut m, Key::Right, CA);
+    assert_eq!(m.focus().group, tools);
+
+    // Move the panel left: it lands in the main group and keeps the keyboard.
+    chord(&mut m, Key::Left, CA.union(Mods::SHIFT));
+    assert_eq!(role_of(&m, &note), theorem_workbench_dock::Role::Main);
+    assert_eq!(m.focus().panel, Some(note.clone()));
+
+    // Nothing above: refused with a reason, nothing moves.
+    notices(&mut m);
+    chord(&mut m, Key::Up, CA.union(Mods::SHIFT));
+    assert_eq!(role_of(&m, &note), theorem_workbench_dock::Role::Main);
+    assert!(notices(&mut m).iter().any(|n| matches!(n, Notice::Dock(_))));
+}
+
+#[test]
+fn the_keyboard_resizes_the_focused_group_in_steps_and_maximises_it() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let width = |m: &Model| {
+        let f = m.frame().unwrap();
+        f.group(m.focus().group).unwrap().rect.width
+    };
+    let w = width(&m);
+    chord(&mut m, Key::Char(']'), CA);
+    assert_eq!(width(&m), w + 2);
+    chord(&mut m, Key::Char('['), CA);
+    chord(&mut m, Key::Char('['), CA);
+    assert_eq!(width(&m), w - 2);
+
+    // Past the minimum the dock refuses, and says so.
+    notices(&mut m);
+    for _ in 0..200 {
+        chord(&mut m, Key::Char('['), CA);
+    }
+    assert!(notices(&mut m).iter().any(|n| matches!(n, Notice::Dock(_))));
+    assert!(width(&m) >= 10);
+
+    assert!(m.dock().maximized().is_none());
+    chord(&mut m, Key::Char('m'), CA);
+    assert_eq!(m.dock().maximized(), Some(m.focus().group));
+    chord(&mut m, Key::Char('m'), CA);
+    assert!(m.dock().maximized().is_none());
+
+    // The same by action, so an adapter or the picker can do it.
+    action(&mut m, "workbench.layout.minimal");
+    assert_eq!(
+        m.dock()
+            .group_ids()
+            .into_iter()
+            .filter(|g| !m.dock().group(*g).unwrap().is_hidden())
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn escape_closes_the_innermost_transient_and_returns_focus_to_where_it_was() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let note = m.focus().panel.unwrap();
+    let main = m.dock().group_ids()[1];
+
+    // A drawer: Esc closes it and the keyboard goes back to the note.
+    send(&mut m, Msg::Dock(DockMsg::OpenDrawer(main)));
+    assert_eq!(m.dock().drawer(), Some(main));
+    assert_ne!(m.focus().panel, Some(note.clone()));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(m.focus().panel, Some(note.clone()));
+
+    // A splitter drag: Esc lets go of it, and a later move drags nothing.
+    let s = m.frame().unwrap().splitters[0].clone();
+    let pt = |kind, x| {
+        Msg::Pointer(Pointer {
+            kind,
+            x,
+            y: s.rect.y + 1,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    send(&mut m, pt(PointerKind::Down(Button::Left), s.rect.x));
+    send(&mut m, pt(PointerKind::Move, s.rect.x + 3));
+    key(&mut m, Key::Esc, Mods::NONE);
+    let held = m.frame().unwrap().splitters[0].first_len;
+    send(&mut m, pt(PointerKind::Move, s.rect.x + 12));
+    assert_eq!(m.frame().unwrap().splitters[0].first_len, held);
+
+    // With nothing transient open, Esc is the panel's.
+    let seen = |log: &Shared| {
+        msgs_of(log, "note")
+            .iter()
+            .filter(|m| matches!(m, PanelMsg::Key(k) if k.key() == Key::Esc))
+            .count()
+    };
+    let before = seen(&log);
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(seen(&log), before + 1);
 }
