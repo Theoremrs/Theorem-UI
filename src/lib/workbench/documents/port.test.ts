@@ -9,6 +9,10 @@ import {
 import { accepted, refused } from '../environment/result'
 import type { Effect, HostMessage, Revision } from '../wire'
 import { createDocuments } from './documents'
+import { createLocalStore } from '../layout/checkpoint'
+import { memoryDatabase } from '../layout/test-storage'
+import { createDraftStore } from './local'
+import type { DraftStore } from './local'
 import { createDocumentsPort } from './port'
 
 const ALL = [
@@ -26,7 +30,7 @@ const resource = (path = 'a.txt') => ({
   resourceId: path,
 })
 
-async function setup(operations = ALL) {
+async function setup(operations = ALL, drafts?: DraftStore) {
   const host = stubHost(operations)
   const calls: { name: string; request: Record<string, unknown> }[] = []
   const state: {
@@ -77,7 +81,7 @@ async function setup(operations = ALL) {
   /** Paths the checkout already has: the host refuses to create over one, as it does. */
   const existing = new Set<string>()
   const port = createDocumentsPort({
-    documents: createDocuments(environment),
+    documents: createDocuments(environment, drafts ? { drafts } : {}),
     files: {
       create: async (request) => {
         created.push(request)
@@ -102,7 +106,11 @@ async function setup(operations = ALL) {
     },
   })
   const heard: HostMessage[] = []
-  port.subscribe?.((message) => heard.push(message))
+  /** The `documentLocal` messages, apart: the other tests look at what else was said. */
+  const locals: HostMessage[] = []
+  port.subscribe?.((message) =>
+    (message.type === 'documentLocal' ? locals : heard).push(message),
+  )
   let id = 0
   const perform = (
     kind: Effect['kind'],
@@ -120,6 +128,7 @@ async function setup(operations = ALL) {
     perform,
     live,
     heard,
+    locals,
     calls,
     count,
     created,
@@ -506,5 +515,117 @@ describe('view', () => {
       { kind: 'opened', path: 'a.txt' },
       { kind: 'closed', path: 'a.txt' },
     ])
+  })
+})
+
+describe('local state on the wire', () => {
+  const later = () => new Promise((resolve) => setTimeout(resolve, 5))
+  const draftsOver = (database = memoryDatabase()) => ({
+    database,
+    drafts: createDraftStore({
+      store: createLocalStore({
+        directory: 'd',
+        account: 't1:p1',
+        open: async () => database,
+      }),
+      workspaceId: 'w1',
+      now: () => 99,
+    }),
+  })
+  const edit = (id: string, text: string) => ({
+    revision: seq(1),
+    payload: {
+      operationId: id,
+      unit: 'utf16',
+      edits: [{ start: 0, end: 0, insert: text }],
+    },
+  })
+
+  test('documentLocal is sent once after an open and again whenever the state changes', async () => {
+    const { drafts } = draftsOver()
+    const { perform, locals, state } = await setup(ALL, drafts)
+    await perform('documentOpen', { payload: {} })
+    await later()
+    expect(locals).toEqual([
+      {
+        type: 'documentLocal',
+        resource: resource(),
+        local: { state: 'accepted' },
+      },
+    ])
+    let release: () => void = () => undefined
+    state.gate = new Promise<void>((resolve) => (release = resolve))
+    const sending = perform('documentEdit', edit('op-1', 'x'))
+    await later()
+    release()
+    await sending
+    await later()
+    expect(
+      locals.map((m) => m.type === 'documentLocal' && m.local.state),
+    ).toEqual(['accepted', 'draft', 'checkpointed', 'accepted'])
+    expect(locals[2]).toMatchObject({
+      local: { state: 'checkpointed', savedAtMs: 99, recovered: false },
+    })
+  })
+
+  test('a reload brings restored edits in documentOpened.pending; settling the last one lifts the refusal and clears the checkpoint', async () => {
+    const { drafts, database } = draftsOver()
+    const first = await setup(ALL, drafts)
+    await first.perform('documentOpen', { payload: {} })
+    first.state.gate = new Promise<void>(() => undefined)
+    void first.perform('documentEdit', edit('typed-1', 'typed '))
+    await later()
+    expect(
+      [...database.nodes.keys()].some((id) => id.includes(':draft:')),
+    ).toBe(true)
+
+    // The page reloads: a new port and owner over the same database; the host is still at revision 1.
+    const second = await setup(ALL, draftsOver(database).drafts)
+    const opened = await second.perform('documentOpen', { payload: {} })
+    expect(opened).toMatchObject({
+      outcome: 'accepted',
+      value: {
+        type: 'documentOpened',
+        dirty: true,
+        pending: [
+          {
+            operationId: 'typed-1',
+            baseRevision: seq(1),
+            edits: [{ start: 0, end: 0, insert: 'typed ' }],
+            state: 'restored',
+          },
+        ],
+      },
+    })
+    await later()
+    expect(second.locals.at(-1)).toMatchObject({
+      local: { state: 'checkpointed', recovered: true, savedAtMs: 99 },
+    })
+    const sentBefore = second.count('edit')
+    expect(
+      await second.perform('documentEdit', edit('typed-2', 'more ')),
+    ).toMatchObject({
+      outcome: 'refused',
+      code: 'unreconciled_local_draft',
+    })
+    expect(second.count('edit')).toBe(sentBefore)
+
+    expect(
+      await second.perform('documentSettle', {
+        payload: { operationId: 'typed-1' },
+      }),
+    ).toEqual({
+      outcome: 'accepted',
+    })
+    await later()
+    expect(
+      [...database.nodes.keys()].some((id) => id.includes(':draft:')),
+    ).toBe(false)
+    expect(second.locals.at(-1)).toMatchObject({ local: { state: 'accepted' } })
+    expect(
+      await second.perform('documentEdit', edit('typed-3', 'again ')),
+    ).toMatchObject({
+      outcome: 'accepted',
+    })
   })
 })

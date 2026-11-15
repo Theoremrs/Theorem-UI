@@ -33,6 +33,12 @@ export interface LayoutDocument {
 export interface LayoutRecord {
   revision: number
   document: LayoutDocument | undefined
+  /**
+   * `account`: read from the account's record. `device`: the copy this browser kept after its last
+   * successful read or save, served because the record could not be read. A device copy is never the
+   * account's: saves based on it are for the caller to refuse until an account read has answered.
+   */
+  source: 'account' | 'device'
 }
 
 /** The calls the layout owner makes of a Theorem client; `TheoremClient` satisfies it. */
@@ -79,26 +85,53 @@ export function createLayout(options: {
       current: record.current,
       namedLayouts: record.namedLayouts ?? {},
     },
+    source: 'account',
   })
+
+  /** The device copy follows every account read and save that carried a document. Best effort: a failure here changes nothing the account holds. */
+  async function keepDeviceCopy(record: LayoutRecord) {
+    if (record.document) {
+      await checkpoints.write(workspaceId, {
+        baseRevision: record.revision,
+        document: record.document,
+      })
+    }
+  }
 
   return {
     async load(request) {
       const mine = answers(request?.requestId)
       await env.settled()
       try {
-        return accepted(
-          mine,
-          recordOf(await env.client.workbench.get({ workspaceId })),
-        )
+        const record = recordOf(await env.client.workbench.get({ workspaceId }))
+        await keepDeviceCopy(record)
+        return accepted(mine, record)
       } catch (error) {
         // No save yet is not a failure: the next save is made against revision 0.
         if (
           statusOf(error) === 404 &&
           codeOf(error) === 'workbench_not_found'
         ) {
-          return accepted(mine, { revision: 0, document: undefined })
+          return accepted(mine, {
+            revision: 0,
+            document: undefined,
+            source: 'account',
+          })
         }
-        return failure(mine, error, false)
+        const lost = failure(mine, error, false)
+        // Only a record that could not be reached falls back. A refusal (signed out, forbidden) shows nothing.
+        if (lost.outcome !== 'failed' && lost.outcome !== 'uncertain') {
+          return lost
+        }
+        const device = await checkpoints.read(workspaceId)
+        if (device.outcome === 'accepted' && device.value) {
+          return accepted(mine, {
+            revision: device.value.baseRevision,
+            document: device.value.document,
+            source: 'device',
+          })
+        }
+        return lost
       }
     },
 
@@ -140,7 +173,9 @@ export function createLayout(options: {
           },
           { maxRetries: 0 },
         )
-        return accepted(mine, recordOf(saved))
+        const record = recordOf(saved)
+        await keepDeviceCopy(record)
+        return accepted(mine, record)
       } catch (error) {
         if (statusOf(error) === 409) {
           return refused(mine, 'conflict', readableReason(error))

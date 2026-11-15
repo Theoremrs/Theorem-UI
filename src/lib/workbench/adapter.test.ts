@@ -16,8 +16,8 @@ import {
   stubHost,
   testEnvironment,
 } from './environment/test-host'
-import { createLayout, WORKBENCH_SCHEMA } from './layout'
-import type { Checkpoints } from './layout'
+import { createCheckpoints, createLayout, WORKBENCH_SCHEMA } from './layout'
+import { memoryDatabase } from './layout/test-storage'
 import type {
   Completion,
   Effect,
@@ -352,7 +352,11 @@ async function setup(
         workspaceId: 'w1',
         requestId: 'r',
         outcome: 'accepted' as const,
-        value: { revision: 3, document: undefined },
+        value: {
+          revision: 3,
+          document: undefined,
+          source: 'account' as const,
+        },
       })
     }
 
@@ -829,6 +833,7 @@ describe('layout', () => {
           outcome: 'accepted' as const,
           value: {
             revision: 3,
+            source: 'account' as const,
             document: {
               current: { dock: 1 },
               namedLayouts: { A: { dock: 2 } },
@@ -844,6 +849,7 @@ describe('layout', () => {
     await t.settle()
     expect(t.completions()[0]!.payload).toEqual({
       type: 'layoutLoaded',
+      source: 'account',
       revision: { scheme: 'seq', value: 3 },
       document: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
     })
@@ -852,6 +858,7 @@ describe('layout', () => {
     await first.settle()
     expect(first.completions()[0]!.payload).toEqual({
       type: 'layoutLoaded',
+      source: 'account',
       revision: { scheme: 'seq', value: 3 },
     })
   })
@@ -911,7 +918,10 @@ describe('layout', () => {
     await environment.settled()
     const layout = createLayout({
       environment: environment as never,
-      checkpoints: {} as Checkpoints,
+      checkpoints: createCheckpoints({
+        directory: 'd',
+        open: async () => memoryDatabase(),
+      }),
     })
     const t = await setup({ layout })
     t.adapter.perform(

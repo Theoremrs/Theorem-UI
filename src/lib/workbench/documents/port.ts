@@ -3,7 +3,6 @@ import type { Files } from '../files/files'
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
 import type { HostMessage, ResourceRef, Revision } from '../wire'
-import type { PendingEdit as WirePendingEdit } from '../wire/PendingEdit'
 import { tokenSpans } from './tokens'
 import type { LocalState } from './local'
 import type {
@@ -11,7 +10,6 @@ import type {
   DocumentHandle,
   Documents,
   EditCompletion,
-  PendingEdit,
 } from './documents'
 
 export interface DocumentsPortOptions {
@@ -20,8 +18,7 @@ export interface DocumentsPortOptions {
   files: Pick<Files, 'create' | 'delete'>
 }
 
-/** The host message for an event, or none: the wire has no message for a change of `local`, which `view` carries instead. */
-const hostMessage = (event: DocumentEvent): HostMessage | undefined => {
+const hostMessage = (event: DocumentEvent): HostMessage => {
   switch (event.kind) {
     case 'changed':
       return {
@@ -65,19 +62,9 @@ const hostMessage = (event: DocumentEvent): HostMessage | undefined => {
     case 'retired':
       return { type: 'documentRetired', resource: event.resource }
     case 'local':
-      return undefined
+      return { type: 'documentLocal', resource: event.resource, local: event.local }
   }
 }
-
-/**
- * The wire's pending states have no `restored`. An edit read back from the device was never confirmed
- * by the authority and may or may not have been applied before the reload, which is what `uncertain` says.
- */
-const wirePending = (pending: PendingEdit[]): WirePendingEdit[] =>
-  pending.map((edit) => ({
-    ...edit,
-    state: edit.state === 'restored' ? 'uncertain' : edit.state,
-  }))
 
 /** The path a document resource names, or undefined for any other resource. */
 const pathOf = (resource: ResourceRef): string | undefined =>
@@ -159,6 +146,20 @@ export function createDocumentsPort({
     }, 0)
   }
 
+  /** Where the document's unaccepted work stands, after the answer that announced the document. */
+  function sendLocal(path: string) {
+    setTimeout(() => {
+      const handle = held.get(path)?.handle
+      if (!handle) return
+      const message: HostMessage = {
+        type: 'documentLocal',
+        resource: handle.resource,
+        local: handle.state.local,
+      }
+      for (const listener of [...listeners]) listener(message)
+    }, 0)
+  }
+
   const forward = (event: DocumentEvent) => {
     if (event.kind === 'moved') {
       const from = pathOf(event.from)
@@ -172,7 +173,7 @@ export function createDocumentsPort({
       }
     }
     const message = hostMessage(event)
-    if (message) for (const listener of [...listeners]) listener(message)
+    for (const listener of [...listeners]) listener(message)
     if (event.kind === 'local') {
       const path = pathOf(event.resource)
       if (path !== undefined)
@@ -212,6 +213,7 @@ export function createDocumentsPort({
     // An open is a panel that has no spans yet, so this revision's are sent again.
     tokened.delete(path)
     sendTokens(path)
+    sendLocal(path)
     return {
       outcome: 'accepted',
       value: {
@@ -221,6 +223,7 @@ export function createDocumentsPort({
         ...(state.savedRevision ? { savedRevision: state.savedRevision } : {}),
         dirty: state.dirty,
         ...(state.readOnly ? { readOnly: state.readOnly } : {}),
+        ...(state.pending.length > 0 ? { pending: state.pending } : {}),
       },
       revision: state.revision,
     }
@@ -231,28 +234,6 @@ export function createDocumentsPort({
     done: EditCompletion,
     operationId: string,
   ): OwnerReply {
-    if (
-      done.outcome === 'refused' &&
-      done.code === 'unreconciled_local_draft'
-    ) {
-      // The edits kept on this device ride along in the conflict payload, which is how the core learns of them.
-      const { pending, text, revision } = handle.state
-      const first = pending.find((edit) => edit.state === 'restored')
-      if (first) {
-        return {
-          outcome: 'refused',
-          code: done.code,
-          reason: done.reason,
-          value: {
-            type: 'documentConflicted',
-            operationId: first.operationId,
-            baseRevision: first.baseRevision,
-            current: { revision, text },
-            pending: wirePending(pending),
-          },
-        }
-      }
-    }
     if (done.outcome === 'refused' && 'baseRevision' in done) {
       return {
         outcome: 'refused',
@@ -263,7 +244,7 @@ export function createDocumentsPort({
           operationId: done.operationId,
           baseRevision: done.baseRevision,
           current: done.current,
-          pending: wirePending(handle.state.pending),
+          pending: handle.state.pending,
         },
       }
     }

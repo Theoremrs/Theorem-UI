@@ -118,6 +118,7 @@ describe('AC-45: the account layout and its named layouts', () => {
     const loaded = await one.ask('layoutLoad')
     expect(loaded.payload).toEqual({
       type: 'layoutLoaded',
+      source: 'account',
       revision: { scheme: 'seq', value: 0 },
     })
     const saved = await one.ask('layoutSave', 0, WORKSPACE, NAMED)
@@ -131,6 +132,7 @@ describe('AC-45: the account layout and its named layouts', () => {
     const restored = await two.ask('layoutLoad')
     expect(restored.payload).toEqual({
       type: 'layoutLoaded',
+      source: 'account',
       revision: { scheme: 'seq', value: 1 },
       document: { current: WORKSPACE, namedLayouts: NAMED },
     })
@@ -149,6 +151,7 @@ describe('AC-45: the account layout and its named layouts', () => {
     const reloaded = await two.ask('layoutLoad')
     expect(reloaded.payload).toMatchObject({
       type: 'layoutLoaded',
+      source: 'account',
       revision: { scheme: 'seq', value: 1 },
     })
     const saved = await two.ask('layoutSave', 1, '{"dock":"mine"}', NAMED)
@@ -200,5 +203,61 @@ describe('AC-45: the account layout and its named layouts', () => {
     const done = await one.ask('layoutLoad')
     expect(done.outcome).toMatchObject({ status: 'failed' })
     expect(done.payload).toBeUndefined()
+  })
+})
+
+describe('the device copy fallback (R35)', () => {
+  test('when the record cannot be read, the copy kept after the last good read is served labelled device, and the next account read says account', async () => {
+    const srv = server()
+    const one = await browser(srv)
+    await one.ask('layoutSave', 0, WORKSPACE, NAMED)
+    const good = srv.workbench.get
+    srv.workbench.get = async () => {
+      throw new Error('offline')
+    }
+    const offline = await one.ask('layoutLoad')
+    expect(offline.outcome).toEqual({ status: 'accepted' })
+    expect(offline.payload).toEqual({
+      type: 'layoutLoaded',
+      source: 'device',
+      revision: { scheme: 'seq', value: 1 },
+      document: { current: WORKSPACE, namedLayouts: NAMED },
+    })
+    srv.workbench.get = good
+    const back = await one.ask('layoutLoad')
+    expect(back.payload).toMatchObject({ source: 'account' })
+  })
+
+  test('with no device copy an unreachable record is still a failed load', async () => {
+    const srv = server()
+    srv.workbench.get = async () => {
+      throw new Error('offline')
+    }
+    const done = await (await browser(srv)).ask('layoutLoad')
+    expect(done.outcome).toMatchObject({ status: 'failed' })
+  })
+
+  test('a device copy is not shown when access is gone: 401 is signed_out, 403 is forbidden, whatever code the host gave', async () => {
+    const srv = server()
+    const one = await browser(srv)
+    await one.ask('layoutSave', 0, WORKSPACE, NAMED)
+    srv.workbench.get = async () => {
+      throw new HttpError(401, { code: 'session_expired' })
+    }
+    const out = await one.ask('layoutLoad')
+    expect(out.outcome).toMatchObject({ status: 'refused', code: 'signed_out' })
+    expect(out.payload).toBeUndefined()
+    // The 401 retired that adapter (the session is gone), so the 403 is met by a new one.
+    const two = await browser(srv)
+    await two.ask('layoutSave', 1, WORKSPACE, NAMED)
+    srv.workbench.get = async () => {
+      throw new HttpError(403, { code: 'workspace_access_denied' })
+    }
+    const denied = await two.ask('layoutLoad')
+    expect(denied.outcome).toMatchObject({
+      status: 'refused',
+      code: 'forbidden',
+    })
+    expect(denied.payload).toBeUndefined()
   })
 })

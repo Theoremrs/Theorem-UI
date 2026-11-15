@@ -738,10 +738,11 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     if (effect.kind === 'layoutLoad') {
       return reply(
         await layout.load({ requestId }),
-        ({ revision, document }) => ({
+        ({ revision, document, source }) => ({
           revision: seq(revision),
           value: {
             type: 'layoutLoaded',
+            source,
             revision: seq(revision),
             ...(document
               ? {

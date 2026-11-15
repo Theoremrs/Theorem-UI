@@ -81,7 +81,8 @@ export function failure(
   const status = statusOf(error)
   const why = readableReason(error)
   if (status === 401) return refused(answers, 'signed_out', why)
-  if (status === 403) return refused(answers, codeOf(error) ?? 'forbidden', why)
+  // The host's own code is in the reason; the code is the one panels clear on.
+  if (status === 403) return refused(answers, 'forbidden', why)
   if (status !== undefined && status >= 400 && status < 500 && status !== 408) {
     return refused(
       answers,
