@@ -16,6 +16,10 @@ import type {
   PendingEdit,
   ResourceRef,
   Revision,
+  RunSummary,
+  ScmChange,
+  TerminalAdoption,
+  TerminalModes,
   TextChange,
 } from '@/lib/workbench/wire'
 import { STORY_CONVERSATION } from './conversation-fixture'
@@ -53,6 +57,35 @@ export interface FixtureOptions {
   diagnostics?: boolean
   /** The terminal owner offers a recorded session. */
   terminal?: boolean
+  /**
+   * What the host says about its terminal inventory in `terminal.list` (`terminalSessions.adoption`).
+   * Absent is an older host that does not say: the list is never settled.
+   */
+  terminalAdoption?: TerminalAdoption
+  /** The host lists no session at all (an empty inventory), whatever its adoption state. */
+  terminalEmpty?: boolean
+  /** The modes the host reports for the listed session (`TerminalSessionInfo.modes`); absent when the host does not report them. */
+  terminalModes?: TerminalModes
+  /** The chunks the recorded session sends on attach, in place of the default session. */
+  terminalOutput?: string[]
+  /**
+   * `run.list` answers runs that carry how they ended (`RunSummary.exitCode`) and the configuration's
+   * kind (`RunSummary.kind`): one exited 0, one exited 2 and one exited with no code given.
+   */
+  runExits?: boolean
+  /**
+   * The repository's one conflicted file is binary (`scm.conflict` with `binary: true`): a present
+   * side is sent as `""` and the absent base is left out, as the SCM owner sends them.
+   */
+  binaryConflict?: boolean
+  /**
+   * The host answers edits `uncertain` (it may or may not have applied them) until a document is reopened with
+   * a kept draft to offer (the host is back after a reload), so the documents owner holds each edit as pending,
+   * checkpoints it on the device (`documentLocal`) and offers it back, `restored`, when the document is opened
+   * after a reload. From then on the host takes edits as it does by default. The device copy lives in local storage, where the real owner's
+   * `DraftStore` (`documents/local.ts`) keeps a record under `theorem-workbench:draft:<workspace>:<path>`.
+   */
+  holdEdits?: boolean
   /** The documents owner reports this path's disk as changed under the open document. */
   conflict?: string
   /** The signed-in account the story starts as. */
@@ -77,6 +110,44 @@ export interface FixtureHost extends Adapter {
   switchAccount: (next: string) => void
 }
 
+/** A conflicted binary file: both branches changed an image. */
+const BINARY_CONFLICT: ScmChange = {
+  path: 'assets/logo.png',
+  index: 'U',
+  worktree: 'U',
+  conflict: true,
+}
+
+/** The run list of a host that reports exit codes and kinds, as the run owner reads `run.list`'s rows into `RunSummary`. */
+const RUNS_WITH_EXITS: RunSummary[] = [
+  {
+    handle: 'h1',
+    name: 'unit tests (all crates)',
+    command: ['cargo', 'test', '--lib'],
+    state: 'exited',
+    startedAtMs: 1_700_000_000_000,
+    exitCode: 0,
+    kind: 'test',
+  },
+  {
+    handle: 'h2',
+    name: 'integration tests (db)',
+    command: ['cargo', 'test', '--tests'],
+    state: 'exited',
+    startedAtMs: 1_700_000_050_000,
+    exitCode: 2,
+    kind: 'test',
+  },
+  {
+    handle: 'h3',
+    name: 'release build (lto)',
+    command: ['cargo', 'build', '--release'],
+    state: 'exited',
+    startedAtMs: 1_700_000_100_000,
+    kind: 'build',
+  },
+]
+
 const seq = (value: number): Revision => ({ scheme: 'seq', value })
 
 const base64 = (text: string) => {
@@ -100,6 +171,10 @@ const echo = (typed: string) =>
     .replace(/\r\n?|\n/g, '\r\n\u001b[1;32mada@story\u001b[0m:\u001b[1;34m~/project\u001b[0m$ ')
     .replace(/\u007f/g, '\b \b')
 
+/** The key and record the documents owner's `DraftStore` writes for a path (`documents/local.ts`, `nodeId` and `write`). */
+const draftKey = (path: string) => `theorem-workbench:draft:${WORKSPACE}:${path}`
+const DRAFT_SAVED_AT_MS = 1
+
 type Held = {
   text: string
   revision: number
@@ -122,6 +197,8 @@ export function createFixtureHost(
   options: FixtureOptions,
 ): FixtureHost {
   let live = true
+  /** `holdEdits`: the host is reachable again once a kept draft has been offered back. */
+  let hostBack = false
   const tree = options.tree ?? TREE
   const accounts = new Map<string, Kept>()
   let account = options.account ?? 'ada'
@@ -229,7 +306,11 @@ export function createFixtureHost(
   }
   const accept = (effect: Effect, payload?: CompletionPayload) =>
     complete(effect, { status: 'accepted' }, payload)
-  const changes = CHANGES.map((change) => ({ ...change }))
+  const changes = (
+    options.binaryConflict
+      ? [...CHANGES.filter(({ conflict }) => !conflict), BINARY_CONFLICT]
+      : CHANGES
+  ).map((change) => ({ ...change }))
   const refuse = (effect: Effect, reason: string, code = 'owner_unavailable') =>
     complete(effect, { status: 'refused', code, reason })
 
@@ -260,17 +341,21 @@ export function createFixtureHost(
         profiles: [
           { id: 'shell', label: 'Shell', backend: 'native', available: true },
         ],
-        sessions: [
-          {
-            session: TERMINAL_SESSION,
-            profile: 'Shell',
-            backend: 'native',
-            workspace: WORKSPACE,
-            program: 1,
-            state: 'running',
-            controlledElsewhere: false,
-          },
-        ],
+        sessions: options.terminalEmpty
+          ? []
+          : [
+              {
+                session: TERMINAL_SESSION,
+                profile: 'Shell',
+                backend: 'native',
+                workspace: WORKSPACE,
+                program: 1,
+                state: 'running',
+                controlledElsewhere: false,
+                ...(options.terminalModes ? { modes: options.terminalModes } : {}),
+              },
+            ],
+        ...(options.terminalAdoption ? { adoption: options.terminalAdoption } : {}),
       })
     // The conversation owner's first snapshot, as its port sends one at connect.
     if (options.transcript)
@@ -279,6 +364,33 @@ export function createFixtureHost(
         ...snapshotMessage('story-project', thread()),
       })
   })
+
+  const clearDraft = (path: string) => {
+    try {
+      localStorage.removeItem(draftKey(path))
+    } catch {
+      // Nothing was kept.
+    }
+  }
+
+  /** What `restore` in `documents/documents.ts` reads back: each kept edit, `restored`, with the reason it states. */
+  function deviceDraft(path: string, held: Held): PendingEdit[] | undefined {
+    try {
+      const text = localStorage.getItem(draftKey(path))
+      if (!text) return undefined
+      const record = JSON.parse(text) as { draft: string }
+      const edits = JSON.parse(record.draft) as PendingEdit[]
+      hostBack = true
+      held.pending = edits.map((edit) => ({
+        ...edit,
+        state: 'restored' as const,
+        reason: `Kept on this device before a reload, against revision ${edit.baseRevision.value}; the document is at revision ${held.revision}`,
+      }))
+      return held.pending
+    } catch {
+      return undefined
+    }
+  }
 
   function document(effect: Effect): [string, Held] | undefined {
     if (effect.resource.type !== 'document') return undefined
@@ -312,7 +424,8 @@ export function createFixtureHost(
         }
         documents.set(path, held)
         // Unsaved edits this account left behind come back as restored edits, never applied on their own.
-        const restored = kept.checkpoints.get(path)
+        const restored =
+          kept.checkpoints.get(path) ?? (options.holdEdits ? deviceDraft(path, held) : undefined)
         accept(effect, {
           type: 'documentOpened',
           text: held.text,
@@ -327,7 +440,7 @@ export function createFixtureHost(
             resource: effect.resource,
             local: {
               state: 'checkpointed',
-              savedAtMs: 1,
+              savedAtMs: DRAFT_SAVED_AT_MS,
               recovered: true,
             },
           })
@@ -355,7 +468,39 @@ export function createFixtureHost(
       case 'documentEdit': {
         const found = document(effect)
         if (!found) return refuse(effect, 'This document is not open')
-        const [, held] = found
+        const [path, held] = found
+        if (options.holdEdits && !hostBack) {
+          held.pending.push({
+            operationId: effect.payload.operationId,
+            baseRevision: seq(held.revision),
+            edits: effect.payload.edits,
+            state: 'uncertain',
+            reason: 'The host did not answer in time',
+          })
+          send({ type: 'documentLocal', resource: effect.resource, local: { state: 'draft' } })
+          try {
+            localStorage.setItem(
+              draftKey(path),
+              JSON.stringify({
+                workspaceId: WORKSPACE,
+                path,
+                revision: held.revision,
+                draft: JSON.stringify(
+                  held.pending.map(({ operationId, baseRevision, edits }) => ({ operationId, baseRevision, edits })),
+                ),
+                savedAtMs: DRAFT_SAVED_AT_MS,
+              }),
+            )
+          } catch {
+            // Without a store the owner says the draft is held in memory only; a story needs the store.
+          }
+          send({
+            type: 'documentLocal',
+            resource: effect.resource,
+            local: { state: 'checkpointed', savedAtMs: DRAFT_SAVED_AT_MS, recovered: false },
+          })
+          return complete(effect, { status: 'uncertain', reason: 'The host did not answer in time' })
+        }
         held.pending.push({
           operationId: effect.payload.operationId,
           baseRevision: seq(held.revision),
@@ -364,6 +509,12 @@ export function createFixtureHost(
         })
         held.text = applyEdits(held.text, effect.payload.edits)
         held.revision += 1
+        if (options.holdEdits) {
+          // The owner drops an accepted edit from what it holds and says the device copy is no longer needed.
+          held.pending = held.pending.filter(({ operationId }) => operationId !== effect.payload.operationId)
+          if (held.pending.length === 0) clearDraft(path)
+          send({ type: 'documentLocal', resource: effect.resource, local: { state: 'accepted' } })
+        }
         return accept(effect, {
           type: 'documentEdited',
           operationId: effect.payload.operationId,
@@ -378,6 +529,7 @@ export function createFixtureHost(
         held.disk = held.text
         held.pending = []
         kept.checkpoints.delete(found[0])
+        clearDraft(found[0])
         return accept(effect, {
           type: 'documentSaved',
           revision: seq(held.revision),
@@ -402,6 +554,12 @@ export function createFixtureHost(
         return accept(effect)
       case 'documentSettle':
       case 'documentRevert':
+        if (effect.resource.type === 'document') {
+          const settled = effect.kind === 'documentSettle' ? effect.payload.operationId : undefined
+          const held = documents.get(effect.resource.resourceId)
+          if (held) held.pending = settled ? held.pending.filter(({ operationId }) => operationId !== settled) : []
+          if (!held || held.pending.length === 0) clearDraft(effect.resource.resourceId)
+        }
         return accept(effect)
       case 'layoutLoad':
         return accept(effect, {
@@ -458,6 +616,28 @@ export function createFixtureHost(
         }
         return accept(effect, { type: 'scmState', head: HEAD, branch: BRANCH })
       }
+      case 'scmConflict': {
+        // The SCM owner's `ConflictSides`: a binary file's present sides are `""`, an absent one is left out.
+        const change = changes.find(({ path }) => path === effect.payload.path)
+        if (!change || effect.payload.path !== BINARY_CONFLICT.path)
+          return refuse(effect, 'This story has no such conflict')
+        return accept(effect, {
+          type: 'scmConflict',
+          path: change.path,
+          conflict: change.conflict,
+          binary: true,
+          ours: '',
+          theirs: '',
+        })
+      }
+      case 'scmResolve': {
+        const change = changes.find(({ path }) => path === effect.payload.path)
+        if (!change?.conflict) return refuse(effect, 'Not in conflict')
+        change.conflict = false
+        change.index = 'M'
+        change.worktree = ' '
+        return accept(effect, { type: 'scmState', head: HEAD, branch: BRANCH })
+      }
       case 'scmDiff':
         return accept(effect, {
           type: 'scmDiff',
@@ -511,7 +691,8 @@ export function createFixtureHost(
           controlled: true,
         })
         later(() => {
-          for (const chunk of TERMINAL_BEFORE_RESIZE) frame(resource, chunk)
+          for (const chunk of options.terminalOutput ?? TERMINAL_BEFORE_RESIZE)
+            frame(resource, chunk)
         })
         return
       }
@@ -567,7 +748,10 @@ export function createFixtureHost(
       case 'runStart':
         return accept(effect, { type: 'runStarted', handle: 'run-1' })
       case 'runList':
-        return accept(effect, { type: 'runList', runs: RUNS })
+        return accept(effect, {
+          type: 'runList',
+          runs: options.runExits ? RUNS_WITH_EXITS : RUNS,
+        })
       case 'runPoll': {
         const listed = RUNS.find((run) => run.handle === effect.payload.handle)
         // A listed run is one the host already finished or still runs; the one this fixture

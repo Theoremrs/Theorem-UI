@@ -74,6 +74,17 @@ import {
   WorkbenchPickerStory,
   WorkbenchTerminalStory,
 } from '@/components/workbench/workbench-story'
+import { WorkbenchAppearanceStory } from '@/components/workbench/workbench-appearance-story'
+import {
+  WorkbenchChangesBinaryConflictStory,
+  WorkbenchLayoutsPageStory,
+  WorkbenchRunListExitsStory,
+  WorkbenchRecoveryReloadStory,
+  WorkbenchTerminalAdoptionPendingStory,
+  WorkbenchTerminalAdoptionSettledStory,
+  WorkbenchTerminalAdoptionUnavailableStory,
+} from '@/components/workbench/workbench-state-stories'
+import { PALETTE_MATRIX_REGISTRY } from '@/components/workbench/workbench-palette-stories'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
@@ -796,18 +807,25 @@ const ORACLE_RTL_CONTENT = [
 ].join('\n\n')
 
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
+  ...PALETTE_MATRIX_REGISTRY,
   'workbench-default': WorkbenchDefaultStory,
   'workbench-picker': WorkbenchPickerStory,
   'workbench-files': WorkbenchFilesStory,
   'workbench-terminal': WorkbenchTerminalStory,
+  'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
+  'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,
+  'workbench-terminal-adoption-settled': WorkbenchTerminalAdoptionSettledStory,
   'workbench-editor': WorkbenchEditorStory,
   'workbench-editor-conflict': WorkbenchEditorConflictStory,
   'workbench-changes': WorkbenchChangesStory,
+  'workbench-changes-binary-conflict': WorkbenchChangesBinaryConflictStory,
   'workbench-branches': WorkbenchBranchesStory,
   'workbench-search': WorkbenchSearchStory,
   'workbench-diagnostics': WorkbenchDiagnosticsStory,
   'workbench-run': WorkbenchRunStory,
   'workbench-run-list': WorkbenchRunListStory,
+  'workbench-run-list-exits': WorkbenchRunListExitsStory,
+  'workbench-recovery-reload': WorkbenchRecoveryReloadStory,
   'workbench-cabinet': WorkbenchCabinetStory,
   'workbench-cabinet-picker': WorkbenchCabinetPickerStory,
   'workbench-face': WorkbenchFaceStory,
@@ -815,6 +833,8 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-account-switch': WorkbenchAccountSwitchStory,
   'workbench-device-copy': WorkbenchDeviceCopyStory,
   'workbench-arrangements': WorkbenchArrangementsStory,
+  'workbench-layouts-page': WorkbenchLayoutsPageStory,
+  'workbench-appearance': WorkbenchAppearanceStory,
   'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
   'workbench-markdown-source': WorkbenchMarkdownSourceStory,
   'workbench-markdown-split': WorkbenchMarkdownSplitStory,

@@ -1,0 +1,877 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "workbench-palette:changes",
+  "policy_version": "1.0",
+  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "fixture": "workbench-palette-changes-stone-dark",
+  "environment": {
+    "story": "workbench-palette-changes-stone-dark",
+    "surface": "changes",
+    "profile": "stone-dark",
+    "route": "/story/workbench-palette-changes-stone-dark",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "stone",
+    "mode": "dark",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "counts": {
+    "pass": 24,
+    "fail": 0,
+    "review": 4,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "WB-TXT.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 5,
+          "column": 130,
+          "text": "l"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.634145293460579,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 126,
+          "text": "S"
+        },
+        "raw_foreground": "#949291",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.131656850714255,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.focused-row",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "focused-row",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 130,
+          "text": "m"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.853009874949678,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-active",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-active",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 138,
+          "text": "C"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.853009874949678,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-inactive",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-inactive",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#e3e3e2",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 11.024182123078434,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 35,
+          "column": 33,
+          "text": "c"
+        },
+        "raw_foreground": "#d0b785",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.170309963668123,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.success",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 6,
+          "column": 128,
+          "text": "A"
+        },
+        "raw_foreground": "#7ee787",
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 10.345169643590012,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.error",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 15,
+          "column": 128,
+          "text": "D"
+        },
+        "raw_foreground": "#db868b",
+        "palette_fields": {
+          "fg": [
+            "error"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.90013997367364,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning-on-focus",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning-on-focus",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 128,
+          "text": "M"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": false
+        },
+        "bound_to_expected_palette_fields": false
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.853009874949678,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted-on-focus",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted-on-focus",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 151,
+          "text": "d"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": false
+        },
+        "bound_to_expected_palette_fields": false
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.853009874949678,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-added",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-added",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 13,
+          "column": 148,
+          "text": "h"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.885060213011391,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-removed",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-removed",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 155,
+          "text": ";"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.02526644396225,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-added-words-changes",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-added-words-changes",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 149,
+          "text": "s"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedWords"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 6.929155703143615,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-removed-words",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-removed-words",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 138,
+          "text": "p"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedWords"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 6.898009055585258,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.tab-fill",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 138,
+          "text": "C"
+        },
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "inactive-tab-fill"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.213159135746005,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.separator",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "separator",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5079133304739059,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.composer-border",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "composer-border",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 33,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5079133304739059,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.diff-added-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "diff-added-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 13,
+          "column": 148,
+          "text": "h"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.0843083853671827,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.diff-removed-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "diff-removed-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 155,
+          "text": ";"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.0674638087727213,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-DONOR.derived-bg",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-bg",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.020219326090084234,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-raised",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-raised",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.020163398016089976,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-line",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-line",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.019727311400474203,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-ink",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.02023258876528053,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-muted",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.015639095100120976,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-success",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-warning",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.019530034584084324,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-error",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.015049427574718761,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-accent",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-accent",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-stone-dark",
+        "against": "workbench-palette-changes-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.017792056997593605,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}

@@ -1,0 +1,1009 @@
+{
+  "source_revision": "123e1c609a20c3b08aa8fb643f67a7502f2f8420+worktree",
+  "fixture": "workbench-palette-chat-github-sharp-dark",
+  "environment": {
+    "story": "workbench-palette-chat-github-sharp-dark",
+    "surface": "chat",
+    "profile": "github-sharp-dark",
+    "route": "/story/workbench-palette-chat-github-sharp-dark",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "github-sharp",
+    "mode": "dark",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "observations": {
+    "ink": {
+      "kind": "rendered_web",
+      "foreground": "#cad0d4",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 34,
+          "text": "I"
+        },
+        "raw_foreground": "#cad0d4",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "muted": {
+      "kind": "rendered_web",
+      "foreground": "#92989c",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 35,
+          "column": 33,
+          "text": "E"
+        },
+        "raw_foreground": "#92989c",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "selection": {
+      "kind": "rendered_web",
+      "foreground": "#e6eaec",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 3,
+          "column": 128,
+          "text": "C"
+        },
+        "raw_foreground": "#e6eaec",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#22272e",
+      "background": "#8aa8a0",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 32,
+          "text": "T"
+        },
+        "raw_foreground": "#22272e",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-inactive": {
+      "kind": "rendered_web",
+      "foreground": "#e6eaec",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#e6eaec",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "warning": {
+      "kind": "rendered_web",
+      "foreground": "#d6bc8a",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 24,
+          "column": 34,
+          "text": "?"
+        },
+        "raw_foreground": "#d6bc8a",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "success": {
+      "kind": "rendered_web",
+      "foreground": "#7ee787",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 6,
+          "column": 34,
+          "text": "✓"
+        },
+        "raw_foreground": "#7ee787",
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "link": {
+      "kind": "rendered_web",
+      "foreground": "#58a6ff",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 34,
+          "text": "@"
+        },
+        "raw_foreground": "#58a6ff",
+        "palette_fields": {
+          "fg": [
+            "link"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "heading": {
+      "kind": "rendered_web",
+      "foreground": "#e6eaec",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 6,
+          "column": 36,
+          "text": "r"
+        },
+        "raw_foreground": "#e6eaec",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "code": {
+      "kind": "rendered_web",
+      "foreground": "#8aa8a0",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 18,
+          "column": 38,
+          "text": "l"
+        },
+        "raw_foreground": "#8aa8a0",
+        "palette_fields": {
+          "fg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "diff-added": {
+      "kind": "rendered_web",
+      "foreground": "#cad0d4",
+      "background": "#223023",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 42,
+          "text": "l"
+        },
+        "raw_foreground": "#cad0d4",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "diff-removed": {
+      "kind": "rendered_web",
+      "foreground": "#cad0d4",
+      "background": "#382825",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 42,
+          "text": "l"
+        },
+        "raw_foreground": "#cad0d4",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "diff-added-words": {
+      "kind": "rendered_web",
+      "foreground": "#cad0d4",
+      "background": "#014412",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 69,
+          "text": ";"
+        },
+        "raw_foreground": "#cad0d4",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedWords"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "focus-indicator": {
+      "kind": "rendered_web",
+      "foreground": "#8aa8a0",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 33,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "selection-fill": {
+      "kind": "rendered_web",
+      "foreground": "#2a303b",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 3,
+          "column": 128,
+          "text": "C"
+        },
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      }
+    },
+    "tab-fill": {
+      "kind": "rendered_web",
+      "foreground": "#8aa8a0",
+      "background": "#2a303b",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 32,
+          "text": "T"
+        },
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "inactive-tab-fill"
+      }
+    },
+    "separator": {
+      "kind": "rendered_web",
+      "foreground": "#3d4450",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "diff-added-fill": {
+      "kind": "rendered_web",
+      "foreground": "#223023",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 42,
+          "text": "l"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      }
+    },
+    "diff-removed-fill": {
+      "kind": "rendered_web",
+      "foreground": "#382825",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 42,
+          "text": "l"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      }
+    },
+    "syntax-keyword": {
+      "kind": "rendered_web",
+      "foreground": "#ff7b72",
+      "background": "#382825",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 36,
+          "text": "-"
+        },
+        "palette_fields": {
+          "fg": [
+            "syntaxKeyword"
+          ],
+          "bg": [
+            "removedLine"
+          ]
+        }
+      }
+    },
+    "syntax-string": {
+      "kind": "tokens",
+      "foreground": "#a5d6ff",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "palette in use: the set_palette argument (wasmPalette of the live roles); no rendered cell paints this role"
+      }
+    },
+    "syntax-number": {
+      "kind": "tokens",
+      "foreground": "#79c0ff",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "palette in use: the set_palette argument (wasmPalette of the live roles); no rendered cell paints this role"
+      }
+    },
+    "syntax-function": {
+      "kind": "tokens",
+      "foreground": "#d2a8ff",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "palette in use: the set_palette argument (wasmPalette of the live roles); no rendered cell paints this role"
+      }
+    },
+    "syntax-variable": {
+      "kind": "tokens",
+      "foreground": "#ffa657",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "palette in use: the set_palette argument (wasmPalette of the live roles); no rendered cell paints this role"
+      }
+    },
+    "syntax-type": {
+      "kind": "tokens",
+      "foreground": "#ffa657",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "palette in use: the set_palette argument (wasmPalette of the live roles); no rendered cell paints this role"
+      }
+    },
+    "syntax-tag": {
+      "kind": "rendered_web",
+      "foreground": "#7ee787",
+      "background": "#223023",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 36,
+          "text": "+"
+        },
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "addedLine"
+          ]
+        }
+      }
+    },
+    "syntax-comment": {
+      "kind": "rendered_web",
+      "foreground": "#8e98a2",
+      "background": "#22272e",
+      "provenance": {
+        "story": "workbench-palette-chat-github-sharp-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 9,
+          "column": 36,
+          "text": "@"
+        },
+        "palette_fields": {
+          "fg": [
+            "syntaxComment"
+          ],
+          "bg": [
+            "bg"
+          ]
+        }
+      }
+    }
+  },
+  "palette_in_use": {
+    "bg": "#22272e",
+    "raised": "#2a303b",
+    "line": "#3d4450",
+    "ink": "#cad0d4",
+    "bright": "#e6eaec",
+    "muted": "#92989c",
+    "idle": "#6e7478",
+    "sage": "#8aa8a0",
+    "gold": "#d6bc8a",
+    "error": "#e08a8f",
+    "removedLine": "#382825",
+    "addedLine": "#223023",
+    "removedWords": "#67231f",
+    "addedWords": "#014412",
+    "commentOnWords": "#9aa4ae",
+    "heading": "#e6eaec",
+    "accent": "#8aa8a0",
+    "focus": "#8aa8a0",
+    "selection": "#2a303b",
+    "disabled": "#6e7478",
+    "deep": "#14191f",
+    "warning": "#d6bc8a",
+    "success": "#7ee787",
+    "link": "#58a6ff",
+    "approval": "#d6bc8a",
+    "syntaxKeyword": "#ff7b72",
+    "syntaxString": "#a5d6ff",
+    "syntaxNumber": "#79c0ff",
+    "syntaxFunction": "#d2a8ff",
+    "syntaxVariable": "#ffa657",
+    "syntaxType": "#ffa657",
+    "syntaxTag": "#7ee787",
+    "syntaxComment": "#8e98a2"
+  },
+  "palette_diagnostics": [
+    "syntax.comment: lifted to read"
+  ],
+  "roles": [
+    {
+      "role": "ink",
+      "y": 4,
+      "x": 34,
+      "text": "I read the log first",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "muted",
+      "y": 35,
+      "x": 33,
+      "text": "Enter steers the run",
+      "fg": [
+        "muted"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "selection",
+      "y": 3,
+      "x": 128,
+      "text": "Changes",
+      "fg": [
+        "bright",
+        "heading"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-active",
+      "y": 0,
+      "x": 32,
+      "text": "Theo",
+      "fg": [
+        "bg"
+      ],
+      "bg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-inactive",
+      "y": 0,
+      "x": 1,
+      "text": "Files",
+      "fg": [
+        "bright",
+        "heading"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "warning",
+      "y": 24,
+      "x": 34,
+      "text": "? edit_file",
+      "fg": [
+        "gold",
+        "warning",
+        "approval"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "success",
+      "y": 6,
+      "x": 34,
+      "text": "✓ read_file",
+      "fg": [
+        "success",
+        "syntaxTag"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "link",
+      "y": 2,
+      "x": 34,
+      "text": "@build.log",
+      "fg": [
+        "link"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "heading",
+      "y": 6,
+      "x": 36,
+      "text": "read_file",
+      "fg": [
+        "bright",
+        "heading"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "code",
+      "y": 18,
+      "x": 38,
+      "text": "let width = self.area.width",
+      "fg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "diff-added",
+      "y": 12,
+      "x": 42,
+      "text": "let width = self.area.width",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "addedLine"
+      ],
+      "matches": true
+    },
+    {
+      "role": "diff-removed",
+      "y": 11,
+      "x": 42,
+      "text": "let width = self.area.width",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "removedLine"
+      ],
+      "matches": true
+    },
+    {
+      "role": "diff-added-words",
+      "y": 12,
+      "x": 69,
+      "text": "width;",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "addedWords"
+      ],
+      "matches": true
+    },
+    {
+      "role": "focus-indicator",
+      "y": 33,
+      "x": 31,
+      "text": "╭─",
+      "fg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "selection-fill",
+      "y": 3,
+      "x": 128,
+      "text": "Changes",
+      "fg": [
+        "bright",
+        "heading"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-fill",
+      "y": 0,
+      "x": 32,
+      "text": "Theo",
+      "fg": [
+        "bg"
+      ],
+      "bg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "matches": true
+    },
+    {
+      "role": "separator",
+      "y": 2,
+      "x": 30,
+      "text": "│",
+      "fg": [
+        "line"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "diff-added-fill",
+      "y": 12,
+      "x": 42,
+      "text": "let width = self.area.width",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "addedLine"
+      ],
+      "matches": true
+    },
+    {
+      "role": "diff-removed-fill",
+      "y": 11,
+      "x": 42,
+      "text": "let width = self.area.width",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "removedLine"
+      ],
+      "matches": true
+    }
+  ],
+  "pixel_confirmation": [
+    {
+      "label": "pane background",
+      "row": 6,
+      "column": 1,
+      "glyph": " ",
+      "dom": "#22272e",
+      "pixel": "#22272e",
+      "equal": true
+    },
+    {
+      "label": "active tab fill",
+      "row": 0,
+      "column": 31,
+      "glyph": " ",
+      "dom": "#8aa8a0",
+      "pixel": "#8aa8a0",
+      "equal": true
+    },
+    {
+      "label": "inactive tab fill",
+      "row": 0,
+      "column": 0,
+      "glyph": " ",
+      "dom": "#2a303b",
+      "pixel": "#2a303b",
+      "equal": true
+    },
+    {
+      "label": "added line fill",
+      "row": 12,
+      "column": 41,
+      "glyph": " ",
+      "dom": "#223023",
+      "pixel": "#223023",
+      "equal": true
+    },
+    {
+      "label": "removed line fill",
+      "row": 11,
+      "column": 41,
+      "glyph": " ",
+      "dom": "#382825",
+      "pixel": "#382825",
+      "equal": true
+    },
+    {
+      "label": "added words fill",
+      "row": 12,
+      "column": 69,
+      "glyph": ";",
+      "dom": "#014412",
+      "pixel": "#014412",
+      "equal": true
+    },
+    {
+      "label": "selected row fill",
+      "row": 3,
+      "column": 127,
+      "glyph": " ",
+      "dom": "#2a303b",
+      "pixel": "#2a303b",
+      "equal": true
+    }
+  ],
+  "notes": []
+}

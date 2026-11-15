@@ -9,6 +9,9 @@
 //   node scripts/story-oracle.mjs motion <id>        animation names, and two frames 400ms apart
 //   node scripts/story-oracle.mjs interact <id>      real key presses on a fresh story, read back from the page text
 //                                                    (and a screenshot after a wait), for the stories with a scenario
+//   node scripts/story-oracle.mjs palette capture <surface|all> [profile]
+//   node scripts/story-oracle.mjs palette evaluate | sheets | face
+//                                                    the workbench palette matrix (see story-oracle-palette.mjs)
 //
 // STORY_ORIGIN picks the dev server. A collage's number is reported, never a verdict: a person seals it.
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
@@ -34,7 +37,7 @@ const list = async () => {
   return response.json()
 }
 
-async function withPage(story, run, { reducedMotion = 'reduce' } = {}) {
+async function withPage(story, run, { reducedMotion = 'reduce', deviceScaleFactor = 1 } = {}) {
   const browser = await chromium.launch()
   try {
     const context = await browser.newContext({
@@ -42,7 +45,7 @@ async function withPage(story, run, { reducedMotion = 'reduce' } = {}) {
       viewport: { width: Math.max(story.viewport.width, 1280), height: story.viewport.height },
       colorScheme: 'dark',
       reducedMotion,
-      deviceScaleFactor: 1,
+      deviceScaleFactor,
     })
     const page = await context.newPage()
     const failures = []
@@ -200,6 +203,62 @@ const sees = async (page, needle, ms = 4000) => {
   return false
 }
 
+/** A clip of the first 1280x640 of the page, the size every workbench story is shown at. */
+const snap = (page, name, width = 1280, height = 640) => page.screenshot({ path: renderPath(name), clip: { x: 0, y: 0, width, height } })
+
+/**
+ * Records every effect kind the core asks the host for (the story box's `data-last-effect`, changed),
+ * in order, into `window.__effects`: the last effect alone is overwritten by the refresh that follows.
+ */
+const recordEffects = (page) =>
+  page.evaluate(() => {
+    const box = document.querySelector('[data-workbench-story]')
+    window.__effects = []
+    new MutationObserver(() => window.__effects.push(box.dataset.lastEffect)).observe(box, { attributes: true, attributeFilter: ['data-last-effect'] })
+  })
+const effectsSince = (page, from = 0) => page.evaluate((n) => window.__effects.slice(n), from)
+
+/**
+ * The workbench's groups as the tab row draws them: each group's tabs in order, the active tab of each
+ * (the tab with the strongest fill in its group) and the focused panel (the one tab with the accent fill).
+ * Read from the cell styles of the grid's first row; a group that is not on that row is not seen.
+ */
+const layoutOf = (page) =>
+  page.evaluate(() => {
+    const grid = document.querySelector('[id$=_ratzilla_grid]')
+    const cells = [...grid.children[0].children].map((c) => ({ ch: c.textContent || ' ', bg: c.style.backgroundColor }))
+    const text = cells.map((c) => c.ch).join('')
+    const strength = (bg) => {
+      const rgb = (bg.match(/\d+/g) ?? []).slice(0, 3).map(Number)
+      return Math.max(...rgb) - Math.min(...rgb)
+    }
+    const groups = []
+    let from = 0
+    for (const part of text.split('\u2502')) {
+      const tabs = []
+      const re = /([^\s\u00d7][^\u00d7]*?) \u00d7/g
+      let m
+      while ((m = re.exec(part))) tabs.push({ name: m[1].trim(), strength: strength(cells[from + m.index].bg) })
+      from += part.length + 1
+      if (tabs.length) groups.push(tabs)
+    }
+    const focus = groups.flat().filter((t) => t.strength >= 25)
+    const dividers = [...text].flatMap((c, i) => (c === '\u2502' ? [i] : []))
+    return {
+      dividers,
+      groups: groups.map((tabs) => ({ tabs: tabs.map((t) => t.name), active: tabs.reduce((a, b) => (b.strength > a.strength ? b : a)).name })),
+      focused: focus.length === 1 ? focus[0].name : focus.map((t) => t.name).join('+') || null,
+    }
+  })
+const describeLayout = (l) => `${l.groups.map((g) => `[${g.tabs.map((t) => (t === g.active ? `${t}*` : t)).join(' ')}]`).join(' ')} focus ${l.focused}`
+
+/** Opens the Shell tool's chooser by its chord and reads the words it shows. */
+const openShellChooser = async (page) => {
+  await page.waitForTimeout(500)
+  await page.keyboard.press(`${CHORD}s`)
+  return sees(page, 'Nothing starts until you choose a row', 6000)
+}
+
 /** Real key presses per story; each scenario returns named checks, true when the page text agrees. */
 const SCENARIOS = {
   'workbench-default': [
@@ -239,6 +298,116 @@ const SCENARIOS = {
       return { 'the host list is shown': listed, 'attaching reads the run': await sees(page, 'FAILED') }
     },
   ],
+  // The host's run list with exit codes and kinds, at the default (narrow, 46-cell) tools pane and at a wide one.
+  // Typing is kept on this device while the host cannot confirm it; after a real reload the file is reopened by keyboard and the owner offers the kept edits back.
+  'workbench-recovery-reload': [
+    async (page) => {
+      const snapNow = (name) => snap(page, `workbench-recovery-reload-${name}`)
+      const openNotes = async () => {
+        await page.keyboard.press(`${CHORD}e`)
+        await page.waitForTimeout(400)
+        await page.keyboard.press('ArrowDown')
+        await page.keyboard.press('ArrowDown')
+        await page.keyboard.press('Enter')
+        await sees(page, 'architecture.md', 4000)
+        for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+        await page.keyboard.press('Enter')
+      }
+      await page.waitForTimeout(500)
+      await openNotes()
+      await sees(page, 'notes.txt', 6000)
+      await page.waitForTimeout(500)
+      await page.keyboard.type('zzdraft', { delay: 30 })
+      const typed = await sees(page, 'zzdraft')
+      await page.waitForTimeout(1500)
+      // The editor column: the text after the last column rule of every row, wrapped lines joined.
+      const editor = async () => (await pageText(page)).split('\n').map((l) => l.split('\u2502').pop().trim()).join(' ')
+      const drafts = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.startsWith('theorem-workbench:draft:')).length)
+      const keptBefore = await sees(page, 'kept, unsaved', 6000)
+      const heldWords = (await editor()).includes('Unknown whether the owner took an edit')
+      await snapNow('typed')
+      const storedBefore = await drafts()
+      await page.reload()
+      await page.waitForFunction(() => { const el = document.querySelector('[data-workbench-story]'); return el && !el.hasAttribute('data-story-pending') }, null, { timeout: 30000 })
+      await page.waitForTimeout(800)
+      await page.locator('textarea').first().focus()
+      const gone = !(await has(page, 'zzdraft'))
+      const survived = (await drafts()) === 1
+      await openNotes()
+      await sees(page, 'notes.txt', 6000)
+      await sees(page, 'Keep recovered', 6000)
+      await page.waitForTimeout(800)
+      await snapNow('offer')
+      const offer = await editor()
+      const chord = /Keep recovered Alt\+(\w)/.exec(offer)?.[1]
+      const bar = offer.includes('Edits recovered from this device are in the text. Nothing is sent until you choose.')
+      const reason = offer.includes('Kept on this device before a reload, against revision 1; the document is at revision 1')
+      const status = offer.includes('kept, unsaved') && offer.includes('recov')
+      const untouched = (await drafts()) === 1
+      const firstLine = (await pageText(page)).split('\n').map((l) => l.split('\u2502').pop().trim()).find((l) => /^1 /.test(l)) ?? ''
+      if (chord) await page.keyboard.press(`Alt+${chord}`)
+      await page.waitForTimeout(1500)
+      await snapNow('placed')
+      const after = await editor()
+      return {
+        typed,
+        'the held edit is reported as unknown, never as saved': heldWords,
+        'status says the typing is kept on this device and unsaved': keptBefore,
+        'a device draft record exists before the reload': storedBefore === 1,
+        'the reload dropped the typing from the page': gone,
+        'the device draft survived the reload': survived,
+        'the offer says the edits are in the text and nothing is sent': bar,
+        'the offer says where they were kept and against which revision': reason,
+        'the offer names its chord and the status says recovered and kept': Boolean(chord) && status,
+        'nothing was sent or dropped by merely offering': untouched,
+        'the first typed edit is in the text before the choice': /^1 z/.test(firstLine),
+        'everything typed is in the text before the choice': /^1 zzdraft/.test(firstLine),
+        'the chord says the edits are sent as new edits': after.includes('Kept the recovered edits. They are sent as new edits on the current text.'),
+        'once the host takes them the status no longer says kept': !after.includes('kept, unsaved') && (await drafts()) === 0,
+        'the placed text is still in the document': /^1 z/.test((await pageText(page)).split('\n').map((l) => l.split('\u2502').pop().trim()).find((l) => /^1 /.test(l)) ?? ''),
+      }
+    },
+  ],
+  'workbench-run-list-exits': [
+    async (page) => {
+      // The run rows of the tools pane: the text after the last column rule.
+      const rows = async () => (await pageText(page)).split('\n').map((l) => l.split('\u2502').pop().trimEnd()).filter((l) => /^exited/.test(l))
+      const find = (list, name) => list.find((l) => l.includes(name)) ?? ''
+      const listed = await sees(page, 'exited with code 2', 6000)
+      const narrow = await rows()
+      await snap(page, 'workbench-run-list-exits-narrow')
+      // Widen the tools group by dragging its splitter left with the mouse.
+      await page.mouse.move(931, 300)
+      await page.mouse.down()
+      await page.mouse.move(800, 300, { steps: 6 })
+      await page.mouse.move(600, 300, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(800)
+      const wide = await rows()
+      await snap(page, 'workbench-run-list-exits-wide')
+      const kinds = (list) => ({
+        unit: /unit tests \(all crates\) {2}test( |$)/.test(find(list, 'unit tests')),
+        integration: /integration tests \(db\) {2}test( |$)/.test(find(list, 'integration tests')),
+        build: /release build \(lto\) {2}build( |$)/.test(find(list, 'release build')),
+      })
+      const states = (list) =>
+        find(list, 'unit tests').startsWith('exited with code 0  ') &&
+        find(list, 'integration tests').startsWith('exited with code 2  ') &&
+        find(list, 'release build').startsWith('exited (no code given)  ')
+      const whole = (list) => ['unit tests (all crates)', 'integration tests (db)', 'release build (lto)'].every((n) => list.join('\n').includes(n))
+      const wideKinds = kinds(wide)
+      const narrowKinds = kinds(narrow)
+      return {
+        'the runs are listed': listed,
+        'narrow: exited with code 0, exited with code 2 and exited (no code given) are said in full': narrow.length === 3 && states(narrow),
+        'narrow: the names are whole': whole(narrow),
+        'narrow: the kind label is dropped on every row before a name is cut': !narrowKinds.unit && !narrowKinds.integration && !narrowKinds.build,
+        'wide: the same three states': wide.length === 3 && states(wide),
+        'wide: the kind label (test, test, build) follows each name': wideKinds.unit && wideKinds.integration && wideKinds.build,
+        'wide: the names are whole': whole(wide),
+      }
+    },
+  ],
   // Type in Visual, switch to Source with Alt+2 and see it, undo.
   'workbench-markdown-visual': [
     async (page) => {
@@ -273,6 +442,95 @@ const SCENARIOS = {
       await page.keyboard.type('echo hi')
       await page.keyboard.press('Enter')
       return { 'the shell echoes the line': await sees(page, 'echo hi') }
+    },
+  ],
+  // The Shell chooser, by keyboard, against each state the host's terminal list can be in.
+  'workbench-terminal-adoption-pending': [
+    async (page) => {
+      const opened = await openShellChooser(page)
+      const text = await pageText(page)
+      await snap(page, 'workbench-terminal-adoption-pending', 1600)
+      return {
+        'the chooser opens': opened,
+        'says the host is still looking and the list may be incomplete': text.includes('The host is still looking for running terminals. This list may be incomplete.'),
+        'the heading says none are listed yet': text.includes('No sessions listed yet'),
+        'it does not claim there are no sessions': !text.includes('No existing sessions to attach to'),
+        'it does not say the host cannot list': !text.includes('cannot list its terminals'),
+      }
+    },
+  ],
+  'workbench-terminal-adoption-unavailable': [
+    async (page) => {
+      const opened = await openShellChooser(page)
+      const text = await pageText(page)
+      await snap(page, 'workbench-terminal-adoption-unavailable', 1600)
+      return {
+        'the chooser opens': opened,
+        'says the host cannot list its terminals, then the reason': text.includes('The host cannot list its terminals: the Herdr socket is not answering'),
+        'the heading says none are listed yet': text.includes('No sessions listed yet'),
+        'it does not claim there are no sessions': !text.includes('No existing sessions to attach to'),
+        'it does not say the list is merely incomplete': !text.includes('This list may be incomplete'),
+      }
+    },
+  ],
+  'workbench-terminal-adoption-settled': [
+    async (page) => {
+      const opened = await openShellChooser(page)
+      const text = await pageText(page)
+      await snap(page, 'workbench-terminal-adoption-settled', 1600)
+      return {
+        'the chooser opens': opened,
+        'the heading says there are no existing sessions': text.includes('No existing sessions to attach to'),
+        'no incomplete-list note': !text.includes('This list may be incomplete') && !text.includes('cannot list its terminals'),
+        'it does not say none are listed yet': !text.includes('No sessions listed yet'),
+      }
+    },
+  ],
+  // A conflicted binary file: open it by keyboard, read the words, take a side.
+  'workbench-changes-binary-conflict': [
+    async (page) => {
+      await page.waitForTimeout(500)
+      await recordEffects(page)
+      await page.keyboard.press('Escape')
+      await page.keyboard.press('Home')
+      await page.waitForTimeout(300)
+      const listed = await has(page, 'logo.png')
+      await page.keyboard.press('Enter')
+      const opened = await sees(page, 'Conflict: assets/logo.png', 6000)
+      const text = await pageText(page)
+      await snap(page, 'workbench-changes-binary-conflict-open')
+      const lines = text.split('\n').map((l) => l.split('\u2502').pop().trim())
+      const asked = await effectsSince(page)
+      const mark = asked.length
+      // `e` (merge by hand) has nothing to open for a binary file.
+      await page.keyboard.press('e')
+      await page.waitForTimeout(400)
+      const afterE = await pageText(page)
+      await page.keyboard.press('o')
+      const confirming = await sees(page, 'Take ours for assets/logo.png?', 4000)
+      const warned = await has(page, 'The file becomes our side whole.')
+      const lossFull = await has(page, 'The lines only the other side has are lost.')
+      await snap(page, 'workbench-changes-binary-conflict-confirm')
+      await page.keyboard.press('Enter')
+      await page.waitForTimeout(800)
+      const sent = await effectsSince(page, mark)
+      const after = await pageText(page)
+      await snap(page, 'workbench-changes-binary-conflict-taken')
+      return {
+        'the conflicted file is listed': listed,
+        'Enter opens its sides': opened,
+        'the core asked the host for the conflict': asked.includes('scmConflict'),
+        'says the file is binary and its sides cannot be shown as text': text.includes('This file is binary. Its sides cannot be shown as text.'),
+        'the hint is o take ours   t take theirs, with no merge by hand': text.includes('o take ours   t take theirs') && !text.includes('merge by hand'),
+        'both sides are labelled not shown as text': lines.filter((l) => l === 'Binary: not shown as text.').length === 2,
+        'no side text is drawn (no numbered lines, no empty-file or no-file line)': !lines.some((l) => /^\d+ /.test(l)) && !text.includes('The file is empty.') && !text.includes('This side has no file.'),
+        'the absent base is not shown': !text.includes('Base (the common ancestor)'),
+        'e does nothing for a binary file': afterE.includes('This file is binary.') && !afterE.includes('merge by hand'),
+        'o asks first: Take ours, whole side': confirming && warned,
+        'the loss warning is shown in full, not cut off at the pane edge': lossFull,
+        'confirming sends scmResolve to the host': sent.includes('scmResolve'),
+        'the file leaves Conflicted': !after.includes('Conflicted 1') && !after.includes('! logo.png'),
+      }
     },
   ],
   // Arrow to a finding, Enter opens the file at its line.
@@ -341,10 +599,22 @@ const SCENARIOS = {
       await page.screenshot({ path: renderPath('workbench-account-switch-grace'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
       await control('switch-ada')
       await page.waitForTimeout(1500)
-      await page.screenshot({ path: renderPath('workbench-account-switch-ada'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      // The switch closed the document with the rest of the old account's panels, so on return
+      // the layout is the default one: the file is reopened from Files by the keyboard.
+      const closed = !(await has(page, 'notes.txt \u00d7'))
+      await page.keyboard.press(`${CHORD}e`)
+      await page.waitForTimeout(400)
+      // The same Files steps the story's own script opens the note with.
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+      await sees(page, 'architecture.md', 4000)
+      for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
       const offered = await sees(page, 'recovered', 6000)
+      await page.screenshot({ path: renderPath('workbench-account-switch-ada'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
       const notSent = !((await pageText(page)).split('\n').some((l) => /^\d+ zzdraft/.test(l)))
-      return { typed, 'old draft gone after the switch': gone, 'restored edit offered on return': offered, 'not applied on its own': notSent }
+      return { typed, 'old draft gone after the switch': gone, 'the document is not left open across accounts': closed, 'restored edit offered when the file is reopened': offered, 'not applied on its own': notSent }
     },
   ],
   // The account's layout failed to load; the device copy is labelled and a save is refused with the reason.
@@ -354,6 +624,44 @@ const SCENARIOS = {
       await page.screenshot({ path: renderPath('workbench-device-copy-label'), clip: { x: 0, y: 0, width: 1280, height: 640 } })
       await page.evaluate(() => document.querySelector('[data-story-control="save-mine"]')?.click())
       return { 'the device copy is labelled': labelled, 'the save was refused with the reason': await sees(page, 'not saved', 6000) }
+    },
+  ],
+  // A saved layout carries the theme it was saved in; applying it by key restores that theme, a preset does not touch it.
+  'workbench-appearance': [
+    async (page) => {
+      const control = (name) => page.evaluate((n) => document.querySelector(`[data-story-control="${n}"]`)?.click(), name)
+      const theme = () => page.evaluate(() => { const d = document.querySelector('[data-workbench-story]')?.dataset ?? {}; return `${d.appearancePreset}/${d.appearancePalette}` })
+      const shot = (n) => page.screenshot({ path: renderPath(`workbench-appearance-${n}`), clip: { x: 0, y: 0, width: 1280, height: 640 } })
+      await page.waitForTimeout(800)
+      const start = await theme()
+      await control('save-mine')
+      await page.waitForTimeout(800)
+      await control('theme-other')
+      await page.waitForTimeout(600)
+      const other = await theme()
+      // The Layouts page by key; the filter narrows it to Mine, whose row carries the theme mark.
+      await page.keyboard.press(`${CHORD}l`)
+      await page.waitForTimeout(500)
+      await page.keyboard.type('Mine', { delay: 30 })
+      await page.waitForTimeout(500)
+      const marked = (await pageText(page)).split('\n').some((l) => l.includes('Mine') && l.includes('theme'))
+      await shot('layouts')
+      await page.keyboard.press('Enter')
+      await page.waitForTimeout(1000)
+      const restored = await theme()
+      await shot('applied')
+      // A preset leaves the theme as the person has it now.
+      await control('theme-other')
+      await page.waitForTimeout(600)
+      await page.keyboard.press(`${CHORD}F2`)
+      await page.waitForTimeout(800)
+      const afterPreset = await theme()
+      return {
+        'the story starts in one theme and the switch changes it': start !== other,
+        'the Mine row shows the theme mark': marked,
+        'applying Mine from the Layouts page restores the saved theme': restored === start,
+        'a preset apply does not change the theme': afterPreset === other,
+      }
     },
   ],
   // Presets by key, a saved name kept across a reload.
@@ -430,6 +738,103 @@ const SCENARIOS = {
       }
     },
   ],
+  // The picker's Layouts page, by keyboard only: arrange, save as Mine, apply a preset, apply Mine again, rename, delete.
+  'workbench-layouts-page': [
+    async (page) => {
+      const say = async (keys) => {
+        for (const k of keys) {
+          await page.keyboard.press(k)
+          await page.waitForTimeout(350)
+        }
+        await page.waitForTimeout(500)
+      }
+      const typed = async (text) => {
+        await page.keyboard.type(text, { delay: 40 })
+        await page.waitForTimeout(400)
+      }
+      const notice = async () => (await pageText(page)).split('\n').flatMap((l) => (l.match(/Layout: [^\u2502]*?(?=\s{2,}|$)/) ?? []).map((m) => m.trim())).join(' / ')
+      const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+      await page.waitForTimeout(800)
+      const start = describeLayout(await layoutOf(page))
+      // Arrange: Changes (opens in the tools group, focused), moved left into the Theo group; Shell opens in the
+      // tools group; then back to Changes.
+      await say([`${CHORD}g`, `${CHORD}Shift+ArrowLeft`, `${CHORD}s`, `${CHORD}ArrowLeft`])
+      // Widen the Files group (to its left) and come back to Changes, so the group sizes are not the defaults.
+      const defaults = (await layoutOf(page)).dividers
+      await say([`${CHORD}ArrowLeft`, `${CHORD}]`, `${CHORD}]`, `${CHORD}]`, `${CHORD}ArrowRight`])
+      const arranged = await layoutOf(page)
+      await snap(page, 'workbench-layouts-page-arranged')
+      // Save it as Mine: Mod+Alt+B opens the name entry, then the name and Enter.
+      await say([`${CHORD}b`])
+      const asking = await sees(page, 'Save layout as:', 3000)
+      await typed('Mine')
+      await say(['Enter'])
+      const saved = await layoutOf(page)
+      const savedNotice = await notice()
+      await snap(page, 'workbench-layouts-page-saved')
+      // The Editor preset.
+      await say([`${CHORD}F2`])
+      const editor = await layoutOf(page)
+      const editorNotice = await notice()
+      await snap(page, 'workbench-layouts-page-editor')
+      // The Layouts page by its chord, Mine chosen by typing its name and Enter.
+      await say([`${CHORD}w`])
+      const page1 = await pageText(page)
+      const onPage = page1.includes('Layouts') && page1.includes('Mine') && page1.includes('Save layout as\u2026')
+      await snap(page, 'workbench-layouts-page-list')
+      await typed('Mine')
+      await say(['Enter'])
+      const applied = await layoutOf(page)
+      const appliedNotice = await notice()
+      await snap(page, 'workbench-layouts-page-applied')
+      // Rename: the page, Mine highlighted by its name, Mod+Alt+R, the name continued, Enter.
+      await say([`${CHORD}w`])
+      await typed('Mine')
+      await say([`${CHORD}r`])
+      const renaming = await sees(page, 'Rename "Mine" to: Mine', 3000)
+      await typed(' two')
+      await say(['Enter'])
+      await sees(page, '\u25a0 Mine two', 4000)
+      const afterRename = await pageText(page)
+      const renameNotice = await notice()
+      const listedTwo = afterRename.includes('Mine two')
+      const noOldName = !/\u25a0 Mine(?! two)/.test(afterRename)
+      await snap(page, 'workbench-layouts-page-renamed')
+      // Delete: Mine two highlighted by its name, Mod+Alt+D asks, Enter deletes.
+      await typed('Mine two')
+      await sees(page, '> Mine two', 3000)
+      await say([`${CHORD}d`])
+      const asked = await sees(page, 'Delete "Mine two"?', 3000)
+      const askText = await pageText(page)
+      await snap(page, 'workbench-layouts-page-delete-ask')
+      await say(['Enter'])
+      const deleteNotice = await notice()
+      for (let i = 0; i < 'Mine two'.length; i++) await page.keyboard.press('Backspace')
+      await page.waitForTimeout(500)
+      const afterDelete = await pageText(page)
+      await snap(page, 'workbench-layouts-page-deleted')
+      return {
+        'arranged: Changes beside Theo, Shell in its own group, Changes focused': same(arranged.groups.map((g) => g.tabs.join('|')), ['Files', 'Theo|Changes', 'Add tool|Shell']) && arranged.focused === 'Changes',
+        'the group sizes were changed from the defaults before saving': !same(arranged.dividers, defaults),
+        'Mod+Alt+B asks for a name': asking,
+        'saving Mine says so': savedNotice.includes('Layout: Mine saved'),
+        'the Editor preset changes the groups': !same(editor.groups, saved.groups),
+        'the Layouts page opens by Mod+Alt+W and lists Mine and Save layout as': onPage,
+        'applying Mine says so': appliedNotice.includes('Layout: Mine applied'),
+        'restored: the same groups': same(applied.groups.map((g) => g.tabs), saved.groups.map((g) => g.tabs)),
+        'restored: the same tabs in each group (order too)': same(applied.groups.map((g) => g.tabs.join('|')), saved.groups.map((g) => g.tabs.join('|'))),
+        'restored: the same active tab in each group': same(applied.groups.map((g) => g.active), saved.groups.map((g) => g.active)),
+        'restored: the groups are the same width (dividers in the same columns)': same(applied.dividers, saved.dividers),
+        'restored: the same focused panel': applied.focused === saved.focused && applied.focused !== null,
+        'rename: asks with the old name filled in': renaming,
+        'rename: the list shows Mine two and no Mine': listedTwo && noOldName,
+        'rename: says so': renameNotice.includes('Layout: Mine renamed Mine two'),
+        'delete: asks first': asked && askText.includes('Enter deletes it'),
+        'delete: says so': deleteNotice.includes('Layout: Mine two deleted'),
+        'delete: the list no longer has it': !afterDelete.includes('Mine two') && afterDelete.includes('Editor-centred') && afterDelete.includes('Save layout as\u2026'),
+      }
+    },
+  ],
   // Type, undo (Cmd+Z), redo (Cmd+Shift+Z): the text reads back each time.
   'workbench-editor': [
     async (page) => {
@@ -491,6 +896,14 @@ const listed = await list()
 if (command === 'list') {
   for (const story of listed) console.log(`${story.id}\t${story.lane}\t${story.reference ?? '-'}`)
   process.exit(0)
+}
+if (command === 'palette') {
+  const { paletteCommand } = await import('./story-oracle-palette.mjs')
+  await paletteCommand(
+    { EVIDENCE, listed, withPage, renderPath },
+    process.argv.slice(3),
+  )
+  process.exit(process.exitCode ?? 0)
 }
 const needsReference = command === 'diff' || command === 'collage'
 const stories = needsReference ? listed.filter((story) => story.reference) : listed

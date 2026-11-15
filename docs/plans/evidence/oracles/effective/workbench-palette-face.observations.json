@@ -1,0 +1,3876 @@
+{
+  "source_revision": "11bdda4a78399993b60b0e634d6b924f51b71357+worktree",
+  "fixture": "workbench-palette-face-*",
+  "environment": {
+    "surface": "face",
+    "profiles": [
+      "github-sharp-light",
+      "github-sharp-dark",
+      "stone-light",
+      "stone-dark",
+      "vitesse-light",
+      "vitesse-dark"
+    ],
+    "date": "2026-11-15",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    }
+  },
+  "observations": {
+    "eyes-github-sharp-light": {
+      "kind": "rendered_web",
+      "foreground": "#1f2632",
+      "background": "#c8d0d8",
+      "provenance": {
+        "story": "workbench-palette-face-github-sharp-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#202733",
+        "plate_expected_ink": "#c8d0d8",
+        "model_eyes_on_body": 8.849715698087538,
+        "model_body_on_surface": 9.625228218904192
+      }
+    },
+    "eyes-github-sharp-dark": {
+      "kind": "rendered_web",
+      "foreground": "#21262d",
+      "background": "#cad0d4",
+      "provenance": {
+        "story": "workbench-palette-face-github-sharp-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#22272e",
+        "plate_expected_ink": "#cad0d4",
+        "model_eyes_on_body": 8.859280975841644,
+        "model_body_on_surface": 9.647702486085402
+      }
+    },
+    "eyes-stone-light": {
+      "kind": "rendered_web",
+      "foreground": "#282522",
+      "background": "#d1cfcd",
+      "provenance": {
+        "story": "workbench-palette-face-stone-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#292623",
+        "plate_expected_ink": "#d1cfcd",
+        "model_eyes_on_body": 8.88121988451339,
+        "model_body_on_surface": 9.684597709753701
+      }
+    },
+    "eyes-stone-dark": {
+      "kind": "rendered_web",
+      "foreground": "#21201e",
+      "background": "#cbc9c8",
+      "provenance": {
+        "story": "workbench-palette-face-stone-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#232220",
+        "plate_expected_ink": "#cbc9c8",
+        "model_eyes_on_body": 8.362343324951196,
+        "model_body_on_surface": 9.634145293460579
+      }
+    },
+    "eyes-vitesse-light": {
+      "kind": "rendered_web",
+      "foreground": "#232627",
+      "background": "#cdd0d0",
+      "provenance": {
+        "story": "workbench-palette-face-vitesse-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#242728",
+        "plate_expected_ink": "#cdd0d0",
+        "model_eyes_on_body": 8.88860697662058,
+        "model_body_on_surface": 9.692215925272517
+      }
+    },
+    "eyes-vitesse-dark": {
+      "kind": "rendered_web",
+      "foreground": "#262625",
+      "background": "#d0d0cf",
+      "provenance": {
+        "story": "workbench-palette-face-vitesse-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#272726",
+        "plate_expected_ink": "#d0d0cf",
+        "model_eyes_on_body": 8.93876117024456,
+        "model_body_on_surface": 9.687212181758508
+      }
+    },
+    "switch-geometry-0": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-0": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-1": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-1": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-2": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-2": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-3": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-3": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-4": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-4": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-5": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-5": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-6": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-6": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-7": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-7": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-8": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-8": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-9": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-9": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-10": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-10": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-11": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-11": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-12": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-12": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-13": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-13": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-14": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-14": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-15": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-15": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-16": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-16": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-17": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-17": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-18": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-18": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-19": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-19": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-20": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-20": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-21": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-21": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-22": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-22": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-23": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-23": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-24": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-24": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-25": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-25": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-26": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-26": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-27": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-27": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-28": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-28": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      }
+    },
+    "switch-geometry-29": {
+      "kind": "interaction",
+      "before": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "after": {
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        }
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      }
+    },
+    "switch-state-29": {
+      "kind": "interaction",
+      "before": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "after": {
+        "liveness": "work",
+        "asleep": false,
+        "working": true,
+        "form": "orb@1"
+      },
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      }
+    }
+  },
+  "records": [
+    {
+      "profile": "github-sharp-light",
+      "story": "workbench-palette-face-github-sharp-light",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#202733",
+        "ink": "#c8d0d8",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#c8d0d8",
+        "eyes": "#1f2632",
+        "histogram": [
+          [
+            "#c8d0d8",
+            2105
+          ],
+          [
+            "#202733",
+            140
+          ],
+          [
+            "#1f2632",
+            86
+          ],
+          [
+            "#1e2530",
+            63
+          ],
+          [
+            "#202732",
+            61
+          ],
+          [
+            "#1c232d",
+            47
+          ],
+          [
+            "#1e242f",
+            46
+          ],
+          [
+            "#cbd2da",
+            45
+          ]
+        ]
+      },
+      "model": {
+        "body": "#c8d0d8",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.625228218904192,
+        "eyesOnBody": 8.849715698087538
+      },
+      "switches": [
+        {
+          "from": "github-sharp-light",
+          "to": "github-sharp-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-light",
+          "to": "stone-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-light",
+          "to": "stone-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-light",
+          "to": "vitesse-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-light",
+          "to": "vitesse-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile": "github-sharp-dark",
+      "story": "workbench-palette-face-github-sharp-dark",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#22272e",
+        "ink": "#cad0d4",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#cad0d4",
+        "eyes": "#21262d",
+        "histogram": [
+          [
+            "#cad0d4",
+            2095
+          ],
+          [
+            "#22272e",
+            140
+          ],
+          [
+            "#21262d",
+            95
+          ],
+          [
+            "#22272d",
+            61
+          ],
+          [
+            "#20252b",
+            56
+          ],
+          [
+            "#20242b",
+            53
+          ],
+          [
+            "#1e2329",
+            52
+          ],
+          [
+            "#1d2127",
+            48
+          ]
+        ]
+      },
+      "model": {
+        "body": "#cad0d4",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.647702486085402,
+        "eyesOnBody": 8.859280975841644
+      },
+      "switches": [
+        {
+          "from": "github-sharp-dark",
+          "to": "github-sharp-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-dark",
+          "to": "stone-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "perk",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-dark",
+          "to": "stone-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "perk",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-dark",
+          "to": "vitesse-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "github-sharp-dark",
+          "to": "vitesse-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile": "stone-light",
+      "story": "workbench-palette-face-stone-light",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#292623",
+        "ink": "#d1cfcd",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#d1cfcd",
+        "eyes": "#282522",
+        "histogram": [
+          [
+            "#d1cfcd",
+            2096
+          ],
+          [
+            "#292623",
+            201
+          ],
+          [
+            "#282522",
+            102
+          ],
+          [
+            "#272421",
+            74
+          ],
+          [
+            "#262321",
+            53
+          ],
+          [
+            "#24221f",
+            50
+          ],
+          [
+            "#23201e",
+            47
+          ],
+          [
+            "#d3d1d0",
+            44
+          ]
+        ]
+      },
+      "model": {
+        "body": "#d1cfcd",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.684597709753701,
+        "eyesOnBody": 8.88121988451339
+      },
+      "switches": [
+        {
+          "from": "stone-light",
+          "to": "github-sharp-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "perk",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-light",
+          "to": "github-sharp-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "perk",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-light",
+          "to": "stone-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-light",
+          "to": "vitesse-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-light",
+          "to": "vitesse-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile": "stone-dark",
+      "story": "workbench-palette-face-stone-dark",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#232220",
+        "ink": "#cbc9c8",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#cbc9c8",
+        "eyes": "#21201e",
+        "histogram": [
+          [
+            "#cbc9c8",
+            2098
+          ],
+          [
+            "#232220",
+            203
+          ],
+          [
+            "#21201e",
+            129
+          ],
+          [
+            "#22211f",
+            114
+          ],
+          [
+            "#1f1e1c",
+            56
+          ],
+          [
+            "#1e1d1b",
+            51
+          ],
+          [
+            "#cecccb",
+            49
+          ],
+          [
+            "#cfcdcc",
+            45
+          ]
+        ]
+      },
+      "model": {
+        "body": "#cbc9c8",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.634145293460579,
+        "eyesOnBody": 8.362343324951196
+      },
+      "switches": [
+        {
+          "from": "stone-dark",
+          "to": "github-sharp-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-dark",
+          "to": "github-sharp-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-dark",
+          "to": "stone-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-dark",
+          "to": "vitesse-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "stone-dark",
+          "to": "vitesse-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile": "vitesse-light",
+      "story": "workbench-palette-face-vitesse-light",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#242728",
+        "ink": "#cdd0d0",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#cdd0d0",
+        "eyes": "#232627",
+        "histogram": [
+          [
+            "#cdd0d0",
+            2111
+          ],
+          [
+            "#242728",
+            201
+          ],
+          [
+            "#232627",
+            102
+          ],
+          [
+            "#222526",
+            74
+          ],
+          [
+            "#202324",
+            59
+          ],
+          [
+            "#212425",
+            56
+          ],
+          [
+            "#1f2122",
+            49
+          ],
+          [
+            "#d0d2d2",
+            45
+          ]
+        ]
+      },
+      "model": {
+        "body": "#cdd0d0",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.692215925272517,
+        "eyesOnBody": 8.88860697662058
+      },
+      "switches": [
+        {
+          "from": "vitesse-light",
+          "to": "github-sharp-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-light",
+          "to": "github-sharp-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-light",
+          "to": "stone-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-light",
+          "to": "stone-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-light",
+          "to": "vitesse-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "sparkle",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "profile": "vitesse-dark",
+      "story": "workbench-palette-face-vitesse-dark",
+      "geometry": {
+        "perch": {
+          "x": 232.015625,
+          "y": 544,
+          "width": 22.453125,
+          "height": 17
+        },
+        "row": {
+          "y": 544,
+          "height": 17,
+          "x": 0,
+          "width": 1280
+        },
+        "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+        "surface": "#272726",
+        "ink": "#d0d0cf",
+        "face": {
+          "liveness": "work",
+          "asleep": false,
+          "doing": "orb",
+          "form": "orb@1",
+          "working": true
+        }
+      },
+      "eyes": {
+        "plate": "#d0d0cf",
+        "eyes": "#262625",
+        "histogram": [
+          [
+            "#d0d0cf",
+            2111
+          ],
+          [
+            "#272726",
+            201
+          ],
+          [
+            "#262625",
+            103
+          ],
+          [
+            "#252524",
+            80
+          ],
+          [
+            "#232322",
+            65
+          ],
+          [
+            "#242423",
+            64
+          ],
+          [
+            "#d2d2d1",
+            53
+          ],
+          [
+            "#d3d3d2",
+            50
+          ]
+        ]
+      },
+      "model": {
+        "body": "#d0d0cf",
+        "look": {
+          "visor": true,
+          "ink": true,
+          "paper": false
+        },
+        "flat": true,
+        "bodyOnSurface": 9.687212181758508,
+        "eyesOnBody": 8.93876117024456
+      },
+      "switches": [
+        {
+          "from": "vitesse-dark",
+          "to": "github-sharp-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#272726",
+            "ink": "#d0d0cf",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-dark",
+          "to": "github-sharp-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#202733",
+            "ink": "#c8d0d8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-dark",
+          "to": "stone-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#22272e",
+            "ink": "#cad0d4",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-dark",
+          "to": "stone-dark",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#292623",
+            "ink": "#d1cfcd",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        },
+        {
+          "from": "vitesse-dark",
+          "to": "vitesse-light",
+          "before": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#232220",
+            "ink": "#cbc9c8",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          },
+          "after": {
+            "perch": {
+              "x": 232.015625,
+              "y": 544,
+              "width": 22.453125,
+              "height": 17
+            },
+            "row": {
+              "y": 544,
+              "height": 17,
+              "x": 0,
+              "width": 1280
+            },
+            "rowText": "│    ? edit_file Write src/panel.rs                                          y allow · n deny │",
+            "surface": "#242728",
+            "ink": "#cdd0d0",
+            "face": {
+              "liveness": "work",
+              "asleep": false,
+              "doing": "orb",
+              "form": "orb@1",
+              "working": true
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

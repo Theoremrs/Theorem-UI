@@ -1,0 +1,967 @@
+{
+  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "fixture": "workbench-palette-terminal-stone-dark",
+  "environment": {
+    "story": "workbench-palette-terminal-stone-dark",
+    "surface": "terminal",
+    "profile": "stone-dark",
+    "route": "/story/workbench-palette-terminal-stone-dark",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "stone",
+    "mode": "dark",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "observations": {
+    "ink": {
+      "kind": "rendered_web",
+      "foreground": "#cbc9c8",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 97,
+          "text": "r"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "muted": {
+      "kind": "rendered_web",
+      "foreground": "#949291",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 34,
+          "column": 35,
+          "text": "M"
+        },
+        "raw_foreground": "#949291",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-active": {
+      "kind": "rendered_web",
+      "foreground": "#232220",
+      "background": "#86a39c",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-inactive": {
+      "kind": "rendered_web",
+      "foreground": "#e3e3e2",
+      "background": "#2c2b28",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#e3e3e2",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "warning": {
+      "kind": "rendered_web",
+      "foreground": "#d0b785",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 35,
+          "column": 33,
+          "text": "c"
+        },
+        "raw_foreground": "#d0b785",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "success": {
+      "kind": "rendered_web",
+      "foreground": "#7ee787",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 5,
+          "column": 123,
+          "text": "o"
+        },
+        "raw_foreground": "#7ee787",
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "error": {
+      "kind": "rendered_web",
+      "foreground": "#db868b",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 10,
+          "column": 97,
+          "text": "e"
+        },
+        "raw_foreground": "#db868b",
+        "palette_fields": {
+          "fg": [
+            "error"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "notice": {
+      "kind": "rendered_web",
+      "foreground": "#949291",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 36,
+          "column": 97,
+          "text": "A"
+        },
+        "raw_foreground": "#949291",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "tab-fill": {
+      "kind": "rendered_web",
+      "foreground": "#86a39c",
+      "background": "#2c2b28",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "inactive-tab-fill"
+      }
+    },
+    "separator": {
+      "kind": "rendered_web",
+      "foreground": "#403f3b",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "composer-border": {
+      "kind": "rendered_web",
+      "foreground": "#403f3b",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 33,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      }
+    },
+    "ansi-00": {
+      "kind": "rendered_web",
+      "foreground": "#151412",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 101,
+          "text": "0"
+        },
+        "palette_role": "deep",
+        "equals_palette_role": true,
+        "background_slot_painted": "#151412"
+      }
+    },
+    "ansi-01": {
+      "kind": "rendered_web",
+      "foreground": "#db868b",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 104,
+          "text": "0"
+        },
+        "palette_role": "error",
+        "equals_palette_role": true,
+        "background_slot_painted": "#db868b"
+      }
+    },
+    "ansi-02": {
+      "kind": "rendered_web",
+      "foreground": "#7ee787",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 107,
+          "text": "0"
+        },
+        "palette_role": "success",
+        "equals_palette_role": true,
+        "background_slot_painted": "#7ee787"
+      }
+    },
+    "ansi-03": {
+      "kind": "rendered_web",
+      "foreground": "#d0b785",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 110,
+          "text": "0"
+        },
+        "palette_role": "warning",
+        "equals_palette_role": true,
+        "background_slot_painted": "#d0b785"
+      }
+    },
+    "ansi-04": {
+      "kind": "rendered_web",
+      "foreground": "#58a6ff",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 113,
+          "text": "0"
+        },
+        "palette_role": "link",
+        "equals_palette_role": true,
+        "background_slot_painted": "#58a6ff"
+      }
+    },
+    "ansi-05": {
+      "kind": "rendered_web",
+      "foreground": "#ff7b72",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 116,
+          "text": "0"
+        },
+        "palette_role": "syntaxKeyword",
+        "equals_palette_role": true,
+        "background_slot_painted": "#ff7b72"
+      }
+    },
+    "ansi-06": {
+      "kind": "rendered_web",
+      "foreground": "#86a39c",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 119,
+          "text": "0"
+        },
+        "palette_role": "accent",
+        "equals_palette_role": true,
+        "background_slot_painted": "#86a39c"
+      }
+    },
+    "ansi-07": {
+      "kind": "rendered_web",
+      "foreground": "#cbc9c8",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 122,
+          "text": "0"
+        },
+        "palette_role": "ink",
+        "equals_palette_role": true,
+        "background_slot_painted": "#cbc9c8"
+      }
+    },
+    "ansi-08": {
+      "kind": "rendered_web",
+      "foreground": "#949291",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 125,
+          "text": "0"
+        },
+        "palette_role": "muted",
+        "equals_palette_role": true,
+        "background_slot_painted": "#949291"
+      }
+    },
+    "ansi-09": {
+      "kind": "rendered_web",
+      "foreground": "#db868b",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 128,
+          "text": "0"
+        },
+        "palette_role": "error",
+        "equals_palette_role": true,
+        "background_slot_painted": "#db868b"
+      }
+    },
+    "ansi-10": {
+      "kind": "rendered_web",
+      "foreground": "#7ee787",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 131,
+          "text": "1"
+        },
+        "palette_role": "success",
+        "equals_palette_role": true,
+        "background_slot_painted": "#7ee787"
+      }
+    },
+    "ansi-11": {
+      "kind": "rendered_web",
+      "foreground": "#d0b785",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 134,
+          "text": "1"
+        },
+        "palette_role": "warning",
+        "equals_palette_role": true,
+        "background_slot_painted": "#d0b785"
+      }
+    },
+    "ansi-12": {
+      "kind": "rendered_web",
+      "foreground": "#58a6ff",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 137,
+          "text": "1"
+        },
+        "palette_role": "link",
+        "equals_palette_role": true,
+        "background_slot_painted": "#58a6ff"
+      }
+    },
+    "ansi-13": {
+      "kind": "rendered_web",
+      "foreground": "#ff7b72",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 140,
+          "text": "1"
+        },
+        "palette_role": "syntaxKeyword",
+        "equals_palette_role": true,
+        "background_slot_painted": "#ff7b72"
+      }
+    },
+    "ansi-14": {
+      "kind": "rendered_web",
+      "foreground": "#86a39c",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 143,
+          "text": "1"
+        },
+        "palette_role": "accent",
+        "equals_palette_role": true,
+        "background_slot_painted": "#86a39c"
+      }
+    },
+    "ansi-15": {
+      "kind": "rendered_web",
+      "foreground": "#e3e3e2",
+      "background": "#232220",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 146,
+          "text": "1"
+        },
+        "palette_role": "bright",
+        "equals_palette_role": true,
+        "background_slot_painted": "#e3e3e2"
+      }
+    },
+    "ansi-bright-distinct": {
+      "kind": "rendered_web",
+      "first": "#db868b",
+      "second": "#db868b",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "ANSI red against bright red, as painted"
+      }
+    },
+    "ansi-red-magenta": {
+      "kind": "rendered_web",
+      "first": "#db868b",
+      "second": "#ff7b72",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "ANSI red against ANSI magenta, as painted"
+      }
+    },
+    "passthrough": {
+      "kind": "rendered_web",
+      "before": {
+        "c16": "#000000",
+        "c21": "#0000ff",
+        "c46": "#00ff00",
+        "c196": "#ff0000",
+        "c231": "#ffffff",
+        "c232": "#080808",
+        "c255": "#eeeeee",
+        "t0": "#ff6000",
+        "t15": "#c28c3d",
+        "t31": "#82a07d",
+        "t47": "#418ebe",
+        "t63": "#0060ff",
+        "ink": "#ff8000",
+        "ink256": "#ff8700"
+      },
+      "after": {
+        "c16": "#000000",
+        "c21": "#0000ff",
+        "c46": "#00ff00",
+        "c196": "#ff0000",
+        "c231": "#ffffff",
+        "c232": "#080808",
+        "c255": "#eeeeee",
+        "t0": "#ff6000",
+        "t15": "#c28c3d",
+        "t31": "#82a07d",
+        "t47": "#418ebe",
+        "t63": "#0060ff",
+        "ink": "#ff8000",
+        "ink256": "#ff8700"
+      },
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "colour bytes the fixture host sent, and the cell colour painted: 256-colour cube and grey ramp samples, truecolor gradient cells, truecolor and 256 foregrounds"
+      }
+    }
+  },
+  "palette_in_use": {
+    "bg": "#232220",
+    "raised": "#2c2b28",
+    "line": "#403f3b",
+    "ink": "#cbc9c8",
+    "bright": "#e3e3e2",
+    "muted": "#949291",
+    "idle": "#6e6d6c",
+    "sage": "#86a39c",
+    "gold": "#d0b785",
+    "error": "#db868b",
+    "removedLine": "#39211e",
+    "addedLine": "#192d1b",
+    "removedWords": "#711817",
+    "addedWords": "#014412",
+    "commentOnWords": "#9ba4ae",
+    "heading": "#e3e3e2",
+    "accent": "#86a39c",
+    "focus": "#86a39c",
+    "selection": "#2c2b28",
+    "disabled": "#6e6d6c",
+    "deep": "#151412",
+    "warning": "#d0b785",
+    "success": "#7ee787",
+    "link": "#58a6ff",
+    "approval": "#d0b785",
+    "syntaxKeyword": "#ff7b72",
+    "syntaxString": "#a5d6ff",
+    "syntaxNumber": "#79c0ff",
+    "syntaxFunction": "#d2a8ff",
+    "syntaxVariable": "#ffa657",
+    "syntaxType": "#ffa657",
+    "syntaxTag": "#7ee787",
+    "syntaxComment": "#8b949e"
+  },
+  "palette_diagnostics": [],
+  "roles": [
+    {
+      "role": "ink",
+      "y": 4,
+      "x": 97,
+      "text": "running 4 tests",
+      "fg": [
+        "ink"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "muted",
+      "y": 34,
+      "x": 35,
+      "text": "Message Theo",
+      "fg": [
+        "muted"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-active",
+      "y": 0,
+      "x": 110,
+      "text": "Shell",
+      "fg": [
+        "bg"
+      ],
+      "bg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-inactive",
+      "y": 0,
+      "x": 1,
+      "text": "Files",
+      "fg": [
+        "bright",
+        "heading"
+      ],
+      "bg": [
+        "raised",
+        "selection"
+      ],
+      "matches": true
+    },
+    {
+      "role": "warning",
+      "y": 35,
+      "x": 33,
+      "text": "connecting to the conversation",
+      "fg": [
+        "gold",
+        "warning",
+        "approval"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "success",
+      "y": 5,
+      "x": 123,
+      "text": "... ok",
+      "fg": [
+        "success",
+        "syntaxTag"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "error",
+      "y": 10,
+      "x": 97,
+      "text": "error[E0308]",
+      "fg": [
+        "error"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "notice",
+      "y": 36,
+      "x": 97,
+      "text": "Adopted a terminal",
+      "fg": [
+        "muted"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "tab-fill",
+      "y": 0,
+      "x": 110,
+      "text": "Shell",
+      "fg": [
+        "bg"
+      ],
+      "bg": [
+        "sage",
+        "accent",
+        "focus"
+      ],
+      "matches": true
+    },
+    {
+      "role": "separator",
+      "y": 2,
+      "x": 30,
+      "text": "│",
+      "fg": [
+        "line"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    },
+    {
+      "role": "composer-border",
+      "y": 33,
+      "x": 31,
+      "text": "╭─",
+      "fg": [
+        "line"
+      ],
+      "bg": [
+        "bg"
+      ],
+      "matches": true
+    }
+  ],
+  "pixel_confirmation": [
+    {
+      "label": "ANSI background 0",
+      "row": 13,
+      "column": 100,
+      "glyph": " ",
+      "dom": "#151412",
+      "pixel": "#151412",
+      "equal": true
+    },
+    {
+      "label": "ANSI background 1",
+      "row": 13,
+      "column": 104,
+      "glyph": " ",
+      "dom": "#db868b",
+      "pixel": "#db868b",
+      "equal": true
+    },
+    {
+      "label": "ANSI background 4",
+      "row": 13,
+      "column": 116,
+      "glyph": " ",
+      "dom": "#58a6ff",
+      "pixel": "#58a6ff",
+      "equal": true
+    },
+    {
+      "label": "ANSI background 8",
+      "row": 13,
+      "column": 132,
+      "glyph": " ",
+      "dom": "#949291",
+      "pixel": "#949291",
+      "equal": true
+    },
+    {
+      "label": "ANSI background 15",
+      "row": 13,
+      "column": 160,
+      "glyph": " ",
+      "dom": "#e3e3e2",
+      "pixel": "#e3e3e2",
+      "equal": true
+    },
+    {
+      "label": "truecolor cell 0",
+      "row": 21,
+      "column": 100,
+      "glyph": " ",
+      "dom": "#ff6000",
+      "pixel": "#ff6000",
+      "equal": true
+    },
+    {
+      "label": "truecolor cell 31",
+      "row": 21,
+      "column": 131,
+      "glyph": " ",
+      "dom": "#82a07d",
+      "pixel": "#82a07d",
+      "equal": true
+    },
+    {
+      "label": "truecolor cell 63",
+      "row": 21,
+      "column": 163,
+      "glyph": " ",
+      "dom": "#0060ff",
+      "pixel": "#0060ff",
+      "equal": true
+    },
+    {
+      "label": "pane background",
+      "row": 6,
+      "column": 1,
+      "glyph": " ",
+      "dom": "#232220",
+      "pixel": "#232220",
+      "equal": true
+    },
+    {
+      "label": "active tab fill",
+      "row": 0,
+      "column": 109,
+      "glyph": " ",
+      "dom": "#86a39c",
+      "pixel": "#86a39c",
+      "equal": true
+    },
+    {
+      "label": "inactive tab fill",
+      "row": 0,
+      "column": 0,
+      "glyph": " ",
+      "dom": "#2c2b28",
+      "pixel": "#2c2b28",
+      "equal": true
+    }
+  ],
+  "passthrough": {
+    "bytes": {
+      "c16": "#000000",
+      "c21": "#0000ff",
+      "c46": "#00ff00",
+      "c196": "#ff0000",
+      "c231": "#ffffff",
+      "c232": "#080808",
+      "c255": "#eeeeee",
+      "t0": "#ff6000",
+      "t15": "#c28c3d",
+      "t31": "#82a07d",
+      "t47": "#418ebe",
+      "t63": "#0060ff",
+      "ink": "#ff8000",
+      "ink256": "#ff8700"
+    },
+    "painted": {
+      "c16": "#000000",
+      "c21": "#0000ff",
+      "c46": "#00ff00",
+      "c196": "#ff0000",
+      "c231": "#ffffff",
+      "c232": "#080808",
+      "c255": "#eeeeee",
+      "t0": "#ff6000",
+      "t15": "#c28c3d",
+      "t31": "#82a07d",
+      "t47": "#418ebe",
+      "t63": "#0060ff",
+      "ink": "#ff8000",
+      "ink256": "#ff8700"
+    }
+  },
+  "notes": []
+}

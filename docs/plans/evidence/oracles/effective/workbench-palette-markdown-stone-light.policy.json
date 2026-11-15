@@ -1,0 +1,324 @@
+{
+  "name": "workbench-palette:markdown",
+  "version": "1.0",
+  "description": "AC-28 (coordinated palette) and the theme half of AC-27 for the Theo workbench, evaluated per surface per palette profile from rendered observations of the live story. Each check names the surfaces that draw its role; a surface that does not draw a role is not scored on it.",
+  "profiles": {
+    "mapping": "Neutral = github-sharp, Paper = stone, Forest = vitesse (the app's PALETTES); every palette in light and dark. Slate has no profile of its own: the terminal's slate is github-sharp's cool tint."
+  },
+  "fixed_roles": {
+    "success": "Terminal ANSI green and the added marker are GitHub Dark's token colour (terminal-roles.ts, githubDarkTheme), kept so test output reads as a terminal does.",
+    "link": "GitHub Dark's link blue, kept as the mention colour in every profile.",
+    "warning": "pi slate's gold (terminal-theme.ts SLATE.gold), held at its slate hue and shifted only as far as readability on the profile's surfaces requires (status()).",
+    "error": "pi slate's error red (SLATE.error), same rule as warning.",
+    "accent": "pi slate's sage (SLATE.sage), the focus and active-tab colour, same rule as warning.",
+    "syntax": "The syntax roles are githubDarkTheme.tokens constants (terminal-roles.ts); the diff hues are GitHub Dark's red and green hues placed at a lightness that follows the profile's background."
+  },
+  "classes": {
+    "standard": "a published threshold the interface must meet",
+    "contract": "a statement about the build that must hold",
+    "target": "a goal; a miss is review, not a failure",
+    "diagnostic": "reported with its number, never a verdict"
+  },
+  "checks": [
+    {
+      "id": "WB-TXT.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "ink",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "muted",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.selection",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "selection",
+      "surfaces": [
+        "chat",
+        "markdown"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.tab-active",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "tab-active",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.tab-inactive",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "tab-inactive",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.warning",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "warning",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-TXT.heading",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "heading",
+      "surfaces": [
+        "chat",
+        "cabinet",
+        "markdown"
+      ],
+      "minimum": 4.5,
+      "note": "WCAG 1.4.3 readable text, 4.5:1"
+    },
+    {
+      "id": "WB-UI.tab-fill",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "tab-fill",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 3,
+      "note": "WCAG 1.4.11: the active tab's fill against the inactive tab's fill"
+    },
+    {
+      "id": "WB-UI.separator",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "separator",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 3,
+      "note": "Decorative or redundant with a text or glyph cue; reported with its number, never a verdict"
+    },
+    {
+      "id": "WB-UI.composer-border",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "composer-border",
+      "surfaces": [
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 3,
+      "note": "Decorative or redundant with a text or glyph cue; reported with its number, never a verdict"
+    },
+    {
+      "id": "WB-UI.selection-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "selection-fill",
+      "surfaces": [
+        "chat",
+        "markdown"
+      ],
+      "minimum": 3,
+      "note": "Decorative or redundant with a text or glyph cue; reported with its number, never a verdict"
+    },
+    {
+      "id": "WB-DONOR.derived-bg",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-bg",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.derived-raised",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-raised",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.derived-line",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-line",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.derived-ink",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-ink",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.derived-muted",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-muted",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.derived-selection",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "derived-selection",
+      "surfaces": [
+        "chat",
+        "markdown"
+      ],
+      "minimum": 0.005,
+      "maximum": 1,
+      "note": "derived from the profile: the colour painted differs from the colour painted in the next palette of the same mode"
+    },
+    {
+      "id": "WB-DONOR.fixed-warning",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "fixed-warning",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0,
+      "maximum": 0.05,
+      "note": "declared fixed (fixed_roles): stays the same colour across palettes, shifted at most as far as readability on the profile's surfaces requires"
+    },
+    {
+      "id": "WB-DONOR.fixed-accent",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "required_evidence": "rendered_web",
+      "observation": "fixed-accent",
+      "surfaces": [
+        "chat",
+        "markdown",
+        "changes",
+        "cabinet",
+        "terminal"
+      ],
+      "minimum": 0,
+      "maximum": 0.05,
+      "note": "declared fixed (fixed_roles): stays the same colour across palettes, shifted at most as far as readability on the profile's surfaces requires"
+    }
+  ]
+}

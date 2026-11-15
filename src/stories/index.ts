@@ -1,6 +1,7 @@
 // SOURCING: none: the list /stories.json serves and the story route looks up, kept free of components so the server route can read it. Each story's lane and reference are the license ledger's, docs/plans/evidence/ledger.md.
 import { ACTIVITY_STATES } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
+import { PALETTE_STORIES } from './palette-matrix'
 
 export type StoryMeta = {
   id: string
@@ -55,6 +56,9 @@ export const STORIES: readonly StoryMeta[] = [
   },
   { id: 'workbench-files', title: 'Workbench: Files with a symlink, ignored, hidden and partial listing', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-terminal-adoption-pending', title: 'Workbench: the Shell chooser while the host is still looking for terminals', lane: 'original', viewport: { width: 1600, height: 640 } },
+  { id: 'workbench-terminal-adoption-unavailable', title: 'Workbench: the Shell chooser when the host cannot list its terminals, with a reason', lane: 'original', viewport: { width: 1600, height: 640 } },
+  { id: 'workbench-terminal-adoption-settled', title: 'Workbench: the Shell chooser when the host has settled and has no terminals', lane: 'original', viewport: { width: 1600, height: 640 } },
   { id: 'workbench-editor', title: 'Workbench: the editor with tabs, CJK, ZWJ emoji, a wrapped line and a selection', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-editor-conflict', title: 'Workbench: the editor with a disk conflict', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-markdown-visual', title: 'Workbench: the Markdown panel in visual mode', lane: 'original', viewport: { width: 1280, height: 700 } },
@@ -66,6 +70,8 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-diagnostics', title: 'Workbench: Diagnostics for two open documents, every severity', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run', title: 'Workbench: a finished run attached from the host list, with coloured output', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run-list', title: 'Workbench: the list of runs on the host', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-run-list-exits', title: 'Workbench: the host run list with exit codes 0, 2 and none, and each run kind', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-recovery-reload', title: 'Workbench: edits kept on this device are offered back after a reload', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-cabinet', title: 'Workbench: the Artifacts panel with cards and previews over the grid', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-cabinet-picker', title: 'Workbench: Artifacts opened from the picker by key', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-face', title: 'Workbench: Theo face on the status row of the Theo panel, dark', lane: 'original', viewport: { width: 1280, height: 640 } },
@@ -73,6 +79,9 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-account-switch', title: 'Workbench: a draft, then another account is signed in', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-device-copy', title: 'Workbench: the layout read from this device, labelled, saving refused', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-arrangements', title: 'Workbench: presets applied by key and a saved arrangement kept across a reload', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-changes-binary-conflict', title: 'Workbench: Changes with a conflicted binary file, sides not shown as text', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-appearance', title: 'Workbench: a saved layout carries its theme; applying it restores the theme, a preset does not', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-layouts-page',title: 'Workbench: the Layouts page of the picker: save, apply, rename and delete a layout by key', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',
@@ -312,6 +321,7 @@ export const STORIES: readonly StoryMeta[] = [
     lane: 'original',
     viewport: { width: 760, height: 900 },
   })),
+  ...PALETTE_STORIES,
 ]
 
 export const findStory = (id: string) =>

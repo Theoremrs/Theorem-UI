@@ -1,0 +1,584 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "workbench-palette:markdown",
+  "policy_version": "1.0",
+  "source_revision": "123e1c609a20c3b08aa8fb643f67a7502f2f8420+worktree",
+  "fixture": "workbench-palette-markdown-stone-dark",
+  "environment": {
+    "story": "workbench-palette-markdown-stone-dark",
+    "surface": "markdown",
+    "profile": "stone-dark",
+    "route": "/story/workbench-palette-markdown-stone-dark",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 700
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "stone",
+    "mode": "dark",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "counts": {
+    "pass": 16,
+    "fail": 0,
+    "review": 3,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "WB-TXT.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 9,
+          "column": 97,
+          "text": "T"
+        },
+        "raw_foreground": "#cbc9c8",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.634145293460579,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 16,
+          "column": 99,
+          "text": "A"
+        },
+        "raw_foreground": "#949291",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.131656850714255,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.selection",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "selection",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 4,
+          "text": "g"
+        },
+        "raw_foreground": "#e3e3e2",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 11.024182123078434,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-active",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-active",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "g"
+        },
+        "raw_foreground": "#232220",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.853009874949678,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-inactive",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-inactive",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#e3e3e2",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 11.024182123078434,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 39,
+          "column": 33,
+          "text": "c"
+        },
+        "raw_foreground": "#d0b785",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.170309963668123,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.heading",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "heading",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 1,
+          "column": 142,
+          "text": "P"
+        },
+        "raw_foreground": "#e3e3e2",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 11.024182123078434,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.tab-fill",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "g"
+        },
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "inactive-tab-fill"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.213159135746005,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.separator",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "separator",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5079133304739059,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.composer-border",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "composer-border",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 37,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5079133304739059,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.selection-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "selection-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 4,
+          "text": "g"
+        },
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.1227376188876133,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-DONOR.derived-bg",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-bg",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.020219326090084234,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-raised",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-raised",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.020163398016089976,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-line",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-line",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.019727311400474203,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-ink",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.02023258876528053,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-muted",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.015639095100120976,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-selection",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-selection",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.020163398016089976,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-warning",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.019530034584084324,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-accent",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-accent",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-markdown-stone-dark",
+        "against": "workbench-palette-markdown-vitesse-dark",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.017792056997593605,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}

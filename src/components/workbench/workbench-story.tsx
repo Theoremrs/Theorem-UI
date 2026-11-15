@@ -12,7 +12,7 @@ import type { Dispatch, SemanticsFeed, SurfaceHost } from './workbench'
 import type { ReactNode } from 'react'
 
 /** What the picker lists as live: every tool the fixture host can serve. */
-const EVERY_TOOL = [
+export const EVERY_TOOL = [
   'files',
   'environment',
   'documents',
@@ -123,7 +123,7 @@ function seen(feed: SemanticsFeed, text: string) {
  * pending until the script is done and the semantic tree names every text in `wait`.
  * `data-last-effect` names the kind of the last effect the core asked the host for.
  */
-function FixtureStory({
+export function FixtureStory({
   id,
   width,
   height,
@@ -406,7 +406,7 @@ const EDITOR_SCRIPT: Step[] = [
 ]
 
 /** The Files steps that open `docs/guide.md` into the Markdown panel. */
-const MARKDOWN_OPEN: Step[] = [
+export const MARKDOWN_OPEN: Step[] = [
   { chord: 'e' },
   { see: 'README.md' },
   { key: 'ArrowDown' },
@@ -424,7 +424,7 @@ const MARKDOWN_OPEN: Step[] = [
  * The tool group's splitter, dragged left the way a person would: the group is about 43 columns
  * by default and Split needs 60, and the main page keeps its own minimum.
  */
-const WIDEN_TOOLS: Step = { drag: { from: [931, 300], to: [720, 300] } }
+export const WIDEN_TOOLS: Step = { drag: { from: [931, 300], to: [720, 300] } }
 
 function MarkdownStory({
   id,
@@ -479,7 +479,7 @@ export function WorkbenchBranchesStory() {
 }
 
 /** The picker's route to a tool in More tools: its chord, "More tools" and the tool's name typed into the filter, each with Enter. */
-const open = (name: string): Step[] => [
+export const open = (name: string): Step[] => [
   { chord: 't' },
   { text: 'More tools' },
   { key: 'Enter' },
@@ -594,7 +594,7 @@ export const PICKER_HEIGHT = 512
 
 
 /** The Artifacts panel opened from the picker, over a fake Theorem's outputs, with previews painted over the cards. */
-const OPEN_ARTIFACTS: Step[] = [
+export const OPEN_ARTIFACTS: Step[] = [
   { chord: 't' },
   { text: 'More tools' },
   { key: 'Enter' },

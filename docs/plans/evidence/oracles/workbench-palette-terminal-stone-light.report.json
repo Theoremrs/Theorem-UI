@@ -1,0 +1,1089 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "workbench-palette:terminal",
+  "policy_version": "1.0",
+  "source_revision": "0fff29293a27e378176ecb759a84d92e148a22f0+worktree",
+  "fixture": "workbench-palette-terminal-stone-light",
+  "environment": {
+    "story": "workbench-palette-terminal-stone-light",
+    "surface": "terminal",
+    "profile": "stone-light",
+    "route": "/story/workbench-palette-terminal-stone-light",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "stone",
+    "mode": "light",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "counts": {
+    "pass": 33,
+    "fail": 0,
+    "review": 6,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "WB-TXT.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 97,
+          "text": "r"
+        },
+        "raw_foreground": "#d1cfcd",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.684597709753701,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 34,
+          "column": 35,
+          "text": "M"
+        },
+        "raw_foreground": "#999695",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.123221353880435,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-active",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-active",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "raw_foreground": "#292623",
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.86712229691201,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-inactive",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-inactive",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#ebe9e8",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "raised",
+            "selection"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 10.96743577004436,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 35,
+          "column": 33,
+          "text": "c"
+        },
+        "raw_foreground": "#d6bc8a",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.181346966964334,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.success",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 5,
+          "column": 123,
+          "text": "o"
+        },
+        "raw_foreground": "#7ee787",
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.791774012265765,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.error",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 10,
+          "column": 97,
+          "text": "e"
+        },
+        "raw_foreground": "#e08a8f",
+        "palette_fields": {
+          "fg": [
+            "error"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.87583687454264,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.notice",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "notice",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 36,
+          "column": 97,
+          "text": "A"
+        },
+        "raw_foreground": "#999695",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.123221353880435,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.tab-fill",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 110,
+          "text": "S"
+        },
+        "palette_fields": {
+          "fg": [
+            "bg"
+          ],
+          "bg": [
+            "sage",
+            "accent",
+            "focus"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "inactive-tab-fill"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.175739932440938,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.separator",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "separator",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5388793769673235,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.composer-border",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "composer-border",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 33,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5388793769673235,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-ANSI.00",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "ansi-00",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 101,
+          "text": "0"
+        },
+        "palette_role": "deep",
+        "equals_palette_role": true,
+        "background_slot_painted": "#1b1815"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.1748310011642633,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-ANSI.01",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-01",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 104,
+          "text": "0"
+        },
+        "palette_role": "error",
+        "equals_palette_role": true,
+        "background_slot_painted": "#e08a8f"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.87583687454264,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.02",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-02",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 107,
+          "text": "0"
+        },
+        "palette_role": "success",
+        "equals_palette_role": true,
+        "background_slot_painted": "#7ee787"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.791774012265765,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.03",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-03",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 110,
+          "text": "0"
+        },
+        "palette_role": "warning",
+        "equals_palette_role": true,
+        "background_slot_painted": "#d6bc8a"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.181346966964334,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.04",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-04",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 113,
+          "text": "0"
+        },
+        "palette_role": "link",
+        "equals_palette_role": true,
+        "background_slot_painted": "#58a6ff"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.956037829551931,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.05",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-05",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 116,
+          "text": "0"
+        },
+        "palette_role": "syntaxKeyword",
+        "equals_palette_role": true,
+        "background_slot_painted": "#ff7b72"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.966595150886511,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.06",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-06",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 119,
+          "text": "0"
+        },
+        "palette_role": "accent",
+        "equals_palette_role": true,
+        "background_slot_painted": "#8aa8a0"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.86712229691201,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.07",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-07",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 122,
+          "text": "0"
+        },
+        "palette_role": "ink",
+        "equals_palette_role": true,
+        "background_slot_painted": "#d1cfcd"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.684597709753701,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.08",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "ansi-08",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 125,
+          "text": "0"
+        },
+        "palette_role": "muted",
+        "equals_palette_role": true,
+        "background_slot_painted": "#999695"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.123221353880435,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-ANSI.09",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-09",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 128,
+          "text": "0"
+        },
+        "palette_role": "error",
+        "equals_palette_role": true,
+        "background_slot_painted": "#e08a8f"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.87583687454264,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.10",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-10",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 131,
+          "text": "1"
+        },
+        "palette_role": "success",
+        "equals_palette_role": true,
+        "background_slot_painted": "#7ee787"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.791774012265765,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.11",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-11",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 134,
+          "text": "1"
+        },
+        "palette_role": "warning",
+        "equals_palette_role": true,
+        "background_slot_painted": "#d6bc8a"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.181346966964334,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.12",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-12",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 137,
+          "text": "1"
+        },
+        "palette_role": "link",
+        "equals_palette_role": true,
+        "background_slot_painted": "#58a6ff"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.956037829551931,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.13",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-13",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 140,
+          "text": "1"
+        },
+        "palette_role": "syntaxKeyword",
+        "equals_palette_role": true,
+        "background_slot_painted": "#ff7b72"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.966595150886511,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.14",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-14",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 143,
+          "text": "1"
+        },
+        "palette_role": "accent",
+        "equals_palette_role": true,
+        "background_slot_painted": "#8aa8a0"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.86712229691201,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.15",
+      "class": "target",
+      "predicate": "contrast",
+      "observation": "ansi-15",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 146,
+          "text": "1"
+        },
+        "palette_role": "bright",
+        "equals_palette_role": true,
+        "background_slot_painted": "#ebe9e8"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 12.432480724747448,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-ANSI.bright-distinct",
+      "class": "diagnostic",
+      "predicate": "oklab_distance",
+      "observation": "ansi-bright-distinct",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "ANSI red against bright red, as painted"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.03,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-ANSI.red-magenta",
+      "class": "diagnostic",
+      "predicate": "oklab_distance",
+      "observation": "ansi-red-magenta",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "ANSI red against ANSI magenta, as painted"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.06213779950975837,
+        "minimum": 0.03,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-DONOR.derived-bg",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-bg",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.011477838303559043,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-raised",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-raised",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.015516006784939706,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-line",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-line",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.016763138041302614,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-ink",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.006178329258950078,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-muted",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.007412794254803785,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-success",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-warning",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-error",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-accent",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-accent",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "against": "workbench-palette-terminal-vitesse-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TRUE.passthrough",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "passthrough",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-terminal-stone-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "colour bytes the fixture host sent, and the cell colour painted: 256-colour cube and grey ramp samples, truecolor gradient cells, truecolor and 256 foregrounds"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "c16",
+          "c21",
+          "c46",
+          "c196",
+          "c231",
+          "c232",
+          "c255",
+          "t0",
+          "t15",
+          "t31",
+          "t47",
+          "t63",
+          "ink",
+          "ink256"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}
