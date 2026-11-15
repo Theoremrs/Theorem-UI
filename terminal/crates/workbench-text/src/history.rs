@@ -5,7 +5,14 @@
 //! that touch each other, and consecutive backspaces or forward deletes that
 //! touch each other, share one entry. A change from the owner never becomes an
 //! entry; instead every entry is transformed past it so it still applies.
+//!
+//! An entry also carries the atomic ranges its edit dissolved, as they lay in
+//! the text the entry produces, so applying it brings the marks back with
+//! their ids. They follow the entry through owner changes and are dropped when
+//! an owner change edits inside them.
 
+use crate::change::{Bias, map_pos, touches_interior};
+use crate::session::AtomicRange;
 use operational_transform::OperationSeq;
 
 const MAX_ENTRIES: usize = 1000;
@@ -54,16 +61,30 @@ struct Group {
     class: Class,
 }
 
+/// An operation that applies to the current text, and the atomic ranges to
+/// restore once it has.
+#[derive(Clone, Debug)]
+pub(crate) struct Entry {
+    pub op: OperationSeq,
+    pub marks: Vec<AtomicRange>,
+}
+
+impl Entry {
+    fn is_noop(&self) -> bool {
+        self.op.is_noop()
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct History {
-    undo: Vec<OperationSeq>,
-    redo: Vec<OperationSeq>,
+    undo: Vec<Entry>,
+    redo: Vec<Entry>,
     group: Option<Group>,
 }
 
 impl History {
     /// Record the inverse of a fresh local edit. Clears the redo stack.
-    pub fn record(&mut self, inverse: OperationSeq, shape: EditShape) {
+    pub fn record(&mut self, inverse: OperationSeq, marks: Vec<AtomicRange>, shape: EditShape) {
         self.redo.clear();
         let joins = match (&self.group, shape.kind) {
             (Some(g), Kind::Insert) => {
@@ -82,13 +103,20 @@ impl History {
             && self
                 .undo
                 .last()
-                .and_then(|top| inverse.compose(top).ok())
+                .and_then(|top| {
+                    let c = inverse.compose(&top.op).ok()?;
+                    // The new marks lie in the text `top` applies to; carry
+                    // them across it, then add the ones `top` already held.
+                    let mut all = carry_marks(&top.op, &marks);
+                    all.extend(top.marks.iter().copied());
+                    Some(Entry { op: c, marks: all })
+                })
                 .map(|c| {
                     *self.undo.last_mut().expect("top exists") = c;
                 })
                 .is_some();
         if !merged {
-            self.undo.push(inverse);
+            self.undo.push(Entry { op: inverse, marks });
             if self.undo.len() > MAX_ENTRIES {
                 self.undo.remove(0);
             }
@@ -118,23 +146,23 @@ impl History {
         self.group = None;
     }
 
-    pub fn pop_undo(&mut self) -> Option<OperationSeq> {
+    pub fn pop_undo(&mut self) -> Option<Entry> {
         self.group = None;
         self.undo.pop()
     }
 
-    pub fn pop_redo(&mut self) -> Option<OperationSeq> {
+    pub fn pop_redo(&mut self) -> Option<Entry> {
         self.group = None;
         self.redo.pop()
     }
 
-    pub fn push_redo(&mut self, op: OperationSeq) {
-        self.redo.push(op);
+    pub fn push_redo(&mut self, op: OperationSeq, marks: Vec<AtomicRange>) {
+        self.redo.push(Entry { op, marks });
     }
 
     /// An undo entry made by a redo: does not clear the redo stack.
-    pub fn push_undo(&mut self, op: OperationSeq) {
-        self.undo.push(op);
+    pub fn push_undo(&mut self, op: OperationSeq, marks: Vec<AtomicRange>) {
+        self.undo.push(Entry { op, marks });
     }
 
     pub fn can_undo(&self) -> bool {
@@ -160,14 +188,31 @@ impl History {
     }
 }
 
+/// `marks` lie in the text `op` applies to; where they lie in the text it
+/// produces. A mark `op` edits inside is dropped.
+fn carry_marks(op: &OperationSeq, marks: &[AtomicRange]) -> Vec<AtomicRange> {
+    marks
+        .iter()
+        .filter(|m| !touches_interior(op, m.start, m.end))
+        .map(|m| AtomicRange {
+            id: m.id,
+            start: map_pos(op, m.start, Bias::After),
+            end: map_pos(op, m.end, Bias::Before),
+        })
+        .collect()
+}
+
 /// Entries are chained: the top applies to the current text, the next to the
 /// text the top produces, and so on. `remote` applies to the current text.
-fn transform_stack(stack: &mut Vec<OperationSeq>, remote: &OperationSeq) {
+fn transform_stack(stack: &mut Vec<Entry>, remote: &OperationSeq) {
     let mut carried = remote.clone();
     for entry in stack.iter_mut().rev() {
-        match carried.transform(entry) {
+        match carried.transform(&entry.op) {
             Ok((after_entry, entry_after_remote)) => {
-                *entry = entry_after_remote;
+                entry.op = entry_after_remote;
+                // The marks lie in the text the entry produces, which
+                // `after_entry` applies to.
+                entry.marks = carry_marks(&after_entry, &entry.marks);
                 carried = after_entry;
             }
             Err(_) => {

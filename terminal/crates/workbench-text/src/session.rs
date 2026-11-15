@@ -658,8 +658,9 @@ impl EditSession {
         let Some(entry) = self.history.pop_undo() else {
             return Ok(None);
         };
-        let at = op_end(&entry);
-        let edit = self.commit(entry, Record::Undo);
+        let at = op_end(&entry.op);
+        let edit = self.commit(entry.op, Record::Undo);
+        self.restore_atomics(&entry.marks);
         self.place_cursor(at);
         Ok(Some(edit))
     }
@@ -669,8 +670,9 @@ impl EditSession {
         let Some(entry) = self.history.pop_redo() else {
             return Ok(None);
         };
-        let at = op_end(&entry);
-        let edit = self.commit(entry, Record::Redo);
+        let at = op_end(&entry.op);
+        let edit = self.commit(entry.op, Record::Redo);
+        self.restore_atomics(&entry.marks);
         self.place_cursor(at);
         Ok(Some(edit))
     }
@@ -1168,7 +1170,7 @@ impl EditSession {
         } else {
             (self.anchor, self.head) = (nhi, nlo);
         }
-        let dissolved = self.carry_marks(op);
+        let dissolved = self.carry_marks(op).iter().map(|a| a.id).collect();
         let applied = apply_op(&mut self.local, op);
         debug_assert!(applied.is_ok(), "operation built against another text");
         self.goal_cell = None;
@@ -1177,11 +1179,12 @@ impl EditSession {
     }
 
     /// Carry atomic ranges and the composition across `op`.
-    fn carry_marks(&mut self, op: &OperationSeq) -> Vec<AtomicId> {
+    /// The atomic ranges `op` edited inside come back, as they lay before it.
+    fn carry_marks(&mut self, op: &OperationSeq) -> Vec<AtomicRange> {
         let mut dissolved = Vec::new();
         self.atomics.retain_mut(|a| {
             if touches_interior(op, a.start, a.end) {
-                dissolved.push(a.id);
+                dissolved.push(*a);
                 false
             } else {
                 a.start = map_pos(op, a.start, Bias::After);
@@ -1199,6 +1202,23 @@ impl EditSession {
             };
         }
         dissolved
+    }
+
+    /// Put back atomic ranges an undo or redo gave the text of, with the ids
+    /// they had. One that would overlap a live range, or whose id is live, is
+    /// left out.
+    fn restore_atomics(&mut self, marks: &[AtomicRange]) {
+        for m in marks {
+            let fits = m.start < m.end
+                && m.end <= self.len()
+                && !self
+                    .atomics
+                    .iter()
+                    .any(|a| a.id == m.id || (m.start < a.end && a.start < m.end));
+            if fits {
+                self.atomics.push(*m);
+            }
+        }
     }
 
     /// Replace the local text with `new`, carrying the view across the
@@ -1327,11 +1347,11 @@ impl EditSession {
         let inverse = invert_op(&op, &self.local);
         let applied = apply_op(&mut self.local, &op);
         debug_assert!(applied.is_ok(), "operation built against another text");
-        self.carry_marks(&op);
+        let dissolved = self.carry_marks(&op);
         match record {
-            Record::Edit(shape) => self.history.record(inverse, shape),
-            Record::Undo => self.history.push_redo(inverse),
-            Record::Redo => self.history.push_undo(inverse),
+            Record::Edit(shape) => self.history.record(inverse, dissolved, shape),
+            Record::Undo => self.history.push_redo(inverse, dissolved),
+            Record::Redo => self.history.push_undo(inverse, dissolved),
         }
         let id = self.new_op_id();
         let state = if self.has_conflict() {

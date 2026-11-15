@@ -17,7 +17,7 @@
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::Style;
 use theorem_workbench_core::{PanelPointer, PointerKind};
 use theorem_workbench_text::coords::grapheme_cells;
 use theorem_workbench_text::layout::{Row, line_rows, row_index};
@@ -86,8 +86,8 @@ pub struct Paint<'a> {
     /// A mark in the line-number column: the line (from 0), the glyph and its
     /// style. Lines that are not listed show only their number.
     pub gutter: &'a [(usize, char, Style)],
-    /// Text an input method is composing at the caret. It is drawn underlined
-    /// over what follows the caret and is not in the session until committed.
+    /// Text an input method is composing at the caret. It is drawn in
+    /// `EditorStyles::preedit` over what follows the caret and is not in the session until committed.
     pub preedit: Option<&'a str>,
 }
 
@@ -135,6 +135,8 @@ pub struct SourceView {
     width: u16,
     height: u16,
     drag: Option<Drag>,
+    /// No line-number column at all (a composer, a one-line field).
+    no_gutter: bool,
 }
 
 impl SourceView {
@@ -150,6 +152,14 @@ impl SourceView {
         self.width = width;
         self.height = height;
         self.sync(session);
+    }
+
+    /// Whether the line-number column is drawn (it is, by default). Off, the
+    /// text starts at column 0 whatever the line count, and wrapping, `hit`,
+    /// `caret_cell`, `draw` and the session's viewport all use the full width.
+    /// Call `resize` afterwards so the session's viewport follows.
+    pub fn set_gutter(&mut self, on: bool) {
+        self.no_gutter = !on;
     }
 
     pub fn size(&self) -> (u16, u16) {
@@ -175,12 +185,15 @@ impl SourceView {
     /// Width of the line number column, with its trailing space (0 when the
     /// view is too narrow to spare it).
     pub fn gutter(&self, session: &EditSession) -> u16 {
-        let digits = session.coords().line_count().to_string().len() as u16;
-        if self.width > digits + 1 {
-            digits + 1
-        } else {
-            0
+        self.gutter_in(session, self.width)
+    }
+
+    fn gutter_in(&self, session: &EditSession, width: u16) -> u16 {
+        if self.no_gutter {
+            return 0;
         }
+        let digits = session.coords().line_count().to_string().len() as u16;
+        if width > digits + 1 { digits + 1 } else { 0 }
     }
 
     fn content_width(&self, session: &EditSession) -> u16 {
@@ -539,12 +552,7 @@ impl SourceView {
         let rope = session.rope();
         let coords = Coords::new(rope);
         let tab = session.config().tab_width;
-        let digits = coords.line_count().to_string().len() as u16;
-        let gutter = if area.width > digits + 1 {
-            digits + 1
-        } else {
-            0
-        };
+        let gutter = self.gutter_in(session, area.width);
         let content = Rect {
             x: area.x + gutter,
             y: area.y,
@@ -677,7 +685,7 @@ impl SourceView {
                                         py,
                                         pre,
                                         room,
-                                        styles.text.add_modifier(Modifier::UNDERLINED),
+                                        styles.text.patch(styles.preedit),
                                     );
                                     // The caret follows the composed text.
                                     if paint.focused && end < content.x + content.width {
@@ -1148,5 +1156,42 @@ mod tests {
             Some(Clipboard::Paste)
         );
         assert_eq!(s.text(), "hello\n", "asking changes nothing");
+    }
+
+    #[test]
+    fn with_the_gutter_off_the_text_starts_at_column_zero_across_a_digit_change() {
+        let nine = "a\nb\nc\nd\ne\nf\ng\nh\ni";
+        let (mut s, mut v) = view(nine, 12, 20);
+        v.set_gutter(false);
+        v.resize(&mut s, 12, 20);
+        assert_eq!(v.gutter(&s), 0);
+        assert_eq!(rows(&s, &v, 12, 3)[0], "a");
+        assert_eq!(v.hit(&s, 0, 0), 0);
+        // A tenth line takes the numbered view from two columns to three; with
+        // the gutter off nothing moves.
+        s.set_selection(s.len(), s.len());
+        s.insert_text("\nj").unwrap();
+        v.resize(&mut s, 12, 20);
+        assert_eq!(v.gutter(&s), 0);
+        assert_eq!(rows(&s, &v, 12, 10)[9], "j");
+        assert_eq!(v.hit(&s, 0, 9), s.len() - 1);
+        assert_eq!(v.hit(&s, 1, 9), s.len());
+        let c = v.caret_cell(&s, Rect::new(0, 0, 12, 20)).unwrap();
+        assert_eq!((c.x, c.y), (1, 9));
+        // On, the same view reserves the column again.
+        v.set_gutter(true);
+        assert_eq!(v.gutter(&s), 3);
+    }
+
+    #[test]
+    fn with_the_gutter_off_wrapping_uses_the_full_width() {
+        let mut cfg = SessionConfig::new("t");
+        cfg.wrap = true;
+        let mut s = EditSession::new("abcdefgh", 1, cfg);
+        let mut v = SourceView::new();
+        v.set_gutter(false);
+        v.resize(&mut s, 8, 4);
+        assert_eq!(rows(&s, &v, 8, 2)[0], "abcdefgh");
+        assert_eq!(s.viewport().0, 8);
     }
 }

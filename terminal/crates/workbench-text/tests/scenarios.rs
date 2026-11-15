@@ -474,10 +474,19 @@ fn atomic_ranges_are_skipped_and_deleted_as_one() {
     assert!(s.atomics().is_empty());
     s.undo().unwrap();
     assert_eq!(s.text(), "hi @alice there", "undo brings the text back");
-    assert!(
-        s.atomics().iter().all(|a| a.id != id),
-        "the mark is the caller's to restore"
+    assert_eq!(
+        s.atomics()
+            .iter()
+            .map(|a| (a.id, a.start, a.end))
+            .collect::<Vec<_>>(),
+        vec![(id, 3, 9)],
+        "undo restores the mark with its id"
     );
+    s.redo().unwrap();
+    assert_eq!(s.text(), "hi  there");
+    assert!(s.atomics().is_empty(), "redo deletes it again");
+    s.undo().unwrap();
+    assert_eq!(s.atomics()[0].id, id);
     ok(&s);
 }
 
@@ -861,4 +870,62 @@ fn render_scrolls_sideways_without_wrap_and_styles_preedit_and_atomics() {
         4,
         "caret is at the end of the preedit"
     );
+}
+
+#[test]
+fn an_undo_after_owner_changes_restores_the_mark_where_the_text_went() {
+    let mut s = session("hi @alice there");
+    let id = s.mark_atomic(3, 9).unwrap();
+    s.set_selection(9, 9);
+    s.delete(Deletion::Backward).unwrap();
+    // The owner inserts before the chip's place; the restored chip moves with it.
+    s.apply_remote(&[TextChange::new(0, 0, "RR")], 11).unwrap();
+    s.undo().unwrap();
+    assert_eq!(s.text(), "RRhi @alice there");
+    assert_eq!(
+        s.atomics()
+            .iter()
+            .map(|a| (a.id, a.start, a.end))
+            .collect::<Vec<_>>(),
+        vec![(id, 5, 11)]
+    );
+    ok(&s);
+}
+
+#[test]
+fn an_owner_insert_where_the_chip_was_does_not_end_up_inside_the_restored_chip() {
+    let mut s = session("hi @alice there");
+    let id = s.mark_atomic(3, 9).unwrap();
+    s.set_selection(9, 9);
+    s.delete(Deletion::Backward).unwrap();
+    s.apply_remote(&[TextChange::new(3, 3, "Q")], 11).unwrap();
+    s.undo().unwrap();
+    let a = s.atomics()[0];
+    assert_eq!(a.id, id);
+    assert_eq!(
+        s.text()
+            .chars()
+            .skip(a.start)
+            .take(a.end - a.start)
+            .collect::<String>(),
+        "@alice"
+    );
+    ok(&s);
+}
+
+#[test]
+fn an_undo_that_edits_inside_a_live_range_dissolves_it_and_restores_the_old_one() {
+    let mut s = session("ab @cd ef");
+    let id = s.mark_atomic(3, 6).unwrap();
+    s.set_selection(6, 6);
+    s.delete(Deletion::Backward).unwrap();
+    let other = s.mark_atomic(2, 4).unwrap();
+    s.undo().unwrap();
+    let ids: Vec<_> = s.atomics().iter().map(|a| a.id).collect();
+    assert_eq!(
+        ids,
+        vec![id],
+        "{ids:?} (live {other:?} was cut by the undo)"
+    );
+    ok(&s);
 }

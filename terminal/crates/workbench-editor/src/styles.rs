@@ -19,6 +19,8 @@ pub struct EditorStyles {
     /// missing from the core theme; empty unless the host sets it.
     pub current_line: Style,
     pub selection: Style,
+    /// Text an input method is composing, patched over `text`.
+    pub preedit: Style,
     /// Every search match.
     pub search_match: Style,
     /// The match the caret is on.
@@ -58,6 +60,7 @@ impl EditorStyles {
             gutter_current: Style::default().add_modifier(Modifier::BOLD),
             current_line: Style::default(),
             selection: Style::default().add_modifier(Modifier::REVERSED),
+            preedit: Style::default().add_modifier(Modifier::UNDERLINED),
             search_match: Style::default().add_modifier(Modifier::UNDERLINED),
             current_match: Style::default().add_modifier(Modifier::UNDERLINED | Modifier::BOLD),
             conflict: Style::default().add_modifier(Modifier::ITALIC | Modifier::UNDERLINED),
@@ -87,6 +90,7 @@ impl EditorStyles {
             gutter_current: theme.gutter_current,
             current_line: theme.current_line,
             selection: theme.selection,
+            preedit: theme.preedit,
             search_match: theme.search_match,
             current_match: theme.current_match,
             conflict: theme.conflict,
@@ -148,6 +152,7 @@ mod tests {
             gutter_current: theme.text,
             current_line: Style::default(),
             selection: theme.selected,
+            preedit: Style::default().add_modifier(Modifier::UNDERLINED),
             search_match: theme.warning,
             current_match: theme.focus,
             conflict: theme.error,

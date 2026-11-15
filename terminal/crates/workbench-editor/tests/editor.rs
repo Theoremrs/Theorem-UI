@@ -2486,3 +2486,27 @@ fn the_themes_syntax_roles_set_the_colour_the_panel_draws() {
     assert_eq!(fg_at(&rig, &plain, 3), Color::Reset);
     assert_eq!(fg_at(&rig, &themed, 3), Color::Rgb(1, 2, 3));
 }
+
+#[test]
+fn the_themes_preedit_role_styles_the_composition_text() {
+    use ratatui::style::{Color, Style};
+    let mut rig = Rig::opened("ab\n");
+    rig.send(Msg::Composition(Composition::Start));
+    rig.send(Msg::Composition(Composition::Update { text: "zz".into() }));
+    let bg_of = |theme: &Theme| {
+        let b = rig.body();
+        let area = Rect::new(0, 0, b.width, b.height);
+        let mut buf = Buffer::empty(area);
+        let mut cx = ViewCtx::new(theme, rig.m.workspace());
+        cx.focused = true;
+        rig.m.panel(&rig.id).unwrap().view(area, &mut buf, &cx);
+        (0..b.width)
+            .find(|x| buf[(*x, 0)].symbol() == "z")
+            .map(|x| buf[(x, 0)].bg)
+    };
+    let plain = Theme::plain();
+    let mut themed = Theme::plain();
+    themed.preedit = Style::default().bg(Color::Rgb(7, 8, 9));
+    assert_eq!(bg_of(&plain), Some(Color::Reset));
+    assert_eq!(bg_of(&themed), Some(Color::Rgb(7, 8, 9)));
+}
