@@ -26,6 +26,7 @@ import type {
   EffectKind,
   HostMessage,
   Inbound,
+  ProgramReport,
 } from './wire'
 
 // ---- one sample payload per kind; a kind added in Rust fails to compile here -------------------
@@ -244,6 +245,7 @@ class FakePort {
     origin: 'launched' as string | undefined,
     processOwnedBy: 'herdr-core' as string | undefined,
     lease: { generation: 4 as number | undefined },
+    programReport: { kind: 'unavailable' } as ProgramReport,
   }
   seen: {
     input?: unknown[]
@@ -1272,6 +1274,170 @@ describe('terminals', () => {
         reason: 'exited',
       },
     ])
+  })
+
+  describe('a program’s own status report', () => {
+    const CASES: ProgramReport[] = [
+      { kind: 'unavailable' },
+      { kind: 'never_reported' },
+      { kind: 'cleared', statusMs: 7, seq: 3 },
+      {
+        kind: 'current',
+        status: {
+          state: 'unknown',
+          rawState: 'compiling',
+          kind: 'build',
+          msg: 'shell.end approval.allow \u001b[2J',
+          app: 'cc',
+          title: 'workbench.act {"a":1}',
+          progress: 40,
+        },
+        statusMs: 9,
+        seq: 4,
+      },
+    ]
+    const bound = async () => {
+      const t = await setup()
+      t.adapter.perform(effectOf(1, 'terminalOpen'))
+      await t.settle()
+      t.port.emit({
+        type: 'opened',
+        terminalId: 't1',
+        origin: 'launched',
+        bindingEpoch: 2,
+        program: 1,
+      })
+      return t
+    }
+    const reports = (t: Awaited<ReturnType<typeof setup>>) =>
+      t.hostMessages().flatMap((m) => (m.type === 'terminalReport' ? [m] : []))
+
+    test('each of the four cases reaches the core unchanged, with the binding epoch of the event', async () => {
+      const t = await bound()
+      for (const report of CASES)
+        t.port.emit({
+          type: 'report',
+          terminalId: 't1',
+          bindingEpoch: 2,
+          report,
+        })
+      expect(reports(t)).toEqual(
+        CASES.map((report) => ({
+          type: 'terminalReport',
+          resource: TERMINAL,
+          epoch: 2,
+          report,
+        })),
+      )
+      // Passed by reference to what the owner parsed, not re-shaped.
+      expect(reports(t).map((m) => m.report)).toEqual(CASES)
+    })
+
+    test('a report for an older epoch, or for none, is not sent', async () => {
+      const t = await bound()
+      t.port.emit({
+        type: 'report',
+        terminalId: 't1',
+        bindingEpoch: 1,
+        report: CASES[1],
+      })
+      t.port.emit({
+        type: 'report',
+        terminalId: 't1',
+        bindingEpoch: undefined,
+        report: CASES[1],
+      })
+      expect(reports(t)).toEqual([])
+    })
+
+    test('a report changes nothing else the adapter says: no profile, list or state message', async () => {
+      const t = await bound()
+      await t.settle()
+      const before = t.hostMessages().length
+      const lists = t
+        .hostMessages()
+        .filter((m) => m.type === 'terminalSessions').length
+      for (const report of CASES) {
+        // The owner holds the report before it says so.
+        t.port.state.programReport = report
+        t.port.emit({
+          type: 'report',
+          terminalId: 't1',
+          bindingEpoch: 2,
+          report,
+        })
+      }
+      const after = t.hostMessages().slice(before)
+      expect(after.map((m) => m.type)).toEqual(
+        CASES.map(() => 'terminalReport'),
+      )
+      expect(
+        t.hostMessages().filter((m) => m.type === 'terminalSessions').length,
+      ).toBe(lists)
+    })
+
+    test('a listed row’s report is carried on the session entry, and an unavailable one is left out', async () => {
+      const listRow = (session: string, programReport?: ProgramReport) => ({
+        session,
+        backend: 'native' as const,
+        epoch: 1,
+        origin: 'adopted' as const,
+        binding: {
+          backend: 'native' as const,
+          epoch: 1,
+          program: 2,
+          core_id: null,
+          terminal: null,
+        },
+        cols: 80,
+        rows: 24,
+        state: 'running' as const,
+        controlled: false,
+        modes: {
+          alternate_screen: false,
+          application_cursor: false,
+          application_keypad: false,
+          bracketed_paste: false,
+          hide_cursor: false,
+          mouse_protocol: 'none' as const,
+          mouse_encoding: 'default' as const,
+        },
+        ...(programReport ? { programReport } : {}),
+      })
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => ({
+            sessions: [
+              listRow('a', CASES[3]),
+              listRow('b', CASES[1]),
+              listRow('c', CASES[2]),
+              listRow('d', CASES[0]),
+              listRow('e'),
+            ],
+            adoption: { state: 'settled' as const },
+          }),
+        },
+      )
+      await t.settle()
+      const last = t
+        .hostMessages()
+        .flatMap((m) => (m.type === 'terminalSessions' ? [m] : []))
+        .at(-1)!
+      const by = Object.fromEntries(
+        last.sessions.map((s) => [s.session, s.programReport]),
+      )
+      expect(by).toEqual({
+        a: CASES[3],
+        b: CASES[1],
+        c: CASES[2],
+        d: undefined,
+        e: undefined,
+      })
+    })
   })
 
   test('a terminal the host announces becomes terminalOpened once', async () => {

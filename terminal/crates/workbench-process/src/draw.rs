@@ -12,6 +12,7 @@ use crate::bound::{Bound, EndAsk, Role, Status, Tone};
 use crate::catalog::{backend_word, persistence};
 use crate::chooser::{self, LineKind};
 use crate::panel::ProcessPanel;
+use crate::report;
 use crate::state::{Failure, FailureKind, Opening, Saved, Stage, reason_text};
 use crate::wrap::{wrap, wrap_first};
 
@@ -446,7 +447,19 @@ fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
     if let Some(r) = button {
         put(buf, r, r.y, END_LABEL, cx.theme.focus);
     }
-    if let Some(f) = footer_view(area, b) {
+    let footer = footer_view(area, b);
+    // The program's own word, in its own band above the footer: never the
+    // header's lifecycle row and never a notice.
+    let bottom = footer.as_ref().map_or(area.bottom(), |f| f.rect.y);
+    let head_n = u16::try_from(head_rows.len()).unwrap_or(u16::MAX);
+    if let Some(band) = report::band(area, b, head_n, bottom) {
+        blank(buf, band.rect, cx.theme.bg);
+        for (i, row) in band.rows.iter().enumerate() {
+            let y = band.rect.y + u16::try_from(i).unwrap_or(0);
+            put(buf, band.rect, y, row, cx.theme.muted);
+        }
+    }
+    if let Some(f) = footer {
         blank(buf, f.rect, cx.theme.bg);
         for (i, row) in f.rows.iter().enumerate() {
             let y = f.rect.y + u16::try_from(i).unwrap_or(0);

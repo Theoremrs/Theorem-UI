@@ -1078,6 +1078,7 @@ impl Panel for ProcessPanel {
         let quiet = matches!(
             msg,
             PanelMsg::Resize { .. }
+                | PanelMsg::TerminalReport(_)
                 | PanelMsg::Focus(_)
                 | PanelMsg::Cached(_)
                 | PanelMsg::Workspace(_)
@@ -1125,6 +1126,12 @@ impl Panel for ProcessPanel {
                         ),
                     ));
                     b.ask_repaint(cx);
+                }
+            }
+            // The program's own word: stored, shown, and nothing else.
+            PanelMsg::TerminalReport(report) => {
+                if let Some(b) = self.bound_mut() {
+                    b.hold_report(report);
                 }
             }
             PanelMsg::Action(id) => self.on_action(id, cx),

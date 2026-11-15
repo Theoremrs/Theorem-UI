@@ -53,16 +53,25 @@ pub(crate) fn rows(data: &CatalogData, identity: &WorkspaceIdentity) -> Vec<Row>
         if s.controlled_elsewhere {
             title.push_str("  held by another viewer");
         }
+        let mut detail = format!(
+            "{} @ {} | {} | {}",
+            s.workspace,
+            host_of(identity, Some(s)),
+            backend_word(s.backend),
+            persistence(s.backend)
+        );
+        // The program's own word, for a program that is running, behind the
+        // same provenance wording the pane uses.
+        if s.state == SessionState::Running
+            && let Some(report) = crate::report::compact(&s.program_report)
+        {
+            detail.push_str(" | ");
+            detail.push_str(&report);
+        }
         out.push(Row {
             enabled: named,
             reason: (!named).then(|| "The host has not named a workspace yet.".to_owned()),
-            detail: format!(
-                "{} @ {} | {} | {}",
-                s.workspace,
-                host_of(identity, Some(s)),
-                backend_word(s.backend),
-                persistence(s.backend)
-            ),
+            detail,
             title,
             kind: RowKind::Session(s.clone()),
         });

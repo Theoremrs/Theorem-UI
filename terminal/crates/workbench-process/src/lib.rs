@@ -11,6 +11,7 @@ mod chooser;
 mod draw;
 mod keys;
 mod panel;
+mod report;
 mod semantics;
 mod state;
 mod styles;

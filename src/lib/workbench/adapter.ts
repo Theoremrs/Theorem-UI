@@ -12,11 +12,9 @@ import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import { herdrIdentity } from './terminal/protocol'
+import type { ListedTerminals } from './terminal/host'
 import { profileById, TERMINAL_PROFILES } from './terminal'
-import type {
-  TerminalAdoption,
-  TerminalListReply,
-} from '@theoremharness/sdk-ide'
+import type { TerminalAdoption } from '@theoremharness/sdk-ide'
 import type { Layout } from './layout'
 import type { AccountChange, AccountWatch } from './account'
 import { grantedCapabilities } from './capabilities'
@@ -275,7 +273,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     const epoch = () => port.state.bindingEpoch ?? 0
     return port.subscribe((event: TerminalEvent) => {
       forward(event)
-      track(port)
+      // A report changes what the program says about itself and nothing else: the entry keeps it for
+      // the next list, and no list, profile or state is published because of it.
+      track(port, event.type !== 'report')
     })
 
     function forward(event: TerminalEvent) {
@@ -355,6 +355,18 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
               : {}),
             cols: event.cols,
             rows: event.rows,
+          })
+          return
+        case 'report':
+          // The program's word, passed on exactly as the owner parsed it: no field is read, joined
+          // into text or logged here. A report for no known binding epoch is not sent.
+          if (event.bindingEpoch === undefined || event.bindingEpoch < epoch())
+            return
+          send({
+            type: 'terminalReport',
+            resource: target,
+            epoch: event.bindingEpoch,
+            report: event.report,
           })
           return
         case 'reconnected':
@@ -457,13 +469,14 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   }
 
   /** Reads what the host lists into the session list: unbound rows are the host's, bound ones stay the binding's. */
-  function absorb(listed: TerminalListReply) {
+  function absorb(listed: ListedTerminals) {
     adoption = listed.adoption
     const rows = new Set<string>()
     for (const row of listed.sessions) {
       rows.add(row.session)
       const modes = wireModes(row.modes)
       const held = sessions.get(row.session)
+      const report = row.programReport
       if (terminals.has(row.session)) {
         // The binding owns the rest of its entry; the host's modes are still the host's to say.
         if (held)
@@ -472,6 +485,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       }
       sessions.set(row.session, {
         ...(modes ? { modes } : {}),
+        ...(report && report.kind !== 'unavailable'
+          ? { programReport: report }
+          : {}),
         session: row.session,
         profile:
           sessions.get(row.session)?.profile ?? profileLabel(row.backend),
@@ -547,7 +563,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   }
 
   /** Reads one binding into the list: its profile, program, liveness and whether another viewer holds control. */
-  function track(port: TerminalPort) {
+  function track(port: TerminalPort, publish = true) {
     const { state } = port
     const session = state.terminalId
     if (!session) return
@@ -564,6 +580,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       ...(sessions.get(session)?.modes
         ? { modes: sessions.get(session)?.modes }
         : {}),
+      ...(state.programReport.kind !== 'unavailable'
+        ? { programReport: state.programReport }
+        : {}),
       ...(state.processOwnedBy ? { host: state.processOwnedBy } : {}),
       ...(state.program !== undefined ? { program: state.program } : {}),
       state:
@@ -574,7 +593,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
             : 'running',
       controlledElsewhere: state.lease.role === 'observer' && !state.lease.held,
     })
-    publishSessions()
+    if (publish) publishSessions()
   }
 
   stops.push(

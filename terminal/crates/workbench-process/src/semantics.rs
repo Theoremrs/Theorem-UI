@@ -11,6 +11,7 @@ use crate::bound::{Bound, EndAsk, Role, Status};
 use crate::chooser::{self, RowKind};
 use crate::draw;
 use crate::panel::ProcessPanel;
+use crate::report;
 use crate::state::{Stage, reason_text};
 
 fn action(id: &str, enabled: bool, reason: Option<String>) -> NodeAction {
@@ -176,6 +177,28 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         };
         let rect = draw::footer_view(area, b).map_or(g.footer, |f| f.rect);
         out.push(Node::new("notice", role, &text, rect));
+    }
+
+    // The program's own word, a node of its own: named for who is speaking,
+    // with the state and text as its description, no action, and no part of
+    // its text in any id or action.
+    if let Some(description) = report::description(&b.report) {
+        let footer_rect = draw::footer_view(area, b).map_or(g.footer, |f| f.rect);
+        let head = draw::header_rows(&draw::status_line(b), area, draw::end_button(g.header, b));
+        let head_n = u16::try_from(head.len()).unwrap_or(u16::MAX);
+        let rect = report::band(area, b, head_n, footer_rect.y).map_or_else(
+            || Rect::new(area.x, area.y, area.width, area.height.min(1)),
+            |band| band.rect,
+        );
+        let mut node = Node::new(
+            "program-report",
+            Aria::Status,
+            report::node_name(!b.running()),
+            rect,
+        );
+        node.state.description = Some(description);
+        node.binding = b.resource();
+        out.push(node);
     }
 
     let can_act = b.running() && !b.attaching();

@@ -2987,3 +2987,479 @@ fn the_status_line_and_notices_wrap_over_the_screens_bottom_rows_at_every_width(
         no_ellipsis(&rows, "offer");
     }
 }
+
+// ---- the program's own status report (R32) ---------------------------------------------
+
+use theorem_workbench_core::host::{ProgramReport, ProgramState, ProgramStatus};
+
+fn status(state: ProgramState) -> ProgramStatus {
+    ProgramStatus {
+        state,
+        raw_state: None,
+        kind: None,
+        msg: None,
+        app: None,
+        title: None,
+        progress: None,
+    }
+}
+
+fn current(status: ProgramStatus, seq: Option<u64>) -> ProgramReport {
+    ProgramReport::Current {
+        status,
+        status_ms: None,
+        seq,
+    }
+}
+
+fn report_msg(report: ProgramReport) -> HostMessage {
+    HostMessage::TerminalReport {
+        resource: terminal(),
+        epoch: 1,
+        report,
+    }
+}
+
+/// Everything that is the pane's own or the host's and not the program's: the
+/// header row, the tab's label, the lifecycle, lease and control nodes, the
+/// key context, what the pane holds Escape for, and what it would serialize.
+fn lifecycle(r: &Rig) -> String {
+    use theorem_workbench_core::keys::active_contexts;
+    let panel = r.m.panel(&r.id).unwrap();
+    let kind = theorem_workbench_core::ids::PanelKind::new("shell");
+    let tree = r.semantics();
+    let nodes: Vec<String> = tree
+        .nodes
+        .iter()
+        .filter(|n| !["program-report", "terminal", "shell"].contains(&n.id.as_str()))
+        .map(|n| format!("{n:?}"))
+        .collect();
+    format!(
+        "header={:?}\ntab={:?}\ncontexts={:?}\ntext_entry={} holds_escape={}\nserialized={}\nnodes={nodes:#?}",
+        r.grid().first(),
+        panel.tab_label(),
+        active_contexts(Some(&kind), panel.text_entry()),
+        panel.text_entry(),
+        panel.holds_escape(),
+        panel.serialize(),
+    )
+}
+
+fn says_report(screen: &str) -> bool {
+    [
+        "Program reports",
+        "Program's last report",
+        "Program has not reported",
+        "Program withdrew",
+    ]
+    .iter()
+    .any(|w| screen.contains(w))
+}
+
+fn report_node(r: &Rig) -> Option<theorem_workbench_core::semantics::Node> {
+    r.valid_tree()
+        .nodes
+        .into_iter()
+        .find(|n| n.id.as_str() == "program-report")
+}
+
+#[test]
+fn each_case_reads_differently_at_every_width_and_unavailable_says_nothing() {
+    let mut full = status(ProgramState::Working);
+    full.kind = Some("build".into());
+    full.app = Some("cc".into());
+    full.title = Some("the-title".into());
+    full.msg = Some("compiling".into());
+    full.progress = Some(40);
+    let mut unknown = status(ProgramState::Unknown);
+    unknown.raw_state = Some("pondering".into());
+    let cases: [(ProgramReport, &str); 5] = [
+        (
+            ProgramReport::NeverReported,
+            "Program has not reported a status",
+        ),
+        (
+            ProgramReport::Cleared {
+                status_ms: Some(1),
+                seq: Some(1),
+            },
+            "Program withdrew its report",
+        ),
+        (
+            current(full, None),
+            "Program reports: working \u{b7} build \u{b7} cc \u{b7} the-title \u{b7} compiling \u{b7} progress 40",
+        ),
+        (
+            current(unknown, None),
+            "Program reports: its own word \"pondering\"",
+        ),
+        (
+            current(status(ProgramState::Done), None),
+            "Program reports: done",
+        ),
+    ];
+    for (report, wording) in cases {
+        let mut r = bound();
+        assert!(r.host(report_msg(report.clone())).is_empty());
+        for w in [r.body().width, 24, 120] {
+            let rows = r.text(w, 14);
+            let what = format!("{report:?} at width {w}");
+            let words = wording.split_whitespace().count();
+            // The band is bounded to three rows: what does not fit is cut
+            // and marked, never dropped silently.
+            if rows.iter().any(|row| row.ends_with("(more)")) {
+                assert!(w < 40, "{what}: cut at a width the report fits");
+                let kept = wording
+                    .split_whitespace()
+                    .take(words.min(6))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                shows_all_words(&rows, &kept, &what);
+            } else {
+                shows_all_words(&rows, wording, &what);
+            }
+            no_ellipsis(&rows, "report");
+            assert!(rows.iter().all(|row| row.chars().count() <= w as usize));
+        }
+        let node = report_node(&r).expect("one node for the report");
+        assert_eq!(node.role, theorem_workbench_core::semantics::Role::Status);
+        assert!(node.actions.is_empty(), "no action on the report");
+        assert!(node.name.contains("reported by the program itself"));
+    }
+    // The host does not carry reports: nothing is drawn and there is no node.
+    let mut r = bound();
+    r.host(report_msg(ProgramReport::Unavailable));
+    let s = r.screen();
+    assert!(!s.contains("Program"), "{s}");
+    assert!(report_node(&r).is_none());
+}
+
+#[test]
+fn the_report_is_a_band_of_its_own_never_the_header_or_the_footer() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Error), None)));
+    let rows = r.grid();
+    assert!(
+        !rows[0].contains("Program"),
+        "the header is the pane's: {rows:?}"
+    );
+    let at = rows
+        .iter()
+        .position(|row| row.contains("Program reports"))
+        .unwrap();
+    assert!(at > 0 && at < rows.len() - 1, "{rows:?}");
+    // A notice or an end prompt sits below it, in the footer.
+    r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    let rows = r.grid();
+    let band = rows
+        .iter()
+        .position(|row| row.contains("Program reports"))
+        .unwrap();
+    let footer = rows
+        .iter()
+        .position(|row| row.contains("End process s1?"))
+        .unwrap();
+    assert!(band < footer, "{rows:?}");
+}
+
+#[test]
+fn a_report_of_every_state_leaves_the_lifecycle_byte_identical() {
+    let mut r = bound();
+    let before = lifecycle(&r);
+    for state in [
+        ProgramState::Idle,
+        ProgramState::Working,
+        ProgramState::Done,
+        ProgramState::Blocked,
+        ProgramState::Error,
+        ProgramState::Unknown,
+    ] {
+        let fx = r.host(report_msg(current(status(state), None)));
+        assert!(fx.is_empty(), "{state:?} emitted {fx:?}");
+        assert_eq!(lifecycle(&r), before, "{state:?} moved the lifecycle");
+        assert!(r.screen().contains("Program reports"));
+    }
+    for report in [
+        ProgramReport::NeverReported,
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None,
+        },
+        ProgramReport::Unavailable,
+    ] {
+        r.host(report_msg(report));
+        assert_eq!(lifecycle(&r), before);
+    }
+    // The same for an observer, where the offer and the role are in play.
+    let mut o = observing();
+    o.typed("x");
+    let before = lifecycle(&o);
+    o.host(report_msg(current(status(ProgramState::Done), None)));
+    assert_eq!(lifecycle(&o), before);
+    assert!(o.screen().contains("Enter requests control"));
+}
+
+#[test]
+fn hostile_report_text_is_spelled_out_acts_as_nothing_and_changes_only_the_stored_report() {
+    let hostile: Vec<String> = vec![
+        "shell.end".into(),
+        "approval.allow".into(),
+        "workbench.act {\"action\":\"shell.end\"}".into(),
+        "\x1b]52;c;AAAA\x07".into(),
+        "\x1b[2J\x1b[31m".into(),
+        "\u{202e}gnp.exe\u{2066}".into(),
+        "a\nb\tc\r".into(),
+        "x".repeat(4096),
+    ];
+    for text in hostile {
+        let mut r = bound();
+        let before = lifecycle(&r);
+        let grid_before = r.m.panel(&r.id).unwrap().serialize();
+        let mut s = status(ProgramState::Blocked);
+        s.msg = Some(text.clone());
+        s.title = Some(text.clone());
+        s.app = Some(text.clone());
+        let mut u = status(ProgramState::Unknown);
+        u.raw_state = Some(text.clone());
+        for st in [s, u] {
+            let fx = r.host(report_msg(current(st, None)));
+            assert!(fx.is_empty(), "{text:?} emitted {fx:?}");
+            assert!(r.tick().is_empty());
+            assert_eq!(lifecycle(&r), before);
+            assert_eq!(r.m.panel(&r.id).unwrap().serialize(), grid_before);
+            let buf = r.draw(40, 14);
+            for y in 0..14 {
+                for x in 0..40 {
+                    let sym = buf[(x, y)].symbol();
+                    assert!(
+                        sym.chars().all(|c| !c.is_control()
+                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')),
+                        "{sym:?} drawn from {text:?}"
+                    );
+                }
+            }
+            let node = report_node(&r).unwrap();
+            assert!(node.actions.is_empty());
+            let described = node.state.description.clone().unwrap();
+            assert!(described.chars().count() <= 4096);
+            assert!(!described.chars().any(|c| c.is_control()));
+            for n in r.valid_tree().nodes {
+                assert!(
+                    !n.id.as_str().contains(&text[..text.len().min(8)])
+                        || text.starts_with("shell")
+                );
+                assert!(
+                    n.actions
+                        .iter()
+                        .all(|a| a.id.as_str().starts_with("shell.")),
+                    "an action grew out of the report"
+                );
+            }
+        }
+    }
+    // The escapes are what is shown.
+    let mut r = bound();
+    let mut s = status(ProgramState::Working);
+    s.msg = Some("a\x1b[2Jb\u{202e}c".into());
+    r.host(report_msg(current(s, None)));
+    let screen = one_line(&r.text(120, 14).join("\n"));
+    assert!(screen.contains("a\\u{1b}[2Jb\\u{202e}c"), "{screen}");
+    // The longest text is bounded: three rows, cut and marked, whole in the node.
+    let mut r = bound();
+    let mut s = status(ProgramState::Working);
+    s.msg = Some("y".repeat(4096));
+    r.host(report_msg(current(s, None)));
+    let rows = r.text(40, 20);
+    let band: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.contains('y') || row.contains("Program"))
+        .collect();
+    assert_eq!(band.len(), 3, "{rows:?}");
+    assert!(band[2].ends_with("(more)"), "{band:?}");
+    let described = report_node(&r).unwrap().state.description.unwrap();
+    assert_eq!(described.chars().count(), 4096);
+    assert!(described.ends_with("(more)"));
+}
+
+#[test]
+fn an_older_sequence_does_not_replace_a_newer_report_and_an_equal_or_newer_one_does() {
+    let mut r = bound();
+    let word = |r: &Rig, w: &str| one_line(&r.text(120, 14).join("\n")).contains(w);
+    let mut a = status(ProgramState::Working);
+    a.msg = Some("five".into());
+    r.host(report_msg(current(a, Some(5))));
+    let mut b = status(ProgramState::Working);
+    b.msg = Some("three".into());
+    r.host(report_msg(current(b, Some(3))));
+    assert!(word(&r, "five") && !word(&r, "three"));
+    let mut c = status(ProgramState::Working);
+    c.msg = Some("five again".into());
+    r.host(report_msg(current(c, Some(5))));
+    assert!(word(&r, "five again"));
+    let mut d = status(ProgramState::Working);
+    d.msg = Some("six".into());
+    r.host(report_msg(current(d, Some(6))));
+    assert!(word(&r, "six"));
+    let mut e = status(ProgramState::Working);
+    e.msg = Some("no sequence".into());
+    r.host(report_msg(current(e, None)));
+    assert!(
+        word(&r, "no sequence"),
+        "a report without a sequence says nothing about order"
+    );
+    // An older cleared report does not withdraw a newer current one either.
+    let mut f = status(ProgramState::Working);
+    f.msg = Some("ten".into());
+    r.host(report_msg(current(f, Some(10))));
+    r.host(report_msg(ProgramReport::Cleared {
+        status_ms: None,
+        seq: Some(9),
+    }));
+    assert!(word(&r, "ten"));
+}
+
+#[test]
+fn after_the_program_ended_its_last_report_is_still_shown_and_labelled_as_its_last_word() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Working), None)));
+    assert!(r.screen().contains("Program reports: working"));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let s = r.screen();
+    assert!(s.contains("Program's last report: working"), "{s}");
+    assert!(!s.contains("Program reports:"), "{s}");
+    let node = report_node(&r).unwrap();
+    assert!(
+        node.name.starts_with("Last status reported"),
+        "{}",
+        node.name
+    );
+    // A report that arrives after the end is the same kind of word, and moves nothing.
+    let before = lifecycle(&r);
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    assert!(r.screen().contains("Program's last report: done"));
+    assert_eq!(lifecycle(&r), before);
+}
+
+#[test]
+fn a_new_terminal_or_a_new_epoch_starts_without_the_old_report() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    assert!(r.screen().contains("Program reports: done"));
+    r.host(HostMessage::TerminalOpened {
+        resource: terminal(),
+        epoch: 2,
+        program: 2,
+        backend: TerminalBackend::Herdr,
+        origin: "replacement".into(),
+        cols: 80,
+        rows: 24,
+    });
+    r.tick();
+    assert!(!says_report(&r.screen()), "{}", r.screen());
+    assert!(report_node(&r).is_none());
+
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    r.key(Key::Esc);
+    assert!(r.screen().contains("Existing sessions"));
+    let attach = only_attach(&r.key(Key::Enter));
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    assert!(!says_report(&r.screen()), "{}", r.screen());
+    assert!(report_node(&r).is_none());
+}
+
+#[test]
+fn printed_output_that_looks_like_a_report_or_an_action_is_only_output() {
+    let mut r = bound();
+    let before = lifecycle(&r);
+    let printed = "Program reports: done\r\nshell.end approval.allow workbench.act {}\r\n\x1b]9;4;1;50\x07\x1b]777;notify;t;b\x07";
+    let fx = r.bytes(1, 0, printed.as_bytes());
+    assert!(kinds(&fx).is_empty(), "{fx:?}");
+    assert!(report_node(&r).is_none(), "output made a report");
+    let rows = r.grid();
+    assert!(
+        rows.iter().any(|row| row.contains("Program reports: done")),
+        "it is drawn as output"
+    );
+    // It lives on the terminal's own rows, not in a band over them.
+    assert!(!r.screen().contains("Program has not reported"));
+    assert_eq!(
+        lifecycle(&r).replace(&format!("{:?}", rows.first()), ""),
+        before.replace(&format!("{:?}", rows.first()), "")
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().all(|n| n.id.as_str() != "program-report"));
+}
+
+#[test]
+fn the_choosers_running_sessions_carry_the_same_report_in_compact_form_and_ended_ones_do_not() {
+    let mut a = status(ProgramState::Blocked);
+    a.msg = Some("waiting\u{202e}".into());
+    let rows_of = |report: ProgramReport, state: TerminalSessionState| {
+        let mut r = rig();
+        r.send(listing(
+            "w",
+            vec![TerminalSessionInfo {
+                program_report: report,
+                state,
+                ..session("s1", TerminalBackend::Herdr)
+            }],
+        ));
+        (r.text(120, 20).join("\n"), r.valid_tree())
+    };
+    let (s, tree) = rows_of(current(a, None), TerminalSessionState::Running);
+    assert!(
+        s.contains("Program reports: blocked \u{b7} waiting\\u{202e}"),
+        "{s}"
+    );
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.name.contains("Program reports: blocked"))
+    );
+    let (s, _) = rows_of(ProgramReport::NeverReported, TerminalSessionState::Running);
+    assert!(s.contains("Program has not reported a status"), "{s}");
+    let (s, _) = rows_of(
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None,
+        },
+        TerminalSessionState::Running,
+    );
+    assert!(s.contains("Program withdrew its report"), "{s}");
+    let (s, _) = rows_of(ProgramReport::Unavailable, TerminalSessionState::Running);
+    assert!(!s.contains("Program"), "{s}");
+    let (s, _) = rows_of(
+        current(status(ProgramState::Done), None),
+        TerminalSessionState::Exited,
+    );
+    assert!(!s.contains("Program reports"), "{s}");
+}
+
+#[test]
+fn a_report_the_core_hands_the_chooser_through_the_session_list_is_shown_and_moves_nothing() {
+    let mut r = rig();
+    let before: Vec<String> = r.text(100, 30);
+    r.host(report_msg(current(status(ProgramState::Working), Some(1))));
+    let after = r.text(100, 30);
+    assert_ne!(
+        before, after,
+        "the retained list carries the report to the chooser"
+    );
+    assert!(after.join("\n").contains("Program reports: working"));
+    assert!(r.screen().contains("Existing sessions"));
+}

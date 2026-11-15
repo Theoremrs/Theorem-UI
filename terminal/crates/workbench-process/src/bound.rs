@@ -13,7 +13,7 @@ use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalAttach, TerminalBackend, TerminalClaim, TerminalInput,
     TerminalInputBytes, TerminalResize, TerminalRole,
 };
-use theorem_workbench_core::host::{HostMessage, TerminalAdoption, TerminalModes};
+use theorem_workbench_core::host::{HostMessage, ProgramReport, TerminalAdoption, TerminalModes};
 use theorem_workbench_core::ids::{EffectId, Generation, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_vt::Screen;
@@ -304,6 +304,9 @@ pub(crate) struct Bound {
     pub follows: Option<String>,
     /// The host settled its listing and the session was not in it.
     pub gone: bool,
+    /// What the program says about itself (R32): its own word, kept apart
+    /// from everything above, which is the pane's and the host's.
+    pub report: ProgramReport,
 }
 
 impl Bound {
@@ -354,6 +357,7 @@ impl Bound {
             selecting: false,
             follows: None,
             gone: false,
+            report: ProgramReport::Unavailable,
         }
     }
 
@@ -426,6 +430,15 @@ impl Bound {
                     };
                 }
             }
+        }
+    }
+
+    /// The program's own report replaces the one held unless it is older by
+    /// the core's sequence. Nothing else changes: no effect, no notice, no
+    /// lifecycle, lease, offer or key state.
+    pub(crate) fn hold_report(&mut self, report: ProgramReport) {
+        if self.report.replaced_by(&report) {
+            self.report = report;
         }
     }
 
@@ -834,6 +847,7 @@ impl Bound {
 
     fn apply_opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, attaching: &Attaching) {
         if opened.epoch > self.epoch && self.epoch != 0 {
+            self.report = ProgramReport::Unavailable;
             self.screen = Screen::new(opened.rows.max(1), opened.cols.max(1));
             self.awaiting_repaint = true;
         }
@@ -990,6 +1004,7 @@ impl Bound {
         // repaint after an attach is part of the attach and changes nothing.
         if epoch > self.epoch {
             self.epoch = epoch;
+            self.report = ProgramReport::Unavailable;
             self.provenance = Provenance::Continued;
         } else if !self.awaiting_repaint && self.screen.applied_offset() > 0 {
             self.provenance = Provenance::HostReset(offset);
@@ -1031,6 +1046,9 @@ impl Bound {
                     return;
                 }
                 let replaced = origin == "replacement" || *program > self.program;
+                if new_epoch {
+                    self.report = ProgramReport::Unavailable;
+                }
                 self.epoch = *epoch;
                 self.program = *program;
                 self.origin = Some(origin.clone());
