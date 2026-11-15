@@ -131,6 +131,34 @@ pub struct Node {
     pub children: Vec<NodeId>,
 }
 
+impl CellRect {
+    pub fn of(rect: ratatui::layout::Rect) -> Self {
+        Self {
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+        }
+    }
+}
+
+impl Node {
+    /// A node with default state, no actions, no binding and no children.
+    pub fn new(id: &str, role: Role, name: &str, rect: ratatui::layout::Rect) -> Self {
+        Self {
+            id: NodeId::new(id),
+            role,
+            name: name.to_owned(),
+            state: NodeState::default(),
+            rect: CellRect::of(rect),
+            actions: vec![],
+            binding: ResourceRef::None,
+            revision: None,
+            children: vec![],
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]

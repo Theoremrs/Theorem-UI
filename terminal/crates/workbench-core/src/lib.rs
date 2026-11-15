@@ -10,20 +10,39 @@
 pub mod builtin;
 pub mod completion;
 pub mod effect;
+pub mod factory;
 pub mod host;
 pub mod ids;
 pub mod keys;
+pub mod model;
+pub mod msg;
+pub mod panel;
+pub mod panels;
 pub mod picker;
 pub mod queue;
 pub mod registry;
 pub mod semantics;
 pub mod stale;
+pub mod theme;
+pub mod tree;
+pub mod update;
+pub mod view;
 
 pub use completion::{Completion, CompletionPayload, Outcome};
 pub use effect::{Effect, EffectBody, EffectKind, Owner};
+pub use factory::PanelFactories;
 pub use host::HostMessage;
 pub(crate) use ids::string_id;
 pub use ids::{
     ActionId, Actor, Capability, EffectId, EffectIds, Generation, PanelInstanceId, PanelKind,
     ResourceKind, ResourceRef, Revision,
 };
+pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
+pub use msg::{DockMsg, Msg, Pointer};
+pub use panel::{
+    Button, Ctx, EmitError, Panel, PanelMsg, PanelPointer, PickerView, PointerKind, ViewCtx,
+};
+pub use theme::Theme;
+pub use tree::semantics;
+pub use update::update;
+pub use view::view;

@@ -161,10 +161,19 @@ pub fn parse_chord(text: &str, platform: Platform) -> Result<KeyInput, String> {
             (false, _) => m,
         })
         .collect::<Vec<_>>();
+    // `keybinds` reads a capital letter as the logical key Shift produced, so
+    // "Mod+Alt+T" would never match the `t` a browser reports for Ctrl+Alt+T.
+    // A letter is the unshifted key unless the chord names Shift.
+    let shifted = mods.iter().any(|m| m.eq_ignore_ascii_case("shift"));
+    let key = match key.chars().collect::<Vec<_>>().as_slice() {
+        [c] if c.is_ascii_alphabetic() && shifted => c.to_ascii_uppercase().to_string(),
+        [c] if c.is_ascii_alphabetic() => c.to_ascii_lowercase().to_string(),
+        _ => key.to_owned(),
+    };
     let expanded = mods
         .iter()
         .copied()
-        .chain(std::iter::once(key))
+        .chain(std::iter::once(key.as_str()))
         .collect::<Vec<_>>()
         .join("+");
     KeyInput::from_str(&expanded).map_err(|e| e.to_string())
@@ -376,6 +385,13 @@ mod tests {
             context,
             action: ActionId::new(action),
         }
+    }
+
+    #[test]
+    fn a_letter_chord_matches_the_key_a_browser_reports() {
+        // Ctrl+Alt+T arrives as `t`, so the chord text must parse to `t`.
+        let plain = parse_chord("Mod+Alt+T", Platform::Other).unwrap();
+        assert_eq!(plain, KeyInput::new('t', Mods::CTRL | Mods::ALT));
     }
 
     #[test]

@@ -71,6 +71,11 @@ impl Picker {
         self.page
     }
 
+    /// The text the rows are narrowed by.
+    pub fn filter(&self) -> &str {
+        &self.filter
+    }
+
     pub fn selected(&self) -> usize {
         self.selected
     }
