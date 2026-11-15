@@ -5,6 +5,9 @@ edition = "2024"
 publish = false
 description = "The agent terminal drawer's TUI: Ratatui on Ratzilla's DOM backend, compiled to WebAssembly"
 
+[workspace]
+members = [".", "crates/*"]
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 
