@@ -75,6 +75,14 @@ pub enum Msg {
         id: ActionId,
         actor: Actor,
     },
+    /// An action aimed at one panel, as an agent names it. Same checks as
+    /// [`Msg::Action`]; a `Local` action goes to `panel` (which must be open,
+    /// available and of the action's kind) instead of the focused panel.
+    ActionOn {
+        id: ActionId,
+        actor: Actor,
+        panel: PanelInstanceId,
+    },
     Picker(PickerMsg),
     Dock(DockMsg),
     Tick,

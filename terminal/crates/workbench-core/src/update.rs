@@ -66,7 +66,8 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         }
         Msg::Host(message) => model.on_host(message),
         Msg::Completion(completion) => model.on_completion(completion),
-        Msg::Action { id, actor } => model.run_action(id, actor),
+        Msg::Action { id, actor } => model.run_action(id, actor, None),
+        Msg::ActionOn { id, actor, panel } => model.run_action(id, actor, Some(panel)),
         Msg::Picker(msg) => model.picker_msg(msg),
         Msg::Dock(msg) => model.on_dock(msg),
         Msg::Tick => model.on_tick(),
@@ -336,7 +337,7 @@ impl Model {
         };
         let contexts = active_contexts(kind.as_ref(), text_entry);
         if let Some(action) = self.keys.resolve(&key, &contexts).cloned() {
-            return self.run_action(action, Actor::Human);
+            return self.run_action(action, Actor::Human, None);
         }
         match owner {
             Some(id) => self.send(&id, PanelMsg::Key(key)),
@@ -420,13 +421,18 @@ impl Model {
 
     // --- actions and the picker ---
 
-    pub(crate) fn run_action(&mut self, id: ActionId, actor: Actor) -> Vec<Effect> {
+    pub(crate) fn run_action(
+        &mut self,
+        id: ActionId,
+        actor: Actor,
+        on: Option<PanelInstanceId>,
+    ) -> Vec<Effect> {
         // The picker's own semantic actions: back, and pin or unpin a tool.
         if let Some(effects) = self.picker_node_action(&id) {
             return effects;
         }
-        let (kind, intent) = match self.registry.resolve(&id, &actor, &self.caps) {
-            Ok(r) => (r.panel.kind.clone(), r.action.intent),
+        let (kind, intent, title) = match self.registry.resolve(&id, &actor, &self.caps) {
+            Ok(r) => (r.panel.kind.clone(), r.action.intent, r.panel.title.clone()),
             Err(refusal) => {
                 self.notice = Some(Notice::Refused(refusal));
                 return vec![];
@@ -443,6 +449,31 @@ impl Model {
             ActionIntent::Open => {
                 self.open_panel(&kind);
                 vec![]
+            }
+            ActionIntent::Local => {
+                // Only the panel the action is for: the one named, else the
+                // focused one. A panel of that kind elsewhere is not guessed.
+                let target = match on {
+                    Some(panel) => self
+                        .panels
+                        .get(&panel)
+                        .is_some_and(|e| e.kind == kind && e.available)
+                        .then_some(panel),
+                    None => self.focus_owner().filter(|p| {
+                        self.panels
+                            .get(p)
+                            .is_some_and(|e| e.kind == kind && e.available)
+                    }),
+                };
+                let Some(target) = target else {
+                    self.notice = Some(Notice::Refused(Refusal::Unavailable {
+                        reason: format!("Focus a {title} panel first."),
+                    }));
+                    return vec![];
+                };
+                self.call(&target, Mode::Normal, |p, cx| {
+                    p.update(PanelMsg::Action(id), cx)
+                })
             }
             ActionIntent::Create | ActionIntent::Start | ActionIntent::Destroy => {
                 let Some(target) = self.target_of_kind(&kind) else {
@@ -686,7 +717,7 @@ impl Model {
             }
             PickerOutcome::Chosen(action) => {
                 // The chosen tool takes the picker's place.
-                let effects = self.run_action(action, Actor::Human);
+                let effects = self.run_action(action, Actor::Human, None);
                 self.close_picker_panels();
                 effects
             }

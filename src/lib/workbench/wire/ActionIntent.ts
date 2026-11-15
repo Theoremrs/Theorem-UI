@@ -4,4 +4,4 @@
  * How an action relates to the world. Only `Create`, `Start` and `Destroy`
  * may emit a domain effect, and only when the entry is chosen (R07).
  */
-export type ActionIntent = "focus" | "open" | "create" | "start" | "destroy";
+export type ActionIntent = "focus" | "open" | "create" | "start" | "destroy" | "local";

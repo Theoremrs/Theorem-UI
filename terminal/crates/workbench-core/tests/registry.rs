@@ -27,7 +27,7 @@ fn extending_a_kind_adds_actions_that_resolve_like_registered_ones() {
     assert_eq!(registry.get(&shell()).unwrap().actions.len(), before + 2);
     let (panel, action) = registry.action(&ActionId::new("shell.attach")).unwrap();
     assert_eq!(panel.kind, shell());
-    assert_eq!(action.emits, Some(EffectKind::TerminalAttach));
+    assert_eq!(action.emits, [EffectKind::TerminalAttach]);
 }
 
 #[test]

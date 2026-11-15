@@ -211,7 +211,7 @@ impl Model {
             .iter()
             .flat_map(|p| &p.actions)
             .filter(|a| a.intent == ActionIntent::Destroy)
-            .filter_map(|a| a.emits)
+            .flat_map(|a| a.emits.iter().copied())
             .collect();
         destroying.dedup();
         let mut model = Self {

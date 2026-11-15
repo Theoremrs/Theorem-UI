@@ -9,10 +9,11 @@ import type { PickerSlot } from "./PickerSlot";
 
 export type ActionDescriptor = { id: ActionId, title: string, intent: ActionIntent, requires: Array<Capability>, 
 /**
- * The effect choosing this action produces. Present exactly when the
- * intent may emit one.
+ * The effects choosing this action may produce (the panel picks one when
+ * it handles the action). Non-empty exactly when the intent may emit one;
+ * empty for `Focus`, `Open` and `Local`.
  */
-emits?: EffectKind, defaultKey?: DefaultKey, 
+emits?: Array<EffectKind>, defaultKey?: DefaultKey, 
 /**
  * Approvals and the like: a model-origin request is refused, whatever id
  * it names (R34).

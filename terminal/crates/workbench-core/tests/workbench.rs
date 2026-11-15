@@ -299,6 +299,8 @@ fn model(log: &Shared) -> Model {
                     .key("Mod+Alt+K", KeyScope::Global),
                 ActionDescriptor::new("note.save", "Save note", ActionIntent::Start)
                     .emits(EffectKind::DocumentSave),
+                ActionDescriptor::local("note.find", "Find in note"),
+                ActionDescriptor::local("note.wipe", "Wipe note").human_only(),
             ],
         ))
         .unwrap();
@@ -606,6 +608,142 @@ fn an_unknown_or_refused_action_changes_nothing() {
         Some(Notice::Refused(Refusal::HumanOnly(_)))
     ));
     assert_eq!(m.document(), before);
+}
+
+fn action_msgs(log: &Shared, kind: &str, id: &str) -> usize {
+    msgs_of(log, kind)
+        .into_iter()
+        .filter(|m| matches!(m, PanelMsg::Action(a) if a.as_str() == id))
+        .count()
+}
+
+#[test]
+fn a_local_action_reaches_the_focused_panel_of_its_kind_and_emits_nothing() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "term.open"); // focus moves to the terminal
+    let fx = action(&mut m, "note.find");
+    assert!(fx.is_empty());
+    assert_eq!(action_msgs(&log, "note", "note.find"), 0);
+    assert!(matches!(m.take_notice(), Some(Notice::Refused(_))));
+    // Focus the note again, then it arrives.
+    let note = kinds(&m, "note")[0].clone();
+    let fx = send(
+        &mut m,
+        Msg::ActionOn {
+            id: ActionId::new("note.find"),
+            actor: Actor::Agent { run_id: "r".into() },
+            panel: note,
+        },
+    );
+    assert!(fx.is_empty());
+    assert_eq!(action_msgs(&log, "note", "note.find"), 1, "the named panel");
+    let mut m2 = new_model();
+    action(&mut m2.0, "note.open");
+    assert!(action(&mut m2.0, "note.find").is_empty());
+    assert_eq!(
+        action_msgs(&m2.1, "note", "note.find"),
+        1,
+        "the focused one"
+    );
+    assert!(m2.0.take_notice().is_none());
+}
+
+#[test]
+fn a_local_action_with_no_panel_of_its_kind_is_refused_with_a_reason() {
+    let (mut m, log) = new_model();
+    assert!(action(&mut m, "note.find").is_empty());
+    let Some(Notice::Refused(Refusal::Unavailable { reason })) = m.take_notice() else {
+        panic!("not refused with a reason");
+    };
+    assert!(
+        reason.contains("note") || reason.contains("Note"),
+        "{reason}"
+    );
+    assert_eq!(action_msgs(&log, "note", "note.find"), 0);
+    // A panel of another kind is not a stand-in, and neither is a named
+    // panel of the wrong kind.
+    action(&mut m, "term.open");
+    assert!(action(&mut m, "note.find").is_empty());
+    assert!(matches!(m.take_notice(), Some(Notice::Refused(_))));
+    let term = kinds(&m, "term")[0].clone();
+    send(
+        &mut m,
+        Msg::ActionOn {
+            id: ActionId::new("note.find"),
+            actor: Actor::Human,
+            panel: term,
+        },
+    );
+    assert!(matches!(m.take_notice(), Some(Notice::Refused(_))));
+}
+
+#[test]
+fn a_human_only_local_action_is_refused_for_an_agent_and_kept_for_a_person() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let note = kinds(&m, "note")[0].clone();
+    send(
+        &mut m,
+        Msg::ActionOn {
+            id: ActionId::new("note.wipe"),
+            actor: Actor::Agent { run_id: "r".into() },
+            panel: note,
+        },
+    );
+    assert!(matches!(
+        m.take_notice(),
+        Some(Notice::Refused(Refusal::HumanOnly(_)))
+    ));
+    assert_eq!(action_msgs(&log, "note", "note.wipe"), 0);
+    action(&mut m, "note.wipe");
+    assert_eq!(action_msgs(&log, "note", "note.wipe"), 1);
+}
+
+#[test]
+fn a_local_action_holds_its_capabilities_and_may_have_no_key() {
+    use theorem_workbench_core::registry::{Registry, RegistryError};
+    let mut registry = Registry::new();
+    let bad = descriptor(
+        "x",
+        ResourceKind::Document,
+        vec![ActionDescriptor::local("x.a", "A").emits(EffectKind::DocumentSave)],
+    );
+    assert_eq!(
+        registry.register(bad),
+        Err(RegistryError::EffectOnPassiveAction(ActionId::new("x.a")))
+    );
+    let ok = descriptor(
+        "x",
+        ResourceKind::Document,
+        vec![ActionDescriptor::local("x.a", "A").requires("documents")],
+    );
+    registry.register(ok).unwrap();
+    let none = Capabilities::of([]);
+    assert!(
+        registry
+            .resolve(&ActionId::new("x.a"), &Actor::Human, &none)
+            .is_err()
+    );
+    let (a, _) = (registry.action(&ActionId::new("x.a")).unwrap(), 0);
+    assert!(a.1.default_key.is_none());
+}
+
+#[test]
+fn an_action_may_name_several_effects() {
+    let a = ActionDescriptor::new("c.confirm", "Confirm", ActionIntent::Start)
+        .emits(EffectKind::ScmDiscard)
+        .emits(EffectKind::ScmResolve)
+        .emits(EffectKind::ScmRestore)
+        .emits(EffectKind::ScmDiscard);
+    assert_eq!(
+        a.emits,
+        [
+            EffectKind::ScmDiscard,
+            EffectKind::ScmResolve,
+            EffectKind::ScmRestore
+        ]
+    );
 }
 
 #[test]
@@ -1513,7 +1651,7 @@ fn the_conversation_actions_are_start_destroy_or_create_never_focus_or_open() {
         ("theo.stop", EffectKind::ConversationCancel),
     ] {
         let (_, action) = reg.action(&ActionId::new(id)).expect(id);
-        assert_eq!(action.emits, Some(kind), "{id}");
+        assert_eq!(action.emits, [kind], "{id}");
         assert!(
             !matches!(action.intent, ActionIntent::Focus | ActionIntent::Open),
             "{id}"

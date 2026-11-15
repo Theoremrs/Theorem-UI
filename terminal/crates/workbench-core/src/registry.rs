@@ -77,6 +77,11 @@ pub enum ActionIntent {
     Create,
     Start,
     Destroy,
+    /// Handled by the panel itself and emits no effect: the panel's own undo,
+    /// find, retry and the like. Reached by the palette, a chord or an agent
+    /// like any other action; the root delivers it to the focused panel of the
+    /// action's kind as `PanelMsg::Action(id)`, or refuses when none is.
+    Local,
 }
 
 impl ActionIntent {
@@ -150,7 +155,7 @@ impl From<ActionIntent> for Chooses {
     fn from(intent: ActionIntent) -> Self {
         match intent {
             ActionIntent::Focus => Self::Focuses,
-            ActionIntent::Open => Self::Opens,
+            ActionIntent::Open | ActionIntent::Local => Self::Opens,
             ActionIntent::Create => Self::Creates {
                 what: "thing".to_owned(),
             },
@@ -170,11 +175,11 @@ pub struct ActionDescriptor {
     pub intent: ActionIntent,
     #[serde(default)]
     pub requires: Vec<Capability>,
-    /// The effect choosing this action produces. Present exactly when the
-    /// intent may emit one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub emits: Option<EffectKind>,
+    /// The effects choosing this action may produce (the panel picks one when
+    /// it handles the action). Non-empty exactly when the intent may emit one;
+    /// empty for `Focus`, `Open` and `Local`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub emits: Vec<EffectKind>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub default_key: Option<DefaultKey>,
@@ -204,7 +209,7 @@ impl ActionDescriptor {
             title: title.to_owned(),
             intent,
             requires: vec![],
-            emits: None,
+            emits: vec![],
             default_key: None,
             human_only: false,
             picker: None,
@@ -248,9 +253,18 @@ impl ActionDescriptor {
         self
     }
 
+    /// Adds an effect this action may emit; call again for each more.
     pub fn emits(mut self, kind: EffectKind) -> Self {
-        self.emits = Some(kind);
+        if !self.emits.contains(&kind) {
+            self.emits.push(kind);
+        }
         self
+    }
+
+    /// Marks the action as handled by its panel with no effect
+    /// (`ActionIntent::Local`). Equivalent to registering with that intent.
+    pub fn local(id: &str, title: &str) -> Self {
+        Self::new(id, title, ActionIntent::Local)
     }
 
     pub fn key(mut self, chord: &str, scope: KeyScope) -> Self {
@@ -368,8 +382,8 @@ pub struct Resolved<'a> {
 }
 
 impl Resolved<'_> {
-    pub fn emits(&self) -> Option<EffectKind> {
-        self.action.emits
+    pub fn emits(&self) -> &[EffectKind] {
+        &self.action.emits
     }
 }
 
@@ -464,11 +478,11 @@ impl Registry {
             if self.action(&action.id).is_some() || !seen.insert(&action.id) {
                 return Err(RegistryError::DuplicateAction(action.id.clone()));
             }
-            match (action.intent.may_emit_effect(), action.emits) {
-                (false, Some(_)) => {
+            match (action.intent.may_emit_effect(), action.emits.is_empty()) {
+                (false, false) => {
                     return Err(RegistryError::EffectOnPassiveAction(action.id.clone()));
                 }
-                (true, None) => {
+                (true, true) => {
                     return Err(RegistryError::ActiveActionWithoutEffect(action.id.clone()));
                 }
                 _ => {}

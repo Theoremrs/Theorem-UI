@@ -633,12 +633,12 @@ mod tests {
                 row.action
             );
             let resolved = reg.resolve(&row.action, &Actor::Human, &caps).unwrap();
-            assert_eq!(resolved.emits(), None);
+            assert!(resolved.emits().is_empty());
         }
         for panel in reg.panels() {
             for action in &panel.actions {
                 assert_eq!(
-                    action.emits.is_some(),
+                    !action.emits.is_empty(),
                     action.intent.may_emit_effect(),
                     "{:?}: an effect exactly when the intent allows one",
                     action.id
@@ -655,7 +655,7 @@ mod tests {
             let resolved = reg
                 .resolve(&ActionId::new(id), &Actor::Human, &caps)
                 .unwrap();
-            assert!(resolved.emits().is_some(), "{id}");
+            assert!(!resolved.emits().is_empty(), "{id}");
             assert!(
                 resolved.action.picker.is_none()
                     || matches!(resolved.action.picker, Some(PickerSlot::More))
