@@ -7,6 +7,7 @@ import {
 } from '@/lib/workbench/conversation/conversation'
 import type { ConversationSnapshot } from '@/lib/workbench/conversation/conversation'
 import type {
+  DelegationChange,
   Completion,
   CompletionPayload,
   DraftAttachment,
@@ -69,6 +70,11 @@ export interface FixtureOptions {
   /** The chunks the recorded session sends on attach, in place of the default session. */
   terminalOutput?: string[]
   /**
+   * The one listed terminal is a Herdr session `s1` (`zsh`, 80 by 24) whose row carries `programReport`
+   * (`TerminalSessionInfo.programReport`) as `unavailable`: the host's later `terminalReport` messages are sent by the story.
+   */
+  programReport?: boolean
+  /**
    * `run.list` answers runs that carry how they ended (`RunSummary.exitCode`) and the configuration's
    * kind (`RunSummary.kind`): one exited 0, one exited 2 and one exited with no code given.
    */
@@ -108,6 +114,8 @@ export interface FixtureHost extends Adapter {
    * everything of the old account and serves the new one. The mount then asks the core to load.
    */
   switchAccount: (next: string) => void
+  /** The runs the conversation's working turn follows, as the conversation owner reports them: replaces the set. */
+  followRuns: (runs: string[]) => void
 }
 
 /** A conflicted binary file: both branches changed an image. */
@@ -178,6 +186,53 @@ const echo = (typed: string) =>
 const draftKey = (path: string) =>
   `theorem-workbench:draft:${WORKSPACE}:${path}`
 const DRAFT_SAVED_AT_MS = 1
+
+/** The points the journal holds for a document, newest first; `untracked.txt` is a file it has not seen. */
+const HISTORY_POINTS = [
+  { point: 'h2', revision: 2, text: 'A later draft\n' },
+  { point: 'h1', revision: 1, text: 'An earlier draft\n' },
+]
+const UNTRACKED_DOCUMENT = 'untracked.txt'
+
+/** The one delegation the story host knows: its changes, and the text on each side of the ones that have text. */
+const DELEGATION_CHANGES: DelegationChange[] = [
+  {
+    path: 'src/lib.ts',
+    change: 'modify',
+    binary: false,
+    hasBefore: true,
+    hasAfter: true,
+  },
+  {
+    path: 'src/new.ts',
+    change: 'add',
+    binary: false,
+    hasBefore: false,
+    hasAfter: true,
+  },
+  {
+    path: 'src/old.ts',
+    change: 'delete',
+    binary: false,
+    hasBefore: true,
+    hasAfter: false,
+  },
+  {
+    path: 'assets/logo.png',
+    change: 'modify',
+    binary: true,
+    hasBefore: true,
+    hasAfter: true,
+  },
+]
+const DELEGATION_TEXT: Record<string, { before?: string; after?: string }> = {
+  'src/lib.ts': {
+    before: 'export const answer = 41\n',
+    after: 'export const answer = 42\n',
+  },
+  'src/new.ts': { after: 'export const added = true\n' },
+  'src/old.ts': { before: 'export const removed = true\n' },
+}
 
 type Held = {
   text: string
@@ -356,13 +411,16 @@ export function createFixtureHost(
           ? []
           : [
               {
-                session: TERMINAL_SESSION,
-                profile: 'Shell',
-                backend: 'native',
+                session: options.programReport ? 's1' : TERMINAL_SESSION,
+                profile: options.programReport ? 'zsh' : 'Shell',
+                backend: options.programReport ? 'herdr' : 'native',
                 workspace: WORKSPACE,
                 program: 1,
                 state: 'running',
                 controlledElsewhere: false,
+                ...(options.programReport
+                  ? { programReport: { kind: 'unavailable' as const } }
+                  : {}),
                 ...(options.terminalModes
                   ? { modes: options.terminalModes }
                   : {}),
@@ -612,6 +670,66 @@ export function createFixtureHost(
         if (options.diagnostics && effect.resource.type === 'document')
           send({ type: 'diagnosticsCleared', path: effect.resource.resourceId })
         return accept(effect)
+      case 'documentHistoryList':
+        return accept(effect, {
+          type: 'documentHistory',
+          entries:
+            effect.resource.type === 'document' &&
+            effect.resource.resourceId === UNTRACKED_DOCUMENT
+              ? []
+              : HISTORY_POINTS.map(({ point, revision: number }) => ({
+                  point,
+                  revision: seq(number),
+                })),
+        })
+      case 'documentHistoryPreview': {
+        const at = HISTORY_POINTS.find(
+          ({ point }) => point === effect.payload.point,
+        )
+        return at
+          ? accept(effect, { type: 'documentPreview', text: at.text })
+          : refuse(effect, 'No such point', 'point_unknown')
+      }
+      case 'documentHistoryRestore': {
+        const found = document(effect)
+        if (!found) return refuse(effect, 'This document is not open')
+        const at = HISTORY_POINTS.find(
+          ({ point }) => point === effect.payload.point,
+        )
+        if (!at) return refuse(effect, 'No such point', 'point_unknown')
+        const [, held] = found
+        // The restore is a new revision with the old text, as the host's live stream would say it.
+        held.text = at.text
+        held.revision += 1
+        send({
+          type: 'documentResync',
+          resource: effect.resource,
+          revision: seq(held.revision),
+          text: held.text,
+        })
+        return accept(effect)
+      }
+      case 'delegationChanges':
+        return accept(effect, {
+          type: 'delegationChanges',
+          changes: DELEGATION_CHANGES.map((change) => ({ ...change })),
+        })
+      case 'delegationContent': {
+        const { path, side } = effect.payload
+        const change = DELEGATION_CHANGES.find((entry) => entry.path === path)
+        if (!change)
+          return refuse(effect, 'Not one of the changes', 'no_such_change')
+        if (change.binary)
+          return refuse(
+            effect,
+            'A binary change is not shown',
+            'binary_skipped',
+          )
+        const text = DELEGATION_TEXT[path]?.[side]
+        return text === undefined
+          ? refuse(effect, `No ${side} content`, 'no_such_side')
+          : accept(effect, { type: 'delegationText', text })
+      }
       case 'documentKeep': {
         const found = document(effect)
         if (!found) return refuse(effect, 'This document is not open')
@@ -775,18 +893,23 @@ export function createFixtureHost(
           effect.kind === 'terminalOpen'
             ? (effect.payload.attachment ?? 'story')
             : effect.payload.attachment
+        const named = options.programReport ? 's1' : TERMINAL_SESSION
         const resource: ResourceRef = {
           type: 'terminal',
           workspace: WORKSPACE,
-          session: TERMINAL_SESSION,
+          session: named,
         }
-        terminal = { resource, cols: 100, rows: 24 }
+        terminal = {
+          resource,
+          cols: options.programReport ? 80 : 100,
+          rows: 24,
+        }
         accept(effect, {
           type: 'terminal',
-          session: TERMINAL_SESSION,
-          cols: 100,
+          session: named,
+          cols: options.programReport ? 80 : 100,
           rows: 24,
-          backend: 'native',
+          backend: options.programReport ? 'herdr' : 'native',
           epoch,
           program: 1,
           origin: 'adopted',
@@ -927,6 +1050,7 @@ export function createFixtureHost(
   return {
     perform,
     send,
+    followRuns: (runs) => send({ type: 'followedRuns', runs }),
     resizeTerminal() {
       if (!terminal) return
       const { resource } = terminal

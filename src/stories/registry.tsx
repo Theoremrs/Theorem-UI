@@ -74,7 +74,9 @@ import {
   WorkbenchPickerStory,
   WorkbenchTerminalStory,
 } from '@/components/workbench/workbench-story'
+import { WorkbenchTerminalProgramReportStory } from '@/components/workbench/workbench-program-report-story'
 import { WorkbenchAppearanceStory } from '@/components/workbench/workbench-appearance-story'
+import { WorkbenchSemanticOverlayStory } from '@/components/workbench/workbench-semantic-overlay-story'
 import {
   WorkbenchChangesBinaryConflictStory,
   WorkbenchLayoutsPageStory,
@@ -84,6 +86,8 @@ import {
   WorkbenchTerminalAdoptionSettledStory,
   WorkbenchTerminalAdoptionUnavailableStory,
 } from '@/components/workbench/workbench-state-stories'
+import { WorkbenchAgentOperationsStory } from '@/components/workbench/workbench-agent-story'
+import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
 import { PALETTE_MATRIX_REGISTRY } from '@/components/workbench/workbench-palette-stories'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
@@ -809,6 +813,7 @@ const ORACLE_RTL_CONTENT = [
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   ...PALETTE_MATRIX_REGISTRY,
   'workbench-default': WorkbenchDefaultStory,
+  'workbench-semantic-overlay': WorkbenchSemanticOverlayStory,
   'workbench-picker': WorkbenchPickerStory,
   'workbench-files': WorkbenchFilesStory,
   'workbench-terminal': WorkbenchTerminalStory,
@@ -825,6 +830,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-run': WorkbenchRunStory,
   'workbench-run-list': WorkbenchRunListStory,
   'workbench-run-list-exits': WorkbenchRunListExitsStory,
+  'workbench-terminal-program-report': WorkbenchTerminalProgramReportStory,
   'workbench-recovery-reload': WorkbenchRecoveryReloadStory,
   'workbench-cabinet': WorkbenchCabinetStory,
   'workbench-cabinet-picker': WorkbenchCabinetPickerStory,
@@ -834,6 +840,8 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-device-copy': WorkbenchDeviceCopyStory,
   'workbench-arrangements': WorkbenchArrangementsStory,
   'workbench-layouts-page': WorkbenchLayoutsPageStory,
+  'workbench-agent-operations': WorkbenchAgentOperationsStory,
+  'workbench-resize': WorkbenchResizeStory,
   'workbench-appearance': WorkbenchAppearanceStory,
   'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
   'workbench-markdown-source': WorkbenchMarkdownSourceStory,

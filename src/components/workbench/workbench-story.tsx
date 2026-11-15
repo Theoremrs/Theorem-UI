@@ -8,7 +8,8 @@ import { createFixtureHost } from './fixture-host'
 import type { FixtureHost, FixtureOptions } from './fixture-host'
 import { FILES_TREE } from './fixtures'
 import { WorkbenchSurface } from './workbench'
-import type { Dispatch, SemanticsFeed, SurfaceHost } from './workbench'
+import type { Effect } from '@/lib/workbench/wire'
+import type { Dispatch, SemanticsFeed, SurfaceHost, SurfaceParts } from './workbench'
 import type { ReactNode } from 'react'
 
 /** What the picker lists as live: every tool the fixture host can serve. */
@@ -134,10 +135,13 @@ export function FixtureStory({
   arrangements = false,
   controls,
   extra,
+  overlay,
+  onEffect,
 }: {
   id: string
-  width: number
-  height: number
+  /** Pixels, or a CSS length for a story whose workbench fills the window (`100vw`). */
+  width: number | string
+  height: number | string
   options: Omit<FixtureOptions, 'performed'>
   script: Step[]
   /** What the semantic tree must name before the story is ready. */
@@ -150,6 +154,10 @@ export function FixtureStory({
   controls?: Record<string, (host: FixtureHost, surface: SurfaceHost) => void>
   /** Page parts that live beside the workbench in the real app (Theo's face). */
   extra?: ReactNode
+  /** The accessible overlay over the grid, given what the surface hands its children. */
+  overlay?: (feed: SemanticsFeed, parts: SurfaceParts) => ReactNode
+  /** Told each effect the core asks the host for, whole: a story that records who asked reads its `actor`. */
+  onEffect?: (effect: Effect) => void
 }) {
   const box = useRef<HTMLDivElement>(null)
   const feedRef = useRef<SemanticsFeed>(undefined)
@@ -163,7 +171,13 @@ export function FixtureStory({
       surfaceRef.current = surface
       const host = createFixtureHost(dispatch, {
         ...options,
-        performed: setLastEffect,
+        performed: (kind, effect) => {
+          setLastEffect(kind)
+          // Every kind in order, for a scenario: two effects in one tick leave only the second in the attribute.
+          const page = window as unknown as { __workbenchEffects?: string[] }
+          ;(page.__workbenchEffects ??= []).push(kind)
+          onEffect?.(effect)
+        },
       })
       hostRef.current = host
       return host
@@ -244,9 +258,9 @@ export function FixtureStory({
         project={project}
         loadArrangements={arrangements}
       >
-        {(feed) => {
+        {(feed, parts) => {
           feedRef.current = feed
-          return null
+          return overlay?.(feed, parts) ?? null
         }}
       </WorkbenchSurface>
       {extra}

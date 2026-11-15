@@ -10,7 +10,7 @@ import {
 } from 'react'
 import type { ReactNode } from 'react'
 import { loadWasm } from '@/components/terminal/terminal-screen'
-import { bootstrap } from '@/lib/theorem/client'
+import { bootstrap, theorem } from '@/lib/theorem/client'
 import { createAdapter } from '@/lib/workbench/adapter'
 import { setWorkbenchHandle } from '@/lib/workbench/agent/store'
 import { useAppearance } from '@/lib/appearance'
@@ -22,7 +22,10 @@ import type { AccountAdapter, Adapter } from '@/lib/workbench/adapter'
 import { SignIn } from '@/components/auth/sign-in'
 import { accountKey, createAccountWatch } from '@/lib/workbench/account'
 import { statusOf } from '@/lib/workbench/environment/result'
-import { connectEnvironment, connectTerminalHost } from '@/lib/workbench/environment/connect'
+import {
+  connectEnvironment,
+  connectTerminalHost,
+} from '@/lib/workbench/environment/connect'
 import { createConversation } from '@/lib/workbench/conversation/conversation'
 import { createConversationPort } from '@/lib/workbench/conversation/port'
 import { conversationServices } from '@/lib/workbench/conversation/runtime'
@@ -38,6 +41,9 @@ import { createSearchPort } from '@/lib/workbench/search/port'
 import { createDocuments } from '@/lib/workbench/documents/documents'
 import { createDraftStore } from '@/lib/workbench/documents/local'
 import { createDocumentsPort } from '@/lib/workbench/documents/port'
+import { createHistory } from '@/lib/workbench/documents/history'
+import { createDelegations } from '@/lib/workbench/delegations/delegations'
+import { createDelegationsPort } from '@/lib/workbench/delegations/port'
 import { createFiles } from '@/lib/workbench/files/files'
 import {
   checkpointDirectory,
@@ -54,6 +60,9 @@ import { createArtifactsPort, createClipboardPort } from './ports'
 import { pointerJson } from './pointer-json'
 import { WorkbenchCabinet } from '@/components/cabinet/workbench-cabinet'
 import { WorkbenchFace } from './workbench-face'
+import { SemanticOverlay } from './semantic-overlay'
+import { settle, typedSince } from './semantic-overlay/mirror'
+import type { InputMirror } from './semantic-overlay/mirror'
 
 /** What the surface lets an adapter's builder do to the mounted core besides answering effects. */
 export interface SurfaceHost {
@@ -77,6 +86,17 @@ export interface SemanticsFeed {
   /** The last update published, `undefined` before the first. */
   readonly latest: string | undefined
   subscribe: (listener: (update: string) => void) => () => void
+}
+
+/** What the surface gives its children besides the feed: the mounted core, the element they are drawn in, and the input field. */
+export interface SurfaceParts {
+  /** The mounted core, once it is up. */
+  handle: WorkbenchHandle | undefined
+  /** The surface's own element, which the grid and the children share. */
+  root: HTMLDivElement | null
+  /** The one real text control, once it is mounted, and the text and caret the overlay has mirrored into it. */
+  input: HTMLTextAreaElement | null
+  mirror: { current: InputMirror | undefined }
 }
 
 const FeedContext = createContext<SemanticsFeed | undefined>(undefined)
@@ -151,11 +171,18 @@ export function WorkbenchSurface({
   project?: { id: string; title: string }
   /** Ask the core to load the account's arrangements once the adapter is ready. */
   loadArrangements?: boolean
-  children?: (feed: SemanticsFeed) => ReactNode
+  children?: (feed: SemanticsFeed, parts: SurfaceParts) => ReactNode
 }) {
   const hostId = `workbench-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
   const host = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
+  const [inputElement, setInputElement] = useState<HTMLTextAreaElement | null>(
+    null,
+  )
+  // What the overlay has put into the input: a cell the overlay writes and the input path reads.
+  const [mirror] = useState<{ current: InputMirror | undefined }>(() => ({
+    current: undefined,
+  }))
   const handle = useRef<WorkbenchHandle>(undefined)
   // The same handle as state, for the page parts that are drawn over the grid once it is up.
   const [mountedHandle, setMountedHandle] = useState<WorkbenchHandle>()
@@ -205,7 +232,8 @@ export function WorkbenchSurface({
       )
       sink.effect = (json) => adapter?.perform(JSON.parse(json) as Effect)
       // The adapter is ready (and can take the load's effect): read the account's saved arrangements.
-      if (arranging.current) mounted.arrangement(JSON.stringify({ type: 'load' }))
+      if (arranging.current)
+        mounted.arrangement(JSON.stringify({ type: 'load' }))
       mounted.resize()
       // The keyboard works from load: take focus unless the person is already typing elsewhere.
       const active = document.activeElement
@@ -248,7 +276,10 @@ export function WorkbenchSurface({
         onKeyDown={(event) => {
           // Keys pressed during an IME composition belong to the composition, never to the
           // workbench; some browsers report them only as keyCode 229.
-          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)
+          if (
+            event.nativeEvent.isComposing ||
+            event.nativeEvent.keyCode === 229
+          )
             return
           if (handle.current?.key(event.nativeEvent)) {
             event.preventDefault()
@@ -284,7 +315,10 @@ export function WorkbenchSurface({
             IME composition, typed text and paste, and forwards what was committed. It sits
             outside the host, whose contents Ratzilla replaces. */}
         <textarea
-          ref={input}
+          ref={(element) => {
+            input.current = element
+            setInputElement(element)
+          }}
           aria-label="Workbench input"
           autoCapitalize="off"
           autoComplete="off"
@@ -307,12 +341,15 @@ export function WorkbenchSurface({
               event.nativeEvent instanceof InputEvent &&
               event.nativeEvent.inputType.startsWith('history')
             ) {
-              field.value = ''
+              settle(field, mirror.current)
               return
             }
-            if (field.value)
-              handle.current?.text_input(JSON.stringify({ text: field.value }))
-            field.value = ''
+            // The overlay may have mirrored the focused field's text into this one: only what is
+            // new against the mirror was typed.
+            const typed = typedSince(mirror.current, field.value)
+            if (typed)
+              handle.current?.text_input(JSON.stringify({ text: typed }))
+            settle(field, mirror.current)
           }}
           onCompositionStart={() =>
             handle.current?.composition(JSON.stringify({ type: 'start' }))
@@ -328,7 +365,7 @@ export function WorkbenchSurface({
             handle.current?.composition(
               JSON.stringify({ type: 'end', text: event.data }),
             )
-            event.currentTarget.value = ''
+            settle(event.currentTarget, mirror.current)
           }}
           onPaste={(event) => {
             event.preventDefault()
@@ -344,7 +381,12 @@ export function WorkbenchSurface({
           />
         ) : null}
         {mountedHandle ? <WorkbenchFace host={mountedHandle} /> : null}
-        {children?.(feed)}
+        {children?.(feed, {
+          handle: mountedHandle,
+          root,
+          input: inputElement,
+          mirror,
+        })}
       </div>
     </FeedContext.Provider>
   )
@@ -437,10 +479,16 @@ export function Workbench({
         const documents = createDocumentsPort({
           documents: documentOwner,
           files,
+          history: (flush) => createHistory(environment, { flush }),
         })
         const watch = createAccountWatch({
           identify: () => bootstrap(true),
           initial: identity,
+        })
+        const delegations = createDelegations({
+          workspaceId,
+          client: theorem(),
+          onAccountChange: (listener) => watch.onChange(() => listener()),
         })
         const refresh = () => void watch.refresh()
         window.addEventListener('focus', refresh)
@@ -459,6 +507,7 @@ export function Workbench({
             project: projectId,
           }),
           artifacts: createArtifactsPort(projectId),
+          delegations: createDelegationsPort(delegations),
           clipboard: createClipboardPort(),
           appearance: createAppearancePort(useAppearance),
           dispatch,
@@ -473,6 +522,7 @@ export function Workbench({
             unsubscribe()
             adapter.dispose()
             language.dispose()
+            delegations.dispose()
             runner.dispose()
             search.dispose()
             conversation.dispose()
@@ -546,9 +596,10 @@ export function Workbench({
       connect={connect}
       project={{ id: projectId, title: projectTitle }}
     >
-      {(feed) => (
+      {(feed, parts) => (
         <>
           <sideChats.Hosts />
+          <SemanticOverlay feed={feed} parts={parts} />
           {children?.(feed)}
         </>
       )}

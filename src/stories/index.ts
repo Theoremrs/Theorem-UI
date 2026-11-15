@@ -70,6 +70,7 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-diagnostics', title: 'Workbench: Diagnostics for two open documents, every severity', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run', title: 'Workbench: a finished run attached from the host list, with coloured output', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run-list', title: 'Workbench: the list of runs on the host', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-terminal-program-report', title: 'Workbench: a program\'s own status report in the terminal pane, apart from the pane\'s state', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-run-list-exits', title: 'Workbench: the host run list with exit codes 0, 2 and none, and each run kind', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-recovery-reload', title: 'Workbench: edits kept on this device are offered back after a reload', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-cabinet', title: 'Workbench: the Artifacts panel with cards and previews over the grid', lane: 'original', viewport: { width: 1280, height: 640 } },
@@ -82,7 +83,10 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-changes-binary-conflict', title: 'Workbench: Changes with a conflicted binary file, sides not shown as text', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-appearance', title: 'Workbench: a saved layout carries its theme; applying it restores the theme, a preset does not', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-layouts-page',title: 'Workbench: the Layouts page of the picker: save, apply, rename and delete a layout by key', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-agent-operations', title: 'Workbench: the agent reads the workbench and acts on it through two client operations', lane: 'original', viewport: { width: 1600, height: 640 } },
+  { id: 'workbench-resize', title: 'Workbench: the window resized through three sizes, then the text enlarged, without clipping', lane: 'original', viewport: { width: 1440, height: 900 } },
   { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-semantic-overlay', title: 'Workbench: the accessible overlay over the grid, read through the browser accessibility tree', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',
     title: 'Workbench: the tool picker in two columns',
