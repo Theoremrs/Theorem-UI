@@ -29,6 +29,8 @@ theorem-workbench-process = { path = "crates/workbench-process" }
 theorem-workbench-changes = { path = "crates/workbench-changes" }
 theorem-workbench-editor = { path = "crates/workbench-editor" }
 theorem-workbench-markdown-panel = { path = "crates/workbench-markdown-panel" }
+theorem-workbench-ide = { path = "crates/workbench-ide" }
+theorem-workbench-composer = { path = "crates/workbench-composer" }
 theorem-workbench-vt = { path = "crates/workbench-vt" }
 keybinds = "0.2"
 serde = { version = "1", features = ["derive"] }
