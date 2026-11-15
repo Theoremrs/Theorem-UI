@@ -3,6 +3,7 @@ import type { Capabilities } from "./Capabilities";
 import type { ConnectionState } from "./ConnectionState";
 import type { CoordinateUnit } from "./CoordinateUnit";
 import type { DraftAttachment } from "./DraftAttachment";
+import type { FindingAt } from "./FindingAt";
 import type { ModelChoice } from "./ModelChoice";
 import type { ReadAt } from "./ReadAt";
 import type { ResourceRef } from "./ResourceRef";
@@ -37,4 +38,9 @@ end?: SearchEnd,
 /**
  * The host and generation the rows were read from.
  */
-readAt: ReadAt, } | { "type": "resync", workspace: string, reason: string, };
+readAt: ReadAt, 
+/**
+ * The unit the rows' match columns count in. Absent on input means
+ * UTF-16 code units, the contract before this field existed.
+ */
+encoding: SpanEncoding, } | { "type": "diagnosticsSet", path: string, revision: Revision, encoding: SpanEncoding, findings: Array<FindingAt>, } | { "type": "diagnosticsCleared", path: string, } | { "type": "resync", workspace: string, reason: string, };

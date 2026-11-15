@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::effect::{SideChatScope, TextChange};
 use crate::ids::{EffectId, Generation, ResourceRef, Revision};
 use crate::results::{
-    LanguageCompletions, LanguageDiagnostics, LanguageHover, LanguageLocations, RunState,
+    LanguageCompletions, LanguageDiagnostics, LanguageHover, LanguageLocations, RunList, RunState,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -176,6 +176,8 @@ pub enum CompletionPayload {
     LanguageDiagnostics(LanguageDiagnostics),
     /// `runPoll`.
     RunState(RunState),
+    /// `runList`.
+    RunList(RunList),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

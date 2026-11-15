@@ -170,6 +170,9 @@ pub enum EffectBody {
     RunStart(RunStart),
     RunStop(RunHandle),
     RunPoll(RunHandle),
+    /// The runs the backend knows, so a panel can attach to one started
+    /// elsewhere. Answered by `runList`; the host operation is `run.list`.
+    RunList,
 
     // Search
     SearchQuery(SearchQuery),
@@ -264,7 +267,7 @@ impl EffectKind {
             | LanguageDiagnostics | LanguageFormat | LanguageRename | LanguageApplyPlan => {
                 Owner::Language
             }
-            RunConfigure | RunStart | RunStop | RunPoll => Owner::Run,
+            RunConfigure | RunStart | RunStop | RunPoll | RunList => Owner::Run,
             SearchQuery | SearchCancel => Owner::Search,
             TerminalOpen | TerminalAttach | TerminalInput | TerminalInputBytes | TerminalResize
             | TerminalDetach | TerminalEnd | TerminalAbandonOpen => Owner::Terminal,

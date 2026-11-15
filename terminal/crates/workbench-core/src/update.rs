@@ -161,6 +161,7 @@ impl Model {
     pub(crate) fn settle(&mut self) {
         self.announce_workspace();
         self.announce_motion();
+        self.replay_diagnostics();
         self.replay_retained();
         self.sync_tab_titles();
         self.follow_focus_for_picker();
@@ -214,6 +215,54 @@ impl Model {
             }
             self.announced_focus = desired;
         }
+    }
+
+    /// Hand each available panel that reads the diagnostics feed the latest
+    /// set per path, once, when it first appears. Silent.
+    fn replay_diagnostics(&mut self) {
+        self.diagnostics_told
+            .retain(|id| self.panels.contains_key(id));
+        let fresh: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(id, e)| {
+                e.available && e.panel.wants_diagnostics() && !self.diagnostics_told.contains(*id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in fresh {
+            self.diagnostics_told.insert(id.clone());
+            let held: Vec<HostMessage> = self
+                .retained
+                .diagnostics
+                .iter()
+                .map(|(_, m)| m.clone())
+                .collect();
+            for message in held {
+                self.call(&id, Mode::Silent, |p, cx| {
+                    p.update(PanelMsg::Host(message), cx)
+                });
+                self.dirty = true;
+            }
+        }
+    }
+
+    /// Deliver a diagnostics message to every panel that reads the feed and
+    /// has been handed the retained sets. Fresh panels get it by replay.
+    fn deliver_diagnostics(&mut self, message: HostMessage) -> Vec<Effect> {
+        let targets: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(id, e)| {
+                e.available && e.panel.wants_diagnostics() && self.diagnostics_told.contains(*id)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        let mut effects = Vec::new();
+        for id in targets {
+            effects.extend(self.send(&id, PanelMsg::Host(message.clone())));
+        }
+        effects
     }
 
     /// Tell each available panel the reduced-motion setting when it differs
@@ -647,7 +696,12 @@ impl Model {
         let bound = self
             .panels
             .iter()
-            .find(|(_, e)| e.available && e.binding().resource == resource)
+            .find(|(_, e)| {
+                // Only a panel that opens files shows the target: one that
+                // reads the same document for another reason (a list of its
+                // findings) is not it, and must not be focused in its place.
+                e.available && e.binding().resource == resource && self.factories.is_opener(&e.kind)
+            })
             .map(|(id, _)| id.clone());
         let opened = match bound {
             Some(id) => Some(id),
@@ -1206,6 +1260,19 @@ impl Model {
             return self.send(&panel, PanelMsg::Host(message));
         }
         match &message {
+            HostMessage::DiagnosticsSet { .. } => {
+                if !self.retained.keep_diagnostics(&message) {
+                    return self.drop_stale(Stale::OlderRevision);
+                }
+                return self.deliver_diagnostics(message);
+            }
+            HostMessage::DiagnosticsCleared { path } => {
+                self.retained.forget_diagnostics(path);
+                return self.deliver_diagnostics(message);
+            }
+            _ => {}
+        }
+        match &message {
             HostMessage::ConversationSnapshot {
                 resource: resource @ ResourceRef::Conversation { thread, .. },
                 conversation_id,
@@ -1468,6 +1535,8 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | ConnectionChanged { .. }
         | TerminalSessions { .. }
         | SearchPage { .. }
+        | DiagnosticsSet { .. }
+        | DiagnosticsCleared { .. }
         | Resync { .. } => (None, None),
     }
 }

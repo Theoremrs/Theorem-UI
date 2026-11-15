@@ -544,6 +544,14 @@ pub trait Panel {
         None
     }
 
+    /// Whether the panel reads the diagnostics feed: `diagnosticsSet` and
+    /// `diagnosticsCleared` reach every mounted panel that says yes, whatever
+    /// it is bound to, and the latest set per path is replayed to one that
+    /// mounts late.
+    fn wants_diagnostics(&self) -> bool {
+        false
+    }
+
     /// Whether typed characters belong to the panel (its text entry context
     /// then replaces its panel shortcuts).
     fn text_entry(&self) -> bool {

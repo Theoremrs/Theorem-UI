@@ -175,6 +175,7 @@ impl Panel for TestPanel {
                 self.taps += 1;
             }
             PanelMsg::Key(k) if k.key() == Key::Char('r') => self.doc = "b.md".into(),
+            PanelMsg::Key(k) if k.key() == Key::Char('C') => self.doc = "c.md".into(),
             PanelMsg::Key(k) if k.key() == Key::Char('R') => self.doc = "long-name-here.md".into(),
             PanelMsg::Action(id) => match id.as_str() {
                 "note.save" => self.try_emit(cx, EffectBody::DocumentSave),
@@ -219,6 +220,10 @@ impl Panel for TestPanel {
             title: self.doc.clone(),
             modified: self.taps > 0,
         })
+    }
+
+    fn wants_diagnostics(&self) -> bool {
+        self.kind == "diag"
     }
 
     fn binding(&self) -> Option<Binding> {
@@ -308,6 +313,17 @@ fn model(log: &Shared) -> Model {
         .unwrap();
     registry
         .register(descriptor(
+            "diag",
+            ResourceKind::Document,
+            vec![ActionDescriptor::new(
+                "diag.open",
+                "Findings",
+                ActionIntent::Open,
+            )],
+        ))
+        .unwrap();
+    registry
+        .register(descriptor(
             "term",
             ResourceKind::Terminal,
             vec![
@@ -329,7 +345,7 @@ fn model(log: &Shared) -> Model {
         ))
         .unwrap();
     let mut factories = PanelFactories::new();
-    for kind in ["note", "term", "chat"] {
+    for kind in ["note", "term", "chat", "diag"] {
         let log = log.clone();
         factories.register(kind, move |state, _| {
             Box::new(TestPanel::new(kind, state, log.clone()))
@@ -1984,6 +2000,7 @@ fn search_pages_reach_only_the_panel_that_started_the_search_until_the_last_one(
         skipped: 0,
         state,
         end: None,
+        encoding: theorem_workbench_core::results::SpanEncoding::Utf16CodeUnits,
         read_at: ReadAt {
             workspace_id: "w".into(),
             version: None,
@@ -3057,4 +3074,245 @@ fn reduced_motion_reaches_each_panel_when_it_changes_and_on_mount() {
     send(&mut m, Msg::ReducedMotion(false));
     assert_eq!(motion(&log, "note"), vec![true, false]);
     assert!(log.borrow().emits.is_empty());
+}
+
+// ---- batch seven: feeds, run list, search encoding ----------------------
+
+fn finding(line: u32, message: &str) -> theorem_workbench_core::results::FindingAt {
+    use theorem_workbench_core::results::{FindingAt, Position, Range, Severity};
+    FindingAt {
+        range: Range {
+            start: Position { line, character: 0 },
+            end: Position { line, character: 3 },
+        },
+        severity: Severity::Error,
+        message: message.into(),
+        source: None,
+        code: None,
+    }
+}
+
+fn diag_set(path: &str, rev: u64, messages: &[&str]) -> Msg {
+    Msg::Host(HostMessage::DiagnosticsSet {
+        path: path.into(),
+        revision: Revision::Seq(rev),
+        encoding: theorem_workbench_core::results::SpanEncoding::Utf16CodeUnits,
+        findings: messages.iter().map(|m| finding(1, m)).collect(),
+    })
+}
+
+fn diag_seen(log: &Shared, kind: &str) -> Vec<String> {
+    msgs_of(log, kind)
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Host(HostMessage::DiagnosticsSet {
+                path,
+                revision: Revision::Seq(rev),
+                findings,
+                ..
+            }) => Some(format!("{path}@{rev}:{}", findings.len())),
+            PanelMsg::Host(HostMessage::DiagnosticsCleared { path }) => {
+                Some(format!("cleared {path}"))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn diagnostics_reach_every_panel_that_asks_for_them_whatever_it_is_bound_to() {
+    let (mut m, log) = new_model();
+    action(&mut m, "diag.open"); // bound to a.md
+    action(&mut m, "note.open");
+    send(&mut m, diag_set("c.md", 1, &["x", "y"]));
+    send(&mut m, diag_set("a.md", 1, &["z"]));
+    assert_eq!(diag_seen(&log, "diag"), vec!["c.md@1:2", "a.md@1:1"]);
+    assert!(
+        diag_seen(&log, "note").is_empty(),
+        "a kind that did not ask"
+    );
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DiagnosticsCleared {
+            path: "c.md".into(),
+        }),
+    );
+    assert_eq!(diag_seen(&log, "diag").last().unwrap(), "cleared c.md");
+    assert!(diag_seen(&log, "note").is_empty());
+}
+
+#[test]
+fn an_older_set_for_a_path_is_dropped_and_a_newer_one_replaces_it() {
+    let (mut m, log) = new_model();
+    action(&mut m, "diag.open");
+    send(&mut m, diag_set("c.md", 5, &["a"]));
+    let dropped = m.counters().dropped;
+    send(&mut m, diag_set("c.md", 4, &["old"]));
+    assert_eq!(m.counters().dropped, dropped + 1);
+    assert_eq!(m.counters().last_drop, Some(Stale::OlderRevision));
+    send(&mut m, diag_set("c.md", 5, &["same", "again"]));
+    send(&mut m, diag_set("c.md", 6, &[]));
+    assert_eq!(
+        diag_seen(&log, "diag"),
+        vec!["c.md@5:1", "c.md@5:2", "c.md@6:0"]
+    );
+    // After a close, any revision is a new beginning.
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DiagnosticsCleared {
+            path: "c.md".into(),
+        }),
+    );
+    send(&mut m, diag_set("c.md", 1, &["fresh"]));
+    assert_eq!(diag_seen(&log, "diag").last().unwrap(), "c.md@1:1");
+}
+
+#[test]
+fn a_diagnostics_panel_mounted_late_is_handed_the_latest_set_per_path_once() {
+    let (mut m, log) = new_model();
+    send(&mut m, diag_set("a.md", 1, &["old"]));
+    send(&mut m, diag_set("a.md", 2, &["new", "newer"]));
+    send(&mut m, diag_set("b.md", 1, &["x"]));
+    send(&mut m, diag_set("gone.md", 1, &["x"]));
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DiagnosticsCleared {
+            path: "gone.md".into(),
+        }),
+    );
+    assert!(diag_seen(&log, "diag").is_empty(), "nobody mounted yet");
+    let fx = action(&mut m, "diag.open");
+    assert!(fx.is_empty() && log.borrow().emits.is_empty());
+    assert_eq!(diag_seen(&log, "diag"), vec!["a.md@2:2", "b.md@1:1"]);
+    send(&mut m, Msg::Tick);
+    assert_eq!(diag_seen(&log, "diag").len(), 2, "replayed once");
+}
+
+#[test]
+fn only_the_newest_paths_of_the_feed_are_kept() {
+    let (mut m, log) = new_model();
+    for n in 0..300 {
+        send(&mut m, diag_set(&format!("f{n}.rs"), 1, &["x"]));
+    }
+    action(&mut m, "diag.open");
+    let seen = diag_seen(&log, "diag");
+    assert_eq!(seen.len(), 256);
+    assert_eq!(seen[0], "f44.rs@1:1");
+}
+
+#[test]
+fn a_panel_that_reads_a_document_for_its_findings_opens_the_editor_never_itself() {
+    let (mut m, log) = new_model();
+    action(&mut m, "diag.open");
+    let diag = kinds(&m, "diag")[0].clone();
+    ch(&mut m, 'C'); // the findings panel now reads c.md
+    assert_eq!(
+        m.panel(&diag).unwrap().binding().unwrap().resource,
+        ResourceRef::Document {
+            workspace: "w".into(),
+            resource_id: "c.md".into()
+        }
+    );
+    ch(&mut m, 'g'); // open c.md at 12:4
+    let notes = kinds(&m, "note");
+    assert_eq!(notes.len(), 1, "the opener's panel was made");
+    assert_eq!(m.focus().panel, Some(notes[0].clone()));
+    assert_eq!(kinds(&m, "diag").len(), 1, "no second findings panel");
+    assert!(
+        msgs_of(&log, "diag")
+            .iter()
+            .all(|m| !matches!(m, PanelMsg::Reveal { .. })),
+        "it was not told to reveal"
+    );
+    assert!(msgs_of(&log, "note").iter().any(|m| matches!(
+        m,
+        PanelMsg::Reveal {
+            line: 12,
+            column: 4
+        }
+    )));
+}
+
+#[test]
+fn a_run_list_is_asked_by_the_run_owner_and_answered_with_summaries() {
+    use theorem_workbench_core::completion::CompletionPayload;
+    use theorem_workbench_core::effect::Owner;
+    let body: EffectBody = serde_json::from_value(json!({"kind": "runList"})).unwrap();
+    assert_eq!(EffectKind::from(&body), EffectKind::RunList);
+    assert_eq!(EffectKind::RunList.owner(), Owner::Run);
+    assert_eq!(
+        serde_json::to_value(&body).unwrap(),
+        json!({"kind": "runList"})
+    );
+    let value = json!({
+        "type": "runList",
+        "runs": [
+            {"handle": "h1", "name": "build", "command": ["cargo", "build"],
+             "state": "running", "startedAtMs": 1700000000000u64},
+            {"handle": "h2", "state": "exited"}
+        ]
+    });
+    let payload: CompletionPayload = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&payload).unwrap(), value);
+    let CompletionPayload::RunList(list) = payload else {
+        panic!("not a run list");
+    };
+    assert_eq!(list.runs[0].command.as_deref().unwrap()[0], "cargo");
+    assert!(list.runs[1].name.is_none() && list.runs[1].started_at_ms.is_none());
+}
+
+#[test]
+fn a_search_page_states_its_encoding_and_defaults_to_utf16_when_absent() {
+    use theorem_workbench_core::results::SpanEncoding;
+    let page = |extra: Value| {
+        let mut v = json!({
+            "type": "searchPage", "id": "s1", "skipped": 0, "state": "complete", "rows": [],
+            "readAt": {"workspaceId": "w", "generation": 1}
+        });
+        v.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        v
+    };
+    let bare: HostMessage = serde_json::from_value(page(json!({}))).unwrap();
+    assert!(matches!(
+        bare,
+        HostMessage::SearchPage {
+            encoding: SpanEncoding::Utf16CodeUnits,
+            ..
+        }
+    ));
+    assert_eq!(
+        serde_json::to_value(&bare).unwrap()["encoding"],
+        "utf16_code_units"
+    );
+    let stated: HostMessage =
+        serde_json::from_value(page(json!({"encoding": "utf8_bytes"}))).unwrap();
+    assert!(matches!(
+        stated,
+        HostMessage::SearchPage {
+            encoding: SpanEncoding::Utf8Bytes,
+            ..
+        }
+    ));
+}
+
+#[test]
+fn the_diagnostics_messages_round_trip() {
+    let value = json!({
+        "type": "diagnosticsSet", "path": "a.rs",
+        "revision": {"scheme": "seq", "value": 3}, "encoding": "utf8_bytes",
+        "findings": [{
+            "range": {"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}},
+            "severity": "warning", "message": "unused", "source": "rustc", "code": "W1"
+        }, {
+            "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+            "severity": "hint", "message": "m"
+        }]
+    });
+    let msg: HostMessage = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&msg).unwrap(), value);
+    let cleared = json!({"type": "diagnosticsCleared", "path": "a.rs"});
+    let msg: HostMessage = serde_json::from_value(cleared.clone()).unwrap();
+    assert_eq!(serde_json::to_value(&msg).unwrap(), cleared);
 }

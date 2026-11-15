@@ -7,7 +7,11 @@ use crate::draft::{DraftAttachment, ModelChoice};
 use crate::effect::{CoordinateUnit, TerminalBackend, TextChange};
 use crate::ids::{ResourceRef, Revision};
 use crate::registry::Capabilities;
-use crate::results::{ReadAt, SearchEnd, SearchRow, SearchState, SpanEncoding};
+use crate::results::{FindingAt, ReadAt, SearchEnd, SearchRow, SearchState, SpanEncoding};
+
+fn utf16() -> SpanEncoding {
+    SpanEncoding::Utf16CodeUnits
+}
 
 fn yes() -> bool {
     true
@@ -318,6 +322,24 @@ pub enum HostMessage {
         end: Option<SearchEnd>,
         /// The host and generation the rows were read from.
         read_at: ReadAt,
+        /// The unit the rows' match columns count in. Absent on input means
+        /// UTF-16 code units, the contract before this field existed.
+        #[serde(default = "utf16")]
+        encoding: SpanEncoding,
+    },
+    /// Every finding of one open document at `revision`, replacing whatever
+    /// was held for `path`. Columns count in `encoding`. Delivered to every
+    /// mounted panel that asks for diagnostics (`Panel::wants_diagnostics`),
+    /// whatever it is bound to; a set older than the one held is dropped.
+    DiagnosticsSet {
+        path: String,
+        revision: Revision,
+        encoding: SpanEncoding,
+        findings: Vec<FindingAt>,
+    },
+    /// The document at `path` closed: its findings are gone.
+    DiagnosticsCleared {
+        path: String,
     },
     /// The live stream says everything listeners know may be stale
     /// (`onResync`): `malformed_cursor`, `epoch_changed`, `cursor_ahead`,

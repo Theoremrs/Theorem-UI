@@ -186,6 +186,50 @@ pub struct Finding {
     pub fix_handle: Option<String>,
 }
 
+/// One finding of a `diagnosticsSet`, placed by line and column. The unit of
+/// the columns is the `encoding` the message states once.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FindingAt {
+    pub range: Range,
+    pub severity: Severity,
+    pub message: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub source: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub code: Option<String>,
+}
+
+/// One run the backend lists (`run.list`).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunSummary {
+    pub handle: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub command: Option<Vec<String>>,
+    /// `running` while it runs; another word once it has ended.
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
+    pub started_at_ms: Option<u64>,
+}
+
+/// `runList`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct RunList {
+    pub runs: Vec<RunSummary>,
+}
+
 /// `languageDiagnostics`. Every finding's `start` and `end` are UTF-8 byte
 /// offsets into the document text at `revision`; a reader holding another
 /// revision compares before using them.

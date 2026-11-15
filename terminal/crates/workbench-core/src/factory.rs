@@ -80,6 +80,11 @@ impl PanelFactories {
             .map(|(kind, _, _)| kind)
     }
 
+    /// Whether `kind` is registered to open any target.
+    pub fn is_opener(&self, kind: &PanelKind) -> bool {
+        self.openers.iter().any(|(k, _, _)| k == kind)
+    }
+
     pub fn has(&self, kind: &PanelKind) -> bool {
         self.constructors.contains_key(kind)
     }

@@ -89,6 +89,8 @@ pub(crate) struct Entry {
 /// mount later, and how many workspaces' session lists. The oldest goes first.
 pub(crate) const RETAINED_SNAPSHOTS: usize = 32;
 pub(crate) const RETAINED_SESSION_LISTS: usize = 4;
+/// How many paths' latest diagnostics the root keeps.
+pub(crate) const RETAINED_DIAGNOSTIC_PATHS: usize = 256;
 
 /// The latest state a panel mounted later needs and would otherwise have
 /// missed: one `ConversationSnapshot` per conversation resource and one
@@ -100,6 +102,8 @@ pub(crate) struct Retained {
     /// The latest draft attachment list and model list of each conversation.
     pub(crate) attachments: Vec<(ResourceRef, HostMessage)>,
     pub(crate) models: Vec<(ResourceRef, HostMessage)>,
+    /// The latest `DiagnosticsSet` per path, oldest first.
+    pub(crate) diagnostics: Vec<(String, HostMessage)>,
 }
 
 impl Retained {
@@ -133,6 +137,34 @@ impl Retained {
         if self.sessions.len() > RETAINED_SESSION_LISTS {
             self.sessions.remove(0);
         }
+    }
+
+    /// Keep `message` (a `DiagnosticsSet`) as the latest for its path. False
+    /// when the one held is newer or unordered against it: the set is stale.
+    pub(crate) fn keep_diagnostics(&mut self, message: &HostMessage) -> bool {
+        let HostMessage::DiagnosticsSet { path, revision, .. } = message else {
+            return false;
+        };
+        if let Some(at) = self.diagnostics.iter().position(|(p, _)| p == path) {
+            let older = matches!(
+                &self.diagnostics[at].1,
+                HostMessage::DiagnosticsSet { revision: held, .. }
+                    if revision.order(held) == Some(std::cmp::Ordering::Less)
+            );
+            if older {
+                return false;
+            }
+            self.diagnostics.remove(at);
+        }
+        self.diagnostics.push((path.clone(), message.clone()));
+        if self.diagnostics.len() > RETAINED_DIAGNOSTIC_PATHS {
+            self.diagnostics.remove(0);
+        }
+        true
+    }
+
+    pub(crate) fn forget_diagnostics(&mut self, path: &str) {
+        self.diagnostics.retain(|(p, _)| p != path);
     }
 
     /// Keep the latest draft attachment list for `resource`; each message is
@@ -215,6 +247,8 @@ pub struct Model {
     /// Reduced motion as the host last said, and what each panel was last told.
     pub(crate) reduced_motion: bool,
     pub(crate) motion_told: BTreeMap<PanelInstanceId, bool>,
+    /// The panels that have been handed the retained diagnostics.
+    pub(crate) diagnostics_told: std::collections::BTreeSet<PanelInstanceId>,
     pub(crate) announced_focus: Option<PanelInstanceId>,
     /// The last panel other than the picker that owned the keyboard: where
     /// focus goes back to when the picker closes.
@@ -270,6 +304,7 @@ impl Model {
             window_focused: true,
             reduced_motion: false,
             motion_told: BTreeMap::new(),
+            diagnostics_told: std::collections::BTreeSet::new(),
             announced_focus: None,
             before_picker: None,
             drag: None,
