@@ -11,7 +11,7 @@ use theorem_workbench_core::{
 };
 use theorem_workbench_editor::{Clipboard, Reaction, SourceView};
 use theorem_workbench_text::layout::line_rows;
-use theorem_workbench_text::{AtomicId, Deletion, EditSession, Motion, SessionConfig};
+use theorem_workbench_text::{AtomicId, Deletion, EditSession, Motion, Scroll, SessionConfig};
 
 use crate::types::{
     Caret, CaretPhase, ComposerStatus, Draft, Event, Input, PlacedReference, Policy, Response,
@@ -32,21 +32,16 @@ const DUPLICATE_MS: f64 = 300.0;
 pub(crate) const POPUP_ROWS: usize = 6;
 /// How far back from the caret an `@` can start a reference.
 const MENTION_SCAN: usize = 256;
-/// Dissolved references kept so an undo can restore them.
+/// Dead reference payloads kept so an undo can restore them.
 const POOL_LIMIT: usize = 64;
+/// The most sent prompts the history keeps.
+pub const HISTORY_LIMIT: usize = 200;
 
 /// A reference whose text is an atomic range of the draft.
 #[derive(Clone, Debug)]
 pub(crate) struct Slot {
     pub id: AtomicId,
     pub reference: SourceReference,
-}
-
-/// A reference whose text left the draft; an undo may bring it back.
-#[derive(Clone, Debug)]
-struct Orphan {
-    token: String,
-    reference: SourceReference,
 }
 
 #[derive(Clone, Debug)]
@@ -131,6 +126,8 @@ pub fn reference_token(r: &SourceReference) -> String {
 pub struct Composer {
     pub(crate) prefix: String,
     pub(crate) label: String,
+    /// The prompt glyph, one cell wide, then a space.
+    pub(crate) prompt: char,
     pub(crate) placeholder: String,
     pub(crate) session: EditSession,
     pub(crate) view: SourceView,
@@ -141,7 +138,6 @@ pub struct Composer {
     /// The chip the keyboard is on, when it is in the chip row.
     pub(crate) chip: Option<usize>,
     pub(crate) slots: Vec<Slot>,
-    pool: Vec<Orphan>,
     pub(crate) popup: Option<Popup>,
     /// The `@` the person dismissed the popup for.
     dismissed: Option<usize>,
@@ -158,6 +154,12 @@ pub struct Composer {
     last_input_ms: f64,
     pub(crate) notice: Option<String>,
     revision: u64,
+    /// Sent prompts, oldest first, given by the owner.
+    history: Vec<String>,
+    /// The history entry shown, while the person walks it.
+    walk: Option<usize>,
+    /// A cut waiting for the clipboard write: its range and text.
+    pending_cut: Option<(usize, usize, String)>,
 }
 
 fn new_session(text: &str) -> EditSession {
@@ -170,6 +172,7 @@ impl Composer {
         Self {
             prefix: prefix.to_owned(),
             label: "Message".to_owned(),
+            prompt: '\u{203A}',
             placeholder: "Message".to_owned(),
             session: new_session(""),
             view: SourceView::new(),
@@ -178,7 +181,6 @@ impl Composer {
             attachments: Vec::new(),
             chip: None,
             slots: Vec::new(),
-            pool: Vec::new(),
             popup: None,
             dismissed: None,
             next_token: 0,
@@ -193,6 +195,9 @@ impl Composer {
             last_input_ms: f64::NEG_INFINITY,
             notice: None,
             revision: 0,
+            history: Vec::new(),
+            walk: None,
+            pending_cut: None,
         }
     }
 
@@ -200,6 +205,17 @@ impl Composer {
 
     pub fn set_label(&mut self, label: &str) {
         self.label = label.to_owned();
+    }
+
+    /// The glyph before the first row; one cell wide.
+    pub fn set_prompt(&mut self, glyph: char) {
+        self.prompt = glyph;
+    }
+
+    /// A press is held in the text and the pointer is selecting: moves and
+    /// the release belong to the composer even outside its cells.
+    pub fn is_dragging(&self) -> bool {
+        self.view.dragging()
     }
 
     /// The text shown, and described to assistive technology, while the draft is empty.
@@ -254,7 +270,23 @@ impl Composer {
     pub fn resize(&mut self, area: Rect) {
         self.area.set(area);
         self.sync_view();
+        // A draft that fits starts at its first row: the box may have grown
+        // since the caret last scrolled it.
+        if self.total_rows(area.width) <= usize::from(self.text_rect().height) {
+            self.session.set_scroll(Scroll::default());
+        }
         self.view.reveal(&mut self.session);
+    }
+
+    /// The rows the draft takes when wrapped for a box `width` cells wide.
+    fn total_rows(&self, width: u16) -> usize {
+        let w = usize::from(width.saturating_sub(PROMPT_WIDTH));
+        let wrap = if self.session.config().wrap { w } else { 0 };
+        let tab = self.session.config().tab_width;
+        let rope = self.session.rope();
+        (0..self.session.coords().line_count())
+            .map(|l| line_rows(rope, l, wrap, tab).len())
+            .sum()
     }
 
     // ---- reading ----
@@ -397,7 +429,7 @@ impl Composer {
         self.chip = None;
         self.close_models();
         let r = self.view.text(&mut self.session, &t);
-        self.apply(r, false, out);
+        self.apply(r, out);
     }
 
     fn paste(&mut self, t: &str, out: &mut Response) {
@@ -407,7 +439,7 @@ impl Composer {
         self.chip = None;
         self.close_models();
         let r = self.view.paste(&mut self.session, t);
-        self.apply(r, false, out);
+        self.apply(r, out);
     }
 
     fn composition(&mut self, c: Composition, now_ms: f64, out: &mut Response) {
@@ -431,7 +463,7 @@ impl Composer {
                 self.composing_early = None;
                 if !text.is_empty() {
                     let r = self.view.text(&mut self.session, &text);
-                    self.apply(r, false, out);
+                    self.apply(r, out);
                     self.suppress = Some((text, now_ms));
                 }
             }
@@ -482,10 +514,12 @@ impl Composer {
             Key::Tab | Key::PageUp | Key::PageDown => out.handled = false,
             Key::Esc => self.escape(out),
             Key::Up if plain && !extend && self.on_first_row() => self.up_from_top(out),
+            Key::Down if plain && !extend && self.walk.is_some() && self.row_ends().1 => {
+                self.history_newer()
+            }
             _ => {
-                let history = is_history(&k);
                 let r = self.view.key(&mut self.session, &k);
-                self.apply(r, history, out);
+                self.apply(r, out);
             }
         }
     }
@@ -495,7 +529,7 @@ impl Composer {
             .view
             .key(&mut self.session, &KeyInput::new(Key::Enter, Mods::empty()));
         // SourceView inserts the document's line break on a bare Enter.
-        self.apply(r, false, out);
+        self.apply(r, out);
     }
 
     fn delete(&mut self, d: Deletion, out: &mut Response) {
@@ -512,7 +546,7 @@ impl Composer {
             Err(e) => r.error = Some(e),
         }
         self.view.reveal(&mut self.session);
-        self.apply(r, false, out);
+        self.apply(r, out);
     }
 
     fn escape(&mut self, out: &mut Response) {
@@ -530,8 +564,12 @@ impl Composer {
 
     /// Up on the first row: the chip row, or the last message.
     fn up_from_top(&mut self, out: &mut Response) {
-        if !self.attachments.is_empty() {
+        if self.walk.is_some() {
+            self.history_older();
+        } else if !self.attachments.is_empty() {
             self.chip = Some(0);
+        } else if self.session.is_empty() && !self.history.is_empty() {
+            self.history_older();
         } else if self.session.is_empty() {
             out.events.push(Event::RecallLast);
         } else {
@@ -542,22 +580,7 @@ impl Composer {
     }
 
     fn on_first_row(&self) -> bool {
-        let c = self.session.cursor();
-        let coords = self.session.coords();
-        if coords.line_of(c) != 0 {
-            return false;
-        }
-        let w = usize::from(self.text_rect().width);
-        let wrap = if self.session.config().wrap { w } else { 0 };
-        let rows = line_rows(
-            self.session.rope(),
-            0,
-            wrap,
-            self.session.config().tab_width,
-        );
-        rows.iter()
-            .position(|r| c >= r.start && (c < r.end || r.last))
-            .is_none_or(|i| i == 0)
+        self.row_ends().0
     }
 
     fn chip_key(&mut self, k: &KeyInput, out: &mut Response) {
@@ -581,7 +604,7 @@ impl Composer {
                 // Typing leaves the chip row and goes to the text.
                 self.chip = None;
                 let r = self.view.key(&mut self.session, k);
-                self.apply(r, false, out);
+                self.apply(r, out);
             }
             Key::Tab | Key::PageUp | Key::PageDown => out.handled = false,
             _ => {}
@@ -650,7 +673,7 @@ impl Composer {
                         },
                         Some(start),
                     );
-                    self.after_edit(false, out);
+                    self.after_edit(out);
                 }
             }
             _ => {}
@@ -709,7 +732,7 @@ impl Composer {
     // ---- editing results ----
 
     /// Fold a `SourceView` reaction into the response and the composer.
-    fn apply(&mut self, r: Reaction, history: bool, out: &mut Response) {
+    fn apply(&mut self, r: Reaction, out: &mut Response) {
         if !r.handled {
             out.handled = false;
             return;
@@ -723,18 +746,20 @@ impl Composer {
                 // Ctrl+C with nothing selected is the panel's (stop, clear).
                 None => out.handled = false,
             },
-            Some(Clipboard::Cut) => match self.session.cut() {
-                Ok(Some((text, _))) => {
-                    out.events.push(Event::Cut { text });
-                    self.after_edit(false, out);
+            Some(Clipboard::Cut) => {
+                match (self.session.selection(), self.session.selected_text()) {
+                    (Some((a, b)), Some(text)) => {
+                        // Nothing leaves the draft until the write is accepted.
+                        self.pending_cut = Some((a, b, text.clone()));
+                        out.events.push(Event::Cut { text });
+                    }
+                    _ => out.handled = false,
                 }
-                Ok(None) => out.handled = false,
-                Err(e) => self.notice = Some(e.to_string()),
-            },
+            }
             Some(Clipboard::Paste) => out.events.push(Event::ReadClipboard),
             None => {
                 if r.edited {
-                    self.after_edit(history, out);
+                    self.after_edit(out);
                 } else if r.moved {
                     self.sync_view();
                     self.refresh_mention(out);
@@ -745,12 +770,13 @@ impl Composer {
 
     /// After the text changed: settle the session, keep the references in step
     /// with the text, and look at what the caret is in.
-    fn after_edit(&mut self, history: bool, out: &mut Response) {
+    fn after_edit(&mut self, out: &mut Response) {
+        self.walk = None;
         while let Some(e) = self.session.take_next_to_send() {
             self.revision += 1;
             let _ = self.session.acknowledge(&e.op_id, self.revision);
         }
-        self.reconcile(history);
+        self.reconcile();
         self.sync_view();
         self.view.reveal(&mut self.session);
         self.refresh_mention(out);
@@ -792,51 +818,24 @@ impl Composer {
         self.chip = None;
         self.insert_reference(reference, None);
         let mut sink = Response::default();
-        self.after_edit(false, &mut sink);
+        self.after_edit(&mut sink);
     }
 
-    /// Slots whose range left the text move to the pool; after an undo or a
-    /// redo, pooled tokens that are back in the text become references again.
-    fn reconcile(&mut self, history: bool) {
+    /// The session restores an atomic range, under its own id, when an undo
+    /// or redo brings its text back, so a slot stays while its id may return;
+    /// only the oldest dead ones are dropped.
+    fn reconcile(&mut self) {
         let live: Vec<AtomicId> = self.session.atomics().iter().map(|a| a.id).collect();
-        let (keep, gone): (Vec<Slot>, Vec<Slot>) =
-            self.slots.drain(..).partition(|s| live.contains(&s.id));
-        self.slots = keep;
-        for s in gone {
-            self.pool.push(Orphan {
-                token: reference_token(&s.reference),
-                reference: s.reference,
-            });
-        }
-        if self.pool.len() > POOL_LIMIT {
-            let extra = self.pool.len() - POOL_LIMIT;
-            self.pool.drain(..extra);
-        }
-        if !history || self.pool.is_empty() {
-            return;
-        }
-        let text = self.session.text();
-        let mut still = Vec::new();
-        for orphan in std::mem::take(&mut self.pool) {
-            let found = text.match_indices(&orphan.token).find_map(|(b, _)| {
-                let start = text[..b].chars().count();
-                let end = start + orphan.token.chars().count();
-                let taken = self
-                    .session
-                    .atomics()
-                    .iter()
-                    .any(|a| start < a.end && a.start < end);
-                (!taken).then_some((start, end))
-            });
-            match found.and_then(|(s, e)| self.session.mark_atomic(s, e).ok()) {
-                Some(id) => self.slots.push(Slot {
-                    id,
-                    reference: orphan.reference,
-                }),
-                None => still.push(orphan),
+        let dead = self.slots.iter().filter(|s| !live.contains(&s.id)).count();
+        let mut extra = dead.saturating_sub(POOL_LIMIT);
+        self.slots.retain(|s| {
+            if extra > 0 && !live.contains(&s.id) {
+                extra -= 1;
+                false
+            } else {
+                true
             }
-        }
-        self.pool = still;
+        });
     }
 
     // ---- the @ popup ----
@@ -994,7 +993,6 @@ impl Composer {
             self.close_models();
         }
         let t = lay.text;
-        let gutter = i32::from(self.view.gutter(&self.session));
         let routed = match p.kind {
             PointerKind::Wheel { .. } => inside(area),
             PointerKind::Down(_) => inside(t),
@@ -1005,7 +1003,7 @@ impl Composer {
             return;
         }
         let q = PanelPointer {
-            x: p.x - i32::from(t.x) + gutter,
+            x: p.x - i32::from(t.x),
             y: p.y - i32::from(t.y),
             ..p
         };
@@ -1016,6 +1014,109 @@ impl Composer {
         } else {
             out.handled = false;
         }
+    }
+
+    /// The outcome of the clipboard write a [`Event::Cut`] asked for. Accepted,
+    /// and the text it cut is still where it was: the selection is deleted.
+    /// Otherwise the draft stays and the footer says "Not cut".
+    pub fn cut_finished(&mut self, accepted: bool) -> Response {
+        let mut out = Response {
+            handled: true,
+            events: Vec::new(),
+        };
+        let Some((a, b, text)) = self.pending_cut.take() else {
+            return out;
+        };
+        let (lo, hi) = (a.min(b), a.max(b));
+        let same = hi <= self.session.len() && self.session.rope().slice(lo..hi) == text.as_str();
+        if !accepted || !same {
+            self.notice = Some("Not cut".to_owned());
+            return out;
+        }
+        self.session.set_selection(a, b);
+        match self.session.cut() {
+            Ok(_) => self.after_edit(&mut out),
+            Err(e) => self.notice = Some(e.to_string()),
+        }
+        out
+    }
+
+    // ---- history ----
+
+    /// The sent prompts Up and Down walk, oldest first; the owner's list,
+    /// kept to the most recent [`HISTORY_LIMIT`].
+    pub fn set_history(&mut self, history: Vec<String>) {
+        let skip = history.len().saturating_sub(HISTORY_LIMIT);
+        self.history = history.into_iter().skip(skip).collect();
+        self.walk = None;
+    }
+
+    /// A prompt was sent: it is now the newest entry (a repeat of the newest
+    /// is not added again).
+    pub fn push_history(&mut self, prompt: &str) {
+        let prompt = prompt.trim();
+        if prompt.is_empty() || self.history.last().is_some_and(|l| l == prompt) {
+            return;
+        }
+        self.history.push(prompt.to_owned());
+        if self.history.len() > HISTORY_LIMIT {
+            self.history.remove(0);
+        }
+        self.walk = None;
+    }
+
+    /// A recalled prompt is showing and has not been edited.
+    pub fn is_walking_history(&self) -> bool {
+        self.walk.is_some()
+    }
+
+    fn show_history(&mut self, at: Option<usize>) {
+        self.reset_text();
+        if let Some(i) = at {
+            let text = self.history[i].clone();
+            self.session = new_session(&text);
+            let end = self.session.len();
+            self.session.set_selection(end, end);
+            self.sync_view();
+            self.view.reveal(&mut self.session);
+        }
+        self.walk = at;
+    }
+
+    fn history_older(&mut self) {
+        let at = match self.walk {
+            None => self.history.len() - 1,
+            Some(i) => i.saturating_sub(1),
+        };
+        self.show_history(Some(at));
+    }
+
+    fn history_newer(&mut self) {
+        let Some(i) = self.walk else { return };
+        self.show_history((i + 1 < self.history.len()).then_some(i + 1));
+    }
+
+    /// Whether the caret is on the first and on the last row of the draft.
+    fn row_ends(&self) -> (bool, bool) {
+        let c = self.session.cursor();
+        let coords = self.session.coords();
+        let line = coords.line_of(c);
+        let w = usize::from(self.text_rect().width);
+        let wrap = if self.session.config().wrap { w } else { 0 };
+        let rows = line_rows(
+            self.session.rope(),
+            line,
+            wrap,
+            self.session.config().tab_width,
+        );
+        let at = rows
+            .iter()
+            .position(|r| c >= r.start && (c < r.end || r.last))
+            .unwrap_or(0);
+        (
+            line == 0 && at == 0,
+            line + 1 == coords.line_count() && at + 1 == rows.len(),
+        )
     }
 
     // ---- draft lifetime ----
@@ -1038,6 +1139,7 @@ impl Composer {
     pub fn take(&mut self) -> Draft {
         let d = self.draft();
         self.reset_text();
+        self.walk = None;
         self.attachments.clear();
         self.editing = None;
         self.chip = None;
@@ -1052,7 +1154,7 @@ impl Composer {
     /// changes, when the person has already started another draft. When the
     /// outcome is uncertain the panel does not call this.
     pub fn put_back(&mut self, draft: Draft) -> bool {
-        if !self.session.is_empty() || !self.slots.is_empty() || !self.attachments.is_empty() {
+        if !self.session.is_empty() || !self.placed().is_empty() || !self.attachments.is_empty() {
             return false;
         }
         self.load(&draft.text, draft.anchor, draft.caret, &draft.references);
@@ -1096,14 +1198,13 @@ impl Composer {
         }
         self.editing = Some(self.session.text());
         let mut sink = Response::default();
-        self.after_edit(false, &mut sink);
+        self.after_edit(&mut sink);
         self.session.break_undo_group();
     }
 
     fn reset_text(&mut self) {
         self.session = new_session("");
         self.slots.clear();
-        self.pool.clear();
         self.popup = None;
         self.dismissed = None;
         self.composing_early = None;
@@ -1167,25 +1268,12 @@ impl Composer {
 
     // ---- geometry ----
 
-    /// The width the view is given: the text's width plus the line-number
-    /// column the editing widget always reserves, which `draw` leaves out.
+    /// The view gets exactly the text cells; it draws without a gutter.
     fn sync_view(&mut self) {
         let t = self.text_rect();
-        let digits = self
-            .session
-            .coords()
-            .line_count()
-            .to_string()
-            .len()
-            .try_into()
-            .unwrap_or(1u16);
-        let vw = if t.width == 0 {
-            0
-        } else {
-            t.width.saturating_add(digits + 1)
-        };
-        if self.view.size() != (vw, t.height) {
-            self.view.resize(&mut self.session, vw, t.height);
+        self.view.set_gutter(false);
+        if self.view.size() != (t.width, t.height) {
+            self.view.resize(&mut self.session, t.width, t.height);
         }
     }
 
@@ -1199,28 +1287,18 @@ impl Composer {
         if t.width == 0 || t.height == 0 {
             return None;
         }
-        let g = self.view.gutter(&self.session);
-        let c = self
-            .view
-            .caret_cell(&self.session, Rect::new(0, 0, t.width + g, t.height))?;
+        let c = self.view.caret_cell(&self.session, t)?;
         let pre = self.preedit.as_deref().map_or(0, |p| {
             u16::try_from(crate::view::width(p)).unwrap_or(u16::MAX)
         });
-        let x = c.x.saturating_sub(g).saturating_add(pre).min(t.width - 1);
-        Some((t.x + x, t.y + c.y))
+        let x = c.x.saturating_sub(t.x).saturating_add(pre).min(t.width - 1);
+        Some((t.x + x, c.y))
     }
 
     /// How many rows the composer wants at `width` cells: the chip row, the
     /// text up to `max_rows` (then it scrolls), a popup, and the footer.
     pub fn desired_height(&self, width: u16, max_rows: u16) -> u16 {
-        let w = usize::from(width.saturating_sub(PROMPT_WIDTH));
-        let wrap = if self.session.config().wrap { w } else { 0 };
-        let tab = self.session.config().tab_width;
-        let rope = self.session.rope();
-        let lines = self.session.coords().line_count();
-        let rows: usize = (0..lines)
-            .map(|l| line_rows(rope, l, wrap, tab).len())
-            .sum();
+        let rows = self.total_rows(width);
         let text = rows.clamp(1, usize::from(max_rows.max(1))) as u16;
         let chips = u16::from(!self.attachments.is_empty());
         let popup = self.popup_height();
@@ -1241,16 +1319,5 @@ impl Composer {
         } else {
             s + 1 - rows
         }
-    }
-}
-
-fn is_history(k: &KeyInput) -> bool {
-    match k.key() {
-        Key::Undo | Key::Redo => true,
-        Key::Char(c) => {
-            k.mods().intersects(Mods::CTRL | Mods::CMD)
-                && matches!(c.to_ascii_lowercase(), 'z' | 'y')
-        }
-        _ => false,
     }
 }

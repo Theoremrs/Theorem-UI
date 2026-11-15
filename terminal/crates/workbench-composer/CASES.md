@@ -98,3 +98,5 @@ Behaviour reference: `openai/codex` `codex-rs/tui` at `b016cd18472588606c04af565
 - draws through a ratatui TestBackend: original, R21
 - the area need not start at the origin: original, 7.2 item 12 (panels are placed by the dock)
 - four states at 80 and 30 columns: `chat_composer__tests__empty`, `footer_collapse_*`, `mention_menu_above_composer`
+- original (spec 7.2, editor rule): a cut leaves the draft only when the clipboard write is accepted and the text is still there; otherwise the footer says "Not cut" (tests/editing.rs)
+- original (terminal `Session::history`): Up on the first row of an empty draft walks sent prompts, Down comes back, an edit stops the walk, the list is bounded (tests/editing.rs)

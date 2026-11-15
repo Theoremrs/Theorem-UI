@@ -10,7 +10,7 @@ mod composer;
 mod types;
 mod view;
 
-pub use composer::{Composer, DEFAULT_HOLD_MS, reference_token};
+pub use composer::{Composer, DEFAULT_HOLD_MS, HISTORY_LIMIT, reference_token};
 pub use types::{
     Caret, CaretPhase, ComposerStatus, Draft, Event, Input, Models, PlacedReference, Policy,
     Response, SubmitMode,

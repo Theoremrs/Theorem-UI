@@ -12,7 +12,6 @@ use unicode_width::UnicodeWidthStr;
 use crate::composer::{Composer, PROMPT_WIDTH, Popup};
 use crate::types::Policy;
 
-const PROMPT: &str = "\u{203A} ";
 /// A chip's name is cut to this many cells.
 const CHIP_NAME: usize = 20;
 const CHIP_STATE: usize = 28;
@@ -295,7 +294,8 @@ impl Composer {
             } else {
                 theme.text.patch(theme.divider)
             };
-            buf.set_stringn(area.x, t.y, PROMPT, usize::from(PROMPT_WIDTH), style);
+            let glyph = format!("{} ", self.prompt);
+            buf.set_stringn(area.x, t.y, &glyph, usize::from(PROMPT_WIDTH), style);
         }
         if t.width == 0 || t.height == 0 {
             return;
@@ -305,20 +305,7 @@ impl Composer {
         styles.current_line = Style::default();
         let mut paint = Paint::new(&styles);
         paint.preedit = self.preedit.as_deref();
-        let g = self.view.gutter(&self.session);
-        let vw = Rect::new(0, 0, t.width + g, t.height);
-        let mut scratch = Buffer::empty(vw);
-        self.view.draw(&self.session, vw, &mut scratch, &paint);
-        for y in 0..t.height {
-            for x in 0..t.width {
-                let Some(cell) = scratch.cell((x + g, y)) else {
-                    continue;
-                };
-                if let Some(dst) = buf.cell_mut((t.x + x, t.y + y)) {
-                    *dst = cell.clone();
-                }
-            }
-        }
+        self.view.draw(&self.session, t, buf, &paint);
         let preedit = self.preedit.as_deref().filter(|p| !p.is_empty());
         if self.session.is_empty() && preedit.is_none() {
             buf.set_stringn(
@@ -328,15 +315,6 @@ impl Composer {
                 usize::from(t.width),
                 theme.text.patch(theme.muted),
             );
-        }
-        if let Some(p) = preedit
-            && let Some(c) = self.view.caret_cell(&self.session, vw)
-        {
-            let x = c.x.saturating_sub(g);
-            let w = u16::try_from(width(p))
-                .unwrap_or(u16::MAX)
-                .min(t.width.saturating_sub(x));
-            buf.set_style(Rect::new(t.x + x, t.y + c.y, w, 1), theme.preedit);
         }
     }
 

@@ -167,7 +167,36 @@ fn copy_and_cut_return_the_text_and_cut_removes_it() {
             text: "cut me".into()
         }]
     );
+    assert_eq!(r.c.text(), "cut me", "nothing leaves before the write");
+    r.c.cut_finished(true);
     assert_eq!(r.c.text(), "");
+    // The undo brings the cut text back.
+    r.key(Key::Char('z'), Mods::CMD);
+    assert_eq!(r.c.text(), "cut me");
+}
+
+#[test]
+fn a_cut_whose_write_failed_leaves_the_text_and_says_so() {
+    let mut r = rig(40, 4);
+    r.type_str("keep me");
+    r.key(Key::Char('a'), Mods::CMD);
+    r.key(Key::Char('x'), Mods::CMD);
+    r.c.cut_finished(false);
+    assert_eq!(r.c.text(), "keep me");
+    assert_eq!(r.c.notice(), Some("Not cut"));
+}
+
+#[test]
+fn a_cut_whose_text_changed_before_the_write_returned_is_not_applied() {
+    let mut r = rig(40, 4);
+    r.type_str("abc");
+    r.key(Key::Char('a'), Mods::CMD);
+    r.key(Key::Char('x'), Mods::CMD);
+    // The person types over the selection while the write is in flight.
+    r.type_str("z");
+    r.c.cut_finished(true);
+    assert_eq!(r.c.text(), "z");
+    assert_eq!(r.c.notice(), Some("Not cut"));
 }
 
 #[test]
@@ -255,4 +284,74 @@ fn keys_that_belong_to_the_panel_are_not_handled() {
     ] {
         assert!(!r.key(k, m).handled, "{k:?} {m:?}");
     }
+}
+
+fn history_rig() -> Rig {
+    let mut r = rig(40, 4);
+    r.c.set_history(vec!["one".into(), "two\nlines".into(), "three".into()]);
+    r
+}
+
+#[test]
+fn up_on_an_empty_draft_walks_the_sent_prompts_and_down_comes_back() {
+    let mut r = history_rig();
+    assert!(r.press(Key::Up).events.is_empty());
+    assert_eq!(r.c.text(), "three");
+    r.press(Key::Up);
+    assert_eq!(r.c.text(), "two\nlines");
+    // The caret is at the end, on the last row: Up moves within the text first.
+    r.press(Key::Up);
+    assert_eq!(r.c.text(), "two\nlines");
+    r.press(Key::Up);
+    assert_eq!(r.c.text(), "one");
+    r.press(Key::Up);
+    assert_eq!(r.c.text(), "one", "the oldest stays");
+    r.press(Key::Down);
+    assert_eq!(r.c.text(), "two\nlines");
+    r.press(Key::Down);
+    assert_eq!(r.c.text(), "three");
+    r.press(Key::Down);
+    assert_eq!(
+        r.c.text(),
+        "",
+        "past the newest is the draft the person had"
+    );
+    assert!(!r.c.is_walking_history());
+}
+
+#[test]
+fn editing_a_recalled_prompt_stops_the_walk_and_keeps_the_text() {
+    let mut r = history_rig();
+    r.press(Key::Up);
+    assert!(r.c.is_walking_history());
+    r.type_str("!");
+    assert!(!r.c.is_walking_history());
+    assert_eq!(r.c.text(), "three!");
+    r.press(Key::Down);
+    assert_eq!(r.c.text(), "three!", "Down is plain cursor motion now");
+    // A draft that is not empty does not start a walk.
+    r.press(Key::Up);
+    assert_eq!(r.c.text(), "three!");
+}
+
+#[test]
+fn history_is_bounded_and_a_repeat_of_the_newest_is_not_added() {
+    let mut r = rig(40, 4);
+    for i in 0..(theorem_workbench_composer::HISTORY_LIMIT + 5) {
+        r.c.push_history(&format!("p{i}"));
+    }
+    r.c.push_history(&format!(
+        "p{}",
+        theorem_workbench_composer::HISTORY_LIMIT + 4
+    ));
+    for _ in 0..(theorem_workbench_composer::HISTORY_LIMIT + 20) {
+        r.press(Key::Up);
+    }
+    assert_eq!(r.c.text(), "p5", "the oldest five were dropped");
+}
+
+#[test]
+fn with_no_history_up_on_an_empty_draft_still_recalls_the_last_message() {
+    let mut r = rig(40, 4);
+    assert_eq!(r.press(Key::Up).events, vec![Event::RecallLast]);
 }
