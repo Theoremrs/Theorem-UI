@@ -320,7 +320,7 @@ const ThreadRoot: FC<{
                 {
                   flat: 'appearance-flat-footer',
                   paper: 'bg-sheet rounded-t-(--composer-radius) bg-bottom',
-                  glass: 'glass-footer',
+                  glass: 'liquid-footer',
                   liquid: 'liquid-footer',
                 }[surface],
             )}

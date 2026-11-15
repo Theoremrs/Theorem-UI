@@ -179,3 +179,41 @@ the same run passed locally. Portability coverage now follows the dedicated
 page reload and reset. All 14 continuity checks pass locally with this change.
 Failures also print their exception and save a screenshot and visible text.
 See [route continuity evidence](evidence/theme-glass/chromium-continuity.json).
+
+
+### Glass and catalog deployment follow-up (2026-11-15)
+
+PRs #104 and Theorem #1076 were verified merged before editing. Reused the
+existing clean UI checkout and branched `Travis-Gilbert/glass-catalog-followup`
+from `origin/main` at `ebacffe7`.
+
+The light/dark and terminal controls now use the existing Base UI Button with
+accessible names and no tooltip wrappers. Both persisted composer glass choices
+now use the existing ybouane/liquidglass-derived renderer and its original
+material parameters and footer. No replacement CSS effect or new renderer was
+introduced. The field now publishes frames when the companion is off; previously
+that return bypassed the glass frame listener. The renderer only exposes the
+conversation through its body where the browser supports backdrop blur.
+
+The background-frame regression fails on the original early return (zero frames)
+and passes with the fix. All three Life mount tests, 731 composer/runtime tests,
+TypeScript, affected-file ESLint and the production Vite build pass. The terminal
+WASM bindings were rebuilt from current main before TypeScript validation.
+Nine rendered checks verify tooltip absence, field publication with the companion
+off, both glass choices in light/dark mode, forced colors, phone toggling and the
+dedicated settings route. The glass check now compares screenshot pixels over
+red and blue backdrops: the interior transmits both, rather than merely asserting
+a canvas exists. It retains the mounted editor and draft checks. Screenshots and
+measurements: [glass follow-up evidence](evidence/glass-followup/theme-glass.json).
+Custom palettes retain their existing validated opaque reading planes; a user
+clarification about the active palette is pending.
+
+Production diagnosis: the UI Worker deploy `16f4d66f-d1d6-473c-a911-c08c58e059fe`
+is dated 2026-11-15T20:54:40Z, and the served CSS includes #104's built-in glass
+transparency rule. Its API authority is `travis-theorem-personal.fly.dev`. Both
+Fly machines still run revision `2421231c8fd7c73041fcfe5b92bfcfcc625337c6`, image
+`sha256:f1cf90aa009c82bcd4fbed66dfb83524b0e204e1f4111517c8a0df6ea6e6bd78`,
+updated November 13. This predates the merged catalog repair in #1076. No live
+backend rollout was performed. An unauthenticated live list request returns 401;
+there is no signed-in browser tab available in this session. The earlier 384-row
+UI fixture remains consumer evidence, not proof of a repaired deployed catalog.

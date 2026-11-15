@@ -99,7 +99,7 @@ export const Composer: FC<{
     actions: Actions = ComposerPrimaryActions,
     context: Context = ComposerContext,
   } = slots ?? {}
-  useLiquidGlass(shellRef, surface === 'liquid')
+  useLiquidGlass(shellRef, surface === 'liquid' || surface === 'glass')
   const busyInput = useBusyComposerInput({
     hasReferences: () => useComposerReferences.getState().references.length > 0,
     onError: (description) =>
@@ -211,18 +211,17 @@ export const Composer: FC<{
 
 /**
  * The composer's material (Settings, Appearance): paper with its grain,
- * frosted glass, or liquid glass (glass/liquid-glass). Each sets the shell's
- * border colour at rest and while focused; live liquid glass draws its own
+ * or glass. Both persisted glass choices use the existing library renderer
+ * (glass/liquid-glass). Each sets the shell's border colour at rest and while
+ * focused; live glass draws its own
  * contour over the border instead (styles.css surface-liquid).
  */
 export const composerSurface = (surface: ComposerSurface) =>
-  surface === 'liquid'
+  surface === 'liquid' || surface === 'glass'
     ? 'surface-liquid border-(color:--glass-edge) focus-within:border-(color:--glass-edge-focus)'
-    : surface === 'glass'
-      ? 'surface-glass border-(color:--glass-edge) focus-within:border-(color:--glass-edge-focus)'
-      : surface === 'paper'
-        ? 'surface-paper border-(color:--paper-edge) focus-within:border-control'
-        : 'border-control focus-within:border-focus'
+    : surface === 'paper'
+      ? 'surface-paper border-(color:--paper-edge) focus-within:border-control'
+      : 'border-control focus-within:border-focus'
 
 export const ComposerContext: FC<{ review: ComposerReview | undefined }> = ({
   review,

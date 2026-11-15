@@ -22,6 +22,7 @@ import type {
   ReactNode,
 } from 'react'
 import { Icon } from '@/components/icons'
+import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/settings/theme-toggle'
 import { KitPerch } from '@/components/kit/kit-stage'
 import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
@@ -117,24 +118,16 @@ function TerminalToggle() {
   const open = useShell((s) => s.terminalOpen)
   const setOpen = useShell((s) => s.setTerminalOpen)
   return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <button
-              type="button"
-              aria-label="Agent terminal"
-              aria-pressed={open}
-              onClick={() => setOpen(!open)}
-              className={`${railButton} mb-2 aria-pressed:text-ink`}
-            />
-          }
-        >
-          <Icon.Terminal className="size-5" strokeWidth={1.75} />
-        </TooltipTrigger>
-        <TooltipContent side="right">Agent terminal (ctrl+`)</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Agent terminal"
+      aria-pressed={open}
+      onClick={() => setOpen(!open)}
+      className={`${railButton} mb-2 aria-pressed:text-ink`}
+    >
+      <Icon.Terminal className="size-5" strokeWidth={1.75} />
+    </Button>
   )
 }
 

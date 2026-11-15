@@ -336,7 +336,11 @@ export function mountLife(
           mix(palette.background, palette.accent, 0.5),
         )
       }
-    if (!playsAlong) return
+    if (!playsAlong) {
+      // Glass still samples the field when the companion is switched off.
+      publishLifeFrame(canvas)
+      return
+    }
     for (const spark of presence.sparks)
       drawGlyph(
         Math.round(spark.x),

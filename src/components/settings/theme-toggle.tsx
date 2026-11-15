@@ -1,15 +1,16 @@
 // Reuse the app's accessible icon button and next-themes mode persistence.
 import { useTheme } from 'next-themes'
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { Icon } from '@/components/icons'
+import { Button } from '@/components/ui/button'
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme()
   const dark = resolvedTheme === 'dark'
   const label = dark ? 'Switch to light mode' : 'Switch to dark mode'
   return (
-    <TooltipIconButton
-      tooltip={label}
+    <Button
+      variant="ghost"
+      size="icon"
       aria-label={label}
       className="size-8 text-ink-muted"
       onClick={() => setTheme(dark ? 'light' : 'dark')}
@@ -19,6 +20,6 @@ export function ThemeToggle() {
       ) : (
         <Icon.Moon className="size-4" />
       )}
-    </TooltipIconButton>
+    </Button>
   )
 }
