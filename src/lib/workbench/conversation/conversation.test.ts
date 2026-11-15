@@ -93,6 +93,72 @@ describe('tool diff and open', () => {
   })
 })
 
+describe('delegations', () => {
+  const part = (over: Record<string, unknown>) => ({
+    type: 'data',
+    name: 'theorem-delegation',
+    data: {
+      delegationId: 'd1',
+      parentRunId: 'run-1',
+      childRunId: 'run-2',
+      roleLabel: 'Reviewer',
+      objective: 'Check the shortcuts (documentId note:8183abcdef012345)',
+      state: 'started',
+      intent: {},
+      ...over,
+    },
+  })
+
+  test('a delegation part becomes a row with the run it was made in, its label and its state', () => {
+    const { stub, conversation } = setup()
+    stub.messages.push(
+      assistant('a1', 'on it', {
+        runId: 'run-1',
+        parts: [
+          part({}),
+          part({ delegationId: 'd2', state: 'reviewed', verdict: 'accept' }),
+        ],
+      }),
+    )
+    const rows = conversation
+      .snapshot()
+      .messages[0]!.parts.filter((p) => p.type === 'delegation')
+    expect(rows).toEqual([
+      {
+        type: 'delegation',
+        delegationId: 'd1',
+        runId: 'run-1',
+        label: 'Reviewer',
+        objective: 'Check the shortcuts',
+        state: 'started',
+      },
+      {
+        type: 'delegation',
+        delegationId: 'd2',
+        runId: 'run-1',
+        label: 'Reviewer',
+        objective: 'Check the shortcuts',
+        state: 'reviewed',
+        verdict: 'accept',
+      },
+    ])
+  })
+
+  test('a part that is not a delegation record is left out, and a run with none carries none', () => {
+    const { stub, conversation } = setup()
+    stub.messages.push(
+      assistant('a1', 'no delegations here', {
+        parts: [part({ delegationId: '' }), part({ intent: undefined })],
+      }),
+    )
+    expect(
+      conversation
+        .snapshot()
+        .messages[0]!.parts.some((p) => p.type === 'delegation'),
+    ).toBe(false)
+  })
+})
+
 describe('history', () => {
   test('the snapshot carries the thread tree once Theorem answers, and not before', async () => {
     const stub = new StubRuntime()

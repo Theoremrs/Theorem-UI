@@ -337,6 +337,11 @@ pub struct Model {
     /// The panel that had the keyboard when the drawer opened: where Esc
     /// returns it.
     pub(crate) before_drawer: Option<PanelInstanceId>,
+    /// The panel that owned the keyboard when the last frame settled, so a
+    /// drawer that opens because focus moved into it knows where focus was.
+    pub(crate) settled_focus: Option<PanelInstanceId>,
+    /// The highest panel number minted, so a closed panel's id is not reused.
+    pub(crate) panel_seq: u64,
     /// The account's saved arrangements, and the layout effects the root has
     /// out for them.
     pub(crate) arrangements: crate::arrangement::Arrangements,
@@ -410,6 +415,8 @@ impl Model {
             presentation_target: None,
             drag: None,
             before_drawer: None,
+            settled_focus: None,
+            panel_seq: 0,
             arrangements: Default::default(),
             layout_pending: BTreeMap::new(),
             capture: None,
@@ -683,11 +690,14 @@ impl Model {
     }
 
     pub(crate) fn mint_panel(&mut self) -> PanelInstanceId {
-        let mut n = self.panels.len() as u64;
+        // Never an id a closed panel had: an answer still on its way to that
+        // panel must not reach the one opened after it.
+        let mut n = self.panel_seq.max(self.panels.len() as u64);
         loop {
             n += 1;
             let id = PanelInstanceId::new(format!("p{n}"));
             if !self.panels.contains_key(&id) {
+                self.panel_seq = n;
                 return id;
             }
         }

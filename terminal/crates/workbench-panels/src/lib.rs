@@ -1,6 +1,7 @@
 //! Panels of the Theo Web terminal workbench, each written against the core's
 //! `Panel` trait and nothing else.
 
+pub mod caret;
 pub mod files;
 
 use theorem_workbench_core::PanelFactories;

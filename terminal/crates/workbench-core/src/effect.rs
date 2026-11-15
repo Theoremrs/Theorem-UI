@@ -833,6 +833,13 @@ pub struct TerminalOpen {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub attachment: Option<String>,
+    /// One id per launch intent. A second attempt of the same failed or
+    /// uncertain launch carries the same one, so the host can tell a retry
+    /// from a new launch; a new launch gets a new one. Absent from a caller
+    /// that names none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub operation: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

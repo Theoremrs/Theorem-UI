@@ -336,7 +336,8 @@ fn semantic_rects_are_the_drawn_rects_at_every_width() {
             let nodes = PickerPanel.semantics(area, &cx);
             let rect = |id: &str| {
                 let n = nodes.iter().find(|n| n.id.as_str() == id).unwrap();
-                Rect::new(n.rect.x, n.rect.y, n.rect.width, n.rect.height)
+                let r = n.rect.expect("a drawn node has a rect");
+                Rect::new(r.x, r.y, r.width, r.height)
             };
             assert_eq!(rect("heading"), layout.heading);
             assert_eq!(rect("filter"), layout.filter);
@@ -414,12 +415,13 @@ fn the_semantic_order_is_the_reading_order_and_each_row_sits_where_it_reads() {
         ]
     );
     assert_eq!(
-        rows[0].rect.y, rows[1].rect.y,
+        rows[0].rect.unwrap().y,
+        rows[1].rect.unwrap().y,
         "Changes and Shell share a line"
     );
-    assert!(rows[1].rect.x > rows[0].rect.x);
-    assert!(rows[2].rect.y > rows[0].rect.y);
-    assert_eq!(rows[2].rect.x, rows[0].rect.x);
+    assert!(rows[1].rect.unwrap().x > rows[0].rect.unwrap().x);
+    assert!(rows[2].rect.unwrap().y > rows[0].rect.unwrap().y);
+    assert_eq!(rows[2].rect.unwrap().x, rows[0].rect.unwrap().x);
     assert_eq!(
         rows.iter().map(|n| n.pos_in_set).collect::<Vec<_>>(),
         (1..=6).map(Some).collect::<Vec<_>>()
@@ -726,8 +728,8 @@ fn choosing_an_unavailable_row_keeps_the_picker_open_and_shows_why_until_selecti
     // It is on screen, under the list, in the warning role's line.
     let mut buf = Buffer::empty(Rect::new(0, 0, 200, 50));
     theorem_workbench_core::view(&m, Rect::new(0, 0, 200, 50), &mut buf, &Theme::plain());
-    let y = node.rect.y;
-    let drawn: String = (node.rect.x..node.rect.x + node.rect.width)
+    let y = node.rect.unwrap().y;
+    let drawn: String = (node.rect.unwrap().x..node.rect.unwrap().x + node.rect.unwrap().width)
         .map(|x| buf[(x, y)].symbol().to_owned())
         .collect();
     assert!(drawn.contains(why), "{drawn:?}");
@@ -752,7 +754,10 @@ fn choosing_an_unavailable_row_keeps_the_picker_open_and_shows_why_until_selecti
 // ---- pointer through the same layout --------------------------------------
 
 fn center(n: &Node) -> (u16, u16) {
-    (n.rect.x + n.rect.width / 2, n.rect.y)
+    (
+        n.rect.unwrap().x + n.rect.unwrap().width / 2,
+        n.rect.unwrap().y,
+    )
 }
 
 fn pointer(m: &mut Model, kind: PointerKind, (x, y): (u16, u16)) -> Vec<Effect> {
@@ -776,13 +781,20 @@ fn the_pointer_hits_what_the_tree_says_is_drawn() {
     let rows: Vec<Node> = picker_nodes(&tree).into_iter().cloned().collect();
     // Hover selects the row under it, whichever it is.
     for (i, row) in rows.iter().enumerate() {
-        assert!(row.rect.height > 0 && row.rect.width > 0, "{}", row.name);
+        assert!(
+            row.rect.unwrap().height > 0 && row.rect.unwrap().width > 0,
+            "{}",
+            row.name
+        );
         pointer(&mut m, PointerKind::Move, center(row));
         assert_eq!(m.picker().selected(), i, "{}", row.name);
     }
     // A click on a pin control pins; the control is the row's last cell.
     let first = &rows[0];
-    let pin = (first.rect.x + first.rect.width - 1, first.rect.y);
+    let pin = (
+        first.rect.unwrap().x + first.rect.unwrap().width - 1,
+        first.rect.unwrap().y,
+    );
     assert!(pointer(&mut m, PointerKind::Down(Button::Left), pin).is_empty());
     assert!(m.pinned().contains(&PanelKind::new("cabinet")));
     // The back row is on the tree and a click on it goes back.
@@ -1117,10 +1129,10 @@ fn a_long_reason_is_whole_at_every_width_and_the_rows_stay_consistent() {
         assert_eq!(alert.name, LONG);
         assert_eq!(
             Rect::new(
-                alert.rect.x,
-                alert.rect.y,
-                alert.rect.width,
-                alert.rect.height
+                alert.rect.unwrap().x,
+                alert.rect.unwrap().y,
+                alert.rect.unwrap().width,
+                alert.rect.unwrap().height
             ),
             rect
         );
@@ -1257,4 +1269,88 @@ fn the_long_reason_at_28_columns() {
             "",
         ])
     );
+}
+
+// ---- the filter's text, and nodes that are not drawn -------------------
+
+fn nodes_of(view: &PickerView, area: Rect) -> Vec<Node> {
+    let theme = Theme::plain();
+    let workspace = Default::default();
+    let mut cx = ViewCtx::new(&theme, &workspace);
+    cx.picker = Some(view);
+    PickerPanel.semantics(area, &cx)
+}
+
+#[test]
+fn the_filter_publishes_what_was_typed_as_its_text_with_the_caret_at_its_end() {
+    let area = Rect::new(0, 0, 60, 14);
+    for (typed, text, caret) in [
+        ("", "", 0u32),
+        ("sh", "sh", 2),
+        // An astral character counts two UTF-16 units.
+        ("a\u{1f600}", "a\u{1f600}", 3),
+    ] {
+        let nodes = nodes_of(&standalone(false, typed), area);
+        let filter = nodes.iter().find(|n| n.id.as_str() == "filter").unwrap();
+        assert_eq!(filter.text.as_deref(), Some(text), "{typed:?}");
+        let sel = filter.selection.as_ref().expect("a caret");
+        assert_eq!((sel.anchor, sel.focus), (caret, caret), "{typed:?}");
+        // The typed text is in `text`, not said again in the description.
+        if !typed.is_empty() {
+            assert_eq!(filter.state.description, None, "{typed:?}");
+        }
+    }
+}
+
+#[test]
+fn the_filters_text_is_escaped_and_the_caret_counts_the_escaped_text() {
+    let area = Rect::new(0, 0, 60, 14);
+    let typed = "a\u{1b}[31m\u{200b}b";
+    let nodes = nodes_of(&standalone(false, typed), area);
+    let filter = nodes.iter().find(|n| n.id.as_str() == "filter").unwrap();
+    let text = filter.text.as_deref().unwrap();
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{200b}'),
+        "{text:?}"
+    );
+    assert!(text.starts_with('a') && text.ends_with('b') && text.contains("[31m"));
+    let sel = filter.selection.as_ref().unwrap();
+    let units = u32::try_from(text.encode_utf16().count()).unwrap();
+    assert_eq!((sel.anchor, sel.focus), (units, units));
+}
+
+#[test]
+fn a_row_with_no_cell_is_in_the_tree_with_no_rect_and_a_drawn_row_has_one() {
+    // A short area on More tools has fewer cells than rows.
+    let view = standalone(true, "");
+    let area = Rect::new(3, 2, 28, 6);
+    let layout = Layout::compute(&view, area);
+    assert!(
+        layout.cells.len() < view.rows.len(),
+        "the area must clip rows"
+    );
+    let nodes = nodes_of(&view, area);
+    let rows: Vec<&Node> = nodes.iter().filter(|n| n.role == Role::MenuItem).collect();
+    assert_eq!(rows.len(), view.rows.len(), "every row is reachable");
+    for (i, row) in rows.iter().enumerate() {
+        let drawn = layout.cells.iter().any(|c| c.index == i);
+        assert_eq!(row.rect.is_some(), drawn, "row {i}");
+        // Reachable either way: it still offers its action.
+        assert!(!row.actions.is_empty(), "row {i}");
+    }
+}
+
+#[test]
+fn no_node_the_picker_publishes_has_a_rect_with_no_area() {
+    for more in [false, true] {
+        for (width, height) in [(96, 14), (28, 6), (12, 3), (5, 1)] {
+            let view = standalone(more, "e");
+            let nodes = nodes_of(&view, Rect::new(0, 0, width, height));
+            for n in &nodes {
+                if let Some(r) = n.rect {
+                    assert!(r.width > 0 && r.height > 0, "{} {r:?}", n.id.as_str());
+                }
+            }
+        }
+    }
 }

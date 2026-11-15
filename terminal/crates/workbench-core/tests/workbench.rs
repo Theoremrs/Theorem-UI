@@ -741,7 +741,7 @@ fn tab_rect(m: &Model, id: &PanelInstanceId) -> (u16, u16) {
         .find(|n| n.id.as_str() == format!("tab:{}", id.as_str()))
         .cloned()
         .expect("tab");
-    (node.rect.x + 1, node.rect.y)
+    (node.rect.unwrap().x + 1, node.rect.unwrap().y)
 }
 
 #[test]
@@ -1923,7 +1923,7 @@ fn picker_row_rect(m: &Model, i: usize) -> (u16, u16) {
         .iter()
         .filter(|n| n.role == Role::MenuItem)
         .collect();
-    (rows[i].rect.x, rows[i].rect.y)
+    (rows[i].rect.unwrap().x, rows[i].rect.unwrap().y)
 }
 
 #[test]
@@ -2241,6 +2241,8 @@ fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace()
                 host: None,
                 program: None,
                 state: Default::default(),
+                reason: None,
+                next_step: None,
                 controlled_elsewhere: false,
                 modes: None,
                 program_report: Default::default(),
@@ -2375,14 +2377,18 @@ fn a_tab_whose_label_grows_is_measured_whole_and_the_dock_follows() {
             .expect("tab")
     };
     let (n0, t0) = (rect(&m, &note), rect(&m, &term));
-    assert_eq!(n0.x + n0.width, t0.x);
+    assert_eq!(n0.unwrap().x + n0.unwrap().width, t0.unwrap().x);
     // Focus the note and grow its label.
-    click(&mut m, n0.x + 1, n0.y);
+    click(&mut m, n0.unwrap().x + 1, n0.unwrap().y);
     ch(&mut m, 'R');
     let (n1, t1) = (rect(&m, &note), rect(&m, &term));
-    assert_eq!(n1.width, "long-name-here.md".len() as u16 + 4);
-    assert!(n1.width > n0.width);
-    assert_eq!(t1.x, n1.x + n1.width, "the neighbour moved with it");
+    assert_eq!(n1.unwrap().width, "long-name-here.md".len() as u16 + 4);
+    assert!(n1.unwrap().width > n0.unwrap().width);
+    assert_eq!(
+        t1.unwrap().x,
+        n1.unwrap().x + n1.unwrap().width,
+        "the neighbour moved with it"
+    );
 }
 
 #[test]
@@ -4531,6 +4537,8 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
                 host: None,
                 program: None,
                 state: Default::default(),
+                reason: None,
+                next_step: None,
                 controlled_elsewhere: false,
                 modes: Some(modes),
                 program_report: Default::default(),
@@ -4543,6 +4551,7 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
         &mut m,
         list(Some(TerminalAdoption::Unavailable {
             reason: Some("down".into()),
+            next_step: None,
         })),
     );
     action(&mut m, "term.open");
@@ -4559,7 +4568,8 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
         told,
         vec![(
             Some(TerminalAdoption::Unavailable {
-                reason: Some("down".into())
+                reason: Some("down".into()),
+                next_step: None,
             }),
             Some(modes)
         )]
@@ -5013,7 +5023,7 @@ fn a_transient_notice_never_moves_the_dock_and_is_drawn_over_the_bottom_row() {
         (
             Role::Status,
             line.text.as_str(),
-            theorem_workbench_core::semantics::CellRect::of(rect)
+            Some(theorem_workbench_core::semantics::CellRect::of(rect))
         )
     );
 
@@ -6064,6 +6074,8 @@ fn sessions_message(reports: &[(&str, ProgramReport)]) -> Msg {
                 host: None,
                 program: Some(1),
                 state: Default::default(),
+                reason: None,
+                next_step: None,
                 controlled_elsewhere: false,
                 modes: None,
                 program_report: report.clone(),
@@ -6969,4 +6981,366 @@ fn an_answer_for_a_resource_the_panel_was_bound_to_is_still_only_cached() {
             .iter()
             .any(|msg| matches!(msg, PanelMsg::Completion(_)))
     );
+}
+
+// ---- a collapsed Files group opens for the keyboard (AC-04) -------------
+
+fn dock_panel(id: &PanelInstanceId) -> theorem_workbench_dock::PanelId {
+    theorem_workbench_dock::PanelId(id.as_str().to_owned())
+}
+
+fn resize_to(m: &mut Model, cols: u16, rows: u16) {
+    send(
+        m,
+        Msg::Resize {
+            area: Rect::new(0, 0, cols, rows),
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+}
+
+/// The widest window, scanning down from 200 columns, where Files has
+/// collapsed but the other panels still tile.
+fn collapse_width(m: &mut Model) -> u16 {
+    for cols in (40..200).rev() {
+        resize_to(m, cols, 50);
+        let f = m.frame().unwrap();
+        if !f.drawers.is_empty() && f.presentation == theorem_workbench_dock::Presentation::Tiled {
+            return cols;
+        }
+    }
+    panic!("Files never collapsed to a drawer");
+}
+
+fn tree_text(m: &Model) -> String {
+    semantics(m)
+        .nodes
+        .iter()
+        .map(|n| {
+            format!(
+                "{} {} {}",
+                n.id.as_str(),
+                n.name,
+                n.state.description.clone().unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[test]
+fn the_files_chord_opens_a_collapsed_drawer_and_moving_focus_away_closes_it() {
+    let (mut m, _log) = new_model();
+    action(&mut m, "files.focus");
+    let files_group = m.dock().focused();
+    action(&mut m, "note.open");
+    let note_group = m.dock().focused();
+    collapse_width(&mut m);
+
+    // Collapsed: not drawn, and the tree says how to bring it back.
+    assert!(!m.frame().unwrap().drawers[0].open);
+    assert_eq!(m.dock().drawer(), None);
+    assert!(m.frame().unwrap().group(files_group).is_none());
+    let before = tree_text(&m);
+    assert!(
+        before.contains("Collapsed to a drawer. Focus a tab in it"),
+        "{before}"
+    );
+
+    // The chord opens it, draws Files, and Files gets the next key.
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    let frame = m.frame().unwrap();
+    assert!(frame.drawers[0].open);
+    assert!(frame.group(files_group).is_some_and(|g| g.overlay));
+    assert_eq!(frame.focused, Some(files_group));
+    let open = tree_text(&m);
+    assert!(open.contains("Drawer, open."), "{open}");
+    assert!(!open.contains("Collapsed to a drawer"), "{open}");
+    // The keyboard is on Files' own panel, which is the one drawn.
+    assert_eq!(focused_kind(&m).as_deref(), Some("files"));
+    assert_eq!(
+        m.frame()
+            .unwrap()
+            .group(files_group)
+            .and_then(|g| g.active.clone()),
+        m.focus().panel.map(|p| dock_panel(&p))
+    );
+
+    // Focus to another group closes it, and the person is not left with the
+    // drawer over the panel they went to.
+    send(&mut m, Msg::Dock(DockMsg::FocusGroup(note_group)));
+    assert_eq!(m.dock().drawer(), None);
+    assert!(!m.frame().unwrap().drawers[0].open);
+    assert!(m.frame().unwrap().group(files_group).is_none());
+    assert!(tree_text(&m).contains("Collapsed to a drawer"));
+}
+
+#[test]
+fn tab_focus_from_an_agent_opens_the_collapsed_drawer_too() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    let files = m.focus().panel.unwrap();
+    let files_group = m.dock().focused();
+    action(&mut m, "note.open");
+    collapse_width(&mut m);
+    assert_eq!(m.dock().drawer(), None);
+
+    send(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new(format!("tab.focus.{}", files.as_str())),
+            actor: Actor::Agent { run_id: "r".into() },
+        },
+    );
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    assert!(m.frame().unwrap().group(files_group).is_some());
+}
+
+#[test]
+fn at_single_panel_width_focusing_files_shows_files_without_maximise() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    let files_group = m.dock().focused();
+    action(&mut m, "note.open");
+    let note_group = m.dock().focused();
+    resize_to(&mut m, 48, 30);
+    assert_eq!(
+        m.frame().unwrap().presentation,
+        theorem_workbench_dock::Presentation::Principal
+    );
+    assert!(m.frame().unwrap().group(files_group).is_none());
+
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().maximized(), None);
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    assert_eq!(m.frame().unwrap().focused, Some(files_group));
+    assert!(
+        m.frame()
+            .unwrap()
+            .group(files_group)
+            .is_some_and(|g| g.overlay)
+    );
+
+    send(&mut m, Msg::Dock(DockMsg::FocusGroup(note_group)));
+    assert_eq!(m.dock().drawer(), None);
+    assert!(m.frame().unwrap().group(files_group).is_none());
+}
+
+#[test]
+fn escape_closes_a_drawer_that_focus_opened_and_does_not_reopen_it() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    let files_group = m.dock().focused();
+    action(&mut m, "note.open");
+    let note = m.focus().panel.unwrap();
+    collapse_width(&mut m);
+
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), None);
+    assert_eq!(m.focus().panel, Some(note));
+
+    // Focus was in Files before the window shrank: nothing to go back to, so
+    // Escape moves to a drawn group rather than reopening the drawer.
+    resize_to(&mut m, 200, 50);
+    send(&mut m, Msg::Dock(DockMsg::FocusGroup(files_group)));
+    collapse_width(&mut m);
+    // The drawer opened for the focus that was already there.
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(m.dock().drawer(), None);
+    assert_ne!(m.dock().focused(), files_group);
+    assert!(m.frame().unwrap().group(m.dock().focused()).is_some());
+}
+
+#[test]
+fn growing_the_window_back_leaves_no_drawer_and_files_is_tiled_again() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    let files_group = m.dock().focused();
+    action(&mut m, "note.open");
+    collapse_width(&mut m);
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().drawer(), Some(files_group));
+    resize_to(&mut m, 200, 50);
+    assert!(m.frame().unwrap().drawers.is_empty());
+    let g = m.frame().unwrap().group(files_group).expect("tiled");
+    assert!(!g.overlay);
+}
+
+#[test]
+fn closing_the_last_panel_in_any_layout_leaves_the_tool_picker_to_focus() {
+    for layout in ["default", "editor", "agent", "minimal"] {
+        let (mut m, _) = new_model();
+        action(&mut m, &format!("workbench.layout.{layout}"));
+        action(&mut m, "note.open");
+        let note = m.focus().panel.unwrap();
+        send(&mut m, Msg::Dock(DockMsg::ClosePanel(note)));
+
+        let focused = m.focus().panel.clone();
+        assert!(focused.is_some(), "{layout}: something is focused");
+        assert_eq!(
+            focused_kind(&m).as_deref(),
+            Some("picker"),
+            "{layout}: the picker is what is left"
+        );
+        let group = m.dock().focused();
+        assert!(
+            m.frame().unwrap().group(group).is_some(),
+            "{layout}: and it is drawn"
+        );
+        assert_eq!(
+            m.dock().group(group).unwrap().role(),
+            theorem_workbench_dock::Role::Main,
+            "{layout}: in the main group"
+        );
+        let tree = tree_text(&m);
+        assert!(tree.contains("Add tool"), "{layout}: {tree}");
+        assert!(m.picker().holds_keys(), "{layout}: it takes the keys");
+
+        // Choosing a tool replaces it, and closing that tool brings it back.
+        action(&mut m, "note.open");
+        assert_eq!(focused_kind(&m).as_deref(), Some("note"));
+        let note = m.focus().panel.unwrap();
+        send(&mut m, Msg::Dock(DockMsg::ClosePanel(note)));
+        assert_eq!(focused_kind(&m).as_deref(), Some("picker"), "{layout}");
+        let pickers = kinds(&m, "picker").len();
+        assert_eq!(pickers, 1, "{layout}: one picker, not a pile");
+    }
+}
+
+#[test]
+fn a_closed_panels_id_is_not_given_to_the_next_panel() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let first = m.focus().panel.unwrap();
+    action(&mut m, "term.open");
+    send(&mut m, Msg::Dock(DockMsg::ClosePanel(first.clone())));
+    action(&mut m, "note.open");
+    assert_ne!(m.focus().panel, Some(first));
+}
+
+// ---- honest rects and action titles ------------------------------------
+
+#[test]
+fn no_node_in_the_tree_has_a_rect_with_no_area() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    action(&mut m, "note.open");
+    for (w, h) in [(200, 50), (48, 30), (20, 6), (6, 2)] {
+        resize_to(&mut m, w, h);
+        let tree = semantics(&m);
+        assert!(!tree.nodes.is_empty());
+        for n in &tree.nodes {
+            if let Some(r) = n.rect {
+                assert!(
+                    r.width > 0 && r.height > 0,
+                    "{w}x{h} {} {r:?}",
+                    n.id.as_str()
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn a_node_that_is_not_drawn_stays_in_the_tree_without_a_rect() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    action(&mut m, "note.open");
+    resize_to(&mut m, 200, 50);
+    let wide = semantics(&m);
+    let ids: Vec<String> = wide
+        .nodes
+        .iter()
+        .map(|n| n.id.as_str().to_owned())
+        .collect();
+    // At a size that cannot hold the groups, the nodes are still there, and
+    // the ones with no cells say so by having no rect.
+    resize_to(&mut m, 6, 2);
+    let small = semantics(&m);
+    let undrawn: Vec<&Node> = small.nodes.iter().filter(|n| n.rect.is_none()).collect();
+    assert!(!undrawn.is_empty(), "something must be left undrawn at 6x2");
+    for n in &undrawn {
+        assert!(
+            ids.iter().any(|id| id == n.id.as_str()) || n.id.as_str().starts_with("tab:"),
+            "{}",
+            n.id.as_str()
+        );
+    }
+}
+
+#[test]
+fn every_action_a_node_offers_has_a_title_a_person_can_read() {
+    let (mut m, _) = new_model();
+    action(&mut m, "files.focus");
+    let files = m.focus().panel.unwrap();
+    action(&mut m, "note.open");
+    resize_to(&mut m, 200, 50);
+    let tree = semantics(&m);
+    let mut seen = 0;
+    for n in &tree.nodes {
+        for a in &n.actions {
+            seen += 1;
+            let title = a.title.as_deref().unwrap_or("");
+            assert!(
+                !title.trim().is_empty(),
+                "{} on {}",
+                a.id.as_str(),
+                n.id.as_str()
+            );
+        }
+    }
+    assert!(seen > 0);
+    let tab = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == format!("tab:{}", files.as_str()))
+        .expect("the files tab");
+    let focus = tab
+        .actions
+        .iter()
+        .find(|a| a.id.as_str() == format!("tab.focus.{}", files.as_str()))
+        .unwrap();
+    assert_eq!(
+        focus.title.as_deref(),
+        Some(format!("Focus {}", tab.name).as_str())
+    );
+    let close = tab
+        .actions
+        .iter()
+        .find(|a| a.id.as_str().starts_with("tab.close."))
+        .unwrap();
+    assert_eq!(
+        close.title.as_deref(),
+        Some(format!("Close {}", tab.name).as_str())
+    );
+}
+
+#[test]
+fn a_registered_actions_title_is_the_descriptors() {
+    let (mut m, _) = new_model();
+    send(
+        &mut m,
+        Msg::Picker(theorem_workbench_core::picker::PickerMsg::Open),
+    );
+    let tree = semantics(&m);
+    let registry = m.registry();
+    let mut checked = 0;
+    for n in &tree.nodes {
+        for a in &n.actions {
+            if let Some((_, d)) = registry.action(&a.id) {
+                assert_eq!(
+                    a.title.as_deref(),
+                    Some(d.title.as_str()),
+                    "{}",
+                    a.id.as_str()
+                );
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked > 0, "some action in the tree is registered");
 }

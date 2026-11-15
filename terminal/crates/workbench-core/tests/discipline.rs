@@ -729,6 +729,7 @@ fn cases() -> Vec<Case> {
                 cols: 80,
                 rows: 24,
                 attachment: None,
+                operation: None,
             }),
             next: term("s2"),
         },
@@ -1285,7 +1286,7 @@ fn the_ids_are_the_same_across_renders_and_across_a_layout_restore() {
 fn tab_center(m: &Model, panel: &PanelInstanceId) -> (u16, u16) {
     let tree = semantics(m);
     let n = node(&tree, &format!("tab:{}", panel.as_str()));
-    (n.rect.x + 1, n.rect.y)
+    (n.rect.unwrap().x + 1, n.rect.unwrap().y)
 }
 
 fn click(m: &mut Model, x: u16, y: u16) -> Vec<Effect> {

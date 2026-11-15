@@ -6,6 +6,8 @@ publish = false
 description = "The Search, Diagnostics and Run output panels of the Theo Web terminal workbench"
 
 [dependencies]
+# The text and caret a text-edit node publishes (escaped, UTF-16 offsets, bounded).
+theorem-workbench-panels = { path = "../workbench-panels" }
 theorem-workbench-core = { path = "../workbench-core" }
 # Untrusted text spelled out before it is shown (`visible`) and the line and UTF-16 coordinates
 # a replace is checked and placed with. The text crate depends on nothing of ours.

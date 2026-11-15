@@ -28,6 +28,7 @@ fn an_open_carries_the_attachment_it_was_given_and_older_ones_still_read() {
         cols: 80,
         rows: 24,
         attachment: Some("pane-1".into()),
+        operation: None,
     };
     round_trip(
         &open,
@@ -89,6 +90,8 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
             host: None,
             program: Some(2),
             state: TerminalSessionState::Exited,
+            reason: None,
+            next_step: None,
             controlled_elsewhere: true,
             modes: None,
             program_report: Default::default(),

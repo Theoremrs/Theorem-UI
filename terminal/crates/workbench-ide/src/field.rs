@@ -61,6 +61,11 @@ impl Field {
         self.input.value()
     }
 
+    /// The caret, in Unicode scalars from the start of the value.
+    pub(crate) fn cursor(&self) -> usize {
+        self.input.cursor()
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.input.value().is_empty()
     }

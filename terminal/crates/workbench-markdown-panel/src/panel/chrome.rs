@@ -11,7 +11,7 @@ use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
-use theorem_workbench_editor::{Paint, Restored};
+use theorem_workbench_editor::{Paint, Restored, text_window};
 use theorem_workbench_markdown::{MarkdownMode, TargetBlock};
 use theorem_workbench_text::recovery::{self, snip};
 use unicode_width::UnicodeWidthStr;
@@ -935,6 +935,7 @@ impl MarkdownPanel {
             id: choice.action_id(),
             enabled: why.is_none(),
             reason: why,
+            title: None,
         }
     }
 
@@ -1047,6 +1048,7 @@ impl MarkdownPanel {
                 id: choice.action_id(),
                 enabled: true,
                 reason: None,
+                title: None,
             }];
             modes.children.push(tab.id.clone());
             out.push(tab);
@@ -1084,10 +1086,35 @@ impl MarkdownPanel {
             out.push(b);
         }
 
+        // The source text, where it is typed: Source, and the left pane of Split. In Visual and
+        // Preview the text is not edited as a whole (an open block has its own node above).
+        if matches!(shown.mode, MarkdownMode::Source | MarkdownMode::Split) {
+            let mut n = Node::new(
+                "text",
+                Role::TextBox,
+                &theorem_workbench_text::visible::visible(&self.path),
+                self.source_rect(&frame, shown.mode),
+            );
+            n.binding = self.resource();
+            n.revision = Some(CoreRevision::Seq(revision));
+            n.state.focused = cx.focused;
+            root.state.focused = false;
+            n.state.disabled = d.sync.read_only.is_some();
+            let window = text_window(d.md.borrow().session());
+            window.caret.put(&mut n);
+            n.state.description = window.note;
+            children.push(n.id.clone());
+            out.push(n);
+        }
+
         if let Some(flag) = self.local_flag() {
             let mut n = Node::new(
                 recovery::LOCAL_NODE,
-                Role::Status,
+                if flag.attention {
+                    Role::Alert
+                } else {
+                    Role::Status
+                },
                 &flag.long,
                 frame.status.unwrap_or(area),
             );

@@ -125,6 +125,12 @@ pub struct NodeAction {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub reason: Option<String>,
+    /// What a person would read for the action ("Focus Files"), from the
+    /// registry's descriptor or, for an action the core makes up per panel,
+    /// from the node it is on. Absent only for an id nothing can name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub title: Option<String>,
 }
 
 /// The selection inside a text node's `text`, in UTF-16 code units: the unit
@@ -148,7 +154,14 @@ pub struct Node {
     pub role: Role,
     pub name: String,
     pub state: NodeState,
-    pub rect: CellRect,
+    /// Where the node is drawn, in cells. Absent when it is not drawn this
+    /// frame (a row scrolled out, a group with no room, a control that has no
+    /// cell): the node is still in the tree, so an agent or a reader can reach
+    /// it, and it has no place on screen. [`Node::new`] gives an empty area
+    /// no rect.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub rect: Option<CellRect>,
     pub actions: Vec<NodeAction>,
     pub binding: ResourceRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -206,7 +219,7 @@ impl Node {
             role,
             name: name.to_owned(),
             state: NodeState::default(),
-            rect: CellRect::of(rect),
+            rect: (rect.width > 0 && rect.height > 0).then(|| CellRect::of(rect)),
             actions: vec![],
             binding: ResourceRef::None,
             revision: None,
@@ -504,12 +517,12 @@ mod tests {
             role,
             name: id.to_owned(),
             state: NodeState::default(),
-            rect: CellRect {
+            rect: Some(CellRect {
                 x: 0,
                 y: 0,
                 width: 10,
                 height: 1,
-            },
+            }),
             actions: vec![],
             binding: ResourceRef::None,
             revision: None,

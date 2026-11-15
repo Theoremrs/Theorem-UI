@@ -11,4 +11,11 @@ argv?: Array<string>, name?: string, cols: number, rows: number,
  * opening and attaching are one effect. The answer carries it back. Absent:
  * the open only starts the program, and a `terminalAttach` follows.
  */
-attachment?: string, };
+attachment?: string, 
+/**
+ * One id per launch intent. A second attempt of the same failed or
+ * uncertain launch carries the same one, so the host can tell a retry
+ * from a new launch; a new launch gets a new one. Absent from a caller
+ * that names none.
+ */
+operation?: string, };

@@ -3377,3 +3377,111 @@ fn a_followed_offset_that_arrives_before_the_document_waits_and_a_later_one_repl
     assert!(s.contains("L100"), "{s}");
     assert!(!s.contains("L250"), "{s}");
 }
+
+// ---- the text and caret the source text node publishes ---------------------------
+
+fn caret_of(n: &theorem_workbench_core::semantics::Node) -> (u32, u32) {
+    let s = n.selection.expect("a text box publishes its selection");
+    (s.anchor, s.focus)
+}
+
+#[test]
+fn source_mode_publishes_the_text_with_the_caret_in_utf16_units_and_visual_mode_does_not() {
+    let mut rig = Rig::opened("# T\u{1F600}e\u{301}\n\nbody\n");
+    assert!(
+        !rig.has_node("text"),
+        "Visual edits one open block, not the text"
+    );
+    rig.alt('2');
+    rig.tree_ok();
+    let n = rig.node("text");
+    assert_eq!(n.text.as_deref(), Some("# T\u{1F600}e\u{301}\n\nbody\n"));
+    assert_eq!(n.binding, doc());
+    assert_eq!(n.revision, Some(seq(1)));
+    assert!(!rig.node("markdown").state.focused, "one focused owner");
+    rig.key(Key::End);
+    // `# T`, the astral character (2 units), `e` and its mark (2 units).
+    assert_eq!(caret_of(&rig.node("text")), (7, 7));
+    rig.mods(Key::Left, Mods::SHIFT);
+    assert_eq!(
+        caret_of(&rig.node("text")),
+        (7, 5),
+        "the mark goes with its letter"
+    );
+    rig.alt('3');
+    assert!(
+        rig.has_node("text"),
+        "Split types into the source on its left"
+    );
+    rig.alt('4');
+    assert!(!rig.has_node("text"), "Preview has no text to type into");
+}
+
+#[test]
+fn the_source_node_spells_out_hostile_characters_and_counts_into_the_escaped_text() {
+    let mut rig = Rig::opened("a\u{1b}[2J\u{202e}b\n");
+    rig.alt('2');
+    let n = rig.node("text");
+    let text = n.text.as_deref().unwrap();
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{202e}'),
+        "{text:?}"
+    );
+    rig.key(Key::End);
+    let line = text.split('\n').next().unwrap();
+    assert_eq!(
+        caret_of(&rig.node("text")).1 as usize,
+        line.encode_utf16().count()
+    );
+    rig.tree_ok();
+}
+
+#[test]
+fn a_large_source_is_a_bounded_window_around_the_caret_and_the_description_says_so() {
+    let doc: String = (0..20_000)
+        .map(|i| format!("row {i:05} \u{1F600}\n"))
+        .collect();
+    let mut rig = Rig::opened(&doc);
+    rig.alt('2');
+    rig.mods(Key::End, Mods::CTRL);
+    let n = rig.node("text");
+    let text = n.text.as_deref().unwrap();
+    assert!(text.len() < theorem_workbench_core::semantics::MAX_NODE_TEXT);
+    assert!(text.ends_with("row 19999 \u{1F600}\n"));
+    assert_eq!(caret_of(&n).1 as usize, text.encode_utf16().count());
+    assert!(
+        n.state
+            .description
+            .unwrap()
+            .contains("the text holds only lines")
+    );
+    rig.tree_ok();
+}
+
+#[test]
+fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
+    let rig = Rig::opened("# T\n\nbody\n");
+    let mut seen = 0;
+    for n in semantics(&rig.m).nodes {
+        if n.id.as_str().starts_with("tab:") {
+            continue;
+        }
+        for a in n.actions {
+            let (_, d) = rig.m.registry().action(&a.id).unwrap_or_else(|| {
+                panic!(
+                    "{} is offered by {} and not registered",
+                    a.id.as_str(),
+                    n.id.as_str()
+                )
+            });
+            assert!(
+                !d.title.trim().is_empty() && !d.title.contains(a.id.as_str()),
+                "{}: {:?}",
+                a.id.as_str(),
+                d.title
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen > 10);
+}

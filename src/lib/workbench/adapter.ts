@@ -351,16 +351,22 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           return
         case 'connectivity':
           // The core connection is lost or back. Loss is not an end: the host retains the terminal and
-          // its process outcome is unknown, which is the pane's `lost` status (never `exited`). The core
-          // has no message that clears it within one epoch, so a recovery is not sent: it arrives as
-          // `terminal.opened` under a new epoch, or as the next attach answer (see the report).
-          if (event.connectivity.state === 'lost')
-            send({
-              type: 'terminalExited',
-              resource: target,
-              epoch: event.bindingEpoch ?? epoch(),
-              reason: 'lost',
-            })
+          // its process outcome is unknown, so it is sent as connectivity (never as an exit), with the host's
+          // own cause and next step as sent. `running` clears a loss that came from connectivity in the same
+          // epoch; the pane never lets it revive an exit.
+          send({
+            type: 'terminalConnectivity',
+            resource: target,
+            epoch: event.bindingEpoch ?? epoch(),
+            state: event.connectivity.state,
+            ...(event.connectivity.state === 'lost' && event.connectivity.reason
+              ? { reason: event.connectivity.reason }
+              : {}),
+            ...(event.connectivity.state === 'lost' &&
+            event.connectivity.nextStep
+              ? { nextStep: event.connectivity.nextStep }
+              : {}),
+          })
           return
         case 'resized':
           send({
@@ -453,10 +459,17 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     const state: string = adoption.state
     if (state === 'pending' || state === 'settled') return { state }
     if (state === 'unavailable') {
-      const { reason } = adoption as { reason?: unknown }
-      return typeof reason === 'string' && reason
-        ? { state, reason }
-        : { state }
+      const { reason, next_step: nextStep } = adoption as {
+        reason?: unknown
+        next_step?: unknown
+      }
+      return {
+        state,
+        ...(typeof reason === 'string' && reason ? { reason } : {}),
+        ...(typeof nextStep === 'string' && nextStep
+          ? { next_step: nextStep }
+          : {}),
+      }
     }
     return undefined
   }
@@ -617,6 +630,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           : state.phase === 'lost' || state.connectivity.state === 'lost'
             ? 'lost'
             : 'running',
+      ...(state.phase !== 'exited' && state.connectivity.state === 'lost'
+        ? {
+            ...(state.connectivity.reason
+              ? { reason: state.connectivity.reason }
+              : {}),
+            ...(state.connectivity.nextStep
+              ? { nextStep: state.connectivity.nextStep }
+              : {}),
+          }
+        : {}),
       controlledElsewhere: state.lease.role === 'observer' && !state.lease.held,
     })
     if (publish) publishSessions()
@@ -767,7 +790,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     return reply(done)
   }
 
-  /** The launch intent the pane named, read defensively: the wire's `terminalOpen` carries none yet. */
+  /** The launch intent the pane named (`operation`), read defensively: a host or an older pane may name none. */
   function intentOf(payload: object): string | undefined {
     const { operation } = payload as { operation?: unknown }
     return typeof operation === 'string' && operation !== ''

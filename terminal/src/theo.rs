@@ -52,6 +52,7 @@ use theorem_workbench_core::{
     semantics::{Node, NodeAction, Role},
     stale::Binding,
 };
+use theorem_workbench_text::visible::visible;
 
 use crate::{
     Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot, Token, now,
@@ -189,8 +190,53 @@ enum OwnerPart {
         #[serde(default)]
         reason: Option<String>,
     },
+    /// One delegation of a run (Theorem's `theorem-delegation` part). A later
+    /// state of the same delegation replaces the earlier one.
+    Delegation {
+        #[serde(default)]
+        delegation_id: String,
+        /// The run the delegation was made in: where its changes are listed.
+        #[serde(default)]
+        run_id: String,
+        #[serde(default)]
+        label: String,
+        #[serde(default)]
+        objective: String,
+        #[serde(default)]
+        state: String,
+        #[serde(default)]
+        verdict: Option<String>,
+    },
     #[serde(other)]
     Other,
+}
+
+/// A delegation row as the panel shows it, read from the snapshot.
+struct DelegationRow<'a> {
+    delegation_id: &'a str,
+    run_id: &'a str,
+    label: &'a str,
+    objective: &'a str,
+    state: &'a str,
+    verdict: Option<&'a str>,
+}
+
+impl DelegationRow<'_> {
+    /// Who, and where it stands, in the owner's words, made safe to show.
+    fn words(&self) -> (String, String) {
+        let who = if self.label.is_empty() {
+            "Delegated work".to_owned()
+        } else {
+            visible(self.label)
+        };
+        let state = match self.verdict {
+            Some(verdict) if !verdict.is_empty() => {
+                format!("{} ({})", visible(self.state), visible(verdict))
+            }
+            _ => visible(self.state),
+        };
+        (who, state)
+    }
 }
 
 #[derive(Deserialize, Default)]
@@ -226,6 +272,44 @@ impl Owner {
     /// Whether a run is working: the owner takes input for it, not a new turn.
     fn working(&self) -> bool {
         matches!(self.run.state.as_str(), "streaming" | "waiting_approval")
+    }
+
+    /// The conversation's delegations in the order they first appeared, each
+    /// as its latest record.
+    fn delegations(&self) -> Vec<DelegationRow<'_>> {
+        let mut rows: Vec<DelegationRow<'_>> = Vec::new();
+        for part in self.messages.iter().flat_map(|m| &m.parts) {
+            let OwnerPart::Delegation {
+                delegation_id,
+                run_id,
+                label,
+                objective,
+                state,
+                verdict,
+            } = part
+            else {
+                continue;
+            };
+            if delegation_id.is_empty() || run_id.is_empty() {
+                continue;
+            }
+            let row = DelegationRow {
+                delegation_id,
+                run_id,
+                label,
+                objective,
+                state,
+                verdict: verdict.as_deref(),
+            };
+            match rows
+                .iter_mut()
+                .find(|r| r.delegation_id == delegation_id && r.run_id == run_id)
+            {
+                Some(held) => *held = row,
+                None => rows.push(row),
+            }
+        }
+        rows
     }
 
     fn last_user(&self) -> Option<&OwnerMessage> {
@@ -386,7 +470,8 @@ fn part_of(part: &OwnerPart) -> Part {
             status: status.clone(),
             reason: reason.clone(),
         }),
-        OwnerPart::Other => Part::Other,
+        // Drawn by the panel's own list below the transcript, not in it.
+        OwnerPart::Delegation { .. } | OwnerPart::Other => Part::Other,
     }
 }
 
@@ -579,6 +664,9 @@ enum Tracked {
 
 /// The most text rows the composer takes before its text scrolls.
 const MAX_TEXT_ROWS: u16 = 8;
+/// The most delegation rows listed under the transcript at once; the rest
+/// scroll with the chosen row.
+const MAX_LISTED_DELEGATIONS: usize = 4;
 
 pub(crate) struct TheoPanel {
     /// A side chat that has no conversation yet offers these rows.
@@ -614,6 +702,14 @@ pub(crate) struct TheoPanel {
     composer: RefCell<Composer>,
     /// Where the composer was last drawn, in frame cells.
     composer_area: Cell<Rect>,
+    /// Whether the delegation list has the keys (Up and Down choose, Enter
+    /// opens, Esc gives them back to the composer), and the row chosen.
+    in_list: bool,
+    picked: usize,
+    /// Where the list's rows were last drawn, in frame cells, and the index
+    /// of the first one drawn.
+    list_area: Cell<Rect>,
+    list_first: Cell<usize>,
     models: Vec<ModelChoice>,
     selected_model: Option<String>,
     effort: Option<String>,
@@ -673,6 +769,10 @@ impl TheoPanel {
             focused: Cell::new(false),
             composer: RefCell::new(composer),
             composer_area: Cell::new(Rect::default()),
+            in_list: false,
+            picked: 0,
+            list_area: Cell::new(Rect::default()),
+            list_first: Cell::new(0),
             models: Vec::new(),
             selected_model: None,
             effort: None,
@@ -1068,6 +1168,132 @@ impl TheoPanel {
             && !composer.is_composing()
     }
 
+    /// Whether the conversation has delegations to choose from here.
+    fn lists_delegations(&self) -> bool {
+        self.bound() && !self.unreadable && !self.owner.delegations().is_empty()
+    }
+
+    /// The delegation list: a heading, then the rows from the first that keeps
+    /// the chosen one in view.
+    fn draw_delegations(
+        &self,
+        buf: &mut Buffer,
+        area: Rect,
+        rows: &[DelegationRow<'_>],
+        focused: bool,
+    ) {
+        self.list_area.set(Rect::default());
+        if area.height < 2 || rows.is_empty() {
+            return;
+        }
+        let p = palette();
+        let room = usize::from(area.height) - 1;
+        let picked = self.picked.min(rows.len() - 1);
+        let first = if picked < room { 0 } else { picked + 1 - room };
+        let hint = if self.in_list && focused {
+            "Up/Down choose, Enter opens, Esc leaves"
+        } else {
+            "Alt+D to choose"
+        };
+        let heading = format!(" Delegations ({})  {hint}", rows.len());
+        buf.set_stringn(
+            area.x,
+            area.y,
+            heading,
+            usize::from(area.width),
+            Style::new().fg(p.muted),
+        );
+        let list = Rect::new(area.x, area.y + 1, area.width, area.height - 1);
+        for (offset, row) in rows.iter().skip(first).take(room).enumerate() {
+            let chosen = self.in_list && first + offset == picked;
+            let (who, state) = row.words();
+            let mark = if chosen { "\u{25b8}" } else { " " };
+            let line = format!(
+                " {mark} {who}  {state}  {}",
+                visible(
+                    &row.objective
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                )
+            );
+            let style = if chosen {
+                Style::new().fg(p.accent).add_modifier(Modifier::BOLD)
+            } else {
+                Style::new().fg(p.ink)
+            };
+            buf.set_stringn(
+                list.x,
+                list.y + offset as u16,
+                line,
+                usize::from(list.width),
+                style,
+            );
+        }
+        self.list_area.set(list);
+        self.list_first.set(first);
+    }
+
+    /// Open the delegation's changes panel. Reading only: it lists what the
+    /// delegation changed and shows each file before and after.
+    fn open_delegation(&mut self, delegation_id: &str, cx: &mut Ctx) {
+        let found = self
+            .owner
+            .delegations()
+            .into_iter()
+            .find(|d| d.delegation_id == delegation_id)
+            .map(|d| (d.run_id.to_owned(), d.delegation_id.to_owned()));
+        match found {
+            Some((run_id, delegation_id)) => cx.open(OpenTarget::Delegation {
+                run_id,
+                delegation_id,
+                path: String::new(),
+            }),
+            None => self
+                .session
+                .borrow_mut()
+                .notify("that delegation is no longer in this conversation"),
+        }
+    }
+
+    /// Alt+D takes the keys into the delegation list, and again gives them
+    /// back. Within it: Up and Down, Home and End choose, Enter opens, Esc
+    /// leaves. Any other key leaves the list and is the composer's.
+    fn list_key(&mut self, input: &KeyInput, cx: &mut Ctx) -> bool {
+        let mods = input.mods();
+        if mods == Mods::ALT && input.key() == Key::Char('d') && self.lists_delegations() {
+            self.in_list = !self.in_list;
+            return true;
+        }
+        if !self.in_list {
+            return false;
+        }
+        let rows = self.owner.delegations();
+        if rows.is_empty() {
+            self.in_list = false;
+            return false;
+        }
+        let last = rows.len() - 1;
+        self.picked = self.picked.min(last);
+        match (input.key(), mods.is_empty()) {
+            (Key::Up, true) => self.picked = self.picked.saturating_sub(1),
+            (Key::Down, true) => self.picked = (self.picked + 1).min(last),
+            (Key::Home, true) => self.picked = 0,
+            (Key::End, true) => self.picked = last,
+            (Key::Enter, true) => {
+                let id = rows[self.picked].delegation_id.to_owned();
+                drop(rows);
+                self.open_delegation(&id, cx);
+            }
+            (Key::Esc, _) => self.in_list = false,
+            _ => {
+                self.in_list = false;
+                return false;
+            }
+        }
+        true
+    }
+
     fn stop(&mut self, cx: &mut Ctx) {
         if !self.owner.working() {
             self.session.borrow_mut().notify("no run is working");
@@ -1455,13 +1681,14 @@ impl TheoPanel {
     /// only say "this conversation has only one branch" or "a run is working",
     /// the character is left to be typed.
     fn takes_chord(&self, input: &KeyInput) -> bool {
-        self.branch_step(input).is_some()
-            && !self.owner.working()
-            && self
-                .owner
-                .history
-                .as_ref()
-                .is_some_and(|h| !h.forks.is_empty())
+        (input.mods() == Mods::ALT && input.key() == Key::Char('d') && self.lists_delegations())
+            || (self.branch_step(input).is_some()
+                && !self.owner.working()
+                && self
+                    .owner
+                    .history
+                    .as_ref()
+                    .is_some_and(|h| !h.forks.is_empty()))
     }
 
     fn on_key(&mut self, input: &KeyInput, cx: &mut Ctx) {
@@ -1479,6 +1706,9 @@ impl TheoPanel {
             return;
         }
         let mods = input.mods();
+        if self.list_key(input, cx) {
+            return;
+        }
         // Alt+[ and Alt+] select the previous and the next branch of the thread.
         if let Some(step) = self.branch_step(input) {
             return self.branch(step, cx);
@@ -1552,6 +1782,26 @@ impl TheoPanel {
                 };
             }
             PointerKind::Down(theorem_workbench_core::Button::Left) => {
+                // A click on a delegation row chooses it and opens it.
+                let list = self.list_area.get();
+                if fx >= i32::from(list.x)
+                    && fx < i32::from(list.right())
+                    && fy >= i32::from(list.y)
+                    && fy < i32::from(list.bottom())
+                {
+                    let at = self.list_first.get()
+                        + usize::try_from(fy - i32::from(list.y)).unwrap_or(0);
+                    let id = self
+                        .owner
+                        .delegations()
+                        .get(at)
+                        .map(|d| d.delegation_id.to_owned());
+                    if let Some(id) = id {
+                        self.picked = at;
+                        self.open_delegation(&id, cx);
+                    }
+                    return;
+                }
                 let area = self.area.get();
                 let (Ok(x), Ok(y)) = (u16::try_from(x), u16::try_from(y)) else {
                     return;
@@ -1742,6 +1992,13 @@ impl Panel for TheoPanel {
                     .borrow_mut()
                     .notify("no other conversation is offered to switch to yet"),
                 "theo.branch" => self.branch(1, cx),
+                name if name
+                    .starts_with(theorem_workbench_core::panels::ACTION_DELEGATION_OPEN) =>
+                {
+                    let id = name[theorem_workbench_core::panels::ACTION_DELEGATION_OPEN.len()..]
+                        .to_owned();
+                    self.open_delegation(&id, cx);
+                }
                 "side-chat.create" if self.kind == Kind::Side && !self.bound() => {
                     self.choose_row(self.choice, cx);
                 }
@@ -1816,23 +2073,47 @@ impl Panel for TheoPanel {
         }
         let mut session = self.session.borrow_mut();
         let referenced = !session.snapshot.references.is_empty();
+        // The delegations a run made list under the transcript: a heading and
+        // up to MAX_LISTED_DELEGATIONS rows, only while the transcript keeps
+        // three rows and the box four.
+        let delegations = if self.bound() && !self.unreadable && !self.owner.loading {
+            self.owner.delegations()
+        } else {
+            vec![]
+        };
+        let strip = {
+            let wanted = if delegations.is_empty() {
+                0
+            } else {
+                1 + delegations.len().min(MAX_LISTED_DELEGATIONS) as u16
+            };
+            let spare = area
+                .height
+                .saturating_sub(1 + u16::from(referenced) + 4 + 3);
+            let strip = wanted.min(spare);
+            if strip < 2 { 0 } else { strip }
+        };
         // The box grows with the draft, to a bounded share of the panel, and
         // never takes the transcript's last three rows.
-        let room = area.height.saturating_sub(1 + u16::from(referenced) + 3);
+        let room = area
+            .height
+            .saturating_sub(1 + u16::from(referenced) + strip + 3);
         let wanted = {
             let composer = self.composer.borrow();
             // Two borders and a margin each side.
             composer.desired_height(area.width.saturating_sub(4), MAX_TEXT_ROWS) + 2
         };
         let box_height = wanted.min(room).min(area.height / 2).max(4.min(room));
-        let [body, status, references, prompt] = Layout::vertical([
+        let [body, list, status, references, prompt] = Layout::vertical([
             Constraint::Fill(1),
+            Constraint::Length(strip),
             Constraint::Length(1),
             Constraint::Length(u16::from(referenced)),
             Constraint::Length(box_height),
         ])
         .areas(area);
         session.draw_body(buf, body);
+        self.draw_delegations(buf, list, &delegations, cx.focused);
         // The face takes the first cells of the status row when the page has
         // one; the row's own text starts after them, in the row it already was.
         let status = {
@@ -1953,6 +2234,7 @@ impl Panel for TheoPanel {
                         id: ActionId::new("side-chat.create"),
                         enabled: true,
                         reason: None,
+                        title: None,
                     }];
                 }
                 chooser.children.push(item.id.clone());
@@ -2056,6 +2338,79 @@ impl Panel for TheoPanel {
         children.push(log.id.clone());
         nodes.insert(0, log);
 
+        // The delegations the conversation shows, one row each, with the
+        // action that opens its changes panel.
+        let delegations = if self.bound() && !self.unreadable {
+            self.owner.delegations()
+        } else {
+            vec![]
+        };
+        if !delegations.is_empty() {
+            let list = self.list_area.get();
+            let first = self.list_first.get();
+            let picked = self.picked.min(delegations.len() - 1);
+            let mut group = Node::new(
+                "delegations",
+                Role::List,
+                "Delegations",
+                Rect::new(
+                    list.x,
+                    list.y.saturating_sub(1),
+                    list.width,
+                    list.height + 1,
+                ),
+            );
+            group.binding = resource.clone();
+            group.state.description =
+                Some("Alt+D chooses a delegation, Enter opens its changes, Esc leaves.".to_owned());
+            let count = delegations.len();
+            for (index, row) in delegations.iter().enumerate() {
+                let (who, state) = row.words();
+                let drawn = index >= first && index - first < usize::from(list.height);
+                let rect = if drawn && !list.is_empty() {
+                    Rect::new(list.x, list.y + (index - first) as u16, list.width, 1)
+                } else {
+                    Rect::default()
+                };
+                let mut item = Node::new(
+                    &format!("d:{}", row.delegation_id),
+                    Role::ListItem,
+                    &format!("{who}: {state}"),
+                    rect,
+                );
+                item.binding = ResourceRef::Delegation {
+                    run_id: row.run_id.to_owned(),
+                    delegation_id: row.delegation_id.to_owned(),
+                    path: String::new(),
+                };
+                item.pos_in_set = u16::try_from(index + 1).ok();
+                item.set_size = u16::try_from(count).ok();
+                item.state.selected = self.in_list && index == picked;
+                item.state.focused = cx.focused && self.in_list && index == picked;
+                let objective = visible(
+                    &row.objective
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                );
+                item.state.description = (!objective.is_empty()).then_some(objective);
+                item.actions = vec![NodeAction {
+                    id: ActionId::new(format!(
+                        "{}{}",
+                        theorem_workbench_core::panels::ACTION_DELEGATION_OPEN,
+                        row.delegation_id
+                    )),
+                    enabled: true,
+                    reason: None,
+                    title: None,
+                }];
+                group.children.push(item.id.clone());
+                nodes.push(item);
+            }
+            children.push(group.id.clone());
+            nodes.push(group);
+        }
+
         // Run state, as a status the person and the agent both read.
         let run = match self.owner.run.state.as_str() {
             "streaming" => "Running".to_owned(),
@@ -2105,6 +2460,7 @@ impl Panel for TheoPanel {
                 id: ActionId::new(action),
                 enabled,
                 reason: (!enabled).then(|| why.to_owned()),
+                title: None,
             }];
             node.state.disabled = !enabled;
             node
@@ -4432,5 +4788,302 @@ mod tests {
             })
             .count();
         assert_eq!(copies, 0);
+    }
+
+    // ---- delegations --------------------------------------------------------
+
+    fn delegation(id: &str, label: &str, state: &str) -> Value {
+        json!({"type": "delegation", "delegationId": id, "runId": "run-1",
+               "label": label, "objective": "Check the shortcuts", "state": state})
+    }
+
+    fn with_delegations(parts: Vec<Value>) -> Rig {
+        let directory = Directory::default();
+        let mut factories = PanelFactories::new();
+        register(&mut factories, &directory);
+        theorem_workbench_panels::register(&mut factories);
+        theorem_workbench_changes::register(&mut factories);
+        let mut registry = builtin::registry();
+        theorem_workbench_changes::extend_registry(&mut registry).unwrap();
+        let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
+        assert!(issues.is_empty(), "{issues:?}");
+        let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
+        let mut m = Model::new(
+            registry,
+            factories,
+            keys,
+            Capabilities::of(["files", "conversation", "scm"]),
+            dock,
+        );
+        update(
+            &mut m,
+            Msg::Resize {
+                area: Rect::new(0, 0, 160, 50),
+                metrics: CellMetrics::new(8.0, 16.0),
+            },
+        );
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("theo.focus"),
+                actor: Actor::Human,
+            },
+        );
+        let mut r = Rig {
+            m,
+            directory,
+            seen: Vec::new(),
+        };
+        r.show(
+            1,
+            "t1",
+            json!({"messages": [user("m1", "go"), assistant("m2", Value::Array(parts), "complete")],
+                   "run": {"state": "idle", "runId": "run-1"}}),
+        );
+        r
+    }
+
+    fn alt(c: char) -> (Key, Mods) {
+        (Key::Char(c), Mods::ALT)
+    }
+
+    fn kinds_open(r: &Rig, kind: &str) -> Vec<PanelInstanceId> {
+        r.m.panel_ids()
+            .filter(|(_, k)| k.as_str() == kind)
+            .map(|(id, _)| id.clone())
+            .collect()
+    }
+
+    #[test]
+    fn a_run_with_delegations_lists_a_row_each_with_its_label_state_and_an_open_action() {
+        let r = with_delegations(vec![
+            delegation("d1", "Reviewer", "started"),
+            json!({"type": "delegation", "delegationId": "d2", "runId": "run-1",
+                   "label": "Worker", "objective": "Edit it", "state": "reviewed", "verdict": "accept"}),
+        ]);
+        let shown = r.drawn();
+        assert!(shown.contains("Delegations (2)"), "{shown}");
+        assert!(
+            shown.contains("Reviewer  started  Check the shortcuts"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("Worker  reviewed (accept)  Edit it"),
+            "{shown}"
+        );
+
+        let tree = r.tree();
+        tree.validate().expect("one valid tree");
+        let list = tree.nodes.iter().find(|n| n.role == Role::List).unwrap();
+        assert_eq!(list.name, "Delegations");
+        let rows: Vec<&Node> = tree
+            .nodes
+            .iter()
+            .filter(|n| n.role == Role::ListItem)
+            .collect();
+        assert_eq!(
+            rows.iter().map(|n| n.name.as_str()).collect::<Vec<_>>(),
+            ["Reviewer: started", "Worker: reviewed (accept)"]
+        );
+        assert_eq!(rows[0].actions[0].id.as_str(), "theo.delegation.open.d1");
+        assert!(rows[0].actions[0].enabled);
+        assert_eq!(
+            rows[1].binding,
+            ResourceRef::Delegation {
+                run_id: "run-1".into(),
+                delegation_id: "d2".into(),
+                path: String::new()
+            }
+        );
+        assert_eq!(rows[0].set_size, Some(2));
+        // The transcript is not told twice: the part draws nothing in it.
+        assert_eq!(shown.matches("Reviewer").count(), 1, "{shown}");
+    }
+
+    #[test]
+    fn a_later_state_of_a_delegation_replaces_its_row() {
+        let mut r = with_delegations(vec![delegation("d1", "Reviewer", "started")]);
+        r.show(
+            2,
+            "t1",
+            json!({"messages": [user("m1", "go"), assistant("m2", json!([delegation("d1", "Reviewer", "published")]), "complete")]}),
+        );
+        let shown = r.drawn();
+        assert!(shown.contains("Delegations (1)"), "{shown}");
+        assert!(shown.contains("Reviewer  published"), "{shown}");
+        assert!(!shown.contains("started"), "{shown}");
+    }
+
+    #[test]
+    fn alt_d_then_enter_opens_the_chosen_delegations_changes_panel() {
+        let mut r = with_delegations(vec![
+            delegation("d1", "Reviewer", "started"),
+            delegation("d2", "Worker", "published"),
+        ]);
+        assert!(kinds_open(&r, "delegation").is_empty());
+        let (k, m) = alt('d');
+        r.key(k, m);
+        assert!(r.drawn().contains("Enter opens"));
+        let chosen = r.tree();
+        assert!(chosen.nodes.iter().any(|n| n.role == Role::ListItem
+            && n.state.selected
+            && n.name == "Reviewer: started"));
+        r.key(Key::Down, Mods::NONE);
+        let fx = r.key(Key::Enter, Mods::NONE);
+        // Opening is a core open, never an effect of the conversation.
+        assert!(conversation_effects(&fx).is_empty());
+        let opened = kinds_open(&r, "delegation");
+        assert_eq!(opened.len(), 1);
+        let node = r.tree().nodes.into_iter().find(|n| {
+            n.binding
+                == ResourceRef::Delegation {
+                    run_id: "run-1".into(),
+                    delegation_id: "d2".into(),
+                    path: String::new(),
+                }
+        });
+        assert!(
+            node.is_some(),
+            "the panel is bound to the chosen delegation"
+        );
+        assert_eq!(r.m.focus().panel, Some(opened[0].clone()));
+    }
+
+    #[test]
+    fn esc_gives_the_keys_back_to_the_composer_and_other_keys_type() {
+        let mut r = with_delegations(vec![delegation("d1", "Reviewer", "started")]);
+        let (k, m) = alt('d');
+        r.key(k, m);
+        r.key(Key::Esc, Mods::NONE);
+        r.typed("hi");
+        assert!(kinds_open(&r, "delegation").is_empty());
+        assert!(!r.drawn().contains("Enter opens"));
+        // A letter while the list has the keys leaves the list and is typed.
+        let (k, m) = alt('d');
+        r.key(k, m);
+        r.key(Key::Char('x'), Mods::NONE);
+        assert!(!r.drawn().contains("Enter opens"));
+        let draft = r.m.document();
+        assert!(draft.to_string().contains("hix"), "{draft}");
+    }
+
+    #[test]
+    fn an_agent_opens_a_delegation_by_the_rows_named_action() {
+        let mut r = with_delegations(vec![delegation("d1", "Reviewer", "started")]);
+        let id = r
+            .tree()
+            .nodes
+            .iter()
+            .find(|n| n.role == Role::ListItem)
+            .unwrap()
+            .actions[0]
+            .id
+            .clone();
+        r.send(Msg::Action {
+            id,
+            actor: Actor::Agent {
+                run_id: "run-9".into(),
+            },
+        });
+        assert_eq!(kinds_open(&r, "delegation").len(), 1);
+        // An id the conversation does not have opens nothing and is told.
+        let before = r.m.panel_ids().count();
+        r.send(Msg::Action {
+            id: ActionId::new("theo.delegation.open.nope"),
+            actor: Actor::Human,
+        });
+        assert_eq!(r.m.panel_ids().count(), before);
+    }
+
+    #[test]
+    fn a_click_on_a_delegation_row_opens_it() {
+        let mut r = with_delegations(vec![
+            delegation("d1", "Reviewer", "started"),
+            delegation("d2", "Worker", "published"),
+        ]);
+        let row = r
+            .drawn()
+            .lines()
+            .position(|l| l.contains("Worker  published"))
+            .unwrap();
+        let origin = main_body(&r);
+        r.send(Msg::Pointer(theorem_workbench_core::Pointer {
+            kind: PointerKind::Down(theorem_workbench_core::Button::Left),
+            x: origin.x + 6,
+            y: row as u16,
+            mods: Mods::NONE,
+            clicks: 1,
+        }));
+        let opened = kinds_open(&r, "delegation");
+        assert_eq!(opened.len(), 1);
+        assert!(r.tree().nodes.iter().any(|n| n.binding
+            == ResourceRef::Delegation {
+                run_id: "run-1".into(),
+                delegation_id: "d2".into(),
+                path: String::new()
+            }));
+    }
+
+    #[test]
+    fn hostile_label_objective_and_state_text_is_escaped_where_it_is_drawn_and_named() {
+        let r = with_delegations(vec![json!({
+            "type": "delegation", "delegationId": "d1", "runId": "run-1",
+            "label": "Rev\u{202e}iew\u{1b}[31mer", "objective": "a\u{7}b\nc",
+            "state": "st\u{200b}arted", "verdict": "ok\u{9d}"
+        })]);
+        let shown = r.drawn();
+        for raw in ['\u{202e}', '\u{1b}', '\u{7}', '\u{200b}', '\u{9d}'] {
+            assert!(!shown.contains(raw), "{raw:?} reached the cells");
+        }
+        assert!(shown.contains("Rev\\u{202e}iew\\u{1b}[31mer"), "{shown}");
+        let tree = r.tree();
+        let row = tree
+            .nodes
+            .iter()
+            .find(|n| n.role == Role::ListItem)
+            .unwrap();
+        assert_eq!(
+            row.name,
+            "Rev\\u{202e}iew\\u{1b}[31mer: st\\u{200b}arted (ok\\u{9d})"
+        );
+        let description = row.state.description.as_deref().unwrap();
+        assert!(description.contains("a\\u{7}b c"), "{description}");
+        for node in &tree.nodes {
+            for text in [Some(&node.name), node.state.description.as_ref()]
+                .into_iter()
+                .flatten()
+            {
+                assert!(
+                    !text
+                        .chars()
+                        .any(|c| c == '\u{202e}' || c == '\u{1b}' || c == '\u{200b}'),
+                    "{text:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_run_with_no_delegations_shows_nothing_extra() {
+        let r = with_delegations(vec![json!({"type": "text", "text": "done"})]);
+        let shown = r.drawn();
+        assert!(!shown.contains("Delegations"), "{shown}");
+        assert!(
+            !r.tree()
+                .nodes
+                .iter()
+                .any(|n| matches!(n.role, Role::List | Role::ListItem))
+        );
+        // And Alt+D is not taken: there is nothing to choose.
+        assert!(!r.m.takes_chord(&KeyInput::new(Key::Char('d'), Mods::ALT)));
+    }
+
+    #[test]
+    fn a_part_without_its_ids_is_not_a_row() {
+        let r = with_delegations(vec![
+            json!({"type": "delegation", "delegationId": "", "runId": "run-1", "label": "x", "state": "started"}),
+            json!({"type": "delegation", "delegationId": "d1", "label": "x", "state": "started"}),
+        ]);
+        assert!(!r.drawn().contains("Delegations"));
     }
 }

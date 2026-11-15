@@ -6,6 +6,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::host::ConnectionState;
+use theorem_workbench_text::visible::visible;
 use theorem_workbench_vt::TerminalView;
 
 use crate::bound::{Bound, EndAsk, Role, Status, Tone};
@@ -100,7 +101,8 @@ pub(crate) fn status_line(b: &Bound) -> String {
             Some(code) => format!("exited with code {code} ({reason})"),
             None => format!("exited ({reason})"),
         },
-        Status::Lost { reason } => format!("lost ({reason})"),
+        Status::Lost { link: true, .. } => "connection lost".to_owned(),
+        Status::Lost { reason, .. } => format!("lost ({reason})"),
     };
     format!(
         "{} | {} | {} | epoch {}",
@@ -108,6 +110,32 @@ pub(crate) fn status_line(b: &Bound) -> String {
         backend_word(b.backend),
         what,
         b.epoch
+    )
+}
+
+/// What a lost connection says, in a person's words: it is the connection
+/// and not the program, why, and what to do. The host's own cause word is
+/// mapped when it is one the contract names and otherwise shown as sent,
+/// escaped; its next step the same.
+pub(crate) fn loss_text(reason: &str, next_step: Option<&str>) -> String {
+    let cause = match reason {
+        "core_closed" => "the core closed the connection".to_owned(),
+        "core_unavailable" => "the core cannot be reached".to_owned(),
+        "subscribe_timed_out" => "the core did not answer the subscription in time".to_owned(),
+        other if other.trim().is_empty() => "the host gave no cause".to_owned(),
+        other => visible(other),
+    };
+    let step = match next_step {
+        Some("retry") | None => {
+            "Retry to reconnect: Enter or a attaches again. Esc returns to the chooser.".to_owned()
+        }
+        Some(other) => format!(
+            "The host's next step: {}. Enter or a attaches again. Esc returns to the chooser.",
+            visible(other)
+        ),
+    };
+    format!(
+        "Connection to the terminal lost: {cause}. The program may still be running; its outcome is not known. {step}"
     )
 }
 
@@ -155,7 +183,14 @@ pub(crate) fn footer(b: &Bound) -> Option<(String, Tone)> {
         ));
     }
     match &b.status {
-        Status::Exited { reason, .. } | Status::Lost { reason } => {
+        Status::Lost {
+            reason,
+            next_step,
+            link: true,
+        } => {
+            return Some((loss_text(reason, next_step.as_deref()), Tone::Warning));
+        }
+        Status::Exited { reason, .. } | Status::Lost { reason, .. } => {
             let lost = matches!(b.status, Status::Lost { .. });
             return Some((
                 format!(

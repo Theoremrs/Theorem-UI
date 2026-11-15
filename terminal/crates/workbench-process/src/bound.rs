@@ -13,7 +13,9 @@ use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalAttach, TerminalBackend, TerminalClaim, TerminalInput,
     TerminalInputBytes, TerminalResize, TerminalRole,
 };
-use theorem_workbench_core::host::{HostMessage, ProgramReport, TerminalAdoption, TerminalModes};
+use theorem_workbench_core::host::{
+    ConnectivityState, HostMessage, ProgramReport, TerminalAdoption, TerminalModes,
+};
 use theorem_workbench_core::ids::{EffectId, Generation, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_vt::Screen;
@@ -95,11 +97,27 @@ pub(crate) enum Status {
         code: Option<i32>,
         reason: String,
     },
-    /// The program is gone and the host could not say more. Never shown as a
-    /// continuation of anything.
+    /// The host could not say more. Never shown as a continuation of
+    /// anything. `link` is true when what was lost is the connection to the
+    /// terminal, not the program: the program may still be running, and the
+    /// host saying the connection is back clears it. A loss that is not `link`
+    /// is never cleared by the host's word about the connection.
     Lost {
         reason: String,
+        next_step: Option<String>,
+        link: bool,
     },
+}
+
+impl Status {
+    /// The program is known to be gone or its fate was reported as ended. A
+    /// lost connection is not that: the program may still be running.
+    pub(crate) fn program_ended(&self) -> bool {
+        matches!(
+            self,
+            Status::Exited { .. } | Status::Lost { link: false, .. }
+        )
+    }
 }
 
 /// How this binding came to be, kept in the host's words.
@@ -254,6 +272,9 @@ pub(crate) enum EndAsk {
 pub(crate) enum Block {
     Observing(String),
     Ended,
+    /// The connection to the terminal is lost; nothing leaves the pane until
+    /// it is back or the person attaches again.
+    Disconnected,
     Attaching,
     /// An End was asked of the host; keys would go to a program being ended.
     Ending,
@@ -410,14 +431,20 @@ impl Bound {
         }
         // The host's own word on the program outranks a pane that has seen no
         // exit event: a listed Lost or Exited terminal is not "controlling".
-        if matches!(self.status, Status::Running)
-            && let Some(row) = data
-                .sessions
-                .iter()
-                .find(|s| s.session == self.session && s.workspace == self.workspace)
+        if matches!(
+            self.status,
+            Status::Running | Status::Lost { link: true, .. }
+        ) && let Some(row) = data
+            .sessions
+            .iter()
+            .find(|s| s.session == self.session && s.workspace == self.workspace)
         {
             match row.state {
-                theorem_workbench_core::host::TerminalSessionState::Running => {}
+                theorem_workbench_core::host::TerminalSessionState::Running => {
+                    if matches!(self.status, Status::Lost { .. }) && !self.gone {
+                        self.status = Status::Running;
+                    }
+                }
                 theorem_workbench_core::host::TerminalSessionState::Exited => {
                     self.status = Status::Exited {
                         code: None,
@@ -426,8 +453,45 @@ impl Bound {
                 }
                 theorem_workbench_core::host::TerminalSessionState::Lost => {
                     self.status = Status::Lost {
-                        reason: "the host lists this terminal as lost".into(),
+                        reason: row
+                            .reason
+                            .clone()
+                            .unwrap_or_else(|| "the host lists this terminal as lost".into()),
+                        next_step: row.next_step.clone(),
+                        link: true,
                     };
+                }
+            }
+        }
+    }
+
+    /// The host's word about the connection to this terminal's core. A loss
+    /// is held only while the program is not known to have ended, and a
+    /// `running` clears only a loss that came from here: an exited terminal,
+    /// one the host stopped listing, and a program reported lost stay as they
+    /// are.
+    pub(crate) fn connectivity(
+        &mut self,
+        state: ConnectivityState,
+        reason: Option<&String>,
+        next_step: Option<&String>,
+    ) {
+        match state {
+            ConnectivityState::Lost => {
+                if matches!(
+                    self.status,
+                    Status::Running | Status::Lost { link: true, .. }
+                ) {
+                    self.status = Status::Lost {
+                        reason: reason.cloned().unwrap_or_default(),
+                        next_step: next_step.cloned(),
+                        link: true,
+                    };
+                }
+            }
+            ConnectivityState::Running => {
+                if matches!(self.status, Status::Lost { link: true, .. }) && !self.gone {
+                    self.status = Status::Running;
                 }
             }
         }
@@ -484,6 +548,9 @@ impl Bound {
 
     /// Whether keys, paste and resize may leave this pane.
     pub(crate) fn gate(&self) -> Result<(), Block> {
+        if matches!(self.status, Status::Lost { link: true, .. }) {
+            return Err(Block::Disconnected);
+        }
         if !self.running() {
             return Err(Block::Ended);
         }
@@ -1081,6 +1148,8 @@ impl Bound {
                 self.status = if reason == "lost" {
                     Status::Lost {
                         reason: reason.clone(),
+                        next_step: None,
+                        link: false,
                     }
                 } else {
                     Status::Exited {
@@ -1088,6 +1157,18 @@ impl Bound {
                         reason: reason.clone(),
                     }
                 };
+            }
+            HostMessage::TerminalConnectivity {
+                epoch,
+                state,
+                reason,
+                next_step,
+                ..
+            } => {
+                if *epoch < self.epoch {
+                    return;
+                }
+                self.connectivity(*state, reason.as_ref(), next_step.as_ref());
             }
             HostMessage::TerminalControl {
                 epoch,

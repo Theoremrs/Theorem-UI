@@ -17,6 +17,7 @@ mod styles;
 mod sync;
 mod tokens;
 mod widget;
+mod window;
 
 pub use actions::{Choice, Descriptor, actions, descriptors, extend_registry};
 pub use field::Field;
@@ -31,3 +32,4 @@ pub use styles::EditorStyles;
 pub use sync::{Changed, apply_owner_change, resync, step_before};
 pub use tokens::TokenState;
 pub use widget::{Clipboard, Mark, PASTE_LIMIT, Paint, Position, Reaction, SourceView};
+pub use window::{Shown, text_window};

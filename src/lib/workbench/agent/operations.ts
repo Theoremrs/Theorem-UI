@@ -228,7 +228,7 @@ function read(handle: AgentHandle, args: Record<string, unknown>) {
   if (
     tree.nodes.length === 1 &&
     only &&
-    (only.rect.width === 0 || only.rect.height === 0)
+    (!only.rect || only.rect.width === 0 || only.rect.height === 0)
   )
     return rejected(
       'The workbench has not drawn yet, so its tree is only the root and says nothing about the panels. Read again in a moment.',

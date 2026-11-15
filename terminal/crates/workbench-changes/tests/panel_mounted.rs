@@ -896,6 +896,12 @@ fn an_uncertain_push_is_shown_as_unknown_and_never_retried() {
     let screen = rig.screen();
     assert!(screen.contains("unknown"), "{screen}");
     assert_valid(&rig);
+    let branch = node_ending(&rig, "/branch");
+    assert_eq!(
+        branch.role,
+        theorem_workbench_core::semantics::Role::Alert,
+        "an unknown result needs attention"
+    );
     // Neither the host nor a repeat of the key sends it again, nor reads over it.
     assert!(rig.tick().is_empty());
     assert!(
@@ -3290,7 +3296,7 @@ fn notices_receipts_and_drafts_wrap_whole_at_every_width() {
             .iter()
             .filter(|n| n.id.as_str().contains("/banner/"))
         {
-            for y in n.rect.y..n.rect.y + n.rect.height {
+            for y in n.rect.unwrap().y..n.rect.unwrap().y + n.rect.unwrap().height {
                 let row = &rows[usize::from(y - top)];
                 assert!(
                     !row.contains('\u{2026}'),
@@ -3408,4 +3414,115 @@ fn a_document_panel_with_an_unsaved_draft_tags_its_path_in_the_mounted_changes_p
         rig.screen()
     );
     assert_valid(&rig);
+}
+
+// ---- the text and caret the fields publish ---------------------------------------
+
+fn node_ending(rig: &Rig, tail: &str) -> Node {
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("a valid tree");
+    tree.nodes
+        .iter()
+        .find(|n| n.id.as_str().ends_with(tail))
+        .unwrap_or_else(|| panic!("no node ending {tail}"))
+        .clone()
+}
+
+fn caret_of(n: &Node) -> (u32, u32) {
+    let s = n.selection.expect("a text box publishes its selection");
+    (s.anchor, s.focus)
+}
+
+#[test]
+fn the_commit_subject_publishes_its_text_and_caret_in_utf16_units_of_the_escaped_text() {
+    let mut rig = loaded();
+    rig.action(actions::FOCUS_DRAFT, agent());
+    // 'a', an astral character (2 units), 'e' and a combining mark (2 units).
+    rig.typed("a\u{1F600}e\u{301}");
+    let n = node_ending(&rig, "/commit/subject");
+    assert_eq!(n.text.as_deref(), Some("a\u{1F600}e\u{301}"));
+    assert_eq!(caret_of(&n), (5, 5));
+    rig.key(Key::Home);
+    rig.key(Key::Right);
+    rig.key(Key::Right);
+    assert_eq!(caret_of(&node_ending(&rig, "/commit/subject")), (3, 3));
+    assert!(
+        n.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("characters"),
+        "the count stays in the description"
+    );
+    // A control character is spelled out and the caret counts into what is shown.
+    rig.key(Key::End);
+    rig.typed("\u{1b}");
+    let n = node_ending(&rig, "/commit/subject");
+    assert!(n.text.as_deref().unwrap().ends_with("\\u{1b}"), "{n:?}");
+    assert_eq!(
+        caret_of(&n).1 as usize,
+        n.text.as_deref().unwrap().encode_utf16().count()
+    );
+}
+
+#[test]
+fn the_branch_name_prompt_publishes_the_typed_name_as_its_text_not_its_description() {
+    let mut rig = loaded();
+    rig.action(actions::CREATE_BRANCH, agent());
+    rig.typed("topic\u{1F600}");
+    let n = node_ending(&rig, "/branch");
+    assert_eq!(n.role, theorem_workbench_core::semantics::Role::TextBox);
+    assert_eq!(n.text.as_deref(), Some("topic\u{1F600}"));
+    assert_eq!(caret_of(&n), (7, 7));
+    assert_eq!(
+        n.state.description.as_deref(),
+        Some("Type a branch name and press Enter")
+    );
+}
+
+#[test]
+fn the_commit_description_counts_the_caret_across_its_lines() {
+    let mut rig = loaded();
+    rig.send(Msg::Resize {
+        area: ratatui::layout::Rect::new(0, 0, 200, 60),
+        metrics: theorem_workbench_dock::CellMetrics::new(8.0, 16.0),
+    });
+    rig.action(actions::FOCUS_DRAFT, agent());
+    rig.typed("subject");
+    rig.key(Key::Enter);
+    rig.typed("one\u{1F600}");
+    rig.key(Key::Enter);
+    rig.typed("two");
+    let n = node_ending(&rig, "/commit/body");
+    assert_eq!(n.text.as_deref(), Some("one\u{1F600}\ntwo"));
+    // 3 + 2 units, the line break, 3 more.
+    assert_eq!(caret_of(&n), (9, 9));
+}
+
+#[test]
+fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
+    let rig = loaded();
+    let mut seen = 0;
+    for n in theorem_workbench_core::tree::semantics(&rig.m).nodes {
+        if n.id.as_str().starts_with("tab:") {
+            continue;
+        }
+        for a in n.actions {
+            let (_, d) = rig.m.registry().action(&a.id).unwrap_or_else(|| {
+                panic!(
+                    "{} is offered by {} and not registered",
+                    a.id.as_str(),
+                    n.id.as_str()
+                )
+            });
+            assert!(
+                !d.title.trim().is_empty() && !d.title.contains(a.id.as_str()),
+                "{}: {:?}",
+                a.id.as_str(),
+                d.title
+            );
+            seen += 1;
+        }
+    }
+    assert!(seen > 5);
 }

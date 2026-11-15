@@ -4,4 +4,10 @@ import type { ActionId } from "./ActionId";
 /**
  * An action the node offers, by registry id, with its availability.
  */
-export type NodeAction = { id: ActionId, enabled: boolean, reason?: string, };
+export type NodeAction = { id: ActionId, enabled: boolean, reason?: string, 
+/**
+ * What a person would read for the action ("Focus Files"), from the
+ * registry's descriptor or, for an action the core makes up per panel,
+ * from the node it is on. Absent only for an id nothing can name.
+ */
+title?: string, };

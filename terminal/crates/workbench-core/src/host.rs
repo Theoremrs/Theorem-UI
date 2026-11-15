@@ -125,6 +125,16 @@ pub struct TerminalSessionInfo {
     pub program: Option<u64>,
     #[serde(default)]
     pub state: TerminalSessionState,
+    /// Why the host calls the session `lost`, in its own word
+    /// (`core_closed`, `core_unavailable`, `subscribe_timed_out` or another).
+    /// Absent unless the connection to the terminal is lost.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub reason: Option<String>,
+    /// What the host says to do about it (`retry`). Absent when it names none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub next_step: Option<String>,
     /// Another viewer holds the control lease.
     #[serde(default)]
     pub controlled_elsewhere: bool,
@@ -305,7 +315,21 @@ pub enum TerminalAdoption {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[cfg_attr(feature = "ts", ts(optional))]
         reason: Option<String>,
+        /// What the host says to do about it (`retry`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        next_step: Option<String>,
     },
+}
+
+/// Whether the connection between the workbench host and a terminal's core is
+/// up. It says nothing about the program: a lost connection is not an exit.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum ConnectivityState {
+    Running,
+    Lost,
 }
 
 /// The live stream's state (`WorkspaceLive`).
@@ -441,6 +465,24 @@ pub enum HostMessage {
         exit_code: Option<i32>,
         /// `exited`, `killed`, `lost` or the core's word.
         reason: String,
+    },
+    /// The connection to the terminal's core was lost or came back, at the
+    /// stated binding epoch. Delivered to the panes bound to `resource` unless
+    /// `epoch` is older than their binding. It is about the connection only:
+    /// `running` clears a loss that came from here and never revives a
+    /// terminal that exited or was removed. `reason` and `next_step` are the
+    /// host's words and are shown escaped.
+    TerminalConnectivity {
+        resource: ResourceRef,
+        #[cfg_attr(feature = "ts", ts(type = "number"))]
+        epoch: u64,
+        state: ConnectivityState,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        reason: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        next_step: Option<String>,
     },
     /// `terminal.control`: the lease changed holder.
     TerminalControl {

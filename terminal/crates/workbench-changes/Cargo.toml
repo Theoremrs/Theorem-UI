@@ -7,6 +7,8 @@ license = "MIT"
 description = "The Changes (source control) model and view for the Theo Web terminal workbench, translated from the ELY Git panel"
 
 [dependencies]
+# The text and caret a text-edit node publishes (escaped, UTF-16 offsets, bounded).
+theorem-workbench-panels = { path = "../workbench-panels" }
 theorem-workbench-core = { path = "../workbench-core" }
 # The one `visible()` that spells out control and hidden characters.
 theorem-workbench-text = { path = "../workbench-text" }

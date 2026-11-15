@@ -646,3 +646,70 @@ fn takes_chord_answers_for_the_three_toggles_in_every_field_and_leaves_other_opt
         rig.key(Key::Tab);
     }
 }
+
+// ---- the text and caret each field publishes ----------------------------------
+
+fn caret_of(n: &theorem_workbench_core::semantics::Node) -> (u32, u32) {
+    let s = n.selection.expect("a text box publishes its selection");
+    (s.anchor, s.focus)
+}
+
+#[test]
+fn every_field_publishes_its_text_and_caret_in_utf16_units_of_the_escaped_text() {
+    let mut rig = rig();
+    // 'a', an astral character (2 units), 'e' and a combining mark (2 units).
+    rig.typed("a\u{1F600}e\u{301}");
+    let q = rig.node("query");
+    assert_eq!(q.text.as_deref(), Some("a\u{1F600}e\u{301}"));
+    assert_eq!(caret_of(&q), (5, 5));
+    rig.key(Key::Left);
+    assert_eq!(
+        caret_of(&rig.node("query")),
+        (3, 3),
+        "the caret steps a grapheme: a letter and its mark"
+    );
+    rig.key(Key::Home);
+    assert_eq!(caret_of(&rig.node("query")), (0, 0));
+    rig.key(Key::Right);
+    assert_eq!(caret_of(&rig.node("query")), (1, 1));
+    rig.key(Key::Right);
+    assert_eq!(
+        caret_of(&rig.node("query")),
+        (3, 3),
+        "past the astral character: two units"
+    );
+    // Every field has one, and the others keep their own caret.
+    for id in ["replacement", "include", "exclude"] {
+        let n = rig.node(id);
+        assert_eq!(n.text.as_deref(), Some(""), "{id}");
+        assert_eq!(caret_of(&n), (0, 0), "{id}");
+    }
+    rig.key(Key::Tab);
+    rig.key(Key::Tab);
+    rig.typed("src/\u{65e5}");
+    let inc = rig.node("include");
+    assert_eq!(inc.text.as_deref(), Some("src/\u{65e5}"));
+    assert_eq!(caret_of(&inc), (5, 5));
+    assert!(inc.state.focused && !rig.node("query").state.focused);
+}
+
+#[test]
+fn a_hostile_query_is_spelled_out_and_the_caret_counts_into_what_is_shown() {
+    let mut rig = rig();
+    rig.typed("x\u{1b}y\u{202e}");
+    let q = rig.node("query");
+    assert_eq!(q.text.as_deref(), Some("x\\u{1b}y\\u{202e}"));
+    // 1 + 6 + 1 + 8 units.
+    assert_eq!(caret_of(&q), (16, 16));
+    rig.key(Key::Left);
+    assert_eq!(
+        caret_of(&rig.node("query")),
+        (8, 8),
+        "before the override, after the y"
+    );
+    let tree = theorem_workbench_core::semantics::SemanticTree {
+        root: rig.nodes()[0].id.clone(),
+        nodes: rig.nodes(),
+    };
+    assert_eq!(tree.validate(), Ok(()));
+}

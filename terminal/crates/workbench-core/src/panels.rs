@@ -32,6 +32,11 @@ pub const ACTION_TOGGLE_PIN: &str = "picker.toggle-pin";
 pub const ACTION_TAB_FOCUS: &str = "tab.focus.";
 pub const ACTION_TAB_CLOSE: &str = "tab.close.";
 
+/// Prefix of a delegation row's semantic action in the conversation panel; the
+/// delegation's id follows (`theo.delegation.open.d-1`). It opens that
+/// delegation's changes panel, which only reads.
+pub const ACTION_DELEGATION_OPEN: &str = "theo.delegation.open.";
+
 /// Prefixes of a row's pin and unpin semantic actions; the tool's panel kind
 /// follows (`picker.pin.cabinet`).
 pub const ACTION_PIN: &str = "picker.pin.";
@@ -220,12 +225,16 @@ impl Panel for PickerPanel {
                 id: ActionId::new(ACTION_BACK),
                 enabled: true,
                 reason: None,
+                title: None,
             });
             add(&mut root, node);
         }
         let label = view.entry.as_deref().unwrap_or("Filter tools");
         let mut filter = Node::new("filter", Role::TextBox, label, layout.filter);
-        filter.state.description = Some(view.filter.clone());
+        // The typed text is the box's text, escaped, with the caret at its end;
+        // it is not repeated in the description.
+        let end = view.filter.chars().count();
+        crate::caret::caret_text(&view.filter, end, end).put(&mut filter);
         add(&mut root, filter);
         if let Some(empty) = layout.empty {
             add(&mut root, Node::new("empty", Role::Status, NO_MATCH, empty));
@@ -261,6 +270,7 @@ impl Panel for PickerPanel {
                 id: row.action.clone(),
                 enabled,
                 reason,
+                title: None,
             });
             if row.pinnable {
                 let verb = if row.pinned { ACTION_UNPIN } else { ACTION_PIN };
@@ -268,6 +278,7 @@ impl Panel for PickerPanel {
                     id: ActionId::new(format!("{verb}{}", row.panel.as_str())),
                     enabled: true,
                     reason: None,
+                    title: None,
                 });
             }
             add(&mut root, node);

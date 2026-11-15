@@ -163,7 +163,7 @@ pub(crate) fn band(
     head_rows: u16,
     bottom: u16,
 ) -> Option<Band> {
-    let text = line(&b.report, !b.running())?;
+    let text = line(&b.report, b.status.program_ended())?;
     let top = area.y + head_rows;
     // At least one row of the screen stays visible.
     let room = bottom.saturating_sub(top).saturating_sub(1);

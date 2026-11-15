@@ -68,6 +68,10 @@ pub fn actions() -> Vec<ActionDescriptor> {
         // it a person-only act, so it is not marked human only.
         ActionDescriptor::new("shell.control", "Request control", Start)
             .emits(EffectKind::TerminalAttach),
+        // Attaches to the same terminal again when only the connection to it
+        // was lost. Never starts a new process.
+        ActionDescriptor::new("shell.reconnect", "Reconnect to the terminal", Create)
+            .emits(EffectKind::TerminalAttach),
         ActionDescriptor::new("shell.resend", "Resend unconfirmed input", Start)
             .emits(EffectKind::TerminalInput),
         // `shell.end` only asks; this confirms, and a model-origin request is

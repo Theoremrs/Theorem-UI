@@ -330,8 +330,8 @@ impl Rig {
         match tree.node(&NodeId::new(format!("{}/notice", self.id.as_str()))) {
             Some(n) => {
                 let (y, h) = (
-                    usize::from(n.rect.y.saturating_sub(b.y)),
-                    usize::from(n.rect.height),
+                    usize::from(n.rect.unwrap().y.saturating_sub(b.y)),
+                    usize::from(n.rect.unwrap().height),
                 );
                 let above = rows[y..y + h].join(" ");
                 format!("{last} {above}")
@@ -445,7 +445,7 @@ impl Rig {
         let rows = self.rows(b.width, b.height);
         let mut lines: Vec<String> = rows
             .iter()
-            .take(usize::from(node.rect.height))
+            .take(usize::from(node.rect.unwrap().height))
             .map(|r| r.get(2..).unwrap_or("").to_owned())
             .collect();
         while lines.last().is_some_and(|l| l.is_empty()) {
@@ -2589,16 +2589,21 @@ impl Rig {
             .iter()
             .filter(|n| n.id.as_str().starts_with(&want))
             .map(|n| {
-                let row = &rows[usize::from(n.rect.y - b.y)];
+                let row = &rows[usize::from(n.rect.unwrap().y - b.y)];
                 let drawn: String = row
                     .chars()
-                    .skip(usize::from(n.rect.x - b.x))
-                    .take(usize::from(n.rect.width))
+                    .skip(usize::from(n.rect.unwrap().x - b.x))
+                    .take(usize::from(n.rect.unwrap().width))
                     .collect();
                 let r = n.rect;
                 (
                     n.actions[0].id.as_str().to_owned(),
-                    Rect::new(r.x, r.y, r.width, r.height),
+                    Rect::new(
+                        r.unwrap().x,
+                        r.unwrap().y,
+                        r.unwrap().width,
+                        r.unwrap().height,
+                    ),
                     drawn,
                 )
             })
@@ -5042,9 +5047,154 @@ fn clicking_a_point_chooses_it() {
     rig.answer(&ask, Outcome::Accepted, Some(preview_of("three\n")));
     let row = rig.node("history:2").rect;
     let b = rig.body();
-    let fx = rig.click(row.x - b.x + 3, row.y - b.y, 1);
+    let fx = rig.click(row.unwrap().x - b.x + 3, row.unwrap().y - b.y, 1);
     assert_eq!(
         point_of(&one(&fx, EffectKind::DocumentHistoryPreview)),
         "h1"
     );
+}
+
+// ---- the text and caret the nodes publish --------------------------------
+
+fn caret_of(n: &theorem_workbench_core::semantics::Node) -> (u32, u32) {
+    let s = n.selection.expect("a text box publishes its selection");
+    (s.anchor, s.focus)
+}
+
+fn tree_is_valid(rig: &Rig) {
+    assert_eq!(semantics(&rig.m).validate(), Ok(()));
+}
+
+#[test]
+fn the_text_node_carries_the_text_and_the_caret_in_utf16_units() {
+    // a, an astral character (2 units), e and a combining acute (2 units), a CJK character.
+    let mut rig = Rig::opened("a\u{1F600}e\u{301}\u{65e5}\nsecond\n");
+    let n = rig.node("text");
+    assert_eq!(
+        n.text.as_deref(),
+        Some("a\u{1F600}e\u{301}\u{65e5}\nsecond\n")
+    );
+    assert_eq!(caret_of(&n), (0, 0));
+    rig.key(Key::End);
+    assert_eq!(caret_of(&rig.node("text")), (6, 6));
+    rig.mods(Key::Left, Mods::SHIFT);
+    assert_eq!(
+        caret_of(&rig.node("text")),
+        (6, 5),
+        "one grapheme back is one unit here"
+    );
+    rig.mods(Key::Left, Mods::SHIFT);
+    assert_eq!(
+        caret_of(&rig.node("text")),
+        (6, 3),
+        "the mark and its letter go together"
+    );
+    rig.mods(Key::Left, Mods::SHIFT);
+    assert_eq!(
+        caret_of(&rig.node("text")),
+        (6, 1),
+        "the astral character is one step"
+    );
+    tree_is_valid(&rig);
+    // The caret on the second line counts from the start of the text, not the line.
+    rig.key(Key::Down);
+    rig.key(Key::End);
+    assert_eq!(caret_of(&rig.node("text")), (13, 13));
+}
+
+#[test]
+fn offsets_are_into_the_escaped_text_for_a_hostile_document() {
+    let mut rig = Rig::opened("x\u{1b}[2J\u{202e}y\n");
+    let n = rig.node("text");
+    let text = n.text.as_deref().unwrap();
+    assert!(
+        !text.contains('\u{1b}') && !text.contains('\u{202e}'),
+        "{text:?}"
+    );
+    assert!(text.contains("\\u{1b}[2J\\u{202e}y"), "{text:?}");
+    rig.key(Key::End);
+    let n = rig.node("text");
+    let line = text.split('\n').next().unwrap();
+    assert_eq!(caret_of(&n).1 as usize, line.encode_utf16().count());
+    tree_is_valid(&rig);
+}
+
+#[test]
+fn a_large_document_publishes_whole_lines_around_the_caret_and_says_so() {
+    let doc: String = (0..20_000)
+        .map(|i| format!("row {i:05} \u{1F600}\n"))
+        .collect();
+    let mut rig = Rig::opened(&doc);
+    let top = rig.node("text");
+    let text = top.text.as_deref().unwrap();
+    assert!(text.len() < theorem_workbench_core::semantics::MAX_NODE_TEXT);
+    assert!(text.starts_with("row 00000"));
+    assert!(
+        top.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("the text holds only lines 1 to")
+    );
+    // The caret goes to the end: the window follows it and the caret is still inside the text.
+    rig.mods(Key::End, Mods::CTRL);
+    let end = rig.node("text");
+    let text = end.text.as_deref().unwrap();
+    assert!(
+        text.ends_with("row 19999 \u{1F600}\n"),
+        "{:?}",
+        &text[text.len().saturating_sub(30)..]
+    );
+    assert!(!text.starts_with("row 00000"));
+    assert_eq!(caret_of(&end).1 as usize, text.encode_utf16().count());
+    let d = end.state.description.as_deref().unwrap();
+    assert!(d.contains("to 20001 of 20001"), "{d}");
+    tree_is_valid(&rig);
+}
+
+#[test]
+fn the_find_and_replace_fields_publish_their_text_as_the_value_not_the_description() {
+    let mut rig = Rig::opened("hello\n");
+    rig.chord('f');
+    rig.typed("\u{e9}\u{1F600}");
+    let q = rig.node("find-query");
+    assert_eq!(q.text.as_deref(), Some("\u{e9}\u{1F600}"));
+    assert_eq!(caret_of(&q), (3, 3));
+    assert_eq!(q.state.description, None, "the value is not a description");
+    rig.key(Key::Left);
+    assert_eq!(caret_of(&rig.node("find-query")), (1, 1));
+    tree_is_valid(&rig);
+}
+
+#[test]
+fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
+    let mut rig = Rig::opened("hello\n");
+    let mut seen = 0;
+    for step in 0..2 {
+        if step == 1 {
+            rig.chord('f');
+        }
+        for n in semantics(&rig.m).nodes {
+            if n.id.as_str().starts_with("tab:") {
+                continue;
+            }
+            for a in n.actions {
+                let (_, d) = rig.m.registry().action(&a.id).unwrap_or_else(|| {
+                    panic!(
+                        "{} is offered by {} and not registered",
+                        a.id.as_str(),
+                        n.id.as_str()
+                    )
+                });
+                assert!(
+                    !d.title.trim().is_empty() && !d.title.contains(a.id.as_str()),
+                    "{}: {:?}",
+                    a.id.as_str(),
+                    d.title
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 10, "the editor offers its actions on its nodes");
 }

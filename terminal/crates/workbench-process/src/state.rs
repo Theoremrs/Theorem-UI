@@ -37,6 +37,8 @@ pub(crate) struct Opening {
     /// binding this open starts.
     pub prefix: String,
     pub attachment: String,
+    /// The id of the launch this open is an attempt of.
+    pub operation: String,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -17,6 +17,16 @@ profile: string, backend: TerminalBackend, workspace: string, host?: string,
  */
 program?: number, state: TerminalSessionState, 
 /**
+ * Why the host calls the session `lost`, in its own word
+ * (`core_closed`, `core_unavailable`, `subscribe_timed_out` or another).
+ * Absent unless the connection to the terminal is lost.
+ */
+reason?: string, 
+/**
+ * What the host says to do about it (`retry`). Absent when it names none.
+ */
+nextStep?: string, 
+/**
  * Another viewer holds the control lease.
  */
 controlledElsewhere: boolean, 

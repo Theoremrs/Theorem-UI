@@ -99,6 +99,16 @@ function Spoken({ text, settleMs }: { text: string; settleMs: number }) {
   return shown
 }
 
+/** The style of a node with no rect: read by assistive technology, with no cell geometry and nothing to see. */
+const UNDRAWN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  overflow: 'hidden',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+}
+
 const NodeView = memo(function NodeView({
   placed,
   originX,
@@ -123,13 +133,17 @@ const NodeView = memo(function NodeView({
   const attributes = ariaAttributes(node, placed.role)
   const description = describe(node, panelOf(store.parent, node.id))
   const rect = node.rect
-  const style: CSSProperties = {
-    position: 'absolute',
-    left: cells(rect.x - originX, 'w'),
-    top: cells(rect.y - originY, 'h'),
-    width: cells(rect.width, 'w'),
-    height: cells(rect.height, 'h'),
-  }
+  // A node the core did not draw this frame (a row scrolled out, a group with no room) is in the
+  // tree and is announced, but it has no cells to lay over: it is a clipped box with no place.
+  const style: CSSProperties = rect
+    ? {
+        position: 'absolute',
+        left: cells(rect.x - originX, 'w'),
+        top: cells(rect.y - originY, 'h'),
+        width: cells(rect.width, 'w'),
+        height: cells(rect.height, 'h'),
+      }
+    : UNDRAWN
   const action = primaryAction(node)
   const onClick =
     action && ACTIVATABLE.has(placed.role)
@@ -156,10 +170,16 @@ const NodeView = memo(function NodeView({
         // The input field is this node's owner while it holds its text: one owner per node.
         aria-hidden={mirrored ? 'true' : undefined}
         data-node={node.id}
+        data-undrawn={rect ? undefined : ''}
       >
         {words}
         {placed.children.map((child) => (
-          <NodeView key={child.id} placed={child} originX={rect.x} originY={rect.y} />
+          <NodeView
+            key={child.id}
+            placed={child}
+            originX={rect?.x ?? originX}
+            originY={rect?.y ?? originY}
+          />
         ))}
       </div>
       {description ? (

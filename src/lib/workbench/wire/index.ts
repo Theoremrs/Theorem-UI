@@ -36,6 +36,7 @@ export type { CompletionRange } from "./CompletionRange";
 export type { ConflictSides } from "./ConflictSides";
 export type { ConflictTake } from "./ConflictTake";
 export type { ConnectionState } from "./ConnectionState";
+export type { ConnectivityState } from "./ConnectivityState";
 export type { ConversationApproval } from "./ConversationApproval";
 export type { ConversationApproved } from "./ConversationApproved";
 export type { ConversationCancel } from "./ConversationCancel";

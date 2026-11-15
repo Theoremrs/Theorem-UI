@@ -6,6 +6,8 @@ publish = false
 description = "The Markdown panel of the Theo Web terminal workbench: Visual, Source, Split and Preview over one document session, its edits sent to the document owner"
 
 [dependencies]
+# The text and caret a text-edit node publishes (escaped, UTF-16 offsets, bounded).
+theorem-workbench-panels = { path = "../workbench-panels" }
 theorem-workbench-core = { path = "../workbench-core" }
 theorem-workbench-markdown = { path = "../workbench-markdown" }
 theorem-workbench-editor = { path = "../workbench-editor" }
@@ -24,6 +26,5 @@ github-slugger = "0.1"
 [dev-dependencies]
 ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
 theorem-workbench-dock = { path = "../workbench-dock" }
-theorem-workbench-panels = { path = "../workbench-panels" }
 serde_json = "1"
 unicode-width = "0.2"

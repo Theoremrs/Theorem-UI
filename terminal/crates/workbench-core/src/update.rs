@@ -288,7 +288,11 @@ impl Model {
             return;
         };
         let area = self.dock_area_in(vp.area);
-        let frame = self.dock.solve(area, vp.metrics);
+        let mut frame = self.dock.solve(area, vp.metrics);
+        if self.reconcile_drawer(&frame) {
+            frame = self.dock.solve(area, vp.metrics);
+        }
+        self.settled_focus = self.focus_owner();
         let bodies: Vec<(PanelInstanceId, Rect)> = frame
             .groups
             .iter()
@@ -810,6 +814,14 @@ impl Model {
         if let Some(effects) = self.tab_node_action(&id) {
             return effects;
         }
+        // A delegation row of the conversation: the panel that shows it opens
+        // the changes panel, for a person's Enter and an agent's action alike.
+        if id
+            .as_str()
+            .starts_with(crate::panels::ACTION_DELEGATION_OPEN)
+        {
+            return self.delegation_node_action(id, on);
+        }
         // One presentation of the panel's document, by kind. The same checks
         // run for a person's choice and an agent's.
         if let Some(kind) = id
@@ -1105,6 +1117,34 @@ impl Model {
         }))
     }
 
+    /// `theo.delegation.open.<delegation>`: handed to the conversation panel the
+    /// action is for (the one named, else the focused one, else the first).
+    /// Opening starts nothing, so it is the same for every actor.
+    fn delegation_node_action(&mut self, id: ActionId, on: Option<PanelInstanceId>) -> Vec<Effect> {
+        // The conversation and a side chat both list their delegations.
+        let theo = PanelKind::new(THEO_KIND);
+        let is_theo = |model: &Self, p: &PanelInstanceId| {
+            model
+                .panels
+                .get(p)
+                .is_some_and(|e| e.available && (e.kind == theo || e.kind.as_str() == "side-chat"))
+        };
+        let target = match on {
+            Some(p) => is_theo(self, &p).then_some(p),
+            None => self
+                .focus_owner()
+                .filter(|p| is_theo(self, p))
+                .or_else(|| self.target_of_kind(&theo)),
+        };
+        let Some(target) = target else {
+            self.notify(Notice::NoPanel(id));
+            return vec![];
+        };
+        self.call(&target, Mode::Normal, |p, cx| {
+            p.update(PanelMsg::Action(id), cx)
+        })
+    }
+
     /// `picker.back`, `picker.pin.<kind>` and `picker.unpin.<kind>`: what the
     /// picker's semantic tree offers besides choosing a row. None when `id` is
     /// not one of them.
@@ -1260,6 +1300,10 @@ impl Model {
     /// The picker's body is a panel in the tools region: the empty destination
     /// a new tool tab starts as.
     fn show_picker_panel(&mut self) {
+        self.show_picker_panel_in(None);
+    }
+
+    fn show_picker_panel_in(&mut self, role: Option<dock::Role>) {
         let kind = PanelKind::new(PICKER_KIND);
         let existing = self
             .panels
@@ -1272,9 +1316,16 @@ impl Model {
                 self.dock_result(r);
             }
             None => {
-                self.open_panel(&kind);
+                self.open_panel_with(&kind, &Value::Null, role);
             }
         }
+    }
+
+    fn dock_holds_no_tab(&self) -> bool {
+        self.dock
+            .group_ids()
+            .into_iter()
+            .all(|g| self.dock.group(g).is_none_or(|g| g.tabs().is_empty()))
     }
 
     fn close_picker_panels(&mut self) {
@@ -1308,6 +1359,7 @@ impl Model {
         let Some(mut entry) = self.panels.remove(id) else {
             return vec![];
         };
+        let was_picker = entry.kind.as_str() == PICKER_KIND;
         if self.capture.as_ref() == Some(id) {
             self.capture = None;
         }
@@ -1335,7 +1387,18 @@ impl Model {
             self.retained.forget_local(&resource);
         }
         self.dirty = true;
-        out.effects
+        let effects = out.effects;
+        // Closing the last panel leaves the main pane empty. The spec is
+        // silent on what an empty dock shows; the tool picker ("Add tool") is
+        // the one thing that is always there to choose from.
+        // A picker the person dismissed stays dismissed: its chord still opens it.
+        if !was_picker && self.dock_holds_no_tab() {
+            self.note_focus_before_picker();
+            self.picker
+                .update(PickerMsg::Rest, &self.registry, &self.caps, &self.pinned);
+            self.show_picker_panel_in(Some(dock::Role::Main));
+        }
+        effects
     }
 
     // --- the keyboard's way around the dock ---
@@ -1372,16 +1435,74 @@ impl Model {
 
     /// Close the drawer and put the keyboard back where it was when it opened.
     fn close_drawer(&mut self) {
-        if self.dock.drawer().is_none() {
+        let Some(drawer) = self.dock.drawer() else {
             return;
-        }
+        };
         self.dock.close_drawer();
-        if let Some(id) = self.before_drawer.take()
-            && self.panels.contains_key(&id)
-        {
+        // A collapsed group's own panel is no place to go back to: focus
+        // there would open the drawer again.
+        let collapsed = self
+            .frame
+            .as_ref()
+            .is_some_and(|f| f.drawers.iter().any(|d| d.group == drawer));
+        let back = self.before_drawer.take().filter(|id| {
+            self.panels.contains_key(id)
+                && !(collapsed && self.dock.find_panel(&Self::dock_id(id)) == Some(drawer))
+        });
+        if let Some(id) = back {
             let r = self.dock.focus_panel(&Self::dock_id(&id));
             self.dock_result(r);
+        } else if self.dock.focused() == drawer {
+            // Nowhere to go back to (focus was in the drawer's own group
+            // before it collapsed): leave for a group that is drawn, or a
+            // collapsed group would just open again.
+            self.focus_a_drawn_group(drawer);
         }
+    }
+
+    /// Focus the first visible group other than `not` that is not a
+    /// collapsed Files group, preferring Main.
+    fn focus_a_drawn_group(&mut self, not: GroupId) {
+        let ids = self.dock.group_ids();
+        let pick = |role: Option<dock::Role>| {
+            ids.iter().copied().find(|id| {
+                *id != not
+                    && self
+                        .dock
+                        .group(*id)
+                        .is_some_and(|g| !g.is_hidden() && role.is_none_or(|r| g.role() == r))
+            })
+        };
+        if let Some(id) = pick(Some(dock::Role::Main)).or_else(|| pick(None)) {
+            let _ = self.dock.focus_group(id);
+        }
+    }
+
+    /// Keep the drawer true to the keyboard. A group the window has no room
+    /// for collapses to a drawer; focus that lands in it, by a chord,
+    /// `tab.focus` or anything else, opens the drawer so the focused panel is
+    /// drawn and gets the keys, and focus that leaves it closes the drawer.
+    /// Only collapsed groups are touched. Returns whether the dock changed.
+    fn reconcile_drawer(&mut self, frame: &dock::SolvedFrame) -> bool {
+        let focused = self.dock.focused();
+        if let Some(d) = frame.drawers.iter().find(|d| d.group == focused && !d.open) {
+            let came_from = self
+                .settled_focus
+                .clone()
+                .filter(|id| self.dock.find_panel(&Self::dock_id(id)) != Some(d.group));
+            if self.dock.drawer().is_none() {
+                self.before_drawer = came_from;
+            }
+            let r = self.dock.open_drawer(d.group);
+            self.dock_result(r);
+            return true;
+        }
+        if frame.drawers.iter().any(|d| d.open && d.group != focused) {
+            self.dock.close_drawer();
+            self.before_drawer = None;
+            return true;
+        }
+        false
     }
 
     /// One of the workbench's own actions, by its name after `workbench.`.
@@ -2096,6 +2217,7 @@ impl Model {
             // Output that arrived first is handed over first.
             HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
+            | HostMessage::TerminalConnectivity { .. }
             | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalResized { .. } => self.drain_pty(),
             HostMessage::ConversationSnapshot {
@@ -2120,6 +2242,12 @@ impl Model {
         let (resource, revision) = host_route(&message);
         let targets = self.bound_to(resource);
         for id in targets {
+            if let HostMessage::TerminalConnectivity { epoch, .. } = &message
+                && self.older_epoch(&id, *epoch)
+            {
+                self.drop_stale(Stale::OlderEpoch);
+                continue;
+            }
             if let (Some(resource), Some(revision)) = (resource, &revision) {
                 // The same gate a completion passes: an event older than the
                 // panel's revision must not overwrite newer work.
@@ -2380,6 +2508,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | TerminalResized { resource, .. }
         | TerminalOpened { resource, .. }
         | TerminalExited { resource, .. }
+        | TerminalConnectivity { resource, .. }
         | TerminalReport { resource, .. }
         | TerminalControl { resource, .. } => (Some(resource), None),
         FileChanged { .. }

@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::semantics::{Node, Role};
 use theorem_workbench_core::{DraftAttachmentState, Theme};
 use theorem_workbench_editor::{EditorStyles, Paint};
+use theorem_workbench_panels::caret::caret_text;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -456,7 +457,10 @@ impl Composer {
 
         let mut text = Node::new(&format!("{p}:text"), Role::TextBox, &self.label, lay.text);
         let value = self.session.text();
-        text = text.with_text(&value);
+        let shown = caret_text(&value, self.session.anchor(), self.session.cursor());
+        let windowed = shown.windowed();
+        let (cut_from, cut_lines) = (shown.lines_before + 1, shown.text.matches('\n').count());
+        shown.put(&mut text);
         text.state.focused = self.focused && self.window_focused && self.chip.is_none();
         text.state.busy = self.preedit.is_some();
         text.state.description = Some(if value.is_empty() {
@@ -476,6 +480,14 @@ impl Composer {
                     coords.grapheme_index(b)
                 ));
             }
+            if windowed {
+                d.push_str(&format!(
+                    "; the text node holds only lines {} to {} of {}, around the caret",
+                    cut_from,
+                    cut_from + cut_lines,
+                    coords.line_count()
+                ));
+            }
             d
         });
         text.shortcut = Some("Enter".to_owned());
@@ -486,12 +498,21 @@ impl Composer {
             let mut menu = Node::new(&format!("{p}:popup"), Role::Menu, pop.title(), r);
             let labels = pop.labels();
             let n = labels.len();
+            // Each item sits where the popup draws it; one scrolled out of the popup is not
+            // drawn and has no height.
+            let rows = usize::from(r.height);
+            let first = self.popup_first(rows);
             let items: Vec<Node> = labels
                 .iter()
                 .enumerate()
                 .take(100)
                 .map(|(i, l)| {
-                    let mut item = Node::new(&format!("{p}:popup:{i}"), Role::MenuItem, l, r);
+                    let rect = if (first..first + rows).contains(&i) {
+                        Rect::new(r.x, r.y + (i - first) as u16, r.width, 1)
+                    } else {
+                        Rect::new(r.x, r.y, r.width, 0)
+                    };
+                    let mut item = Node::new(&format!("{p}:popup:{i}"), Role::MenuItem, l, rect);
                     item.state.selected = i == pop.selected();
                     item.pos_in_set = u16::try_from(i + 1).ok();
                     item.set_size = u16::try_from(n).ok();
@@ -511,7 +532,14 @@ impl Composer {
             } else {
                 format!("{}  {}", self.footer_left(), right)
             };
-            let n = Node::new(&format!("{p}:footer"), Role::Status, &name, r);
+            // A notice is why Enter did nothing: a refusal, which needs attention. The
+            // hints and the model line are a passing status.
+            let role = if self.notice.is_some() {
+                Role::Alert
+            } else {
+                Role::Status
+            };
+            let n = Node::new(&format!("{p}:footer"), role, &name, r);
             kids.push(n.id.clone());
             out.push(n);
         }

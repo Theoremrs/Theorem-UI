@@ -25,6 +25,7 @@ web-sys = { version = "0.3", features = ["Event", "EventTarget", "Navigator"] }
 theorem-workbench-core = { path = "crates/workbench-core" }
 theorem-workbench-panels = { path = "crates/workbench-panels" }
 theorem-workbench-dock = { path = "crates/workbench-dock" }
+theorem-workbench-text = { path = "crates/workbench-text" }
 theorem-workbench-process = { path = "crates/workbench-process" }
 theorem-workbench-changes = { path = "crates/workbench-changes" }
 theorem-workbench-editor = { path = "crates/workbench-editor" }

@@ -42,6 +42,7 @@ use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
     Button, Ctx, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, TabLabel, ViewCtx,
 };
+use theorem_workbench_panels::caret::caret_text;
 
 use crate::field::{Field, Look};
 use crate::styles::Styles;
@@ -976,6 +977,7 @@ impl RunPanel {
             id: ActionId::new(id),
             enabled: reason.is_none(),
             reason,
+            title: None,
         };
         let start = if !self.can_start {
             Some(self.unavailable_start())
@@ -1220,7 +1222,8 @@ impl RunPanel {
                 &self.command,
             ),
         ] {
-            let mut node = Node::new(id, Role::TextBox, name, rect).with_text(field.value());
+            let mut node = Node::new(id, Role::TextBox, name, rect);
+            caret_text(field.value(), field.cursor(), field.cursor()).put(&mut node);
             node.state.focused = focused && self.focus == focus;
             put(&mut root, node, &mut out);
         }

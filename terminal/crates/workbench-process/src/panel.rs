@@ -59,6 +59,12 @@ pub struct ProcessPanel {
     pub(crate) connection: Option<ConnectionState>,
     seen: u64,
     binds: u64,
+    /// Launch intents minted, for their ids.
+    launches: u64,
+    /// A launch that failed or whose outcome is unknown: the profile it was
+    /// of and its operation id. Choosing the same profile again is a second
+    /// attempt of it and carries the same id; anything else is a new launch.
+    unsettled: Option<(String, String)>,
     deferred: Vec<Deferred>,
     /// Opens the pane stopped waiting for: their answer is never shown as the
     /// current state, but a process that started is said so.
@@ -97,6 +103,8 @@ impl ProcessPanel {
             note: None,
             connection: None,
             binds: 0,
+            launches: 0,
+            unsettled: None,
             deferred: vec![],
             abandoned: BTreeSet::new(),
             pending_focus: None,
@@ -231,6 +239,18 @@ impl ProcessPanel {
         self.binds += 1;
         let prefix = self.prefix(cx);
         let attachment = format!("{prefix}.a");
+        let operation = match self.unsettled.take() {
+            Some((profile, operation)) if profile == choice.id => operation,
+            _ => {
+                self.launches += 1;
+                format!(
+                    "{}.{}.op{}",
+                    self.catalog.nonce(),
+                    cx.panel().as_str(),
+                    self.launches
+                )
+            }
+        };
         let body = EffectBody::TerminalOpen(TerminalOpen {
             backend: choice.backend,
             argv: choice.argv.clone(),
@@ -238,6 +258,7 @@ impl ProcessPanel {
             cols,
             rows,
             attachment: Some(attachment.clone()),
+            operation: Some(operation.clone()),
         });
         let resource = ResourceRef::Workspace {
             workspace: self.identity.workspace.clone(),
@@ -253,6 +274,7 @@ impl ProcessPanel {
                     follows,
                     prefix,
                     attachment,
+                    operation,
                 });
             }
             Err(error) => {
@@ -495,7 +517,7 @@ impl ProcessPanel {
                 Key::Enter => self.attach_again(cx),
                 Key::Esc => self.back_to_chooser(cx, None),
                 _ => match plain_char(&key) {
-                    Some('n') => self.start_new(cx),
+                    Some('n') if !self.connection_lost() => self.start_new(cx),
                     Some('a') => self.attach_again(cx),
                     _ => {}
                 },
@@ -558,6 +580,15 @@ impl ProcessPanel {
         };
         self.back_to_chooser(cx, None);
         self.attach_to(cx, session, backend, Want::Observer, Why::Chosen);
+    }
+
+    /// Only the connection to the terminal is lost; the program may still be
+    /// running, so a new shell is not the way back.
+    fn connection_lost(&self) -> bool {
+        matches!(
+            &self.stage,
+            Stage::Bound(b) if matches!(b.status, crate::bound::Status::Lost { link: true, .. })
+        )
     }
 
     /// An explicit new process of the profile the lost one was opened from.
@@ -817,6 +848,9 @@ impl ProcessPanel {
 
     /// The answer to an open. Only an accepted one starts anything.
     fn opened(&mut self, cx: &mut Ctx, op: Opening, c: Completion) {
+        // Until a session is named, this launch is unsettled: choosing the
+        // same profile again is a second attempt of it, never a new launch.
+        self.unsettled = Some((op.choice.id.clone(), op.operation.clone()));
         match c.outcome {
             Outcome::Accepted => {
                 let Some(CompletionPayload::Terminal(t)) = c.payload else {
@@ -838,6 +872,7 @@ impl ProcessPanel {
                     t.cols,
                     t.rows,
                 );
+                self.unsettled = None;
                 b.profile = Some(op.choice);
                 b.follows = op.follows;
                 b.opened(cx, &t, Want::Controller, Why::Chosen);
@@ -917,9 +952,11 @@ impl ProcessPanel {
             "shell.start" => match &self.stage {
                 Stage::Choosing => self.choose(cx, Pick::Default),
                 Stage::Failed(_) => self.retry_failed(cx),
+                Stage::Bound(_) if self.connection_lost() => self.attach_again(cx),
                 Stage::Bound(b) if !b.running() => self.start_new(cx),
                 _ => {}
             },
+            "shell.reconnect" if self.connection_lost() => self.attach_again(cx),
             "shell.attach" => self.choose_session(cx, Pick::Default),
             "shell.observe" => self.choose_session(cx, Pick::Observe),
             "shell.control" => {
@@ -1038,6 +1075,10 @@ fn block_note(block: &Block) -> Note {
         Block::Ended => Note::new(
             Tone::Warning,
             "The program is not running; nothing was sent.",
+        ),
+        Block::Disconnected => Note::new(
+            Tone::Warning,
+            "The connection to the terminal is lost; nothing was sent. Retry to reconnect.",
         ),
         Block::Attaching => Note::new(Tone::Muted, "Still attaching; nothing was sent."),
         Block::Ending => Note::new(Tone::Muted, "Ending the process; nothing was sent."),

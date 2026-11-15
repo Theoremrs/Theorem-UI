@@ -294,6 +294,12 @@ describe('descriptions and actions', () => {
     expect(describeNode(node('plain'))).toBeUndefined()
   })
 
+  test('names an action by its title when the core gave one, and trims it', () => {
+    expect(actionName({ id: 'tab.focus.p3', title: 'Focus Files' }, 'p3')).toBe('Focus Files')
+    expect(actionName({ id: 'tab.close.p3', title: '  ' }, 'p3')).toBe('tab close')
+    expect(actionName({ id: 'tab.close.p3' }, 'p3')).toBe('tab close')
+  })
+
   test('names an action from its id, without the panel instance it is aimed at', () => {
     expect(actionName('tab.close.p3', 'p3')).toBe('tab close')
     expect(actionName('approval.allow')).toBe('approval allow')

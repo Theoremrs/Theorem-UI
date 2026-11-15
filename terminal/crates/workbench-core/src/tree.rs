@@ -86,7 +86,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
         root.children.push(unshown_group(
             model,
             drawer.group,
-            "Collapsed to a drawer: open the drawer to see it.",
+            "Collapsed to a drawer. Focus a tab in it, by its chord or tab.focus, to open the drawer.",
             &mut nodes,
         ));
     }
@@ -121,6 +121,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
                 id: ActionId::new(id),
                 enabled,
                 reason: (!enabled).then(|| "Already in that state".to_owned()),
+                title: None,
             })
             .collect();
         root.children.push(node.id.clone());
@@ -128,6 +129,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
     }
     describe_frame(frame, &mut root);
     nodes.insert(0, root);
+    title_actions(model, &mut nodes);
     SemanticTree {
         root: NodeId::new(ROOT),
         nodes,
@@ -200,6 +202,13 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
     let gid = group.id.raw();
     let mut group_node = Node::new(&format!("group:{gid}"), Role::Group, name, group.rect);
     group_node.state.focused = group.focused;
+    if group.overlay {
+        group_node.state.description = Some(
+            "Drawer, open. Escape or the Close the drawer action closes it; moving focus to \
+             another panel closes it too."
+                .to_owned(),
+        );
+    }
 
     let mut strip = Node::new(
         &format!("tabs:{gid}"),
@@ -289,6 +298,39 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
     id
 }
 
+/// Give every action a title a person would read. A panel may set its own; the
+/// rest come from the registry's descriptor, and the actions the core makes up
+/// per panel or per row (they are not registered) from the node they sit on.
+fn title_actions(model: &Model, nodes: &mut [Node]) {
+    use crate::panels::{ACTION_DELEGATION_OPEN, ACTION_PIN, ACTION_UNPIN};
+    use crate::presentation::{ACTION_PRESENTATION, ACTION_PRESENTATION_NEXT, PRESENTATION_USE};
+    for node in nodes.iter_mut() {
+        let name = node.name.clone();
+        for action in node.actions.iter_mut().filter(|a| a.title.is_none()) {
+            let id = action.id.as_str();
+            let from =
+                |prefix: &str, verb: &str| id.starts_with(prefix).then(|| format!("{verb} {name}"));
+            action.title = model
+                .registry()
+                .action(&action.id)
+                .map(|(_, d)| d.title.clone())
+                .or_else(|| from(ACTION_TAB_FOCUS, "Focus"))
+                .or_else(|| from(ACTION_TAB_CLOSE, "Close"))
+                .or_else(|| from(ACTION_DELEGATION_OPEN, "Open"))
+                .or_else(|| from(ACTION_PIN, "Pin"))
+                .or_else(|| from(ACTION_UNPIN, "Unpin"))
+                .or_else(|| {
+                    id.strip_prefix(PRESENTATION_USE)
+                        .map(|kind| format!("Show as {kind}"))
+                })
+                .or_else(|| (id == ACTION_PRESENTATION).then(|| "Change presentation".to_owned()))
+                .or_else(|| {
+                    (id == ACTION_PRESENTATION_NEXT).then(|| "Next presentation".to_owned())
+                });
+        }
+    }
+}
+
 /// What a tab offers: show its panel, or close the view (never what it shows).
 fn tab_actions(panel: &PanelInstanceId) -> Vec<NodeAction> {
     [ACTION_TAB_FOCUS, ACTION_TAB_CLOSE]
@@ -297,6 +339,7 @@ fn tab_actions(panel: &PanelInstanceId) -> Vec<NodeAction> {
             id: ActionId::new(format!("{prefix}{}", panel.as_str())),
             enabled: true,
             reason: None,
+            title: None,
         })
         .collect()
 }
@@ -323,11 +366,13 @@ fn describe_presentation(model: &Model, panel: &PanelInstanceId, node: &mut Node
         id: ActionId::new(ACTION_PRESENTATION),
         enabled: another,
         reason: (!another).then(|| "No other presentation can show this document.".to_owned()),
+        title: None,
     });
     node.actions.push(NodeAction {
         id: ActionId::new(ACTION_PRESENTATION_NEXT),
         enabled: another,
         reason: (!another).then(|| "No other presentation can show this document.".to_owned()),
+        title: None,
     });
     for e in &entries {
         let (enabled, reason) = match (&e.availability, e.current) {
@@ -339,6 +384,7 @@ fn describe_presentation(model: &Model, panel: &PanelInstanceId, node: &mut Node
             id: ActionId::new(format!("{PRESENTATION_USE}{}", e.kind.as_str())),
             enabled,
             reason,
+            title: None,
         });
     }
 }

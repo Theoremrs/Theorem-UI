@@ -1,24 +1,32 @@
-//! What the accessible tree and `workbench.read` see. It carries host fields
-//! and the pane's own state words; it never carries screen text, which is the
-//! program's and has no structure to offer.
+//! What the accessible tree and `workbench.read` see. It carries host fields,
+//! the pane's own state words and the screen as text (spelled out by
+//! `visible`, since the screen is the program's and untrusted).
+//!
+//! A terminal is not a text field: the program owns the line being edited, so
+//! the terminal node publishes `text` and no `selection`. A caret offset would
+//! point into a screen the program redraws on every keystroke, and a screen
+//! reader that took it for an editable field would type into the wrong place.
+//! The cursor cell is in the node's description, which is what a reader needs.
 
 use ratatui::layout::Rect;
 use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role as Aria};
 
-use crate::bound::{Bound, EndAsk, Role, Status};
+use crate::bound::{Bound, EndAsk, Role, Status, Tone};
 use crate::chooser::{self, RowKind};
 use crate::draw;
 use crate::panel::ProcessPanel;
 use crate::report;
 use crate::state::{Stage, reason_text};
+use theorem_workbench_text::visible::visible;
 
 fn action(id: &str, enabled: bool, reason: Option<String>) -> NodeAction {
     NodeAction {
         id: id.into(),
         enabled,
         reason: if enabled { None } else { reason },
+        title: None,
     }
 }
 
@@ -47,7 +55,11 @@ pub(crate) fn nodes(p: &ProcessPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         Stage::Opening(op) => {
             let mut status = Node::new(
                 "status",
-                Aria::Status,
+                if op.uncertain.is_some() {
+                    Aria::Alert
+                } else {
+                    Aria::Status
+                },
                 &match &op.uncertain {
                     Some(_) => format!("Unknown whether {} started", op.choice.label),
                     None => format!("Starting {}", op.choice.label),
@@ -101,13 +113,40 @@ fn choosing(p: &ProcessPanel, area: Rect) -> Vec<Node> {
     };
     let total = u16::try_from(rows.len()).unwrap_or(u16::MAX);
     let selected = p.selected.min(rows.len().saturating_sub(1));
+    // Where each row is drawn: the lines it wraps to, as the draw scrolls them. A row scrolled
+    // out of the pane is not drawn and has no height.
+    let data = p.catalog.snapshot(&p.identity.workspace);
+    let lines = chooser::lines(
+        &rows,
+        &p.identity,
+        data.adoption.as_ref(),
+        p.note.as_deref(),
+        area.width,
+    );
+    let top = chooser::top_for(&lines, selected, usize::from(area.height));
+    let shown = top..top + usize::from(area.height);
     let mut items = vec![];
     for (i, row) in rows.iter().enumerate() {
+        let drawn: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(at, l)| l.row == Some(i) && shown.contains(at))
+            .map(|(at, _)| at)
+            .collect();
+        let rect = match (drawn.first(), drawn.last()) {
+            (Some(first), Some(last)) => Rect::new(
+                area.x,
+                area.y + u16::try_from(first - top).unwrap_or(u16::MAX),
+                area.width,
+                u16::try_from(last - first + 1).unwrap_or(u16::MAX),
+            ),
+            _ => Rect::new(area.x, area.y, area.width, 0),
+        };
         let mut item = Node::new(
             &format!("row:{i}"),
             Aria::MenuItem,
             &format!("{}. {}", row.title, row.detail),
-            Rect::new(area.x, area.y, area.width, 0),
+            rect,
         );
         item.pos_in_set = Some(u16::try_from(i + 1).unwrap_or(u16::MAX));
         item.set_size = Some(total);
@@ -126,12 +165,27 @@ fn choosing(p: &ProcessPanel, area: Rect) -> Vec<Node> {
     out
 }
 
+/// Why a pane that is not running cannot act: a lost connection is not an
+/// ended program.
+fn not_running(b: &Bound) -> &'static str {
+    if matches!(b.status, Status::Lost { link: true, .. }) {
+        "The connection to the terminal is lost."
+    } else {
+        "The program is not running."
+    }
+}
+
 fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     let g = draw::geo(area);
     let mut status = Node::new("status", Aria::Status, &draw::status_line(b), g.header);
     status.state.busy = b.attaching() || b.end == EndAsk::Pending;
     status.state.description = match &b.status {
-        Status::Exited { reason, .. } | Status::Lost { reason } => Some(reason.clone()),
+        Status::Lost {
+            reason,
+            next_step,
+            link: true,
+        } => Some(visible(&draw::loss_text(reason, next_step.as_deref()))),
+        Status::Exited { reason, .. } | Status::Lost { reason, .. } => Some(visible(reason)),
         Status::Running => b.provenance.text(b.program, b.epoch),
     };
     status.binding = b.resource();
@@ -148,7 +202,14 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     // What a person sees, so assistive technology and the agent read the same
     // screen; the node's text follows each frame because the tree is rebuilt
     // from the screen.
-    term = term.with_text(&b.screen.contents());
+    let screen = b.screen.contents();
+    term = term.with_text(
+        &screen
+            .split('\n')
+            .map(visible)
+            .collect::<Vec<_>>()
+            .join("\n"),
+    );
     let (row, col) = b.screen.cursor_position();
     let mut notes = vec![format!("Cursor at row {}, column {}.", row + 1, col + 1)];
     if !b.screen.cursor_visible() {
@@ -169,14 +230,18 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
 
     let mut out = vec![status, term];
 
-    if let Some((text, _)) = draw::footer(b) {
+    if let Some((text, tone)) = draw::footer(b) {
+        // A question is a dialog. What was refused, failed or is unknown needs attention (an
+        // alert); a passing remark is a status.
         let role = if b.end == EndAsk::Asking {
             Aria::Dialog
+        } else if matches!(tone, Tone::Muted) {
+            Aria::Status
         } else {
             Aria::Alert
         };
         let rect = draw::footer_view(area, b).map_or(g.footer, |f| f.rect);
-        out.push(Node::new("notice", role, &text, rect));
+        out.push(Node::new("notice", role, &visible(&text), rect));
     }
 
     // The program's own word, a node of its own: named for who is speaking,
@@ -193,7 +258,7 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         let mut node = Node::new(
             "program-report",
             Aria::Status,
-            report::node_name(!b.running()),
+            report::node_name(b.status.program_ended()),
             rect,
         );
         node.state.description = Some(description);
@@ -210,11 +275,7 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
             Some("This view already controls the terminal.".into()),
         )
     } else if !b.running() {
-        action(
-            "shell.control",
-            false,
-            Some("The program is not running.".into()),
-        )
+        action("shell.control", false, Some(not_running(b).into()))
     } else if b.attaching() {
         action("shell.control", false, Some("Still attaching.".into()))
     } else {
@@ -230,7 +291,7 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
             Some(if b.running() {
                 "Still attaching.".to_owned()
             } else {
-                "The program is not running.".to_owned()
+                not_running(b).to_owned()
             }),
         )
     }];
@@ -252,7 +313,13 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     out.push(toolbar);
     out.extend(buttons);
 
-    if !b.running() {
+    if matches!(b.status, Status::Lost { link: true, .. }) {
+        let mut again = Node::new("reconnect", Aria::Button, "Reconnect", g.footer);
+        again.state.description =
+            Some("Attaches to the same terminal again. The program may still be running.".into());
+        again.actions = vec![action("shell.reconnect", true, None)];
+        out.push(again);
+    } else if !b.running() {
         let mut fresh = Node::new("start-new", Aria::Button, "Start a new shell", g.footer);
         fresh.state.description =
             Some("A different process. It never continues the one that ended.".into());

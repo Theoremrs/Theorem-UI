@@ -73,6 +73,7 @@ fn act(id: &str, reason: Option<String>) -> NodeAction {
         id: ActionId::new(id),
         enabled: reason.is_none(),
         reason,
+        title: None,
     }
 }
 
@@ -112,14 +113,16 @@ impl Changes {
             branch.role = Role::TextBox;
             branch.name = prompt.kind.label().to_owned();
             branch.state.focused = true;
-            branch.state.description = Some(if prompt.text.is_empty() {
-                "Type a branch name and press Enter".to_owned()
-            } else {
-                prompt.text.clone()
-            });
+            // The typed name is the node's text (the panel puts it there with the caret).
+            branch.state.description = Some("Type a branch name and press Enter".to_owned());
+            branch.text = Some(prompt.text.clone());
             branch.actions.clear();
         }
         if let Some(open) = self.unreconciled().first() {
+            // An earlier action whose result is unknown must be settled before another.
+            if branch.role == Role::Status {
+                branch.role = Role::Alert;
+            }
             branch.state.description = Some(format!(
                 "The result of the earlier {} is unknown",
                 open.label()

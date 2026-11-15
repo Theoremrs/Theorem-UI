@@ -8,7 +8,15 @@ import type { Revision } from "./Revision";
 import type { Role } from "./Role";
 import type { TextSelection } from "./TextSelection";
 
-export type Node = { id: NodeId, role: Role, name: string, state: NodeState, rect: CellRect, actions: Array<NodeAction>, binding: ResourceRef, revision?: Revision, 
+export type Node = { id: NodeId, role: Role, name: string, state: NodeState, 
+/**
+ * Where the node is drawn, in cells. Absent when it is not drawn this
+ * frame (a row scrolled out, a group with no room, a control that has no
+ * cell): the node is still in the tree, so an agent or a reader can reach
+ * it, and it has no place on screen. [`Node::new`] gives an empty area
+ * no rect.
+ */
+rect?: CellRect, actions: Array<NodeAction>, binding: ResourceRef, revision?: Revision, 
 /**
  * Depth in a tree, counted from 1 (`aria-level`).
  */

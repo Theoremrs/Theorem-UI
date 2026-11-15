@@ -13,12 +13,13 @@ use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalBackend, TerminalRole,
 };
 use theorem_workbench_core::host::{
-    HostMessage, TerminalProfileInfo, TerminalSessionInfo, TerminalSessionState,
+    ConnectivityState, HostMessage, TerminalProfileInfo, TerminalSessionInfo, TerminalSessionState,
 };
 use theorem_workbench_core::ids::{ActionId, Actor, EffectId, PanelInstanceId, ResourceRef};
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
 use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::semantics::SemanticTree;
+use theorem_workbench_core::stale::Stale;
 use theorem_workbench_core::{
     Button, DockMsg, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, ViewCtx, update,
 };
@@ -62,6 +63,8 @@ fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
         host: Some("devbox".into()),
         program: Some(1),
         state: TerminalSessionState::Running,
+        reason: None,
+        next_step: None,
         controlled_elsewhere: false,
         modes: None,
         program_report: Default::default(),
@@ -1676,7 +1679,7 @@ fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
         .nodes
         .iter()
         .find(|n| n.id.as_str() == "notice")
-        .map_or(h - 1, |n| n.rect.y);
+        .map_or(h - 1, |n| n.rect.unwrap().y);
     let plain = r.draw_with(w, h, &Theme::plain());
     let bare = Theme::chrome(
         Style::default(),
@@ -1801,6 +1804,7 @@ fn an_unavailable_listing_gives_the_hosts_reason_and_without_one_still_says_it_c
         vec![],
         Some(TerminalAdoption::Unavailable {
             reason: Some("herdr socket missing".into()),
+            next_step: None,
         }),
     ));
     let s = r.screen();
@@ -1811,7 +1815,10 @@ fn an_unavailable_listing_gives_the_hosts_reason_and_without_one_still_says_it_c
     no_chooser_note(&s);
     r.send(listing_with(
         vec![],
-        Some(TerminalAdoption::Unavailable { reason: None }),
+        Some(TerminalAdoption::Unavailable {
+            reason: None,
+            next_step: None,
+        }),
     ));
     assert!(r.screen().contains("The host cannot list its terminals."));
 }
@@ -1834,7 +1841,13 @@ fn only_a_settled_listing_says_an_attached_session_is_gone() {
     for (adoption, gone) in [
         (None, false),
         (Some(TerminalAdoption::Pending), false),
-        (Some(TerminalAdoption::Unavailable { reason: None }), false),
+        (
+            Some(TerminalAdoption::Unavailable {
+                reason: None,
+                next_step: None,
+            }),
+            false,
+        ),
         (Some(TerminalAdoption::Settled), true),
     ] {
         let mut r = rig();
@@ -2806,6 +2819,7 @@ fn wrapping_chooser() -> Rig {
         sessions: vec![session("s1", TerminalBackend::Herdr)],
         adoption: Some(TerminalAdoption::Unavailable {
             reason: Some(LONG_LISTING_REASON.into()),
+            next_step: None,
         }),
     }));
     r
@@ -3462,4 +3476,422 @@ fn a_report_the_core_hands_the_chooser_through_the_session_list_is_shown_and_mov
     );
     assert!(after.join("\n").contains("Program reports: working"));
     assert!(r.screen().contains("Existing sessions"));
+}
+
+// ---- what the tree says about text, rects and urgency ------------------------------
+
+#[test]
+fn the_terminal_publishes_its_screen_spelled_out_and_no_selection_because_the_program_owns_the_line()
+ {
+    use theorem_workbench_core::semantics::Role;
+    let mut r = rig();
+    r.live();
+    // A right-to-left override and a zero-width space, as printable cells of hostile output.
+    r.bytes(1, 0, "ab\u{202e}cd\u{200b}e".as_bytes());
+    let tree = r.valid_tree();
+    let term = node(&tree, "terminal");
+    assert_eq!(term.role, Role::TextBox);
+    let text = term.text.as_deref().unwrap();
+    assert!(
+        !text.contains('\u{202e}') && !text.contains('\u{200b}'),
+        "{text:?}"
+    );
+    assert!(text.contains("ab\\u{202e}cd\\u{200b}e"), "{text:?}");
+    assert_eq!(
+        term.selection, None,
+        "a terminal is read, not edited as text"
+    );
+}
+
+#[test]
+fn every_chooser_row_has_the_rect_it_is_drawn_in() {
+    let r = rig();
+    let tree = r.valid_tree();
+    let rows: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().starts_with("row:"))
+        .collect();
+    assert!(!rows.is_empty());
+    for row in &rows {
+        assert!(
+            row.rect.unwrap().width > 0 && row.rect.unwrap().height > 0,
+            "{row:?}"
+        );
+    }
+    let mut ys: Vec<u16> = rows.iter().map(|n| n.rect.unwrap().y).collect();
+    let sorted = ys.clone();
+    ys.sort_unstable();
+    ys.dedup();
+    assert_eq!(ys, sorted, "each row is on its own line, in order");
+    // The row the screen shows at that line is the row the node names.
+    let screen = r.text(r.body().width, r.body().height);
+    for row in &rows {
+        let first_word = row.name.split(". ").next().unwrap();
+        assert!(
+            screen[usize::from(row.rect.unwrap().y)].contains(first_word),
+            "{first_word:?} is not on line {}: {screen:?}",
+            row.rect.unwrap().y
+        );
+    }
+}
+
+#[test]
+fn a_notice_that_asks_or_warns_is_not_a_passing_status() {
+    use theorem_workbench_core::semantics::Role;
+    let act = |r: &mut Rig, id: &str| {
+        r.send(Msg::Action {
+            id: ActionId::new(id),
+            actor: Actor::Human,
+        })
+    };
+    let mut r = rig();
+    r.live();
+    // A question is a dialog.
+    act(&mut r, "shell.end");
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Dialog);
+    // Waiting for the host to end it is only a status.
+    act(&mut r, "shell.end.confirm");
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Status);
+    // Input whose outcome is unknown needs attention: an alert.
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    r.answer(&fx[0], Outcome::Uncertain { reason: "t".into() }, None);
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Alert);
+}
+
+#[test]
+fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
+    let mut r = rig();
+    let mut seen = 0;
+    for step in 0..2 {
+        if step == 1 {
+            r.live();
+        }
+        for n in r.valid_tree().nodes {
+            for a in n.actions {
+                let (_, d) = r.m.registry().action(&a.id).unwrap_or_else(|| {
+                    panic!(
+                        "{} is offered by {} and not registered",
+                        a.id.as_str(),
+                        n.id.as_str()
+                    )
+                });
+                assert!(
+                    !d.title.trim().is_empty() && !d.title.contains(a.id.as_str()),
+                    "{}: {:?}",
+                    a.id.as_str(),
+                    d.title
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 0);
+}
+
+// ---- connectivity: the connection is lost, the program is not known to be ----
+
+fn link(epoch: u64, state: ConnectivityState, reason: Option<&str>) -> HostMessage {
+    HostMessage::TerminalConnectivity {
+        resource: terminal(),
+        epoch,
+        state,
+        reason: reason.map(str::to_owned),
+        next_step: reason.map(|_| "retry".to_owned()),
+    }
+}
+
+fn notice_text(r: &Rig) -> String {
+    r.valid_tree()
+        .nodes
+        .into_iter()
+        .find(|n| n.id.as_str() == "notice")
+        .map(|n| n.name)
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_lost_connection_says_it_is_the_connection_and_running_in_the_same_epoch_recovers() {
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains(
+            "Connection to the terminal lost: the core closed the connection. The program may still be running; its outcome is not known. Retry to reconnect"
+        ),
+        "{s}"
+    );
+    assert!(s.contains("connection lost"), "{s}");
+    assert!(
+        !s.contains("The program has ended") && !s.contains("exited"),
+        "{s}"
+    );
+    let said = notice_text(&r);
+    assert!(
+        said.contains("Connection to the terminal lost: the core closed the connection."),
+        "the semantic node says the same: {said}"
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().any(|n| n.id.as_str() == "reconnect"));
+    assert!(!tree.nodes.iter().any(|n| n.id.as_str() == "start-new"));
+
+    r.host(link(1, ConnectivityState::Running, None));
+    let s = one_line(&r.screen());
+    assert!(!s.contains("Connection to the terminal lost"), "{s}");
+    assert!(s.contains("controlling"), "{s}");
+    assert!(notice_text(&r).is_empty() || !notice_text(&r).contains("lost"));
+}
+
+#[test]
+fn each_cause_the_core_names_is_said_in_plain_words_and_an_unknown_one_as_sent_escaped() {
+    for (cause, words) in [
+        ("core_closed", "the core closed the connection"),
+        ("core_unavailable", "the core cannot be reached"),
+        (
+            "subscribe_timed_out",
+            "the core did not answer the subscription in time",
+        ),
+    ] {
+        let mut r = bound();
+        r.host(link(1, ConnectivityState::Lost, Some(cause)));
+        let s = one_line(&r.screen());
+        assert!(
+            s.contains(&format!("Connection to the terminal lost: {words}.")),
+            "{cause}: {s}"
+        );
+    }
+    let mut r = bound();
+    r.host(link(
+        1,
+        ConnectivityState::Lost,
+        Some("odd\u{202e}cause\u{1b}[31m"),
+    ));
+    let s = r.screen();
+    assert!(s.contains("odd\\u{202e}cause\\u{1b}[31m"), "{s}");
+    assert!(!s.contains('\u{202e}') && !s.contains('\u{1b}'));
+    let said = notice_text(&r);
+    assert!(
+        !said.contains('\u{202e}') && !said.contains('\u{1b}'),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn running_never_revives_an_exited_terminal_or_a_program_reported_lost() {
+    let mut r = bound();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    let s = one_line(&r.screen());
+    assert!(s.contains("exited with code 0"), "{s}");
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains("exited with code 0") && !s.contains("Connection to the terminal lost"),
+        "a loss does not turn an exit into a lost connection: {s}"
+    );
+
+    // A loss, then an exit: the exit stands over a later running.
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(2),
+        reason: "exited".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    assert!(one_line(&r.screen()).contains("exited with code 2"));
+
+    // The host's own word that the program is lost is not a connection.
+    let mut r = bound();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: None,
+        reason: "lost".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    assert!(one_line(&r.screen()).contains("lost (lost)"));
+}
+
+#[test]
+fn connectivity_for_an_older_epoch_is_dropped_and_counted() {
+    let mut r = bound();
+    r.host(HostMessage::TerminalOpened {
+        resource: terminal(),
+        epoch: 2,
+        program: 1,
+        backend: TerminalBackend::Herdr,
+        origin: "reattached".into(),
+        cols: 80,
+        rows: 24,
+    });
+    let before = r.m.counters().dropped;
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(!s.contains("Connection to the terminal lost"), "{s}");
+    assert_eq!(r.m.counters().dropped, before + 1);
+    assert_eq!(r.m.counters().last_drop, Some(Stale::OlderEpoch));
+    r.host(link(2, ConnectivityState::Lost, Some("core_closed")));
+    assert!(one_line(&r.screen()).contains("Connection to the terminal lost"));
+}
+
+#[test]
+fn the_program_report_band_is_the_same_through_a_loss_and_its_recovery() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Working), Some(1))));
+    let band = |r: &Rig| {
+        r.grid()
+            .into_iter()
+            .filter(|row| row.contains("Program reports") || row.contains("last report"))
+            .collect::<Vec<_>>()
+    };
+    let before = band(&r);
+    assert!(!before.is_empty(), "{:?}", r.grid());
+    let node = report_node(&r).map(|n| (n.name, n.state.description));
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    assert_eq!(band(&r), before, "the band is as it was");
+    assert_eq!(report_node(&r).map(|n| (n.name, n.state.description)), node);
+    r.host(link(1, ConnectivityState::Running, None));
+    assert_eq!(band(&r), before);
+}
+
+#[test]
+fn typing_into_a_pane_whose_connection_is_lost_emits_no_input_and_says_why() {
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_unavailable")));
+    for fx in [
+        r.typed("ls"),
+        r.key(Key::Backspace),
+        r.send(Msg::Paste("pasted".into())),
+    ] {
+        assert!(
+            fx.iter().all(|e| !matches!(
+                e.body,
+                EffectBody::TerminalInput(_) | EffectBody::TerminalInputBytes(_)
+            )),
+            "{fx:?}"
+        );
+    }
+    assert!(
+        one_line(&r.screen()).contains("Connection to the terminal lost"),
+        "{}",
+        r.screen()
+    );
+    // New shell is not the way back from a lost connection.
+    assert!(r.key(Key::Char('n')).is_empty());
+    // Enter attaches to the same terminal again, by the person's choice.
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["detach", "attach"], "{fx:?}");
+}
+
+#[test]
+fn a_session_the_host_lists_as_lost_carries_its_cause_and_a_running_listing_clears_it() {
+    let mut r = bound();
+    let mut lost = session("s1", TerminalBackend::Herdr);
+    lost.state = TerminalSessionState::Lost;
+    lost.reason = Some("core_unavailable".into());
+    lost.next_step = Some("retry".into());
+    r.send(listing("w", vec![lost]));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains("Connection to the terminal lost: the core cannot be reached."),
+        "{s}"
+    );
+    r.send(listing("w", vec![session("s1", TerminalBackend::Herdr)]));
+    assert!(!one_line(&r.screen()).contains("Connection to the terminal lost"));
+}
+
+fn open_of(fx: &[Effect]) -> (Effect, Option<String>) {
+    let open = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::TerminalOpen(_)))
+        .unwrap_or_else(|| panic!("no open in {fx:?}"))
+        .clone();
+    let EffectBody::TerminalOpen(o) = &open.body else {
+        unreachable!()
+    };
+    let operation = o.operation.clone();
+    (open, operation)
+}
+
+#[test]
+fn a_retry_of_a_failed_or_uncertain_launch_reuses_its_operation_and_a_new_launch_gets_a_new_one() {
+    // Failed, then Enter on the failure.
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, first) = open_of(&r.key(Key::Enter));
+    let first = first.expect("an open names its operation");
+    r.answer(
+        &open,
+        Outcome::Failed {
+            reason: "pty busy".into(),
+        },
+        None,
+    );
+    let (open, second) = open_of(&r.key(Key::Enter));
+    assert_eq!(second.as_deref(), Some(first.as_str()));
+
+    // Uncertain, Esc to the chooser, the same profile again: the same launch.
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket closed".into(),
+        },
+        None,
+    );
+    assert!(r.tick().is_empty(), "the pane never relaunches by itself");
+    r.key(Key::Esc);
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, third) = open_of(&r.key(Key::Enter));
+    assert_eq!(third.as_deref(), Some(first.as_str()));
+
+    // Accepted: that launch is settled. A new shell after the program ends is
+    // a new launch with its own operation.
+    r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            controlling: Some(true),
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let (_, fourth) = open_of(&r.key(Key::Char('n')));
+    let fourth = fourth.expect("a new launch names its operation");
+    assert_ne!(fourth, first);
+}
+
+#[test]
+fn a_refused_launch_is_retried_with_the_same_operation_too() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, first) = open_of(&r.key(Key::Enter));
+    r.answer(
+        &open,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: "no backend".into(),
+        },
+        None,
+    );
+    let (_, again) = open_of(&r.key(Key::Enter));
+    assert!(first.is_some());
+    assert_eq!(again, first);
 }

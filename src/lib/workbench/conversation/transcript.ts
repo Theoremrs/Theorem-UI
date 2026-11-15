@@ -1,9 +1,11 @@
-// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
+// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), the chat's delegation part reader (working-runs readDelegation) and plainObjective, and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
 
 import type { ThreadMessage } from '@assistant-ui/react'
 import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
 import type { TheoremApproval } from '@/lib/theorem/approval'
 import { describeError } from '@/lib/theorem/client'
+import { plainObjective } from '@/lib/theorem/delegations'
+import { DELEGATION_PART, readDelegation } from '@/lib/theorem/working-runs'
 import { inputReceipt } from '@/lib/theorem/run-input'
 import { openOf, pathOf, toolOutput } from '@/components/terminal/terminal-code'
 import type { DiffLine, Open } from '@/components/terminal/terminal-code'
@@ -31,6 +33,20 @@ export type TranscriptPart =
       open?: Open
     }
   | { type: 'program'; source: string; language?: string; streaming: boolean }
+  | {
+      /** One delegation of the run, as Theorem's `theorem-delegation` part reports it; a later state replaces the part. */
+      type: 'delegation'
+      delegationId: string
+      /** The run the delegation was made in (its `parentRunId`), which is where its changes are listed. */
+      runId: string
+      /** The specialist's role label. */
+      label: string
+      objective: string
+      /** proposed, admitted, started, published, failed, cancelled, stale, reviewed or refused. */
+      state: string
+      /** The reviewer's verdict, once there is one. */
+      verdict?: string
+    }
   | {
       type: 'input'
       inputId?: string
@@ -141,6 +157,22 @@ export function transcriptOf(
                 source,
                 language: text(program.language),
                 streaming: program.streaming === true && live,
+              },
+            ]
+          : []
+      }
+      if (part.type === 'data' && part.name === DELEGATION_PART) {
+        const delegation = readDelegation(part.data)
+        return delegation
+          ? [
+              {
+                type: 'delegation',
+                delegationId: delegation.delegationId,
+                runId: delegation.parentRunId,
+                label: delegation.roleLabel,
+                objective: plainObjective(delegation.objective),
+                state: delegation.state,
+                ...(delegation.verdict && { verdict: delegation.verdict }),
               },
             ]
           : []

@@ -505,6 +505,7 @@ impl DiagnosticsPanel {
             id: ActionId::new(id),
             enabled: reason.is_none(),
             reason,
+            title: None,
         };
         vec![
             item(actions::FILTER_ALL, None),
@@ -695,6 +696,7 @@ impl DiagnosticsPanel {
                 }),
                 enabled: true,
                 reason: None,
+                title: None,
             }];
             root.children.push(node.id.clone());
             out.push(node);
@@ -763,6 +765,7 @@ impl DiagnosticsPanel {
                     id: ActionId::new(actions::OPEN_FINDING),
                     enabled: true,
                     reason: None,
+                    title: None,
                 }];
             }
             list.children.push(node.id.clone());

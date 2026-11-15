@@ -11,7 +11,7 @@ use crate::catalog::{
 
 #[derive(Clone, Debug)]
 pub(crate) enum RowKind {
-    Session(ProcessSession),
+    Session(Box<ProcessSession>),
     Profile(ProcessProfile),
 }
 
@@ -68,12 +68,28 @@ pub(crate) fn rows(data: &CatalogData, identity: &WorkspaceIdentity) -> Vec<Row>
             detail.push_str(" | ");
             detail.push_str(&report);
         }
+        // A lost session is a lost connection: the program may still run.
+        if s.state == SessionState::Lost {
+            detail.push_str(" | connection lost");
+            if let Some(reason) = &s.reason {
+                detail.push_str(": ");
+                detail.push_str(reason);
+            }
+            match s.next_step.as_deref() {
+                Some("retry") => detail.push_str(". Attach to retry"),
+                Some(other) => {
+                    detail.push_str(". Host next step: ");
+                    detail.push_str(other);
+                }
+                None => {}
+            }
+        }
         out.push(Row {
             enabled: named,
             reason: (!named).then(|| "The host has not named a workspace yet.".to_owned()),
             detail,
             title,
-            kind: RowKind::Session(s.clone()),
+            kind: RowKind::Session(Box::new(s.clone())),
         });
     }
     for p in &data.profiles {
@@ -198,11 +214,19 @@ pub(crate) fn lines(
             LineKind::Note,
             None,
         ),
-        Some(TerminalAdoption::Unavailable { reason }) => push(
-            match reason {
-                Some(r) => format!("The host cannot list its terminals: {r}"),
-                None => "The host cannot list its terminals.".to_owned(),
-            },
+        Some(TerminalAdoption::Unavailable { reason, next_step }) => push(
+            format!(
+                "{}{}",
+                match reason {
+                    Some(r) => format!("The host cannot list its terminals: {r}"),
+                    None => "The host cannot list its terminals.".to_owned(),
+                },
+                match next_step.as_deref() {
+                    Some("retry") => " Retry to list them again.".to_owned(),
+                    Some(other) => format!(" The host's next step: {other}."),
+                    None => String::new(),
+                }
+            ),
             LineKind::Note,
             None,
         ),

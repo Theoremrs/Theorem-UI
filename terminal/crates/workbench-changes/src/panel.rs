@@ -24,11 +24,12 @@ use theorem_workbench_core::ids::{
     ActionId, Capability, EffectId, Generation, ResourceRef, WorkspaceIdentity,
 };
 use theorem_workbench_core::registry::Capabilities;
-use theorem_workbench_core::semantics::Node;
+use theorem_workbench_core::semantics::{Node, Role};
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
     Button, Ctx, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, ViewCtx,
 };
+use theorem_workbench_panels::caret::caret_text;
 use tui_input::{Input, InputRequest};
 
 use crate::descriptors::AMEND_CAPABILITY;
@@ -1265,6 +1266,29 @@ impl Panel for ChangesPanel {
         let resource = self.resource();
         if let Some(root) = nodes.first_mut() {
             root.binding = resource;
+        }
+        // The text of each field and where its caret is: the panel's buffers know the caret.
+        for node in &mut nodes {
+            match node.id.as_str() {
+                "changes/commit/subject" => {
+                    let at = self.subject.cursor();
+                    caret_text(self.subject.value(), at, at).put(node);
+                }
+                "changes/commit/body" => {
+                    let lines: Vec<&str> = self.body.iter().map(Input::value).collect();
+                    let row = self.row.min(lines.len() - 1);
+                    let before: usize = lines[..row].iter().map(|l| l.chars().count() + 1).sum();
+                    let at = before + self.body[row].cursor();
+                    caret_text(&lines.join("\n"), at, at).put(node);
+                }
+                "changes/branch" if node.role == Role::TextBox => {
+                    if let Some(prompt) = &self.prompt {
+                        let at = prompt.cursor();
+                        caret_text(prompt.value(), at, at).put(node);
+                    }
+                }
+                _ => {}
+            }
         }
         nodes
     }

@@ -905,3 +905,16 @@ fn a_narrow_width_drops_the_kind_before_it_cuts_the_name() {
     assert!(text.contains("running  integration-suite"), "{text}");
     assert!(!text.contains("debug"), "{text}");
 }
+
+// ---- the text and caret the run's fields publish -------------------------------
+
+#[test]
+fn the_name_and_command_fields_publish_their_text_and_caret_in_utf16_units() {
+    let mut rig = rig();
+    rig.typed("b\u{1F600}");
+    let n = rig.node("name");
+    assert_eq!(n.text.as_deref(), Some("b\u{1F600}"));
+    let s = n.selection.expect("a text box publishes its selection");
+    assert_eq!((s.anchor, s.focus), (3, 3));
+    assert_eq!(rig.node("command").selection.map(|s| s.focus), Some(0));
+}

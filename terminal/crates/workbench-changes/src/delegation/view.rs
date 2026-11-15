@@ -454,6 +454,7 @@ fn act(id: &str, reason: Option<&str>) -> NodeAction {
         id: ActionId::new(id),
         enabled: reason.is_none(),
         reason: reason.map(str::to_owned),
+        title: None,
     }
 }
 

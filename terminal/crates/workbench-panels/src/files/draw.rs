@@ -10,6 +10,7 @@ use theorem_workbench_core::{Theme, ViewCtx};
 
 use super::tree::{NoteState, Row, Tone};
 use super::{Edit, FilesPanel, Mode};
+use crate::caret::caret_text;
 use theorem_workbench_text::visible::visible;
 
 /// Write `text` from `x`, stopping at `limit`; returns the next free column.
@@ -257,6 +258,8 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 n.state.focused = cx.focused;
                 if let Mode::Edit(edit) = &p.mode {
                     n.state.description = edit.error.as_deref().map(visible);
+                    let at = edit.input.cursor();
+                    caret_text(edit.input.value(), at, at).put(&mut n);
                 }
                 n
             }

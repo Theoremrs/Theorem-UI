@@ -2386,36 +2386,53 @@ describe('terminal core loss, through the real terminal owner', () => {
     t.hostMessages().flatMap((m) => (m.type === 'terminalExited' ? [m] : []))
   const lists = (t: Awaited<ReturnType<typeof setup>>) =>
     t.hostMessages().flatMap((m) => (m.type === 'terminalSessions' ? [m] : []))
+  const links = (t: Awaited<ReturnType<typeof setup>>) =>
+    t
+      .hostMessages()
+      .flatMap((m) => (m.type === 'terminalConnectivity' ? [m] : []))
   const frame = (r: Awaited<ReturnType<typeof wired>>['r'], f: unknown) =>
     r.emit(
       (f as { kind: string }).kind,
       (f as { data: Record<string, unknown> }).data,
     )
 
-  test('a core loss reaches the pane as lost at the event epoch, never as an exit, and the list says lost', async () => {
+  test('a core loss reaches the pane as connectivity at the event epoch with the host’s cause and next step, never as an exit, and the list says lost with them', async () => {
     const { r, t } = await wired()
     frame(r, UPDATED_CORE_CLOSED)
-    expect(exits(t)).toEqual([
+    expect(links(t)).toEqual([
       {
-        type: 'terminalExited',
+        type: 'terminalConnectivity',
         resource: expect.anything(),
         epoch: 2,
-        reason: 'lost',
+        state: 'lost',
+        reason: 'core_closed',
+        nextStep: 'retry',
       },
     ])
-    expect(exits(t)[0]).not.toHaveProperty('exitCode')
+    expect(exits(t)).toEqual([])
     expect(lists(t).at(-1)!.sessions[0]).toMatchObject({
       session: 'hc-example',
       state: 'lost',
+      reason: 'core_closed',
+      nextStep: 'retry',
     })
   })
 
-  test('a recovery says running in the list and sends no exit; the program report on each update still arrives', async () => {
+  test('a recovery sends running connectivity in the same epoch and the list says running without the cause; the program report on each update still arrives', async () => {
     const { r, t } = await wired()
     frame(r, UPDATED_CORE_UNAVAILABLE)
     frame(r, UPDATED_RUNNING)
-    expect(exits(t)).toHaveLength(1)
-    expect(lists(t).at(-1)!.sessions[0]).toMatchObject({ state: 'running' })
+    expect(exits(t)).toEqual([])
+    expect(links(t).map((m) => [m.epoch, m.state])).toEqual([
+      [2, 'lost'],
+      [2, 'running'],
+    ])
+    expect(links(t)[1]).not.toHaveProperty('reason')
+    expect(links(t)[1]).not.toHaveProperty('nextStep')
+    const row = lists(t).at(-1)!.sessions[0]
+    expect(row).toMatchObject({ state: 'running' })
+    expect(row).not.toHaveProperty('reason')
+    expect(row).not.toHaveProperty('nextStep')
     const reports = t
       .hostMessages()
       .flatMap((m) => (m.type === 'terminalReport' ? [m] : []))
@@ -2429,6 +2446,7 @@ describe('terminal core loss, through the real terminal owner', () => {
       data: { session: 'hc-example', epoch: 2 },
     })
     expect(exits(t)).toEqual([])
+    expect(links(t)).toEqual([])
     expect(lists(t).at(-1)!.sessions[0]).toMatchObject({ state: 'running' })
   })
 
@@ -2546,6 +2564,12 @@ describe('terminal core loss, through the real terminal owner', () => {
           'Herdr terminals cannot be reached: the core cannot be reached. Retry to reconnect.',
       },
     )
+    // The host's cause and next step travel on the adoption state too, as it sent them.
+    expect(last.adoption).toEqual({
+      state: 'unavailable',
+      reason: 'core_unavailable',
+      next_step: 'retry',
+    })
     // The retained lost row is kept and says lost.
     expect(last.sessions.find((s) => s.session === 'hc-example')).toMatchObject(
       {

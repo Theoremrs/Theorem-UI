@@ -131,6 +131,47 @@ describe('the rendered overlay', () => {
     expect(layer().style.getPropertyValue('--wb-cell-h')).toBe('16px')
   })
 
+  test('a node with no rect is announced and reachable, with no place of its own, and its children keep the nearest place above', async () => {
+    const t = setup()
+    await t.mount()
+    const { rect: _drawn, ...undrawn } = node('row:far', ['row:far:cell'], { role: 'treeItem', name: 'far.txt' })
+    const cell = node('row:far:cell', [], { role: 'status', name: 'cell', rect: { x: 5, y: 3, width: 2, height: 1 } })
+    await t.push(
+      full('root', node('root', ['row:far', 'row:near']), undrawn, cell, node('row:near', [], { role: 'treeItem', name: 'near.txt' })),
+    )
+    const far = byNode('row:far')
+    expect(far.getAttribute('aria-label')).toBe('far.txt')
+    expect(far.hasAttribute('data-undrawn')).toBe(true)
+    for (const side of ['left', 'top']) expect(far.style.getPropertyValue(side)).toBe('')
+    expect(far.style.width).toBe('1px')
+    expect(byNode('row:near').hasAttribute('data-undrawn')).toBe(false)
+    expect(byNode('row:near').style.left).toContain('--wb-cell-w')
+    // The child is drawn, and sits at its offset from the nearest drawn ancestor (the root at x 2, y 3).
+    expect(byNode('row:far:cell').style.left).toBe('calc(var(--wb-cell-w) * 3)')
+  })
+
+  test('an action is named by the title the core read from the registry, and by its id\u2019s words when it has none', async () => {
+    const t = setup()
+    await t.mount()
+    await t.push(
+      full(
+        'root',
+        node('root', ['tab:a']),
+        node('tab:a', [], {
+          role: 'tab',
+          name: 'Files',
+          actions: [
+            { id: 'tab.focus.a', enabled: true, title: 'Focus Files' },
+            { id: 'tab.close.a', enabled: true, title: 'Close Files' },
+            { id: 'dock.mystery', enabled: true },
+          ],
+        }),
+      ),
+    )
+    const describedBy = byNode('tab:a').getAttribute('aria-describedby')!
+    expect(document.getElementById(describedBy)?.textContent).toBe('Other actions: Close Files; dock mystery')
+  })
+
   test('renders names and text as text, never as markup, with ids that cannot carry any', async () => {
     const t = setup()
     await t.mount()

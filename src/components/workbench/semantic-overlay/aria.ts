@@ -1,5 +1,5 @@
 // SOURCING: hand-roll, over the generated wire types and the WAI-ARIA 1.2 role definitions (required owned elements, required context, supported states) and its Authoring Practices patterns for tabs, tree view, listbox and alert: no library renders an external accessibility tree as ARIA, and the Rust `Role::aria()` (terminal/crates/workbench-core/src/semantics.rs) is the contract this extends where a role's own rules need more than a one-to-one name.
-import type { Node, NodeId, Role } from '@/lib/workbench/wire'
+import type { Node, NodeAction, NodeId, Role } from '@/lib/workbench/wire'
 import type { Tree } from './tree'
 
 /** The ARIA roles the overlay writes. */
@@ -246,8 +246,12 @@ export function keyShortcuts(chord: string): string {
   return out.join('+')
 }
 
-/** The words an action is named with when the node says nothing but its id: `tab.close.p1` on panel `p1` reads "tab close". */
-export function actionName(action: string, panel?: string): string {
+/**
+ * The words an action is named with: the title the core read from the registry ("Focus Files"), or,
+ * for an id nothing can name, its id's words: `tab.close.p1` on panel `p1` reads "tab close".
+ */
+export function actionName(action: string | { id: NodeAction['id']; title?: NodeAction['title'] }, panel?: string): string {
+  if (typeof action !== 'string') return action.title?.trim() || actionName(action.id, panel)
   const base = panel && action.endsWith(`.${panel}`) ? action.slice(0, -panel.length - 1) : action
   return base.replace(/[._-]+/g, ' ').trim()
 }
@@ -268,7 +272,7 @@ export function describe(node: Node, panel?: string): string | undefined {
     parts.push(`Unavailable: ${first.reason}`)
   if (rest.length) {
     const names = rest.map((action) => {
-      const name = actionName(action.id, panel)
+      const name = actionName(action, panel)
       if (action.enabled) return name
       return action.reason ? `${name} (unavailable: ${action.reason})` : `${name} (unavailable)`
     })

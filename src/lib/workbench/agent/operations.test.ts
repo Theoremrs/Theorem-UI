@@ -245,6 +245,22 @@ describe('workbench.read', () => {
     expect(answer.result).toBeUndefined()
   })
 
+  test('a root with no rect is "not drawn yet" too, and a tree whose other nodes have none is still read whole', () => {
+    const { rect: _gone, ...bare } = node('app')
+    const none = { root: 'app', nodes: [bare] }
+    const first = fakeHandle({ semantics: () => JSON.stringify(none) })
+    const answer = answerWorkbenchRequest(request(WORKBENCH_READ), first.handle)
+    expect(answer.outcome).toBe('rejected')
+    expect(answer.reason).toContain('not drawn')
+    const { rect: _far, ...row } = node('row')
+    const whole = { root: 'app', nodes: [node('app'), row] }
+    const second = fakeHandle({ semantics: () => JSON.stringify(whole) })
+    const read = answerWorkbenchRequest(request(WORKBENCH_READ), second.handle)
+    expect(read.outcome).toBe('applied')
+    const ids = (read.result as { nodes: Array<{ id: string }> }).nodes.map((n) => n.id)
+    expect(ids).toEqual(['app', 'row'])
+  })
+
   test('the root alone, once drawn, is read as it is', () => {
     const drawn = { root: 'app', nodes: [node('app')] }
     const { handle } = fakeHandle({ semantics: () => JSON.stringify(drawn) })

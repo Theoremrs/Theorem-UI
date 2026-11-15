@@ -10,6 +10,7 @@
 pub mod agent;
 pub mod arrangement;
 pub mod builtin;
+pub mod caret;
 pub mod completion;
 pub mod draft;
 pub mod effect;

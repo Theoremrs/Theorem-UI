@@ -653,8 +653,10 @@ fn without_a_workspace_nothing_is_listed() {
 fn arrow_home_end_and_page_keys_move_the_selection() {
     let mut r = rig();
     r.open_root();
-    r.key(Key::Down);
-    assert!(r.selected_line().unwrap().contains("docs/"));
+    assert!(
+        r.selected_line().unwrap().contains("docs/"),
+        "the panel lands on its first row"
+    );
     r.key(Key::Down);
     assert!(r.selected_line().unwrap().contains("src/"));
     r.key(Key::End);
@@ -2003,4 +2005,76 @@ fn an_unavailable_listing_is_told_apart_from_an_empty_one_in_the_text_and_the_no
         "{gone_node:?}"
     );
     assert_ne!(empty_node.1, gone_node.1);
+}
+
+// ---- focus lands on a row, and the edit row publishes its text -----------------------
+
+fn focused_items(tree: &SemanticTree) -> Vec<String> {
+    tree.nodes
+        .iter()
+        .filter(|n| n.role == Role::TreeItem && n.state.focused)
+        .map(|n| n.id.as_str().to_owned())
+        .collect()
+}
+
+#[test]
+fn after_the_files_chord_one_row_is_focused_without_an_arrow() {
+    let mut r = rig();
+    // Nothing is listed yet: no row to land on, and no claim of one.
+    assert_eq!(focused_items(&tree_of(&r, 20)), Vec::<String>::new());
+    r.open_root();
+    let tree = tree_of(&r, 20);
+    tree.validate().expect("valid");
+    assert_eq!(focused_items(&tree), vec!["f:docs"], "the first row");
+}
+
+#[test]
+fn the_row_the_panel_was_last_on_keeps_the_focus_when_the_panel_is_focused_again() {
+    let mut r = rig();
+    r.open_root();
+    r.key(Key::Down);
+    assert_eq!(focused_items(&tree_of(&r, 20)), vec!["f:src"]);
+    // Focus leaves and comes back: the row stays.
+    update(&mut r.m, Msg::Focus(false));
+    update(&mut r.m, Msg::Focus(true));
+    assert_eq!(focused_items(&tree_of(&r, 20)), vec!["f:src"]);
+}
+
+#[test]
+fn an_unfocused_panel_claims_no_row() {
+    let mut r = rig();
+    update(&mut r.m, Msg::Focus(false));
+    r.open_root();
+    assert!(
+        tree_of(&r, 20)
+            .nodes
+            .iter()
+            .all(|n| n.role != Role::TreeItem || !n.state.selected),
+        "no row is chosen on the panel's behalf while the keyboard is elsewhere"
+    );
+}
+
+#[test]
+fn the_rename_row_publishes_its_text_and_caret_in_utf16_units() {
+    let mut r = rig();
+    r.open_root();
+    r.typed("a.t");
+    r.key(Key::F2);
+    r.mods(Key::Char('u'), Mods::CTRL);
+    r.typed("\u{1F600}e\u{301}\u{1b}");
+    let tree = tree_of(&r, 20);
+    tree.validate().expect("valid");
+    let n = tree.node(&NodeId::new("edit")).expect("the edit row");
+    assert_eq!(n.role, Role::TextBox);
+    assert_eq!(n.text.as_deref(), Some("\u{1F600}e\u{301}\\u{1b}"));
+    let s = n.selection.expect("a caret");
+    assert_eq!(
+        (s.anchor, s.focus),
+        (10, 10),
+        "2 + 2 + 6 units of the escaped text"
+    );
+    r.key(Key::Left);
+    let tree = tree_of(&r, 20);
+    let s = tree.node(&NodeId::new("edit")).unwrap().selection.unwrap();
+    assert_eq!(s.focus, 4);
 }

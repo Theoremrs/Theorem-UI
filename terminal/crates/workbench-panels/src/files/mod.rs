@@ -105,6 +105,8 @@ pub struct FilesPanel {
     ahead_idle: u32,
     connection: Option<ConnectionState>,
     files_ok: bool,
+    /// The root says the panel holds the keyboard.
+    focused: bool,
 }
 
 fn plain_char(key: &KeyInput) -> Option<char> {
@@ -140,6 +142,7 @@ impl FilesPanel {
             ahead_idle: 0,
             connection: None,
             files_ok: true,
+            focused: false,
         }
     }
 
@@ -309,6 +312,21 @@ impl FilesPanel {
             (outcome, _) => d.problem = Problem::of(outcome),
         }
         self.keep_selection_real();
+        self.land();
+    }
+
+    /// A panel that holds the keyboard has a row it is on: the one it was last on, else the
+    /// first. Without one, `aria-activedescendant` has no target until an arrow is pressed.
+    /// Only a panel nothing was selected in is moved, and only in browsing: a restored
+    /// selection that is not a row yet waits for its listing.
+    fn land(&mut self) {
+        if !self.focused || self.selected.is_some() || !matches!(self.mode, Mode::Browse) {
+            return;
+        }
+        let first = self.rows().iter().find_map(Row::path).map(str::to_owned);
+        if first.is_some() {
+            self.select(first);
+        }
     }
 
     /// A selection whose directory is loaded and no longer lists it falls back
@@ -1154,7 +1172,11 @@ impl Panel for FilesPanel {
             // Focus changes the drawing (the root passes it in `ViewCtx`), not
             // the state. An answer for a workspace this panel left is not
             // shown as the current tree.
-            PanelMsg::Focus(_) | PanelMsg::Cached(_) => {}
+            PanelMsg::Focus(on) => {
+                self.focused = on;
+                self.land();
+            }
+            PanelMsg::Cached(_) => {}
             // The panel registers no action that asks it for a payload.
             PanelMsg::Action(_) => {}
             // The panel is bound to no terminal session.

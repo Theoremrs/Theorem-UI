@@ -12,4 +12,8 @@
  * listed. Absence of the whole field means the host does not report adoption
  * (an older host); that is not the same as `settled`.
  */
-export type TerminalAdoption = { "state": "pending" } | { "state": "settled" } | { "state": "unavailable", reason?: string, };
+export type TerminalAdoption = { "state": "pending" } | { "state": "settled" } | { "state": "unavailable", reason?: string, 
+/**
+ * What the host says to do about it (`retry`).
+ */
+next_step?: string, };

@@ -33,6 +33,7 @@ use theorem_workbench_core::{
     Button, Ctx, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, TabLabel,
     ViewCtx,
 };
+use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::visible::visible;
 
 use crate::field::{Field, Look};
@@ -1389,6 +1390,7 @@ impl SearchPanel {
             id: ActionId::new(id),
             enabled: reason.is_none(),
             reason,
+            title: None,
         };
         let mut all = vec![
             item(actions::RUN, run),
@@ -1418,6 +1420,7 @@ impl SearchPanel {
             id: ActionId::new(id),
             enabled: reason.is_none(),
             reason: reason.map(str::to_owned),
+            title: None,
         };
         vec![
             item(
@@ -1698,7 +1701,8 @@ impl SearchPanel {
                 &self.exclude,
             ),
         ] {
-            let mut node = Node::new(id, Role::TextBox, name, rect).with_text(field.value());
+            let mut node = Node::new(id, Role::TextBox, name, rect);
+            caret_text(field.value(), field.cursor(), field.cursor()).put(&mut node);
             node.state.focused = focused && self.focus == focus;
             if self.job.modal() && matches!(focus, Focus::Query | Focus::Replace) {
                 node.state.disabled = true;
@@ -1723,6 +1727,7 @@ impl SearchPanel {
                 id: ActionId::new(action),
                 enabled: true,
                 reason: None,
+                title: None,
             }];
             child(&mut root, node, &mut out);
         }
@@ -1740,6 +1745,7 @@ impl SearchPanel {
                 id: ActionId::new(action),
                 enabled: reason.is_none(),
                 reason,
+                title: None,
             }];
             child(&mut root, node, &mut out);
         }
@@ -1812,6 +1818,7 @@ impl SearchPanel {
                     id: ActionId::new(actions::OPEN_RESULT),
                     enabled: true,
                     reason: None,
+                    title: None,
                 }];
             }
             results.children.push(node.id.clone());

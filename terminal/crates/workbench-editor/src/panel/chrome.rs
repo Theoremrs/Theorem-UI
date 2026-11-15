@@ -10,6 +10,7 @@ use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::results::Severity;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
+use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::Caret;
 use theorem_workbench_text::recovery::{self, snip};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -17,8 +18,10 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use super::language::{Popup, word};
 use super::{Doc, EditorPanel, Phase, Tone};
 use crate::actions::Choice;
+use crate::field::Field;
 use crate::styles::EditorStyles;
 use crate::widget::Paint;
+use crate::window::text_window;
 
 /// Where each part of a ready editor is.
 pub(super) struct Frame {
@@ -1408,6 +1411,7 @@ impl EditorPanel {
             id: choice.action_id(),
             enabled: why.is_none(),
             reason: why,
+            title: None,
         }
     }
 
@@ -1425,6 +1429,7 @@ impl EditorPanel {
         root.state.focused = cx.focused && !d.in_find && d.rename.is_none() && d.history.is_none();
         root.state.busy =
             d.sync.inflight.is_some() || d.sync.save.inflight.is_some() || d.busy.is_some();
+        let shown = text_window(&d.session);
         let selected = d.session.selection().map_or(0, |(a, b)| {
             let c = d.session.coords();
             c.grapheme_index(b) - c.grapheme_index(a)
@@ -1440,6 +1445,10 @@ impl EditorPanel {
         if selected > 0 {
             words.push(format!("{selected} graphemes selected"));
         }
+        if let Some(note) = &shown.note {
+            words.push(note.clone());
+        }
+        shown.caret.put(&mut root);
         if let Some(r) = &d.sync.restored {
             words.push(self.recovered_bar(d, r).description());
         }
@@ -1504,7 +1513,11 @@ impl EditorPanel {
         if let Some(flag) = self.local_flag() {
             let mut n = Node::new(
                 recovery::LOCAL_NODE,
-                Role::Status,
+                if flag.attention {
+                    Role::Alert
+                } else {
+                    Role::Status
+                },
                 &flag.long,
                 frame.status.unwrap_or(area),
             );
@@ -1516,9 +1529,15 @@ impl EditorPanel {
         if let (Some(rect), Some(plan)) = (
             frame.notice,
             frame.status.map(|r| self.status_plan(d, r.width)),
-        ) && let Some((text, _)) = plan.notice
+        ) && let Some((text, tone)) = plan.notice
         {
-            let n = Node::new("notice", Role::Status, &text, rect);
+            // A warning or an error is what was refused or failed: an alert. Information is a
+            // passing status.
+            let role = match tone {
+                Tone::Info => Role::Status,
+                Tone::Warn | Tone::Error => Role::Alert,
+            };
+            let n = Node::new("notice", role, &text, rect);
             children.push(n.id.clone());
             out.push(n);
         }
@@ -1559,7 +1578,7 @@ impl EditorPanel {
             let row = Rect::new(row.x, row.y, row.width, 1);
             let mut field = Node::new("find-query", Role::TextBox, "Find", row);
             field.state.focused = d.in_find && !d.in_replace && cx.focused;
-            field.state.description = Some(d.find.field.value().to_owned());
+            put_field(&mut field, &d.find.field);
             group.children = vec![field.id.clone()];
             for (choice, r, why) in self.find_buttons(d, frame.find.unwrap_or(row)) {
                 let a = self.action(choice);
@@ -1580,7 +1599,7 @@ impl EditorPanel {
                 let below = Rect::new(row.x, row.y + 1, row.width, 1);
                 let mut with = Node::new("find-replacement", Role::TextBox, "Replace with", below);
                 with.state.focused = d.in_find && d.in_replace && cx.focused;
-                with.state.description = Some(d.find.replacement.value().to_owned());
+                put_field(&mut with, &d.find.replacement);
                 group.children.push(with.id.clone());
                 out.push(with);
             }
@@ -1593,12 +1612,10 @@ impl EditorPanel {
                 Prompt::Name(error) => {
                     let mut n = Node::new("naming", Role::TextBox, "Name of the new page", rect);
                     n.state.focused = cx.focused;
-                    let value = self.naming.as_ref().map(|n| n.field.value().to_owned());
-                    n.state.description = match (value, error) {
-                        (Some(v), Some(e)) => Some(format!("{v}; {e}")),
-                        (Some(v), None) => Some(v),
-                        (None, e) => e.clone(),
-                    };
+                    if let Some(naming) = &self.naming {
+                        put_field(&mut n, &naming.field);
+                    }
+                    n.state.description = error.clone();
                     n.actions = vec![self.action(Choice::Create)];
                     children.push(n.id.clone());
                     out.push(n);
@@ -1606,7 +1623,9 @@ impl EditorPanel {
                 Prompt::Rename => {
                     let mut n = Node::new("rename", Role::TextBox, "Rename symbol", rect);
                     n.state.focused = cx.focused;
-                    n.state.description = d.rename.as_ref().map(|f| f.value().to_owned());
+                    if let Some(f) = &d.rename {
+                        put_field(&mut n, f);
+                    }
                     children.push(n.id.clone());
                     out.push(n);
                 }
@@ -1710,7 +1729,7 @@ impl EditorPanel {
         {
             let mut name = Node::new("name", Role::TextBox, "Name of the new page", area);
             name.state.focused = cx.focused;
-            name.state.description = Some(n.field.value().to_owned());
+            put_field(&mut name, &n.field);
             name.actions = vec![self.action(Choice::Create)];
             kids.push(name);
         }
@@ -1865,6 +1884,11 @@ fn draw_popup(
             style,
         );
     }
+}
+
+/// A single-line field as a text node: its text and caret.
+fn put_field(node: &mut Node, field: &Field) {
+    caret_text(field.value(), field.cursor(), field.cursor()).put(node);
 }
 
 #[cfg(test)]
