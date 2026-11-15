@@ -289,6 +289,7 @@ impl EditorPanel {
             y: p.y - i32::from(frame.text.y),
             ..p
         };
+        let find_button = self.find_button_at(&frame, p.x, p.y);
         let Some(d) = self.doc_mut() else { return };
         // A popup is over the text: its rows take the pointer first.
         if let Some(popup) = d.popup.as_mut() {
@@ -315,6 +316,10 @@ impl EditorPanel {
         match p.kind {
             PointerKind::Down(Button::Left) => {
                 if frame.find.is_some_and(inside) {
+                    if let Some(choice) = find_button {
+                        self.choose(choice, cx);
+                        return;
+                    }
                     d.in_find = true;
                     d.in_replace =
                         d.find.is_replacing() && frame.find.is_some_and(|r| p.y > i32::from(r.y));

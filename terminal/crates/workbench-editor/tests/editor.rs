@@ -284,10 +284,24 @@ impl Rig {
         self.rows(b.width, b.height).join("\n")
     }
 
-    /// The status line is the last row of the body.
+    /// The status line is the last row of the body; a notice that does not
+    /// fit beside it wraps onto up to three rows above it.
     fn status(&self) -> String {
         let b = self.body();
-        self.rows(b.width, b.height).pop().unwrap()
+        let mut rows = self.rows(b.width, b.height);
+        let last = rows.pop().unwrap();
+        let tree = semantics(&self.m);
+        match tree.node(&NodeId::new(format!("{}/notice", self.id.as_str()))) {
+            Some(n) => {
+                let (y, h) = (
+                    usize::from(n.rect.y.saturating_sub(b.y)),
+                    usize::from(n.rect.height),
+                );
+                let above = rows[y..y + h].join(" ");
+                format!("{last} {above}")
+            }
+            None => last,
+        }
     }
 
     fn state(&self) -> serde_json::Value {
@@ -2509,4 +2523,227 @@ fn the_themes_preedit_role_styles_the_composition_text() {
     themed.preedit = Style::default().bg(Color::Rgb(7, 8, 9));
     assert_eq!(bg_of(&plain), Some(Color::Reset));
     assert_eq!(bg_of(&themed), Some(Color::Rgb(7, 8, 9)));
+}
+
+// ---- narrow panels ---------------------------------------------------------
+
+const WIDTHS: [u16; 3] = [80, 43, 24];
+
+impl Rig {
+    /// The panel body made `width` cells wide (a lone group takes the area).
+    fn at(mut self, width: u16) -> Self {
+        self.send(Msg::Resize {
+            area: Rect::new(0, 0, width, 50),
+            metrics: CellMetrics::new(8.0, 16.0),
+        });
+        assert_eq!(self.body().width, width);
+        self
+    }
+
+    /// The buttons of a group node (`strip:` or `find:`), with where each is
+    /// and the cells drawn there.
+    fn buttons(&self, prefix: &str) -> Vec<(String, Rect, String)> {
+        let b = self.body();
+        let rows = self.rows(b.width, b.height);
+        let tree = semantics(&self.m);
+        let want = format!("{}/{prefix}", self.id.as_str());
+        tree.nodes
+            .iter()
+            .filter(|n| n.id.as_str().starts_with(&want))
+            .map(|n| {
+                let row = &rows[usize::from(n.rect.y - b.y)];
+                let drawn: String = row
+                    .chars()
+                    .skip(usize::from(n.rect.x - b.x))
+                    .take(usize::from(n.rect.width))
+                    .collect();
+                let r = n.rect;
+                (
+                    n.actions[0].id.as_str().to_owned(),
+                    Rect::new(r.x, r.y, r.width, r.height),
+                    drawn,
+                )
+            })
+            .collect()
+    }
+}
+
+fn kinds(fx: &[Effect]) -> Vec<EffectKind> {
+    fx.iter().map(Effect::kind).collect()
+}
+
+/// Every button is inside the body, drawn whole in brackets, and clear of the
+/// others; a click on it does what the action does.
+fn check_buttons(make: &dyn Fn(u16) -> Rig, prefix: &str, width: u16) {
+    let rig = make(width);
+    let b = rig.body();
+    let all = rig.buttons(prefix);
+    assert!(!all.is_empty(), "{prefix} at {width}");
+    for (i, (action, rect, drawn)) in all.iter().enumerate() {
+        assert!(
+            rect.x >= b.x && rect.x + rect.width <= b.x + b.width,
+            "{action} at {width}: {rect:?} outside {b:?}"
+        );
+        assert!(
+            drawn.starts_with('[') && drawn.ends_with(']'),
+            "{action} at {width} is cut: {drawn:?}"
+        );
+        for (other, r2, _) in &all[i + 1..] {
+            let apart = rect.y != r2.y || rect.x + rect.width < r2.x || r2.x + r2.width < rect.x;
+            assert!(apart, "{action} and {other} overlap at {width}");
+        }
+        let mut clicked = make(width);
+        let fx = clicked.click(rect.x - b.x + rect.width / 2, rect.y - b.y, 1);
+        let mut chorded = make(width);
+        let expected = act(&mut chorded, action);
+        assert_eq!(kinds(&fx), kinds(&expected), "{action} at {width}");
+        assert_eq!(clicked.screen(), chorded.screen(), "{action} at {width}");
+    }
+}
+
+fn held(width: u16) -> Rig {
+    let mut rig = Rig::opened("hello\n").at(width);
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Refused {
+            code: "invalid".into(),
+            reason: "that edit is not allowed here at all".into(),
+        },
+        None,
+    );
+    rig
+}
+
+#[test]
+fn every_control_of_the_held_bar_is_whole_and_works_at_any_width() {
+    for w in WIDTHS {
+        check_buttons(&held, "strip:", w);
+        // All four choices are there, whatever the width.
+        assert_eq!(held(w).buttons("strip:").len(), 4, "{w}");
+    }
+}
+
+#[test]
+fn the_held_bar_keeps_the_key_hint_while_the_label_fits_with_it() {
+    let at80 = held(80).buttons("strip:");
+    assert!(at80.iter().all(|(_, _, d)| d.contains(" Alt+")), "{at80:?}");
+    // At 24 columns "[Keep my text Alt+M]" still fits; a long one loses its
+    // hint before its label.
+    let disk = |w| {
+        let mut rig = Rig::opened("hello\n").at(w);
+        rig.host(HostMessage::DocumentConflict {
+            resource: doc(),
+            revision: seq(2),
+            disk_deleted: false,
+        });
+        rig
+    };
+    let drawn: Vec<String> = disk(24)
+        .buttons("strip:")
+        .into_iter()
+        .map(|b| b.2)
+        .collect();
+    assert!(
+        drawn.iter().any(|d| d == "[Take the file on disk]"),
+        "{drawn:?}"
+    );
+    for w in WIDTHS {
+        check_buttons(&disk, "strip:", w);
+    }
+}
+
+fn dirty_at(width: u16) -> Rig {
+    let mut rig = Rig::opened("hello\n").at(width);
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.accept(&e, 2);
+    rig
+}
+
+#[test]
+fn the_status_line_keeps_position_and_state_and_shortens_the_path() {
+    for w in WIDTHS {
+        let rig = dirty_at(w);
+        let b = rig.body();
+        let rows = rig.rows(b.width, b.height);
+        let line = rows.last().unwrap();
+        assert!(line.contains("Ln 1, Col 2"), "{w}: {line:?}");
+        assert!(line.contains("[modified]"), "{w}: {line:?}");
+        assert!(line.width() <= usize::from(w), "{w}: {line:?}");
+        if w >= 43 {
+            assert!(line.contains("a.txt"), "{w}: {line:?}");
+        } else {
+            // No room for the name beside the rest: one cell remains for it.
+            assert!(line.starts_with('\u{2026}'), "{w}: {line:?}");
+        }
+    }
+}
+
+#[test]
+fn a_notice_that_does_not_fit_beside_the_status_wraps_above_it() {
+    for w in WIDTHS {
+        let mut rig = dirty_at(w);
+        let save = one(&rig.chord('s'), EffectKind::DocumentSave);
+        rig.answer(
+            &save,
+            Outcome::Refused {
+                code: "disk_full".into(),
+                reason: "the disk is full on the machine that holds this file".into(),
+            },
+            None,
+        );
+        let status = rig.status();
+        assert!(
+            status.contains("Not saved: the disk is full on the machine that holds this file"),
+            "{w}: {status}"
+        );
+        assert!(status.contains("[modified]"), "{w}: {status}");
+        rig.tree_ok();
+    }
+}
+
+#[test]
+fn the_read_only_reason_is_not_cut_at_any_width() {
+    for w in WIDTHS {
+        let mut rig = Rig::start().at(w);
+        let open = rig.open.take().unwrap();
+        rig.answer(
+            &open,
+            Outcome::Accepted,
+            Some(CompletionPayload::DocumentOpened(DocumentOpened {
+                text: "hello\n".into(),
+                revision: seq(1),
+                saved_revision: None,
+                dirty: false,
+                read_only: Some(theorem_workbench_core::completion::ReadOnly {
+                    reason: "a generated file that the build owns".into(),
+                }),
+            })),
+        );
+        rig.typed("x");
+        let status = rig.status();
+        assert!(status.contains("read-only"), "{w}: {status}");
+        assert!(
+            status.contains("a generated file that the build owns"),
+            "{w}: {status}"
+        );
+    }
+}
+
+#[test]
+fn the_find_bar_keeps_room_for_the_query_and_its_replace_buttons_whole() {
+    let make = |w: u16| {
+        let mut rig = Rig::opened("cat cat\n").at(w);
+        rig.chord('h');
+        rig.typed("cat");
+        rig
+    };
+    for w in WIDTHS {
+        let rig = make(w);
+        let b = rig.body();
+        let rows = rig.rows(b.width, b.height);
+        assert!(rows[0].starts_with("Find cat"), "{w}: {:?}", rows[0]);
+        assert!(rows[0].contains(" of 2"), "{w}: {:?}", rows[0]);
+        check_buttons(&make, "find:", w);
+    }
 }
