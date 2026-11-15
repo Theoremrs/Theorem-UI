@@ -325,6 +325,9 @@ pub(crate) enum Clip {
         selection: (usize, usize),
     },
     Paste,
+    /// A cut from the one-line field that has the keyboard: the selected text.
+    CutField(String),
+    PasteField,
 }
 
 impl std::fmt::Debug for Clip {
@@ -332,6 +335,11 @@ impl std::fmt::Debug for Clip {
         match self {
             Self::Copy => f.write_str("Copy"),
             Self::Paste => f.write_str("Paste"),
+            Self::PasteField => f.write_str("PasteField"),
+            Self::CutField(text) => f
+                .debug_tuple("CutField")
+                .field(&crate::owner::Withheld(text.len()))
+                .finish(),
             Self::Cut { text, selection } => f
                 .debug_struct("Cut")
                 .field("text", &crate::owner::Withheld(text.len()))

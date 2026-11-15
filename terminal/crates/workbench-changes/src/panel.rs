@@ -4,7 +4,7 @@
 //! means for the list, what may be asked, what an answer changes); this file only turns
 //! keys, the pointer and completions into calls on it, sends each request it returns as
 //! an effect, and gives the answer back. Text entry (the commit subject and body, the
-//! branch prompt) is `tui-input`, as the Files panel's rename row is.
+//! branch prompt) is the shared `workbench_text::field::Field`, as the Files rename row is.
 //!
 //! The panel is bound to the workspace's repository (`ResourceRef::Repository`) at the
 //! model's generation: an effect carries the generation its request was decided against,
@@ -30,7 +30,8 @@ use theorem_workbench_core::{
     Button, Ctx, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind, ViewCtx,
 };
 use theorem_workbench_panels::caret::caret_text;
-use tui_input::{Input, InputRequest};
+use theorem_workbench_panels::clip::{FieldClip, Settled, finish_cut};
+use theorem_workbench_text::field::{Field as Line, Keyed};
 
 use crate::descriptors::AMEND_CAPABILITY;
 use crate::intent::{ActionKind, Intent, IntentId, Refusal, Side};
@@ -72,13 +73,14 @@ pub struct ChangesPanel {
     connection: Option<ConnectionState>,
     /// The request each effect carries.
     sent: BTreeMap<EffectId, IntentId>,
-    subject: Input,
-    /// The body's lines; never empty.
-    body: Vec<Input>,
-    /// The body line being edited, and whether the edit is in the body at all.
-    row: usize,
+    subject: Line,
+    /// The description: one text with line breaks, edited as the composer's text is.
+    body: Line,
+    /// Whether the edit is in the description rather than the subject.
     in_body: bool,
-    prompt: Option<Input>,
+    prompt: Option<Line>,
+    /// The clipboard writes a field's copy and cut keys have out.
+    clip: FieldClip<Slot>,
     /// An amend was asked for by action and waits for the log to name the last message.
     amend_send: bool,
 }
@@ -88,34 +90,35 @@ const PAGE: isize = 10;
 /// Far enough to reach either end of any list.
 const EDGE: isize = 1_000_000;
 
-/// The text-buffer request a key makes, when it edits text.
-fn request(key: &KeyInput) -> Option<InputRequest> {
-    let mods = key.mods();
-    let word = mods.intersects(Mods::ALT | Mods::CTRL);
-    Some(match key.key() {
-        Key::Left if word => InputRequest::GoToPrevWord,
-        Key::Right if word => InputRequest::GoToNextWord,
-        Key::Left => InputRequest::GoToPrevChar,
-        Key::Right => InputRequest::GoToNextChar,
-        Key::Home => InputRequest::GoToStart,
-        Key::End => InputRequest::GoToEnd,
-        Key::Backspace if word => InputRequest::DeletePrevWord,
-        Key::Backspace => InputRequest::DeletePrevChar,
-        Key::Delete => InputRequest::DeleteNextChar,
-        Key::Char(c) if mods.intersects(Mods::CTRL | Mods::CMD) => match c {
-            'a' => InputRequest::GoToStart,
-            'e' => InputRequest::GoToEnd,
-            'u' => InputRequest::DeleteFromStart,
-            'k' => InputRequest::DeleteTillEnd,
-            _ => return None,
-        },
-        Key::Char(c) if mods.difference(Mods::SHIFT).is_empty() => InputRequest::InsertChar(c),
-        _ => return None,
-    })
+/// The text field a clipboard write came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Slot {
+    Subject,
+    Body,
+    Prompt,
 }
 
-fn at_column(input: &Input, column: usize) -> Input {
-    Input::new(input.value().to_owned()).with_cursor(column)
+/// What the model needs to draw a field's caret and selection: lines and display cells.
+fn caret_of(field: Field, line: &Line) -> Caret {
+    let at = |offset| (line.line_of(offset), line.cells_at(offset));
+    Caret {
+        field,
+        row: line.cursor_line(),
+        col: line.cursor_cells(),
+        selection: line.selection().map(|(start, end)| (at(start), at(end))),
+    }
+}
+
+/// Typed text as a commit field takes it: no control or hidden character.
+fn printable(text: &str) -> String {
+    text.chars().filter(|c| !c.is_control()).collect()
+}
+
+/// Text as the description takes it: line breaks stay, any other control character goes.
+fn printable_lines(text: &str) -> String {
+    text.chars()
+        .filter(|c| *c == '\n' || !c.is_control())
+        .collect()
 }
 
 impl ChangesPanel {
@@ -135,11 +138,11 @@ impl ChangesPanel {
             scm_ok: true,
             connection: None,
             sent: BTreeMap::new(),
-            subject: Input::default(),
-            body: vec![Input::default()],
-            row: 0,
+            subject: Line::default(),
+            body: Line::multiline(""),
             in_body: false,
             prompt: None,
+            clip: FieldClip::default(),
             amend_send: false,
         };
         panel.load_inputs();
@@ -170,37 +173,37 @@ impl ChangesPanel {
 
     /// Puts the model's draft into the text buffers, the cursor at the end.
     fn load_inputs(&mut self) {
-        self.subject = Input::new(self.model.subject().to_owned());
+        self.subject = Line::new(self.model.subject());
         self.load_body();
         self.mark_caret();
     }
 
     fn load_body(&mut self) {
-        let lines: Vec<Input> = self
-            .model
-            .body()
-            .split('\n')
-            .map(|l| Input::new(l.to_owned()))
-            .collect();
-        self.row = self.row.min(lines.len() - 1);
-        self.body = lines;
+        self.body = Line::multiline(self.model.body());
     }
 
-    fn joined_body(&self) -> String {
-        self.body
-            .iter()
-            .map(|i| i.value())
-            .collect::<Vec<_>>()
-            .join("\n")
+    /// The description's caret on `line` (clamped), at `column` scalars in.
+    fn body_at(&mut self, line: usize, column: usize) {
+        let line = line.min(self.body.line_count() - 1);
+        let (start, end) = self.body.line_range(line).unwrap_or((0, 0));
+        self.body.set_cursor((start + column).min(end));
+    }
+
+    /// The description's caret on `line`: where it is if it is already there, else the end.
+    fn body_row(&mut self, line: usize) {
+        let line = line.min(self.body.line_count() - 1);
+        if self.body.cursor_line() != line {
+            self.body_at(line, usize::MAX);
+        }
     }
 
     /// Brings the buffers back in line with the model after an answer changed the draft
     /// (a commit cleared it).
     fn sync_inputs(&mut self) {
         if self.subject.value() != self.model.subject() {
-            self.subject = Input::new(self.model.subject().to_owned());
+            self.subject = Line::new(self.model.subject());
         }
-        if self.joined_body() != self.model.body() {
+        if self.body.value() != self.model.body() {
             self.load_body();
         }
         self.mark_caret();
@@ -209,8 +212,7 @@ impl ChangesPanel {
     /// Tells the model what was typed, and where the caret is.
     fn edited(&mut self) {
         self.model.set_subject(self.subject.value());
-        let body = self.joined_body();
-        self.model.set_body(body);
+        self.model.set_body(self.body.value());
         if let Some(prompt) = &self.prompt {
             self.model.set_prompt_text(prompt.value());
         }
@@ -219,24 +221,12 @@ impl ChangesPanel {
 
     fn mark_caret(&mut self) {
         let caret = if let Some(prompt) = &self.prompt {
-            Some(Caret {
-                field: Field::Prompt,
-                row: 0,
-                col: prompt.visual_cursor(),
-            })
+            Some(caret_of(Field::Prompt, prompt))
         } else if self.model.focus() == Focus::Message {
             Some(if self.in_body {
-                Caret {
-                    field: Field::Body,
-                    row: self.row,
-                    col: self.body[self.row].visual_cursor(),
-                }
+                caret_of(Field::Body, &self.body)
             } else {
-                Caret {
-                    field: Field::Subject,
-                    row: 0,
-                    col: self.subject.visual_cursor(),
-                }
+                caret_of(Field::Subject, &self.subject)
             })
         } else {
             None
@@ -247,7 +237,9 @@ impl ChangesPanel {
     fn focus_message(&mut self, body: bool, row: usize) {
         self.model.set_focus(Focus::Message);
         self.in_body = body;
-        self.row = row.min(self.body.len() - 1);
+        if body {
+            self.body_row(row);
+        }
         self.mark_caret();
     }
 
@@ -272,7 +264,6 @@ impl ChangesPanel {
             self.amend_send = false;
             self.sent.clear();
             self.prompt = None;
-            self.row = 0;
             self.in_body = false;
             self.connection = None;
             self.load_inputs();
@@ -346,6 +337,9 @@ impl ChangesPanel {
     }
 
     fn on_completion(&mut self, completion: Completion, cx: &mut Ctx) {
+        if let Some(settled) = self.clip.settle(&completion) {
+            return self.on_clip(settled);
+        }
         let Some(intent) = self.sent.remove(&completion.effect) else {
             return;
         };
@@ -495,7 +489,7 @@ impl ChangesPanel {
     /// Opens the prompt. A switch and a merge also ask for the branch list.
     fn open_prompt(&mut self, kind: PromptKind, cx: &mut Ctx) {
         if let Ok(list) = self.model.open_prompt(kind) {
-            self.prompt = Some(Input::default());
+            self.prompt = Some(Line::default());
             self.mark_caret();
             if let Some(intent) = list {
                 self.send(cx, intent);
@@ -751,14 +745,14 @@ impl ChangesPanel {
             Key::Down => self.model.prompt_move(1),
             Key::Tab => {
                 if let Some(name) = self.model.prompt_complete() {
-                    self.prompt = Some(Input::new(name));
+                    self.prompt = Some(Line::new(&name));
                     self.mark_caret();
                 }
             }
             _ => {
-                if let (Some(input), Some(req)) = (&mut self.prompt, request(&key)) {
-                    input.handle(req);
-                    self.edited();
+                if let Some(input) = &mut self.prompt {
+                    let keyed = input.key(&key);
+                    self.keyed(cx, Slot::Prompt, keyed);
                 }
             }
         }
@@ -935,6 +929,7 @@ impl ChangesPanel {
 
     fn message_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let command = key.mods().intersects(Mods::CTRL | Mods::CMD);
+        let extend = key.mods().contains(Mods::SHIFT);
         match key.key() {
             Key::Esc => {
                 self.model.set_focus(Focus::Files);
@@ -945,96 +940,75 @@ impl ChangesPanel {
                 self.mark_caret();
             }
             Key::Enter if command => self.commit(cx),
-            Key::Enter => self.enter(),
-            Key::Up => self.step_row(-1),
-            Key::Down => self.step_row(1),
-            Key::Backspace if self.in_body && self.body[self.row].cursor() == 0 => {
-                self.join_up();
+            // Enter in the subject goes to the description; there it breaks the line.
+            Key::Enter if !self.in_body => {
+                self.in_body = true;
+                self.body_row(0);
+                self.edited();
+            }
+            Key::Down if !self.in_body => {
+                self.in_body = true;
+                self.body_at(0, self.subject.cursor());
+                self.edited();
+            }
+            // Up from the first line goes back to the subject, at the same column.
+            Key::Up if self.in_body && !extend && self.body.cursor_line() == 0 => {
+                let column = self.body.cursor();
+                self.in_body = false;
+                self.subject.set_cursor(column);
+                self.mark_caret();
+            }
+            Key::Up if !self.in_body => {}
+            // Backspace at the very start of the description goes back to the subject.
+            Key::Backspace
+                if self.in_body && self.body.cursor() == 0 && self.body.selection().is_none() =>
+            {
+                self.in_body = false;
+                self.edited();
             }
             _ => {
-                if let Some(req) = request(&key) {
-                    let input = if self.in_body {
-                        &mut self.body[self.row]
-                    } else {
-                        &mut self.subject
-                    };
-                    input.handle(req);
-                    self.edited();
+                let (field, slot) = if self.in_body {
+                    (&mut self.body, Slot::Body)
+                } else {
+                    (&mut self.subject, Slot::Subject)
+                };
+                let keyed = field.key(&key);
+                self.keyed(cx, slot, keyed);
+            }
+        }
+    }
+
+    /// What a field's key asked for: an edit, or a copy or cut of the selection.
+    fn keyed(&mut self, cx: &mut Ctx, slot: Slot, keyed: Keyed) {
+        match keyed {
+            Keyed::Ignored => {}
+            // The browser answers the paste chord with `PanelMsg::Paste`, not a key.
+            Keyed::Paste => {}
+            Keyed::Copy | Keyed::Cut => {
+                let field = match slot {
+                    Slot::Subject => Some(self.subject.clone()),
+                    Slot::Body => Some(self.body.clone()),
+                    Slot::Prompt => self.prompt.clone(),
+                };
+                if let Some(field) = field {
+                    // A write that could not be sent is said the way a refused one is.
+                    if let Some(reason) = self.clip.ask(cx, slot, keyed, &field) {
+                        let outcome = Outcome::Refused {
+                            code: "not_sent".to_owned(),
+                            reason,
+                        };
+                        self.model.clipboard_not_taken(&outcome);
+                    }
                 }
+                self.mark_caret();
             }
+            Keyed::Handled => self.edited(),
         }
-    }
-
-    /// Enter in the subject goes to the body; in the body it breaks the line.
-    fn enter(&mut self) {
-        if !self.in_body {
-            self.in_body = true;
-            self.row = 0;
-        } else {
-            let line = &self.body[self.row];
-            let at = line.cursor();
-            let value = line.value().to_owned();
-            let head: String = value.chars().take(at).collect();
-            let tail: String = value.chars().skip(at).collect();
-            self.body[self.row] = Input::new(head);
-            self.body
-                .insert(self.row + 1, Input::new(tail).with_cursor(0));
-            self.row += 1;
-        }
-        self.edited();
-    }
-
-    /// Backspace at the start of a body line joins it to the one above; on the first
-    /// line it goes back to the subject.
-    fn join_up(&mut self) {
-        if self.row == 0 {
-            self.in_body = false;
-        } else {
-            let line = self.body.remove(self.row);
-            self.row -= 1;
-            let above = self.body[self.row].value().to_owned();
-            let column = above.chars().count();
-            self.body[self.row] =
-                Input::new(format!("{above}{}", line.value())).with_cursor(column);
-        }
-        self.edited();
-    }
-
-    /// Up and down between the subject and the body lines, keeping the column.
-    fn step_row(&mut self, delta: isize) {
-        let column = if self.in_body {
-            self.body[self.row].cursor()
-        } else {
-            self.subject.cursor()
-        };
-        if !self.in_body {
-            if delta > 0 {
-                self.in_body = true;
-                self.row = 0;
-            }
-        } else if delta < 0 {
-            if self.row == 0 {
-                self.in_body = false;
-            } else {
-                self.row -= 1;
-            }
-        } else if self.row + 1 < self.body.len() {
-            self.row += 1;
-        }
-        let input = if self.in_body {
-            &mut self.body[self.row]
-        } else {
-            &mut self.subject
-        };
-        *input = at_column(input, column);
-        self.mark_caret();
     }
 
     fn insert_text(&mut self, text: &str) {
         if let Some(prompt) = &mut self.prompt {
-            for c in text.chars().filter(|c| !c.is_control()) {
-                prompt.handle(InputRequest::InsertChar(c));
-            }
+            prompt.insert(&printable(text));
             return self.edited();
         }
         if self.model.focus() != Focus::Message || self.model.confirm_pending().is_some() {
@@ -1042,7 +1016,7 @@ impl ChangesPanel {
         }
         let mut lines = text.replace("\r\n", "\n").replace('\r', "\n");
         if !self.in_body {
-            // A subject is one line: what follows its first line goes to the body.
+            // A subject is one line: what follows its first line goes to the description.
             let rest = match lines.split_once('\n') {
                 Some((first, rest)) => {
                     let rest = rest.to_owned();
@@ -1051,28 +1025,33 @@ impl ChangesPanel {
                 }
                 None => None,
             };
-            for c in lines.chars().filter(|c| !c.is_control()) {
-                self.subject.handle(InputRequest::InsertChar(c));
-            }
+            self.subject.insert(&printable(&lines));
             if let Some(rest) = rest {
                 self.in_body = true;
-                self.row = 0;
-                self.type_into_body(&rest);
+                self.body_row(0);
+                self.body.insert(&printable_lines(&rest));
             }
         } else {
-            self.type_into_body(&lines);
+            self.body.insert(&printable_lines(&lines));
         }
         self.edited();
     }
 
-    fn type_into_body(&mut self, text: &str) {
-        for (at, piece) in text.split('\n').enumerate() {
-            if at > 0 {
-                self.enter();
+    /// The end of a clipboard write: a cut takes the selection out if its field still holds it.
+    fn on_clip(&mut self, settled: Settled<Slot>) {
+        match settled {
+            Settled::Copied => {}
+            Settled::Cut(slot, text) => {
+                let field = match slot {
+                    Slot::Subject => Some(&mut self.subject),
+                    Slot::Body => Some(&mut self.body),
+                    Slot::Prompt => self.prompt.as_mut(),
+                };
+                if field.is_some_and(|f| finish_cut(f, &text)) {
+                    self.edited();
+                }
             }
-            for c in piece.chars().filter(|c| !c.is_control()) {
-                self.body[self.row].handle(InputRequest::InsertChar(c));
-            }
+            Settled::Not { outcome, .. } => self.model.clipboard_not_taken(&outcome),
         }
     }
 
@@ -1273,22 +1252,21 @@ impl Panel for ChangesPanel {
         for node in &mut nodes {
             match node.id.as_str() {
                 "changes/commit/subject" => {
-                    let at = self.subject.cursor();
-                    caret_text(self.subject.value(), at, at).put(node);
+                    caret_text(
+                        self.subject.value(),
+                        self.subject.anchor(),
+                        self.subject.cursor(),
+                    )
+                    .put(node);
                     node.state.focused = drafting && !self.in_body;
                 }
                 "changes/commit/body" => {
                     node.state.focused = drafting && self.in_body;
-                    let lines: Vec<&str> = self.body.iter().map(Input::value).collect();
-                    let row = self.row.min(lines.len() - 1);
-                    let before: usize = lines[..row].iter().map(|l| l.chars().count() + 1).sum();
-                    let at = before + self.body[row].cursor();
-                    caret_text(&lines.join("\n"), at, at).put(node);
+                    caret_text(self.body.value(), self.body.anchor(), self.body.cursor()).put(node);
                 }
                 "changes/branch" if node.role == Role::TextBox => {
                     if let Some(prompt) = &self.prompt {
-                        let at = prompt.cursor();
-                        caret_text(prompt.value(), at, at).put(node);
+                        caret_text(prompt.value(), prompt.anchor(), prompt.cursor()).put(node);
                     }
                 }
                 _ => {}

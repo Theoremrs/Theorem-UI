@@ -58,7 +58,7 @@ impl Find {
     pub fn open(&mut self, seed: Option<String>) {
         self.open = true;
         if let Some(seed) = seed.filter(|s| !s.is_empty() && !s.contains('\n')) {
-            self.field = Field::with_value(&seed);
+            self.field = Field::new(&seed);
         }
     }
 

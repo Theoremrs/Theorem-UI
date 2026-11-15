@@ -44,9 +44,10 @@ use theorem_workbench_core::{
 };
 use theorem_workbench_panels::caret::caret_text;
 
-use crate::field::{Field, Look};
 use crate::styles::Styles;
 use crate::text;
+use theorem_workbench_panels::clip::{FieldClip, Settled, finish_cut, not_done};
+use theorem_workbench_text::field::{Field, FieldStyles, Keyed};
 
 pub const KIND: &str = "run-output";
 const START_CAPABILITY: &str = "run.start";
@@ -224,6 +225,8 @@ pub struct RunPanel {
     paused: bool,
     ticks: u32,
     pending: BTreeMap<EffectId, Step>,
+    /// The clipboard writes a field's copy and cut keys have out.
+    clip: FieldClip<Focus>,
     identity: WorkspaceIdentity,
     can_start: bool,
     can_read: bool,
@@ -256,6 +259,7 @@ impl RunPanel {
             // A restored handle is read on the first frame rather than after a wait.
             ticks: POLL_EVERY,
             pending: BTreeMap::new(),
+            clip: FieldClip::default(),
             identity: WorkspaceIdentity::default(),
             can_start: true,
             can_read: true,
@@ -374,6 +378,20 @@ impl RunPanel {
     }
 
     fn on_completion(&mut self, completion: Completion, cx: &mut Ctx) {
+        match self.clip.settle(&completion) {
+            Some(Settled::Cut(focus, text)) => {
+                if let Some(field) = self.field_in(focus) {
+                    finish_cut(field, &text);
+                }
+                return;
+            }
+            Some(Settled::Not { cut, outcome }) => {
+                self.notice = Some(not_done(cut, &outcome));
+                return;
+            }
+            Some(Settled::Copied) => return,
+            None => {}
+        }
         let Some(step) = self.pending.remove(&completion.effect) else {
             return;
         };
@@ -721,7 +739,11 @@ impl RunPanel {
     }
 
     fn field_mut(&mut self) -> Option<&mut Field> {
-        match self.focus {
+        self.field_in(self.focus)
+    }
+
+    fn field_in(&mut self, focus: Focus) -> Option<&mut Field> {
+        match focus {
             Focus::Name => Some(&mut self.name),
             Focus::Command => Some(&mut self.command),
             Focus::Output => None,
@@ -751,7 +773,9 @@ impl RunPanel {
 
     fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let mods = key.mods();
-        if mods.contains(Mods::CTRL) && key.key() == Key::Char('c') {
+        // Ctrl+C asks to stop the run, unless a field has a selection: then it is the field's copy.
+        let selected = self.field_mut().is_some_and(|f| f.selection().is_some());
+        if mods.contains(Mods::CTRL) && key.key() == Key::Char('c') && !selected {
             return self.ask_stop();
         }
         if self.asking {
@@ -790,8 +814,15 @@ impl RunPanel {
             _ => {}
         }
         if self.focus != Focus::Output {
+            let focus = self.focus;
             if let Some(field) = self.field_mut() {
-                field.key(&key);
+                let keyed = field.key(&key);
+                if matches!(keyed, Keyed::Copy | Keyed::Cut) {
+                    let field = field.clone();
+                    if let Some(note) = self.clip.ask(cx, focus, keyed, &field) {
+                        self.notice = Some(note);
+                    }
+                }
             }
             return;
         }
@@ -1077,8 +1108,9 @@ impl RunPanel {
             field.draw(
                 buf,
                 rect,
-                Look {
+                &FieldStyles {
                     text: s.text,
+                    selection: s.selection,
                     caret: s.cursor,
                     hint: s.muted,
                 },
@@ -1223,7 +1255,7 @@ impl RunPanel {
             ),
         ] {
             let mut node = Node::new(id, Role::TextBox, name, rect);
-            caret_text(field.value(), field.cursor(), field.cursor()).put(&mut node);
+            caret_text(field.value(), field.anchor(), field.cursor()).put(&mut node);
             node.state.focused = focused && self.focus == focus;
             put(&mut root, node, &mut out);
         }

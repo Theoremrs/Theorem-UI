@@ -16,7 +16,6 @@ ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
 ratatui = { version = "0.30.1", default-features = false }
 # The query, include and exclude fields and the run's name and command: a text buffer with a
 # cursor and word motions, as the Files and Changes panels use.
-tui-input = { version = "0.15.5", default-features = false }
 unicode-width = "0.2"
 # The match highlight is placed by grapheme, so a ZWJ emoji or a combining mark is never cut.
 unicode-segmentation = "1"

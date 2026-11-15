@@ -15,7 +15,7 @@ use theorem_workbench_core::{Ctx, OpenTarget};
 
 use super::flow::emit_notice;
 use super::{EditorPanel, Phase, Task, Tone};
-use crate::field::{Event, Field};
+use crate::field::{self, Event, Field};
 
 /// The name being typed, and what the owner said to the last one.
 #[derive(Debug, Default)]
@@ -56,7 +56,7 @@ impl EditorPanel {
             if n.busy {
                 return true;
             }
-            n.field.key(key)
+            field::press(&mut n.field, key)
         };
         match event {
             Event::Enter => self.submit_naming(cx),
@@ -78,6 +78,7 @@ impl EditorPanel {
                     n.error = None;
                 }
             }
+            Event::Clipboard(what) => self.field_clipboard(what, cx),
             Event::Ignored => {}
         }
         true
@@ -88,7 +89,7 @@ impl EditorPanel {
             return false;
         };
         if !n.busy {
-            n.field.text(text.lines().next().unwrap_or(""));
+            field::typed(&mut n.field, text.lines().next().unwrap_or(""));
             n.error = None;
         }
         true

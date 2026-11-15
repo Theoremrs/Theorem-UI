@@ -7,7 +7,6 @@
 //! here reads a clock, the network or a terminal, so the crate builds for `wasm32`.
 
 mod diagnostics;
-mod field;
 mod replace;
 mod run;
 mod search;

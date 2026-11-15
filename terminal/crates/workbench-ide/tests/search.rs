@@ -713,3 +713,77 @@ fn a_hostile_query_is_spelled_out_and_the_caret_counts_into_what_is_shown() {
     };
     assert_eq!(tree.validate(), Ok(()));
 }
+
+// ---- selection in the one-line fields -------------------------------------------
+
+#[test]
+fn shift_left_then_typing_replaces_the_query_selection_and_select_all_replaces_it_all() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    assert_eq!(
+        caret_of(&rig.node("query")),
+        (6, 4),
+        "the published selection runs from the anchor to the moved end"
+    );
+    rig.typed("X");
+    assert_eq!(rig.node("query").text.as_deref(), Some("needX"));
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    assert_eq!(caret_of(&rig.node("query")), (0, 5));
+    rig.typed("hay");
+    assert_eq!(rig.node("query").text.as_deref(), Some("hay"));
+    let sent = rig.key(Key::Enter);
+    assert_eq!(search_query(&sent).query, "hay");
+}
+
+fn clipboard_write(fx: &[Effect]) -> (Effect, String) {
+    let write = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::ClipboardWrite(_)))
+        .unwrap_or_else(|| panic!("no clipboard write in {fx:?}"));
+    let EffectBody::ClipboardWrite(w) = &write.body else {
+        unreachable!()
+    };
+    (write.clone(), w.text.clone())
+}
+
+#[test]
+fn copy_and_cut_in_a_search_field_go_through_the_clipboard_effect() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    // Copy sends exactly the selection and changes nothing.
+    let (write, text) = clipboard_write(&rig.mods(Key::Char('c'), Mods::CTRL));
+    assert_eq!(text, "le");
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.node("query").text.as_deref(), Some("needle"));
+    // Cut waits for the clipboard, then takes the selection out.
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    assert_eq!(rig.node("query").text.as_deref(), Some("needle"));
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.node("query").text.as_deref(), Some("need"));
+}
+
+#[test]
+fn a_refused_cut_in_a_search_field_leaves_the_text_and_says_so() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    rig.refuse(&write, "denied", "no clipboard here");
+    assert_eq!(rig.node("query").text.as_deref(), Some("needle"));
+    assert!(rig.text().contains("no clipboard here"), "{}", rig.text());
+}
+
+#[test]
+fn a_cut_leaves_a_field_that_changed_while_it_was_out_alone() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    rig.typed("Z");
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.node("query").text.as_deref(), Some("Z"));
+}

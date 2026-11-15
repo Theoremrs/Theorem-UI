@@ -911,6 +911,17 @@ impl Changes {
         Err(refusal)
     }
 
+    /// A copy or cut the host did not take: said as a notice, like any refused request.
+    pub fn clipboard_not_taken(&mut self, outcome: &Outcome) {
+        if let Some(problem) = Problem::of(outcome) {
+            self.push_notice(Notice {
+                action: ActionKind::Clipboard,
+                subject: None,
+                problem,
+            });
+        }
+    }
+
     fn push_notice(&mut self, notice: Notice) {
         self.notices.push(notice);
         let over = self.notices.len().saturating_sub(3);

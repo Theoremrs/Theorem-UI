@@ -9,7 +9,7 @@ use theorem_workbench_text::{EditError, EditSession, LocalEdit, Resolution};
 use super::language::LIST_ROWS;
 use super::{Clip, EditorPanel, Phase, Tone};
 use crate::actions::Choice;
-use crate::field::{Event, Field};
+use crate::field::{self, Event, Field};
 use crate::widget::{Clipboard, Reaction};
 
 /// The chord a key is, when it is one. Alt and a letter belong to the editor
@@ -134,7 +134,7 @@ impl EditorPanel {
         if let Some(d) = self.doc_mut()
             && let Some(field) = d.rename.as_mut()
         {
-            match field.key(&key) {
+            match field::press(field, &key) {
                 Event::Enter => {
                     let name = field.value().trim().to_owned();
                     d.rename = None;
@@ -143,6 +143,7 @@ impl EditorPanel {
                     }
                 }
                 Event::Escape => d.rename = None,
+                Event::Clipboard(what) => self.field_clipboard(what, cx),
                 Event::Edited | Event::Ignored => {}
             }
             return;
@@ -175,8 +176,9 @@ impl EditorPanel {
                 return;
             }
             if d.in_replace {
-                match d.find.replacement.key(&key) {
+                match field::press(&mut d.find.replacement, &key) {
                     Event::Enter => self.choose(Choice::Replace, cx),
+                    Event::Clipboard(what) => self.field_clipboard(what, cx),
                     Event::Escape => {
                         d.find.close();
                         d.in_find = false;
@@ -189,7 +191,7 @@ impl EditorPanel {
         }
 
         if d.in_find {
-            match d.find.field.key(&key) {
+            match field::press(&mut d.find.field, &key) {
                 Event::Enter => {
                     let forward = !mods.contains(Mods::SHIFT);
                     self.choose(
@@ -210,6 +212,10 @@ impl EditorPanel {
                 }
                 Event::Edited => {
                     self.land_on_first_match();
+                    return;
+                }
+                Event::Clipboard(what) => {
+                    self.field_clipboard(what, cx);
                     return;
                 }
                 Event::Ignored => {}
@@ -236,15 +242,15 @@ impl EditorPanel {
         d.popup = None;
         d.followed = None;
         if d.in_find && d.in_replace {
-            d.find.replacement.text(text);
+            field::typed(&mut d.find.replacement, text);
             return;
         }
         if let Some(field) = d.rename.as_mut() {
-            field.text(text);
+            field::typed(field, text);
             return;
         }
         if d.in_find {
-            d.find.field.text(text);
+            field::typed(&mut d.find.field, text);
             self.land_on_first_match();
             return;
         }
@@ -260,15 +266,15 @@ impl EditorPanel {
         d.popup = None;
         d.followed = None;
         if d.in_find && d.in_replace {
-            d.find.replacement.text(text.lines().next().unwrap_or(""));
+            field::typed(&mut d.find.replacement, text.lines().next().unwrap_or(""));
             return;
         }
         if let Some(field) = d.rename.as_mut() {
-            field.text(text.lines().next().unwrap_or(""));
+            field::typed(field, text.lines().next().unwrap_or(""));
             return;
         }
         if d.in_find {
-            d.find.field.text(text.lines().next().unwrap_or(""));
+            field::typed(&mut d.find.field, text.lines().next().unwrap_or(""));
             self.land_on_first_match();
             return;
         }
@@ -493,7 +499,7 @@ impl EditorPanel {
             Choice::Rename => {
                 if let Some(d) = self.doc_mut() {
                     let seed = d.view.seed(&d.session).unwrap_or_default();
-                    d.rename = Some(Field::with_value(&seed));
+                    d.rename = Some(Field::new(&seed));
                 }
             }
             Choice::Format => self.send_format(cx),
@@ -699,6 +705,61 @@ impl EditorPanel {
     }
 
     // ---- the clipboard ----------------------------------------------------
+
+    /// The one-line field that has the keyboard, in the order the keys are taken: the new
+    /// page's name, the rename name, the replacement, the find text.
+    pub(super) fn typing_field(&mut self) -> Option<&mut Field> {
+        if self.naming.is_some() {
+            return self.naming.as_mut().map(|n| &mut n.field);
+        }
+        let d = self.doc_mut()?;
+        if d.rename.is_some() {
+            d.rename.as_mut()
+        } else if d.in_find && d.in_replace {
+            Some(&mut d.find.replacement)
+        } else if d.in_find {
+            Some(&mut d.find.field)
+        } else {
+            None
+        }
+    }
+
+    /// A field changed other than by a key: what a key's `Event::Edited` does after it.
+    pub(super) fn field_edited(&mut self) {
+        if let Some(n) = self.naming.as_mut() {
+            n.error = None;
+        } else if self
+            .doc_mut()
+            .is_some_and(|d| d.in_find && !d.in_replace && d.rename.is_none())
+        {
+            self.land_on_first_match();
+        }
+    }
+
+    /// A clipboard key in a one-line field. The copy and the cut go out as effects like the
+    /// document's; the cut takes the text out only once the clipboard has it, and only if it
+    /// is still what is selected.
+    pub(super) fn field_clipboard(&mut self, what: Clipboard, cx: &mut Ctx) {
+        match what {
+            Clipboard::Copy | Clipboard::Cut => {
+                let Some(text) = self.typing_field().and_then(|f| f.selected_text()) else {
+                    return;
+                };
+                let task = if what == Clipboard::Cut {
+                    Clip::CutField(text.clone())
+                } else {
+                    Clip::Copy
+                };
+                self.write_clipboard(text, task, cx);
+            }
+            Clipboard::Paste => {
+                let body = theorem_workbench_core::effect::EffectBody::ClipboardRead;
+                if let Err(e) = self.emit_clip(cx, body, Clip::PasteField) {
+                    self.say(super::flow::emit_notice(e), Tone::Warn);
+                }
+            }
+        }
+    }
 
     /// Through the core's effects only: the panel keeps no buffer of its own.
     fn clipboard(&mut self, what: Clipboard, cx: &mut Ctx) {

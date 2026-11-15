@@ -1,87 +1,46 @@
-//! A one-line text field for the find bar and the rename name.
-//!
-//! The editing is `tui_input::Input`'s. What this adds is the mapping from the
-//! workbench's keys to its requests; the Files panel has the same mapping for
-//! its rename row, but it is private to that crate.
+//! The find bar, the rename name and the new page's name edit with the workspace's one-line
+//! field, `theorem_workbench_text::field::Field`. What this adds is what the panel does with the
+//! keys that are not editing: Enter and Esc end the field, and a clipboard key is the panel's to
+//! carry out through the core's effects.
 
-use keybinds::{Key, KeyInput, Mods};
-use tui_input::{Input, InputRequest};
+use keybinds::{Key, KeyInput};
+pub use theorem_workbench_text::field::Field;
+use theorem_workbench_text::field::Keyed;
+
+use crate::widget::Clipboard;
 
 /// What a key did to the field.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Event {
     /// The field did not use the key.
     Ignored,
-    /// The text or the cursor changed.
+    /// The text, the caret or the selection changed.
     Edited,
     Enter,
     Escape,
+    /// The field wants the clipboard: the panel sends the effect and applies the answer to
+    /// whichever field has the keyboard.
+    Clipboard(Clipboard),
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct Field {
-    input: Input,
+pub fn press(field: &mut Field, key: &KeyInput) -> Event {
+    match key.key() {
+        Key::Enter => return Event::Enter,
+        Key::Esc => return Event::Escape,
+        _ => {}
+    }
+    match field.key(key) {
+        Keyed::Ignored => Event::Ignored,
+        Keyed::Handled => Event::Edited,
+        Keyed::Copy => Event::Clipboard(Clipboard::Copy),
+        Keyed::Cut => Event::Clipboard(Clipboard::Cut),
+        Keyed::Paste => Event::Clipboard(Clipboard::Paste),
+    }
 }
 
-impl Field {
-    pub fn with_value(value: &str) -> Self {
-        Self {
-            input: Input::new(value.to_owned()),
-        }
-    }
-
-    pub fn value(&self) -> &str {
-        self.input.value()
-    }
-
-    /// Cells from the start of the visible part to the cursor.
-    pub fn cursor(&self) -> usize {
-        self.input.visual_cursor()
-    }
-
-    pub fn scroll(&self, width: usize) -> usize {
-        self.input.visual_scroll(width.max(1))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.input.value().is_empty()
-    }
-
-    pub fn text(&mut self, text: &str) -> Event {
-        for c in text.chars().filter(|c| !c.is_control()) {
-            self.input.handle(InputRequest::InsertChar(c));
-        }
-        Event::Edited
-    }
-
-    pub fn key(&mut self, key: &KeyInput) -> Event {
-        let mods = key.mods();
-        let word = mods.intersects(Mods::ALT | Mods::CTRL);
-        let request = match key.key() {
-            Key::Enter => return Event::Enter,
-            Key::Esc => return Event::Escape,
-            Key::Left if word => InputRequest::GoToPrevWord,
-            Key::Right if word => InputRequest::GoToNextWord,
-            Key::Left => InputRequest::GoToPrevChar,
-            Key::Right => InputRequest::GoToNextChar,
-            Key::Home => InputRequest::GoToStart,
-            Key::End => InputRequest::GoToEnd,
-            Key::Backspace if word => InputRequest::DeletePrevWord,
-            Key::Backspace => InputRequest::DeletePrevChar,
-            Key::Delete => InputRequest::DeleteNextChar,
-            Key::Char(c) if mods.intersects(Mods::CTRL | Mods::CMD) => match c {
-                'a' => InputRequest::GoToStart,
-                'e' => InputRequest::GoToEnd,
-                'u' => InputRequest::DeleteFromStart,
-                'k' => InputRequest::DeleteTillEnd,
-                _ => return Event::Ignored,
-            },
-            Key::Char(c) if !mods.contains(Mods::ALT) || !c.is_ascii() => {
-                InputRequest::InsertChar(c)
-            }
-            _ => return Event::Ignored,
-        };
-        self.input.handle(request);
-        Event::Edited
-    }
+/// Typed or pasted text, without control characters.
+pub fn typed(field: &mut Field, text: &str) -> Event {
+    let text: String = text.chars().filter(|c| !c.is_control()).collect();
+    field.insert(&text);
+    Event::Edited
 }

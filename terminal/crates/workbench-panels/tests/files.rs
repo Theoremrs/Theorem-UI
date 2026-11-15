@@ -1888,7 +1888,9 @@ fn opening_renaming_deleting_and_copying_a_hostile_name_pass_it_through_byte_exa
         let (mut r, _) = hostile_rig();
         select(&mut r, &name);
         r.key(Key::F2);
-        r.mods(Key::Char('u'), Mods::CTRL);
+        // Ctrl+U now clears to the start of the line, and a name may hold line breaks;
+        // select all replaces the whole name, as in the composer.
+        r.mods(Key::Char('a'), Mods::CTRL);
         r.typed("renamed");
         let fx = r.key(Key::Enter);
         let EffectBody::FilesRename(b) =
@@ -2077,4 +2079,126 @@ fn the_rename_row_publishes_its_text_and_caret_in_utf16_units() {
     let tree = tree_of(&r, 20);
     let s = tree.node(&NodeId::new("edit")).unwrap().selection.unwrap();
     assert_eq!(s.focus, 4);
+}
+
+#[test]
+fn shift_left_then_typing_replaces_in_the_rename_field_and_select_all_replaces_the_name() {
+    let mut r = rig();
+    r.open_root();
+    r.typed("a.t");
+    r.key(Key::F2);
+    // "a.txt": select the extension's last two letters and replace them.
+    r.mods(Key::Left, Mods::SHIFT);
+    r.mods(Key::Left, Mods::SHIFT);
+    r.typed("md");
+    let fx = r.key(Key::Enter);
+    let rename = find(&fx, |b| matches!(b, EffectBody::FilesRename(_))).clone();
+    let EffectBody::FilesRename(body) = &rename.body else {
+        unreachable!()
+    };
+    assert_eq!(body.to, "a.tmd");
+    r.done(rename.id, Outcome::Failed { reason: "x".into() }, None);
+    r.key(Key::Esc);
+
+    r.key(Key::F2);
+    r.mods(Key::Char('a'), Mods::CTRL);
+    r.typed("whole.txt");
+    let fx = r.key(Key::Enter);
+    let EffectBody::FilesRename(body) =
+        &find(&fx, |b| matches!(b, EffectBody::FilesRename(_))).body
+    else {
+        unreachable!()
+    };
+    assert_eq!(body.to, "whole.txt");
+}
+
+/// The answer to an effect the host owns: it comes back under the effect's own resource.
+fn answer(r: &mut Rig, effect: &Effect, outcome: Outcome) {
+    r.send(Msg::Completion(Completion::new(
+        effect.id,
+        effect.resource.clone(),
+        outcome,
+    )));
+}
+
+fn clipboard_write(fx: &[Effect]) -> (Effect, String) {
+    let write = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::ClipboardWrite(_)))
+        .unwrap_or_else(|| panic!("no clipboard write in {fx:?}"));
+    let EffectBody::ClipboardWrite(w) = &write.body else {
+        unreachable!()
+    };
+    (write.clone(), w.text.clone())
+}
+
+#[test]
+fn copy_and_cut_in_the_rename_field_go_through_the_clipboard_effect() {
+    let mut r = rig();
+    r.open_root();
+    r.typed("a.t");
+    r.key(Key::F2);
+    r.mods(Key::Left, Mods::SHIFT);
+    r.mods(Key::Left, Mods::SHIFT);
+    let (write, text) = clipboard_write(&r.mods(Key::Char('c'), Mods::CTRL));
+    assert_eq!(text, "xt");
+    answer(&mut r, &write, Outcome::Accepted);
+    assert!(r.screen().contains("a.txt"), "a copy changes nothing");
+    // A cut waits for the clipboard, then takes the selection out.
+    let (write, _) = clipboard_write(&r.mods(Key::Char('x'), Mods::CTRL));
+    assert!(r.screen().contains("a.txt"));
+    answer(&mut r, &write, Outcome::Accepted);
+    let fx = r.key(Key::Enter);
+    let rename = find(&fx, |b| matches!(b, EffectBody::FilesRename(_))).clone();
+    let EffectBody::FilesRename(body) = &rename.body else {
+        unreachable!()
+    };
+    assert_eq!(body.to, "a.t");
+}
+
+#[test]
+fn a_refused_cut_leaves_the_name_and_says_so_and_a_copy_key_does_not_clear_the_reason() {
+    let mut r = rig();
+    r.open_root();
+    r.typed("a.t");
+    r.key(Key::F2);
+    r.mods(Key::Char('a'), Mods::CTRL);
+    r.typed("README.md");
+    assert!(r.key(Key::Enter).is_empty());
+    assert!(r.screen().contains("that name is taken"));
+    // A refused cut leaves the text and says why.
+    r.mods(Key::Char('a'), Mods::CTRL);
+    let (write, _) = clipboard_write(&r.mods(Key::Char('x'), Mods::CTRL));
+    answer(
+        &mut r,
+        &write,
+        Outcome::Refused {
+            code: "denied".into(),
+            reason: "no clipboard here".into(),
+        },
+    );
+    let screen = r.screen();
+    assert!(
+        screen.contains("README.md") && screen.contains("no clipboard here"),
+        "{screen}"
+    );
+    // Copying neither edits nor moves the caret, so the reason stays.
+    let (write, text) = clipboard_write(&r.mods(Key::Char('c'), Mods::CTRL));
+    assert_eq!(text, "README.md");
+    assert!(r.screen().contains("no clipboard here"), "{}", r.screen());
+    answer(&mut r, &write, Outcome::Accepted);
+    assert!(r.screen().contains("no clipboard here"), "{}", r.screen());
+}
+
+#[test]
+fn a_cut_is_not_applied_after_the_edit_has_ended() {
+    let mut r = rig();
+    r.open_root();
+    r.typed("a.t");
+    r.key(Key::F2);
+    r.mods(Key::Char('a'), Mods::CTRL);
+    let (write, _) = clipboard_write(&r.mods(Key::Char('x'), Mods::CTRL));
+    r.key(Key::Esc);
+    answer(&mut r, &write, Outcome::Accepted);
+    assert!(r.screen().contains("a.txt"), "{}", r.screen());
 }

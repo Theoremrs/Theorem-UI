@@ -19,6 +19,8 @@ pub(crate) struct Styles {
     pub cursor: Style,
     /// The row the cursor is on while it does not.
     pub cursor_idle: Style,
+    /// The text selected in a field.
+    pub selection: Style,
     /// A control that is on (a toggle, the chosen filter).
     pub on: Style,
     pub error: Style,
@@ -42,6 +44,7 @@ impl Styles {
             bold: theme.text.add_modifier(Modifier::BOLD),
             cursor: theme.focus,
             cursor_idle: theme.selected,
+            selection: theme.selection,
             on: theme.focus,
             error: theme.error,
             warning: theme.warning,

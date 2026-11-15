@@ -155,6 +155,8 @@ pub enum ActionKind {
     ShowRevision,
     Conflict,
     Resolve,
+    /// A copy or cut in a text field: not a repository call, but it can be refused.
+    Clipboard,
 }
 
 impl ActionKind {
@@ -181,6 +183,7 @@ impl ActionKind {
             Self::ShowRevision => "file at commit",
             Self::Conflict => "conflict read",
             Self::Resolve => "conflict resolve",
+            Self::Clipboard => "clipboard",
         }
     }
 

@@ -5307,3 +5307,35 @@ fn the_composition_text_shows_a_one_cell_stand_in_for_a_hidden_character() {
         .collect();
     assert!(row.contains('z') && row.contains('y'), "{row:?}");
 }
+
+// ---- selection in the find field -------------------------------------------
+
+#[test]
+fn shift_left_then_typing_replaces_in_the_find_field_and_select_all_replaces_it_all() {
+    let mut rig = Rig::opened("alpha beta\n");
+    rig.chord('f');
+    rig.typed("alpha");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.typed("X");
+    let bar = rig.screen().lines().next().unwrap().to_owned();
+    assert!(bar.starts_with("Find alpX"), "{bar}");
+    rig.chord('a');
+    rig.typed("beta");
+    let bar = rig.screen().lines().next().unwrap().to_owned();
+    assert!(bar.starts_with("Find beta"), "{bar}");
+    assert!(bar.contains("1 of 1"), "{bar}");
+}
+
+#[test]
+fn copy_in_the_find_field_sends_the_field_selection_through_the_clipboard_effect() {
+    let mut rig = Rig::opened("alpha beta\n");
+    rig.chord('f');
+    rig.typed("alpha");
+    rig.chord('a');
+    let write = one(&rig.chord('c'), EffectKind::ClipboardWrite);
+    let EffectBody::ClipboardWrite(w) = &write.body else {
+        unreachable!()
+    };
+    assert_eq!(w.text, "alpha");
+}

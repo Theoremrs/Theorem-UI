@@ -469,14 +469,28 @@ impl EditorPanel {
                     self.say(note, Tone::Warn);
                 }
             }
-            (Clip::Paste, Outcome::Accepted, _) => {
+            (Clip::CutField(text), Outcome::Accepted, _) => {
+                if let Some(field) = self.typing_field()
+                    && field.selected_text().as_deref() == Some(text.as_str())
+                {
+                    field.delete_selection();
+                    self.field_edited();
+                }
+            }
+            (Clip::PasteField, Outcome::Accepted, Some(CompletionPayload::Clipboard(text))) => {
+                if let Some(field) = self.typing_field() {
+                    crate::field::typed(field, text.text.lines().next().unwrap_or(""));
+                    self.field_edited();
+                }
+            }
+            (Clip::Paste | Clip::PasteField, Outcome::Accepted, _) => {
                 self.say("The clipboard sent no text.", Tone::Warn);
             }
             (clip, Outcome::Refused { reason, .. } | Outcome::Failed { reason }, _) => {
                 let what = match clip {
                     Clip::Copy => "Not copied",
-                    Clip::Cut { .. } => "Not cut",
-                    Clip::Paste => "Not pasted",
+                    Clip::Cut { .. } | Clip::CutField(_) => "Not cut",
+                    Clip::Paste | Clip::PasteField => "Not pasted",
                 };
                 self.say(format!("{what}: {reason}"), Tone::Error);
             }

@@ -12,6 +12,7 @@ use theorem_workbench_core::results::Severity;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::Caret;
+use theorem_workbench_text::field::FieldStyles;
 use theorem_workbench_text::recovery::{self, snip};
 use theorem_workbench_text::visible::visible;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
@@ -1085,18 +1086,13 @@ impl EditorPanel {
             let room = row
                 .width
                 .saturating_sub(prefix.width() as u16 + tail_w + gap);
-            let value = d.find.field.value();
-            let scroll = d.find.field.scroll(usize::from(room.max(1)));
-            let shown = skip_cells(value, scroll);
-            buf.set_stringn(x0, row.y, &shown, usize::from(room), cx.theme.text);
-            if d.in_find && !d.in_replace && cx.focused && room > 0 {
-                let at = d
-                    .find
-                    .field
-                    .cursor()
-                    .min(usize::from(room.saturating_sub(1)));
-                buf.set_style(Rect::new(x0 + at as u16, row.y, 1, 1), styles.caret);
-            }
+            d.find.field.draw(
+                buf,
+                Rect::new(x0, row.y, room, 1),
+                &field_styles(cx, &styles),
+                d.in_find && !d.in_replace && cx.focused,
+                "",
+            );
             if tail_w > 0 && row.width > tail_w {
                 buf.set_stringn(
                     row.x + row.width - tail_w,
@@ -1120,13 +1116,13 @@ impl EditorPanel {
                 let room = row
                     .width
                     .saturating_sub(prefix.width() as u16 + tail_w + gap);
-                let field = &d.find.replacement;
-                let shown = skip_cells(field.value(), field.scroll(usize::from(room.max(1))));
-                buf.set_stringn(x0, row.y, &shown, usize::from(room), cx.theme.text);
-                if d.in_find && d.in_replace && cx.focused && room > 0 {
-                    let at = field.cursor().min(usize::from(room.saturating_sub(1)));
-                    buf.set_style(Rect::new(x0 + at as u16, row.y, 1, 1), styles.caret);
-                }
+                d.find.replacement.draw(
+                    buf,
+                    Rect::new(x0, row.y, room, 1),
+                    &field_styles(cx, &styles),
+                    d.in_find && d.in_replace && cx.focused,
+                    "",
+                );
                 let labels =
                     Self::button_labels(&[Choice::Replace, Choice::ReplaceAll], rect.width);
                 for (choice, r, why) in self.find_buttons(d, rect) {
@@ -1182,13 +1178,13 @@ impl EditorPanel {
                     if let Some(field) = field {
                         let x0 = rect.x + prefix.width() as u16;
                         let room = rect.width.saturating_sub(prefix.width() as u16);
-                        let shown =
-                            skip_cells(field.value(), field.scroll(usize::from(room.max(1))));
-                        buf.set_stringn(x0, rect.y, &shown, usize::from(room), cx.theme.text);
-                        if cx.focused && room > 0 {
-                            let at = field.cursor().min(usize::from(room - 1));
-                            buf.set_style(Rect::new(x0 + at as u16, rect.y, 1, 1), styles.caret);
-                        }
+                        field.draw(
+                            buf,
+                            Rect::new(x0, rect.y, room, 1),
+                            &field_styles(cx, &styles),
+                            cx.focused,
+                            "",
+                        );
                     }
                 }
             }
@@ -1778,19 +1774,6 @@ impl EditorPanel {
     }
 }
 
-/// The text after its first `skip` display cells.
-fn skip_cells(text: &str, skip: usize) -> String {
-    let mut cells = 0;
-    let mut out = String::new();
-    for c in text.chars() {
-        if cells >= skip {
-            out.push(c);
-        }
-        cells += c.width().unwrap_or(0);
-    }
-    out
-}
-
 /// The name prompt of a new page on one row, and the owner's word on the last
 /// name under it when there is a row for it.
 fn draw_name(
@@ -1811,12 +1794,13 @@ fn draw_name(
     );
     let x0 = rect.x + prefix.width() as u16;
     let room = rect.width.saturating_sub(prefix.width() as u16);
-    let shown = skip_cells(n.field.value(), n.field.scroll(usize::from(room.max(1))));
-    buf.set_stringn(x0, rect.y, &shown, usize::from(room), cx.theme.text);
-    if cx.focused && room > 0 && !n.busy {
-        let at = n.field.cursor().min(usize::from(room - 1));
-        buf.set_style(Rect::new(x0 + at as u16, rect.y, 1, 1), styles.caret);
-    }
+    n.field.draw(
+        buf,
+        Rect::new(x0, rect.y, room, 1),
+        &field_styles(cx, styles),
+        cx.focused && !n.busy,
+        "",
+    );
     if let Some(error) = error
         && rect.height > 1
     {
@@ -1906,7 +1890,17 @@ fn draw_popup(
 
 /// A single-line field as a text node: its text and caret.
 fn put_field(node: &mut Node, field: &Field) {
-    caret_text(field.value(), field.cursor(), field.cursor()).put(node);
+    caret_text(field.value(), field.anchor(), field.cursor()).put(node);
+}
+
+/// How a one-line field is drawn: the theme's text and selection, the editor's caret.
+fn field_styles(cx: &ViewCtx, styles: &EditorStyles) -> FieldStyles {
+    FieldStyles {
+        text: cx.theme.text,
+        selection: cx.theme.selection,
+        caret: styles.caret,
+        hint: cx.theme.muted,
+    }
 }
 
 #[cfg(test)]

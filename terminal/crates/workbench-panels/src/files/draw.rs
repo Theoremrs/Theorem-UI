@@ -11,6 +11,7 @@ use theorem_workbench_core::{Theme, ViewCtx};
 use super::tree::{NoteState, Row, Tone};
 use super::{Edit, FilesPanel, Mode};
 use crate::caret::caret_text;
+use theorem_workbench_text::field::FieldStyles;
 use theorem_workbench_text::visible::visible;
 
 /// Write `text` from `x`, stopping at `limit`; returns the next free column.
@@ -159,18 +160,21 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     let field = if *directory { "> " } else { "  " };
                     x = put(buf, x, y, right, field, line);
                     let width = usize::from(right.saturating_sub(x));
-                    let scroll = input.visual_scroll(width.max(1));
-                    let value: String = input.value().chars().skip(scroll).collect();
-                    let end = put_raw(buf, x, y, right, &value, theme.focus);
-                    let caret = x + (input.visual_cursor().saturating_sub(scroll)) as u16;
-                    if caret < right {
-                        let cell = &mut buf[(caret, y)];
-                        let style = cell.style().add_modifier(Modifier::REVERSED);
-                        cell.set_style(style);
-                        if caret >= end {
-                            cell.set_symbol(" ");
-                        }
-                    }
+                    let styles = FieldStyles {
+                        text: theme.focus,
+                        selection: theme.selection,
+                        caret: Style::new().add_modifier(Modifier::REVERSED),
+                        hint: theme.muted,
+                    };
+                    let end = input.draw(
+                        buf,
+                        Rect::new(x, y, right.saturating_sub(x), 1),
+                        &styles,
+                        true,
+                        "",
+                    );
+                    let scroll = input.scroll(width);
+                    let caret = x + input.cursor_cells().saturating_sub(scroll) as u16;
                     if let Some(error) = error {
                         put(
                             buf,
@@ -258,8 +262,8 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 n.state.focused = cx.focused;
                 if let Mode::Edit(edit) = &p.mode {
                     n.state.description = edit.error.as_deref().map(visible);
-                    let at = edit.input.cursor();
-                    caret_text(edit.input.value(), at, at).put(&mut n);
+                    let (anchor, at) = (edit.input.anchor(), edit.input.cursor());
+                    caret_text(edit.input.value(), anchor, at).put(&mut n);
                 }
                 n
             }

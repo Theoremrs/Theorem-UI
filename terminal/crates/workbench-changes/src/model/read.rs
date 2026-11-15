@@ -167,13 +167,15 @@ pub enum Field {
     Prompt,
 }
 
-/// Where the caret is drawn: a field, a line of it and a column in characters. Display
-/// only; the panel's text buffer owns the editing.
+/// Where the caret is drawn: a field, a line of it and a column in display cells, and the
+/// selection as the (line, column) of its two ends, start before end. Display only; the
+/// panel's text buffer owns the editing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Caret {
     pub field: Field,
     pub row: usize,
     pub col: usize,
+    pub selection: Option<((usize, usize), (usize, usize))>,
 }
 
 impl Changes {

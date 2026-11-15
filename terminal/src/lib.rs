@@ -23,6 +23,7 @@ use std::{
     rc::Rc,
 };
 
+use keybinds::{Key, KeyInput, Mods};
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
     backend::Backend,
@@ -41,8 +42,9 @@ use ratzilla::{
 use serde::Deserialize;
 use serde_json::json;
 use theorem_workbench_core::caret::escaped;
+use theorem_workbench_panels::clip::finish_cut;
+use theorem_workbench_text::field::{Field as TextField, FieldStyles};
 use theorem_workbench_text::visible::visible;
-use tui_input::{Input, InputRequest};
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
@@ -511,6 +513,13 @@ enum Action {
     Open(Open),
     /// Drop the last reference the next turn carries.
     Unreference,
+    /// Put the prompt's selection on the clipboard; a cut then removes it. The handle answers
+    /// this itself and React never hears it: the root prompt has no effect system, so the
+    /// browser's clipboard is the route.
+    Clipboard {
+        text: String,
+        cut: bool,
+    },
 }
 
 impl Action {
@@ -529,6 +538,9 @@ impl Action {
                 json!({ "type": "open", "tab": tab, "path": path, "start": start, "end": end })
             }
             Action::Unreference => json!({ "type": "unreference", "tab": tab }),
+            Action::Clipboard { text, cut } => {
+                json!({ "type": "clipboard", "tab": tab, "text": text, "cut": cut })
+            }
         }
         .to_string()
     }
@@ -829,7 +841,7 @@ struct Session {
     /// Whether the terminal shows tabs, for the help list.
     tabbed: bool,
     snapshot: Snapshot,
-    input: Input,
+    input: TextField,
     /// Submitted prompts, oldest first, walked with Up and Down.
     history: Vec<String>,
     history_at: Option<usize>,
@@ -876,7 +888,7 @@ impl Session {
             title,
             tabbed,
             snapshot: Snapshot::default(),
-            input: Input::default(),
+            input: TextField::default(),
             history: Vec::new(),
             history_at: None,
             scroll_back: 0,
@@ -1377,18 +1389,22 @@ impl Session {
 
         let lead = PROMPT.chars().count() as u16 + 1;
         let width = inner.width.saturating_sub(lead) as usize;
-        let scroll = self.input.visual_scroll(width);
-        let text = Span::styled(
-            self.input.value().chars().skip(scroll).collect::<String>(),
-            Style::new().fg(palette().bright),
-        );
         Line::from(vec![
             Span::raw(" "),
             Span::styled(PROMPT, Style::new().fg(palette().accent).bold()),
-            text,
         ])
         .render(inner, buf);
-        let column = (self.input.visual_cursor().saturating_sub(scroll)) as u16;
+        // The terminal's own cursor is the caret, so the field draws none.
+        let styles = FieldStyles {
+            text: Style::new().fg(palette().bright),
+            selection: Style::new().add_modifier(Modifier::REVERSED),
+            caret: Style::new(),
+            hint: Style::new().fg(palette().muted),
+        };
+        let rect = Rect::new(inner.x + lead, inner.y, width as u16, 1);
+        self.input.draw(buf, rect, &styles, false, "");
+        let scroll = self.input.scroll(width);
+        let column = self.input.cursor_cells().saturating_sub(scroll) as u16;
         Position::new(inner.x + lead + column, inner.y)
     }
 
@@ -1401,7 +1417,7 @@ impl Session {
             self.history.push(text.clone());
         }
         self.history_at = None;
-        self.input.reset();
+        self.input = TextField::default();
         self.scroll_back = 0;
         match text.as_str() {
             "/new" => Some(Action::New),
@@ -1433,7 +1449,7 @@ impl Session {
             (Some(_), false) => None,
         };
         self.history_at = next;
-        self.input = Input::new(next.map(|at| self.history[at].clone()).unwrap_or_default());
+        self.input = TextField::new(next.map_or("", |at| self.history[at].as_str()));
     }
 
     /// The keys that act on the transcript alone: paging, back to the tail and
@@ -1453,40 +1469,53 @@ impl Session {
         true
     }
 
+    /// A key that edits the prompt: the shared field's keys, with the modifiers this terminal has
+    /// always given them. Alt or Ctrl with Backspace and Alt with an arrow make a word's motion
+    /// or deletion; Ctrl with an arrow is a character's; Alt does not stop a character typing.
+    fn edit(&mut self, event: &KeyEvent) {
+        let (key, mut mods) = match event.code {
+            KeyCode::Char(c) => (Key::Char(c), Mods::empty()),
+            KeyCode::Backspace => (Key::Backspace, Mods::empty()),
+            KeyCode::Delete => (Key::Delete, Mods::empty()),
+            KeyCode::Left => (Key::Left, Mods::empty()),
+            KeyCode::Right => (Key::Right, Mods::empty()),
+            KeyCode::Home => (Key::Home, Mods::empty()),
+            KeyCode::End => (Key::End, Mods::empty()),
+            _ => return,
+        };
+        match key {
+            Key::Char(_) if event.ctrl => mods |= Mods::CTRL,
+            Key::Backspace if event.ctrl || event.alt => mods |= Mods::ALT,
+            Key::Left | Key::Right if event.alt => mods |= Mods::ALT,
+            _ => {}
+        }
+        if event.shift {
+            mods |= Mods::SHIFT;
+        }
+        self.input.key(&KeyInput::new(key, mods));
+    }
+
     /// Returns whether the key was the terminal's, so React can keep it from the page.
     fn key(&mut self, event: KeyEvent) -> (bool, Option<Action>) {
-        let KeyEvent {
-            code, ctrl, alt, ..
-        } = event;
-        let edit = |input: &mut Input, request| {
-            input.handle(request);
-        };
+        let (code, ctrl) = (event.code.clone(), event.ctrl);
         let action = match code {
             KeyCode::Enter => self.submit(),
             KeyCode::Esc => Some(Action::Close),
+            // A selection makes ctrl+c a copy and ctrl+x a cut; without one ctrl+c keeps its
+            // old meaning and ctrl+x is not the terminal's.
+            KeyCode::Char(c @ ('c' | 'x')) if ctrl && self.input.selection().is_some() => {
+                self.input.selected_text().map(|text| Action::Clipboard {
+                    text,
+                    cut: c == 'x',
+                })
+            }
             KeyCode::Char('c') if ctrl => {
                 if self.snapshot.running {
                     Some(Action::Cancel)
                 } else {
-                    self.input.reset();
+                    self.input = TextField::default();
                     None
                 }
-            }
-            KeyCode::Char('a') if ctrl => {
-                edit(&mut self.input, InputRequest::GoToStart);
-                None
-            }
-            KeyCode::Char('e') if ctrl => {
-                edit(&mut self.input, InputRequest::GoToEnd);
-                None
-            }
-            KeyCode::Char('u') if ctrl => {
-                edit(&mut self.input, InputRequest::DeleteFromStart);
-                None
-            }
-            KeyCode::Char('k') if ctrl => {
-                edit(&mut self.input, InputRequest::DeleteTillEnd);
-                None
             }
             KeyCode::Char('l') if ctrl => {
                 self.scroll_back = 0;
@@ -1497,14 +1526,18 @@ impl Session {
                 self.built_for = None;
                 None
             }
+            KeyCode::Char('a' | 'e' | 'u' | 'k') if ctrl => {
+                self.edit(&event);
+                None
+            }
             KeyCode::Char(_) if ctrl => return (false, None),
             KeyCode::Char(c @ ('y' | 'n'))
                 if self.snapshot.approval.is_some() && self.input.value().is_empty() =>
             {
                 Some(Action::Approve(c == 'y'))
             }
-            KeyCode::Char(c) => {
-                edit(&mut self.input, InputRequest::InsertChar(c));
+            KeyCode::Char(_) => {
+                self.edit(&event);
                 self.history_at = None;
                 None
             }
@@ -1513,40 +1546,13 @@ impl Session {
             {
                 Some(Action::Unreference)
             }
-            KeyCode::Backspace if alt || ctrl => {
-                edit(&mut self.input, InputRequest::DeletePrevWord);
-                None
-            }
-            KeyCode::Backspace => {
-                edit(&mut self.input, InputRequest::DeletePrevChar);
-                None
-            }
-            KeyCode::Delete => {
-                edit(&mut self.input, InputRequest::DeleteNextChar);
-                None
-            }
-            KeyCode::Left if alt => {
-                edit(&mut self.input, InputRequest::GoToPrevWord);
-                None
-            }
-            KeyCode::Right if alt => {
-                edit(&mut self.input, InputRequest::GoToNextWord);
-                None
-            }
-            KeyCode::Left => {
-                edit(&mut self.input, InputRequest::GoToPrevChar);
-                None
-            }
-            KeyCode::Right => {
-                edit(&mut self.input, InputRequest::GoToNextChar);
-                None
-            }
-            KeyCode::Home => {
-                edit(&mut self.input, InputRequest::GoToStart);
-                None
-            }
-            KeyCode::End => {
-                edit(&mut self.input, InputRequest::GoToEnd);
+            KeyCode::Backspace
+            | KeyCode::Delete
+            | KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Home
+            | KeyCode::End => {
+                self.edit(&event);
                 None
             }
             KeyCode::Up => {
@@ -1572,15 +1578,35 @@ impl Session {
         (true, action)
     }
 
-    fn paste(&mut self, text: &str) {
-        for c in text.chars() {
-            let c = if c == '\n' || c == '\r' || c == '\t' {
-                ' '
-            } else {
-                c
-            };
-            self.input.handle(InputRequest::InsertChar(c));
+    /// The clipboard's answer to a copy or cut of `text`. A cut takes the selection out only
+    /// when the clipboard has the text and the prompt still holds that same selection; a
+    /// refusal leaves the prompt as it was and says so.
+    fn clipboard_done(&mut self, text: &str, cut: bool, refusal: Option<&str>) {
+        match refusal {
+            None => {
+                if cut && finish_cut(&mut self.input, text) {
+                    self.history_at = None;
+                }
+            }
+            Some(reason) => {
+                let what = if cut { "Not cut" } else { "Not copied" };
+                self.notify(format!("{what}: {reason}"));
+            }
         }
+    }
+
+    fn paste(&mut self, text: &str) {
+        let text: String = text
+            .chars()
+            .map(|c| {
+                if matches!(c, '\n' | '\r' | '\t') {
+                    ' '
+                } else {
+                    c
+                }
+            })
+            .collect();
+        self.input.insert(&text);
         self.history_at = None;
     }
 }
@@ -2033,6 +2059,38 @@ impl Drawn for App {
     }
 }
 
+/// Starts `navigator.clipboard.writeText`; an error is why it could not start.
+fn clipboard_write(text: &str) -> Result<js_sys::Promise, String> {
+    let none = || "this browser has no clipboard here".to_owned();
+    let window = web_sys::window().ok_or_else(none)?;
+    let clipboard = js_sys::Reflect::get(&window.navigator(), &"clipboard".into())
+        .ok()
+        .filter(|c| !c.is_undefined() && !c.is_null())
+        .ok_or_else(none)?;
+    let write: js_sys::Function = js_sys::Reflect::get(&clipboard, &"writeText".into())
+        .ok()
+        .and_then(|f| f.dyn_into().ok())
+        .ok_or_else(none)?;
+    write
+        .call1(&clipboard, &JsValue::from_str(text))
+        .map_err(|error| clipboard_reason(&error))?
+        .dyn_into::<js_sys::Promise>()
+        .map_err(|_| none())
+}
+
+/// The words for a clipboard failure: the error's message, or a plain refusal.
+fn clipboard_reason(error: &JsValue) -> String {
+    let message = error.as_string().or_else(|| {
+        js_sys::Reflect::get(error, &"message".into())
+            .ok()
+            .and_then(|m| m.as_string())
+    });
+    match message.filter(|m| !m.is_empty()) {
+        Some(message) => escaped(&message),
+        None => "the browser refused the clipboard".to_owned(),
+    }
+}
+
 /// The mounted terminal. React calls these from its own event handlers.
 #[wasm_bindgen]
 pub struct TerminalHandle {
@@ -2044,9 +2102,46 @@ pub struct TerminalHandle {
 impl TerminalHandle {
     fn emit(&self, action: Option<(Action, String)>) {
         if let Some((action, tab)) = action {
+            if let Action::Clipboard { text, cut } = action {
+                self.write_clipboard(tab, text, cut);
+                return;
+            }
             let _ = self
                 .on_action
                 .call1(&JsValue::NULL, &JsValue::from_str(&action.to_json(&tab)));
+        }
+    }
+
+    /// Writes to the browser's clipboard and tells the session how it went.
+    fn write_clipboard(&self, tab: String, text: String, cut: bool) {
+        let settle = |app: &Rc<RefCell<App>>, tab: &str, text: &str, refusal: Option<&str>| {
+            let mut app = app.borrow_mut();
+            if let Some(session) = app.sessions.iter_mut().find(|s| s.id == tab) {
+                session.clipboard_done(text, cut, refusal);
+            }
+        };
+        match clipboard_write(&text) {
+            Err(reason) => settle(&self.app, &tab, &text, Some(&reason)),
+            Ok(promise) => {
+                let (app, tab_ok, text_ok) = (self.app.clone(), tab.clone(), text.clone());
+                let taken = Closure::once(move |_: JsValue| {
+                    let mut app = app.borrow_mut();
+                    if let Some(session) = app.sessions.iter_mut().find(|s| s.id == tab_ok) {
+                        session.clipboard_done(&text_ok, cut, None);
+                    }
+                });
+                let app = self.app.clone();
+                let refused = Closure::once(move |error: JsValue| {
+                    let reason = clipboard_reason(&error);
+                    let mut app = app.borrow_mut();
+                    if let Some(session) = app.sessions.iter_mut().find(|s| s.id == tab) {
+                        session.clipboard_done(&text, cut, Some(&reason));
+                    }
+                });
+                let _ = promise.then2(&taken, &refused);
+                taken.forget();
+                refused.forget();
+            }
         }
     }
 
@@ -2463,6 +2558,125 @@ mod tests {
                 .any(|c| c.is_control() || theorem_workbench_text::visible::hidden(c)),
             "{shown:?}"
         );
+    }
+
+    fn press(s: &mut Session, code: KeyCode, ctrl: bool, shift: bool) {
+        s.key(KeyEvent {
+            code,
+            ctrl,
+            alt: false,
+            shift,
+        });
+    }
+
+    /// A prompt holding "hello world" with "lo wo" selected.
+    fn selected_prompt() -> Session {
+        let mut s = Session::new("t".into(), "T".into(), false);
+        s.input.insert("hello world");
+        for _ in 0..3 {
+            press(&mut s, KeyCode::Left, false, false);
+        }
+        for _ in 0..5 {
+            press(&mut s, KeyCode::Left, false, true);
+        }
+        assert_eq!(s.input.selected_text().as_deref(), Some("lo wo"));
+        s
+    }
+
+    fn chord(s: &mut Session, c: char) -> Option<Action> {
+        s.key(KeyEvent {
+            code: KeyCode::Char(c),
+            ctrl: true,
+            alt: false,
+            shift: false,
+        })
+        .1
+    }
+
+    #[test]
+    fn copying_the_prompt_selection_sends_exactly_the_selection_and_changes_nothing() {
+        let mut s = selected_prompt();
+        let Some(Action::Clipboard { text, cut }) = chord(&mut s, 'c') else {
+            panic!("ctrl+c with a selection is a copy");
+        };
+        assert_eq!((text.as_str(), cut), ("lo wo", false));
+        assert_eq!(s.input.value(), "hello world");
+        assert_eq!(s.input.selected_text().as_deref(), Some("lo wo"));
+    }
+
+    #[test]
+    fn a_cut_the_clipboard_took_removes_the_selection() {
+        let mut s = selected_prompt();
+        let Some(Action::Clipboard { text, cut }) = chord(&mut s, 'x') else {
+            panic!("ctrl+x with a selection is a cut");
+        };
+        assert!(cut);
+        assert_eq!(
+            s.input.value(),
+            "hello world",
+            "nothing goes before the answer"
+        );
+        s.clipboard_done(&text, cut, None);
+        assert_eq!(s.input.value(), "helrld");
+    }
+
+    #[test]
+    fn a_refused_cut_keeps_the_text_and_says_so() {
+        let mut s = selected_prompt();
+        s.clipboard_done("lo wo", true, Some("permission denied"));
+        assert_eq!(s.input.value(), "hello world");
+        assert_eq!(s.input.selected_text().as_deref(), Some("lo wo"));
+        assert_eq!(s.notice.as_ref().unwrap().0, "Not cut: permission denied");
+        s.clipboard_done("lo wo", false, Some("permission denied"));
+        assert_eq!(
+            s.notice.as_ref().unwrap().0,
+            "Not copied: permission denied"
+        );
+    }
+
+    #[test]
+    fn a_cut_after_the_selection_changed_removes_nothing() {
+        let mut s = selected_prompt();
+        press(&mut s, KeyCode::Left, false, false);
+        s.clipboard_done("lo wo", true, None);
+        assert_eq!(s.input.value(), "hello world");
+    }
+
+    #[test]
+    fn without_a_selection_ctrl_c_still_clears_the_prompt_and_stops_a_run() {
+        let mut s = Session::new("t".into(), "T".into(), false);
+        s.input.insert("hello");
+        assert!(chord(&mut s, 'c').is_none());
+        assert_eq!(s.input.value(), "");
+        assert!(chord(&mut s, 'x').is_none());
+        s.snapshot.running = true;
+        assert!(matches!(chord(&mut s, 'c'), Some(Action::Cancel)));
+    }
+
+    #[test]
+    fn shift_left_then_typing_replaces_in_the_prompt_and_select_all_replaces_it_all() {
+        let mut s = Session::new("t".into(), "T".into(), false);
+        for c in "hello".chars() {
+            press(&mut s, KeyCode::Char(c), false, false);
+        }
+        press(&mut s, KeyCode::Left, false, true);
+        press(&mut s, KeyCode::Left, false, true);
+        press(&mut s, KeyCode::Char('X'), false, false);
+        assert_eq!(s.input.value(), "helX");
+        press(&mut s, KeyCode::Char('a'), true, false);
+        press(&mut s, KeyCode::Char('y'), false, false);
+        assert_eq!(s.input.value(), "y");
+    }
+
+    #[test]
+    fn a_paste_replaces_the_selection_and_lands_on_one_line() {
+        let mut s = Session::new("t".into(), "T".into(), false);
+        for c in "hello".chars() {
+            press(&mut s, KeyCode::Char(c), false, false);
+        }
+        press(&mut s, KeyCode::Char('a'), true, false);
+        s.paste("a\nb");
+        assert_eq!(s.input.value(), "a b");
     }
 
     #[test]

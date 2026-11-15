@@ -918,3 +918,64 @@ fn the_name_and_command_fields_publish_their_text_and_caret_in_utf16_units() {
     assert_eq!((s.anchor, s.focus), (3, 3));
     assert_eq!(rig.node("command").selection.map(|s| s.focus), Some(0));
 }
+
+#[test]
+fn shift_left_then_typing_replaces_the_run_name_and_select_all_replaces_the_command() {
+    let mut rig = rig();
+    rig.typed("build");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.typed("X");
+    rig.key(Key::Tab);
+    rig.typed("cargo old");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    rig.typed("cargo new");
+    let sent = rig.key(Key::Enter);
+    match &sent[0].body {
+        EffectBody::RunConfigure(c) => {
+            assert_eq!(c.name, "buiX");
+            assert_eq!(c.argv, ["cargo", "new"]);
+        }
+        other => panic!("{other:?}"),
+    }
+}
+
+fn clipboard_write(fx: &[Effect]) -> (Effect, String) {
+    let write = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::ClipboardWrite(_)))
+        .unwrap_or_else(|| panic!("no clipboard write in {fx:?}"));
+    let EffectBody::ClipboardWrite(w) = &write.body else {
+        unreachable!()
+    };
+    (write.clone(), w.text.clone())
+}
+
+#[test]
+fn copy_and_cut_in_a_run_field_go_through_the_clipboard_effect_and_ctrl_c_still_stops_without_one()
+{
+    let mut rig = rig();
+    rig.typed("build");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    let (write, text) = clipboard_write(&rig.mods(Key::Char('c'), Mods::CTRL));
+    assert_eq!(text, "ld");
+    rig.answer(&write, Outcome::Accepted, None);
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    assert_eq!(rig.node("name").text.as_deref(), Some("build"));
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.node("name").text.as_deref(), Some("bui"));
+    // A refused cut leaves the text.
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    rig.refuse(&write, "denied", "no clipboard here");
+    assert_eq!(rig.node("name").text.as_deref(), Some("bui"));
+    assert!(rig.text().contains("no clipboard here"), "{}", rig.text());
+    // With nothing selected, Ctrl+C is still the stop.
+    rig.key(Key::Right);
+    assert!(
+        rig.mods(Key::Char('c'), Mods::CTRL)
+            .iter()
+            .all(|e| !matches!(e.body, EffectBody::ClipboardWrite(_)))
+    );
+}

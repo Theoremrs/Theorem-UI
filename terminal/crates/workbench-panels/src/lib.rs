@@ -2,6 +2,7 @@
 //! `Panel` trait and nothing else.
 
 pub mod caret;
+pub mod clip;
 pub mod files;
 
 use theorem_workbench_core::PanelFactories;

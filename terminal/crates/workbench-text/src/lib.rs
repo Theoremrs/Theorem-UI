@@ -14,6 +14,7 @@
 
 pub mod change;
 pub mod coords;
+pub mod field;
 mod history;
 pub mod layout;
 pub mod recovery;

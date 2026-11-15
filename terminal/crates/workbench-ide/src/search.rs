@@ -36,10 +36,11 @@ use theorem_workbench_core::{
 use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::visible::visible;
 
-use crate::field::{Field, Look};
 use crate::replace::{self, Group, Plan, Row, Run, Scope, Summary};
 use crate::styles::Styles;
 use crate::text;
+use theorem_workbench_panels::clip::{FieldClip, Settled, finish_cut, not_done};
+use theorem_workbench_text::field::{Field, FieldStyles, Keyed};
 
 pub const KIND: &str = "search";
 pub const CAPABILITY: &str = "search.query";
@@ -291,6 +292,8 @@ pub struct SearchPanel {
     owed: Vec<String>,
     /// The cancels in flight, by effect, with the search each is for.
     cancels: BTreeMap<EffectId, String>,
+    /// The clipboard writes a field's copy and cut keys have out.
+    clip: FieldClip<Focus>,
 }
 
 impl SearchPanel {
@@ -326,6 +329,7 @@ impl SearchPanel {
             retired: BTreeSet::new(),
             owed: vec![],
             cancels: BTreeMap::new(),
+            clip: FieldClip::default(),
         };
         panel.clamp_top();
         panel
@@ -568,6 +572,20 @@ impl SearchPanel {
     // ---- what comes back ---------------------------------------------------------------
 
     fn on_completion(&mut self, completion: Completion) {
+        match self.clip.settle(&completion) {
+            Some(Settled::Cut(focus, text)) => {
+                if let Some(field) = self.field_in(focus) {
+                    finish_cut(field, &text);
+                }
+                return;
+            }
+            Some(Settled::Not { cut, outcome }) => {
+                self.notice = Some(not_done(cut, &outcome));
+                return;
+            }
+            Some(Settled::Copied) => return,
+            None => {}
+        }
         if let Job::Running(run) = &mut self.job
             && run.on_completion(&completion)
         {
@@ -780,7 +798,11 @@ impl SearchPanel {
         if self.job.modal() {
             return None;
         }
-        match self.focus {
+        self.field_in(self.focus)
+    }
+
+    fn field_in(&mut self, focus: Focus) -> Option<&mut Field> {
+        match focus {
             Focus::Query => Some(&mut self.query),
             Focus::Replace => Some(&mut self.replacement),
             Focus::Include => Some(&mut self.include),
@@ -883,8 +905,15 @@ impl SearchPanel {
             self.focus = Focus::Results;
             return;
         }
+        let focus = self.focus;
         if let Some(field) = self.field_mut() {
-            field.key(&key);
+            let keyed = field.key(&key);
+            if matches!(keyed, Keyed::Copy | Keyed::Cut) {
+                let field = field.clone();
+                if let Some(note) = self.clip.ask(cx, focus, keyed, &field) {
+                    self.notice = Some(note);
+                }
+            }
         }
     }
 
@@ -1478,8 +1507,9 @@ impl SearchPanel {
             field.draw(
                 buf,
                 *rect,
-                Look {
+                &FieldStyles {
                     text: if held { s.muted } else { s.text },
+                    selection: s.selection,
                     caret: s.cursor,
                     hint: s.muted,
                 },
@@ -1702,7 +1732,7 @@ impl SearchPanel {
             ),
         ] {
             let mut node = Node::new(id, Role::TextBox, name, rect);
-            caret_text(field.value(), field.cursor(), field.cursor()).put(&mut node);
+            caret_text(field.value(), field.anchor(), field.cursor()).put(&mut node);
             node.state.focused = focused && self.focus == focus;
             if self.job.modal() && matches!(focus, Focus::Query | Focus::Replace) {
                 node.state.disabled = true;

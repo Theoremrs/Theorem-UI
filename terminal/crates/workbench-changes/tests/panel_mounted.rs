@@ -700,7 +700,8 @@ fn the_draft_edits_like_text_and_a_commit_clears_it() {
     let mut rig = loaded();
     rig.ch('c');
     rig.typed("add thing");
-    rig.mods(Key::Char('a'), Mods::CTRL);
+    // Ctrl+A selects all, as in the composer; Home is the start of the line.
+    rig.key(Key::Home);
     rig.typed("fix: ");
     assert_eq!(rig.model().subject(), "fix: add thing");
     rig.key(Key::Backspace);
@@ -3576,4 +3577,296 @@ fn no_row_says_focused_once_the_keyboard_is_elsewhere() {
     let tree = theorem_workbench_core::tree::semantics(&rig.m);
     tree.validate().expect("valid");
     assert_eq!(focused_nodes(&rig), Vec::<String>::new());
+}
+
+// ---- selection in the one-line fields ----------------------------------------------
+
+#[test]
+fn shift_left_then_typing_replaces_the_subject_selection_and_select_all_replaces_it_all() {
+    let mut rig = loaded();
+    rig.ch('c');
+    rig.typed("add thing");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    // The published selection is the two selected characters, focus at the start.
+    assert_eq!(caret_of(&node_ending(&rig, "/commit/subject")), (9, 7));
+    rig.typed("X");
+    assert_eq!(rig.model().subject(), "add thiX");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    assert_eq!(caret_of(&node_ending(&rig, "/commit/subject")), (0, 8));
+    rig.typed("fix");
+    assert_eq!(rig.model().subject(), "fix");
+    // Backspace removes a selection as one edit.
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.key(Key::Backspace);
+    assert_eq!(rig.model().subject(), "fi");
+}
+
+#[test]
+fn shift_left_then_typing_replaces_in_the_branch_prompt_and_select_all_replaces_it_all() {
+    let mut rig = loaded();
+    rig.ch('b');
+    rig.typed("devel");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.typed("x");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    rig.typed("main");
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmBranch(b) => assert_eq!(b.name, "main"),
+        other => panic!("{other:?}"),
+    }
+}
+
+// ---- the description is one text -----------------------------------------------------
+
+/// A draft with the subject `subj` and the description `hello` over `world`, the caret at
+/// the end of the description.
+fn drafted() -> Rig {
+    let mut rig = loaded();
+    rig.ch('c');
+    rig.typed("subj");
+    rig.key(Key::Enter);
+    rig.typed("hello");
+    rig.key(Key::Enter);
+    rig.typed("world");
+    rig
+}
+
+/// "llo\nwo" selected in the description: from column 2 of line one to column 2 of line two.
+fn selecting_across(rig: &mut Rig) {
+    rig.key(Key::Up);
+    for _ in 0..3 {
+        rig.key(Key::Left);
+    }
+    rig.mods(Key::Down, Mods::SHIFT);
+}
+
+fn clipboard_write(fx: &[Effect]) -> (Effect, String) {
+    let write = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::ClipboardWrite(_)))
+        .unwrap_or_else(|| panic!("no clipboard write in {fx:?}"));
+    let EffectBody::ClipboardWrite(w) = &write.body else {
+        unreachable!()
+    };
+    (write.clone(), w.text.clone())
+}
+
+#[test]
+fn shift_down_from_the_middle_of_a_line_selects_to_the_same_column_below_and_typing_joins_them() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    assert_eq!(rig.model().body(), "hello\nworld");
+    rig.typed("X");
+    assert_eq!(rig.model().body(), "heXrld");
+    assert_eq!(rig.model().subject(), "subj");
+}
+
+#[test]
+fn select_all_in_the_description_takes_every_line_and_typing_replaces_them() {
+    let mut rig = drafted();
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    assert_eq!(caret_of(&node_ending(&rig, "/commit/body")), (0, 11));
+    rig.typed("new");
+    assert_eq!(rig.model().body(), "new");
+    assert_eq!(
+        rig.model().subject(),
+        "subj",
+        "the subject is not the description"
+    );
+}
+
+#[test]
+fn shift_up_then_backspace_removes_the_selection_over_the_line_break() {
+    let mut rig = loaded();
+    rig.ch('c');
+    rig.key(Key::Enter);
+    rig.typed("abc");
+    rig.key(Key::Enter);
+    rig.typed("def");
+    rig.key(Key::Left);
+    rig.mods(Key::Up, Mods::SHIFT);
+    rig.key(Key::Backspace);
+    assert_eq!(rig.model().body(), "abf");
+}
+
+#[test]
+fn up_down_enter_and_backspace_move_and_join_lines_in_the_description() {
+    let mut rig = drafted();
+    // Down from the last line stays in the description; Up goes line by line, then to the subject.
+    rig.key(Key::Up);
+    rig.key(Key::Home);
+    // Backspace at a line start joins the line to the one above, and Enter splits it again.
+    rig.key(Key::Down);
+    rig.key(Key::Home);
+    rig.key(Key::Backspace);
+    assert_eq!(rig.model().body(), "helloworld");
+    rig.key(Key::Enter);
+    assert_eq!(rig.model().body(), "hello\nworld");
+    // A selection is replaced by the break.
+    rig.key(Key::End);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.key(Key::Enter);
+    assert_eq!(rig.model().body(), "hello\nwor\n");
+    // The caret is on the third line: two Ups reach the first, a third goes to the subject.
+    rig.key(Key::Up);
+    rig.key(Key::Up);
+    assert!(node_ending(&rig, "/commit/body").state.focused);
+    rig.key(Key::Up);
+    assert!(
+        node_ending(&rig, "/commit/subject").state.focused,
+        "Up from the first line goes to the subject"
+    );
+}
+
+#[test]
+fn a_paste_into_the_description_keeps_its_line_breaks_and_replaces_the_selection() {
+    let mut rig = drafted();
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    rig.send(Msg::Paste("one\r\ntwo\u{7}\nthree".into()));
+    assert_eq!(rig.model().body(), "one\ntwo\nthree");
+}
+
+#[test]
+fn the_description_publishes_the_whole_text_with_the_real_anchor_and_focus() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    let n = node_ending(&rig, "/commit/body");
+    assert_eq!(n.text.as_deref(), Some("hello\nworld"));
+    assert_eq!(caret_of(&n), (2, 8));
+    assert!(n.state.focused);
+}
+
+#[test]
+fn a_selection_over_two_description_lines_is_drawn_on_both_rows() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    let mut theme = Theme::plain();
+    let ink = ratatui::style::Color::Rgb(10, 20, 30);
+    theme.selection = ratatui::style::Style::default().bg(ink);
+    let b = rig.body();
+    let buf = rig.cells(&theme, b.width, b.height);
+    let (x, y) = rig.find("hello");
+    // "llo" on the first row, "wo" on the second; the rest of each row is not selected.
+    for (col, on) in [(0, false), (1, false), (2, true), (3, true), (4, true)] {
+        assert_eq!(buf[(x + col, y)].bg == ink, on, "first row, column {col}");
+    }
+    for (col, on) in [(0, true), (1, true), (3, false), (4, false)] {
+        assert_eq!(
+            buf[(x + col, y + 1)].bg == ink,
+            on,
+            "second row, column {col}"
+        );
+    }
+}
+
+// ---- copy and cut through the clipboard effect ---------------------------------------
+
+#[test]
+fn copy_in_the_description_sends_the_selection_with_its_line_break_and_changes_nothing() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    let fx = rig.mods(Key::Char('c'), Mods::CTRL);
+    let (write, text) = clipboard_write(&fx);
+    assert_eq!(text, "llo\nwo");
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.model().body(), "hello\nworld");
+    assert!(rig.banners().is_empty(), "{:?}", rig.banners());
+}
+
+#[test]
+fn cut_in_the_description_takes_the_text_out_only_once_the_clipboard_has_it() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    let fx = rig.mods(Key::Char('x'), Mods::CTRL);
+    let (write, text) = clipboard_write(&fx);
+    assert_eq!(text, "llo\nwo");
+    assert_eq!(
+        rig.model().body(),
+        "hello\nworld",
+        "still there until it is accepted"
+    );
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.model().body(), "herld");
+}
+
+#[test]
+fn a_refused_cut_leaves_the_text_and_says_so_as_a_notice() {
+    let mut rig = drafted();
+    selecting_across(&mut rig);
+    let fx = rig.mods(Key::Char('x'), Mods::CTRL);
+    let (write, _) = clipboard_write(&fx);
+    rig.answer(
+        &write,
+        Outcome::Refused {
+            code: "denied".into(),
+            reason: "no clipboard here".into(),
+        },
+        None,
+    );
+    assert_eq!(rig.model().body(), "hello\nworld");
+    let said = rig.banners();
+    assert!(
+        said.iter().any(|b| b.contains("no clipboard here")),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn a_cut_is_not_applied_to_a_field_that_no_longer_holds_that_selection() {
+    let mut rig = loaded();
+    rig.ch('c');
+    rig.typed("add thing");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    let fx = rig.mods(Key::Char('x'), Mods::CTRL);
+    let (write, _) = clipboard_write(&fx);
+    // The person types over the selection before the host answers.
+    rig.typed("Z");
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.model().subject(), "Z");
+}
+
+#[test]
+fn copy_and_cut_work_in_the_subject_and_the_branch_prompt() {
+    let mut rig = loaded();
+    rig.ch('c');
+    rig.typed("add thing");
+    rig.mods(Key::Char('a'), Mods::CTRL);
+    let (write, text) = clipboard_write(&rig.mods(Key::Char('c'), Mods::CTRL));
+    assert_eq!(text, "add thing");
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.model().subject(), "add thing");
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(rig.model().subject(), "");
+
+    let mut rig = loaded();
+    rig.ch('b');
+    rig.typed("devel");
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    let (write, text) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    assert_eq!(text, "el");
+    // Refused: the prompt keeps what it had.
+    rig.answer(
+        &write,
+        Outcome::Failed {
+            reason: "blocked".into(),
+        },
+        None,
+    );
+    assert_eq!(
+        rig.model().prompt().map(|p| p.text.clone()).as_deref(),
+        Some("devel")
+    );
+    // Accepted: it goes.
+    let (write, _) = clipboard_write(&rig.mods(Key::Char('x'), Mods::CTRL));
+    rig.answer(&write, Outcome::Accepted, None);
+    assert_eq!(
+        rig.model().prompt().map(|p| p.text.clone()).as_deref(),
+        Some("dev")
+    );
 }

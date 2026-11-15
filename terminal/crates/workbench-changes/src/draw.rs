@@ -106,12 +106,40 @@ impl Changes {
     }
 
     /// Shows the caret as a reversed cell, the way a terminal draws a block cursor.
-    fn draw_caret(&self, field: Field, row: usize, x: u16, y: u16, room: usize, buf: &mut Buffer) {
+    /// A selection is drawn in the theme's selection style, on every row it covers: from its
+    /// start to the end of the row's text (`line_cells`) on the rows before its last, and from
+    /// the row's start to its end on the rows after its first.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_caret(
+        &self,
+        field: Field,
+        row: usize,
+        (x, y): (u16, u16),
+        room: usize,
+        skip: usize,
+        line_cells: usize,
+        buf: &mut Buffer,
+        styles: &ChangesStyles,
+    ) {
         let Some(caret) = self.caret else { return };
-        if caret.field != field || caret.row != row {
+        if caret.field != field {
             return;
         }
-        let col = caret.col.min(room.saturating_sub(1));
+        if let Some(((first, from), (last, to))) = caret.selection
+            && (first..=last).contains(&row)
+        {
+            let start = if row == first { from } else { 0 };
+            let end = if row == last { to } else { line_cells };
+            for col in start.saturating_sub(skip)..end.saturating_sub(skip).min(room) {
+                if let Some(cell) = buf.cell_mut((x + col as u16, y)) {
+                    cell.set_style(styles.selected);
+                }
+            }
+        }
+        if caret.row != row {
+            return;
+        }
+        let col = caret.col.saturating_sub(skip).min(room.saturating_sub(1));
         let at = x + col as u16;
         if let Some(cell) = buf.cell_mut((at, y)) {
             cell.modifier.insert(Modifier::REVERSED);
@@ -135,7 +163,16 @@ impl Changes {
         let skip = width(&text).saturating_sub(room.saturating_sub(1));
         let shown: String = text.chars().skip(skip).collect();
         put(buf, rect.x + lw as u16, rect.y, room, &shown, styles.text);
-        self.draw_caret(Field::Prompt, 0, rect.x + lw as u16, rect.y, room, buf);
+        self.draw_caret(
+            Field::Prompt,
+            0,
+            (rect.x + lw as u16, rect.y),
+            room,
+            skip,
+            width(&text),
+            buf,
+            styles,
+        );
     }
 
     fn draw_branch(&self, rect: Rect, buf: &mut Buffer, styles: &ChangesStyles) {
@@ -558,7 +595,16 @@ impl Changes {
         };
         put(buf, rect.x + 2, rect.y, subject_room, &subject, style);
         if focused {
-            self.draw_caret(Field::Subject, 0, rect.x + 2, rect.y, subject_room, buf);
+            self.draw_caret(
+                Field::Subject,
+                0,
+                (rect.x + 2, rect.y),
+                subject_room,
+                0,
+                length,
+                buf,
+                styles,
+            );
         }
         put(
             buf,
@@ -585,12 +631,13 @@ impl Changes {
                     Some(line) => (line.to_owned(), styles.text),
                     None => (String::new(), styles.text),
                 };
+                let shown = fit(&printable(&line), w.saturating_sub(3));
                 put(
                     buf,
                     rect.x + 2,
                     rect.y + row,
                     w.saturating_sub(3),
-                    &fit(&printable(&line), w.saturating_sub(3)),
+                    &shown,
                     style,
                 );
                 if self.focus == Focus::Message {
@@ -598,10 +645,12 @@ impl Changes {
                     self.draw_caret(
                         Field::Body,
                         shown_row,
-                        rect.x + 2,
-                        rect.y + row,
+                        (rect.x + 2, rect.y + row),
                         w.saturating_sub(3),
+                        0,
+                        width(&shown),
                         buf,
+                        styles,
                     );
                 }
             }

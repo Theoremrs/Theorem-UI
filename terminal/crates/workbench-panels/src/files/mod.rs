@@ -11,6 +11,7 @@ mod tree;
 
 use std::collections::BTreeMap;
 
+use crate::clip::{FieldClip, Settled, finish_cut, not_done};
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
@@ -27,7 +28,7 @@ use theorem_workbench_core::{
     Button, Ctx, EmitError, OpenTarget, Panel, PanelFactories, PanelMsg, PanelPointer, PointerKind,
     ViewCtx,
 };
-use tui_input::{Input, InputRequest};
+use theorem_workbench_text::field::{Field as TextField, Keyed};
 
 use tree::{Entry, Note, NoteState, Overlay, Problem, Row, Tone, Tree, join, name_of, parent};
 
@@ -63,7 +64,7 @@ enum EditKind {
 }
 
 struct Edit {
-    input: Input,
+    input: TextField,
     kind: EditKind,
     error: Option<String>,
 }
@@ -96,6 +97,8 @@ pub struct FilesPanel {
     tree: Tree,
     lists: BTreeMap<EffectId, String>,
     ops: BTreeMap<EffectId, Op>,
+    /// The clipboard writes the edit field's copy and cut keys have out.
+    field_clip: FieldClip<()>,
     selected: Option<String>,
     scroll: usize,
     body: Rect,
@@ -133,6 +136,7 @@ impl FilesPanel {
             tree,
             lists: BTreeMap::new(),
             ops: BTreeMap::new(),
+            field_clip: FieldClip::default(),
             selected: state["selected"].as_str().map(str::to_owned),
             scroll: state["scroll"].as_u64().unwrap_or(0) as usize,
             body: Rect::default(),
@@ -739,7 +743,7 @@ impl FilesPanel {
             return;
         }
         self.mode = Mode::Edit(Edit {
-            input: Input::new(name_of(&path).to_owned()),
+            input: TextField::new(name_of(&path)),
             kind: EditKind::Rename { path },
             error: None,
         });
@@ -753,7 +757,7 @@ impl FilesPanel {
         let dir = self.target_dir();
         self.toggle(&dir, true);
         self.mode = Mode::Edit(Edit {
-            input: Input::default(),
+            input: TextField::default(),
             kind: EditKind::New { dir, directory },
             error: None,
         });
@@ -871,46 +875,52 @@ impl FilesPanel {
     }
 
     fn edit_key(&mut self, key: KeyInput, cx: &mut Ctx) {
-        let word = key.mods().intersects(Mods::ALT | Mods::CTRL);
-        let request = match key.key() {
-            Key::Esc => {
-                self.mode = Mode::Browse;
-                return;
+        match key.key() {
+            Key::Esc => self.mode = Mode::Browse,
+            Key::Enter => self.commit_edit(cx),
+            _ => {
+                let Mode::Edit(edit) = &mut self.mode else {
+                    return;
+                };
+                match edit.input.key(&key) {
+                    // An edit or a motion answers whatever the last attempt said.
+                    Keyed::Handled => edit.error = None,
+                    keyed @ (Keyed::Copy | Keyed::Cut) => {
+                        let input = edit.input.clone();
+                        if let Some(note) = self.field_clip.ask(cx, (), keyed, &input)
+                            && let Mode::Edit(edit) = &mut self.mode
+                        {
+                            edit.error = Some(note);
+                        }
+                    }
+                    // The browser answers the paste chord with `PanelMsg::Paste`, not a key.
+                    Keyed::Paste | Keyed::Ignored => {}
+                }
             }
-            Key::Enter => return self.commit_edit(cx),
-            Key::Left if word => InputRequest::GoToPrevWord,
-            Key::Right if word => InputRequest::GoToNextWord,
-            Key::Left => InputRequest::GoToPrevChar,
-            Key::Right => InputRequest::GoToNextChar,
-            Key::Home => InputRequest::GoToStart,
-            Key::End => InputRequest::GoToEnd,
-            Key::Backspace if word => InputRequest::DeletePrevWord,
-            Key::Backspace => InputRequest::DeletePrevChar,
-            Key::Delete => InputRequest::DeleteNextChar,
-            Key::Char(c) if key.mods().intersects(Mods::CTRL | Mods::CMD) => match c {
-                'a' => InputRequest::GoToStart,
-                'e' => InputRequest::GoToEnd,
-                'u' => InputRequest::DeleteFromStart,
-                'k' => InputRequest::DeleteTillEnd,
-                _ => return,
-            },
-            Key::Char(c) if key.mods().difference(Mods::SHIFT).is_empty() => {
-                InputRequest::InsertChar(c)
-            }
-            _ => return,
+        }
+    }
+
+    /// The end of a clipboard write: a cut takes the selection out if the field still holds it.
+    fn on_clip(&mut self, settled: Settled<()>) {
+        let Mode::Edit(edit) = &mut self.mode else {
+            return;
         };
-        if let Mode::Edit(edit) = &mut self.mode {
-            edit.input.handle(request);
-            edit.error = None;
+        match settled {
+            Settled::Copied => {}
+            Settled::Cut((), text) => {
+                if finish_cut(&mut edit.input, &text) {
+                    edit.error = None;
+                }
+            }
+            Settled::Not { cut, outcome } => edit.error = Some(not_done(cut, &outcome)),
         }
     }
 
     fn insert_text(&mut self, text: &str) {
         match &mut self.mode {
             Mode::Edit(edit) => {
-                for c in text.chars().filter(|c| !c.is_control()) {
-                    edit.input.handle(InputRequest::InsertChar(c));
-                }
+                let text: String = text.chars().filter(|c| !c.is_control()).collect();
+                edit.input.insert(&text);
                 edit.error = None;
             }
             Mode::Browse => {
@@ -1154,7 +1164,9 @@ impl Panel for FilesPanel {
                 self.clamp_scroll();
             }
             PanelMsg::Completion(c) => {
-                if let Some(dir) = self.lists.remove(&c.effect) {
+                if let Some(settled) = self.field_clip.settle(&c) {
+                    self.on_clip(settled);
+                } else if let Some(dir) = self.lists.remove(&c.effect) {
                     self.on_listing(dir, c);
                 } else if let Some(op) = self.ops.remove(&c.effect) {
                     self.on_write(op, c);
