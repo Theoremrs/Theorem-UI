@@ -1146,9 +1146,7 @@ impl TheoPanel {
             self.composer.borrow_mut().add_reference(reference)
         };
         let text = match said {
-            Ok(()) if cut => format!(
-                "added the first {EXCERPT_LIMIT} characters of the selection in {name} to the message"
-            ),
+            Ok(()) if cut => format!("added the first {EXCERPT_LIMIT} characters of {name}"),
             Ok(()) => format!("added {name} to the message"),
             Err(why) => format!("not added: {name}: {why}"),
         };
@@ -4082,7 +4080,7 @@ mod tests {
         let screen = r.drawn();
         assert!(
             screen.contains(&format!(
-                "added the first {EXCERPT_LIMIT} characters of the selection in a.txt"
+                "added the first {EXCERPT_LIMIT} characters of a.txt"
             )),
             "{screen}"
         );
