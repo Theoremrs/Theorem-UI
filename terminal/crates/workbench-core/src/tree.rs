@@ -29,7 +29,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
     let frame = match model.frame() {
         Some(f) => f,
         None => {
-            solved = model.dock().solve(vp.area, vp.metrics);
+            solved = model.dock().solve(model.dock_area_in(vp.area), vp.metrics);
             &solved
         }
     };
@@ -87,6 +87,17 @@ pub fn semantics(model: &Model) -> SemanticTree {
             "Collapsed to a drawer: open the drawer to see it.",
             &mut nodes,
         ));
+    }
+    // The notice row, by the same words it is drawn with.
+    if let (Some(row), Some(line)) = (model.notice_rect(vp.area), model.notice_line()) {
+        let mut node = Node::new("notice", Role::Status, &line.text, row);
+        node.state.description = Some(if line.persistent {
+            format!("{}, standing", line.severity.word())
+        } else {
+            line.severity.word().to_owned()
+        });
+        root.children.push(node.id.clone());
+        nodes.push(node);
     }
     describe_frame(frame, &mut root);
     nodes.insert(0, root);

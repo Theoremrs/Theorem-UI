@@ -11,18 +11,62 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use ratatui::layout::Rect;
 
+use crate::arrangement::{ARRANGEMENT_NAME_CHARS, ArrangementInfo, preset_named};
 use crate::ids::{ActionId, PanelKind};
 use crate::panel::PickerView;
+use crate::panels::WORKBENCH_KIND;
 use crate::picker_layout::Layout;
-use crate::registry::{Availability, Capabilities, PickerRow, Registry};
+use crate::registry::{ActionIntent, Availability, Capabilities, Chooses, PickerRow, Registry};
 
 /// The row that leads to the rest of the tools instead of choosing one.
 pub const MORE_TOOLS: &str = "picker.more";
+/// The row that leads to the layouts: the built-in presets and the account's
+/// saved arrangements.
+pub const LAYOUTS: &str = "workbench.layouts";
+/// The Layouts page's rename and delete, by name: they act on the highlighted
+/// saved layout.
+pub const LAYOUT_RENAME: &str = "picker.layout.rename";
+pub const LAYOUT_DELETE: &str = "picker.layout.delete";
+/// The Layouts page's last row, and the workbench action it stands for: ask
+/// for a name and keep the arrangement as it is under it.
+pub const LAYOUT_SAVE: &str = "workbench.layout.save";
+/// The prefix of a layout row's semantic action; the layout's name follows.
+/// The mark after a saved arrangement's name when applying it changes the
+/// appearance too. It rides in the row's hint cell, so it is muted and is the
+/// first thing to go at a narrow width.
+pub const THEME_MARK: &str = "theme";
+pub const LAYOUT_APPLY: &str = "picker.layout.apply:";
+/// Leads the rows that are the account's own, not built in.
+const SAVED_MARK: &str = "\u{25a0}";
+/// The Layouts page's heading.
+pub const HEADING_LAYOUTS: &str = "Layouts";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Main,
     More,
+    /// The built-in presets, then the saved arrangements, then "Save layout
+    /// as…".
+    Layouts,
+    /// A one-line name entry (the filter line is the entry); `entry` says what
+    /// for.
+    Name,
+}
+
+/// What a name is being asked for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NameFor {
+    Save,
+    Rename(String),
+}
+
+/// What the Layouts page asks the root to do.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LayoutChoice {
+    Apply(String),
+    Save(String),
+    Rename { from: String, to: String },
+    Delete(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +93,18 @@ pub enum PickerMsg {
     Select(usize),
     /// A pointer click on row `n`: select it, then choose it as `Choose` does.
     ChooseAt(usize),
+    /// The chord printed on a row was pressed: choose that row, on whichever
+    /// page it is, exactly as Enter on it would. Nothing when no available row
+    /// has this action.
+    ChooseRow(ActionId),
+    /// The Layouts page (from any page of an open picker).
+    Layouts,
+    /// Ask for a name to save the arrangement under.
+    SaveAs,
+    /// Ask for a new name for the highlighted saved arrangement.
+    RenameSelected,
+    /// Ask once, then delete the highlighted saved arrangement.
+    DeleteSelected,
     /// Pin the selected More tools entry to the main rows, or unpin it.
     TogglePin,
     /// The same for row `n`, from a pointer click on its pin control.
@@ -73,6 +129,9 @@ pub enum PickerOutcome {
         panel: PanelKind,
         pinned: bool,
     },
+    /// A layout row or the name entry was confirmed. The picker has closed
+    /// for `Apply` and `Save`, and stays on the Layouts page for the others.
+    Layout(LayoutChoice),
 }
 
 #[derive(Clone, Debug)]
@@ -91,6 +150,14 @@ pub struct Picker {
     area: Rect,
     shortcuts: BTreeMap<ActionId, String>,
     pin_shortcut: Option<String>,
+    /// The layouts the Layouts page lists (the model keeps them current).
+    layouts: Vec<ArrangementInfo>,
+    /// What the name entry is for, while it is showing.
+    naming: Option<NameFor>,
+    /// Escape from the name entry goes back to the Layouts page, not out.
+    name_from_layouts: bool,
+    /// The saved arrangement a delete is waiting to be confirmed for.
+    confirm: Option<String>,
 }
 
 impl Default for Picker {
@@ -105,6 +172,10 @@ impl Default for Picker {
             area: Rect::default(),
             shortcuts: BTreeMap::new(),
             pin_shortcut: None,
+            layouts: Vec::new(),
+            naming: None,
+            name_from_layouts: false,
+            confirm: None,
         }
     }
 }
@@ -127,6 +198,16 @@ impl Picker {
 
     pub fn page(&self) -> Page {
         self.page
+    }
+
+    /// What the name entry is asking for, while it is showing.
+    pub fn naming(&self) -> Option<&NameFor> {
+        self.naming.as_ref()
+    }
+
+    /// The layouts the model last gave the picker.
+    pub fn set_layouts(&mut self, layouts: Vec<ArrangementInfo>) {
+        self.layouts = layouts;
     }
 
     /// The text the rows are narrowed by.
@@ -172,15 +253,138 @@ impl Picker {
         let rows = match self.page {
             Page::Main => registry.picker_rows(caps, pinned),
             Page::More => registry.more_tools(caps, pinned),
+            Page::Layouts => self.layout_rows(),
+            Page::Name => Vec::new(),
         };
         let needle = self.filter.to_lowercase();
         rows.into_iter()
             .filter(|r| r.title.to_lowercase().contains(&needle))
             .map(|mut r| {
-                r.shortcut = self.shortcuts.get(&r.action).cloned();
+                // A layout row's hint cell is its theme mark, set when it was
+                // built; every other row's is its chord.
+                if self.page != Page::Layouts {
+                    r.shortcut = self.shortcuts.get(&r.action).cloned();
+                }
                 r
             })
             .collect()
+    }
+
+    /// The page and place of the available row whose action is `action`, on
+    /// the main page (pinned tools included) or under More tools.
+    fn row_position(
+        &self,
+        action: &ActionId,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) -> Option<(Page, usize)> {
+        [
+            (Page::Main, registry.picker_rows(caps, pinned)),
+            (Page::More, registry.more_tools(caps, pinned)),
+        ]
+        .into_iter()
+        .find_map(|(page, rows)| {
+            rows.iter()
+                .position(|r| &r.action == action)
+                .filter(|&at| rows[at].availability == Availability::Available)
+                .map(|at| (page, at))
+        })
+    }
+
+    /// Whether an available row offers `action` (on any page): the chord
+    /// printed on it chooses it while the picker holds the keys.
+    pub fn offers(
+        &self,
+        action: &ActionId,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) -> bool {
+        self.row_position(action, registry, caps, pinned).is_some()
+    }
+
+    fn layout_rows(&self) -> Vec<PickerRow> {
+        let row = |action: String,
+                   title: String,
+                   glyph: Option<String>,
+                   shortcut: Option<String>| PickerRow {
+            action: ActionId::new(action),
+            panel: PanelKind::new(WORKBENCH_KIND),
+            title,
+            intent: ActionIntent::Open,
+            availability: Availability::Available,
+            pinned: false,
+            chooses: Chooses::Opens,
+            pinnable: false,
+            shortcut,
+            glyph,
+        };
+        let mut rows: Vec<PickerRow> = self
+            .layouts
+            .iter()
+            .map(|l| {
+                row(
+                    format!("{LAYOUT_APPLY}{}", l.name),
+                    l.name.clone(),
+                    (!l.builtin).then(|| SAVED_MARK.to_owned()),
+                    l.themed.then(|| THEME_MARK.to_owned()),
+                )
+            })
+            .collect();
+        rows.push(row(
+            LAYOUT_SAVE.to_owned(),
+            "Save layout as\u{2026}".into(),
+            None,
+            None,
+        ));
+        rows
+    }
+
+    /// The saved (not built-in) arrangement the selected row is, or why the
+    /// row is not one.
+    fn selected_saved(&self, verb: &str, rows: &[PickerRow]) -> Result<String, String> {
+        let name = rows
+            .get(self.selected)
+            .and_then(|r| r.action.as_str().strip_prefix(LAYOUT_APPLY))
+            .ok_or_else(|| format!("Highlight a saved layout to {verb} first."))?;
+        match self.layouts.iter().find(|l| l.name == name) {
+            Some(l) if l.builtin => Err(format!(
+                "\"{name}\" is built in. Built-in layouts cannot be {verb}d."
+            )),
+            Some(_) => Ok(name.to_owned()),
+            None => Err(format!("Highlight a saved layout to {verb} first.")),
+        }
+    }
+
+    /// Why `name` cannot be used for what is being asked, in words for the
+    /// entry row; `None` when it can.
+    fn name_problem(&self, name: &str) -> Option<String> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Some("A name is needed.".into());
+        }
+        if name.chars().count() > ARRANGEMENT_NAME_CHARS {
+            return Some(format!(
+                "A name is at most {ARRANGEMENT_NAME_CHARS} characters."
+            ));
+        }
+        if preset_named(name).is_some() {
+            return Some(format!(
+                "\"{name}\" is a built-in layout. Choose another name."
+            ));
+        }
+        if let Some(NameFor::Rename(from)) = &self.naming {
+            let key = name.to_lowercase();
+            let taken = self
+                .layouts
+                .iter()
+                .any(|l| l.name.to_lowercase() == key && l.name != *from);
+            if taken {
+                return Some(format!("\"{name}\" is already a saved layout."));
+            }
+        }
+        None
     }
 
     /// What the picker panel is given to draw.
@@ -194,7 +398,15 @@ impl Picker {
             rows: self.rows(registry, caps, pinned),
             selected: self.selected,
             filter: self.filter.clone(),
-            more: self.page == Page::More,
+            more: self.page != Page::Main,
+            heading: match self.page {
+                Page::Layouts | Page::Name => Some(HEADING_LAYOUTS.to_owned()),
+                Page::Main | Page::More => None,
+            },
+            entry: self.naming.as_ref().map(|n| match n {
+                NameFor::Save => "Save layout as".to_owned(),
+                NameFor::Rename(from) => format!("Rename \"{from}\" to"),
+            }),
             reason: self.reason.clone(),
             pin_shortcut: self.pin_shortcut.clone(),
         }
@@ -216,6 +428,7 @@ impl Picker {
             area: self.area,
             shortcuts: std::mem::take(&mut self.shortcuts),
             pin_shortcut: self.pin_shortcut.take(),
+            layouts: std::mem::take(&mut self.layouts),
             ..Self::default()
         };
     }
@@ -234,6 +447,19 @@ impl Picker {
         caps: &Capabilities,
         pinned: &BTreeSet<PanelKind>,
     ) -> PickerOutcome {
+        // A delete waits for its confirming Enter; anything else withdraws it.
+        if self.confirm.is_some()
+            && !matches!(
+                msg,
+                PickerMsg::Choose | PickerMsg::Close | PickerMsg::Open | PickerMsg::Rest
+            )
+        {
+            self.confirm = None;
+            self.reason = None;
+            if msg == PickerMsg::Back {
+                return PickerOutcome::Nothing;
+            }
+        }
         match msg {
             PickerMsg::Open => {
                 self.reset();
@@ -248,6 +474,26 @@ impl Picker {
             }
             PickerMsg::Take => {
                 self.resting = false;
+                PickerOutcome::Nothing
+            }
+            PickerMsg::Back if self.open && self.page == Page::Name => {
+                self.naming = None;
+                self.filter.clear();
+                self.selected = 0;
+                self.reason = None;
+                if std::mem::take(&mut self.name_from_layouts) {
+                    self.page = Page::Layouts;
+                    PickerOutcome::Nothing
+                } else {
+                    self.reset();
+                    PickerOutcome::Closed
+                }
+            }
+            PickerMsg::Back if self.open && self.page == Page::Layouts => {
+                self.page = Page::Main;
+                self.filter.clear();
+                self.selected = 0;
+                self.reason = None;
                 PickerOutcome::Nothing
             }
             PickerMsg::Back if self.open && self.page == Page::More => {
@@ -320,6 +566,85 @@ impl Picker {
                 self.select(row);
                 self.update(PickerMsg::Choose, registry, caps, pinned)
             }
+            PickerMsg::ChooseRow(action) if self.open => {
+                match self.row_position(&action, registry, caps, pinned) {
+                    Some((page, at)) => {
+                        self.page = page;
+                        self.filter.clear();
+                        self.selected = at;
+                        self.reason = None;
+                        self.naming = None;
+                        self.update(PickerMsg::Choose, registry, caps, pinned)
+                    }
+                    None => PickerOutcome::Nothing,
+                }
+            }
+            PickerMsg::Layouts if self.open => {
+                self.page = Page::Layouts;
+                self.naming = None;
+                self.filter.clear();
+                self.selected = 0;
+                self.reason = None;
+                PickerOutcome::Nothing
+            }
+            PickerMsg::SaveAs if self.open => {
+                self.start_name(NameFor::Save, String::new());
+                PickerOutcome::Nothing
+            }
+            PickerMsg::RenameSelected if self.open && self.page == Page::Layouts => {
+                let rows = self.rows(registry, caps, pinned);
+                match self.selected_saved("rename", &rows) {
+                    Ok(name) => {
+                        self.start_name(NameFor::Rename(name.clone()), name);
+                        PickerOutcome::Nothing
+                    }
+                    Err(reason) => {
+                        self.reason = Some(reason.clone());
+                        PickerOutcome::Unavailable { reason }
+                    }
+                }
+            }
+            PickerMsg::DeleteSelected if self.open && self.page == Page::Layouts => {
+                let rows = self.rows(registry, caps, pinned);
+                match self.selected_saved("delete", &rows) {
+                    Ok(name) => {
+                        self.reason = Some(format!(
+                            "Delete \"{name}\"? Enter deletes it; any other key keeps it."
+                        ));
+                        self.confirm = Some(name);
+                        PickerOutcome::Nothing
+                    }
+                    Err(reason) => {
+                        self.reason = Some(reason.clone());
+                        PickerOutcome::Unavailable { reason }
+                    }
+                }
+            }
+            PickerMsg::Choose if self.open && self.confirm.is_some() => {
+                let name = self.confirm.take().unwrap_or_default();
+                self.reason = None;
+                PickerOutcome::Layout(LayoutChoice::Delete(name))
+            }
+            PickerMsg::Choose if self.open && self.page == Page::Name => {
+                if let Some(problem) = self.name_problem(&self.filter) {
+                    self.reason = Some(problem.clone());
+                    return PickerOutcome::Unavailable { reason: problem };
+                }
+                let name = self.filter.trim().to_owned();
+                match self.naming.take() {
+                    Some(NameFor::Rename(from)) => {
+                        self.page = Page::Layouts;
+                        self.filter.clear();
+                        self.selected = 0;
+                        self.reason = None;
+                        PickerOutcome::Layout(LayoutChoice::Rename { from, to: name })
+                    }
+                    _ => {
+                        self.reset();
+                        PickerOutcome::Layout(LayoutChoice::Save(name))
+                    }
+                }
+            }
             PickerMsg::TogglePin if self.open => {
                 self.toggle_pin(self.selected, registry, caps, pinned)
             }
@@ -337,6 +662,26 @@ impl Picker {
                     return PickerOutcome::Unavailable {
                         reason: reason.clone(),
                     };
+                }
+                if self.page == Page::Layouts {
+                    let action = row.action.as_str().to_owned();
+                    if action == LAYOUT_SAVE {
+                        self.start_name(NameFor::Save, String::new());
+                        return PickerOutcome::Nothing;
+                    }
+                    let name = action
+                        .strip_prefix(LAYOUT_APPLY)
+                        .unwrap_or_default()
+                        .to_owned();
+                    self.reset();
+                    return PickerOutcome::Layout(LayoutChoice::Apply(name));
+                }
+                if row.action.as_str() == LAYOUTS {
+                    self.page = Page::Layouts;
+                    self.filter.clear();
+                    self.selected = 0;
+                    self.reason = None;
+                    return PickerOutcome::Nothing;
                 }
                 if row.action.as_str() == MORE_TOOLS {
                     self.page = Page::More;
@@ -358,9 +703,24 @@ impl Picker {
             | PickerMsg::Choose
             | PickerMsg::Select(_)
             | PickerMsg::ChooseAt(_)
+            | PickerMsg::ChooseRow(_)
+            | PickerMsg::Layouts
+            | PickerMsg::SaveAs
+            | PickerMsg::RenameSelected
+            | PickerMsg::DeleteSelected
             | PickerMsg::TogglePin
             | PickerMsg::TogglePinAt(_) => PickerOutcome::Nothing,
         }
+    }
+
+    /// Show the name entry for `what`, starting from `text`.
+    fn start_name(&mut self, what: NameFor, text: String) {
+        self.name_from_layouts = self.page == Page::Layouts;
+        self.page = Page::Name;
+        self.naming = Some(what);
+        self.filter = text;
+        self.selected = 0;
+        self.reason = None;
     }
 
     /// Left with nowhere further left to go on More tools goes back.
@@ -371,7 +731,7 @@ impl Picker {
         caps: &Capabilities,
         pinned: &BTreeSet<PanelKind>,
     ) -> PickerOutcome {
-        if *msg == PickerMsg::Left && self.page == Page::More {
+        if *msg == PickerMsg::Left && matches!(self.page, Page::More | Page::Layouts) {
             self.update(PickerMsg::Back, registry, caps, pinned)
         } else {
             PickerOutcome::Nothing
@@ -629,7 +989,8 @@ mod tests {
                 "Diagnostics",
                 "Run output",
                 "Search",
-                "History"
+                "History",
+                "Layouts"
             ]
         );
 

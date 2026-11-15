@@ -57,6 +57,8 @@ struct Log {
     caret: Option<(u16, u16, theorem_workbench_core::CaretPhase)>,
     /// Whether "note" panels take text (an editor or composer).
     text_entry: bool,
+    /// The one chord "note" panels handle themselves.
+    takes: Option<KeyInput>,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -243,6 +245,10 @@ impl Panel for TestPanel {
 
     fn text_entry(&self) -> bool {
         self.kind == "note" && self.log.borrow().text_entry
+    }
+
+    fn takes_chord(&self, key: &KeyInput) -> bool {
+        self.kind == "note" && self.log.borrow().takes.as_ref() == Some(key)
     }
 
     fn binding(&self) -> Option<Binding> {
@@ -3771,18 +3777,17 @@ fn an_arrangement_from_another_version_or_naming_an_unknown_kind_restores_what_i
         },
     );
     let told = arrangement_notices(&mut m);
-    let [ArrangementNotice::Partial { unavailable, .. }] = told.as_slice() else {
+    let [ArrangementNotice::Partial { dropped, .. }] = told.as_slice() else {
         panic!("{told:?}");
     };
-    assert_eq!(unavailable, &["ghost".to_owned()]);
-    let ghost = m
-        .panel_ids()
-        .find(|(_, k)| k.as_str() == "ghost")
-        .map(|(id, _)| id.clone())
-        .unwrap();
+    assert_eq!(
+        dropped,
+        &["ghost".to_owned()],
+        "a kind with no registration is named"
+    );
     assert!(
-        m.is_unavailable(&ghost),
-        "kept as a placeholder holding its state"
+        m.panel_ids().all(|(_, k)| k.as_str() != "ghost"),
+        "and left out, not kept as a placeholder"
     );
     assert_eq!(kinds(&m, "note").len(), 1, "the open note is still there");
 
@@ -4495,4 +4500,1303 @@ fn the_new_wire_fields_are_optional_and_older_hosts_still_parse() {
         (run.exit_code, run.kind.as_deref()),
         (Some(2), Some("test"))
     );
+}
+
+// ---- batch eleven: layouts in the picker, the notice row, an empty account ----
+
+fn layout_rows(m: &Model) -> Vec<String> {
+    m.picker()
+        .rows(m.registry(), m.capabilities(), m.pinned())
+        .into_iter()
+        .map(|r| r.title)
+        .collect()
+}
+
+/// Walk the highlight to `row` with the arrow keys, whatever the column count.
+fn select_row(m: &mut Model, row: usize) {
+    for _ in 0..32 {
+        let at = m.picker().selected();
+        if at == row {
+            return;
+        }
+        let k = if row < at {
+            Key::Up
+        } else if row - at >= 2 {
+            Key::Down
+        } else {
+            Key::Right
+        };
+        key(m, k, Mods::NONE);
+        if m.picker().selected() == at {
+            key(m, Key::Down, Mods::NONE);
+        }
+    }
+    panic!("could not reach row {row}");
+}
+
+fn type_text(m: &mut Model, text: &str) {
+    for c in text.chars() {
+        ch(m, c);
+    }
+}
+
+fn keep(m: &mut Model, name: &str, revision: u64) {
+    let fx = arrange(m, ArrangementMsg::Save { name: name.into() });
+    send(m, saved(fx[0].id, revision));
+}
+
+fn layout_save_name(effects: &[Effect]) -> Vec<String> {
+    let (_, named) = save_text(effects);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    value["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].as_str().unwrap().to_owned())
+        .collect()
+}
+
+#[test]
+fn the_layouts_page_lists_the_presets_then_the_saved_and_enter_applies() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    keep(&mut m, "Writing", 1);
+    keep(&mut m, "Review", 2);
+    notices(&mut m);
+
+    let fx = action(&mut m, "workbench.layouts");
+    assert!(fx.is_empty());
+    assert!(m.picker().holds_keys());
+    assert_eq!(
+        layout_rows(&m),
+        [
+            "Default",
+            "Editor-centred",
+            "Agent-centred",
+            "Minimal",
+            "Writing",
+            "Review",
+            "Save layout as\u{2026}"
+        ]
+    );
+    // The rows are in the semantic tree under their own heading.
+    let tree = semantics(&m);
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.name == "Layouts" && n.role == Role::Heading)
+    );
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.name == "Writing" && n.role == Role::MenuItem)
+    );
+
+    select_row(&mut m, 3);
+    key(&mut m, Key::Enter, Mods::NONE);
+    assert!(!m.picker().is_open(), "applying closes the picker");
+    assert_eq!(
+        arrangement_notices(&mut m),
+        [ArrangementNotice::Applied {
+            name: "minimal".into()
+        }]
+    );
+    assert_eq!(
+        m.notice_line().map(|l| l.text),
+        Some("Layout: minimal applied".to_owned())
+    );
+
+    // A saved one by name.
+    action(&mut m, "workbench.layouts");
+    select_row(&mut m, 4);
+    key(&mut m, Key::Enter, Mods::NONE);
+    assert_eq!(
+        arrangement_notices(&mut m),
+        [ArrangementNotice::Applied {
+            name: "Writing".into()
+        }]
+    );
+    // Escape goes back a page, then closes.
+    action(&mut m, "workbench.layouts");
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert!(m.picker().holds_keys());
+    assert_eq!(
+        m.picker().page(),
+        theorem_workbench_core::picker::Page::Main
+    );
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert!(!m.picker().is_open());
+}
+
+#[test]
+fn save_layout_as_asks_for_a_name_in_the_picker_and_refuses_in_words() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    notices(&mut m);
+
+    // By the named action: straight to the entry.
+    action(&mut m, "workbench.layout.save");
+    assert_eq!(
+        m.picker().naming(),
+        Some(&theorem_workbench_core::picker::NameFor::Save)
+    );
+    // An empty name is refused on the entry row and nothing is sent.
+    assert!(key(&mut m, Key::Enter, Mods::NONE).is_empty());
+    assert_eq!(m.picker().reason(), Some("A name is needed."));
+    assert!(m.picker().holds_keys());
+    // So is a preset's name.
+    type_text(&mut m, "minimal");
+    assert!(key(&mut m, Key::Enter, Mods::NONE).is_empty());
+    assert!(m.picker().reason().unwrap().contains("built-in"));
+    // The entry is in the tree as a text box with its reason beside it.
+    let tree = semantics(&m);
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.role == Role::TextBox && n.name == "Save layout as")
+    );
+    assert!(tree.nodes.iter().any(|n| n.role == Role::Alert));
+    // Typing again clears the reason; Enter saves.
+    for _ in 0..7 {
+        key(&mut m, Key::Backspace, Mods::NONE);
+    }
+    assert_eq!(m.picker().reason(), None);
+    type_text(&mut m, "Focus");
+    let fx = key(&mut m, Key::Enter, Mods::NONE);
+    assert_eq!(fx.len(), 1);
+    assert_eq!(layout_save_name(&fx), ["Focus"]);
+    assert!(!m.picker().is_open());
+    send(&mut m, saved(fx[0].id, 1));
+    assert_eq!(
+        arrangement_notices(&mut m),
+        [ArrangementNotice::Saved {
+            name: "Focus".into()
+        }]
+    );
+    assert!(
+        m.arrangements()
+            .iter()
+            .any(|a| a.name == "Focus" && !a.builtin)
+    );
+
+    // Escape cancels: nothing is sent, the picker closes.
+    action(&mut m, "workbench.layout.save");
+    type_text(&mut m, "Never");
+    assert!(key(&mut m, Key::Esc, Mods::NONE).is_empty());
+    assert!(!m.picker().is_open());
+    assert!(!m.arrangements().iter().any(|a| a.name == "Never"));
+
+    // From the Layouts page the Save row opens the entry and Escape returns to
+    // the page.
+    action(&mut m, "workbench.layouts");
+    select_row(&mut m, 5);
+    key(&mut m, Key::Enter, Mods::NONE);
+    assert!(m.picker().naming().is_some());
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert_eq!(
+        m.picker().page(),
+        theorem_workbench_core::picker::Page::Layouts
+    );
+}
+
+#[test]
+fn rename_and_delete_act_on_the_highlighted_saved_layout_and_delete_asks_once() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    keep(&mut m, "Writing", 1);
+    keep(&mut m, "Review", 2);
+    notices(&mut m);
+    action(&mut m, "workbench.layouts");
+
+    // A built-in one is neither renamed nor deleted, and says so.
+    key(&mut m, Key::Char('r'), Mods::CTRL | Mods::ALT);
+    assert!(m.picker().reason().unwrap().contains("built in"));
+    assert_eq!(
+        m.picker().page(),
+        theorem_workbench_core::picker::Page::Layouts
+    );
+    key(&mut m, Key::Char('d'), Mods::CTRL | Mods::ALT);
+    assert!(m.picker().reason().unwrap().contains("built in"));
+
+    // Rename "Writing" (the fifth row).
+    select_row(&mut m, 4);
+    key(&mut m, Key::Char('r'), Mods::CTRL | Mods::ALT);
+    assert_eq!(
+        m.picker().naming(),
+        Some(&theorem_workbench_core::picker::NameFor::Rename(
+            "Writing".into()
+        ))
+    );
+    assert_eq!(
+        m.picker().filter(),
+        "Writing",
+        "starts from the current name"
+    );
+    // A name a saved layout has is refused.
+    for _ in 0..7 {
+        key(&mut m, Key::Backspace, Mods::NONE);
+    }
+    type_text(&mut m, "review");
+    assert!(key(&mut m, Key::Enter, Mods::NONE).is_empty());
+    assert!(m.picker().reason().unwrap().contains("already"));
+    for _ in 0..6 {
+        key(&mut m, Key::Backspace, Mods::NONE);
+    }
+    type_text(&mut m, "Prose");
+    let fx = key(&mut m, Key::Enter, Mods::NONE);
+    assert_eq!(layout_save_name(&fx), ["Prose", "Review"]);
+    assert_eq!(
+        m.picker().page(),
+        theorem_workbench_core::picker::Page::Layouts
+    );
+    send(&mut m, saved(fx[0].id, 3));
+
+    // Delete asks once: another key withdraws it, Enter confirms it.
+    select_row(&mut m, 4);
+    key(&mut m, Key::Char('d'), Mods::CTRL | Mods::ALT);
+    assert!(m.picker().reason().unwrap().contains("Delete \"Prose\""));
+    assert!(key(&mut m, Key::Down, Mods::NONE).is_empty());
+    assert_eq!(m.picker().reason(), None);
+    assert!(layout_rows(&m).contains(&"Prose".to_owned()));
+    key(&mut m, Key::Up, Mods::NONE);
+    key(&mut m, Key::Char('d'), Mods::CTRL | Mods::ALT);
+    let fx = key(&mut m, Key::Enter, Mods::NONE);
+    assert_eq!(layout_save_name(&fx), ["Review"]);
+    assert!(m.picker().holds_keys(), "the page stays for the next one");
+    assert!(!layout_rows(&m).contains(&"Prose".to_owned()));
+    // By the named actions, too.
+    action(&mut m, "picker.layout.delete");
+    assert!(m.picker().reason().is_some());
+}
+
+#[test]
+fn a_saved_arrangement_restores_groups_sizes_tabs_active_tab_and_focus() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "term.open");
+    action(&mut m, "chat.open");
+    // Make it unlike a fresh preset: another active tab, a moved splitter,
+    // the keyboard on a panel in another group.
+    action(&mut m, "workbench.resize.wider");
+    action(&mut m, "workbench.focus.left");
+    let before = m.document()["dock"].clone();
+    keep(&mut m, "Mine", 1);
+    // Change everything.
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    action(&mut m, "workbench.focus.right");
+    assert_ne!(m.document()["dock"], before);
+
+    action(&mut m, "workbench.layouts");
+    select_row(&mut m, 4);
+    key(&mut m, Key::Enter, Mods::NONE);
+    assert_eq!(
+        m.document()["dock"],
+        before,
+        "groups, splits, sizes, tabs, active tabs, focus"
+    );
+}
+
+#[test]
+fn a_kind_with_no_registration_is_dropped_and_named_on_the_notice_row() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let mut doc = m.document();
+    let first = doc["dock"]["groups"]
+        .as_object()
+        .unwrap()
+        .keys()
+        .next()
+        .unwrap()
+        .clone();
+    doc["dock"]["groups"][&first]["tabs"].as_array_mut().unwrap().push(json!({
+        "panel": "g1", "kind": {"name": "ghost", "version": 3}, "title": "Ghost", "view_state": {}
+    }));
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded(load[0].id, 4, "", &named_item("Ghosts", &doc)),
+    );
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Ghosts".into(),
+        },
+    );
+    let line = m.notice_line().expect("a notice");
+    assert!(line.text.contains("ghost"), "{}", line.text);
+    assert_eq!(
+        line.severity,
+        theorem_workbench_core::NoticeSeverity::Warning
+    );
+    assert!(m.panel_ids().all(|(_, k)| k.as_str() != "ghost"));
+}
+
+fn group_rects(m: &Model) -> Vec<(Rect, Rect)> {
+    m.frame()
+        .unwrap()
+        .groups
+        .iter()
+        .map(|g| (g.body, g.tab_strip))
+        .collect()
+}
+
+fn draw_cells(m: &Model, full: Rect, theme: &Theme) -> Buffer {
+    let mut buf = Buffer::empty(full);
+    view(m, full, &mut buf, theme);
+    buf
+}
+
+#[test]
+fn a_transient_notice_never_moves_the_dock_and_is_drawn_over_the_bottom_row() {
+    let (mut m, _) = new_model();
+    let full = Rect::new(0, 0, 200, 50);
+    let theme = Theme {
+        error: ratatui::style::Style::new().fg(ratatui::style::Color::Red),
+        ..Theme::plain()
+    };
+    assert_eq!(m.notice_line(), None);
+    assert_eq!(m.notice_row(full), None);
+    assert_eq!(m.notice_rect(full), None);
+    let before_rects = group_rects(&m);
+    let before_area = m.frame().unwrap().area;
+    let before_cells = draw_cells(&m, full, &theme);
+    assert_eq!(before_area, full);
+
+    action(&mut m, "no.such.action");
+    let line = m.notice_line().unwrap();
+    assert!(!line.persistent);
+    assert_eq!(line.severity, theorem_workbench_core::NoticeSeverity::Error);
+    // No row is taken: the dock is solved where it was.
+    assert_eq!(m.notice_row(full), None);
+    assert_eq!(m.dock_area_in(full), full);
+    assert_eq!(m.frame().unwrap().area, before_area);
+    assert_eq!(group_rects(&m), before_rects);
+
+    // Drawn at the right of the bottom row, text plus one cell each side.
+    let width = u16::try_from(line.text.chars().count() + 2).unwrap();
+    let rect = m.notice_rect(full).unwrap();
+    assert_eq!(rect, Rect::new(200 - width, 49, width, 1));
+    let during = draw_cells(&m, full, &theme);
+    let drawn: String = (rect.x..rect.right())
+        .map(|x| during[(x, 49)].symbol().to_owned())
+        .collect();
+    assert_eq!(drawn, format!(" {} ", line.text));
+    assert_eq!(during[(rect.x + 1, 49)].fg, ratatui::style::Color::Red);
+    // Nothing left of it changed.
+    for x in 0..rect.x {
+        assert_eq!(during[(x, 49)], before_cells[(x, 49)], "cell {x}");
+    }
+    // It is a status in the semantic tree, where it is drawn.
+    let tree = semantics(&m);
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "notice")
+        .unwrap();
+    assert_eq!(
+        (node.role, node.name.as_str(), node.rect),
+        (
+            Role::Status,
+            line.text.as_str(),
+            theorem_workbench_core::semantics::CellRect::of(rect)
+        )
+    );
+
+    // The next key press clears it; geometry and cells are as they were.
+    ch(&mut m, 'x');
+    assert_eq!(m.notice_line(), None);
+    assert_eq!(m.dock_area_in(full), full);
+    assert_eq!(group_rects(&m), before_rects);
+    let after = draw_cells(&m, full, &theme);
+    for x in 0..200u16 {
+        assert_eq!(after[(x, 49)], before_cells[(x, 49)], "cell {x} restored");
+    }
+}
+
+#[test]
+fn a_transient_wider_than_the_frame_is_cut_with_an_ellipsis() {
+    let (mut m, _) = new_model();
+    let full = Rect::new(0, 0, 20, 10);
+    send(
+        &mut m,
+        Msg::Resize {
+            area: full,
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+    action(&mut m, "no.such.action");
+    let rect = m.notice_rect(full).unwrap();
+    assert_eq!(rect, Rect::new(0, 9, 20, 1));
+    let buf = draw_cells(&m, full, &Theme::plain());
+    let drawn: String = (0..20u16)
+        .map(|x| buf[(x, 9)].symbol().to_owned())
+        .collect();
+    assert!(drawn.ends_with("\u{2026} "), "{drawn:?}");
+    assert_eq!(m.dock_area_in(full), full);
+}
+
+#[test]
+fn a_transient_notice_goes_with_the_next_notice_and_a_persistent_one_stays() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    let doc = m.document();
+    send(
+        &mut m,
+        loaded_from(
+            load[0].id,
+            LayoutSource::Device,
+            0,
+            "",
+            &named_item("Mine", &doc),
+        ),
+    );
+    assert!(m.layout_is_device_copy());
+    let full = Rect::new(0, 0, 200, 50);
+    let persistent_rects = group_rects(&m);
+    assert_eq!(m.dock_area_in(full), Rect::new(0, 0, 200, 49));
+    let line = m.notice_line().unwrap();
+    assert!(line.persistent);
+    assert_eq!(line.text, "Layout: this device's copy, not your account's");
+    assert_eq!(
+        line.severity,
+        theorem_workbench_core::NoticeSeverity::Warning
+    );
+    // Keys do not clear it.
+    ch(&mut m, 'x');
+    assert_eq!(m.notice_line().unwrap().text, line.text);
+
+    // A transient notice shows over it, the next one replaces that, and a key
+    // press brings the persistent one back.
+    action(&mut m, "no.such.action");
+    assert!(!m.notice_line().unwrap().persistent);
+    // It takes the persistent row's place, with no change of geometry.
+    assert_eq!(m.notice_row(full), Some(Rect::new(0, 49, 200, 1)));
+    assert_eq!(m.notice_rect(full), m.notice_row(full));
+    assert_eq!(m.dock_area_in(full), Rect::new(0, 0, 200, 49));
+    assert_eq!(group_rects(&m), persistent_rects);
+    let over = draw_cells(&m, full, &Theme::plain());
+    let drawn: String = (0..200u16)
+        .map(|x| over[(x, 49)].symbol().to_owned())
+        .collect();
+    assert!(
+        drawn.contains("no.such.action") && !drawn.contains("device"),
+        "{drawn}"
+    );
+    action(&mut m, "no.other.action");
+    assert!(m.notice_line().unwrap().text.contains("no.other.action"));
+    ch(&mut m, 'x');
+    assert_eq!(m.notice_line(), Some(line.clone()));
+    assert_eq!(group_rects(&m), persistent_rects);
+    let back = draw_cells(&m, full, &Theme::plain());
+    let drawn: String = (0..200u16)
+        .map(|x| back[(x, 49)].symbol().to_owned())
+        .collect();
+    assert!(drawn.contains(&line.text), "{drawn}");
+    // It is on the semantic tree as a standing status.
+    let tree = semantics(&m);
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "notice")
+        .unwrap();
+    assert_eq!(node.role, Role::Status);
+    assert!(
+        node.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("standing")
+    );
+
+    // When the account's own layout arrives the persistent state ends, and the
+    // dock takes the row back: the second and last geometry change.
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded_from(load[0].id, LayoutSource::Account, 1, "", "[]"),
+    );
+    assert!(!m.layout_is_device_copy());
+    assert_eq!(m.notice_row(full), None);
+    assert_eq!(m.dock_area_in(full), full);
+
+    // A host that reads the row stops the queue.
+    m.set_notice_queue(false);
+    action(&mut m, "no.third.action");
+    assert_eq!(m.take_notice(), None);
+    assert!(m.notice_line().is_some());
+}
+
+#[test]
+fn an_account_with_no_saved_layout_gets_the_default_not_the_old_ones() {
+    let (mut m, _) = new_model();
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "ann".into(),
+        }),
+    );
+    action(&mut m, "note.open");
+    action(&mut m, "term.open");
+    action(&mut m, "chat.open");
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    assert_eq!(m.document()["dock"]["groups"]["1"]["hidden"], json!(true));
+
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    // The old account's documents and terminals are gone from the tabs; what is
+    // not account content stays.
+    assert!(kinds(&m, "note").is_empty());
+    assert!(kinds(&m, "term").is_empty());
+    assert_eq!(kinds(&m, "chat").len(), 1);
+
+    // The new account's record is empty.
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        Msg::Completion(
+            Completion::new(load[0].id, ResourceRef::None, Outcome::Accepted).with_payload(
+                CompletionPayload::LayoutLoaded(LayoutLoaded {
+                    source: LayoutSource::Account,
+                    revision: Revision::Seq(0),
+                    document: None,
+                }),
+            ),
+        ),
+    );
+    assert_eq!(
+        m.document()["dock"]["groups"]["1"]["hidden"],
+        json!(false),
+        "the default shows the files group the minimal one hid"
+    );
+    assert_eq!(
+        arrangement_notices(&mut m).last(),
+        Some(&ArrangementNotice::Applied {
+            name: "Default".into()
+        })
+    );
+    // Nothing on screen points at a resource of the old account.
+    let tree = semantics(&m);
+    assert!(!tree.nodes.iter().any(|n| n.id.as_str().starts_with("tab:")
+        && (n.name.contains("note") || n.name.contains("term"))));
+
+    // The first account of a session is not a switch: its empty record
+    // changes nothing.
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    let minimal = m.document()["dock"]["layout"].clone();
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "ann".into(),
+        }),
+    );
+    assert_eq!(
+        kinds(&m, "note").len(),
+        1,
+        "a restored layout is not another account's"
+    );
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        Msg::Completion(
+            Completion::new(load[0].id, ResourceRef::None, Outcome::Accepted).with_payload(
+                CompletionPayload::LayoutLoaded(LayoutLoaded {
+                    source: LayoutSource::Account,
+                    revision: Revision::Seq(0),
+                    document: None,
+                }),
+            ),
+        ),
+    );
+    assert_eq!(m.document()["dock"]["layout"], minimal);
+}
+
+#[test]
+fn a_reset_ends_with_the_conversation_focused_and_the_picker_resting() {
+    let (mut m, _) = new_model();
+    action(&mut m, "theo.focus");
+    assert!(m.rest_picker_now());
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "ann".into(),
+        }),
+    );
+    // The person was in the tool group with the picker holding the keys.
+    action(&mut m, "workbench.layouts");
+    assert!(m.picker().holds_keys());
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        Msg::Completion(
+            Completion::new(load[0].id, ResourceRef::None, Outcome::Accepted).with_payload(
+                CompletionPayload::LayoutLoaded(LayoutLoaded {
+                    source: LayoutSource::Account,
+                    revision: Revision::Seq(0),
+                    document: None,
+                }),
+            ),
+        ),
+    );
+    assert!(
+        !m.picker().holds_keys(),
+        "the picker does not hold the keys"
+    );
+    assert!(m.picker().is_resting() || !m.picker().is_open());
+    assert_eq!(focused_kind(&m).as_deref(), Some("theo"));
+    // A chord in the key table runs rather than going to the picker.
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert!(!m.picker().holds_keys());
+    assert_eq!(
+        focused_kind(&m).as_deref(),
+        Some("files"),
+        "files.focus ran"
+    );
+}
+
+fn focused_kind(m: &Model) -> Option<String> {
+    let group = m.dock().group(m.dock().focused())?;
+    Some(group.active()?.kind.name.clone())
+}
+
+#[test]
+fn takes_chord_mirrors_on_key_without_changing_the_model() {
+    let (mut m, log) = new_model();
+    let chord = |k: Key, mods: Mods| KeyInput::new(k, mods);
+    let global = chord(Key::Char('k'), Mods::CTRL | Mods::ALT);
+    let unbound = chord(Key::Char('q'), Mods::CTRL | Mods::ALT);
+    let picker_only = chord(Key::Char('d'), Mods::CTRL | Mods::ALT);
+    action(&mut m, "note.open");
+    let before = m.document();
+    assert!(m.takes_chord(&global));
+    assert!(!m.takes_chord(&unbound));
+    // A picker-scoped chord counts only while the picker holds the keys.
+    assert!(!m.takes_chord(&picker_only));
+    action(&mut m, "workbench.layouts");
+    assert!(m.takes_chord(&picker_only));
+    assert!(m.takes_chord(&chord(Key::Enter, Mods::NONE)));
+    assert!(!m.takes_chord(&chord(Key::Char('x'), Mods::CTRL)));
+    key(&mut m, Key::Esc, Mods::NONE);
+    key(&mut m, Key::Esc, Mods::NONE);
+    assert!(!m.picker().holds_keys());
+    assert_eq!(m.document(), before);
+    // A panel that handles a chord itself says so.
+    log.borrow_mut().takes = Some(unbound);
+    assert!(m.takes_chord(&unbound));
+    assert_eq!(m.document(), before);
+}
+
+#[test]
+fn a_tool_chord_names_an_open_tool_while_the_picker_holds_the_keys() {
+    let (mut m, log) = new_model();
+    // Files open on the left, a note beside it, and the picker taking keys.
+    action(&mut m, "files.focus");
+    let files = focused_kind(&m);
+    assert_eq!(files.as_deref(), Some("files"));
+    action(&mut m, "note.open");
+    action(&mut m, "workbench.layouts");
+    assert!(m.picker().holds_keys());
+    let files_chord = KeyInput::new(Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert!(
+        m.takes_chord(&files_chord),
+        "the root may read it by position"
+    );
+
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert!(!m.picker().holds_keys(), "the picker rests");
+    assert_eq!(focused_kind(&m).as_deref(), Some("files"));
+    assert_eq!(kinds(&m, "files").len(), 1, "opened once");
+    // The next arrow reaches Files, not the picker.
+    let before = m.picker().selected();
+    key(&mut m, Key::Down, Mods::NONE);
+    assert_eq!(m.picker().selected(), before);
+    let _ = log;
+}
+
+#[test]
+fn takes_chord_is_true_for_every_chord_the_picker_acts_on_and_false_for_option_letters() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "workbench.layouts");
+    assert!(m.picker().holds_keys());
+    for k in [
+        Key::Esc,
+        Key::Enter,
+        Key::Down,
+        Key::Up,
+        Key::Left,
+        Key::Right,
+        Key::Backspace,
+    ] {
+        assert!(m.takes_chord(&KeyInput::new(k, Mods::NONE)), "{k:?}");
+    }
+    assert!(m.takes_chord(&KeyInput::new(Key::Char('a'), Mods::NONE)));
+    for (c, why) in [('d', "delete"), ('r', "rename"), ('e', "files")] {
+        assert!(
+            m.takes_chord(&KeyInput::new(Key::Char(c), Mods::CTRL | Mods::ALT)),
+            "{why}"
+        );
+    }
+    // A chord that would open another document is the picker's to swallow.
+    assert!(!m.takes_chord(&KeyInput::new(Key::Char('k'), Mods::CTRL | Mods::ALT)));
+    // A letter with Option alone is a typed character, not a command.
+    assert!(!m.takes_chord(&KeyInput::new(Key::Char('t'), Mods::ALT)));
+    // And what takes_chord says, key() does: the model is untouched by asking.
+    let before = m.document();
+    let _ = m.takes_chord(&KeyInput::new(Key::Char('e'), Mods::CTRL | Mods::ALT));
+    assert_eq!(m.document(), before);
+}
+
+#[test]
+fn an_account_load_with_a_saved_layout_ends_with_the_keyboard_on_a_live_panel() {
+    let (mut m, _) = new_model();
+    action(&mut m, "theo.focus");
+    action(&mut m, "files.focus");
+    action(&mut m, "theo.focus");
+    assert!(m.rest_picker_now());
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "ada".into(),
+        }),
+    );
+    // Ada's record: the layout as it is now, with Files focused.
+    action(&mut m, "files.focus");
+    let ada = m.document();
+    let record = |m: &mut Model, document: &Value| {
+        let load = arrange(m, ArrangementMsg::Load);
+        let current = serde_json::to_string(document).unwrap();
+        send(
+            m,
+            loaded_from(load[0].id, LayoutSource::Account, 1, &current, "[]"),
+        );
+    };
+    // Grace has none; the keyboard was in the picker.
+    action(&mut m, "workbench.layouts");
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "grace".into(),
+        }),
+    );
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        Msg::Completion(
+            Completion::new(load[0].id, ResourceRef::None, Outcome::Accepted).with_payload(
+                CompletionPayload::LayoutLoaded(LayoutLoaded {
+                    source: LayoutSource::Account,
+                    revision: Revision::Seq(0),
+                    document: None,
+                }),
+            ),
+        ),
+    );
+    // Back to Ada, with the picker holding the keys at the moment of the switch.
+    action(&mut m, "workbench.layouts");
+    assert!(m.picker().holds_keys());
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "ada".into(),
+        }),
+    );
+    record(&mut m, &ada);
+    assert!(!m.picker().holds_keys());
+    assert_eq!(
+        focused_kind(&m).as_deref(),
+        Some("files"),
+        "the layout's own focus"
+    );
+    // Arrows go to the panel; the chord for an open tool still works.
+    let before = m.picker().selected();
+    key(&mut m, Key::Down, Mods::NONE);
+    assert_eq!(m.picker().selected(), before);
+    key(&mut m, Key::Char('e'), Mods::CTRL | Mods::ALT);
+    assert_eq!(focused_kind(&m).as_deref(), Some("files"));
+}
+
+#[test]
+fn the_chord_printed_on_a_row_chooses_that_row_while_the_picker_holds_the_keys() {
+    // The row, chosen by Enter.
+    let (mut by_enter, _) = new_model();
+    action(&mut by_enter, "picker.open");
+    let titles = layout_rows(&by_enter);
+    let at = titles.iter().position(|t| t == "New page").expect("row");
+    select_row(&mut by_enter, at);
+    let enter_fx = key(&mut by_enter, Key::Enter, Mods::NONE);
+
+    // Its chord, with the picker holding the keys.
+    let (mut by_chord, _) = new_model();
+    action(&mut by_chord, "picker.open");
+    assert!(by_chord.picker().holds_keys());
+    let chord = KeyInput::new(Key::Char('n'), Mods::CTRL | Mods::ALT);
+    assert!(by_chord.takes_chord(&chord));
+    let chord_fx = key(&mut by_chord, Key::Char('n'), Mods::CTRL | Mods::ALT);
+
+    assert_eq!(format!("{chord_fx:?}"), format!("{enter_fx:?}"));
+    assert!(!by_chord.picker().holds_keys());
+    assert_eq!(
+        by_chord.document()["dock"]["groups"],
+        by_enter.document()["dock"]["groups"],
+        "the same panel opened in the same place"
+    );
+    assert_eq!(
+        kinds(&by_chord, "page").len() + kinds(&by_chord, "picker").len(),
+        kinds(&by_enter, "page").len() + kinds(&by_enter, "picker").len()
+    );
+
+    // A row under More tools, by its chord, from the main page.
+    let (mut m, _) = new_model();
+    action(&mut m, "picker.open");
+    let layouts = KeyInput::new(Key::Char('w'), Mods::CTRL | Mods::ALT);
+    assert!(m.takes_chord(&layouts));
+    key(&mut m, Key::Char('w'), Mods::CTRL | Mods::ALT);
+    assert_eq!(
+        m.picker().page(),
+        theorem_workbench_core::picker::Page::Layouts
+    );
+}
+
+#[test]
+fn a_chord_that_is_no_rows_action_is_swallowed_and_takes_chord_agrees() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "picker.open");
+    let before = m.document();
+    let chord = KeyInput::new(Key::Char('k'), Mods::CTRL | Mods::ALT);
+    assert!(!m.takes_chord(&chord), "note.open is not a picker row");
+    let fx = key(&mut m, Key::Char('k'), Mods::CTRL | Mods::ALT);
+    assert!(fx.is_empty());
+    assert!(m.picker().holds_keys());
+    assert_eq!(kinds(&m, "note").len(), 1);
+    assert_eq!(m.document(), before);
+}
+
+// ---- an arrangement keeps the appearance it was saved with --------------
+
+const THEME: &str = r#"{"profile":"stone-dark","motion":"calm"}"#;
+
+fn told(m: &mut Model, appearance: &str) {
+    assert!(
+        arrange(
+            m,
+            ArrangementMsg::Appearance {
+                value: appearance.into()
+            }
+        )
+        .is_empty()
+    );
+}
+
+fn appearance_effect(effects: &[Effect]) -> Option<&str> {
+    effects.iter().find_map(|e| match &e.body {
+        EffectBody::AppearanceApply(a) => Some(a.appearance.as_str()),
+        _ => None,
+    })
+}
+
+fn answer(effect: EffectId, outcome: Outcome) -> Msg {
+    Msg::Completion(Completion::new(effect, ResourceRef::None, outcome))
+}
+
+fn refused(reason: &str) -> Outcome {
+    Outcome::Refused {
+        code: "unknown_profile".into(),
+        reason: reason.into(),
+    }
+}
+
+/// A model that has read an empty account record, with `name` saved under
+/// `appearance` (if any).
+fn kept(name: &str, appearance: &str) -> Model {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(&mut m, loaded(load[0].id, 0, "", ""));
+    told(&mut m, appearance);
+    let fx = arrange(&mut m, ArrangementMsg::Save { name: name.into() });
+    send(&mut m, saved(fx[0].id, 1));
+    notices(&mut m);
+    m
+}
+
+#[test]
+fn a_save_keeps_the_appearance_the_host_told_and_a_save_without_one_keeps_none() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    told(&mut m, THEME);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Dark".into(),
+        },
+    );
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert_eq!(value["items"][0]["appearance"], THEME);
+    assert!(value["items"][0]["document"].is_object());
+    send(&mut m, saved(fx[0].id, 1));
+    // Empty means none.
+    told(&mut m, "");
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Plain".into(),
+        },
+    );
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert_eq!(value["items"][0]["appearance"], THEME, "Dark is kept");
+    assert!(value["items"][1].get("appearance").is_none());
+}
+
+#[test]
+fn applying_a_saved_arrangement_sends_its_appearance_and_a_preset_sends_none() {
+    let mut m = kept("Dark", THEME);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Dark".into(),
+        },
+    );
+    assert_eq!(appearance_effect(&fx), Some(THEME));
+    assert_eq!(fx[0].kind(), EffectKind::AppearanceApply);
+    assert_eq!(fx[0].owner(), theorem_workbench_core::Owner::Layout);
+    send(&mut m, answer(fx[0].id, Outcome::Accepted));
+    assert_eq!(
+        arrangement_notices(&mut m),
+        [ArrangementNotice::Applied {
+            name: "Dark".into()
+        }]
+    );
+    for preset in ["minimal", "Default", "editor"] {
+        let fx = arrange(
+            &mut m,
+            ArrangementMsg::Apply {
+                name: preset.into(),
+            },
+        );
+        assert!(fx.is_empty(), "{preset} touches no appearance");
+    }
+    // An agent's apply is the same path: the same effect.
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "dark".into(),
+        },
+    );
+    assert_eq!(appearance_effect(&fx), Some(THEME));
+}
+
+#[test]
+fn a_refused_appearance_is_told_and_the_layout_stays_applied() {
+    let mut m = kept("Dark", THEME);
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    let minimal = m.document();
+    notices(&mut m);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Dark".into(),
+        },
+    );
+    let layout = m.document();
+    assert_ne!(layout, minimal);
+    send(
+        &mut m,
+        answer(fx[0].id, refused("this build has no stone-dark")),
+    );
+    assert_eq!(m.document(), layout, "the layout stays applied");
+    let told = arrangement_notices(&mut m);
+    assert_eq!(
+        told.last(),
+        Some(&ArrangementNotice::AppearanceNotApplied {
+            name: "Dark".into(),
+            reason: "this build has no stone-dark".into()
+        })
+    );
+    let line = m.notice_line().unwrap();
+    assert_eq!(
+        line.severity,
+        theorem_workbench_core::NoticeSeverity::Warning
+    );
+    assert!(
+        line.text.contains("saved theme could not be"),
+        "{}",
+        line.text
+    );
+    assert!(line.text.contains("stone-dark"));
+    // A failure is told the same way.
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Dark".into(),
+        },
+    );
+    send(
+        &mut m,
+        answer(
+            fx[0].id,
+            Outcome::Failed {
+                reason: "offline".into(),
+            },
+        ),
+    );
+    assert!(matches!(
+        arrangement_notices(&mut m).last(),
+        Some(ArrangementNotice::AppearanceNotApplied { .. })
+    ));
+}
+
+#[test]
+fn an_appearance_answer_after_another_apply_or_an_account_switch_is_dropped() {
+    let mut m = kept("Dark", THEME);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Dark".into(),
+        },
+    );
+    arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "minimal".into(),
+        },
+    );
+    notices(&mut m);
+    send(&mut m, answer(fx[0].id, refused("late")));
+    assert!(
+        !arrangement_notices(&mut m)
+            .iter()
+            .any(|n| matches!(n, ArrangementNotice::AppearanceNotApplied { .. }))
+    );
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Dark".into(),
+        },
+    );
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    notices(&mut m);
+    send(&mut m, answer(fx[0].id, refused("late")));
+    assert!(
+        !arrangement_notices(&mut m)
+            .iter()
+            .any(|n| matches!(n, ArrangementNotice::AppearanceNotApplied { .. }))
+    );
+}
+
+#[test]
+fn an_item_without_an_appearance_round_trips_unchanged_and_an_unreadable_one_is_dropped() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let doc = m.document();
+    let record = json!({
+        "schema": "theorem.workbench.arrangements", "version": 1,
+        "items": [
+            {"name": "Old", "document": doc},
+            {"name": "Odd", "document": doc, "appearance": 7}
+        ]
+    })
+    .to_string();
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(&mut m, loaded(load[0].id, 3, "", &record));
+    // Reading kept both layouts; applying either asks for no appearance.
+    for name in ["Old", "Odd"] {
+        let fx = arrange(&mut m, ArrangementMsg::Apply { name: name.into() });
+        assert!(fx.is_empty(), "{name}");
+    }
+    // Saving another writes the old ones back without an appearance.
+    let fx = arrange(&mut m, ArrangementMsg::Save { name: "New".into() });
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert!(value["items"][0].get("appearance").is_none());
+    assert!(value["items"][1].get("appearance").is_none());
+    assert_eq!(value["items"][0]["document"], doc);
+    assert_eq!(value["version"], 1);
+}
+
+#[test]
+fn rename_keeps_the_appearance_and_delete_removes_it_with_the_item() {
+    let mut m = kept("Dark", THEME);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Rename {
+            from: "Dark".into(),
+            to: "Night".into(),
+        },
+    );
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert_eq!(value["items"][0]["name"], "Night");
+    assert_eq!(value["items"][0]["appearance"], THEME);
+    send(&mut m, saved(fx[0].id, 2));
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Apply {
+            name: "Night".into(),
+        },
+    );
+    assert_eq!(appearance_effect(&fx), Some(THEME));
+    send(&mut m, answer(fx[0].id, Outcome::Accepted));
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Delete {
+            name: "Night".into(),
+        },
+    );
+    let (_, named) = save_text(&fx);
+    assert!(!named.contains("appearance") && !named.contains(THEME[2..8].trim()));
+    send(&mut m, saved(fx[0].id, 3));
+    assert!(
+        arrange(
+            &mut m,
+            ArrangementMsg::Apply {
+                name: "Night".into()
+            }
+        )
+        .is_empty()
+    );
+}
+
+#[test]
+fn an_over_long_appearance_is_ignored_and_told_and_the_last_good_one_stays() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    told(&mut m, THEME);
+    let big = "x".repeat(theorem_workbench_core::arrangement::APPEARANCE_MAX_BYTES + 1);
+    assert!(arrange(&mut m, ArrangementMsg::Appearance { value: big }).is_empty());
+    assert!(matches!(
+        arrangement_notices(&mut m).last(),
+        Some(ArrangementNotice::BadAppearance { .. })
+    ));
+    let fx = arrange(&mut m, ArrangementMsg::Save { name: "A".into() });
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert_eq!(value["items"][0]["appearance"], THEME);
+}
+
+#[test]
+fn the_told_appearance_is_the_hosts_and_survives_an_account_switch() {
+    let mut m = kept("Dark", THEME);
+    send(
+        &mut m,
+        Msg::Host(HostMessage::AccountChanged {
+            account: "bob".into(),
+        }),
+    );
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(&mut m, loaded(load[0].id, 0, "", ""));
+    // Bob has none of Ada's arrangements, but the browser's theme is still on.
+    assert!(
+        arrange(
+            &mut m,
+            ArrangementMsg::Apply {
+                name: "Dark".into()
+            }
+        )
+        .is_empty()
+    );
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Mine".into(),
+        },
+    );
+    let (_, named) = save_text(&fx);
+    let value: Value = serde_json::from_str(&named).unwrap();
+    assert_eq!(value["items"][0]["appearance"], THEME);
+}
+
+#[test]
+fn a_load_of_the_current_layout_never_changes_the_appearance() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let doc = m.document();
+    let record = json!({
+        "schema": "theorem.workbench.arrangements", "version": 1,
+        "items": [{"name": "Dark", "document": doc, "appearance": THEME}]
+    })
+    .to_string();
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    let fx = send(&mut m, loaded(load[0].id, 1, &doc.to_string(), &record));
+    assert!(appearance_effect(&fx).is_none());
+    assert!(!fx.iter().any(|e| e.kind() == EffectKind::AppearanceApply));
+}
+
+#[test]
+fn the_layouts_page_marks_the_arrangements_that_carry_a_theme() {
+    let mut m = kept("Dark", THEME);
+    let fx = arrange(
+        &mut m,
+        ArrangementMsg::Save {
+            name: "Plain".into(),
+        },
+    );
+    told(&mut m, "");
+    let _ = fx;
+    action(&mut m, "workbench.layouts");
+    let rows = m.picker().rows(m.registry(), m.capabilities(), m.pinned());
+    let by = |t: &str| rows.iter().find(|r| r.title == t).unwrap();
+    assert_eq!(by("Dark").shortcut.as_deref(), Some("theme"));
+    // "Plain" was saved with the same theme still told; a preset never has one.
+    assert_eq!(by("Minimal").shortcut, None);
+    let tree = semantics(&m);
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.name == "Dark" && n.role == Role::MenuItem)
+        .unwrap();
+    assert_eq!(
+        node.state.description.as_deref(),
+        Some("Also applies its saved theme")
+    );
+    assert_eq!(node.shortcut, None);
+    // Drawn in the row's hint cell, so it gives way first at a narrow width.
+    let wide = Rect::new(0, 0, 100, 30);
+    let mut buf = Buffer::empty(wide);
+    view(&m, wide, &mut buf, &Theme::plain());
+    let text: String = (0..30u16)
+        .flat_map(|y| (0..100u16).map(move |x| (x, y)))
+        .map(|(x, y)| buf[(x, y)].symbol().to_owned())
+        .collect();
+    assert!(text.contains("theme"), "wide");
 }

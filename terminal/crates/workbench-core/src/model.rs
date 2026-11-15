@@ -315,6 +315,10 @@ pub struct Model {
     pub(crate) notices: std::collections::VecDeque<Notice>,
     /// How many were pushed out of a full queue, told by a `Notice::Overflow`.
     pub(crate) notices_overflowed: u32,
+    /// The notice the row shows until the next key press or notice.
+    pub(crate) transient: Option<crate::notice::NoticeLine>,
+    /// Queue notices for `take_notice` (the default).
+    pub(crate) queue_notices: bool,
     pub(crate) dirty: bool,
 }
 
@@ -371,6 +375,8 @@ impl Model {
             counters: Counters::default(),
             notices: std::collections::VecDeque::new(),
             notices_overflowed: 0,
+            transient: None,
+            queue_notices: true,
             dirty: true,
         };
         model.sync_shortcuts();
@@ -565,6 +571,11 @@ impl Model {
     /// Queue a notice. A full queue pushes its oldest out and counts it, so
     /// the loss is told and never silent.
     pub(crate) fn notify(&mut self, notice: Notice) {
+        self.show_notice(&notice);
+        if !self.queue_notices {
+            self.dirty = true;
+            return;
+        }
         if self.notices.len() >= NOTICE_LIMIT {
             self.notices.pop_front();
             self.notices_overflowed = self.notices_overflowed.saturating_add(1);

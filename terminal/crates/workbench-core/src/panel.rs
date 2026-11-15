@@ -446,8 +446,14 @@ pub struct PickerView {
     pub rows: Vec<PickerRow>,
     pub selected: usize,
     pub filter: String,
-    /// Showing the "More tools" page.
+    /// Showing a page below the main one ("More tools", Layouts, a name
+    /// entry): its back row is drawn.
     pub more: bool,
+    /// What the page is called, when it is not "Tools" or "More tools".
+    pub heading: Option<String>,
+    /// The filter line is a name entry, and this is what it asks for ("Save
+    /// layout as"). No rows are drawn for an entry.
+    pub entry: Option<String>,
     /// Why the row last chosen could not be, until the selection moves.
     pub reason: Option<String>,
     /// The chord the active bindings give pinning and unpinning, for the
@@ -597,6 +603,13 @@ pub trait Panel {
     /// it is bound to, and the latest set per path is replayed to one that
     /// mounts late.
     fn wants_diagnostics(&self) -> bool {
+        false
+    }
+
+    /// Whether the panel would act on this chord in its current state, for
+    /// chords it handles itself outside the key table; the root asks before
+    /// deciding whether a Mac Option chord is a command or a typed character.
+    fn takes_chord(&self, _key: &KeyInput) -> bool {
         false
     }
 

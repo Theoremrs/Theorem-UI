@@ -18,6 +18,7 @@ pub mod ids;
 pub mod keys;
 pub mod model;
 pub mod msg;
+pub mod notice;
 pub mod panel;
 pub mod panels;
 pub mod picker;
@@ -45,6 +46,7 @@ pub use ids::{
 };
 pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
 pub use msg::{DockMsg, Inbound, Msg, Pointer};
+pub use notice::{NoticeLine, NoticeSeverity};
 pub use panel::{
     Button, Caret, CaretPhase, CaretShape, Composition, Ctx, EmitError, OpenTarget, Panel,
     PanelMsg, PanelPointer, PickerView, PointerKind, TabLabel, ViewCtx,

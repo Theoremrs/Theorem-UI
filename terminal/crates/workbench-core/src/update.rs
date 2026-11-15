@@ -39,7 +39,7 @@ use crate::panel::{
     Button, Composition, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind,
 };
 use crate::panels::{PICKER_KIND, Unavailable};
-use crate::picker::{PickerMsg, PickerOutcome};
+use crate::picker::{LayoutChoice, PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
 use crate::queue::{Popped, PtyFrame, Push, QueueLimits, SourceQueues};
 use crate::registry::{ActionIntent, Placement, Refusal};
@@ -179,11 +179,14 @@ impl Model {
         self.replay_retained();
         self.sync_tab_titles();
         self.follow_focus_for_picker();
+        self.picker.set_layouts(self.arrangements());
+        self.picker.clamp(&self.registry, &self.caps, &self.pinned);
         let Some(vp) = self.viewport else {
             self.frame = None;
             return;
         };
-        let frame = self.dock.solve(vp.area, vp.metrics);
+        let area = self.dock_area_in(vp.area);
+        let frame = self.dock.solve(area, vp.metrics);
         let bodies: Vec<(PanelInstanceId, Rect)> = frame
             .groups
             .iter()
@@ -426,6 +429,7 @@ impl Model {
     // --- keys and text ---
 
     pub(crate) fn on_key(&mut self, key: KeyInput) -> Vec<Effect> {
+        self.clear_transient_notice();
         if self.picker.holds_keys() {
             return self.picker_key(key);
         }
@@ -433,11 +437,7 @@ impl Model {
             return vec![];
         }
         let owner = self.focus_owner();
-        let (kind, text_entry) = match owner.as_ref().and_then(|id| self.panels.get(id)) {
-            Some(e) => (Some(e.kind.clone()), e.panel.text_entry()),
-            None => (None, false),
-        };
-        let contexts = active_contexts(kind.as_ref(), text_entry);
+        let contexts = self.active_key_contexts(owner.as_ref());
         if let Some(action) = self.keys.resolve(&key, &contexts).cloned() {
             return self.run_action(action, Actor::Human, None);
         }
@@ -447,22 +447,114 @@ impl Model {
         }
     }
 
-    fn picker_key(&mut self, key: KeyInput) -> Vec<Effect> {
-        // Pinning and going back by name come from the key table, so a remap
-        // moves them. Anything else the table binds is not the picker's.
-        let contexts = [
+    /// The contexts a key resolves in while the keyboard is on `owner`: shared
+    /// by [`on_key`](Self::on_key) and [`takes_chord`](Self::takes_chord) so
+    /// the two cannot drift.
+    fn active_key_contexts(&self, owner: Option<&PanelInstanceId>) -> Vec<KeyContext> {
+        let (kind, text_entry) = match owner.and_then(|id| self.panels.get(id)) {
+            Some(e) => (Some(e.kind.clone()), e.panel.text_entry()),
+            None => (None, false),
+        };
+        active_contexts(kind.as_ref(), text_entry)
+    }
+
+    /// Whether `id` only moves the keyboard to a tool (opening it when it is
+    /// not there): the one kind of table chord the picker lets through.
+    fn is_focus_action(&self, id: &ActionId) -> bool {
+        self.registry
+            .resolve(id, &Actor::Human, &self.caps)
+            .is_ok_and(|r| r.action.intent == ActionIntent::Focus)
+    }
+
+    /// The contexts a key resolves in while the picker holds the keyboard.
+    fn picker_key_contexts() -> [KeyContext; 2] {
+        [
             KeyContext::Panel {
                 kind: PanelKind::new(PICKER_KIND),
             },
             KeyContext::Global,
-        ];
-        let named = self.keys.resolve(&key, &contexts).map(ActionId::as_str);
+        ]
+    }
+
+    /// Whether `on_key` would act on this chord now, without running anything.
+    /// While the picker holds the keys that is a key the picker handles (its
+    /// own table names, or the keys it reads); otherwise a binding in the
+    /// active contexts, or a chord the focused panel handles itself
+    /// ([`Panel::takes_chord`](crate::panel::Panel::takes_chord)).
+    pub fn takes_chord(&self, key: &KeyInput) -> bool {
+        if self.picker.holds_keys() {
+            let tool = self
+                .keys
+                .resolve(key, &Self::picker_key_contexts())
+                .is_some_and(|id| {
+                    matches!(
+                        id.as_str(),
+                        crate::panels::ACTION_TOGGLE_PIN
+                            | crate::panels::ACTION_BACK
+                            | crate::picker::LAYOUT_RENAME
+                            | crate::picker::LAYOUT_DELETE
+                    ) || self.is_focus_action(id)
+                        || self
+                            .picker
+                            .offers(id, &self.registry, &self.caps, &self.pinned)
+                });
+            return tool
+                || match key.key() {
+                    Key::Esc | Key::Enter | Key::Down | Key::Up | Key::Left | Key::Right => true,
+                    Key::Backspace => true,
+                    Key::Char(_) => key.mods().difference(Mods::SHIFT).is_empty(),
+                    _ => false,
+                };
+        }
+        let owner = self.focus_owner();
+        let contexts = self.active_key_contexts(owner.as_ref());
+        self.keys.resolve(key, &contexts).is_some()
+            || owner
+                .and_then(|id| self.panels.get(&id))
+                .is_some_and(|e| e.panel.takes_chord(key))
+    }
+
+    fn picker_key(&mut self, key: KeyInput) -> Vec<Effect> {
+        // Pinning and going back by name come from the key table, so a remap
+        // moves them. Anything else the table binds is not the picker's.
+        let named = self
+            .keys
+            .resolve(&key, &Self::picker_key_contexts())
+            .map(ActionId::as_str);
         match named {
             Some(crate::panels::ACTION_TOGGLE_PIN) => {
                 return self.picker_msg(PickerMsg::TogglePin);
             }
             Some(crate::panels::ACTION_BACK) => return self.picker_msg(PickerMsg::Back),
-            _ => {}
+            Some(crate::picker::LAYOUT_RENAME) => {
+                return self.picker_msg(PickerMsg::RenameSelected);
+            }
+            Some(crate::picker::LAYOUT_DELETE) => {
+                return self.picker_msg(PickerMsg::DeleteSelected);
+            }
+            // The chord printed on a row chooses that row, as Enter on it would.
+            // Any other chord the table binds is the workbench's own, and the
+            // picker does not swallow it only when it merely moves the
+            // keyboard to a tool (opening it when it is not there).
+            Some(_) => {
+                if let Some(action) = self
+                    .keys
+                    .resolve(&key, &Self::picker_key_contexts())
+                    .cloned()
+                {
+                    if self
+                        .picker
+                        .offers(&action, &self.registry, &self.caps, &self.pinned)
+                    {
+                        return self.picker_msg(PickerMsg::ChooseRow(action));
+                    }
+                    if self.is_focus_action(&action) {
+                        let _ = self.picker_msg(PickerMsg::Rest);
+                        return self.run_action(action, Actor::Human, None);
+                    }
+                }
+            }
+            None => {}
         }
         let msg = match key.key() {
             Key::Esc => PickerMsg::Back,
@@ -791,6 +883,15 @@ impl Model {
         if name == crate::panels::ACTION_TOGGLE_PIN {
             return Some(self.picker_msg(PickerMsg::TogglePin));
         }
+        match name {
+            crate::picker::LAYOUT_RENAME => {
+                return Some(self.picker_msg(PickerMsg::RenameSelected));
+            }
+            crate::picker::LAYOUT_DELETE => {
+                return Some(self.picker_msg(PickerMsg::DeleteSelected));
+            }
+            _ => {}
+        }
         let (kind, pinned) = match (
             name.strip_prefix(ACTION_PIN),
             name.strip_prefix(ACTION_UNPIN),
@@ -835,6 +936,7 @@ impl Model {
                 self.set_pin(&panel, pinned);
                 vec![]
             }
+            PickerOutcome::Layout(choice) => self.on_layout_choice(choice),
             PickerOutcome::Chosen(action) => {
                 // The chosen tool takes the picker's place.
                 let effects = self.run_action(action, Actor::Human, None);
@@ -844,14 +946,40 @@ impl Model {
         }
     }
 
-    fn is_picker_panel(&self, id: &PanelInstanceId) -> bool {
+    /// A layout row or the name entry was confirmed in the picker.
+    fn on_layout_choice(&mut self, choice: LayoutChoice) -> Vec<Effect> {
+        use crate::arrangement::ArrangementMsg as A;
+        let msg = match choice {
+            LayoutChoice::Apply(name) => {
+                self.leave_picker();
+                A::Apply { name }
+            }
+            LayoutChoice::Save(name) => {
+                self.leave_picker();
+                A::Save { name }
+            }
+            LayoutChoice::Rename { from, to } => A::Rename { from, to },
+            LayoutChoice::Delete(name) => A::Delete { name },
+        };
+        self.on_arrangement(msg)
+    }
+
+    /// The picker closed with a choice: its tab goes and the keyboard goes
+    /// back where it was, before the choice acts, so a saved arrangement's own
+    /// focus is the last word.
+    fn leave_picker(&mut self) {
+        self.close_picker_panels();
+        self.refocus_before_picker();
+    }
+
+    pub(crate) fn is_picker_panel(&self, id: &PanelInstanceId) -> bool {
         self.panels
             .get(id)
             .is_some_and(|e| e.kind.as_str() == PICKER_KIND)
     }
 
     /// Remember where the keyboard is, unless it is already on the picker.
-    fn note_focus_before_picker(&mut self) {
+    pub(crate) fn note_focus_before_picker(&mut self) {
         if let Some(owner) = self.focus_owner().filter(|id| !self.is_picker_panel(id)) {
             self.before_picker = Some(owner);
         }
@@ -916,10 +1044,12 @@ impl Model {
         // The picker's tab is housekeeping: failing to remove the last one is
         // not something to tell the person about.
         let mark = self.notices.len();
+        let line = self.transient.clone();
         for id in ids {
             self.close_panel(&id, false);
         }
         self.notices.truncate(mark);
+        self.transient = line;
     }
 
     // --- closing ---
@@ -1046,6 +1176,14 @@ impl Model {
                     self.dock_result(r);
                 }
             }
+            ("layouts", _) => {
+                let _ = self.picker_msg(PickerMsg::Open);
+                return self.picker_msg(PickerMsg::Layouts);
+            }
+            ("layout", "save") => {
+                let _ = self.picker_msg(PickerMsg::Open);
+                return self.picker_msg(PickerMsg::SaveAs);
+            }
             ("layout", preset) => {
                 return self.on_arrangement(crate::arrangement::ArrangementMsg::Apply {
                     name: preset.to_owned(),
@@ -1064,7 +1202,10 @@ impl Model {
             return;
         };
         let from = self.dock.focused();
-        match self.dock.focus_direction(dir, vp.area, vp.metrics) {
+        match self
+            .dock
+            .focus_direction(dir, self.dock_area_in(vp.area), vp.metrics)
+        {
             Ok(to) => {
                 let r = self.dock.move_tab(&Self::dock_id(&panel), to, None);
                 if r.is_err() {
@@ -1087,9 +1228,13 @@ impl Model {
         let group = self.dock.focused();
         let mut result = Err(dock::DockError::NoSplitter(edges[0]));
         for edge in edges {
-            result = self
-                .dock
-                .resize_group_edge(group, edge, grow, vp.area, vp.metrics);
+            result = self.dock.resize_group_edge(
+                group,
+                edge,
+                grow,
+                self.dock_area_in(vp.area),
+                vp.metrics,
+            );
             if !matches!(result, Err(dock::DockError::NoSplitter(_))) {
                 break;
             }
@@ -1119,7 +1264,9 @@ impl Model {
             }
             DockMsg::FocusDirection(d) => {
                 if let Some(vp) = vp {
-                    let r = self.dock.focus_direction(d, vp.area, vp.metrics);
+                    let r = self
+                        .dock
+                        .focus_direction(d, self.dock_area_in(vp.area), vp.metrics);
                     self.dock_result(r);
                 }
             }
@@ -1156,7 +1303,12 @@ impl Model {
             DockMsg::CloseDrawer => self.close_drawer(),
             DockMsg::ResizeSplit { path, delta } => {
                 if let Some(vp) = vp {
-                    let r = self.dock.resize_split(&path, delta, vp.area, vp.metrics);
+                    let r = self.dock.resize_split(
+                        &path,
+                        delta,
+                        self.dock_area_in(vp.area),
+                        vp.metrics,
+                    );
                     self.dock_result(r);
                 }
             }
@@ -1342,12 +1494,15 @@ impl Model {
         }
         match self
             .dock
-            .resize_split(&drag.path, delta, vp.area, vp.metrics)
+            .resize_split(&drag.path, delta, self.dock_area_in(vp.area), vp.metrics)
         {
             Err(dock::DockError::BelowMinimum { allowed }) if allowed != 0 => {
-                let _ = self
-                    .dock
-                    .resize_split(&drag.path, allowed, vp.area, vp.metrics);
+                let _ = self.dock.resize_split(
+                    &drag.path,
+                    allowed,
+                    self.dock_area_in(vp.area),
+                    vp.metrics,
+                );
             }
             _ => {}
         }
@@ -1411,6 +1566,34 @@ impl Model {
         if self.workspace.account == account {
             return vec![];
         }
+        // Panels that show the old account's documents and terminals go with
+        // it: nothing of theirs can be saved or sent as the new account. What
+        // their teardown would say is for a host that no longer answers, so
+        // it is dropped. The first account of the session has nothing to close:
+        // a restored layout is not another account's.
+        let switched = !self.workspace.account.is_empty();
+        if switched {
+            let old: Vec<PanelInstanceId> = self
+                .panels
+                .iter()
+                .filter(|(_, e)| {
+                    matches!(
+                        e.binding().resource,
+                        ResourceRef::Document { .. }
+                            | ResourceRef::Untitled { .. }
+                            | ResourceRef::Terminal { .. }
+                            | ResourceRef::Directory { .. }
+                            | ResourceRef::Repository { .. }
+                            | ResourceRef::Commit { .. }
+                            | ResourceRef::Revision { .. }
+                    )
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in old {
+                let _ = self.close_panel(&id, false);
+            }
+        }
         let waiting = self.in_flight.take_all();
         let origins = std::mem::take(&mut self.origins);
         for (effect, pending) in waiting {
@@ -1432,7 +1615,7 @@ impl Model {
         self.retained = Default::default();
         self.queues = SourceQueues::new(QueueLimits::default());
         self.diagnostics_told.clear();
-        self.forget_arrangements();
+        self.forget_arrangements(switched);
         for entry in self.panels.values_mut() {
             entry.replayed = None;
         }

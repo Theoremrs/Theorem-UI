@@ -96,11 +96,11 @@ impl Panel for Unavailable {
 /// [`Layout`] puts it, and names it in the semantic tree from the same layout.
 pub struct PickerPanel;
 
-fn heading(view: &PickerView) -> &'static str {
-    if view.more {
-        HEADING_MORE
-    } else {
-        HEADING_MAIN
+fn heading(view: &PickerView) -> &str {
+    match (&view.heading, view.more) {
+        (Some(heading), _) => heading,
+        (None, true) => HEADING_MORE,
+        (None, false) => HEADING_MAIN,
     }
 }
 
@@ -127,13 +127,11 @@ impl Panel for PickerPanel {
         if let Some(back) = layout.back {
             draw(buf, back, PAD, BACK, cx.theme.muted);
         }
-        draw(
-            buf,
-            layout.filter,
-            0,
-            &format!("> {}", view.filter),
-            cx.theme.text,
-        );
+        let prompt = match &view.entry {
+            Some(label) => format!("{label}: {}", view.filter),
+            None => format!("> {}", view.filter),
+        };
+        draw(buf, layout.filter, 0, &prompt, cx.theme.text);
         if let Some(empty) = layout.empty {
             draw(buf, empty, PAD, NO_MATCH, cx.theme.muted);
         }
@@ -218,7 +216,8 @@ impl Panel for PickerPanel {
             });
             add(&mut root, node);
         }
-        let mut filter = Node::new("filter", Role::TextBox, "Filter tools", layout.filter);
+        let label = view.entry.as_deref().unwrap_or("Filter tools");
+        let mut filter = Node::new("filter", Role::TextBox, label, layout.filter);
         filter.state.description = Some(view.filter.clone());
         add(&mut root, filter);
         if let Some(empty) = layout.empty {
@@ -234,13 +233,23 @@ impl Panel for PickerPanel {
             node.state.focused = node.state.selected && cx.focused;
             node.pos_in_set = u16::try_from(i + 1).ok();
             node.set_size = u16::try_from(n).ok();
-            node.shortcut = row.shortcut.clone();
+            // A layout row's hint is not a chord: it says applying the row
+            // changes the theme, and the node says so in words.
+            let themed = row.shortcut.as_deref() == Some(crate::picker::THEME_MARK)
+                && row.action.as_str().starts_with(crate::picker::LAYOUT_APPLY);
+            node.shortcut = if themed { None } else { row.shortcut.clone() };
             let (enabled, reason) = match &row.availability {
                 Availability::Available => (true, None),
                 Availability::Unavailable { reason } => (false, Some(reason.clone())),
             };
             node.state.disabled = !enabled;
-            node.state.description = reason.clone().or_else(|| row.chooses.qualifier());
+            node.state.description = reason.clone().or_else(|| {
+                if themed {
+                    Some("Also applies its saved theme".to_owned())
+                } else {
+                    row.chooses.qualifier()
+                }
+            });
             node.actions.push(NodeAction {
                 id: row.action.clone(),
                 enabled,

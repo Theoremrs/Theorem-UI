@@ -19,7 +19,7 @@ use theorem_workbench_dock::{
 };
 
 use crate::completion::{Completion, CompletionPayload, LayoutSource, Outcome};
-use crate::effect::{Effect, EffectBody, LayoutSave};
+use crate::effect::{AppearanceApply, Effect, EffectBody, LayoutSave};
 use crate::ids::{PanelInstanceId, PanelKind, Revision};
 use crate::model::{DOCUMENT_SCHEMA, DOCUMENT_VERSION, Entry, Model, Notice};
 use crate::panels::PICKER_KIND;
@@ -32,6 +32,10 @@ pub const ARRANGEMENTS_VERSION: u32 = 1;
 pub const ARRANGEMENT_LIMIT: usize = 32;
 /// The longest name, in characters.
 pub const ARRANGEMENT_NAME_CHARS: usize = 64;
+/// The longest appearance the core keeps, in bytes. The whole list of
+/// arrangements is one account document, and up to 32 of them may each carry
+/// an appearance, so one is held to a size that keeps the record small.
+pub const APPEARANCE_MAX_BYTES: usize = 16 * 1024;
 
 /// The built-in presets: id, label.
 pub const PRESETS: [(&str, &str, Preset); 4] = [
@@ -69,6 +73,14 @@ pub enum ArrangementMsg {
     Delete {
         name: String,
     },
+    /// The host's current appearance (its theme and the like) as JSON text
+    /// the host owns and the core never reads. Sent at start and whenever the
+    /// person changes it; the core keeps the latest to save beside an
+    /// arrangement. Empty means none; one over [`APPEARANCE_MAX_BYTES`] is
+    /// ignored and told.
+    Appearance {
+        value: String,
+    },
 }
 
 /// One row of the list the picker or a menu shows.
@@ -76,6 +88,8 @@ pub enum ArrangementMsg {
 pub struct ArrangementInfo {
     pub name: String,
     pub builtin: bool,
+    /// Applying it changes the appearance too.
+    pub themed: bool,
 }
 
 /// What an operation on the arrangements did or could not do.
@@ -88,6 +102,9 @@ pub enum ArrangementNotice {
     /// it has no panel for (kept as placeholders); `caveats` say what else.
     Partial {
         name: String,
+        /// Panel kinds this build has no registration for: left out of the
+        /// arrangement as shown. The saved arrangement itself is untouched.
+        dropped: Vec<String>,
         unavailable: Vec<String>,
         repairs: usize,
         caveats: Vec<String>,
@@ -99,6 +116,17 @@ pub enum ArrangementNotice {
         reason: String,
     },
     Unknown {
+        name: String,
+    },
+    /// The arrangement was kept (the owner has been asked to save it).
+    Saved {
+        name: String,
+    },
+    Renamed {
+        from: String,
+        to: String,
+    },
+    Deleted {
         name: String,
     },
     BadName {
@@ -124,6 +152,17 @@ pub enum ArrangementNotice {
     NeedsAccountLoad {
         reason: String,
     },
+    /// The appearance the host told was too large to keep; the one held before
+    /// stays.
+    BadAppearance {
+        reason: String,
+    },
+    /// The layout is applied, but its saved appearance was not: the host
+    /// refused it or could not.
+    AppearanceNotApplied {
+        name: String,
+        reason: String,
+    },
     /// The record could not be read as arrangements; `skipped` entries were
     /// left out of what was kept.
     LoadedWithLoss {
@@ -134,20 +173,41 @@ pub enum ArrangementNotice {
 
 /// What was last sent for the layout record, so its answer is read for what it
 /// was.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum LayoutOp {
     Load,
     Save,
+    /// The appearance of the saved arrangement `name`, asked for in apply
+    /// number `epoch`; an answer after a later apply is stale.
+    Appearance {
+        name: String,
+        epoch: u64,
+    },
+}
+
+/// A saved arrangement: its layout document and, optionally, the appearance
+/// the host told when it was saved (the host's own JSON text).
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Item {
+    pub(crate) name: String,
+    pub(crate) document: Value,
+    pub(crate) appearance: Option<String>,
 }
 
 /// What a record holds: the arrangements kept, how many entries were skipped,
 /// and a caveat when it is of another version.
-type Record = (Vec<(String, Value)>, usize, Option<String>);
+type Record = (Vec<Item>, usize, Option<String>);
 
 /// The account's arrangements, as last read or written.
 #[derive(Default)]
 pub(crate) struct Arrangements {
-    pub(crate) items: Vec<(String, Value)>,
+    pub(crate) items: Vec<Item>,
+    /// The appearance the host last told, to be saved beside an arrangement.
+    /// It is the host's, not the account's, so an account switch keeps it.
+    pub(crate) appearance: Option<String>,
+    /// Counts the applies, so an appearance answer from before the latest one
+    /// (or from before an account switch) is told apart and dropped.
+    pub(crate) apply_epoch: u64,
     /// The revision of the record the next save is made against.
     pub(crate) revision: Option<Revision>,
     /// A save is out; another change waits for its answer.
@@ -155,19 +215,30 @@ pub(crate) struct Arrangements {
     pub(crate) save_again: bool,
     /// What is held came from this browser, not the account.
     pub(crate) device: bool,
+    /// The account changed and its record has not been read yet: a load that
+    /// finds no layout resets to the default one.
+    pub(crate) account_switched: bool,
+    /// What to tell when the save now out is accepted.
+    pub(crate) told_on_save: Option<ArrangementNotice>,
 }
 
 impl Arrangements {
     fn find(&self, name: &str) -> Option<usize> {
         let key = fold(name);
-        self.items.iter().position(|(n, _)| fold(n) == key)
+        self.items.iter().position(|i| fold(&i.name) == key)
     }
 
     fn to_text(&self) -> String {
         let items: Vec<Value> = self
             .items
             .iter()
-            .map(|(name, document)| json!({"name": name, "document": document}))
+            .map(|i| {
+                let mut item = json!({"name": i.name, "document": i.document});
+                if let Some(appearance) = &i.appearance {
+                    item["appearance"] = Value::String(appearance.clone());
+                }
+                item
+            })
             .collect();
         json!({
             "schema": ARRANGEMENTS_SCHEMA,
@@ -206,14 +277,23 @@ impl Arrangements {
                 .map(str::trim)
                 .filter(|n| !n.is_empty() && n.chars().count() <= ARRANGEMENT_NAME_CHARS);
             let document = entry.get("document").filter(|d| d.is_object());
+            // An appearance that is not text, or is too large, is left out;
+            // the arrangement itself is kept.
+            let appearance = entry
+                .get("appearance")
+                .and_then(Value::as_str)
+                .filter(|a| !a.is_empty() && a.len() <= APPEARANCE_MAX_BYTES)
+                .map(str::to_owned);
             match (name, document) {
                 (Some(name), Some(document))
                     if items.len() < ARRANGEMENT_LIMIT
-                        && !items
-                            .iter()
-                            .any(|(n, _): &(String, Value)| fold(n) == fold(name)) =>
+                        && !items.iter().any(|i: &Item| fold(&i.name) == fold(name)) =>
                 {
-                    items.push((name.to_owned(), document.clone()));
+                    items.push(Item {
+                        name: name.to_owned(),
+                        document: document.clone(),
+                        appearance,
+                    });
                 }
                 _ => skipped += 1,
             }
@@ -226,7 +306,7 @@ fn fold(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-fn preset_named(name: &str) -> Option<(&'static str, Preset)> {
+pub(crate) fn preset_named(name: &str) -> Option<(&'static str, Preset)> {
     let key = fold(name);
     PRESETS
         .iter()
@@ -255,16 +335,13 @@ impl Model {
             .map(|(_, label, _)| ArrangementInfo {
                 name: (*label).to_owned(),
                 builtin: true,
+                themed: false,
             })
-            .chain(
-                self.arrangements
-                    .items
-                    .iter()
-                    .map(|(name, _)| ArrangementInfo {
-                        name: name.clone(),
-                        builtin: false,
-                    }),
-            )
+            .chain(self.arrangements.items.iter().map(|i| ArrangementInfo {
+                name: i.name.clone(),
+                builtin: false,
+                themed: i.appearance.is_some(),
+            }))
             .collect()
     }
 
@@ -290,27 +367,56 @@ impl Model {
                 if preset_named(&name).is_some() {
                     return self.say(ArrangementNotice::NameTaken { name });
                 }
-                let document = self.document();
+                let item = Item {
+                    name: name.clone(),
+                    document: self.document(),
+                    appearance: self.arrangements.appearance.clone(),
+                };
                 match self.arrangements.find(&name) {
-                    Some(at) => self.arrangements.items[at] = (name, document),
+                    Some(at) => self.arrangements.items[at] = item,
                     None if self.arrangements.items.len() >= ARRANGEMENT_LIMIT => {
                         return self.say(ArrangementNotice::StoreFull {
                             limit: ARRANGEMENT_LIMIT,
                         });
                     }
-                    None => self.arrangements.items.push((name, document)),
+                    None => self.arrangements.items.push(item),
                 }
+                self.arrangements.told_on_save = Some(ArrangementNotice::Saved { name });
                 self.save_arrangements()
             }
             ArrangementMsg::Apply { name } => {
+                // Any apply makes an appearance answer still out stale.
+                self.arrangements.apply_epoch += 1;
                 if let Some((id, preset)) = preset_named(&name) {
+                    // A preset never touches the appearance.
                     self.apply(id, Target::Preset(preset));
                 } else if let Some(at) = self.arrangements.find(&name) {
-                    let (stored, document) = self.arrangements.items[at].clone();
-                    self.apply(&stored, Target::Saved(document));
+                    let item = self.arrangements.items[at].clone();
+                    if self.apply(&item.name, Target::Saved(item.document))
+                        && let Some(appearance) = item.appearance
+                    {
+                        let op = LayoutOp::Appearance {
+                            name: item.name,
+                            epoch: self.arrangements.apply_epoch,
+                        };
+                        let body = EffectBody::AppearanceApply(AppearanceApply { appearance });
+                        return self.send_layout(body, op, None);
+                    }
                 } else {
                     self.notify(Notice::Arrangement(ArrangementNotice::Unknown { name }));
                 }
+                vec![]
+            }
+            ArrangementMsg::Appearance { value } => {
+                if value.len() > APPEARANCE_MAX_BYTES {
+                    return self.say(ArrangementNotice::BadAppearance {
+                        reason: format!(
+                            "The theme is over {} KiB, more than an arrangement can keep.",
+                            APPEARANCE_MAX_BYTES / 1024
+                        ),
+                    });
+                }
+                self.arrangements.appearance = (!value.is_empty()).then_some(value);
                 vec![]
             }
             ArrangementMsg::Rename { from, to } => {
@@ -325,14 +431,16 @@ impl Model {
                 if clash || preset_named(&to).is_some() {
                     return self.say(ArrangementNotice::NameTaken { name: to });
                 }
-                self.arrangements.items[at].0 = to;
+                let from = std::mem::replace(&mut self.arrangements.items[at].name, to.clone());
+                self.arrangements.told_on_save = Some(ArrangementNotice::Renamed { from, to });
                 self.save_arrangements()
             }
             ArrangementMsg::Delete { name } => {
                 let Some(at) = self.arrangements.find(&name) else {
                     return self.say(ArrangementNotice::Unknown { name });
                 };
-                self.arrangements.items.remove(at);
+                let name = self.arrangements.items.remove(at).name;
+                self.arrangements.told_on_save = Some(ArrangementNotice::Deleted { name });
                 self.save_arrangements()
             }
         }
@@ -414,7 +522,24 @@ impl Model {
         self.counters.applied += 1;
         let mut effects = vec![];
         match (op, &completion.outcome, &completion.payload) {
+            (LayoutOp::Appearance { name, epoch }, outcome, _) => {
+                // Another apply, or an account switch, has happened since.
+                if epoch != self.arrangements.apply_epoch {
+                    self.counters.dropped += 1;
+                } else if let Outcome::Refused { reason, .. }
+                | Outcome::Failed { reason }
+                | Outcome::Uncertain { reason } = outcome
+                {
+                    self.notify(Notice::Arrangement(
+                        ArrangementNotice::AppearanceNotApplied {
+                            name,
+                            reason: reason.clone(),
+                        },
+                    ));
+                }
+            }
             (LayoutOp::Load, Outcome::Accepted, Some(CompletionPayload::LayoutLoaded(loaded))) => {
+                let switched = std::mem::take(&mut self.arrangements.account_switched);
                 self.arrangements.device = loaded.source == LayoutSource::Device;
                 // A device copy's revision is not the account record's: no
                 // save is ever based on it.
@@ -423,14 +548,32 @@ impl Model {
                 if self.arrangements.device {
                     self.notify(Notice::Arrangement(ArrangementNotice::DeviceCopy));
                 }
-                if let Some(document) = &loaded.document {
-                    self.read_record(&document.named_layouts, &document.current);
+                match &loaded.document {
+                    Some(document) => {
+                        self.read_record(&document.named_layouts, &document.current);
+                    }
+                    None => self.arrangements.items.clear(),
+                }
+                // The new account has no layout: the old account's must not
+                // stay on screen.
+                let none = loaded
+                    .document
+                    .as_ref()
+                    .is_none_or(|d| d.current.trim().is_empty());
+                if switched {
+                    if none {
+                        self.apply("Default", Target::Preset(Preset::Default));
+                    }
+                    self.start_like_a_fresh_workbench();
                 }
             }
             (LayoutOp::Save, Outcome::Accepted, payload) => {
                 self.arrangements.saving = false;
                 if let Some(CompletionPayload::LayoutSaved(saved)) = payload {
                     self.arrangements.revision = Some(saved.revision.clone());
+                }
+                if let Some(told) = self.arrangements.told_on_save.take() {
+                    self.notify(Notice::Arrangement(told));
                 }
                 if std::mem::take(&mut self.arrangements.save_again) {
                     effects = self.save_arrangements();
@@ -440,6 +583,10 @@ impl Model {
                 if op == LayoutOp::Save {
                     self.arrangements.saving = false;
                     self.arrangements.save_again = false;
+                    self.arrangements.told_on_save = None;
+                }
+                if op == LayoutOp::Load {
+                    self.arrangements.account_switched = false;
                 }
                 let reason = match outcome {
                     Outcome::Refused { reason, .. }
@@ -476,7 +623,9 @@ impl Model {
         }
         if !current.trim().is_empty() {
             match serde_json::from_str::<Value>(current) {
-                Ok(document) => self.apply("The saved layout", Target::Saved(document)),
+                Ok(document) => {
+                    self.apply("The saved layout", Target::Saved(document));
+                }
                 Err(e) => self.notify(Notice::Arrangement(ArrangementNotice::Unreadable {
                     name: "The saved layout".into(),
                     reason: e.to_string(),
@@ -492,8 +641,15 @@ impl Model {
     }
 
     /// Forget everything that belongs to the account before this one.
-    pub(crate) fn forget_arrangements(&mut self) {
-        self.arrangements = Arrangements::default();
+    pub(crate) fn forget_arrangements(&mut self, switched: bool) {
+        // The appearance is the host's own (the browser's theme), not the old
+        // account's: it stays, and is saved with the next arrangement.
+        self.arrangements = Arrangements {
+            account_switched: switched,
+            appearance: self.arrangements.appearance.take(),
+            apply_epoch: self.arrangements.apply_epoch + 1,
+            ..Arrangements::default()
+        };
         self.layout_pending.clear();
     }
 
@@ -520,13 +676,49 @@ impl Model {
         live
     }
 
-    fn apply(&mut self, name: &str, target: Target) {
+    /// End an account switch where a fresh workbench starts: the keyboard is
+    /// on a live panel of the layout (its own focused one, else the
+    /// conversation panel, the `theo` kind, when the layout has one) and the
+    /// picker rests in its group without taking keys, with no modal over it.
+    fn start_like_a_fresh_workbench(&mut self) {
+        let on_a_panel = self
+            .focus_owner()
+            .is_some_and(|id| !self.is_picker_panel(&id));
+        let principal = (!on_a_panel)
+            .then(|| {
+                self.panels
+                    .iter()
+                    .find(|(_, e)| e.kind.as_str() == "theo")
+                    .map(|(id, _)| id.clone())
+            })
+            .flatten();
+        if let Some(id) = principal {
+            let _ = self.dock.focus_panel(&Self::dock_id(&id));
+        }
+        if self.picker.holds_keys() {
+            self.picker.update(
+                crate::picker::PickerMsg::Rest,
+                &self.registry,
+                &self.caps,
+                &self.pinned,
+            );
+        }
+        self.note_focus_before_picker();
+        self.dirty = true;
+    }
+
+    /// Whether the layout was applied (it is not when it cannot be read).
+    fn apply(&mut self, name: &str, target: Target) -> bool {
         let live = self.live_panels();
         let focused = self.focus_owner();
         let cfg = *self.dock.config();
         let mut caveats = Vec::new();
         let mut repairs = 0;
         let mut unavailable: Vec<String> = Vec::new();
+        let mut dropped: Vec<String> = Vec::new();
+        // A saved arrangement brings its own focus; a preset keeps where the
+        // keyboard is.
+        let keep_focus = matches!(target, Target::Preset(_));
         let mut claims: BTreeMap<PanelId, PanelInstanceId> = BTreeMap::new();
         let mut states: BTreeMap<PanelId, serde_json::Value> = BTreeMap::new();
 
@@ -540,9 +732,31 @@ impl Model {
                             name: name.to_owned(),
                             reason,
                         }));
-                        return;
+                        return false;
                     }
                 };
+                // A kind this build has no registration for is left out, and
+                // named. (One it registers but cannot serve stays as a
+                // placeholder that keeps its state.)
+                for group in doc.groups.values_mut() {
+                    group.tabs.retain(|tab| {
+                        let known = self
+                            .registry
+                            .get(&PanelKind::new(tab.kind.name.as_str()))
+                            .is_some();
+                        if !known && !dropped.contains(&tab.kind.name) {
+                            dropped.push(tab.kind.name.clone());
+                        }
+                        known
+                    });
+                    if group
+                        .active
+                        .as_ref()
+                        .is_some_and(|a| !group.tabs.iter().any(|t| &t.panel == a))
+                    {
+                        group.active = group.tabs.first().map(|t| t.panel.clone());
+                    }
+                }
                 self.claim(&mut doc, &live, &mut claims, &mut states);
                 let serves = |kind: &theorem_workbench_dock::PanelKind| {
                     self.unserved(&PanelKind::new(kind.name.as_str()), kind.version)
@@ -572,7 +786,7 @@ impl Model {
                             name: name.to_owned(),
                             reason: e.to_string(),
                         }));
-                        return;
+                        return false;
                     }
                 }
             }
@@ -617,7 +831,8 @@ impl Model {
                 entries.insert(l.id.clone(), entry);
             }
         }
-        if let Some(panel) = &focused
+        if keep_focus
+            && let Some(panel) = &focused
             && entries.contains_key(panel)
         {
             let _ = dock.focus_panel(&Self::dock_id(panel));
@@ -638,20 +853,23 @@ impl Model {
                 &self.pinned,
             );
         }
-        let notice = if caveats.is_empty() && unavailable.is_empty() && repairs == 0 {
-            ArrangementNotice::Applied {
-                name: name.to_owned(),
-            }
-        } else {
-            ArrangementNotice::Partial {
-                name: name.to_owned(),
-                unavailable,
-                repairs,
-                caveats,
-            }
-        };
+        let notice =
+            if caveats.is_empty() && unavailable.is_empty() && dropped.is_empty() && repairs == 0 {
+                ArrangementNotice::Applied {
+                    name: name.to_owned(),
+                }
+            } else {
+                ArrangementNotice::Partial {
+                    name: name.to_owned(),
+                    dropped,
+                    unavailable,
+                    repairs,
+                    caveats,
+                }
+            };
         self.notify(Notice::Arrangement(notice));
         self.dirty = true;
+        true
     }
 
     /// The dock document inside a saved layout, read as far as it can be.

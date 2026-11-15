@@ -234,9 +234,13 @@ impl Layout {
             (lines_shown - 1) * stride + 1
         };
         let below = top.saturating_add(u16::try_from(shown).unwrap_or(u16::MAX));
-        let empty = (n == 0).then(|| line(area, top));
+        let empty = (n == 0 && view.entry.is_none()).then(|| line(area, top));
         let reason = (reason_rows > 0).then(|| {
-            let y = if n == 0 { top.saturating_add(1) } else { below };
+            let y = if empty.is_some() {
+                top.saturating_add(1)
+            } else {
+                below
+            };
             let top_of_reason = y.min(area.bottom());
             let height = u16::try_from(reason_rows)
                 .unwrap_or(u16::MAX)
@@ -422,6 +426,8 @@ mod tests {
             selected: 0,
             filter: String::new(),
             more,
+            heading: None,
+            entry: None,
             reason: None,
             pin_shortcut: None,
         }

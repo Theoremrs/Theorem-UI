@@ -23,11 +23,12 @@ pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
     let Some(vp) = model.viewport() else {
         return;
     };
+    let dock_area = model.dock_area_in(area);
     let solved;
     let frame = match model.frame() {
-        Some(f) if f.area == area => f,
+        Some(f) if f.area == dock_area => f,
         _ => {
-            solved = model.dock().solve(area, vp.metrics);
+            solved = model.dock().solve(dock_area, vp.metrics);
             &solved
         }
     };
@@ -41,6 +42,25 @@ pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
         }
     }
     draw_gutters(model, frame, buf, theme);
+    draw_notice(model, area, buf, theme);
+}
+
+/// The notice line: the persistent row under the dock, or a transient notice
+/// over the right end of the bottom row, which the next frame redraws under.
+fn draw_notice(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
+    let (Some(rect), Some(line)) = (model.notice_rect(area), model.notice_line()) else {
+        return;
+    };
+    let style = line.severity.style(theme);
+    buf.set_style(rect, style);
+    let mut text = format!(" {} ", line.text);
+    let room = usize::from(rect.width);
+    if text.chars().count() > room {
+        text = text.chars().take(room.saturating_sub(2)).collect();
+        text.push('\u{2026}');
+        text.push(' ');
+    }
+    buf.set_stringn(rect.x, rect.y, text, room, style);
 }
 
 fn draw_group(

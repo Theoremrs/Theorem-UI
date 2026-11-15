@@ -155,6 +155,14 @@ pub fn registry() -> Registry {
             // Escape is the picker's fixed way back and Left walks it
             // sideways; these are the same moves by name, for the agent and
             // the palette. Pinning takes a chord because typing is the filter.
+            // The built-in presets and the account's saved arrangements. The
+            // page's own moves are named too, so a chord, the palette and the
+            // semantic mirror reach what the keys do: rename and delete act on
+            // the highlighted saved layout.
+            ActionDescriptor::new("picker.layout.rename", "Rename layout", Open)
+                .key("Mod+Alt+R", KeyScope::Panel),
+            ActionDescriptor::new("picker.layout.delete", "Delete layout", Open)
+                .key("Mod+Alt+D", KeyScope::Panel),
             ActionDescriptor::new("picker.back", "Back", Open),
             ActionDescriptor::new("picker.toggle-pin", "Pin or unpin tool", Open)
                 .key("Mod+Alt+P", KeyScope::Panel),
@@ -378,6 +386,12 @@ pub fn registry() -> Registry {
                 .key("Mod+Alt+Escape", KeyScope::Global),
             ActionDescriptor::new("workbench.maximize", "Maximise or restore the group", Focus)
                 .key("Mod+Alt+M", KeyScope::Global),
+            // Under More tools too, so the picker leads to them.
+            ActionDescriptor::new("workbench.layouts", "Layouts", Open)
+                .more()
+                .key("Mod+Alt+W", KeyScope::Global),
+            ActionDescriptor::new("workbench.layout.save", "Save layout as\u{2026}", Focus)
+                .key("Mod+Alt+B", KeyScope::Global),
             ActionDescriptor::new("workbench.layout.default", "Layout: Default", Focus),
             ActionDescriptor::new("workbench.layout.editor", "Layout: Editor-centred", Focus),
             ActionDescriptor::new("workbench.layout.agent", "Layout: Agent-centred", Focus),

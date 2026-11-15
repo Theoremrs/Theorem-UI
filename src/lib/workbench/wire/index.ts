@@ -3,6 +3,7 @@ export type { ActionDescriptor } from "./ActionDescriptor";
 export type { ActionId } from "./ActionId";
 export type { ActionIntent } from "./ActionIntent";
 export type { Actor } from "./Actor";
+export type { AppearanceApply } from "./AppearanceApply";
 export type { ApprovalDecision } from "./ApprovalDecision";
 export type { ArrangementMsg } from "./ArrangementMsg";
 export type { ArtifactContent } from "./ArtifactContent";

@@ -240,6 +240,9 @@ pub enum EffectBody {
     // Layout (`client.workbench.get/save`, revisioned with `If-Match`)
     LayoutLoad,
     LayoutSave(LayoutSave),
+    /// Put the appearance a saved arrangement was kept with on screen. Answered
+    /// Accepted, or Refused or Failed with a reason the person is told.
+    AppearanceApply(AppearanceApply),
 
     // Artifacts (the cabinet's catalog)
     ArtifactsList(ArtifactsList),
@@ -288,7 +291,7 @@ impl EffectKind {
             | ConversationSetModel
             | ConversationSetEffort
             | ConversationSideClose => Owner::Conversation,
-            LayoutLoad | LayoutSave => Owner::Layout,
+            LayoutLoad | LayoutSave | AppearanceApply => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
             ClipboardWrite | ClipboardRead => Owner::Host,
         }
@@ -940,6 +943,15 @@ pub struct ConversationApproval {
 pub struct LayoutSave {
     pub current: String,
     pub named_layouts: String,
+}
+
+/// The appearance a saved arrangement carries: the host's own JSON text,
+/// exactly as the host last told it. The core does not interpret it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceApply {
+    pub appearance: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
