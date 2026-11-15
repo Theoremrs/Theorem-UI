@@ -42,6 +42,8 @@ use tui_input::{Input, InputRequest};
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
+pub mod preview;
+
 /// The terminal's colours. The page works them out from the workspace around
 /// the terminal (src/components/terminal/terminal-theme.ts) and sets them with
 /// `set_palette`; until then the terminal draws pi's slate.
@@ -1831,4 +1833,21 @@ pub fn mount(
     let app = Rc::new(RefCell::new(App::new(tabbed)));
     run_frames(screen, app.clone());
     Ok(TerminalHandle { app, on_action })
+}
+
+/// Renders one artifact preview (the worker calls this). `source_json` is a
+/// `preview::Source`; `rgba` is the decoded image when there is one, empty
+/// otherwise. Returns `{meta, indices}` where `indices` is the 128×84 indexed
+/// raster as a byte array, so presentation is a palette lookup.
+#[wasm_bindgen]
+pub fn render_preview(source_json: &str, rgba: &[u8], width: u32, height: u32) -> Result<JsValue, JsValue> {
+    let source: preview::Source = serde_json::from_str(source_json)
+        .map_err(|e| JsValue::from_str(&format!("malformed preview source: {e}")))?;
+    let pixels = (!rgba.is_empty()).then_some(preview::Pixels { rgba, width, height });
+    let result = preview::render(&source, pixels.as_ref());
+    let out = js_sys::Object::new();
+    let meta = serde_json::to_string(&result.meta()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    js_sys::Reflect::set(&out, &"meta".into(), &JsValue::from_str(&meta))?;
+    js_sys::Reflect::set(&out, &"indices".into(), &js_sys::Uint8Array::from(result.raster.indices.as_slice()))?;
+    Ok(out.into())
 }

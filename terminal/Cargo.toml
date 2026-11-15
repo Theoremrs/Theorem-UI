@@ -6,7 +6,7 @@ publish = false
 description = "The agent terminal drawer's TUI: Ratatui on Ratzilla's DOM backend, compiled to WebAssembly"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 ratzilla = "0.3.1"
