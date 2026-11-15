@@ -1,3 +1,4 @@
+import { chooseOption } from './browser-controls.mjs'
 // PR #101 regressions: real shell/router, Base UI drawer, Milkdown and settings.
 // The development story supplies deterministic SDK responses, not a live server.
 import assert from 'node:assert/strict'
@@ -158,7 +159,7 @@ try {
           .context()
           .grantPermissions(['clipboard-read', 'clipboard-write'])
         await page
-          .locator('.appearance-vault-header')
+          .locator('[data-story-appearance-controls]')
           .getByRole('button', { name: 'Appearance', exact: true })
           .click()
         const dialog = page.getByRole('dialog', { name: 'Appearance settings' })
@@ -180,14 +181,12 @@ try {
         const imported = { ...original, overrides: { density: 'compact' } }
         await field.fill(JSON.stringify(imported))
         await apply.click()
-        await page.waitForFunction(
-          () =>
-            document.querySelector('select[aria-label="Density"]').value ===
-            'compact',
+        await page.waitForFunction(() =>
+          document
+            .querySelector('[role="combobox"][aria-label="Density"]')
+            .textContent.includes('Compact'),
         )
-        await dialog
-          .getByRole('combobox', { name: 'Density', exact: true })
-          .selectOption('touch')
+        await chooseOption(page, dialog, 'Density', 'Touch')
         assert.equal(
           JSON.parse(await field.inputValue()).overrides.density,
           'touch',
@@ -195,9 +194,7 @@ try {
 
         const draft = '{"unsaved":'
         await field.fill(draft)
-        await dialog
-          .getByRole('combobox', { name: 'Density', exact: true })
-          .selectOption('comfortable')
+        await chooseOption(page, dialog, 'Density', 'Comfortable')
         assert.equal(await field.inputValue(), draft)
         await dialog
           .getByRole('button', { name: 'Copy current settings', exact: true })

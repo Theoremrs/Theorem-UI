@@ -119,10 +119,17 @@ jobs:
           bun run oracle:navigation-export
           bun run oracle:reflow
           bun run oracle:runtime
+          bun run oracle:expressive
+          bun run oracle:theme-glass
+          bun run oracle:custom-background
           bun run oracle:composition
           bun run oracle:code
           ORACLE_ENGINE=chromium bun run oracle:states
           bun run oracle:touch
+      - name: Show appearance server diagnostics on failure
+        if: ${{ failure() }}
+        run: |
+          if [ -f "${{ runner.temp }}/appearance-review/vite.log" ]; then tail -n 100 "${{ runner.temp }}/appearance-review/vite.log"; fi
       - name: Upload appearance review evidence on failure
         if: ${{ failure() && steps.browser.outcome == 'success' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

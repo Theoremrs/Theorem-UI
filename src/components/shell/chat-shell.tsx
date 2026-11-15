@@ -6,7 +6,7 @@ import { ContextPanel } from './sidebar'
 import { DockShell } from './dock'
 import { Drawer } from '@base-ui/react/drawer'
 import { Icon } from '@/components/icons'
-import { AppearanceDialog } from '@/components/settings/appearance-dialog'
+import { ThemeToggle } from '@/components/settings/theme-toggle'
 import { LifeSheet } from '@/components/life/life-backdrop'
 import { useLiquidGlass } from '@/components/glass/liquid-glass/use-liquid-glass'
 import { useSurfaceMaterial } from '@/lib/appearance'
@@ -66,7 +66,7 @@ function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
         {mode === 'chat' ? title || 'New chat' : modeLabel(mode)}
       </h1>
       <div className="ms-auto">
-        <AppearanceDialog />
+        <ThemeToggle />
       </div>
     </header>
   )
