@@ -357,7 +357,8 @@ fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
     }
 
     // The grid keeps the size the host last confirmed; the rest is background.
-    let pal = &p.styles.palette;
+    let resolved = p.styles.resolve(cx.theme);
+    let pal = &resolved;
     buf.set_style(g.term, Style::new().fg(pal.fg).bg(pal.bg));
     let (rows, cols) = b.screen.size();
     let shown = Rect::new(

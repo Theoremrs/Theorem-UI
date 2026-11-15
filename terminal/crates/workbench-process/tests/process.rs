@@ -277,10 +277,13 @@ impl Rig {
     }
 
     fn draw(&self, width: u16, height: u16) -> Buffer {
+        self.draw_with(width, height, &Theme::plain())
+    }
+
+    fn draw_with(&self, width: u16, height: u16, theme: &Theme) -> Buffer {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
-        let theme = Theme::plain();
-        let mut cx = ViewCtx::new(&theme, self.m.workspace());
+        let mut cx = ViewCtx::new(theme, self.m.workspace());
         cx.focused = true;
         self.m.panel(&self.id).unwrap().view(area, &mut buf, &cx);
         buf
@@ -1643,4 +1646,92 @@ fn the_first_repaint_after_an_attach_does_not_rewrite_how_the_binding_began() {
         r.screen()
             .contains("kept running while no view was attached")
     );
+}
+
+// ---- colours from the context theme --------------------------------------------
+
+fn sgr_rig() -> (Rig, u16, u16) {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, fixture!("sgr.vt"));
+    let b = r.body();
+    (r, b.width, b.height)
+}
+
+#[test]
+fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
+    use ratatui::style::{Modifier, Style};
+    let (r, w, h) = sgr_rig();
+    let plain = r.draw_with(w, h, &Theme::plain());
+    let bare = Theme::chrome(
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+    );
+    // The header and footer take the chrome roles, which differ by theme; the
+    // terminal grid takes only the palette.
+    let bare_drawn = r.draw_with(w, h, &bare);
+    for y in 1..h - 1 {
+        for x in 0..w {
+            assert_eq!(bare_drawn[(x, y)], plain[(x, y)], "({x},{y})");
+        }
+    }
+    // Roles that only carry a modifier say nothing about colour.
+    let reversed = Style::default().add_modifier(Modifier::REVERSED);
+    let modifiers = Theme::chrome(
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        reversed,
+        reversed,
+    );
+    let drawn = r.draw_with(w, h, &modifiers);
+    let pal = palette();
+    for y in 0..h {
+        for x in 0..w {
+            // Only the chrome roles' own modifiers differ; the grid is the palette's.
+            if y > 1 && y < h - 1 {
+                assert_eq!(drawn[(x, y)].fg, plain[(x, y)].fg, "({x},{y})");
+                assert_eq!(drawn[(x, y)].bg, plain[(x, y)].bg, "({x},{y})");
+            }
+        }
+    }
+    assert_eq!(cell_fg(&drawn, 0, 1), pal.ansi[1]);
+}
+
+#[test]
+fn setting_ansi_one_on_the_theme_recolours_an_sgr_31_cell_and_only_that_colour() {
+    let (r, w, h) = sgr_rig();
+    let pal = palette();
+    let red = Color::Rgb(0xaa, 0x11, 0x22);
+    let mut ansi = [Color::Reset; 16];
+    ansi[1] = red;
+    let drawn = r.draw_with(w, h, &Theme::plain().with_ansi(ansi));
+    assert_eq!(cell_fg(&drawn, 0, 1), red);
+    // Entries left at Reset keep today's value.
+    assert_eq!(cell_fg(&drawn, 4, 1), pal.ansi[2]);
+    assert_eq!(cell_fg(&drawn, 9, 1), Color::Indexed(196));
+}
+
+#[test]
+fn the_themes_text_and_background_roles_win_over_the_explicit_palette() {
+    use ratatui::style::Style;
+    let (r, w, h) = sgr_rig();
+    let theme = Theme::chrome(
+        Style::default().bg(Color::Rgb(1, 1, 1)),
+        Style::default().fg(Color::Rgb(9, 9, 9)),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+    );
+    let drawn = r.draw_with(w, h, &theme);
+    // A cell past the text on a grid row is the default colours.
+    let cell = &drawn[(w - 1, 1)];
+    assert_eq!(cell.fg, Color::Rgb(9, 9, 9));
+    assert_eq!(cell.bg, Color::Rgb(1, 1, 1));
 }
