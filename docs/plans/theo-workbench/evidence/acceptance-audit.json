@@ -1114,14 +1114,26 @@
      "path": "src/components/workbench/workbench.tsx",
      "name_or_line": "SemanticsFeed, useWorkbenchSemantics",
      "observes": "Semantic tree is published as a feed."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/agent/operations.test.ts",
+     "name_or_line": "25 tests",
+     "observes": "workbench.read (tree, catalogue, subtree, size cut, not drawn yet) and workbench.act (run id from the request, each refusal code reaches the receipt, unmounted, throwing handle), each answered once."
+    },
+    {
+     "kind": "browser_scenario",
+     "path": "scripts/story-oracle.mjs",
+     "name_or_line": "workbench-agent-operations (interact)",
+     "observes": "Through the real wasm and the page path: read tree and catalogue, act focuses a tab from the tree, human_only and unknown_panel refused, an effect carries actor agent with the run id and a person's typing carries none, an over-long read is cut and followed by next, unmounted turn declares nothing and is answered not on screen."
     }
    ],
    "gaps": [
-    "Nothing consumes the feed. The grid host is aria-hidden and the only accessible element is an sr-only textarea.",
-    "Agent operations workbench.read and workbench.act are untracked and not imported by the mount.",
-    "No browser approval run."
+    "No browser approval run: the story drives the agent's act on a human-only action (refused) but not a person approving.",
+    "The accessible overlay is another piece of work; the agent reads the tree through workbench.read, not through the overlay.",
+    "The page half is proven against the real wasm in a fixture story, not against a live Theorem run: the thread and the SDK receipt command are stood in."
    ],
-   "next": "Wire the agent operations. Build the accessible overlay."
+   "next": "Build the accessible overlay; run one live agent turn against a deployed workbench."
   },
   {
    "id": "AC-45",
@@ -1323,6 +1335,12 @@
      "path": "src/lib/workbench/receipts.test.ts",
      "name_or_line": "accepted, refused, uncertain for document, git, terminal",
      "observes": "Receipts with secrets redacted."
+    },
+    {
+     "kind": "browser_scenario",
+     "path": "scripts/story-oracle.mjs",
+     "name_or_line": "workbench-agent-operations (interact)",
+     "observes": "Each agent request gets exactly one receipt with outcome applied, rejected or failed and, for a refusal, its code and reason; the accepted receipt says dispatched with its effect count. The story panel shows the requests and receipts."
     }
    ],
    "gaps": [],
@@ -1767,7 +1785,7 @@
   {
    "requirement": "R34",
    "sentence": "Agent reads and acts on the workbench.",
-   "finding": "src/lib/workbench/agent/operations.ts declares workbench.read and workbench.act with tests, is untracked, and nothing imports it."
+   "finding": "src/lib/workbench/agent/operations.ts declares workbench.read and workbench.act; client-surface.ts adds them to a send while the workbench is mounted, runtime.tsx serves them, and operations.test.ts plus the workbench-agent-operations scenario prove them against the real wasm. A live Theorem run has not used them."
   },
   {
    "requirement": "R48",

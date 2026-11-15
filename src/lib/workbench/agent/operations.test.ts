@@ -24,6 +24,7 @@ const node = (id: string, children: string[] = [], text?: string) => ({
   id,
   role: 'region',
   name: id,
+  rect: { x: 0, y: 0, width: 80, height: 24 },
   children,
   actions: [],
   ...(text === undefined ? {} : { text }),
@@ -230,6 +231,26 @@ describe('workbench.read', () => {
     )
     const two = second.result as { nodes: Array<{ id: string }> }
     expect(two.nodes[0]?.id).toBe(`n${one.next}`)
+  })
+
+  test('a tree that is the root alone with no size is "not drawn yet", not an empty workbench', () => {
+    const undrawn = {
+      root: 'app',
+      nodes: [{ ...node('app'), rect: { x: 0, y: 0, width: 0, height: 0 } }],
+    }
+    const { handle } = fakeHandle({ semantics: () => JSON.stringify(undrawn) })
+    const answer = answerWorkbenchRequest(request(WORKBENCH_READ), handle)
+    expect(answer.outcome).toBe('rejected')
+    expect(answer.reason).toContain('not drawn')
+    expect(answer.result).toBeUndefined()
+  })
+
+  test('the root alone, once drawn, is read as it is', () => {
+    const drawn = { root: 'app', nodes: [node('app')] }
+    const { handle } = fakeHandle({ semantics: () => JSON.stringify(drawn) })
+    const answer = answerWorkbenchRequest(request(WORKBENCH_READ), handle)
+    expect(answer.outcome).toBe('applied')
+    expect((answer.result as { nodes: unknown[] }).nodes).toHaveLength(1)
   })
 
   test('a handle that throws gives a failed answer', () => {

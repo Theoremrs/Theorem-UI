@@ -3,6 +3,8 @@ import type { ThreadMessage } from '@assistant-ui/react'
 import { MutationObserver, QueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { hasStatus, mutate, theorem } from '@/lib/theorem/client'
+import type { AgentOutcome } from '../wire/AgentOutcome'
+import type { CatalogEntry } from '../wire/CatalogEntry'
 import type { Node } from '../wire/Node'
 import type { SemanticTree } from '../wire/SemanticTree'
 import { useWorkbenchAgent } from './store'
@@ -208,7 +210,7 @@ function read(handle: AgentHandle, args: Record<string, unknown>) {
   if (args.part === 'catalog') {
     if (!handle.agent_catalog)
       return rejected('This workbench has no agent catalogue.')
-    const entries = JSON.parse(handle.agent_catalog()) as unknown[]
+    const entries = JSON.parse(handle.agent_catalog()) as CatalogEntry[]
     const part = window(entries, skip, MAX_READ_BYTES)
     return {
       outcome: 'applied',
@@ -221,6 +223,16 @@ function read(handle: AgentHandle, args: Record<string, unknown>) {
     } satisfies WorkbenchAnswer
   }
   const tree = JSON.parse(handle.semantics()) as SemanticTree
+  // Before its first frame (or in a background tab, which draws none) the core publishes the root alone, with no size.
+  const [only] = tree.nodes
+  if (
+    tree.nodes.length === 1 &&
+    only &&
+    (only.rect.width === 0 || only.rect.height === 0)
+  )
+    return rejected(
+      'The workbench has not drawn yet, so its tree is only the root and says nothing about the panels. Read again in a moment.',
+    )
   let nodes = tree.nodes
   if (typeof args.panel === 'string') {
     const under = subtree(tree, args.panel)
@@ -255,17 +267,17 @@ function act(
   if (!handle.agent_act)
     return rejected('This workbench has no agent entry for actions.')
   // The run is the request's own; nothing in the arguments names one.
-  const outcome = record(
-    JSON.parse(handle.agent_act(action, request.runId, panel)),
-  )
-  if (outcome.outcome === 'accepted')
+  const outcome = JSON.parse(
+    handle.agent_act(action, request.runId, panel),
+  ) as Partial<AgentOutcome> | null
+  if (outcome?.outcome === 'accepted')
     return { outcome: 'applied', result: outcome }
-  if (outcome.outcome === 'refused') {
-    const code = typeof outcome.code === 'string' ? outcome.code : 'refused'
-    const reason = typeof outcome.reason === 'string' ? outcome.reason : ''
-    return rejected(`${code}: ${reason}`, outcome)
+  if (outcome?.outcome === 'refused')
+    return rejected(`${outcome.code}: ${outcome.reason}`, outcome)
+  return {
+    outcome: 'failed',
+    reason: 'The workbench answered in a shape this page does not know.',
   }
-  return { outcome: 'failed', reason: 'The workbench answered in a shape this page does not know.' }
 }
 
 /** Answers one request against the mounted workbench. */
@@ -364,13 +376,19 @@ interface ThreadSource {
 }
 
 /** Serves workbench requests from one conversation for as long as it is mounted. */
-export function useWorkbenchRequests(runtime: ThreadSource) {
+export function useWorkbenchRequests(
+  runtime: ThreadSource,
+  post?: Parameters<typeof serveWorkbenchRequests>[1],
+) {
   useEffect(() => {
     const serve = () => {
       const { messages, isRunning } = runtime.thread.getState()
-      void serveWorkbenchRequests(workbenchRequestsOf(messages, isRunning))
+      void serveWorkbenchRequests(
+        workbenchRequestsOf(messages, isRunning),
+        post,
+      )
     }
     serve()
     return runtime.thread.subscribe(serve)
-  }, [runtime])
+  }, [runtime, post])
 }
