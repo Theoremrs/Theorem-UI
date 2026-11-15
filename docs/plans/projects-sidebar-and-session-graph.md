@@ -227,6 +227,29 @@ chat header and the sessions panel when that session was.
   right unless running down fits its panel at least 15% larger; the choice is
   kept, and saved with the view, so showing or hiding a facet does not turn
   it. The projection's node order is kept, so a refresh does not reshuffle it.
+- **Layout stability:** a person keeps their mental map of the graph only if
+  what is on screen stays put, so `arrange` in the same file decides which
+  nodes ELK may move, and ELK only proposes places.
+  - ELK runs only when the layout's shape changes: the nodes, their sizes, the
+    laid-out edges and each tree's main. A refetch that changes a status, a
+    time or a message count gives the same shape and lays nothing out.
+  - Nodes already drawn keep their places. A new node goes beside a parent or
+    child already on screen, as far from it as ELK put it; a group with
+    nothing on screen to hang from goes after everything.
+  - Dragged nodes never move, and anything placed later is moved clear of
+    them along the cross axis.
+  - Every node's last place is remembered, including nodes hidden since, so
+    hiding and showing a facet moves nothing, and neither does switching to
+    the list and back.
+  - Make main chat re-forms only that tree, around the corner it occupied,
+    and other trees stay.
+  - "Lay the graph out again" (the canvas controls) lays everything out
+    fresh, and the dragged nodes join the layout again, which marks a saved
+    view unsaved.
+  - A re-formed tree glides to its new places on `springs.glide` from
+    `lib/motion` (anime.js, no overshoot). A glide that is interrupted turns
+    from where each node is drawn. Under reduced motion the new places are
+    shown at once.
 - **View:** `src/components/sessions/session-graph-canvas.tsx`, React Flow 12.
   - Nodes can be dragged; a moved node marks the view unsaved. Nothing can be
     connected, and Delete does nothing.
@@ -261,3 +284,13 @@ fabricated here:
 - Per-user pins (§5.2): NAV-06 holds today only within one browser.
 - Project documents, repositories, links and connections (§8.2).
 - Graph editing, organization presets and governance (slices D and E).
+
+Follow-up, in the Theorem UI:
+
+- One layout module for the session graph, `lib/theorem/plans.ts` and
+  `lib/program/flow.ts`: one interface with a policy per graph. It would also
+  draw edges on ELK's routes where neither end has moved (only `plans.ts`
+  uses them today), and fix the program canvas's new nodes, which can land on
+  saved ones.
+- Compare ELK's mrtree with layered on this view's fixture before switching
+  lineage to it.

@@ -1,8 +1,9 @@
-// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls, dotted Background, fitView), laid out by elkjs through lib/theorem/session-graph-layout; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
+// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls with a ControlButton to lay the graph out again, dotted Background, fitView), laid out by elkjs through lib/theorem/session-graph-layout, which also decides what may move so that what is on screen stays put; a re-formed tree glides there on lib/motion's glide spring (anime.js), immediately under reduced motion; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
 import {
   Background,
   BackgroundVariant,
   BaseEdge,
+  ControlButton,
   Controls,
   EdgeLabelRenderer,
   Handle,
@@ -22,6 +23,8 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { createContext, use, useEffect, useMemo, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
+import type { JSAnimation } from 'animejs'
+import { animate } from 'animejs'
 import { Alert, AlertDescription } from '@/components/coss/alert'
 import { Badge } from '@/components/coss/badge'
 import { Input } from '@/components/coss/input'
@@ -78,9 +81,16 @@ import type {
   SessionNode as SessionRecord,
   ToolsNode as ToolsRecord,
 } from '@/lib/theorem/session-graph'
-import { layoutGraph } from '@/lib/theorem/session-graph-layout'
+import {
+  arrange,
+  layoutGraph,
+  layoutShape,
+  rerooted,
+} from '@/lib/theorem/session-graph-layout'
+import type { LayoutShape, Point } from '@/lib/theorem/session-graph-layout'
 import { sessionGraphQuery, useMakeMain } from '@/lib/theorem/sessions'
 import type { GraphScope, SessionGraphRead } from '@/lib/theorem/sessions'
+import { prefersReducedMotion, springs } from '@/lib/motion'
 import { cn } from '@/lib/utils'
 
 const ago = (atMs: number) =>
@@ -101,7 +111,6 @@ function sizeOf(node: GraphNode) {
   return { width: 200, height: 44 }
 }
 
-type Point = { x: number; y: number }
 type FlowNode = Node<{ record: GraphNode }, GraphNode['kind']>
 type FlowEdge = Edge<{ edge: GraphEdge }, 'relation' | 'message'>
 
@@ -123,18 +132,6 @@ const LEGEND: Readonly<Record<Relation, string>> = {
   made: 'made in',
   used: 'tools called',
 }
-
-/**
- * The relations that shape the layout: each runs one column out from the chat
- * it starts at. Messages pass between any two chats of a tree, so they are
- * drawn over the layout, not allowed to pull a fork out of its column.
- */
-const LAID_OUT: ReadonlySet<Relation> = new Set([
-  'fork',
-  'continued',
-  'made',
-  'used',
-])
 
 const messageLabel = (edge: GraphEdge) =>
   `${edge.count ?? 1} ${edge.count === 1 ? 'message' : 'messages'}${edge.forPerson ? ' · for you' : ''}`
@@ -601,43 +598,171 @@ const fitZoom = (
     (panel.height - PAD.top - PAD.bottom) / Math.max(graph.height, 1),
   )
 
+/**
+ * What the canvas last laid out. The graph view keeps it, so switching to the
+ * list and back, or hiding everything and showing it again, finds each node
+ * where it was.
+ */
+type LaidOut = {
+  shape?: LayoutShape
+  way?: Direction
+  /** Every node's last place, including nodes hidden since. */
+  seen: Record<string, Point>
+}
+
+/** Part way from where each node is drawn to where it is going. */
+const between = (
+  from: Readonly<Record<string, Point>>,
+  to: Readonly<Record<string, Point>>,
+  t: number,
+) =>
+  Object.fromEntries(
+    Object.entries(to).map(([id, end]) => {
+      const start = from[id]
+      return [
+        id,
+        start
+          ? {
+              x: start.x + (end.x - start.x) * t,
+              y: start.y + (end.y - start.y) * t,
+            }
+          : end,
+      ]
+    }),
+  )
+
 function Flow({
   graph,
   placed,
   onPlace,
+  onArrange,
   direction,
   onDirection,
+  memory,
 }: {
   graph: ProjectedGraph
-  /** Positions a person dragged nodes to; the rest are ELK's. */
+  /** Positions a person dragged nodes to; the rest are laid out. */
   placed: Readonly<Record<string, Point>>
   onPlace: (id: string, at: Point) => void
+  /** The person asked for a fresh layout: what they dragged goes back to it. */
+  onArrange: () => void
   /** Which way the forks run; until a view has one, the way that fits its panel larger. */
   direction?: Direction
   onDirection: (direction: Direction) => void
+  memory: { read: () => LaidOut; write: (laidOut: LaidOut) => void }
 }) {
-  const [layout, setLayout] = useState<Record<string, Point>>()
+  const [shown, setShown] = useState<Record<string, Point>>()
   const [selected, setSelected] = useState<string>()
   const [dragging, setDragging] = useState<Record<string, Point>>({})
+  // Each press of "Lay the graph out again", and each layout that landed.
+  const [arranged, setArranged] = useState(0)
+  const [settled, setSettled] = useState(0)
   const flow = useReactFlow()
   const frame = useRef<HTMLDivElement>(null)
   // Until the person pans, zooms or drags, the graph follows its panel's size.
   const moved = useRef(false)
+  // Where the layout has each node drawn this frame, mid-glide included.
+  const drawn = useRef<Record<string, Point>>({})
+  const glide = useRef<JSAnimation | undefined>(undefined)
+  const pins = useRef(placed)
+  const ran = useRef(0)
+
+  // Only what is laid out: a refetch that changes a status or a time, or
+  // adds a message, gives the same key and lays nothing out.
+  const key = useMemo(() => JSON.stringify(layoutShape(graph, sizeOf)), [graph])
+  const shape = useMemo(() => JSON.parse(key) as LayoutShape, [key])
+
+  // Read by the layout below without re-running it: a drop moves only what was dropped.
+  useEffect(() => {
+    pins.current = { ...placed, ...dragging }
+  })
 
   useEffect(() => {
+    const show = (next: Record<string, Point>) => {
+      drawn.current = next
+      setShown(next)
+    }
+    const land = (next: Record<string, Point>, move: boolean) => {
+      const gliding = glide.current !== undefined
+      glide.current?.cancel()
+      glide.current = undefined
+      const from = drawn.current
+      if (
+        !(move || gliding) ||
+        Object.keys(from).length === 0 ||
+        prefersReducedMotion()
+      ) {
+        show(next)
+        setSettled((n) => n + 1)
+        return
+      }
+      // From wherever each node is drawn now, so a glide that is interrupted
+      // turns towards the new place instead of starting over.
+      const progress = { t: 0 }
+      glide.current = animate(progress, {
+        t: 1,
+        ease: springs.glide,
+        onUpdate: () => show(between(from, next, progress.t)),
+        onComplete: () => {
+          glide.current = undefined
+          show(next)
+          setSettled((n) => n + 1)
+        },
+      })
+    }
+
+    const before = memory.read()
+    const way = direction ?? before.way
+    // Laid out from scratch: the first time, a new direction, or on request.
+    const anew =
+      !before.shape ||
+      (way !== undefined && way !== before.way) ||
+      arranged !== ran.current
+    const relayout = anew
+      ? new Set(shape.nodes.map((n) => n.id))
+      : rerooted(before.shape!, shape)
+    const commit = (next: Record<string, Point>, chosen: Direction) => {
+      memory.write({ shape, way: chosen, seen: { ...before.seen, ...next } })
+      ran.current = arranged
+      land(next, relayout.size > 0)
+    }
+
+    if (
+      way &&
+      relayout.size === 0 &&
+      shape.nodes.every((n) => before.seen[n.id])
+    ) {
+      // Everything already has a place, as when a hidden facet comes back.
+      commit(
+        Object.fromEntries(shape.nodes.map((n) => [n.id, before.seen[n.id]!])),
+        way,
+      )
+      return
+    }
+
     // A layout finishing after the graph changed is dropped.
     const run = { live: true }
-    const sizes = Object.fromEntries(graph.nodes.map((n) => [n.id, sizeOf(n)]))
-    const laidOut = graph.edges.filter((e) => LAID_OUT.has(e.relation))
-    const lay = (way: Direction) =>
-      layoutGraph(graph.nodes, laidOut, sizes, {
+    const sizes = Object.fromEntries(
+      shape.nodes.map(({ id, width, height }) => [id, { width, height }]),
+    )
+    const lay = (to: Direction) =>
+      layoutGraph(shape.nodes, shape.edges, sizes, {
         algorithm: 'layered',
-        direction: way,
+        direction: to,
+      })
+    const place = (fresh: Record<string, Point>, chosen: Direction) =>
+      arrange({
+        shape,
+        fresh,
+        previous: before.seen,
+        pinned: pins.current,
+        relayout,
+        across: chosen === 'RIGHT',
       })
     void (async () => {
-      if (direction) {
-        const next = await lay(direction)
-        if (run.live) setLayout(next.positions)
+      if (way) {
+        const next = await lay(way)
+        if (run.live) commit(place(next.positions, way), way)
         return
       }
       // A tree wider than its panel reads larger running down it; the choice
@@ -648,18 +773,39 @@ function Flow({
         width: frame.current?.clientWidth ?? 0,
         height: frame.current?.clientHeight ?? 0,
       }
-      const turn = fitZoom(down, panel) > fitZoom(across, panel) * 1.15
-      setLayout((turn ? down : across).positions)
-      onDirection(turn ? 'DOWN' : 'RIGHT')
+      const chosen =
+        fitZoom(down, panel) > fitZoom(across, panel) * 1.15 ? 'DOWN' : 'RIGHT'
+      commit(
+        place((chosen === 'DOWN' ? down : across).positions, chosen),
+        chosen,
+      )
+      onDirection(chosen)
     })()
     return () => {
       run.live = false
     }
-  }, [graph, direction, onDirection])
+  }, [shape, direction, arranged, onDirection, memory])
+
+  useEffect(
+    () => () => {
+      glide.current?.cancel()
+    },
+    [],
+  )
+
+  const arrangeAgain = () => {
+    // What is drawn stays put until the new layout glides in from it.
+    const now = { ...drawn.current, ...placed }
+    drawn.current = now
+    setShown(now)
+    moved.current = false
+    onArrange()
+    setArranged((n) => n + 1)
+  }
 
   useEffect(() => {
     const element = frame.current
-    if (!layout || !element) return
+    if (!settled || !element) return
     const fit = async () => {
       await flow.fitView(FIT)
       if (flow.getZoom() > FIT.minZoom + 0.001) return
@@ -696,7 +842,7 @@ function Flow({
     })
     observer.observe(element)
     return () => observer.disconnect()
-  }, [layout, flow, direction])
+  }, [settled, flow, direction])
 
   const nodes = useMemo(
     (): FlowNode[] =>
@@ -707,7 +853,7 @@ function Flow({
           type: record.kind,
           position: dragging[record.id] ??
             placed[record.id] ??
-            layout?.[record.id] ?? { x: 0, y: 0 },
+            shown?.[record.id] ?? { x: 0, y: 0 },
           data: { record },
           selected: record.id === selected,
           width: size.width,
@@ -720,7 +866,7 @@ function Flow({
                 : `${record.kind === 'artifact' ? 'Artifact' : 'Document'} ${record.title}`,
         }
       }),
-    [graph.nodes, layout, placed, dragging, selected],
+    [graph.nodes, shown, placed, dragging, selected],
   )
   const edges = useMemo(
     (): FlowEdge[] =>
@@ -748,7 +894,7 @@ function Flow({
   return (
     <div ref={frame} className="absolute inset-0">
       {/* Mounted once ELK has placed everything, so the first fit sees the real positions. */}
-      {layout && (
+      {shown && (
         <ReactFlow<FlowNode, FlowEdge>
           nodes={nodes}
           edges={edges}
@@ -788,7 +934,15 @@ function Flow({
             size={1}
             color="var(--color-separator)"
           />
-          <Controls showInteractive={false} position="bottom-right" />
+          <Controls showInteractive={false} position="bottom-right">
+            <ControlButton
+              aria-label="Lay the graph out again"
+              title="Lay the graph out again"
+              onClick={arrangeAgain}
+            >
+              <Icon.Organize />
+            </ControlButton>
+          </Controls>
         </ReactFlow>
       )}
       <Legend graph={graph} />
@@ -979,6 +1133,16 @@ function SessionGraph({
     saved?.layout.nodes ?? {},
   )
   const [direction, setDirection] = useState(saved?.layout.direction)
+  const laidOut = useRef<LaidOut>({ seen: {} })
+  const memory = useMemo(
+    () => ({
+      read: () => laidOut.current,
+      write: (next: LaidOut) => {
+        laidOut.current = next
+      },
+    }),
+    [],
+  )
   const [dirty, setDirty] = useState(false)
   const [asList, setAsList] = useState(false)
   const [naming, setNaming] = useState<'save' | 'rename'>()
@@ -1224,8 +1388,14 @@ function SessionGraph({
                 setPlaced((held) => ({ ...held, [id]: at }))
                 setDirty(true)
               }}
+              onArrange={() => {
+                if (Object.keys(placed).length === 0) return
+                setPlaced({})
+                setDirty(true)
+              }}
               direction={direction}
               onDirection={setDirection}
+              memory={memory}
             />
           </ReactFlowProvider>
         )}
