@@ -2751,3 +2751,433 @@ fn the_find_bar_keeps_room_for_the_query_and_its_replace_buttons_whole() {
         check_buttons(&make, "find:", w);
     }
 }
+
+// ---- local state, recovered edits, revoked access --------------------------
+
+use theorem_workbench_core::host::{LocalProblem, LocalState, LocalStatus};
+
+fn recovered_edit(id: &str, base: u64, at: u32, insert: &str) -> PendingEdit {
+    PendingEdit {
+        operation_id: id.into(),
+        base_revision: seq(base),
+        edits: vec![CoreChange {
+            start: at,
+            end: at,
+            insert: insert.into(),
+        }],
+        state: PendingState::Restored,
+        reason: None,
+    }
+}
+
+/// The owner opens the document with `pending` it got back from the device.
+fn open_with(rig: &mut Rig, text: &str, revision: u64, pending: Vec<PendingEdit>) -> Vec<Effect> {
+    let open = rig.open.take().expect("an open is waiting");
+    let c = Completion::new(open.id, doc(), Outcome::Accepted).with_payload(
+        CompletionPayload::DocumentOpened(DocumentOpened {
+            text: text.into(),
+            revision: seq(revision),
+            saved_revision: None,
+            dirty: true,
+            read_only: None,
+            pending,
+        }),
+    );
+    rig.send(Msg::Completion(c))
+}
+
+fn settles(fx: &[Effect]) -> Vec<String> {
+    of_kind(fx, EffectKind::DocumentSettle)
+        .into_iter()
+        .map(|e| match &e.body {
+            EffectBody::DocumentSettle(s) => s.operation_id.clone(),
+            _ => unreachable!(),
+        })
+        .collect()
+}
+
+fn answer_all(rig: &mut Rig, fx: &[Effect]) -> Vec<Effect> {
+    let mut out = vec![];
+    for e in fx {
+        out.extend(rig.answer(e, Outcome::Accepted, None));
+    }
+    out
+}
+
+fn recovered_rig(width: u16) -> Rig {
+    let mut rig = Rig::start().at(width);
+    let fx = open_with(
+        &mut rig,
+        "hello\n",
+        1,
+        vec![recovered_edit("r1", 1, 0, "X")],
+    );
+    assert!(edits(&fx).is_empty() && settles(&fx).is_empty(), "{fx:#?}");
+    rig
+}
+
+#[test]
+fn a_recovered_edit_on_the_same_revision_is_shown_and_nothing_is_sent_before_a_choice() {
+    let mut rig = recovered_rig(80);
+    assert!(rig.screen().contains("Xhello"), "{}", rig.screen());
+    let ids: Vec<String> = rig
+        .buttons("strip:")
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "document.keepRecovered",
+            "document.discardRecovered",
+            "document.copyMine"
+        ]
+    );
+    assert!(rig.status().contains("recovered"), "{}", rig.status());
+    let bar = rig.screen();
+    assert!(bar.contains("recovered from this device"), "{bar}");
+    // Ticks, typing and a save send nothing: the owner refuses edits until
+    // each recovered one is settled.
+    let mut fx = rig.tick();
+    fx.extend(rig.typed("Q"));
+    fx.extend(rig.chord('s'));
+    assert!(edits(&fx).is_empty(), "{fx:#?}");
+    none_of(&fx, EffectKind::DocumentSave);
+    none_of(&fx, EffectKind::DocumentSettle);
+    // The undo history starts after the recovery: it cannot take the text back.
+    rig.chord('z');
+    rig.chord('z');
+    assert!(rig.screen().contains("Xhello"), "{}", rig.screen());
+    rig.tree_ok();
+}
+
+#[test]
+fn keeping_recovered_edits_settles_each_then_sends_the_text_once() {
+    let mut rig = recovered_rig(80);
+    let fx = act(&mut rig, "document.keepRecovered");
+    assert_eq!(settles(&fx), ["r1"], "{fx:#?}");
+    assert!(
+        edits(&fx).is_empty(),
+        "the edit waits for the settle: {fx:#?}"
+    );
+    let mut sent = rig.tick();
+    assert!(edits(&sent).is_empty());
+    sent.extend(answer_all(&mut rig, &fx));
+    let e = the_edit(&sent);
+    let EffectBody::DocumentEdit(body) = &e.body else {
+        unreachable!()
+    };
+    assert_eq!(body.edits.len(), 1);
+    assert_eq!(
+        (
+            body.edits[0].start,
+            body.edits[0].end,
+            body.edits[0].insert.as_str()
+        ),
+        (0, 0, "X")
+    );
+    assert_eq!(e.revision, Some(seq(1)));
+    // Accepted, and nothing more goes out.
+    let after = rig.accept(&e, 2);
+    let more = rig.tick();
+    assert!(edits(&after).is_empty() && edits(&more).is_empty());
+    assert!(rig.screen().contains("Xhello"));
+}
+
+#[test]
+fn discarding_recovered_edits_sends_only_the_settles_and_drops_the_text() {
+    let mut rig = recovered_rig(80);
+    let fx = act(&mut rig, "document.discardRecovered");
+    assert_eq!(settles(&fx), ["r1"]);
+    assert!(edits(&fx).is_empty());
+    let rest = answer_all(&mut rig, &fx);
+    assert!(edits(&rest).is_empty(), "{rest:#?}");
+    assert!(edits(&rig.tick()).is_empty());
+    let screen = rig.screen();
+    assert!(
+        screen.contains("hello") && !screen.contains("Xhello"),
+        "{screen}"
+    );
+    assert!(
+        rig.buttons("strip:")
+            .iter()
+            .all(|(id, _, _)| id != "document.keepRecovered")
+    );
+    // Typing works as before, from the file's text.
+    let e = the_edit(&rig.typed("Q"));
+    let EffectBody::DocumentEdit(body) = &e.body else {
+        unreachable!()
+    };
+    assert_eq!(body.edits[0].insert, "Q");
+}
+
+fn moved_rig(width: u16) -> Rig {
+    let mut rig = Rig::start().at(width);
+    let fx = open_with(
+        &mut rig,
+        "hello\n",
+        5,
+        vec![recovered_edit("r1", 2, 0, "X")],
+    );
+    assert!(edits(&fx).is_empty() && settles(&fx).is_empty(), "{fx:#?}");
+    rig
+}
+
+#[test]
+fn recovered_edits_from_another_revision_are_not_applied_blindly() {
+    let mut rig = moved_rig(80);
+    let screen = rig.screen();
+    assert!(
+        screen.contains("hello") && !screen.contains("Xhello"),
+        "{screen}"
+    );
+    assert!(screen.contains("revision 2"), "{screen}");
+    let ids: Vec<String> = rig
+        .buttons("strip:")
+        .into_iter()
+        .map(|(id, _, _)| id)
+        .collect();
+    assert_eq!(
+        ids,
+        [
+            "document.takeTheirs",
+            "document.keepBoth",
+            "document.copyMine"
+        ]
+    );
+    // Nothing is sent, typing included.
+    let mut fx = rig.tick();
+    fx.extend(rig.typed("Q"));
+    assert!(edits(&fx).is_empty() && settles(&fx).is_empty(), "{fx:#?}");
+    // The keep action that would place them is refused with its reason.
+    let fx = act(&mut rig, "document.keepMine");
+    assert!(edits(&fx).is_empty() && settles(&fx).is_empty());
+    assert!(
+        rig.status().contains("another revision"),
+        "{}",
+        rig.status()
+    );
+}
+
+#[test]
+fn unplaced_recovered_edits_are_discarded_or_added_after_the_text() {
+    let mut rig = moved_rig(80);
+    let fx = act(&mut rig, "document.takeTheirs");
+    assert_eq!(settles(&fx), ["r1"]);
+    assert!(edits(&answer_all(&mut rig, &fx)).is_empty());
+    assert!(!rig.screen().contains('X'), "{}", rig.screen());
+
+    let mut rig = moved_rig(80);
+    let fx = act(&mut rig, "document.keepBoth");
+    assert_eq!(settles(&fx), ["r1"]);
+    assert!(edits(&fx).is_empty());
+    let sent = answer_all(&mut rig, &fx);
+    let e = the_edit(&sent);
+    let EffectBody::DocumentEdit(body) = &e.body else {
+        unreachable!()
+    };
+    assert_eq!(body.edits[0].insert, "X");
+    assert_eq!(e.revision, Some(seq(5)));
+    assert!(rig.screen().contains("hello"), "{}", rig.screen());
+}
+
+fn message_has_problem(m: &HostMessage) -> bool {
+    matches!(m, HostMessage::DocumentLocal { local, .. } if local.problem.is_some())
+}
+
+fn local(status: LocalStatus, problem: Option<(&str, &str)>) -> HostMessage {
+    HostMessage::DocumentLocal {
+        resource: doc(),
+        local: LocalState {
+            status,
+            problem: problem.map(|(code, reason)| LocalProblem {
+                code: code.into(),
+                reason: reason.into(),
+            }),
+        },
+    }
+}
+
+#[test]
+fn the_local_state_is_said_in_plain_words_at_80_and_40_columns() {
+    let checkpointed = LocalStatus::Checkpointed {
+        saved_at_ms: 1,
+        recovered: false,
+    };
+    // (state, words at 80, words at 40, what must not be claimed)
+    let cases: [(HostMessage, &str, &str, &[&str]); 4] = [
+        (
+            local(LocalStatus::Accepted, None),
+            "",
+            "",
+            &["kept", "not kept"],
+        ),
+        (
+            local(LocalStatus::Draft, None),
+            "edits not yet kept on this device",
+            "not kept yet",
+            &["kept on this device,"],
+        ),
+        (
+            local(checkpointed.clone(), None),
+            "kept on this device, not saved to the file",
+            "kept, unsaved",
+            &["not kept"],
+        ),
+        (
+            local(checkpointed, Some(("quota", "storage is full"))),
+            "not kept: storage is full; only in this page",
+            "not kept",
+            &["kept on this device,"],
+        ),
+    ];
+    for (message, at80, at40, never) in cases {
+        for (width, words) in [(80, at80), (40, at40)] {
+            // At 40 columns typing makes it modified and sending: the fullest
+            // line, where the flags must say less and the words still hold.
+            let mut rig = Rig::opened("hello\n").at(width);
+            if width == 40 {
+                rig.typed("x");
+            }
+            rig.host(message.clone());
+            let status = rig.status();
+            assert!(
+                status.contains(words),
+                "{width}: {words:?} not in {status:?}"
+            );
+            if message_has_problem(&message) {
+                // The reason stays in view at any width.
+                assert!(status.contains("storage is full"), "{width}: {status:?}");
+            }
+            for no in never {
+                assert!(!status.contains(no), "{width}: {no:?} in {status:?}");
+            }
+            // The semantic tree says it too, in full.
+            let tree = semantics(&rig.m);
+            let node = tree
+                .node(&NodeId::new(format!("{}/text", rig.id.as_str())))
+                .expect("the text node");
+            let description = node.state.description.clone().unwrap_or_default();
+            let full = match &message {
+                HostMessage::DocumentLocal { local, .. } => match (&local.problem, &local.status) {
+                    (Some(p), _) => p.reason.clone(),
+                    (None, LocalStatus::Draft) => "not yet kept on this device".into(),
+                    (None, LocalStatus::Checkpointed { .. }) => {
+                        "kept on this device, not saved to the file".into()
+                    }
+                    _ => String::new(),
+                },
+                _ => unreachable!(),
+            };
+            assert!(description.contains(&full), "{width}: {description:?}");
+            rig.tree_ok();
+        }
+    }
+}
+
+#[test]
+fn a_local_state_for_another_document_is_not_shown() {
+    let mut rig = Rig::opened("hello\n").at(80);
+    rig.host(HostMessage::DocumentLocal {
+        resource: ResourceRef::Document {
+            workspace: "w".into(),
+            resource_id: "other.txt".into(),
+        },
+        local: LocalState {
+            status: LocalStatus::Draft,
+            problem: None,
+        },
+    });
+    assert!(!rig.status().contains("kept"), "{}", rig.status());
+}
+
+#[test]
+fn revoked_access_clears_the_text_and_held_edits_and_nothing_more_is_sent() {
+    for code in [
+        "forbidden",
+        "unauthorized",
+        "signed_out",
+        "account_changed",
+        "access_revoked",
+    ] {
+        let drafts = Drafts::new();
+        let mut rig = Rig::start_with(&CAPS, &drafts);
+        rig.answer_open("secret text\n", 1, true);
+        let first = the_edit(&rig.typed("A"));
+        // A second edit waits behind the first.
+        rig.typed("B");
+        rig.answer(
+            &first,
+            Outcome::Refused {
+                code: code.into(),
+                reason: "your access to this file ended".into(),
+            },
+            None,
+        );
+        let screen = rig.screen();
+        assert!(!screen.contains("secret"), "{code}: {screen}");
+        assert!(!screen.contains("AB"), "{code}: {screen}");
+        assert!(screen.contains("no longer have access"), "{code}: {screen}");
+        assert!(
+            screen.contains("your access to this file ended"),
+            "{code}: {screen}"
+        );
+        assert!(drafts.is_empty(), "{code}: nothing is kept in memory");
+        // A following key, a chord and a tick send nothing at all.
+        let mut fx = rig.typed("Z");
+        fx.extend(rig.chord('s'));
+        fx.extend(rig.tick());
+        assert!(
+            fx.iter().all(|e| !matches!(
+                e.kind(),
+                EffectKind::DocumentEdit | EffectKind::DocumentSave | EffectKind::DocumentSettle
+            )),
+            "{code}: {fx:#?}"
+        );
+        rig.tree_ok();
+    }
+}
+
+#[test]
+fn other_refusals_keep_the_text_as_before() {
+    let mut rig = Rig::opened("hello\n");
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Refused {
+            code: "invalid".into(),
+            reason: "that edit is not allowed".into(),
+        },
+        None,
+    );
+    assert!(rig.screen().contains("Xhello"), "{}", rig.screen());
+}
+
+#[test]
+fn a_revoked_open_shows_the_reason_and_cannot_be_retried() {
+    let mut rig = Rig::start();
+    let open = rig.open.take().unwrap();
+    rig.answer(
+        &open,
+        Outcome::Refused {
+            code: "signed_out".into(),
+            reason: "you were signed out".into(),
+        },
+        None,
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("you were signed out"), "{screen}");
+    assert!(screen.contains("no longer have access"), "{screen}");
+    let fx = rig.key(Key::Enter);
+    assert!(of_kind(&fx, EffectKind::DocumentOpen).is_empty(), "{fx:#?}");
+}
+
+#[test]
+fn the_recovered_bars_are_whole_and_work_at_any_width() {
+    for w in WIDTHS {
+        check_buttons(&recovered_rig, "strip:", w);
+        assert_eq!(recovered_rig(w).buttons("strip:").len(), 3, "{w}");
+        check_buttons(&moved_rig, "strip:", w);
+        assert_eq!(moved_rig(w).buttons("strip:").len(), 3, "{w}");
+    }
+}

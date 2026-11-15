@@ -8,7 +8,7 @@ use ratatui::layout::Rect;
 use ratatui::text::Line;
 use ratatui::widgets::{Paragraph, Widget, Wrap};
 use theorem_workbench_core::ViewCtx;
-use theorem_workbench_core::host::ConnectionState;
+use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
 use theorem_workbench_editor::Paint;
@@ -159,6 +159,8 @@ impl MarkdownPanel {
                 let md = d.md.borrow();
                 if !self.documents {
                     Some("The document service is not available.".to_owned())
+                } else if d.restored.is_some() {
+                    Some("Settle the recovered edits first.".to_owned())
                 } else if has_conflict {
                     Some("Settle the held text first.".to_owned())
                 } else if d.sync.desync.is_some() {
@@ -198,6 +200,10 @@ impl MarkdownPanel {
                 .unknown
                 .is_none()
                 .then(|| "No edit is waiting on an unknown answer.".to_owned()),
+            Choice::KeepRecovered | Choice::DiscardRecovered => d
+                .restored
+                .is_none()
+                .then(|| "No recovered edits are waiting.".to_owned()),
             Choice::KeepDisk | Choice::KeepAuthority => d
                 .sync
                 .disk
@@ -249,6 +255,29 @@ impl MarkdownPanel {
                 Tone::Error,
                 buttons_for_conflict,
                 true,
+            );
+        }
+        if let Some(r) = &d.restored {
+            let words = if r.applied {
+                format!(
+                    "Edits recovered from this device ({}) were never sent, and are shown in the text. Nothing is sent until you choose: keep sends them as new edits, discard drops them.",
+                    r.ops.len()
+                )
+            } else {
+                let base = r.base.as_deref().map_or_else(
+                    || "this text".to_owned(),
+                    |b| format!("revision {b}, and the document is at {}", md.revision()),
+                );
+                format!(
+                    "Edits recovered from this device ({}) were made against {base}, so they are not applied. Nothing is sent until you choose: keep adds the text they inserted at the end, discard drops them.",
+                    r.ops.len()
+                )
+            };
+            return make(
+                words,
+                Tone::Warn,
+                vec![Choice::KeepRecovered, Choice::DiscardRecovered],
+                false,
             );
         }
         let session = md.session();
@@ -329,6 +358,11 @@ impl MarkdownPanel {
         }
         if let Some(why) = &d.sync.desync {
             return make(why.clone(), Tone::Warn, vec![], false);
+        }
+        if self.local.as_ref().is_some_and(|l| l.problem.is_some())
+            && let Some(sentence) = self.local_words().into_iter().next()
+        {
+            return make(sentence, Tone::Warn, vec![], false);
         }
         if let Some(i) = d.link {
             let found = links::links(&md.text());
@@ -513,13 +547,76 @@ impl MarkdownPanel {
     }
 
     /// The left side: the path, what is true of the document.
-    fn status_left(&self, d: &Doc) -> (String, bool) {
+    /// The left of the status line. The state of the edits matters more than
+    /// where the caret is: a form of its words that does not fit beside the
+    /// position takes the whole row (`true`: the position goes) before a
+    /// shorter form is used.
+    fn status_left(&self, d: &Doc, beside: usize, whole: usize) -> (String, bool, bool) {
+        let tiers = self.local_words();
+        if tiers.is_empty() {
+            let (s, attention) = self.status_flags(d, None);
+            return (s, attention, false);
+        }
+        let mut last = (String::new(), false, false);
+        for words in &tiers {
+            let (s, attention) = self.status_flags(d, Some(words));
+            let width = s.width();
+            last = (s, attention, width > beside);
+            if width <= whole {
+                break;
+            }
+        }
+        last
+    }
+
+    /// How far the edits are from being safe, in plain words and never more
+    /// than the host said: the sentence first, then shorter forms for a status
+    /// line with less room. Empty for edits the owner has.
+    fn local_words(&self) -> Vec<String> {
+        let Some(local) = self.local.as_ref() else {
+            return vec![];
+        };
+        if let Some(p) = &local.problem {
+            return vec![
+                format!(
+                    "Keeping your edits on this device failed ({}). They are only in this page.",
+                    p.reason
+                ),
+                "keeping failed, only in this page".to_owned(),
+            ];
+        }
+        match local.status {
+            LocalStatus::Accepted => vec![],
+            LocalStatus::Draft => vec![
+                "Your edits are not yet kept on this device.".to_owned(),
+                "not yet kept on this device".to_owned(),
+            ],
+            LocalStatus::Checkpointed { recovered, .. } => vec![
+                if recovered {
+                    "Your edits were recovered from this device and are kept on it. They are not saved to the file."
+                } else {
+                    "Your edits are kept on this device. They are not saved to the file."
+                }
+                .to_owned(),
+                "kept on this device, not saved".to_owned(),
+                "kept on this device".to_owned(),
+            ],
+        }
+    }
+
+    fn status_flags(&self, d: &Doc, local: Option<&str>) -> (String, bool) {
         let mut s = self.path.clone();
         let mut attention = false;
         let mut flag = |text: String, warn: bool| {
             s.push_str(&format!(" [{text}]"));
             attention |= warn;
         };
+        if let Some(words) = local {
+            let warn = self.local.as_ref().is_some_and(|l| l.problem.is_some());
+            // The status line says it in a flag: the sentence is the strip's
+            // and the semantic tree's.
+            flag(words.trim_end_matches('.').to_owned(), warn);
+        }
         let shown = self.shown(d);
         flag(mode_title(shown.mode).to_lowercase(), false);
         if let Some(note) = &shown.note {
@@ -677,12 +774,6 @@ impl MarkdownPanel {
         // The status line.
         if let Some(row) = frame.status {
             buf.set_style(row, cx.theme.line);
-            let (left, attention) = self.status_left(d);
-            let base = if attention {
-                cx.theme.warning
-            } else {
-                cx.theme.muted
-            };
             let right = self
                 .status_right(d)
                 .into_iter()
@@ -690,6 +781,18 @@ impl MarkdownPanel {
                 .unwrap_or_default();
             let right_w = right.width() as u16;
             let left_room = row.width.saturating_sub(right_w + 1);
+            let (left, attention, whole_row) =
+                self.status_left(d, usize::from(left_room), usize::from(row.width));
+            let base = if attention {
+                cx.theme.warning
+            } else {
+                cx.theme.muted
+            };
+            let (right, right_w, left_room) = if whole_row {
+                (String::new(), 0, row.width)
+            } else {
+                (right, right_w, left_room)
+            };
             let (x, _) = buf.set_stringn(row.x, row.y, &left, usize::from(left_room), base);
             if let Some(n) = &d.notice {
                 let used = x - row.x;
@@ -856,6 +959,9 @@ impl MarkdownPanel {
         if let Some(note) = &shown.note {
             words.push(note.clone());
         }
+        if let Some(sentence) = self.local_words().into_iter().next() {
+            words.push(sentence);
+        }
         if let Some(r) = &d.sync.read_only {
             words.push(format!("read-only: {r}"));
         }
@@ -885,6 +991,8 @@ impl MarkdownPanel {
             Choice::TakeTheirs,
             Choice::KeepBoth,
             Choice::CopyMine,
+            Choice::KeepRecovered,
+            Choice::DiscardRecovered,
         ]
         .into_iter()
         .map(|c| self.action(c))
@@ -964,8 +1072,20 @@ impl MarkdownPanel {
             out.push(b);
         }
 
+        if let Some(sentence) = self.local_words().into_iter().next() {
+            let mut n = Node::new(
+                "local",
+                Role::Status,
+                &sentence,
+                frame.status.unwrap_or(area),
+            );
+            n.binding = self.resource();
+            children.push(n.id.clone());
+            out.push(n);
+        }
+
         if let Some(row) = frame.status {
-            let (left, _) = self.status_left(d);
+            let (left, _, _) = self.status_left(d, usize::MAX, usize::MAX);
             let right = self.status_right(d).remove(0);
             let mut n = Node::new("status", Role::Status, &format!("{left}  {right}"), row);
             n.state.description = d.notice.as_ref().map(|n| n.text.clone());

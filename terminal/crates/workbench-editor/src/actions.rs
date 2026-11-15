@@ -40,6 +40,8 @@ pub enum Choice {
     TakeTheirs,
     KeepBoth,
     CopyMine,
+    KeepRecovered,
+    DiscardRecovered,
     Resend,
     KeepDisk,
     KeepAuthority,
@@ -128,7 +130,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 28] = [
+const TABLE: [Descriptor; 30] = [
     sends(
         Choice::Save,
         "document.save",
@@ -296,6 +298,22 @@ const TABLE: [Descriptor; 28] = [
         "Alt+Y",
         None,
         EffectKind::ClipboardWrite,
+    ),
+    sends(
+        Choice::KeepRecovered,
+        "document.keepRecovered",
+        "Keep recovered edits",
+        "Alt+E",
+        Some("documents"),
+        EffectKind::DocumentSettle,
+    ),
+    sends(
+        Choice::DiscardRecovered,
+        "document.discardRecovered",
+        "Discard recovered edits",
+        "Alt+W",
+        Some("documents"),
+        EffectKind::DocumentSettle,
     ),
     sends(
         Choice::Resend,

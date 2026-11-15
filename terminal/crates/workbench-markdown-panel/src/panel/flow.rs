@@ -8,19 +8,20 @@
 //! steps say; the block rule and the tokens are the panel's own.
 
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
+use theorem_workbench_core::completion::{PendingEdit, PendingState as CorePending};
 use theorem_workbench_core::effect::{
     ClipboardWrite, DocumentReconcile, DocumentSettle, EffectBody, ReconcileKeep,
 };
 use theorem_workbench_core::host::HostMessage;
-use theorem_workbench_core::ids::{Capability, ResourceRef};
+use theorem_workbench_core::ids::{Capability, ResourceRef, Revision as CoreRevision};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_editor::{
     Held, Level, Owed, OwnerSync, SourceView, Step, TokenState, resync, revision_number,
 };
 use theorem_workbench_markdown::{BlockResolution, MarkdownDoc, MarkdownMode};
-use theorem_workbench_text::{PendingState, Resolution};
+use theorem_workbench_text::{Deletion, PendingState, Resolution, Snap, Unit};
 
-use super::{Clip, Doc, MarkdownPanel, Notice, Phase, Problem, Task, Tone};
+use super::{Clip, Doc, MarkdownPanel, Notice, Phase, Problem, Restored, Task, Tone};
 
 pub(super) fn emit_notice(error: EmitError) -> String {
     match error {
@@ -31,6 +32,46 @@ pub(super) fn emit_notice(error: EmitError) -> String {
         EmitError::Silent => "That cannot start from here; try again.".to_owned(),
         EmitError::Forbidden(kind) => format!("A {kind:?} request cannot start from here."),
     }
+}
+
+/// Why a document with recovered edits takes no new ones yet.
+const WAIT_FOR_CHOICE: &str = "recovered edits wait for your choice";
+
+/// Put the edits recovered from this device into the session, in order: the
+/// ranges of one edit are against the text before it, in UTF-16 units, so they
+/// go in from the end. Anything that is not a place in the text is an error and
+/// leaves the caller to apply nothing.
+fn apply_recovered(md: &mut MarkdownDoc, edits: &[&PendingEdit]) -> Result<(), String> {
+    md.apply_local(|s| {
+        for edit in edits {
+            let mut changes: Vec<_> = edit.edits.iter().collect();
+            changes.sort_by_key(|c| std::cmp::Reverse(c.start));
+            for c in changes {
+                let at = |offset: u32| {
+                    let coords = s.coords();
+                    let scalar = coords.to_scalar(offset as usize, Unit::Utf16, Snap::Backward)?;
+                    (coords.from_scalar(scalar, Unit::Utf16) == Some(offset as usize))
+                        .then_some(scalar)
+                };
+                let (Some(start), Some(end)) = (at(c.start), at(c.end)) else {
+                    return Err("a recovered edit does not fit the text".to_owned());
+                };
+                if start > end {
+                    return Err("a recovered edit ends before it starts".to_owned());
+                }
+                s.set_selection(start, end);
+                if c.insert.is_empty() {
+                    if start < end {
+                        s.delete(Deletion::Forward).map_err(|e| e.to_string())?;
+                    }
+                } else {
+                    s.insert_text(&c.insert).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        s.set_selection(0, 0);
+        Ok(())
+    })
 }
 
 impl MarkdownPanel {
@@ -55,6 +96,11 @@ impl MarkdownPanel {
             let Phase::Ready(d) = &mut self.phase else {
                 return;
             };
+            // Nothing goes to the owner while recovered edits wait for a
+            // choice, nor until the owner has let go of them.
+            if d.restored.is_some() || d.settling > 0 {
+                return;
+            }
             let md = d.md.get_mut();
             // Nothing is owed without a pending edit or a wanted save, and
             // asking through the model costs a read of the text while a block
@@ -130,7 +176,26 @@ impl MarkdownPanel {
         let Some(task) = self.outstanding.remove(&c.effect) else {
             return;
         };
+        if c.outcome.is_access_revoked()
+            && c.resource == self.resource()
+            && !matches!(task, Task::Clip(_))
+        {
+            if let Outcome::Refused { code, reason } = &c.outcome {
+                self.revoke(code, reason);
+            }
+            return;
+        }
         match task {
+            Task::Recovered => {
+                let Some(d) = self.doc_mut() else { return };
+                d.settling = d.settling.saturating_sub(1);
+                if !matches!(c.outcome, Outcome::Accepted) {
+                    d.notice(
+                        "The owner did not let go of a recovered edit; sending may be refused.",
+                        Tone::Warn,
+                    );
+                }
+            }
             // Host-only: the root cannot tie them to the document, so the
             // answer may arrive as the cached kind. It is still the answer.
             Task::Clip(clip) => self.on_clip(clip, c),
@@ -225,6 +290,50 @@ impl MarkdownPanel {
             }
             _ => {}
         }
+        // Edits recovered from this device: put in the session when they were
+        // made against this text, and held there until the person chooses.
+        let recovered: Vec<&PendingEdit> = opened
+            .pending
+            .iter()
+            .filter(|p| p.state == CorePending::Restored)
+            .collect();
+        let restored_edits = if recovered.is_empty() {
+            None
+        } else {
+            let against_this = recovered
+                .iter()
+                .all(|p| revision_number(&p.base_revision) == Some(revision));
+            let fits = against_this
+                && !restored
+                && apply_recovered(
+                    &mut MarkdownDoc::new(&opened.text, revision, "check"),
+                    &recovered,
+                )
+                .is_ok()
+                && apply_recovered(&mut md, &recovered).is_ok();
+            let base = (!against_this).then(|| {
+                recovered
+                    .iter()
+                    .find(|p| revision_number(&p.base_revision) != Some(revision))
+                    .map(|p| match &p.base_revision {
+                        CoreRevision::Seq(n) => n.to_string(),
+                        CoreRevision::Opaque(t) => t.clone(),
+                    })
+                    .unwrap_or_default()
+            });
+            Some(Restored {
+                ops: recovered.iter().map(|p| p.operation_id.clone()).collect(),
+                applied: fits,
+                base,
+                inserted: recovered
+                    .iter()
+                    .flat_map(|p| p.edits.iter().map(|c| c.insert.as_str()))
+                    .filter(|t| !t.is_empty())
+                    .collect::<Vec<_>>()
+                    .join("\n\n"),
+                owner_read_only: opened.read_only.as_ref().map(|r| r.reason.clone()),
+            })
+        };
         let mut sync = OwnerSync::new(saved);
         // Text the last panel left held is held still.
         sync.held = md.session().conflict().map(|k| Held {
@@ -234,6 +343,8 @@ impl MarkdownPanel {
         });
         if let Some(r) = opened.read_only {
             md.apply_local(|s| sync.make_read_only(s, r.reason));
+        } else if restored_edits.is_some() {
+            md.apply_local(|s| sync.make_read_only(s, WAIT_FOR_CHOICE));
         }
         let mut d = Doc {
             md: std::cell::RefCell::new(md),
@@ -248,6 +359,8 @@ impl MarkdownPanel {
             preedit: None,
             tokens: TokenState::new(),
             version: 0,
+            restored: restored_edits,
+            settling: 0,
         };
         d.sync_read_only();
         self.phase = Phase::Ready(Box::new(d));
@@ -382,6 +495,11 @@ impl MarkdownPanel {
                     self.path = resource_id;
                 }
             }
+            HostMessage::DocumentLocal { resource, local } => {
+                if resource == self.resource() {
+                    self.local = Some(local);
+                }
+            }
             HostMessage::CapabilitiesChanged { capabilities } => {
                 self.documents = capabilities.has(&Capability::new("documents"));
             }
@@ -481,5 +599,80 @@ impl MarkdownPanel {
         let id = self.emit(cx, ResourceRef::None, body, None)?;
         self.outstanding.insert(id, Task::Clip(task));
         Ok(())
+    }
+}
+
+impl MarkdownPanel {
+    /// The person's choice about edits recovered from this device. Each is
+    /// settled with the owner first; kept text then goes out as new edits
+    /// against the current revision, once the owner has let go of the old ones.
+    pub(super) fn settle_recovered(&mut self, keep: bool, cx: &mut Ctx) {
+        let Some(d) = self.doc_mut() else { return };
+        let Some(restored) = d.restored.take() else {
+            return;
+        };
+        // The owner's own say on reading only comes back on top.
+        d.sync.read_only = restored.owner_read_only.clone();
+        d.sync_read_only();
+        let md = d.md.get_mut();
+        let note = match (keep, restored.applied) {
+            (true, true) => "Kept the recovered edits: they go to the owner as new edits.",
+            (true, false) => {
+                let inserted = restored.inserted.clone();
+                if !inserted.is_empty() {
+                    let added = md.apply_local(|s| {
+                        let end = s.len();
+                        s.set_selection(end, end);
+                        s.insert_text(&format!("\n\n{inserted}"))
+                            .map(|_| ())
+                            .map_err(|e| e.to_string())
+                    });
+                    if let Err(e) = added {
+                        d.notice(
+                            format!("The recovered text was not added: {e}"),
+                            Tone::Error,
+                        );
+                    }
+                }
+                "Kept the recovered text: it was added at the end and goes to the owner as a new edit."
+            }
+            (false, true) => {
+                // Drop what the recovered edits put in the session.
+                md.apply_local(|s| {
+                    let first = s.pending().first().map(|p| p.op_id.clone());
+                    if let Some(op) = first {
+                        let _ = s.refuse(&op, "discarded");
+                        let _ = s.resolve_conflict(Resolution::TakeTheirs);
+                    }
+                });
+                "Discarded the recovered edits."
+            }
+            (false, false) => "Discarded the recovered edits.",
+        };
+        d.notice(note, Tone::Info);
+        let ops = restored.ops;
+        for op in ops {
+            let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op });
+            if let Ok(id) = self.emit(cx, self.resource(), body, None) {
+                self.outstanding.insert(id, Task::Recovered);
+                if let Some(d) = self.doc_mut() {
+                    d.settling += 1;
+                }
+            }
+        }
+    }
+
+    /// Access to the document is gone: what was shown is cleared, not kept,
+    /// and nothing more is sent for it.
+    pub(super) fn revoke(&mut self, code: &str, reason: &str) {
+        let resource = self.resource();
+        let _ = self.drafts.take(&resource);
+        self.phase = Phase::Failed(Problem::revoked(code, reason));
+        self.outstanding.clear();
+        self.releases.clear();
+        self.need_pump = false;
+        self.local = None;
+        self.restore = None;
+        self.reveal = None;
     }
 }

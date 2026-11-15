@@ -6,7 +6,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 use theorem_workbench_core::ViewCtx;
-use theorem_workbench_core::host::ConnectionState;
+use theorem_workbench_core::host::{ConnectionState, LocalStatus};
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_core::results::Severity;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
@@ -258,7 +258,19 @@ impl EditorPanel {
                 None
             }
         };
-        let conflict = || (!d.session.has_conflict()).then(|| "There is no held text.".to_owned());
+        let placed = d
+            .sync
+            .restored
+            .as_ref()
+            .is_some_and(|r| r.moved_from.is_none());
+        let unplaced = d
+            .sync
+            .restored
+            .as_ref()
+            .is_some_and(|r| r.moved_from.is_some());
+        let conflict = || {
+            (!d.session.has_conflict() && !unplaced).then(|| "There is no held text.".to_owned())
+        };
         match choice {
             Choice::Save => {
                 if !self.documents {
@@ -321,6 +333,13 @@ impl EditorPanel {
                     None
                 }
             }
+            Choice::KeepMine if placed => {
+                Some("Edits recovered from this device are waiting: keep or discard them.".to_owned())
+            }
+            Choice::KeepMine if unplaced => Some(
+                "The recovered edits were made against another revision, so they cannot be placed in this text."
+                    .to_owned(),
+            ),
             Choice::KeepMine => {
                 if let Some(r) = read_only() {
                     Some(format!("{r}; sending the text again would be refused."))
@@ -328,8 +347,23 @@ impl EditorPanel {
                     conflict()
                 }
             }
+            Choice::TakeTheirs | Choice::KeepBoth if placed => {
+                Some("Keep or discard the recovered edits.".to_owned())
+            }
+            Choice::KeepBoth if unplaced => read_only(),
             Choice::TakeTheirs | Choice::KeepBoth => conflict(),
-            Choice::CopyMine => (!d.session.has_conflict() && d.sync.recoverable.is_none())
+            Choice::KeepRecovered | Choice::DiscardRecovered => match &d.sync.restored {
+                None => Some("No edits were recovered from this device.".to_owned()),
+                Some(_) if unplaced => Some(
+                    "They were made against another revision: take theirs, keep both or copy them."
+                        .to_owned(),
+                ),
+                Some(_) if choice == Choice::KeepRecovered => read_only(),
+                Some(_) => None,
+            },
+            Choice::CopyMine => (!d.session.has_conflict()
+                && d.sync.recoverable.is_none()
+                && !unplaced)
                 .then(|| "There is no held text.".to_owned()),
             Choice::Resend => d
                 .sync
@@ -373,6 +407,37 @@ impl EditorPanel {
                 prompt: Prompt::Name(n.error.clone()),
                 buttons: vec![],
             });
+        }
+        if let Some(r) = &d.sync.restored {
+            let why = r
+                .reason
+                .as_ref()
+                .map(|w| format!(" {w}"))
+                .unwrap_or_default();
+            let (body, mut buttons) = match &r.moved_from {
+                Some(from) => (
+                    format!(
+                        "Edits recovered from this device were made against {from}; the file is at revision {}, so they are not placed.{why} Recovered: \"{}\"",
+                        d.session.accepted_revision(),
+                        snip(&r.text, 24)
+                    ),
+                    vec![Choice::TakeTheirs, Choice::KeepBoth, Choice::CopyMine],
+                ),
+                None => (
+                    format!(
+                        "Edits recovered from this device are in the text. Nothing is sent until you choose.{why}"
+                    ),
+                    vec![
+                        Choice::KeepRecovered,
+                        Choice::DiscardRecovered,
+                        Choice::CopyMine,
+                    ],
+                ),
+            };
+            if d.sync.read_only.is_some() {
+                buttons.retain(|c| !matches!(c, Choice::KeepBoth | Choice::KeepRecovered));
+            }
+            return text(body, Tone::Warn, buttons);
         }
         if d.session.has_conflict() || d.sync.held.is_some() {
             let reason = d
@@ -706,6 +771,28 @@ impl EditorPanel {
         if d.dirty() {
             flag("modified".to_owned(), "modified", false);
         }
+        if let Some(l) = &self.local {
+            // Only what is known: a failed keep says the edits are in this
+            // page alone, and "kept" is said only when the host says so.
+            match (&l.problem, &l.status) {
+                (Some(p), _) => flag(
+                    format!("not kept: {}; only in this page", p.reason),
+                    "not kept",
+                    true,
+                ),
+                (None, LocalStatus::Accepted) => {}
+                (None, LocalStatus::Draft) => flag(
+                    "edits not yet kept on this device".to_owned(),
+                    "not kept yet",
+                    false,
+                ),
+                (None, LocalStatus::Checkpointed { .. }) => flag(
+                    "kept on this device, not saved to the file".to_owned(),
+                    "kept, unsaved",
+                    false,
+                ),
+            }
+        }
         if let Some(r) = &d.sync.read_only {
             flag(format!("read-only: {r}"), "read-only", true);
         }
@@ -728,6 +815,9 @@ impl EditorPanel {
         }
         if let Some(b) = d.busy {
             flag(b.to_owned(), b, false);
+        }
+        if d.sync.restored.is_some() {
+            flag("recovered edits wait".to_owned(), "recovered", true);
         }
         if let Some(p) = &d.findings.problem {
             flag(format!("no findings: {p}"), "no findings", false);
@@ -806,9 +896,24 @@ impl EditorPanel {
             };
             (format!("{}: {}", word(f.severity), f.message), tone)
         });
+        // A failed keep keeps its reason in view when the flag had to say less.
+        let not_kept = self
+            .local
+            .as_ref()
+            .and_then(|l| l.problem.as_ref())
+            .filter(|p| !left.contains(&p.reason))
+            .map(|p| {
+                (
+                    format!(
+                        "Not kept on this device: {}. The edits are only in this page.",
+                        p.reason
+                    ),
+                    Tone::Warn,
+                )
+            });
         let shown = match (&d.notice, finding) {
             (Some(n), _) => Some((n.text.clone(), n.tone)),
-            (None, finding) => finding,
+            (None, finding) => finding.or(not_kept),
         };
         let inline_room = w.saturating_sub(right.width() + gap + left.width() + 2);
         let (notice_inline, notice_rows) = match &shown {
@@ -1274,6 +1379,29 @@ impl EditorPanel {
         if selected > 0 {
             words.push(format!("{selected} graphemes selected"));
         }
+        if let Some(r) = &d.sync.restored {
+            words.push(match &r.moved_from {
+                Some(from) => format!(
+                    "edits recovered from this device were made against {from} and are not placed; choose what to do with them"
+                ),
+                None => "edits recovered from this device are in the text and wait for a choice".to_owned(),
+            });
+        }
+        if let Some(l) = &self.local {
+            match (&l.problem, &l.status) {
+                (Some(p), _) => words.push(format!(
+                    "not kept on this device ({}): {}; the edits are only in this page",
+                    p.code, p.reason
+                )),
+                (None, LocalStatus::Accepted) => {}
+                (None, LocalStatus::Draft) => {
+                    words.push("edits not yet kept on this device".to_owned())
+                }
+                (None, LocalStatus::Checkpointed { .. }) => {
+                    words.push("edits kept on this device, not saved to the file".to_owned())
+                }
+            }
+        }
         if d.find.is_open() {
             words.push(format!("find: {}", d.find.summary(&d.session)));
         }
@@ -1299,6 +1427,8 @@ impl EditorPanel {
             Choice::FindNext,
             Choice::FindPrevious,
             Choice::FindReplace,
+            Choice::KeepRecovered,
+            Choice::DiscardRecovered,
             Choice::Rename,
             Choice::Format,
             Choice::ApplyPlan,

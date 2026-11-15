@@ -45,6 +45,8 @@ fn chord(key: &KeyInput) -> Option<Choice> {
             't' => Some(Choice::TakeTheirs),
             'b' => Some(Choice::KeepBoth),
             'y' => Some(Choice::CopyMine),
+            'e' => Some(Choice::KeepRecovered),
+            'w' => Some(Choice::DiscardRecovered),
             'r' => Some(Choice::Resend),
             'd' => Some(Choice::KeepDisk),
             'k' => Some(Choice::KeepAuthority),
@@ -429,15 +431,24 @@ impl EditorPanel {
             Choice::Format => self.send_format(cx),
             Choice::ApplyPlan => self.apply_plan(cx),
             Choice::KeepMine => self.resolve(Resolution::KeepMine, cx),
+            // Recovered edits that were not placed are chosen about with the
+            // conflict's words, and settled as recovered ones.
+            Choice::TakeTheirs if self.unplaced() => self.settle_recovered(false, cx),
+            Choice::KeepBoth if self.unplaced() => self.settle_recovered(true, cx),
             Choice::TakeTheirs => self.resolve(Resolution::TakeTheirs, cx),
             Choice::KeepBoth => self.resolve(Resolution::KeepBoth, cx),
+            Choice::KeepRecovered => self.settle_recovered(true, cx),
+            Choice::DiscardRecovered => self.settle_recovered(false, cx),
             Choice::CopyMine => {
                 let Some(d) = self.doc() else { return };
-                let text = d
-                    .sync
-                    .recoverable
-                    .clone()
-                    .unwrap_or_else(|| d.session.text());
+                let text = match &d.sync.restored {
+                    Some(r) => r.text.clone(),
+                    None => d
+                        .sync
+                        .recoverable
+                        .clone()
+                        .unwrap_or_else(|| d.session.text()),
+                };
                 self.write_clipboard(text, Clip::Copy, cx);
             }
             Choice::Resend => {

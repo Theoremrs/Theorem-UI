@@ -22,7 +22,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 use theorem_workbench_core::completion::Outcome;
 use theorem_workbench_core::effect::{DocumentOpen, Effect, EffectBody, ReconcileKeep};
-use theorem_workbench_core::host::ConnectionState;
+use theorem_workbench_core::host::{ConnectionState, LocalState};
 use theorem_workbench_core::ids::{
     EffectId, Generation, ResourceRef, Revision as CoreRevision, WorkspaceIdentity,
 };
@@ -68,6 +68,11 @@ pub(crate) struct Problem {
 
 impl Problem {
     fn of(outcome: &Outcome) -> Self {
+        if outcome.is_access_revoked()
+            && let Outcome::Refused { code, reason } = outcome
+        {
+            return Self::revoked(code, reason);
+        }
         match outcome {
             Outcome::Refused { code, reason } => {
                 let low = code.to_lowercase();
@@ -106,6 +111,20 @@ impl Problem {
         }
     }
 
+    /// Access to the document is gone: what was shown is not kept, and asking
+    /// again would only be refused again.
+    fn revoked(code: &str, reason: &str) -> Self {
+        Self {
+            headline: "Access to this document was withdrawn".into(),
+            reason: format!(
+                "{reason} The text, the preview and any unsent edits were cleared from this panel."
+            ),
+            code: Some(code.to_owned()),
+            unknown: false,
+            can_retry: false,
+        }
+    }
+
     fn plain(headline: &str, reason: String) -> Self {
         Self {
             headline: headline.into(),
@@ -115,6 +134,24 @@ impl Problem {
             can_retry: false,
         }
     }
+}
+
+/// Edits the owner holds that were recovered from this device's checkpoint and
+/// never sent in this page session. The owner refuses new edits until each is
+/// settled, so the panel holds everything back until the person chooses.
+#[derive(Clone, Debug)]
+pub(crate) struct Restored {
+    /// The owner's operation ids, to settle.
+    pub ops: Vec<String>,
+    /// Their text is in the session (their base is the revision opened). When
+    /// not, nothing was applied and `inserted` is all that is left of them.
+    pub applied: bool,
+    /// The base revision the edits were made against, when it was not this one.
+    pub base: Option<String>,
+    /// The text the edits insert, as one run per edit.
+    pub inserted: String,
+    /// What the owner said about reading only, to put back when settled.
+    pub owner_read_only: Option<String>,
 }
 
 /// An open document.
@@ -137,6 +174,10 @@ pub(crate) struct Doc {
     pub preedit: Option<String>,
     /// Syntax colour from the host, kept in step with the text.
     pub tokens: TokenState,
+    /// Edits recovered from this device that wait for the person's choice.
+    pub restored: Option<Restored>,
+    /// Settles of recovered edits not yet answered: nothing is sent behind them.
+    pub settling: usize,
     /// Changes with every message that can change the text, so colour laid
     /// out for earlier text is not drawn on this.
     pub version: u64,
@@ -194,6 +235,8 @@ pub(crate) enum Task {
     Reconcile(ReconcileKeep),
     Clip(Clip),
     Release,
+    /// The settle of an edit recovered from this device.
+    Recovered,
 }
 
 #[derive(Clone, Debug)]
@@ -236,6 +279,8 @@ pub struct MarkdownPanel {
     need_pump: bool,
     /// A place to put the caret (`PanelMsg::Reveal`), kept until the text is here.
     reveal: Option<(u32, u32)>,
+    /// How far the document's edits are from being safe, as the host last said.
+    local: Option<LocalState>,
 }
 
 impl MarkdownPanel {
@@ -260,6 +305,7 @@ impl MarkdownPanel {
             restore,
             reveal: None,
             need_pump: false,
+            local: None,
         }
     }
 

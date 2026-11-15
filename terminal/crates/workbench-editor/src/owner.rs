@@ -23,13 +23,17 @@
 //! 4. settles held text with [`resolve`](OwnerSync::resolve), and emits the
 //!    `DocumentSettle` for each operation in the [`Step`] it returns.
 
-use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
+use theorem_workbench_core::completion::{
+    Completion, CompletionPayload, Outcome, PendingEdit as WireEdit, PendingState as WireState,
+};
 use theorem_workbench_core::effect::{
     CoordinateUnit, DocumentEdit, ReconcileKeep, TextChange as CoreChange,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::Revision as CoreRevision;
-use theorem_workbench_text::{EditSession, LocalEdit, OpId, Resolution, SyncError};
+use theorem_workbench_text::{
+    EditSession, LocalEdit, OpId, Resolution, SessionConfig, SyncError, TextChange,
+};
 
 use crate::sync::{Changed, apply_owner_change, resync, step_before};
 
@@ -50,6 +54,22 @@ pub struct Held {
     /// refusal was not a conflict, or the owner sent no current text.
     pub theirs: Option<Changed>,
     pub conflict: bool,
+}
+
+/// Edits the owner got back from this device's checkpoint after a reload. It
+/// sends none of them on its own and refuses new edits until each is settled,
+/// so nothing goes out until the person chooses.
+#[derive(Clone, Debug)]
+pub struct Restored {
+    /// The owner's operation ids, each settled once the person has chosen.
+    pub ops: Vec<String>,
+    /// Why the edits were not put into the text: they were made against a
+    /// revision other than the one the document opened at (or against text
+    /// these ranges do not fit), so placing them would be a guess.
+    pub moved_from: Option<String>,
+    /// What the edits insert, so the person can copy it.
+    pub text: String,
+    pub reason: Option<String>,
 }
 
 /// The file on disk changed under the document.
@@ -98,6 +118,10 @@ pub struct Step {
     pub text_changed: bool,
     /// What to say; the last one is the current word.
     pub notes: Vec<Note>,
+    /// Recovered operations the person has now chosen about: send a
+    /// `DocumentSettle` for each, and hold every new edit back until each is
+    /// answered.
+    pub settle_restored: Vec<String>,
     /// Held operations the session has now dealt with: send a
     /// `DocumentSettle` for each so the owner lets go of them.
     pub settle: Vec<OpId>,
@@ -142,6 +166,11 @@ pub struct OwnerSync {
     pub save: Saving,
     /// The whole text from before "take theirs", kept so it can be copied.
     pub recoverable: Option<String>,
+    /// Edits recovered from this device, waiting for the person's choice.
+    pub restored: Option<Restored>,
+    /// Settles of recovered operations not yet answered. The owner refuses
+    /// edits until each is, so none goes out meanwhile.
+    pub settling: usize,
 }
 
 const BEHIND: &str = "waiting for the owner's resync.";
@@ -183,7 +212,7 @@ impl OwnerSync {
     /// unknown, then a wanted save once every edit is accepted. Nothing while
     /// the text is behind the owner's.
     pub fn owed(&mut self, session: &mut EditSession) -> Option<Owed> {
-        if self.desync.is_some() {
+        if self.desync.is_some() || self.restored.is_some() || self.settling > 0 {
             return None;
         }
         if self.inflight.is_none()
@@ -246,6 +275,172 @@ impl OwnerSync {
         {
             self.save.inflight = None;
         }
+    }
+
+    // ---- edits recovered from this device -----------------------------------
+
+    /// Take the owner's restored edits (`pending` of the open) over the text
+    /// opened at `opened`. When they were made against that revision, on the
+    /// text the session shows, they go into it as held text: seen, and sent by
+    /// nobody. Otherwise they are not placed, only kept to be chosen about.
+    /// The undo history starts after the recovery either way.
+    pub fn recover(
+        &mut self,
+        session: &mut EditSession,
+        pending: &[WireEdit],
+        opened: u64,
+        fresh: bool,
+    ) -> Option<Note> {
+        let kept: Vec<&WireEdit> = pending
+            .iter()
+            .filter(|p| p.state == WireState::Restored)
+            .collect();
+        if kept.is_empty() {
+            return None;
+        }
+        let text = kept
+            .iter()
+            .map(|p| {
+                p.edits
+                    .iter()
+                    .map(|e| e.insert.as_str())
+                    .collect::<String>()
+            })
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        let reason = kept.iter().find_map(|p| p.reason.clone());
+        let mut moved_from = kept.iter().find_map(|p| match &p.base_revision {
+            CoreRevision::Seq(n) if *n == opened && fresh => None,
+            CoreRevision::Seq(n) if *n == opened => Some("the editor's own unsent text".to_owned()),
+            CoreRevision::Seq(n) => Some(format!("revision {n}")),
+            CoreRevision::Opaque(t) => Some(format!("revision {t}")),
+        });
+        if moved_from.is_none() {
+            let sets: Vec<Vec<TextChange>> = kept
+                .iter()
+                .map(|p| {
+                    p.edits
+                        .iter()
+                        .map(|e| TextChange {
+                            start: e.start as usize,
+                            end: e.end as usize,
+                            insert: e.insert.clone(),
+                        })
+                        .collect()
+                })
+                .collect();
+            // Tried on a copy of the text first: every set fits, or none goes in.
+            let mut trial =
+                EditSession::new(&session.text(), 0, SessionConfig::new("recovery-check"));
+            if let Some(e) = sets.iter().find_map(|c| trial.apply_changes(c).err()) {
+                moved_from = Some(format!("text these ranges do not fit ({e})"));
+            }
+            if moved_from.is_none() {
+                let mut first: Option<OpId> = None;
+                for changes in &sets {
+                    if let Ok(Some(edit)) = session.apply_changes(changes) {
+                        first.get_or_insert(edit.op_id);
+                    }
+                }
+                if let Some(op) = first {
+                    let why = reason
+                        .clone()
+                        .unwrap_or_else(|| "recovered from this device".to_owned());
+                    let _ = session.refuse(&op, why);
+                }
+                session.clear_history();
+            }
+        }
+        let placed = moved_from.is_none();
+        self.restored = Some(Restored {
+            ops: kept.iter().map(|p| p.operation_id.clone()).collect(),
+            moved_from,
+            text,
+            reason,
+        });
+        Some(Note {
+            text: if placed {
+                "Edits recovered from this device are shown. Nothing is sent until you choose."
+            } else {
+                "Edits recovered from this device were not placed: the file changed since. Nothing is sent until you choose."
+            }
+            .to_owned(),
+            level: Level::Warn,
+        })
+    }
+
+    /// Keep the recovered edits: settle each, then send the text as new edits
+    /// against the revision the document is at now. Edits that were not
+    /// placed are added after the file's text, as "keep both" does.
+    pub fn keep_restored(&mut self, session: &mut EditSession) -> Step {
+        let mut step = Step::default();
+        let Some(r) = self.restored.take() else {
+            return step;
+        };
+        if r.moved_from.is_some() {
+            let end = session.len();
+            let lead = if end > 0 && !session.text().ends_with('\n') {
+                "\n"
+            } else {
+                ""
+            };
+            session.set_selection(end, end);
+            if let Err(e) = session.insert_text(&format!("{lead}{}", r.text)) {
+                step.say(Level::Warn, format!("Not kept: {e}"));
+                self.restored = Some(r);
+                return step;
+            }
+        } else if session.has_conflict() {
+            let _ = session.resolve_conflict(Resolution::KeepMine);
+        }
+        step.text_changed = true;
+        step.say(
+            Level::Info,
+            "Kept the recovered edits. They are sent as new edits on the current text.",
+        );
+        step.settle_restored = r.ops;
+        step
+    }
+
+    /// Discard the recovered edits: settle each and drop the text.
+    pub fn discard_restored(&mut self, session: &mut EditSession) -> Step {
+        let mut step = Step::default();
+        let Some(r) = self.restored.take() else {
+            return step;
+        };
+        if r.moved_from.is_none() && session.has_conflict() {
+            let _ = session.resolve_conflict(Resolution::TakeTheirs);
+        }
+        step.text_changed = true;
+        step.say(
+            Level::Info,
+            "Discarded the edits recovered from this device.",
+        );
+        step.settle_restored = r.ops;
+        step
+    }
+
+    /// The owner's answer to the settle of one recovered operation.
+    pub fn restored_settled(&mut self, c: &Completion) -> Step {
+        let mut step = Step::default();
+        self.settling = self.settling.saturating_sub(1);
+        match &c.outcome {
+            Outcome::Accepted => {}
+            // The edit that follows is then refused for the draft the owner
+            // still holds, which says so where the person can see it.
+            Outcome::Refused { reason, .. } | Outcome::Failed { reason } => {
+                step.say(
+                    Level::Warn,
+                    format!("A recovered edit was not settled: {reason}"),
+                );
+            }
+            Outcome::Uncertain { reason } => step.say(
+                Level::Warn,
+                format!("Unknown whether a recovered edit was settled: {reason}"),
+            ),
+        }
+        step
     }
 
     // ---- the owner's answers ----------------------------------------------

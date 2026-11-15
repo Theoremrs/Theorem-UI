@@ -41,6 +41,8 @@ pub enum Choice {
     Resend,
     KeepDisk,
     KeepAuthority,
+    KeepRecovered,
+    DiscardRecovered,
     Dismiss,
     Retry,
     Close,
@@ -116,7 +118,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 23] = [
+const TABLE: [Descriptor; 25] = [
     d(
         Choice::Visual,
         "markdown.mode.visual",
@@ -264,6 +266,22 @@ const TABLE: [Descriptor; 23] = [
         "Alt+K",
         Some("documents"),
         EffectKind::DocumentReconcile,
+    ),
+    sends(
+        Choice::KeepRecovered,
+        "markdown.recovered.keep",
+        "Keep recovered edits",
+        "Alt+J",
+        Some("documents"),
+        EffectKind::DocumentSettle,
+    ),
+    sends(
+        Choice::DiscardRecovered,
+        "markdown.recovered.discard",
+        "Discard recovered edits",
+        "Alt+G",
+        Some("documents"),
+        EffectKind::DocumentSettle,
     ),
     d(Choice::Dismiss, "markdown.dismiss", "Dismiss", "Esc", None),
     sends(

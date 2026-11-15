@@ -137,6 +137,20 @@ impl EditorPanel {
                 self.outstanding.insert(id, Task::Release);
             }
         }
+        // Each recovered operation is settled before the owner takes another
+        // edit, so the count of answers owed holds the edits back.
+        for op in step.settle_restored {
+            let body = EffectBody::DocumentSettle(DocumentSettle { operation_id: op });
+            match self.emit(cx, self.resource(), body, None) {
+                Ok(id) => {
+                    self.outstanding.insert(id, Task::Restore);
+                    if let Some(d) = self.doc_mut() {
+                        d.sync.settling += 1;
+                    }
+                }
+                Err(e) => self.say(emit_notice(e), Tone::Warn),
+            }
+        }
     }
 
     // ---- completions ------------------------------------------------------
@@ -155,6 +169,11 @@ impl EditorPanel {
             // For a resource the panel is no longer bound to: not the current
             // state, so not shown.
             _ if cached => {}
+            // Giving back a hold says nothing about the document now bound.
+            Task::Release => {}
+            // The owner says access to the document is gone: nothing of it
+            // stays on screen or in memory, and nothing more is sent.
+            _ if c.outcome.is_access_revoked() => self.revoke(&c.outcome),
             Task::Open => self.on_open(c, cx),
             Task::Edit(op) => self.on_edit(op, c, cx),
             Task::Save(revision) => self.on_save(revision, c, cx),
@@ -169,8 +188,25 @@ impl EditorPanel {
                 references,
             } => self.on_places(revision, references, c),
             Task::Check(revision) => self.on_check(revision, c),
-            Task::Release => {}
+            Task::Restore => {
+                let Some(d) = self.doc_mut() else { return };
+                let step = d.sync.restored_settled(&c);
+                self.apply_step(step, cx);
+            }
         }
+    }
+
+    /// Forget the document: the text, the held edits, the drafts and what was
+    /// kept to put the view back. The owner's reason is shown in place of it.
+    fn revoke(&mut self, outcome: &Outcome) {
+        let resource = self.resource();
+        self.drafts.take(&resource);
+        self.restore = None;
+        self.local = None;
+        self.phase = Phase::Failed(Problem::revoked(outcome));
+        // Whatever was in flight is answered for nobody now.
+        self.outstanding.retain(|_, t| matches!(t, Task::Clip(_)));
+        self.need_pump = false;
     }
 
     pub(super) fn on_open(&mut self, c: Completion, cx: &mut Ctx) {
@@ -223,6 +259,7 @@ impl EditorPanel {
             },
             None => None,
         };
+        let fresh = kept.is_none();
         let mut session = kept.unwrap_or_else(|| {
             let client = format!("{}.{}", cx.panel().as_str(), c.effect.0);
             EditSession::new(&opened.text, revision, SessionConfig::new(client))
@@ -258,6 +295,12 @@ impl EditorPanel {
             preedit: None,
             busy: None,
         };
+        if let Some(n) = d
+            .sync
+            .recover(&mut d.session, &opened.pending, revision, fresh)
+        {
+            d.notice(n.text, Tone::Warn);
+        }
         if let Some(r) = &opened.read_only {
             d.sync.make_read_only(&mut d.session, r.reason.clone());
         }
@@ -441,6 +484,11 @@ impl EditorPanel {
                     d.tokens.offer(&d.session, revision, encoding, &spans);
                 }
             }
+            HostMessage::DocumentLocal { resource, local } => {
+                if resource == self.resource() {
+                    self.local = Some(local);
+                }
+            }
             HostMessage::DocumentMoved { from, to } => {
                 if from == self.resource()
                     && let ResourceRef::Document {
@@ -469,6 +517,17 @@ impl EditorPanel {
     pub(super) fn resolve(&mut self, how: Resolution, cx: &mut Ctx) {
         let Some(d) = self.doc_mut() else { return };
         let step = d.sync.resolve(&mut d.session, how);
+        self.apply_step(step, cx);
+    }
+
+    /// Keep or discard the edits recovered from this device.
+    pub(super) fn settle_recovered(&mut self, keep: bool, cx: &mut Ctx) {
+        let Some(d) = self.doc_mut() else { return };
+        let step = if keep {
+            d.sync.keep_restored(&mut d.session)
+        } else {
+            d.sync.discard_restored(&mut d.session)
+        };
         self.apply_step(step, cx);
     }
 

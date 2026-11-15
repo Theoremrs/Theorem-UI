@@ -28,7 +28,7 @@ use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use theorem_workbench_core::completion::Outcome;
 use theorem_workbench_core::effect::{DocumentOpen, Effect, EffectBody, ReconcileKeep};
-use theorem_workbench_core::host::ConnectionState;
+use theorem_workbench_core::host::{ConnectionState, LocalState};
 use theorem_workbench_core::ids::{
     EffectId, Generation, ResourceRef, Revision as CoreRevision, WorkspaceIdentity,
 };
@@ -167,6 +167,22 @@ impl Problem {
         }
     }
 
+    /// Access to the document is gone: the owner's reason, said as it is, and
+    /// no way to try again from here.
+    fn revoked(outcome: &Outcome) -> Self {
+        let (reason, code) = match outcome {
+            Outcome::Refused { code, reason } => (reason.clone(), Some(code.clone())),
+            _ => (String::new(), None),
+        };
+        Self {
+            headline: "You no longer have access to this file".into(),
+            reason,
+            code,
+            unknown: false,
+            can_retry: false,
+        }
+    }
+
     fn plain(headline: &str, reason: String) -> Self {
         Self {
             headline: headline.into(),
@@ -253,11 +269,25 @@ pub(crate) enum Task {
     Apply,
     Format,
     Release,
-    Hover { revision: u64, version: u64 },
-    Complete { revision: u64, version: u64 },
-    Navigate { revision: u64, references: bool },
+    /// The settle of a recovered operation: edits wait for its answer.
+    Restore,
+    Hover {
+        revision: u64,
+        version: u64,
+    },
+    Complete {
+        revision: u64,
+        version: u64,
+    },
+    Navigate {
+        revision: u64,
+        references: bool,
+    },
     Check(u64),
-    Create { path: String, adopt: bool },
+    Create {
+        path: String,
+        adopt: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -292,6 +322,8 @@ pub struct EditorPanel {
     naming: Option<Naming>,
     /// A place to put the caret (`PanelMsg::Reveal`), kept until the text is here.
     reveal: Option<(u32, u32)>,
+    /// What the host says about keeping this document's edits on the device.
+    local: Option<LocalState>,
 }
 
 /// The scalar offset of `line` (from 1) and `column` (UTF-16 units, from 1),
@@ -350,6 +382,7 @@ impl EditorPanel {
             outstanding: BTreeMap::new(),
             restore,
             reveal: None,
+            local: None,
             need_pump: false,
             naming: state["path"]
                 .as_str()
@@ -365,6 +398,13 @@ impl EditorPanel {
     pub fn with_styles(mut self, styles: EditorStyles) -> Self {
         self.styles = Some(styles);
         self
+    }
+
+    /// Edits recovered from this device that could not be placed in the text.
+    fn unplaced(&self) -> bool {
+        self.doc()
+            .and_then(|d| d.sync.restored.as_ref())
+            .is_some_and(|r| r.moved_from.is_some())
     }
 
     fn resource(&self) -> ResourceRef {
@@ -464,7 +504,10 @@ impl EditorPanel {
         match std::mem::replace(&mut self.phase, Phase::Waiting) {
             Phase::Ready(d) => {
                 self.restore = Some(d.session.view_snapshot());
-                if d.session.has_pending() {
+                // Edits recovered from the device stay with the owner until
+                // chosen about, and come back with the next open; a draft
+                // holding them as well would show them twice.
+                if d.session.has_pending() && d.sync.restored.is_none() {
                     self.drafts.put(old.clone(), d.session);
                 }
                 self.releases.push(old);
@@ -473,6 +516,7 @@ impl EditorPanel {
             Phase::Waiting | Phase::Failed(_) => {}
         }
         self.outstanding.retain(|_, t| matches!(t, Task::Clip(_)));
+        self.local = None;
         if self.identity.is_set() {
             self.workspace = self.identity.workspace.clone();
         }
@@ -633,6 +677,7 @@ impl Panel for EditorPanel {
                 self.pump(cx);
                 if let Phase::Ready(mut d) = std::mem::replace(&mut self.phase, Phase::Waiting)
                     && d.session.has_pending()
+                    && d.sync.restored.is_none()
                 {
                     d.session.break_undo_group();
                     self.drafts.put(resource.clone(), d.session);

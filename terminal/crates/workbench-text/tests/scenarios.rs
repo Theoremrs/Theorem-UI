@@ -929,3 +929,50 @@ fn an_undo_that_edits_inside_a_live_range_dissolves_it_and_restores_the_old_one(
     );
     ok(&s);
 }
+
+// ---- edits kept elsewhere ----
+
+#[test]
+fn changes_kept_elsewhere_apply_as_one_pending_edit_and_start_the_history_over() {
+    let mut s = session("a\u{1f600}bc");
+    // UTF-16: the emoji is two units, so "b" is at 3..4.
+    let edit = s
+        .apply_changes(&[TextChange {
+            start: 3,
+            end: 4,
+            insert: "XY".into(),
+        }])
+        .unwrap()
+        .expect("an edit");
+    assert_eq!(s.text(), "a\u{1f600}XYc");
+    assert_eq!(s.pending().len(), 1);
+    assert_eq!(s.pending()[0].op_id, edit.op_id);
+    s.clear_history();
+    assert!(!s.can_undo());
+    ok(&s);
+}
+
+#[test]
+fn changes_that_do_not_fit_the_text_change_nothing() {
+    let mut s = session("abc");
+    let err = s.apply_changes(&[TextChange {
+        start: 2,
+        end: 9,
+        insert: "x".into(),
+    }]);
+    assert!(matches!(err, Err(SyncError::BadChange(_))), "{err:?}");
+    assert_eq!(s.text(), "abc");
+    assert!(!s.has_pending());
+    // A split scalar is refused too, not snapped.
+    let mut s = session("a\u{1f600}");
+    assert!(
+        s.apply_changes(&[TextChange {
+            start: 2,
+            end: 2,
+            insert: "x".into(),
+        }])
+        .is_err()
+    );
+    assert_eq!(s.apply_changes(&[]).unwrap(), None);
+    ok(&s);
+}

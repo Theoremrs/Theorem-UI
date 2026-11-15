@@ -60,6 +60,8 @@ fn chord(key: &KeyInput, editing: bool, block_open: bool) -> Option<Choice> {
             'r' => Some(Choice::Resend),
             'd' => Some(Choice::KeepDisk),
             'k' => Some(Choice::KeepAuthority),
+            'j' => Some(Choice::KeepRecovered),
+            'g' => Some(Choice::DiscardRecovered),
             _ => None,
         },
         Key::Enter if alt => Some(Choice::OpenLink),
@@ -466,6 +468,8 @@ impl MarkdownPanel {
                     d.notice("Sending the edit again under its own id.", Tone::Info);
                 }
             }
+            Choice::KeepRecovered => self.settle_recovered(true, cx),
+            Choice::DiscardRecovered => self.settle_recovered(false, cx),
             Choice::KeepDisk => self.reconcile(ReconcileKeep::Disk, cx),
             Choice::KeepAuthority => self.reconcile(ReconcileKeep::Authority, cx),
             Choice::Dismiss => {

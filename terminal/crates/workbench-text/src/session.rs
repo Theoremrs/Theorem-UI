@@ -653,6 +653,42 @@ impl EditSession {
         self.edit_range(0, end, text, Kind::Other)
     }
 
+    /// Apply `changes` (UTF-16, against the current text, in order and not
+    /// overlapping) as one local edit: edits kept somewhere else, such as a
+    /// device checkpoint, brought back over the text they were made against.
+    /// A range that does not fit the text is an error and changes nothing.
+    /// Not guarded by read-only: the edits were the person's already.
+    pub fn apply_changes(
+        &mut self,
+        changes: &[TextChange],
+    ) -> Result<Option<LocalEdit>, SyncError> {
+        let op = op_from_changes(
+            &self.local,
+            changes.iter().map(|c| (c.start, c.end, c.insert.clone())),
+            Unit::Utf16,
+        )?;
+        if op.is_noop() {
+            return Ok(None);
+        }
+        let shape = EditShape {
+            kind: Kind::Other,
+            start: 0,
+            end: 0,
+            inserted: 0,
+            class: class_of(""),
+            has_newline: false,
+        };
+        let edit = self.commit(op, Record::Edit(shape));
+        self.normalize();
+        Ok(Some(edit))
+    }
+
+    /// Forget the undo and redo history: what is shown now is where undoing
+    /// stops.
+    pub fn clear_history(&mut self) {
+        self.history.clear();
+    }
+
     pub fn undo(&mut self) -> Result<Option<LocalEdit>, EditError> {
         self.guard_edit()?;
         let Some(entry) = self.history.pop_undo() else {

@@ -25,7 +25,8 @@ use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::results::SpanEncoding;
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
-    DockMsg, Model, Msg, PanelFactories, Theme, ViewCtx, semantics, update,
+    DockMsg, LocalProblem, LocalState, LocalStatus, Model, Msg, PanelFactories, Theme, ViewCtx,
+    semantics, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset, Role};
 use theorem_workbench_markdown::MarkdownStyles;
@@ -246,6 +247,15 @@ impl Rig {
     }
 
     fn answer_open(&mut self, text: &str, revision: u64) -> Vec<Effect> {
+        self.answer_open_with(text, revision, vec![])
+    }
+
+    fn answer_open_with(
+        &mut self,
+        text: &str,
+        revision: u64,
+        pending: Vec<PendingEdit>,
+    ) -> Vec<Effect> {
         let open = self.open.take().expect("an open is waiting");
         let c = Completion::new(open.id, open.resource.clone(), Outcome::Accepted).with_payload(
             CompletionPayload::DocumentOpened(DocumentOpened {
@@ -254,7 +264,7 @@ impl Rig {
                 saved_revision: None,
                 dirty: false,
                 read_only: None,
-                pending: vec![],
+                pending,
             }),
         );
         self.send(Msg::Completion(c))
@@ -1896,4 +1906,276 @@ fn the_tab_label_is_the_file_name_and_the_modified_mark_and_follows_a_move() {
     let moved = label(&rig);
     assert_eq!(moved.title, "renamed.md");
     assert!(moved.modified);
+}
+
+// ---- 11: local state, edits recovered from this device, revoked access ----------
+
+fn local(status: LocalStatus, problem: Option<(&str, &str)>) -> HostMessage {
+    HostMessage::DocumentLocal {
+        resource: doc(),
+        local: LocalState {
+            status,
+            problem: problem.map(|(code, reason)| LocalProblem {
+                code: code.into(),
+                reason: reason.into(),
+            }),
+        },
+    }
+}
+
+fn restored(op: &str, base: u64, start: u32, end: u32, insert: &str) -> PendingEdit {
+    PendingEdit {
+        operation_id: op.into(),
+        base_revision: seq(base),
+        edits: vec![CoreChange {
+            start,
+            end,
+            insert: insert.into(),
+        }],
+        state: PendingState::Restored,
+        reason: None,
+    }
+}
+
+fn settles(fx: &[Effect]) -> Vec<String> {
+    of_kind(fx, EffectKind::DocumentSettle)
+        .iter()
+        .map(|e| match &e.body {
+            EffectBody::DocumentSettle(s) => s.operation_id.clone(),
+            other => panic!("{other:?}"),
+        })
+        .collect()
+}
+
+#[test]
+fn local_state_is_in_the_status_line_in_every_mode_at_80_and_40_columns_and_in_the_tree() {
+    // The words at 80 columns and at 40, and words that must not be there.
+    let states = [
+        (LocalStatus::Accepted, None, "", "", "device"),
+        (
+            LocalStatus::Draft,
+            None,
+            "not yet kept on this device",
+            "not yet kept on this device",
+            "saved",
+        ),
+        (
+            LocalStatus::Checkpointed {
+                saved_at_ms: 1,
+                recovered: false,
+            },
+            None,
+            "kept on this device, not saved",
+            "kept on this device",
+            "not yet",
+        ),
+        (
+            LocalStatus::Draft,
+            Some(("quota", "the browser store is full")),
+            "keeping failed, only in this page",
+            "only in this page",
+            "not yet",
+        ),
+    ];
+    for (status, problem, wide, narrow, absent) in states {
+        for (width, words) in [(80u16, wide), (40, narrow)] {
+            for mode in ['1', '2', '3', '4'] {
+                let mut rig = Rig::opened("hello\n");
+                rig.alt(mode);
+                rig.host(local(status.clone(), problem));
+                let bottom = rig.rows(width, 24)[23].clone();
+                if words.is_empty() {
+                    assert!(!bottom.contains(absent), "{bottom}");
+                    assert!(!rig.has_node("local"));
+                } else {
+                    assert!(
+                        bottom.contains(words),
+                        "{width} columns, mode {mode}: {bottom:?}"
+                    );
+                    assert!(!bottom.contains(absent), "{bottom}");
+                    let name = rig.node("local").name;
+                    assert!(name.contains("device") || name.contains("page"), "{name}");
+                }
+                rig.tree_ok();
+            }
+        }
+    }
+    // A failed local write says why, and that the edits are only in this page.
+    let mut rig = Rig::opened("hello\n");
+    rig.host(local(
+        LocalStatus::Draft,
+        Some(("quota", "the browser store is full")),
+    ));
+    let screen = rig.screen();
+    assert!(screen.contains("the browser store is full"), "{screen}");
+    assert!(screen.contains("only in this page"), "{screen}");
+    // Edits the owner has say nothing extra, whatever came before.
+    rig.host(local(LocalStatus::Accepted, None));
+    assert!(!rig.screen().contains("device"), "{}", rig.screen());
+}
+
+#[test]
+fn recovered_edits_are_shown_and_nothing_is_sent_before_the_person_chooses() {
+    let mut rig = Rig::start();
+    let mut fx = rig.answer_open_with(
+        "hello\n",
+        1,
+        vec![restored("r1", 1, 0, 0, "X"), restored("r2", 1, 1, 1, "Y")],
+    );
+    rig.alt('2');
+    assert!(rig.text().starts_with("XYhello"), "{}", rig.text());
+    assert!(
+        rig.screen().contains("recovered from this device"),
+        "{}",
+        rig.screen()
+    );
+    assert!(rig.has_node("strip"));
+    rig.tree_ok();
+    fx.extend(rig.tick());
+    fx.extend(rig.typed("Q"));
+    fx.extend(rig.tick());
+    assert!(fx.is_empty(), "nothing is sent before a choice: {fx:#?}");
+    assert!(
+        rig.text().starts_with("XYhello"),
+        "typing waits for the choice"
+    );
+    // Saving waits too.
+    assert!(rig.act("markdown.save").is_empty());
+}
+
+#[test]
+fn keeping_recovered_edits_settles_each_and_then_sends_the_text_once() {
+    let mut rig = Rig::start();
+    rig.answer_open_with(
+        "hello\n",
+        1,
+        vec![restored("r1", 1, 0, 0, "X"), restored("r2", 1, 1, 1, "Y")],
+    );
+    let fx = rig.alt('j');
+    assert_eq!(settles(&fx), vec!["r1".to_owned(), "r2".to_owned()]);
+    none_of(&fx, EffectKind::DocumentEdit);
+    let sent = of_kind(&fx, EffectKind::DocumentSettle)
+        .into_iter()
+        .cloned()
+        .collect::<Vec<_>>();
+    // The owner has not yet let go: nothing is sent behind it.
+    none_of(&rig.tick(), EffectKind::DocumentEdit);
+    let first = rig.answer(&sent[0], Outcome::Accepted, None);
+    none_of(&first, EffectKind::DocumentEdit);
+    let mut fx = rig.answer(&sent[1], Outcome::Accepted, None);
+    fx.extend(rig.tick());
+    let first_edit = the_edit(&fx);
+    assert_eq!(applied("hello\n", &first_edit), "Xhello\n");
+    let EffectBody::DocumentEdit(body) = &first_edit.body else {
+        panic!()
+    };
+    assert!(
+        !["r1", "r2"].contains(&body.operation_id.as_str()),
+        "a new id"
+    );
+    assert_eq!(
+        first_edit.revision,
+        Some(seq(1)),
+        "against the current revision"
+    );
+    // One in flight at a time, in order; each leaves once.
+    assert!(edits(&rig.tick()).is_empty());
+    let mut fx = rig.accept(&first_edit, 2);
+    fx.extend(rig.tick());
+    let second = the_edit(&fx);
+    assert_eq!(applied("Xhello\n", &second), "XYhello\n");
+    assert_eq!(second.revision, Some(seq(2)));
+    let mut fx = rig.accept(&second, 3);
+    fx.extend(rig.tick());
+    assert!(edits(&fx).is_empty(), "nothing is sent again by itself");
+    assert!(!rig.screen().contains("recovered from this device"));
+}
+
+#[test]
+fn discarding_recovered_edits_only_settles_and_drops_the_text() {
+    let mut rig = Rig::start();
+    rig.answer_open_with("hello\n", 1, vec![restored("r1", 1, 0, 0, "X")]);
+    rig.alt('2');
+    let fx = rig.alt('g');
+    assert_eq!(settles(&fx), vec!["r1".to_owned()]);
+    none_of(&fx, EffectKind::DocumentEdit);
+    assert_eq!(rig.text(), "hello");
+    let sent = of_kind(&fx, EffectKind::DocumentSettle)[0].clone();
+    let mut after = rig.answer(&sent, Outcome::Accepted, None);
+    after.extend(rig.tick());
+    assert!(after.is_empty(), "discarding sends no edit: {after:#?}");
+    assert!(!rig.screen().contains("recovered from this device"));
+    // Editing works again, as ordinary edits.
+    let edit = the_edit(&rig.key(Key::Char('Z')));
+    assert_eq!(applied("hello\n", &edit), "Zhello\n");
+}
+
+#[test]
+fn recovered_edits_made_against_another_revision_are_not_applied_blindly() {
+    for keep in [true, false] {
+        let mut rig = Rig::start();
+        let mut fx = rig.answer_open_with("hello\n", 3, vec![restored("r1", 2, 0, 0, "LOST")]);
+        rig.alt('2');
+        assert!(rig.text().starts_with("hello"), "{}", rig.text());
+        assert!(!rig.text().contains("LOST"), "the text is the owner's");
+        let screen = rig.screen();
+        assert!(screen.contains("not applied"), "{screen}");
+        assert!(screen.contains("revision 2"), "{screen}");
+        fx.extend(rig.tick());
+        assert!(fx.is_empty(), "{fx:#?}");
+        let fx = rig.alt(if keep { 'j' } else { 'g' });
+        assert_eq!(settles(&fx), vec!["r1".to_owned()]);
+        let sent = of_kind(&fx, EffectKind::DocumentSettle)[0].clone();
+        let mut after = rig.answer(&sent, Outcome::Accepted, None);
+        after.extend(rig.tick());
+        if keep {
+            let edit = the_edit(&after);
+            assert!(applied("hello\n", &edit).contains("LOST"));
+        } else {
+            assert!(after.is_empty(), "{after:#?}");
+            assert_eq!(rig.text(), "hello");
+        }
+    }
+}
+
+#[test]
+fn revoked_access_clears_the_document_and_stops_sending() {
+    let mut rig = Rig::source("secret text\n");
+    let e = the_edit(&rig.key(Key::Char('X')));
+    let fx = rig.answer(
+        &e,
+        Outcome::Refused {
+            code: "access_revoked".into(),
+            reason: "You were removed from this workspace.".into(),
+        },
+        None,
+    );
+    assert!(fx.is_empty());
+    let screen = rig.screen();
+    assert!(
+        screen.contains("You were removed from this workspace."),
+        "{screen}"
+    );
+    assert!(screen.contains("withdrawn"), "{screen}");
+    assert!(!screen.contains("secret"), "the text is gone: {screen}");
+    let tree = format!("{:?}", semantics(&rig.m));
+    assert!(!tree.contains("secret"), "{tree}");
+    rig.tree_ok();
+    let mut fx = rig.key(Key::Char('Y'));
+    fx.extend(rig.tick());
+    fx.extend(rig.act("markdown.save"));
+    fx.extend(rig.host(remote_insert(2, 0, "z")));
+    assert!(edits(&fx).is_empty() && of_kind(&fx, EffectKind::DocumentSave).is_empty());
+    // A refusal that is not about access leaves the text where it is.
+    let mut rig = Rig::source("kept text\n");
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Refused {
+            code: "invalid".into(),
+            reason: "no".into(),
+        },
+        None,
+    );
+    assert!(rig.text().contains("kept text"));
 }
