@@ -72,8 +72,12 @@ function follow() {
   useTerminalTheme.setState({ theme, roles })
 }
 
-follow()
-new MutationObserver(follow).observe(document.documentElement, {
-  attributes: true,
-  attributeFilter: ['class', 'data-palette', 'style'],
-})
+// The cabinet imports this module statically, so it can load during server
+// rendering: there it keeps the fallback roles and follows nothing.
+if (typeof document !== 'undefined') {
+  follow()
+  new MutationObserver(follow).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['class', 'data-palette', 'style'],
+  })
+}
