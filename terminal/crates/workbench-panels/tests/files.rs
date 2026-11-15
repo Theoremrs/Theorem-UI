@@ -1565,6 +1565,35 @@ fn a_muted_entry_stays_muted_when_it_is_renamed_in_place() {
 // ---- theme roles for refusals and unknown results -----------------------------------
 
 #[test]
+fn on_the_focus_fill_a_problem_keeps_its_role_color_on_the_panes_background() {
+    // The role colors are chosen against the pane; on the focus fill they cannot be read.
+    let mut r = rig();
+    r.open_root();
+    let theme = Theme {
+        bg: Style::default().bg(Color::Blue),
+        text: Style::default().fg(Color::White),
+        focus: Style::default().fg(Color::Black).bg(Color::Cyan),
+        ..colored()
+    };
+    let rename = rename_a_txt(&mut r, "b.txt");
+    r.done(
+        rename.id,
+        Outcome::Refused {
+            code: "already_exists".into(),
+            reason: "b.txt exists".into(),
+        },
+        None,
+    );
+    let note = r.style_of(&theme, "refused (already_exists)");
+    assert_eq!(
+        (note.fg, note.bg),
+        (Some(Color::Red), Some(Color::Blue)),
+        "{}",
+        r.screen()
+    );
+}
+
+#[test]
 fn refusals_and_failures_use_the_error_role_and_unknown_results_the_warning_role() {
     let mut r = rig();
     r.open_root();
@@ -1683,4 +1712,42 @@ fn an_invalid_name_and_a_delete_question_are_told_by_role_too() {
     r.key(Key::Esc);
     r.key(Key::Delete);
     assert_eq!(r.style_of(&theme, "Delete a.txt?").fg, Some(Color::Yellow));
+}
+
+// ---- Option chords on a Mac -------------------------------------------------
+
+fn option(c: char) -> KeyInput {
+    KeyInput::new(Key::Char(c), Mods::ALT)
+}
+
+#[test]
+fn takes_chord_answers_for_new_file_and_new_folder_only_while_browsing() {
+    let mut r = rig();
+    r.open_root();
+    r.key(Key::Home);
+    assert!(r.m.takes_chord(&option('n')));
+    assert!(r.m.takes_chord(&option('N')));
+    // The name is open: every key is the name's.
+    r.mods(Key::Char('n'), Mods::ALT);
+    assert!(!r.m.takes_chord(&option('n')));
+    r.key(Key::Esc);
+    assert!(r.m.takes_chord(&option('n')));
+}
+
+#[test]
+fn takes_chord_is_false_for_the_new_chord_without_a_files_service() {
+    let mut r = rig();
+    r.send(Msg::Host(HostMessage::CapabilitiesChanged {
+        capabilities: Capabilities::of(["environment"]),
+    }));
+    assert!(!r.m.takes_chord(&option('n')));
+}
+
+#[test]
+fn takes_chord_leaves_a_plain_option_character_to_be_typed() {
+    let mut r = rig();
+    r.open_root();
+    for c in ['q', 'e', 't', 'z', '1'] {
+        assert!(!r.m.takes_chord(&option(c)), "{c}");
+    }
 }

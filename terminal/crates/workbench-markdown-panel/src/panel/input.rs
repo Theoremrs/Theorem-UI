@@ -90,6 +90,24 @@ impl MarkdownPanel {
         }
     }
 
+    /// The chord a key is in the state the panel is in, for `on_key` to do and
+    /// `takes_chord` to ask: what is typed and whether a block is open decide
+    /// which keys are the panel's.
+    fn chord_choice(&self, key: &KeyInput) -> Option<Choice> {
+        let d = self.doc()?;
+        let editing = self.typing(d);
+        let block_open = self.shown(d).mode == MarkdownMode::Visual && editing;
+        chord(key, editing, block_open)
+    }
+
+    /// Whether this chord is a command here and now. One the panel would only
+    /// refuse ("There is nothing held.", the mode already shown) is left to be
+    /// typed, so Option+T is a dagger until there is a conflict to settle.
+    pub(super) fn takes_chord(&self, key: &KeyInput) -> bool {
+        self.chord_choice(key)
+            .is_some_and(|choice| self.unavailable(choice).is_none())
+    }
+
     pub(super) fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let Some(d) = self.doc() else {
             match key.key() {
@@ -100,8 +118,7 @@ impl MarkdownPanel {
             return;
         };
         let editing = self.typing(d);
-        let block_open = self.shown(d).mode == MarkdownMode::Visual && editing;
-        if let Some(choice) = chord(&key, editing, block_open) {
+        if let Some(choice) = self.chord_choice(&key) {
             self.choose(choice, cx);
             return;
         }

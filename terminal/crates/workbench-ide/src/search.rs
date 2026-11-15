@@ -731,15 +731,8 @@ impl SearchPanel {
 
     fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         let mods = key.mods();
-        if mods.contains(Mods::ALT)
-            && let Key::Char(c) = key.key()
-        {
-            match c.to_ascii_lowercase() {
-                'r' => return self.toggle(0),
-                'c' => return self.toggle(1),
-                'w' => return self.toggle(2),
-                _ => {}
-            }
+        if let Some(which) = toggle_chord(&key) {
+            return self.toggle(which);
         }
         match key.key() {
             Key::Tab => return self.next_focus(mods.contains(Mods::SHIFT)),
@@ -1285,6 +1278,17 @@ fn globs(value: &str) -> Vec<String> {
         .collect()
 }
 
+/// Alt+R, Alt+C and Alt+W flip regex, case and whole word, in any field and
+/// state: the index of the toggle, for `on_key` to flip and `takes_chord` to ask.
+fn toggle_chord(key: &KeyInput) -> Option<usize> {
+    match key.key() {
+        Key::Char(c) if key.mods().contains(Mods::ALT) => ['r', 'c', 'w']
+            .iter()
+            .position(|&t| t == c.to_ascii_lowercase()),
+        _ => None,
+    }
+}
+
 impl Panel for SearchPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
         self.adopt(cx.workspace());
@@ -1385,6 +1389,10 @@ impl Panel for SearchPanel {
 
     fn text_entry(&self) -> bool {
         self.focus != Focus::Results
+    }
+
+    fn takes_chord(&self, key: &KeyInput) -> bool {
+        toggle_chord(key).is_some()
     }
 }
 

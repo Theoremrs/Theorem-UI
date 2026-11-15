@@ -56,7 +56,44 @@ fn chord(key: &KeyInput) -> Option<Choice> {
     }
 }
 
+/// What a chord the editor handles itself does: a choice, or the one change to
+/// the find bar that has no choice of its own.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Command {
+    Choose(Choice),
+    ToggleCase,
+}
+
 impl EditorPanel {
+    /// The command a key is in the state the editor is in, for `on_key` to do
+    /// and `takes_chord` to ask. The modals take every key first: while the
+    /// editor is not showing a document, a name is typed, or the rename name
+    /// is open, Alt and a letter is a typed character or nothing.
+    pub(super) fn command(&self, key: &KeyInput) -> Option<Command> {
+        let d = self.doc()?;
+        if self.naming.is_some() || d.rename.is_some() {
+            return None;
+        }
+        if let Some(choice) = chord(key) {
+            return Some(Command::Choose(choice));
+        }
+        (d.find.is_open()
+            && key.mods().contains(Mods::ALT)
+            && matches!(key.key(), Key::Char('c' | 'C')))
+        .then_some(Command::ToggleCase)
+    }
+
+    /// Whether Option and this key is a command here and now. A chord the
+    /// editor would only refuse ("There is no held text.") is left to be
+    /// typed, so Option+T is a dagger until there is a conflict to settle.
+    pub(super) fn takes_chord(&self, key: &KeyInput) -> bool {
+        match self.command(key) {
+            Some(Command::Choose(choice)) => self.unavailable(choice).is_none(),
+            Some(Command::ToggleCase) => true,
+            None => false,
+        }
+    }
+
     pub(super) fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         if !matches!(self.phase, Phase::Ready(_)) {
             if self.naming_idle() {
@@ -98,18 +135,22 @@ impl EditorPanel {
             return;
         }
 
-        if let Some(choice) = chord(&key) {
-            self.choose(choice, cx);
-            return;
+        match self.command(&key) {
+            Some(Command::Choose(choice)) => {
+                self.choose(choice, cx);
+                return;
+            }
+            Some(Command::ToggleCase) => {
+                if let Some(d) = self.doc_mut() {
+                    d.find.toggle_case();
+                }
+                return;
+            }
+            None => {}
         }
 
         let Some(d) = self.doc_mut() else { return };
         let mods = key.mods();
-        if d.find.is_open() && mods.contains(Mods::ALT) && matches!(key.key(), Key::Char('c' | 'C'))
-        {
-            d.find.toggle_case();
-            return;
-        }
 
         if d.in_find && d.find.is_replacing() {
             if mods.contains(Mods::ALT) && key.key() == Key::Enter {

@@ -3308,3 +3308,78 @@ fn the_recovered_bars_are_whole_and_work_at_any_width() {
         assert_eq!(moved_rig(w).buttons("strip:").len(), 3, "{w}");
     }
 }
+
+// ---- Option chords on a Mac -------------------------------------------------
+
+fn option(c: char) -> KeyInput {
+    KeyInput::new(Key::Char(c), Mods::ALT)
+}
+
+#[test]
+fn takes_chord_answers_for_conflict_chords_only_while_text_is_held() {
+    let mut rig = Rig::opened("hello\n");
+    for c in ['m', 't', 'b', 'y'] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}: nothing is held");
+    }
+    conflicted(&mut rig);
+    for c in ['m', 't', 'b', 'y'] {
+        assert!(rig.m.takes_chord(&option(c)), "{c}: text is held");
+    }
+}
+
+#[test]
+fn takes_chord_answers_for_recovered_edit_chords_only_while_they_wait() {
+    let rig = recovered_rig(80);
+    for c in ['j', 'g'] {
+        assert!(rig.m.takes_chord(&option(c)), "{c}: an offer is showing");
+    }
+    let rig = Rig::opened("hello\n");
+    for c in ['j', 'g'] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}: no offer");
+    }
+}
+
+#[test]
+fn takes_chord_answers_for_resend_only_while_an_edit_is_unknown() {
+    let mut rig = Rig::opened("hello\n");
+    assert!(!rig.m.takes_chord(&option('r')));
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Uncertain {
+            reason: "the connection dropped".into(),
+        },
+        None,
+    );
+    assert!(rig.m.takes_chord(&option('r')));
+}
+
+#[test]
+fn takes_chord_answers_for_find_case_only_while_find_is_open() {
+    let mut rig = Rig::opened("alpha\n");
+    assert!(!rig.m.takes_chord(&option('c')));
+    rig.chord('f');
+    assert!(rig.m.takes_chord(&option('c')));
+    assert!(rig.m.takes_chord(&option('C')));
+    rig.key(Key::Esc);
+    assert!(!rig.m.takes_chord(&option('c')));
+}
+
+#[test]
+fn takes_chord_answers_for_shifted_format_and_leaves_a_plain_option_letter_to_type() {
+    let rig = Rig::opened("hello\n");
+    // KeyInput drops Shift from a character key; Shift is the capital letter.
+    assert!(rig.m.takes_chord(&option('F')));
+    assert!(!rig.m.takes_chord(&option('f')), "format needs Shift");
+    for c in ['q', 'e', 'n', 'z', '1', '['] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}");
+    }
+}
+
+#[test]
+fn takes_chord_is_false_while_the_rename_name_is_typed() {
+    let mut rig = Rig::opened("hello\n");
+    assert!(rig.m.takes_chord(&option('h')), "hover, before the rename");
+    rig.key(Key::F2);
+    assert!(!rig.m.takes_chord(&option('h')), "the name takes every key");
+}

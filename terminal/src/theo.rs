@@ -1419,6 +1419,33 @@ impl TheoPanel {
         run(self, cx);
     }
 
+    /// How far Alt+[ (back) or Alt+] (forward) steps through the thread's
+    /// branches, for `on_key` to do and `takes_chord` to ask. An unbound side
+    /// chat has only its list, which takes no Alt chord.
+    fn branch_step(&self, input: &KeyInput) -> Option<isize> {
+        if (self.kind == Kind::Side && !self.bound()) || !input.mods().contains(Mods::ALT) {
+            return None;
+        }
+        match input.key() {
+            Key::Char('[') => Some(-1),
+            Key::Char(']') => Some(1),
+            _ => None,
+        }
+    }
+
+    /// Whether Option and this key changes the branch now. Where `on_key` would
+    /// only say "this conversation has only one branch" or "a run is working",
+    /// the character is left to be typed.
+    fn takes_chord(&self, input: &KeyInput) -> bool {
+        self.branch_step(input).is_some()
+            && !self.owner.working()
+            && self
+                .owner
+                .history
+                .as_ref()
+                .is_some_and(|h| !h.forks.is_empty())
+    }
+
     fn on_key(&mut self, input: &KeyInput, cx: &mut Ctx) {
         if self.kind == Kind::Side && !self.bound() {
             let Some(event) = event_of(input) else {
@@ -1435,12 +1462,8 @@ impl TheoPanel {
         }
         let mods = input.mods();
         // Alt+[ and Alt+] select the previous and the next branch of the thread.
-        if mods.contains(Mods::ALT) {
-            match input.key() {
-                Key::Char('[') => return self.branch(-1, cx),
-                Key::Char(']') => return self.branch(1, cx),
-                _ => {}
-            }
+        if let Some(step) = self.branch_step(input) {
+            return self.branch(step, cx);
         }
         // `y` and `n` answer a waiting approval while nothing is typed; they
         // are checked before the composer so they are never taken as text.
@@ -2218,6 +2241,10 @@ impl Panel for TheoPanel {
 
     fn text_entry(&self) -> bool {
         self.kind == Kind::Main || self.bound()
+    }
+
+    fn takes_chord(&self, key: &KeyInput) -> bool {
+        TheoPanel::takes_chord(self, key)
     }
 }
 
@@ -3065,6 +3092,53 @@ mod tests {
             switch.branch_id, "root",
             "the last branch wraps to the root"
         );
+    }
+
+    #[test]
+    fn takes_chord_answers_for_the_branch_chords_only_where_they_change_the_branch() {
+        let option = |c: char| KeyInput::new(Key::Char(c), Mods::ALT);
+        let mut r = rig();
+        r.show(1, "t1", json!({"messages": [user("m1", "hi")]}));
+        assert!(
+            !r.m.takes_chord(&option('[')) && !r.m.takes_chord(&option(']')),
+            "one branch: the character is typed"
+        );
+        r.show(
+            2,
+            "t1",
+            json!({
+                "messages": [user("m1", "hi")],
+                "history": {
+                    "rootBranchId": "root",
+                    "selectedBranchId": "b2",
+                    "forks": [{"branchId": "b1"}, {"branchId": "b2"}]
+                }
+            }),
+        );
+        assert!(r.m.takes_chord(&option('[')) && r.m.takes_chord(&option(']')));
+        for c in ['q', 'e', 'n', '1', 'p'] {
+            assert!(!r.m.takes_chord(&option(c)), "{c}");
+        }
+        assert!(!r.m.takes_chord(&KeyInput::new(Key::Char('['), Mods::NONE)));
+    }
+
+    #[test]
+    fn takes_chord_leaves_the_branch_characters_to_type_while_a_run_is_working() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({
+                "messages": [user("m1", "hi")],
+                "history": {
+                    "rootBranchId": "root",
+                    "selectedBranchId": "b2",
+                    "forks": [{"branchId": "b1"}, {"branchId": "b2"}]
+                },
+                "run": {"state": "streaming"}
+            }),
+        );
+        assert!(!r.m.takes_chord(&KeyInput::new(Key::Char('['), Mods::ALT)));
     }
 
     #[test]

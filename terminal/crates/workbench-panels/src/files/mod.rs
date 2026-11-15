@@ -552,6 +552,9 @@ impl FilesPanel {
             return self.type_ahead(c);
         }
         self.ahead.clear();
+        if let Some(directory) = self.new_chord(&key) {
+            return self.begin_new(directory);
+        }
         let page = self.viewport_rows().saturating_sub(1).max(1);
         match key.key() {
             Key::Up => self.step(|at, n| at.map_or(n - 1, |i| i.saturating_sub(1))),
@@ -581,10 +584,26 @@ impl FilesPanel {
                 'v' => self.paste(cx),
                 _ => {}
             },
-            Key::Char(c) if mods.contains(Mods::ALT) && c.eq_ignore_ascii_case(&'n') => {
-                self.begin_new(c.is_uppercase());
-            }
             _ => {}
+        }
+    }
+
+    /// Alt+N starts a new file and Alt+Shift+N a new folder, only where the
+    /// tree is browsed and listed: while a name or a question is open, or
+    /// before the listing, the key is not a command. `Some(true)` is a folder.
+    fn new_chord(&self, key: &KeyInput) -> Option<bool> {
+        let mods = key.mods();
+        match key.key() {
+            Key::Char(c)
+                if matches!(self.mode, Mode::Browse)
+                    && self.ready()
+                    && mods.contains(Mods::ALT)
+                    && !mods.intersects(Mods::CTRL | Mods::CMD)
+                    && c.eq_ignore_ascii_case(&'n') =>
+            {
+                Some(c.is_uppercase())
+            }
+            _ => None,
         }
     }
 
@@ -1178,5 +1197,9 @@ impl Panel for FilesPanel {
 
     fn text_entry(&self) -> bool {
         matches!(self.mode, Mode::Edit(_))
+    }
+
+    fn takes_chord(&self, key: &KeyInput) -> bool {
+        self.new_chord(key).is_some()
     }
 }

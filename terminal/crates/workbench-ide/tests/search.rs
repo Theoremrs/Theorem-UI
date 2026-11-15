@@ -3,7 +3,7 @@
 mod common;
 
 use common::{WORKSPACE, marked, names, open, open_with, row_with};
-use keybinds::{Key, Mods};
+use keybinds::{Key, KeyInput, Mods};
 use ratatui::style::{Color, Style};
 use serde_json::json;
 use theorem_workbench_core::Theme;
@@ -627,4 +627,20 @@ fn search_at_80_by_24_draws_the_form_the_status_and_the_grouped_results() {
     assert!(screen[3].contains("3 matches in 2 files.") && screen[3].contains("[Search]"));
     assert!(screen[4].starts_with("src/lib.rs (2)"));
     assert!(screen.iter().any(|l| l.contains("a   needle b")));
+}
+
+#[test]
+fn takes_chord_answers_for_the_three_toggles_in_every_field_and_leaves_other_option_letters_to_type()
+ {
+    let mut rig = rig();
+    let option = |c: char| KeyInput::new(Key::Char(c), Mods::ALT);
+    for focus in 0..4 {
+        for c in ['r', 'c', 'w', 'R'] {
+            assert!(rig.m.takes_chord(&option(c)), "{c} in field {focus}");
+        }
+        for c in ['q', 'e', 't', 'n', '1', '['] {
+            assert!(!rig.m.takes_chord(&option(c)), "{c} in field {focus}");
+        }
+        rig.key(Key::Tab);
+    }
 }

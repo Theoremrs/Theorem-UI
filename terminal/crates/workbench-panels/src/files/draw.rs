@@ -2,7 +2,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::{Modifier, Style};
+use ratatui::style::{Color, Modifier, Style};
 use theorem_workbench_core::completion::FileKind;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeId, Role};
@@ -95,21 +95,32 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     FileKind::File => name.clone(),
                 };
                 x = put(buf, x, y, right, &shown, line);
+                // Role colors are chosen against the pane and fall under 4.5:1 on the
+                // focus fill. There the mark beside the name takes the row's own ink, and
+                // a note, which says what happened in its role color, stands on the pane's
+                // background.
+                let filled = here && cx.focused;
                 if let Some(clip) = clip {
-                    x = put(
-                        buf,
-                        x,
-                        y,
-                        right,
-                        &format!(" ({clip})"),
-                        line.patch(theme.muted),
-                    );
+                    let style = if filled {
+                        line
+                    } else {
+                        line.patch(theme.muted)
+                    };
+                    x = put(buf, x, y, right, &format!(" ({clip})"), style);
                 }
                 if let Some(note) = note {
-                    let style = match note {
-                        NoteState::Pending(_) => theme.muted,
-                        NoteState::Problem(p) => toned(theme, line, p.tone()),
+                    let base = match (filled, line.bg) {
+                        (true, Some(_)) => Style {
+                            bg: Some(theme.bg.bg.unwrap_or(Color::Reset)),
+                            ..theme.text
+                        },
+                        _ => line,
                     };
+                    let tone = match note {
+                        NoteState::Pending(_) => Tone::Plain,
+                        NoteState::Problem(p) => p.tone(),
+                    };
+                    let style = toned(theme, base, tone);
                     put(buf, x, y, right, &format!("  {}", note.label()), style);
                 }
             }

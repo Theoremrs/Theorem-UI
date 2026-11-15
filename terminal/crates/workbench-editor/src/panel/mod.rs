@@ -667,6 +667,10 @@ impl Panel for EditorPanel {
         matches!(self.phase, Phase::Ready(_))
     }
 
+    fn takes_chord(&self, key: &keybinds::KeyInput) -> bool {
+        EditorPanel::takes_chord(self, key)
+    }
+
     /// Closing the view keeps the draft with its owner: unsent text is kept
     /// for the next editor of the document and the panel's hold on the owner's
     /// session is released. Nothing is discarded.

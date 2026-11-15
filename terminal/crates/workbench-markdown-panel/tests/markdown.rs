@@ -2500,3 +2500,84 @@ fn the_caret_after_recovery_is_after_the_last_change_in_every_mode_that_has_one(
     assert!(screen.contains("XYQhello"), "visual: {screen}");
     assert!(rig.has_node("strip"));
 }
+
+// ---- Option chords on a Mac -------------------------------------------------
+
+fn option(c: char) -> KeyInput {
+    KeyInput::new(Key::Char(c), Mods::ALT)
+}
+
+#[test]
+fn takes_chord_answers_for_the_mode_chords_except_the_mode_already_shown() {
+    let mut rig = Rig::opened("hello\n");
+    assert!(!rig.m.takes_chord(&option('1')), "Visual is shown");
+    for c in ['2', '3', '4'] {
+        assert!(rig.m.takes_chord(&option(c)), "{c}");
+    }
+    rig.alt('2');
+    assert!(rig.m.takes_chord(&option('1')));
+    assert!(!rig.m.takes_chord(&option('2')), "Source is shown");
+}
+
+#[test]
+fn takes_chord_answers_for_the_checkbox_chord_only_where_it_acts() {
+    let mut rig = Rig::opened("- [ ] a\n");
+    assert!(rig.m.takes_chord(&option('x')));
+    rig.alt('4');
+    assert!(!rig.m.takes_chord(&option('x')), "Preview does not edit");
+}
+
+#[test]
+fn takes_chord_answers_for_conflict_chords_only_while_text_is_held() {
+    let mut rig = Rig::source("hello\n");
+    for c in ['m', 't', 'b', 'y'] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}: nothing is held");
+    }
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Refused {
+            code: "conflict".into(),
+            reason: "the document moved on".into(),
+        },
+        Some(conflict_payload(&e, "hello!\n", 2)),
+    );
+    for c in ['m', 't', 'b', 'y'] {
+        assert!(rig.m.takes_chord(&option(c)), "{c}: text is held");
+    }
+}
+
+#[test]
+fn takes_chord_answers_for_recovered_edit_chords_only_while_they_wait() {
+    let rig = recovered_in('2', 1, 1);
+    for c in ['j', 'g'] {
+        assert!(rig.m.takes_chord(&option(c)), "{c}: an offer is showing");
+    }
+    let rig = Rig::source("hello\n");
+    for c in ['j', 'g'] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}: no offer");
+    }
+}
+
+#[test]
+fn takes_chord_answers_for_resend_only_while_an_edit_is_unknown() {
+    let mut rig = Rig::source("hello\n");
+    assert!(!rig.m.takes_chord(&option('r')));
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Uncertain {
+            reason: "no answer in time".into(),
+        },
+        None,
+    );
+    assert!(rig.m.takes_chord(&option('r')));
+}
+
+#[test]
+fn takes_chord_leaves_a_plain_option_character_to_be_typed() {
+    let rig = Rig::source("hello\n");
+    for c in ['q', 'e', 'n', 'z', '5', '[', 'c'] {
+        assert!(!rig.m.takes_chord(&option(c)), "{c}");
+    }
+}

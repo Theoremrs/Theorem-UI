@@ -559,6 +559,10 @@ impl Panel for MarkdownPanel {
         self.doc().is_some_and(|d| self.typing(d))
     }
 
+    fn takes_chord(&self, key: &keybinds::KeyInput) -> bool {
+        MarkdownPanel::takes_chord(self, key)
+    }
+
     /// Closing the view keeps the draft with its owner: unsent text and the
     /// block that was open are kept for the next panel of the document and the
     /// panel's hold on the owner's session is released. Nothing is discarded.

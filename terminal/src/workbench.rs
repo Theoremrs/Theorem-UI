@@ -24,9 +24,8 @@ use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    ActionId, Actor, ArrangementMsg, ArrangementNotice, Button, Capability, Caret, CaretPhase,
-    CaretShape, Composition, Effect, Inbound, Model, Msg, Notice, PanelFactories, Pointer,
-    PointerKind, Theme, builtin,
+    ActionId, Actor, ArrangementMsg, Button, Capability, Caret, CaretPhase, CaretShape,
+    Composition, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, builtin,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
@@ -243,6 +242,67 @@ fn key_input(key: &str, mods: Mods) -> Option<KeyInput> {
         }
         key => Some(KeyInput::new(key, mods)),
     }
+}
+
+/// The character printed on a key, from its position (`KeyboardEvent.code`, the US layout the
+/// chords are written in), or `None` for a key that is not a letter, digit or punctuation key.
+///
+/// On a Mac, Option changes what a key reports: `event.key` is "†" for Option+T and a dead key
+/// for Option+E, so a chord with Option in it is looked up by where the key is.
+// SOURCING: `keybinds` has no DOM converter and `keyboard-types` models `Code` without a table
+// from a code to its character, so the forty-seven keys are spelled here.
+fn positional_key(code: &str) -> Option<String> {
+    let one = |rest: &str, ok: fn(&char) -> bool| {
+        let mut chars = rest.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) if ok(&c) => Some(c.to_ascii_lowercase().to_string()),
+            _ => None,
+        }
+    };
+    if let Some(letter) = code.strip_prefix("Key") {
+        return one(letter, char::is_ascii_uppercase);
+    }
+    if let Some(digit) = code.strip_prefix("Digit") {
+        return one(digit, char::is_ascii_digit);
+    }
+    let c = match code {
+        "Minus" => '-',
+        "Equal" => '=',
+        "BracketLeft" => '[',
+        "BracketRight" => ']',
+        "Backslash" => '\\',
+        "Semicolon" => ';',
+        "Quote" => '\'',
+        "Comma" => ',',
+        "Period" => '.',
+        "Slash" => '/',
+        "Backquote" => '`',
+        _ => return None,
+    };
+    Some(c.to_string())
+}
+
+/// A keydown as two inputs: the key the browser reports, and, on a Mac with Option held, the
+/// key by its position. The second is the chord a person meant when Option turned the first
+/// into another character.
+fn key_inputs(
+    key: &str,
+    code: &str,
+    mods: Mods,
+    platform: Platform,
+) -> (Option<KeyInput>, Option<KeyInput>) {
+    let reported = key_input(key, mods);
+    let positional = (platform == Platform::Mac && mods.contains(Mods::ALT))
+        .then(|| positional_key(code))
+        .flatten()
+        // A shifted letter is its capital everywhere else (the browser reports `F` for
+        // Shift+F), and the panels bind the capital.
+        .map(|k| match mods.contains(Mods::SHIFT) {
+            true => k.to_ascii_uppercase(),
+            false => k,
+        })
+        .and_then(|k| key_input(&k, mods));
+    (reported, positional)
 }
 
 fn is_bare_printable(input: &KeyInput) -> bool {
@@ -471,9 +531,6 @@ struct Core {
     conversations: Directory,
     /// The Artifacts panel's link to the page's cabinet controller.
     cabinet: CabinetLink,
-    /// The last thing a saved arrangement did or could not do, drawn at the right end of the
-    /// bottom row until a key is pressed.
-    told: Option<String>,
     /// When the person last typed, so a blinking caret holds solid a beat after each key.
     typed_at: f64,
 }
@@ -511,8 +568,11 @@ impl Core {
         let cabinet = CabinetLink::default();
         let mut factories = factories_with(&conversations, &cabinet, editor_first);
         tweak(&mut factories);
+        let mut model = Model::new(registry, factories, keys, Capabilities::default(), dock);
+        // The core draws its own notice row; nothing here takes notices from the queue.
+        model.set_notice_queue(false);
         Self {
-            model: Model::new(registry, factories, keys, Capabilities::default(), dock),
+            model,
             publisher: SemanticPublisher::default(),
             theme: Theme::plain(),
             platform,
@@ -523,7 +583,6 @@ impl Core {
             theo_opened: false,
             conversations,
             cabinet,
-            told: None,
             typed_at: 0.0,
         }
     }
@@ -535,9 +594,6 @@ impl Core {
             Msg::Key(_) | Msg::Text(_) | Msg::Paste(_) | Msg::Composition(_)
         ) {
             self.typed_at = now();
-            if self.told.take().is_some() {
-                self.repaint = true;
-            }
         }
         self.conversations.observe(&msg);
         update(&mut self.model, msg)
@@ -571,7 +627,31 @@ impl Core {
     /// - Any other key is sent to the panel. Navigation and editing keys are
     ///   consumed; an unresolved Ctrl, Alt or Cmd chord is not, so the browser
     ///   keeps its copy, paste, reload and zoom.
+    #[cfg(test)]
     fn key(&mut self, input: KeyInput) -> (bool, Vec<Effect>) {
+        self.press(Some(input), None)
+    }
+
+    /// A keydown as `key_inputs` reads it. The positional chord wins only when the workbench
+    /// would act on it, and is then consumed; otherwise the reported key goes its usual way, so
+    /// Option still types its characters (é, ß) into a panel that binds nothing to them.
+    fn press(
+        &mut self,
+        reported: Option<KeyInput>,
+        positional: Option<KeyInput>,
+    ) -> (bool, Vec<Effect>) {
+        if let Some(chord) = positional
+            && self.model.takes_chord(&chord)
+        {
+            return (true, self.update(Msg::Key(chord)));
+        }
+        match reported {
+            Some(input) => self.reported_key(input),
+            None => (false, vec![]),
+        }
+    }
+
+    fn reported_key(&mut self, input: KeyInput) -> (bool, Vec<Effect>) {
         let focus = self.model.focus();
         let owner = focus.panel.as_ref();
         let kind = owner.and_then(|id| {
@@ -627,12 +707,6 @@ impl Core {
             effects.extend(self.focus("theo.focus"));
         }
         effects.extend(self.update(Msg::Tick));
-        while let Some(notice) = self.model.take_notice() {
-            if let Notice::Arrangement(told) = notice {
-                self.told = Some(arrangement_line(&told));
-                self.repaint = true;
-            }
-        }
         if theme != self.theme {
             self.theme = theme;
             self.repaint = true;
@@ -658,48 +732,6 @@ impl Core {
     fn draw(&self, frame: &mut Frame) {
         let area = frame.area();
         view(&self.model, area, frame.buffer_mut(), &self.theme);
-        // What a saved arrangement said, or that the layouts are this browser's own copy.
-        let line = self.told.clone().or_else(|| {
-            self.model
-                .layout_is_device_copy()
-                .then(|| "layout: this device's copy, not your account's".to_owned())
-        });
-        if let (Some(line), true) = (line, area.height > 0) {
-            let text = format!(" {line} ");
-            let width = u16::try_from(text.chars().count())
-                .unwrap_or(u16::MAX)
-                .min(area.width);
-            let x = area.x + area.width - width;
-            let y = area.y + area.height - 1;
-            let style = self.theme.warning;
-            frame
-                .buffer_mut()
-                .set_stringn(x, y, text, usize::from(width), style);
-        }
-    }
-}
-
-/// One line for what a saved arrangement did or could not do.
-fn arrangement_line(told: &ArrangementNotice) -> String {
-    use ArrangementNotice as N;
-    match told {
-        N::Applied { name } => format!("layout: {name} applied"),
-        N::Partial {
-            name, unavailable, ..
-        } => {
-            format!("layout: {name} applied, without {}", unavailable.join(", "))
-        }
-        N::Unreadable { name, reason } => format!("layout: {name} unreadable ({reason})"),
-        N::Unknown { name } => format!("layout: no arrangement named {name}"),
-        N::BadName { reason } => format!("layout: name refused ({reason})"),
-        N::NameTaken { name } => format!("layout: {name} is already taken"),
-        N::StoreFull { limit } => format!("layout: {limit} arrangements kept already"),
-        N::NotSaved { reason } => format!("layout: not saved ({reason})"),
-        N::DeviceCopy => "layout: this device's copy, not your account's".to_owned(),
-        N::NeedsAccountLoad { reason } => format!("layout: not saved ({reason})"),
-        N::LoadedWithLoss { skipped, reason } => {
-            format!("layout: {skipped} entries skipped ({reason})")
-        }
     }
 }
 
@@ -878,13 +910,10 @@ impl WorkbenchHandle {
     /// A keydown; true when the workbench consumed it and the page should
     /// `preventDefault`.
     pub fn key(&self, event: KeyboardEvent) -> bool {
-        let Some(input) = key_input(&event.key(), {
-            let platform = self.core.borrow().platform;
-            Modifiers::of(&event).mods(platform)
-        }) else {
-            return false;
-        };
-        let (consumed, effects) = self.core.borrow_mut().key(input);
+        let platform = self.core.borrow().platform;
+        let mods = Modifiers::of(&event).mods(platform);
+        let (reported, positional) = key_inputs(&event.key(), &event.code(), mods, platform);
+        let (consumed, effects) = self.core.borrow_mut().press(reported, positional);
         deliver(&self.on_effect, &self.on_semantics, &effects, None);
         consumed
     }
@@ -1999,6 +2028,112 @@ mod tests {
         let (consumed, _) = core.key(press("a"));
         assert!(consumed);
         assert_eq!(core.model.picker().filter(), "a");
+    }
+
+    /// A Mac's Cmd+Option, as the DOM reports the modifiers.
+    fn cmd_option() -> Mods {
+        Modifiers {
+            ctrl_key: false,
+            alt_key: true,
+            shift_key: false,
+            meta_key: true,
+        }
+        .mods(Platform::Mac)
+    }
+
+    #[test]
+    fn a_key_is_named_by_its_position_for_letters_digits_and_punctuation_only() {
+        assert_eq!(positional_key("KeyT").as_deref(), Some("t"));
+        assert_eq!(positional_key("Digit4").as_deref(), Some("4"));
+        assert_eq!(positional_key("BracketRight").as_deref(), Some("]"));
+        assert_eq!(positional_key("Backslash").as_deref(), Some("\\"));
+        for other in ["ArrowLeft", "Enter", "Keypad", "KeyTT", "Digit", "F5", ""] {
+            assert_eq!(positional_key(other), None, "{other}");
+        }
+    }
+
+    #[test]
+    fn on_a_mac_an_option_chord_is_read_by_position_and_nowhere_else() {
+        // Option+T reports a dagger and Option+E a dead key; the chord is the letter on the key.
+        let (reported, positional) = key_inputs("\u{2020}", "KeyT", cmd_option(), Platform::Mac);
+        assert_eq!(reported.map(|k| k.key()), Some(Key::Char('\u{2020}')));
+        assert_eq!(positional.map(|k| k.key()), Some(Key::Char('t')));
+        let (reported, positional) = key_inputs("Dead", "KeyE", cmd_option(), Platform::Mac);
+        assert!(reported.is_none());
+        assert_eq!(positional.map(|k| k.key()), Some(Key::Char('e')));
+        // No Option, or not a Mac: only what the browser reports.
+        let cmd = Modifiers {
+            ctrl_key: false,
+            alt_key: false,
+            shift_key: false,
+            meta_key: true,
+        }
+        .mods(Platform::Mac);
+        assert!(key_inputs("t", "KeyT", cmd, Platform::Mac).1.is_none());
+        let ctrl_alt = press("Ctrl+Alt+t").mods();
+        assert!(
+            key_inputs("t", "KeyT", ctrl_alt, Platform::Other)
+                .1
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn on_a_mac_a_shifted_option_letter_is_the_capital_the_panels_bind() {
+        let option_shift = Modifiers {
+            ctrl_key: false,
+            alt_key: true,
+            shift_key: true,
+            meta_key: false,
+        }
+        .mods(Platform::Mac);
+        // Option+Shift+F reports "\u{cf}"; the editor binds Alt+F with the capital.
+        let (_, positional) = key_inputs("\u{cf}", "KeyF", option_shift, Platform::Mac);
+        assert_eq!(positional.map(|k| k.key()), Some(Key::Char('F')));
+        // A digit and a punctuation key have no capital.
+        let (_, positional) = key_inputs("\u{201a}", "Digit4", option_shift, Platform::Mac);
+        assert_eq!(positional.map(|k| k.key()), Some(Key::Char('4')));
+    }
+
+    #[test]
+    fn a_mac_option_chord_the_table_binds_runs_and_is_consumed() {
+        let mut core = Core::new(Platform::Mac);
+        core.step(AREA, CELL, Theme::plain());
+        let (reported, positional) = key_inputs("\u{2020}", "KeyT", cmd_option(), Platform::Mac);
+        let (consumed, _) = core.press(reported, positional);
+        assert!(consumed);
+        assert!(core.model.focus().modal, "the picker opened");
+        // A dead key: nothing reported, and the chord still runs.
+        let mut core = Core::new(Platform::Mac);
+        core.step(AREA, CELL, Theme::plain());
+        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files"]),
+        }));
+        let (reported, positional) = key_inputs("Dead", "KeyE", cmd_option(), Platform::Mac);
+        let (consumed, _) = core.press(reported, positional);
+        assert!(consumed, "Cmd+Option+E focuses Files");
+    }
+
+    #[test]
+    fn a_mac_option_key_nothing_binds_still_types_its_character() {
+        let mut core = Core::new(Platform::Mac);
+        core.step(AREA, CELL, Theme::plain());
+        // Option+S alone: the composer binds nothing to it, so the sharp s is the browser's to type.
+        let option = Modifiers {
+            ctrl_key: false,
+            alt_key: true,
+            shift_key: false,
+            meta_key: false,
+        }
+        .mods(Platform::Mac);
+        let (reported, positional) = key_inputs("\u{df}", "KeyS", option, Platform::Mac);
+        assert!(positional.is_some());
+        let (consumed, _) = core.press(reported, positional);
+        assert!(!consumed);
+        // A dead key nothing binds is not touched at all: the browser composes the accent.
+        let (reported, positional) = key_inputs("Dead", "KeyU", option, Platform::Mac);
+        let (consumed, effects) = core.press(reported, positional);
+        assert!(!consumed && effects.is_empty());
     }
 
     #[test]
