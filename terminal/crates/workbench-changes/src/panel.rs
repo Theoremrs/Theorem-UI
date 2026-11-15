@@ -1267,14 +1267,18 @@ impl Panel for ChangesPanel {
         if let Some(root) = nodes.first_mut() {
             root.binding = resource;
         }
-        // The text of each field and where its caret is: the panel's buffers know the caret.
+        // The text of each field and where its caret is: the panel's buffers know the caret,
+        // and which of the two commit fields it is in.
+        let drafting = self.model.focus() == Focus::Message;
         for node in &mut nodes {
             match node.id.as_str() {
                 "changes/commit/subject" => {
                     let at = self.subject.cursor();
                     caret_text(self.subject.value(), at, at).put(node);
+                    node.state.focused = drafting && !self.in_body;
                 }
                 "changes/commit/body" => {
+                    node.state.focused = drafting && self.in_body;
                     let lines: Vec<&str> = self.body.iter().map(Input::value).collect();
                     let row = self.row.min(lines.len() - 1);
                     let before: usize = lines[..row].iter().map(|l| l.chars().count() + 1).sum();

@@ -3500,6 +3500,25 @@ fn the_commit_description_counts_the_caret_across_its_lines() {
 }
 
 #[test]
+fn the_focused_commit_field_is_the_one_the_caret_is_in() {
+    let mut rig = loaded();
+    rig.send(Msg::Resize {
+        area: ratatui::layout::Rect::new(0, 0, 200, 60),
+        metrics: theorem_workbench_dock::CellMetrics::new(8.0, 16.0),
+    });
+    rig.action(actions::FOCUS_DRAFT, agent());
+    rig.typed("subject");
+    assert_eq!(focused_nodes(&rig), ["p1/changes/commit/subject"]);
+    // Enter goes to the description: that is the field a reader is in now.
+    rig.key(Key::Enter);
+    rig.typed("one");
+    assert_eq!(focused_nodes(&rig), ["p1/changes/commit/body"]);
+    // Up from its first line is the subject again.
+    rig.key(Key::Up);
+    assert_eq!(focused_nodes(&rig), ["p1/changes/commit/subject"]);
+}
+
+#[test]
 fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
     let rig = loaded();
     let mut seen = 0;
