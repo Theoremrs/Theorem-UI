@@ -668,6 +668,11 @@ pub struct ScmMerged {
 pub struct ConflictSides {
     pub path: String,
     pub conflict: bool,
+    /// The file is binary: the sides carry no text to merge by hand, and a
+    /// panel offers whole-side choices only. Absent on the wire means false.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<bool>", optional))]
+    pub binary: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub base: Option<String>,

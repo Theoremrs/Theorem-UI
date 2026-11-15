@@ -220,6 +220,15 @@ pub struct RunSummary {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
     pub started_at_ms: Option<u64>,
+    /// How it ended; absent while it runs or when the host does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub exit_code: Option<i32>,
+    /// The configuration's kind at start (`run`, `test`, ...); a host that
+    /// lists no kinds leaves it absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub kind: Option<String>,
 }
 
 /// `runList`.

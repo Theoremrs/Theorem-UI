@@ -90,7 +90,9 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
             program: Some(2),
             state: TerminalSessionState::Exited,
             controlled_elsewhere: true,
+            modes: None,
         }],
+        adoption: None,
     };
     let value = serde_json::to_value(&message).unwrap();
     assert_eq!(value["type"], "terminalSessions");

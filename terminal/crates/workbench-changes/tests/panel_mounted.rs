@@ -1827,6 +1827,7 @@ fn sides(conflict: bool) -> ConflictSides {
         base: Some("let x = 0;\n".into()),
         ours: Some("let x = 1;\nlet y = 2;\n".into()),
         theirs: Some("let x = 9;\n".into()),
+        binary: false,
     }
 }
 
@@ -1889,6 +1890,7 @@ fn a_side_the_host_does_not_have_is_said_to_have_no_file_and_not_shown_empty() {
             base: None,
             ours: Some("kept\n".into()),
             theirs: None,
+            binary: false,
         },
     );
     let screen = rig.screen();

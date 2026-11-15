@@ -128,6 +128,74 @@ pub struct TerminalSessionInfo {
     /// Another viewer holds the control lease.
     #[serde(default)]
     pub controlled_elsewhere: bool,
+    /// The terminal modes the host reports for the session. Absent when the
+    /// host does not report them (an older host); a panel then keeps its own
+    /// reading of the stream.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub modes: Option<TerminalModes>,
+}
+
+/// The modes of a terminal as the host's screen holds them (`IdeTerminalModes`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalModes {
+    pub alternate_screen: bool,
+    pub application_cursor: bool,
+    pub application_keypad: bool,
+    pub bracketed_paste: bool,
+    pub hide_cursor: bool,
+    pub mouse_protocol: MouseProtocol,
+    pub mouse_encoding: MouseEncoding,
+}
+
+/// Which mouse events a program asked the terminal to report.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub enum MouseProtocol {
+    #[default]
+    None,
+    Press,
+    PressRelease,
+    ButtonMotion,
+    AnyMotion,
+}
+
+/// How reported mouse events are encoded.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "snake_case")]
+pub enum MouseEncoding {
+    #[default]
+    Default,
+    Utf8,
+    Sgr,
+}
+
+/// Whether the host has finished finding the workspace's surviving terminals
+/// (`terminal.list` `adoption`).
+///
+/// A session missing from the list proves nothing unless this is `settled`.
+/// Under `pending` the host is still adopting terminals; an empty or short
+/// list may be incomplete, and an attach to an unknown session may be refused
+/// with `terminal_adoption_pending` rather than "not found". Under
+/// `unavailable` the backend cannot be reached, so only native sessions are
+/// listed. Absence of the whole field means the host does not report adoption
+/// (an older host); that is not the same as `settled`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum TerminalAdoption {
+    Pending,
+    Settled,
+    /// The backend cause, as the host words it.
+    Unavailable {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        reason: Option<String>,
+    },
 }
 
 /// The live stream's state (`WorkspaceLive`).
@@ -344,10 +412,19 @@ pub enum HostMessage {
     /// What the chooser offers: the profiles a process may be started from and
     /// the terminal sessions of the workspace, as the host last said. Each
     /// message replaces both lists.
+    ///
+    /// `adoption` is the host's word on whether the list is complete. Absent
+    /// means the host does not say, which is not `settled`; under `pending`
+    /// the absence of a terminal proves nothing. The root keeps it with the
+    /// sessions and hands it to terminal panels together with them, and drops
+    /// both when the workspace or account changes.
     TerminalSessions {
         workspace: String,
         profiles: Vec<TerminalProfileInfo>,
         sessions: Vec<TerminalSessionInfo>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        adoption: Option<TerminalAdoption>,
     },
     /// Syntax colour for a document: where each token is, and the highlight
     /// class the tokenizer gave it, at `revision`. Offsets count in `encoding`

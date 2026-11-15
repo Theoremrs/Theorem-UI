@@ -7,4 +7,13 @@ export type RunSummary = { handle: string, name?: string, command?: Array<string
 /**
  * `running` while it runs; another word once it has ended.
  */
-state: string, startedAtMs?: number, };
+state: string, startedAtMs?: number, 
+/**
+ * How it ended; absent while it runs or when the host does not say.
+ */
+exitCode?: number, 
+/**
+ * The configuration's kind at start (`run`, `test`, ...); a host that
+ * lists no kinds leaves it absent.
+ */
+kind?: string, };

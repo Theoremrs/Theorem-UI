@@ -2162,7 +2162,9 @@ fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace()
                 program: None,
                 state: Default::default(),
                 controlled_elsewhere: false,
+                modes: None,
             }],
+            adoption: None,
         })
     };
     send(&mut m, sessions("first"));
@@ -4386,5 +4388,111 @@ fn a_refusal_that_says_access_is_gone_is_told_apart_from_one_that_is_not() {
             reason: "forbidden".into()
         }
         .is_access_revoked()
+    );
+}
+
+#[test]
+fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() {
+    use theorem_workbench_core::host::{MouseProtocol, TerminalAdoption, TerminalModes};
+    let (mut m, log) = new_model();
+    send(&mut m, workspace("w", None));
+    let modes = TerminalModes {
+        alternate_screen: true,
+        application_cursor: false,
+        application_keypad: false,
+        bracketed_paste: true,
+        hide_cursor: false,
+        mouse_protocol: MouseProtocol::AnyMotion,
+        mouse_encoding: Default::default(),
+    };
+    let list = |adoption| {
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![],
+            sessions: vec![theorem_workbench_core::host::TerminalSessionInfo {
+                session: "s".into(),
+                profile: "Shell".into(),
+                backend: theorem_workbench_core::effect::TerminalBackend::Native,
+                workspace: "w".into(),
+                host: None,
+                program: None,
+                state: Default::default(),
+                controlled_elsewhere: false,
+                modes: Some(modes),
+            }],
+            adoption,
+        })
+    };
+    send(&mut m, list(Some(TerminalAdoption::Pending)));
+    send(
+        &mut m,
+        list(Some(TerminalAdoption::Unavailable {
+            reason: Some("down".into()),
+        })),
+    );
+    action(&mut m, "term.open");
+    let told: Vec<_> = msgs_of(&log, "term")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Host(HostMessage::TerminalSessions {
+                sessions, adoption, ..
+            }) => Some((adoption, sessions[0].modes)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        told,
+        vec![(
+            Some(TerminalAdoption::Unavailable {
+                reason: Some("down".into())
+            }),
+            Some(modes)
+        )]
+    );
+    // Another workspace drops the list; coming back replays nothing stale.
+    send(&mut m, workspace("other", None));
+    send(&mut m, workspace("w", None));
+    action(&mut m, "term.open");
+    let after = msgs_of(&log, "term")
+        .into_iter()
+        .filter(|m| matches!(m, PanelMsg::Host(HostMessage::TerminalSessions { .. })))
+        .count();
+    assert_eq!(after, 1);
+}
+
+#[test]
+fn the_new_wire_fields_are_optional_and_older_hosts_still_parse() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let old: HostMessage = serde_json::from_value(serde_json::json!({
+        "type": "terminalSessions", "workspace": "w", "profiles": [], "sessions": []
+    }))
+    .unwrap();
+    assert!(matches!(
+        old,
+        HostMessage::TerminalSessions { adoption: None, .. }
+    ));
+    let pending: HostMessage = serde_json::from_value(serde_json::json!({
+        "type": "terminalSessions", "workspace": "w", "profiles": [], "sessions": [],
+        "adoption": {"state": "pending"}
+    }))
+    .unwrap();
+    assert!(matches!(
+        pending,
+        HostMessage::TerminalSessions {
+            adoption: Some(TerminalAdoption::Pending),
+            ..
+        }
+    ));
+    let side: theorem_workbench_core::completion::ConflictSides =
+        serde_json::from_value(serde_json::json!({"path": "a", "conflict": true})).unwrap();
+    assert!(!side.binary);
+    assert!(serde_json::to_value(&side).unwrap().get("binary").is_none());
+    let run: theorem_workbench_core::results::RunSummary = serde_json::from_value(
+        serde_json::json!({"handle": "h", "state": "failed", "exitCode": 2, "kind": "test"}),
+    )
+    .unwrap();
+    assert_eq!(
+        (run.exit_code, run.kind.as_deref()),
+        (Some(2), Some("test"))
     );
 }

@@ -5,4 +5,9 @@
  * side. A side the host does not have (a file added on one branch has no
  * `base`) is absent, not empty.
  */
-export type ConflictSides = { path: string, conflict: boolean, base?: string, ours?: string, theirs?: string, };
+export type ConflictSides = { path: string, conflict: boolean, 
+/**
+ * The file is binary: the sides carry no text to merge by hand, and a
+ * panel offers whole-side choices only. Absent on the wire means false.
+ */
+binary?: boolean, base?: string, ours?: string, theirs?: string, };

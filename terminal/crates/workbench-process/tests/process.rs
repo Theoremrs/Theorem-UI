@@ -63,6 +63,7 @@ fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
         program: Some(1),
         state: TerminalSessionState::Running,
         controlled_elsewhere: false,
+        modes: None,
     }
 }
 
@@ -86,6 +87,7 @@ fn listing(workspace: &str, sessions: Vec<TerminalSessionInfo>) -> Msg {
             profile("native-zsh", TerminalBackend::Native, true),
         ],
         sessions,
+        adoption: None,
     })
 }
 

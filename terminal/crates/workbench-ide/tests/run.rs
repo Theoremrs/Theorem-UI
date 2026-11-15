@@ -556,6 +556,8 @@ fn summary(handle: &str, name: &str, command: &[&str], state: &str, at: u64) -> 
         command: Some(command.iter().map(|w| (*w).to_owned()).collect()),
         state: state.into(),
         started_at_ms: Some(at),
+        exit_code: None,
+        kind: None,
     }
 }
 

@@ -1461,6 +1461,9 @@ impl Model {
             // The root's own state, not a panel's: panels are told by `settle`.
             if self.workspace.workspace != *workspace || self.workspace.environment != *environment
             {
+                // A session list, and the adoption state it carried, describes
+                // one workspace at one moment: none is replayed after a change.
+                self.retained.sessions.clear();
                 self.workspace = WorkspaceIdentity {
                     account: self.workspace.account.clone(),
                     workspace: workspace.clone(),

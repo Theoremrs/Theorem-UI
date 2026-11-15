@@ -863,6 +863,7 @@ impl ProcessPanel {
             workspace,
             profiles,
             sessions,
+            ..
         } = message
         {
             // A listing said for another workspace is not this pane's.
