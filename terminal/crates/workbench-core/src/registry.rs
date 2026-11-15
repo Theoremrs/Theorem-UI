@@ -116,6 +116,51 @@ pub enum PickerSlot {
     More,
 }
 
+/// What choosing an action in the tool picker does to the workbench, said by
+/// the registration (not guessed from the title). The picker shows a short
+/// muted qualifier only for `Creates` and `Starts`, where a person would
+/// otherwise not know that choosing does more than show something.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum Chooses {
+    /// Brings an existing view forward.
+    Focuses,
+    /// Opens something that already exists, or a chooser for one.
+    Opens,
+    /// Makes a new thing: `what` is its noun ("document").
+    Creates { what: String },
+    /// Starts a process: `what` is its noun ("process").
+    Starts { what: String },
+}
+
+impl Chooses {
+    /// What the picker shows beside the label, if anything.
+    pub fn qualifier(&self) -> Option<String> {
+        match self {
+            Self::Focuses | Self::Opens => None,
+            Self::Creates { what } => Some(format!("creates a {what}")),
+            Self::Starts { what } => Some(format!("starts a {what}")),
+        }
+    }
+}
+
+impl From<ActionIntent> for Chooses {
+    /// What an intent means when the registration says nothing more.
+    fn from(intent: ActionIntent) -> Self {
+        match intent {
+            ActionIntent::Focus => Self::Focuses,
+            ActionIntent::Open => Self::Opens,
+            ActionIntent::Create => Self::Creates {
+                what: "thing".to_owned(),
+            },
+            ActionIntent::Start | ActionIntent::Destroy => Self::Starts {
+                what: "process".to_owned(),
+            },
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -140,6 +185,11 @@ pub struct ActionDescriptor {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub picker: Option<PickerSlot>,
+    /// What choosing it in the picker does, when that is more than its intent
+    /// says. Absent: the intent's own meaning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub choosing: Option<Chooses>,
 }
 
 impl ActionDescriptor {
@@ -153,7 +203,32 @@ impl ActionDescriptor {
             default_key: None,
             human_only: false,
             picker: None,
+            choosing: None,
         }
+    }
+
+    /// Choosing this in the picker makes a new `what`.
+    pub fn creates(mut self, what: &str) -> Self {
+        self.choosing = Some(Chooses::Creates {
+            what: what.to_owned(),
+        });
+        self
+    }
+
+    /// Choosing this in the picker starts a `what`.
+    pub fn starts(mut self, what: &str) -> Self {
+        self.choosing = Some(Chooses::Starts {
+            what: what.to_owned(),
+        });
+        self
+    }
+
+    /// What choosing it in the picker does: the registration's word, else the
+    /// intent's meaning.
+    pub fn chooses(&self) -> Chooses {
+        self.choosing
+            .clone()
+            .unwrap_or_else(|| Chooses::from(self.intent))
     }
 
     pub fn requires(mut self, capability: &str) -> Self {
@@ -295,6 +370,17 @@ pub struct PickerRow {
     pub intent: ActionIntent,
     pub availability: Availability,
     pub pinned: bool,
+    /// What choosing the row does; the picker draws a qualifier from it.
+    pub chooses: Chooses,
+    /// Can be pinned to the main rows or unpinned (the More tools entries).
+    #[serde(default)]
+    pub pinnable: bool,
+    /// The chord the active key bindings give the action, as people read it.
+    /// None: no binding, and the row shows no hint. The registry does not know
+    /// the bindings; the picker fills this in.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub shortcut: Option<String>,
 }
 
 /// One action as the agent sees it (`workbench.act`).
@@ -362,7 +448,7 @@ impl Registry {
             .find_map(|p| p.actions.iter().find(|a| &a.id == id).map(|a| (p, a)))
     }
 
-    fn actions(&self) -> impl Iterator<Item = (&PanelDescriptor, &ActionDescriptor)> {
+    pub(crate) fn actions(&self) -> impl Iterator<Item = (&PanelDescriptor, &ActionDescriptor)> {
         self.panels
             .iter()
             .flat_map(|p| p.actions.iter().map(move |a| (p, a)))
@@ -423,10 +509,14 @@ impl Registry {
             intent: action.intent,
             availability: self.action_availability(panel, action, caps),
             pinned,
+            chooses: action.chooses(),
+            pinnable: action.picker == Some(PickerSlot::More),
+            shortcut: None,
         }
     }
 
-    /// The picker's rows: the main rows in order, then the user's pinned tools.
+    /// The picker's rows: the main rows in order, with the user's pinned tools
+    /// after the initial rows and before the row that leads to More tools.
     /// Unavailable rows stay, with their reason.
     pub fn picker_rows(&self, caps: &Capabilities, pinned: &BTreeSet<PanelKind>) -> Vec<PickerRow> {
         let mut main: Vec<(u8, PickerRow)> = self
@@ -438,11 +528,16 @@ impl Registry {
             .collect();
         main.sort_by_key(|(order, _)| *order);
         let mut rows: Vec<PickerRow> = main.into_iter().map(|(_, row)| row).collect();
-        rows.extend(
-            self.more_entries(caps, pinned)
-                .into_iter()
-                .filter(|r| r.pinned),
-        );
+        let at = rows
+            .iter()
+            .position(|r| r.action.as_str() == crate::picker::MORE_TOOLS)
+            .unwrap_or(rows.len());
+        let pins: Vec<PickerRow> = self
+            .more_entries(caps, pinned)
+            .into_iter()
+            .filter(|r| r.pinned)
+            .collect();
+        rows.splice(at..at, pins);
         rows
     }
 

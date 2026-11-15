@@ -37,6 +37,7 @@ use crate::msg::{DockMsg, Inbound, Msg, Pointer};
 use crate::panel::{Button, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind};
 use crate::panels::{PICKER_KIND, Unavailable};
 use crate::picker::{PickerMsg, PickerOutcome};
+use crate::picker_layout::{Layout, PickerHit};
 use crate::queue::{Popped, PtyFrame, Push};
 use crate::registry::{ActionIntent, Placement, Refusal};
 use crate::stale::{Binding, Stale, Verdict, judge};
@@ -166,6 +167,9 @@ impl Model {
             let Some(entry) = self.panels.get_mut(&id) else {
                 continue;
             };
+            if entry.kind.as_str() == PICKER_KIND {
+                self.picker.set_area(body);
+            }
             if entry.body == Some(body) {
                 continue;
             }
@@ -248,6 +252,10 @@ impl Model {
             Key::Enter => PickerMsg::Choose,
             Key::Down => PickerMsg::Next,
             Key::Up => PickerMsg::Prev,
+            Key::Left => PickerMsg::Left,
+            Key::Right => PickerMsg::Right,
+            // Typing is the filter, so pinning takes a chord.
+            Key::Char('p') if key.mods() == Mods::CTRL => PickerMsg::TogglePin,
             Key::Backspace => {
                 let mut filter = self.picker.filter().to_owned();
                 filter.pop();
@@ -285,6 +293,10 @@ impl Model {
     // --- actions and the picker ---
 
     pub(crate) fn run_action(&mut self, id: ActionId, actor: Actor) -> Vec<Effect> {
+        // The picker's own semantic actions: back, and pin or unpin a tool.
+        if let Some(effects) = self.picker_node_action(&id) {
+            return effects;
+        }
         let (kind, intent) = match self.registry.resolve(&id, &actor, &self.caps) {
             Ok(r) => (r.panel.kind.clone(), r.action.intent),
             Err(refusal) => {
@@ -486,6 +498,29 @@ impl Model {
         )
     }
 
+    /// `picker.back`, `picker.pin.<kind>` and `picker.unpin.<kind>`: what the
+    /// picker's semantic tree offers besides choosing a row. None when `id` is
+    /// not one of them.
+    fn picker_node_action(&mut self, id: &ActionId) -> Option<Vec<Effect>> {
+        use crate::panels::{ACTION_BACK, ACTION_PIN, ACTION_UNPIN};
+        let name = id.as_str();
+        if name == ACTION_BACK {
+            return Some(self.picker_msg(PickerMsg::Back));
+        }
+        let (kind, pinned) = match (
+            name.strip_prefix(ACTION_PIN),
+            name.strip_prefix(ACTION_UNPIN),
+        ) {
+            (Some(kind), _) => (kind, true),
+            (_, Some(kind)) => (kind, false),
+            _ => return None,
+        };
+        if !self.set_pin(&PanelKind::new(kind), pinned) {
+            self.notice = Some(Notice::Refused(Refusal::UnknownAction(id.clone())));
+        }
+        Some(vec![])
+    }
+
     pub(crate) fn picker_msg(&mut self, msg: PickerMsg) -> Vec<Effect> {
         let opening = msg == PickerMsg::Open;
         let outcome = self
@@ -502,6 +537,10 @@ impl Model {
             }
             PickerOutcome::Unavailable { reason } => {
                 self.notice = Some(Notice::Refused(Refusal::Unavailable { reason }));
+                vec![]
+            }
+            PickerOutcome::Pin { panel, pinned } => {
+                self.set_pin(&panel, pinned);
                 vec![]
             }
             PickerOutcome::Chosen(action) => {
@@ -764,18 +803,26 @@ impl Model {
         )
     }
 
-    /// A pointer over the picker's body. Row `i` is drawn on the body's line
-    /// `i + 1` (the first line is the filter): hovering selects it, a left
-    /// click chooses it. Nothing else the pointer does reaches the picker.
+    /// A pointer over the picker's body. What is under it is the picker
+    /// layout's answer (the one the view drew from): hovering a row selects
+    /// it, a left click chooses it, a click on a pin control pins or unpins,
+    /// a click on the back row goes back. Nothing else the pointer does
+    /// reaches the picker.
     fn picker_pointer(&mut self, p: Pointer, body: Rect) -> Vec<Effect> {
-        let Some(row) = usize::from(p.y.saturating_sub(body.y)).checked_sub(1) else {
+        let Some(view) = self.picker_view() else {
             return vec![];
         };
-        match p.kind {
-            PointerKind::Down(Button::Left) => self.picker_msg(PickerMsg::ChooseAt(row)),
-            PointerKind::Move => self.picker_msg(PickerMsg::Select(row)),
-            _ => vec![],
-        }
+        let hit = Layout::compute(&view, body).hit(p.x, p.y);
+        let msg = match (p.kind, hit) {
+            (PointerKind::Down(Button::Left), Some(PickerHit::Row(i))) => PickerMsg::ChooseAt(i),
+            (PointerKind::Down(Button::Left), Some(PickerHit::Pin(i))) => PickerMsg::TogglePinAt(i),
+            (PointerKind::Down(Button::Left), Some(PickerHit::Back)) => PickerMsg::Back,
+            (PointerKind::Move, Some(PickerHit::Row(i) | PickerHit::Pin(i))) => {
+                PickerMsg::Select(i)
+            }
+            _ => return vec![],
+        };
+        self.picker_msg(msg)
     }
 
     /// Move the dragged splitter so its gutter follows the pointer. A move

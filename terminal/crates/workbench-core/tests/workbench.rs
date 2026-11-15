@@ -410,6 +410,16 @@ fn picker_messages_produce_zero_effects() {
         ],
         vec![PickerMsg::Open, PickerMsg::Back],
         vec![PickerMsg::Open, PickerMsg::Close],
+        // Columns, pins and unavailable rows are browsing too.
+        vec![PickerMsg::Open, PickerMsg::Right, PickerMsg::Left],
+        vec![
+            PickerMsg::Open,
+            PickerMsg::Prev,
+            PickerMsg::Choose,
+            PickerMsg::TogglePin,
+            PickerMsg::TogglePinAt(1),
+            PickerMsg::Left,
+        ],
         // Pointer selection: hover, click, and out of range.
         vec![PickerMsg::Open, PickerMsg::Select(2), PickerMsg::Select(99)],
         vec![PickerMsg::Open, PickerMsg::ChooseAt(0)],

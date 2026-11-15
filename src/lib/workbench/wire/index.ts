@@ -19,6 +19,7 @@ export type { Capability } from "./Capability";
 export type { CatalogEntry } from "./CatalogEntry";
 export type { CellRect } from "./CellRect";
 export type { CellSize } from "./CellSize";
+export type { Chooses } from "./Chooses";
 export type { ClipboardText } from "./ClipboardText";
 export type { ClipboardWrite } from "./ClipboardWrite";
 export type { Completion } from "./Completion";

@@ -3,13 +3,25 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::style::{Modifier, Style};
 use serde_json::Value;
 
-use crate::panel::{Ctx, Panel, PanelMsg, ViewCtx};
+use crate::ids::ActionId;
+use crate::panel::{Ctx, Panel, PanelMsg, PickerView, ViewCtx};
+use crate::picker_layout::{
+    BACK, HEADING_MAIN, HEADING_MORE, Layout, NO_MATCH, PAD, PINNED, UNPINNED, row_text,
+};
 use crate::registry::Availability;
 use crate::semantics::{Node, NodeAction, Role};
 
 pub const PICKER_KIND: &str = "picker";
+
+/// The semantic action of the More tools page's back row.
+pub const ACTION_BACK: &str = "picker.back";
+/// Prefixes of a row's pin and unpin semantic actions; the tool's panel kind
+/// follows (`picker.pin.cabinet`).
+pub const ACTION_PIN: &str = "picker.pin.";
+pub const ACTION_UNPIN: &str = "picker.unpin.";
 
 /// Stands in for a panel this build cannot serve: unknown kind, a version
 /// newer than this build's, or no constructor. It draws the reason and keeps
@@ -73,9 +85,17 @@ impl Panel for Unavailable {
 }
 
 /// The picker's body. The picker's state lives in the root's model (it is the
-/// modal layer for keys); this panel only draws the rows it is given and names
-/// them in the semantic tree.
+/// modal layer for keys); this panel only draws what it is given, where
+/// [`Layout`] puts it, and names it in the semantic tree from the same layout.
 pub struct PickerPanel;
+
+fn heading(view: &PickerView) -> &'static str {
+    if view.more {
+        HEADING_MORE
+    } else {
+        HEADING_MAIN
+    }
+}
 
 impl Panel for PickerPanel {
     fn update(&mut self, _msg: PanelMsg, _cx: &mut Ctx) {}
@@ -84,59 +104,130 @@ impl Panel for PickerPanel {
         if area.is_empty() {
             return;
         }
-        let w = usize::from(area.width);
-        let Some(picker) = cx.picker else {
-            buf.set_stringn(area.x, area.y, "Choose a tool", w, cx.theme.muted);
+        let Some(view) = cx.picker else {
+            buf.set_stringn(
+                area.x,
+                area.y,
+                "Choose a tool",
+                usize::from(area.width),
+                cx.theme.muted,
+            );
             return;
         };
-        buf.set_stringn(
-            area.x,
-            area.y,
-            format!("> {}", picker.filter),
-            w,
+        let layout = Layout::compute(view, area);
+        let text = cx.theme.text.add_modifier(Modifier::BOLD);
+        draw(buf, layout.heading, 0, heading(view), text);
+        if let Some(back) = layout.back {
+            draw(buf, back, PAD, BACK, cx.theme.muted);
+        }
+        draw(
+            buf,
+            layout.filter,
+            0,
+            &format!("> {}", view.filter),
             cx.theme.text,
         );
-        for (i, row) in picker.rows.iter().enumerate() {
-            let Some(y) = u16::try_from(i + 1)
-                .ok()
-                .and_then(|o| area.y.checked_add(o))
-                .filter(|y| *y < area.bottom())
-            else {
-                break;
-            };
-            let style = match (&row.availability, i == picker.selected) {
+        if let Some(empty) = layout.empty {
+            draw(buf, empty, PAD, NO_MATCH, cx.theme.muted);
+        }
+        for cell in &layout.cells {
+            let row = &view.rows[cell.index];
+            let selected = cell.index == view.selected;
+            let label = match (&row.availability, selected) {
                 (_, true) => cx.theme.selected,
                 (Availability::Available, false) => cx.theme.text,
                 (Availability::Unavailable { .. }, false) => cx.theme.muted,
             };
-            buf.set_stringn(area.x, y, &row.title, w, style);
+            let quiet = if selected {
+                cx.theme.selected
+            } else {
+                cx.theme.muted
+            };
+            if selected {
+                buf.set_style(cell.rect, cx.theme.selected);
+            }
+            let t = row_text(row, cell.rect.width, cell.pin.is_some());
+            draw(buf, cell.rect, t.label_at, &t.label, label);
+            if let Some(q) = &t.qualifier {
+                draw(buf, cell.rect, t.qualifier_at, q, quiet);
+            }
+            if let Some(h) = &t.hint {
+                draw(buf, cell.rect, t.hint_at, h, quiet);
+            }
+            if let Some(pin) = cell.pin {
+                let glyph = if row.pinned { PINNED } else { UNPINNED };
+                draw(buf, pin, 0, glyph, quiet);
+            }
+        }
+        if let (Some(rect), Some(reason)) = (layout.reason, &view.reason) {
+            draw(buf, rect, PAD, reason, cx.theme.warning);
         }
     }
 
     fn semantics(&self, area: Rect, cx: &ViewCtx) -> Vec<Node> {
-        let mut root = Node::new("picker", Role::Menu, "Add tool", area);
+        let Some(view) = cx.picker else {
+            return vec![Node::new("picker", Role::Menu, "Tools", area)];
+        };
+        let layout = Layout::compute(view, area);
+        let mut root = Node::new("picker", Role::Menu, heading(view), area);
         let mut nodes = vec![];
-        if let Some(picker) = cx.picker {
-            for (i, row) in picker.rows.iter().enumerate() {
-                let y = area
-                    .y
-                    .saturating_add(u16::try_from(i + 1).unwrap_or(u16::MAX));
-                let rect = Rect::new(area.x, y, area.width, u16::from(y < area.bottom()));
-                let mut node = Node::new(&format!("row-{i}"), Role::MenuItem, &row.title, rect);
-                node.state.selected = i == picker.selected;
-                let (enabled, reason) = match &row.availability {
-                    Availability::Available => (true, None),
-                    Availability::Unavailable { reason } => (false, Some(reason.clone())),
-                };
-                node.state.disabled = !enabled;
+        let mut add = |root: &mut Node, node: Node| {
+            root.children.push(node.id.clone());
+            nodes.push(node);
+        };
+        add(
+            &mut root,
+            Node::new("heading", Role::Heading, heading(view), layout.heading),
+        );
+        if let Some(back) = layout.back {
+            let mut node = Node::new("back", Role::Button, "Back", back);
+            node.actions.push(NodeAction {
+                id: ActionId::new(ACTION_BACK),
+                enabled: true,
+                reason: None,
+            });
+            add(&mut root, node);
+        }
+        let mut filter = Node::new("filter", Role::TextBox, "Filter tools", layout.filter);
+        filter.state.description = Some(view.filter.clone());
+        add(&mut root, filter);
+        if let Some(empty) = layout.empty {
+            add(&mut root, Node::new("empty", Role::Status, NO_MATCH, empty));
+        }
+        let n = view.rows.len();
+        for (i, row) in view.rows.iter().enumerate() {
+            let rect = layout
+                .cell(i)
+                .map_or(Rect::new(area.x, area.bottom(), area.width, 0), |c| c.rect);
+            let mut node = Node::new(&format!("row-{i}"), Role::MenuItem, &row.title, rect);
+            node.state.selected = i == view.selected;
+            node.state.focused = node.state.selected && cx.focused;
+            node.pos_in_set = u16::try_from(i + 1).ok();
+            node.set_size = u16::try_from(n).ok();
+            node.shortcut = row.shortcut.clone();
+            let (enabled, reason) = match &row.availability {
+                Availability::Available => (true, None),
+                Availability::Unavailable { reason } => (false, Some(reason.clone())),
+            };
+            node.state.disabled = !enabled;
+            node.state.description = reason.clone().or_else(|| row.chooses.qualifier());
+            node.actions.push(NodeAction {
+                id: row.action.clone(),
+                enabled,
+                reason,
+            });
+            if row.pinnable {
+                let verb = if row.pinned { ACTION_UNPIN } else { ACTION_PIN };
                 node.actions.push(NodeAction {
-                    id: row.action.clone(),
-                    enabled,
-                    reason,
+                    id: ActionId::new(format!("{verb}{}", row.panel.as_str())),
+                    enabled: true,
+                    reason: None,
                 });
-                root.children.push(node.id.clone());
-                nodes.push(node);
             }
+            add(&mut root, node);
+        }
+        if let (Some(rect), Some(reason)) = (layout.reason, &view.reason) {
+            add(&mut root, Node::new("reason", Role::Alert, reason, rect));
         }
         nodes.insert(0, root);
         nodes
@@ -145,4 +236,18 @@ impl Panel for PickerPanel {
     fn serialize(&self) -> Value {
         Value::Null
     }
+}
+
+/// Write `text` on `rect`'s line starting `at` cells in, cut at the line's end.
+fn draw(buf: &mut Buffer, rect: Rect, at: u16, text: &str, style: Style) {
+    if rect.is_empty() || at >= rect.width {
+        return;
+    }
+    buf.set_stringn(
+        rect.x + at,
+        rect.y,
+        text,
+        usize::from(rect.width - at),
+        style,
+    );
 }

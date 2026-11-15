@@ -2,9 +2,24 @@
 import type { ActionId } from "./ActionId";
 import type { ActionIntent } from "./ActionIntent";
 import type { Availability } from "./Availability";
+import type { Chooses } from "./Chooses";
 import type { PanelKind } from "./PanelKind";
 
 /**
  * One row of the tool picker or of More tools.
  */
-export type PickerRow = { action: ActionId, panel: PanelKind, title: string, intent: ActionIntent, availability: Availability, pinned: boolean, };
+export type PickerRow = { action: ActionId, panel: PanelKind, title: string, intent: ActionIntent, availability: Availability, pinned: boolean, 
+/**
+ * What choosing the row does; the picker draws a qualifier from it.
+ */
+chooses: Chooses, 
+/**
+ * Can be pinned to the main rows or unpinned (the More tools entries).
+ */
+pinnable: boolean, 
+/**
+ * The chord the active key bindings give the action, as people read it.
+ * None: no binding, and the row shows no hint. The registry does not know
+ * the bindings; the picker fills this in.
+ */
+shortcut?: string, };

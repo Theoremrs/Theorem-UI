@@ -18,9 +18,9 @@ use crate::ids::{
 use crate::keys::KeyTable;
 use crate::panel::{Panel, PickerView};
 use crate::panels::{PICKER_KIND, Unavailable};
-use crate::picker::{Page, Picker};
+use crate::picker::Picker;
 use crate::queue::{QueueLimits, SourceQueues};
-use crate::registry::{ActionIntent, Capabilities, Refusal, Registry, VersionCheck};
+use crate::registry::{ActionIntent, Capabilities, PickerSlot, Refusal, Registry, VersionCheck};
 use crate::stale::{Binding, InFlight, Stale};
 
 /// Effects that may be outstanding at once, across every panel.
@@ -154,7 +154,7 @@ impl Model {
             .filter_map(|a| a.emits)
             .collect();
         destroying.dedup();
-        Self {
+        let mut model = Self {
             registry,
             factories,
             keys,
@@ -178,7 +178,9 @@ impl Model {
             counters: Counters::default(),
             notice: None,
             dirty: true,
-        }
+        };
+        model.sync_shortcuts();
+        model
     }
 
     pub fn dock(&self) -> &Dock {
@@ -204,7 +206,55 @@ impl Model {
     /// Tools shown as their own picker rows.
     pub fn set_pinned(&mut self, pinned: std::collections::BTreeSet<PanelKind>) {
         self.pinned = pinned;
+        self.picker.clamp(&self.registry, &self.caps, &self.pinned);
         self.dirty = true;
+    }
+
+    /// The pinned tools. They are part of the layout document: they survive a
+    /// restore.
+    pub fn pinned(&self) -> &std::collections::BTreeSet<PanelKind> {
+        &self.pinned
+    }
+
+    /// Replace the key bindings (the person changed them). The picker's hints
+    /// follow.
+    pub fn set_keys(&mut self, keys: KeyTable) {
+        self.keys = keys;
+        self.sync_shortcuts();
+        self.dirty = true;
+    }
+
+    /// Hand the picker the chord each of its actions has now.
+    pub(crate) fn sync_shortcuts(&mut self) {
+        let labels = self
+            .registry
+            .actions()
+            .filter(|(_, a)| a.picker.is_some())
+            .filter_map(|(_, a)| Some((a.id.clone(), self.keys.label(&a.id)?)))
+            .collect();
+        self.picker.set_shortcuts(labels);
+    }
+
+    /// Pin or unpin a tool. Only a More tools entry can be pinned. Returns
+    /// whether the pins changed.
+    pub(crate) fn set_pin(&mut self, panel: &PanelKind, pinned: bool) -> bool {
+        let pinnable = self
+            .registry
+            .get(panel)
+            .is_some_and(|p| p.actions.iter().any(|a| a.picker == Some(PickerSlot::More)));
+        if !pinnable {
+            return false;
+        }
+        let changed = if pinned {
+            self.pinned.insert(panel.clone())
+        } else {
+            self.pinned.remove(panel)
+        };
+        if changed {
+            self.picker.clamp(&self.registry, &self.caps, &self.pinned);
+            self.dirty = true;
+        }
+        changed
     }
 
     /// The workspace and environment the host last named (empty until it does).
@@ -273,12 +323,9 @@ impl Model {
     }
 
     pub(crate) fn picker_view(&self) -> Option<PickerView> {
-        self.picker.is_open().then(|| PickerView {
-            rows: self.picker.rows(&self.registry, &self.caps, &self.pinned),
-            selected: self.picker.selected(),
-            filter: self.picker.filter().to_owned(),
-            more: self.picker.page() == Page::More,
-        })
+        self.picker
+            .is_open()
+            .then(|| self.picker.view(&self.registry, &self.caps, &self.pinned))
     }
 
     pub(crate) fn mint_panel(&mut self) -> PanelInstanceId {
@@ -353,6 +400,7 @@ impl Model {
             "schema": DOCUMENT_SCHEMA,
             "version": DOCUMENT_VERSION,
             "dock": serde_json::to_value(dock).expect("a dock document is plain data"),
+            "pinned": self.pinned.iter().map(PanelKind::as_str).collect::<Vec<_>>(),
         })
     }
 
@@ -409,6 +457,21 @@ impl Model {
         }
         let has_picker = panels.values().any(|e| e.kind.as_str() == PICKER_KIND);
 
+        // Pins ride in the document. One saved before pins existed has none
+        // and leaves the pins as they are.
+        if let Some(saved) = value.get("pinned").and_then(Value::as_array) {
+            self.pinned = saved
+                .iter()
+                .filter_map(Value::as_str)
+                .map(PanelKind::new)
+                .filter(|k| {
+                    self.registry.get(k).is_some_and(|p| {
+                        p.actions.iter().any(|a| a.picker == Some(PickerSlot::More))
+                    })
+                })
+                .collect();
+        }
+
         self.dock = dock;
         self.panels = panels;
         self.in_flight = InFlight::new(IN_FLIGHT_LIMIT);
@@ -417,6 +480,7 @@ impl Model {
         self.capture = None;
         self.announced_focus = None;
         self.picker = Picker::default();
+        self.sync_shortcuts();
         if has_picker {
             // A saved picker tab is the picker, open and empty. No effect:
             // opening the picker has none (R07).

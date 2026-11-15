@@ -140,6 +140,11 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub set_size: Option<u16>,
+    /// The chord that does what the node does, as people read it
+    /// (`aria-keyshortcuts`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub shortcut: Option<String>,
     /// Children in reading order. A node has exactly one parent.
     pub children: Vec<NodeId>,
 }
@@ -170,6 +175,7 @@ impl Node {
             level: None,
             pos_in_set: None,
             set_size: None,
+            shortcut: None,
             children: vec![],
         }
     }
@@ -418,6 +424,7 @@ mod tests {
             level: None,
             pos_in_set: None,
             set_size: None,
+            shortcut: None,
             children: children.iter().map(|c| NodeId::new(*c)).collect(),
         }
     }

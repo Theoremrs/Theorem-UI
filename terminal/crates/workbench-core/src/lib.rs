@@ -19,6 +19,7 @@ pub mod msg;
 pub mod panel;
 pub mod panels;
 pub mod picker;
+pub mod picker_layout;
 pub mod queue;
 pub mod registry;
 pub mod semantics;

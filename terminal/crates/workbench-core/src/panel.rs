@@ -296,6 +296,8 @@ pub struct PickerView {
     pub filter: String,
     /// Showing the "More tools" page.
     pub more: bool,
+    /// Why the row last chosen could not be, until the selection moves.
+    pub reason: Option<String>,
 }
 
 /// Read-only context for `view` and `semantics`.

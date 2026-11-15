@@ -2,6 +2,7 @@
 import type { ActionId } from "./ActionId";
 import type { ActionIntent } from "./ActionIntent";
 import type { Capability } from "./Capability";
+import type { Chooses } from "./Chooses";
 import type { DefaultKey } from "./DefaultKey";
 import type { EffectKind } from "./EffectKind";
 import type { PickerSlot } from "./PickerSlot";
@@ -16,4 +17,9 @@ emits?: EffectKind, defaultKey?: DefaultKey,
  * Approvals and the like: a model-origin request is refused, whatever id
  * it names (R34).
  */
-humanOnly: boolean, picker?: PickerSlot, };
+humanOnly: boolean, picker?: PickerSlot, 
+/**
+ * What choosing it in the picker does, when that is more than its intent
+ * says. Absent: the intent's own meaning.
+ */
+choosing?: Chooses, };

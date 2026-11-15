@@ -167,6 +167,7 @@ pub fn registry() -> Registry {
             // The row opens the chooser of profiles and existing sessions;
             // nothing starts until a profile is chosen in it.
             ActionDescriptor::new("shell.choose", "Shell", Open)
+                .starts("process")
                 .row(2)
                 .key("Mod+Alt+S", KeyScope::Global),
             ActionDescriptor::new("shell.start", "Start shell", Start)
@@ -207,6 +208,7 @@ pub fn registry() -> Registry {
             // The row asks for a name; only confirming it creates anything,
             // so cancelling leaves no orphan.
             ActionDescriptor::new("page.new", "New page", Open)
+                .creates("document")
                 .row(5)
                 .key("Mod+Alt+N", KeyScope::Global),
             ActionDescriptor::new("page.create", "Create page", Create)

@@ -2,10 +2,18 @@
 //! moving and closing it produce no effects: [`Picker::update`] returns only an
 //! outcome, and the one thing it can return that matters is the id of the
 //! action a person chose. What that action does is the registry's word.
+//!
+//! Where rows are drawn is [`crate::picker_layout`]'s word; the moves that
+//! depend on it (Left and Right across two columns) ask it, with the cells the
+//! host last gave the picker, so the keyboard follows what is on screen.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+use ratatui::layout::Rect;
 
 use crate::ids::{ActionId, PanelKind};
+use crate::panel::PickerView;
+use crate::picker_layout::Layout;
 use crate::registry::{Availability, Capabilities, PickerRow, Registry};
 
 /// The row that leads to the rest of the tools instead of choosing one.
@@ -26,12 +34,20 @@ pub enum PickerMsg {
     Filter(String),
     Next,
     Prev,
+    /// With two columns showing, the row beside this one in the other column.
+    /// In the first column (or one) on More tools: back.
+    Left,
+    Right,
     Choose,
     /// A pointer is over row `n` of the rows now showing: select it. Out of
     /// range does nothing.
     Select(usize),
     /// A pointer click on row `n`: select it, then choose it as `Choose` does.
     ChooseAt(usize),
+    /// Pin the selected More tools entry to the main rows, or unpin it.
+    TogglePin,
+    /// The same for row `n`, from a pointer click on its pin control.
+    TogglePinAt(usize),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -46,6 +62,12 @@ pub enum PickerOutcome {
     Unavailable {
         reason: String,
     },
+    /// The tool is to be pinned (or unpinned). The picker stays open; the
+    /// caller owns the pins.
+    Pin {
+        panel: PanelKind,
+        pinned: bool,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -54,6 +76,12 @@ pub struct Picker {
     page: Page,
     filter: String,
     selected: usize,
+    /// Why the last row chosen was refused, until the selection moves.
+    reason: Option<String>,
+    /// What the host gives the picker: the cells its body has and the chords
+    /// the active key bindings give its actions. They outlive a close.
+    area: Rect,
+    shortcuts: BTreeMap<ActionId, String>,
 }
 
 impl Default for Picker {
@@ -63,6 +91,9 @@ impl Default for Picker {
             page: Page::Main,
             filter: String::new(),
             selected: 0,
+            reason: None,
+            area: Rect::default(),
+            shortcuts: BTreeMap::new(),
         }
     }
 }
@@ -85,7 +116,25 @@ impl Picker {
         self.selected
     }
 
-    /// The rows now showing: this page's, narrowed by the filter.
+    /// Why the last row chosen could not be opened. Cleared when the selection
+    /// moves, the filter changes or the page turns.
+    pub fn reason(&self) -> Option<&str> {
+        self.reason.as_deref()
+    }
+
+    /// The cells the picker's body has now.
+    pub fn set_area(&mut self, area: Rect) {
+        self.area = area;
+    }
+
+    /// The chords the active key bindings give actions, as people read them.
+    /// A row whose action has none shows no hint.
+    pub fn set_shortcuts(&mut self, shortcuts: BTreeMap<ActionId, String>) {
+        self.shortcuts = shortcuts;
+    }
+
+    /// The rows now showing: this page's, narrowed by the filter, each with the
+    /// chord its action has.
     pub fn rows(
         &self,
         registry: &Registry,
@@ -99,7 +148,53 @@ impl Picker {
         let needle = self.filter.to_lowercase();
         rows.into_iter()
             .filter(|r| r.title.to_lowercase().contains(&needle))
+            .map(|mut r| {
+                r.shortcut = self.shortcuts.get(&r.action).cloned();
+                r
+            })
             .collect()
+    }
+
+    /// What the picker panel is given to draw.
+    pub fn view(
+        &self,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) -> PickerView {
+        PickerView {
+            rows: self.rows(registry, caps, pinned),
+            selected: self.selected,
+            filter: self.filter.clone(),
+            more: self.page == Page::More,
+            reason: self.reason.clone(),
+        }
+    }
+
+    /// Keep the selection on a row after the rows changed under it.
+    pub fn clamp(
+        &mut self,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) {
+        let n = self.rows(registry, caps, pinned).len();
+        self.selected = self.selected.min(n.saturating_sub(1));
+    }
+
+    fn reset(&mut self) {
+        *self = Self {
+            area: self.area,
+            shortcuts: std::mem::take(&mut self.shortcuts),
+            ..Self::default()
+        };
+    }
+
+    fn select(&mut self, index: usize) {
+        if index != self.selected {
+            self.selected = index;
+            self.reason = None;
+        }
     }
 
     pub fn update(
@@ -111,21 +206,20 @@ impl Picker {
     ) -> PickerOutcome {
         match msg {
             PickerMsg::Open => {
-                *self = Self {
-                    open: true,
-                    ..Self::default()
-                };
+                self.reset();
+                self.open = true;
                 PickerOutcome::Nothing
             }
             PickerMsg::Back if self.open && self.page == Page::More => {
                 self.page = Page::Main;
                 self.filter.clear();
                 self.selected = 0;
+                self.reason = None;
                 PickerOutcome::Nothing
             }
             PickerMsg::Back | PickerMsg::Close => {
                 let was_open = self.open;
-                *self = Self::default();
+                self.reset();
                 if was_open {
                     PickerOutcome::Closed
                 } else {
@@ -135,25 +229,49 @@ impl Picker {
             PickerMsg::Filter(text) if self.open => {
                 self.filter = text;
                 self.selected = 0;
+                self.reason = None;
                 PickerOutcome::Nothing
             }
             PickerMsg::Next if self.open => {
                 let n = self.rows(registry, caps, pinned).len();
                 if n > 0 {
-                    self.selected = (self.selected + 1) % n;
+                    self.select((self.selected + 1) % n);
                 }
                 PickerOutcome::Nothing
             }
             PickerMsg::Prev if self.open => {
                 let n = self.rows(registry, caps, pinned).len();
                 if n > 0 {
-                    self.selected = (self.selected + n - 1) % n;
+                    self.select((self.selected + n - 1) % n);
                 }
                 PickerOutcome::Nothing
             }
+            PickerMsg::Left | PickerMsg::Right if self.open => {
+                let view = self.view(registry, caps, pinned);
+                let layout = Layout::compute(&view, self.area);
+                let (n, per) = (view.rows.len(), layout.per_column);
+                let here = self.selected.min(n.saturating_sub(1));
+                if n == 0 {
+                    return self.step_back_if_left(&msg, registry, caps, pinned);
+                }
+                let target = match msg {
+                    PickerMsg::Left if layout.columns == 2 && here >= per => Some(here - per),
+                    PickerMsg::Right if layout.columns == 2 && here < per => {
+                        Some((here + per).min(n - 1))
+                    }
+                    _ => None,
+                };
+                match target {
+                    Some(t) => {
+                        self.select(t);
+                        PickerOutcome::Nothing
+                    }
+                    None => self.step_back_if_left(&msg, registry, caps, pinned),
+                }
+            }
             PickerMsg::Select(row) if self.open => {
                 if row < self.rows(registry, caps, pinned).len() {
-                    self.selected = row;
+                    self.select(row);
                 }
                 PickerOutcome::Nothing
             }
@@ -161,8 +279,15 @@ impl Picker {
                 if row >= self.rows(registry, caps, pinned).len() {
                     return PickerOutcome::Nothing;
                 }
-                self.selected = row;
+                self.select(row);
                 self.update(PickerMsg::Choose, registry, caps, pinned)
+            }
+            PickerMsg::TogglePin if self.open => {
+                self.toggle_pin(self.selected, registry, caps, pinned)
+            }
+            PickerMsg::TogglePinAt(row) if self.open => {
+                self.select(row.min(self.rows(registry, caps, pinned).len().saturating_sub(1)));
+                self.toggle_pin(row, registry, caps, pinned)
             }
             PickerMsg::Choose if self.open => {
                 let rows = self.rows(registry, caps, pinned);
@@ -170,6 +295,7 @@ impl Picker {
                     return PickerOutcome::Nothing;
                 };
                 if let Availability::Unavailable { reason } = &row.availability {
+                    self.reason = Some(reason.clone());
                     return PickerOutcome::Unavailable {
                         reason: reason.clone(),
                     };
@@ -178,19 +304,59 @@ impl Picker {
                     self.page = Page::More;
                     self.filter.clear();
                     self.selected = 0;
+                    self.reason = None;
                     return PickerOutcome::Nothing;
                 }
                 let chosen = row.action.clone();
-                *self = Self::default();
+                self.reset();
                 PickerOutcome::Chosen(chosen)
             }
             // A message to a closed picker does nothing.
             PickerMsg::Filter(_)
             | PickerMsg::Next
             | PickerMsg::Prev
+            | PickerMsg::Left
+            | PickerMsg::Right
             | PickerMsg::Choose
             | PickerMsg::Select(_)
-            | PickerMsg::ChooseAt(_) => PickerOutcome::Nothing,
+            | PickerMsg::ChooseAt(_)
+            | PickerMsg::TogglePin
+            | PickerMsg::TogglePinAt(_) => PickerOutcome::Nothing,
+        }
+    }
+
+    /// Left with nowhere further left to go on More tools goes back.
+    fn step_back_if_left(
+        &mut self,
+        msg: &PickerMsg,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) -> PickerOutcome {
+        if *msg == PickerMsg::Left && self.page == Page::More {
+            self.update(PickerMsg::Back, registry, caps, pinned)
+        } else {
+            PickerOutcome::Nothing
+        }
+    }
+
+    fn toggle_pin(
+        &mut self,
+        row: usize,
+        registry: &Registry,
+        caps: &Capabilities,
+        pinned: &BTreeSet<PanelKind>,
+    ) -> PickerOutcome {
+        let rows = self.rows(registry, caps, pinned);
+        match rows.get(row) {
+            Some(r) if r.pinnable => {
+                self.reason = None;
+                PickerOutcome::Pin {
+                    panel: r.panel.clone(),
+                    pinned: !r.pinned,
+                }
+            }
+            _ => PickerOutcome::Nothing,
         }
     }
 }
@@ -401,8 +567,10 @@ mod tests {
 
         let pins: BTreeSet<_> = [PanelKind::new("cabinet")].into();
         let main = reg.picker_rows(&caps, &pins);
-        assert_eq!(main.last().unwrap().title, "Artifacts");
-        assert!(main.last().unwrap().pinned);
+        // After the initial rows, before the row that leads to More tools.
+        let titles: Vec<_> = main.iter().map(|r| r.title.as_str()).collect();
+        assert_eq!(titles[5..], ["Artifacts", "More tools"]);
+        assert!(main[5].pinned);
         assert!(
             !reg.more_tools(&caps, &pins)
                 .iter()

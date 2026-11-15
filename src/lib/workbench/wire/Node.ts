@@ -22,6 +22,11 @@ posInSet?: number,
  */
 setSize?: number, 
 /**
+ * The chord that does what the node does, as people read it
+ * (`aria-keyshortcuts`).
+ */
+shortcut?: string, 
+/**
  * Children in reading order. A node has exactly one parent.
  */
 children: Array<NodeId>, };
