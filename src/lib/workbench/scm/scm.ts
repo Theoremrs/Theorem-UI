@@ -110,8 +110,7 @@ export interface LogEntry {
  * One conflicted path: whether it is still in conflict and the text of each
  * side. A side the host does not have (a file added on one branch has no
  * `base`) is absent, not empty: the host's null side is left out, and an existing empty file
- * stays `""`. Same shape as the wire's `ConflictSides`, plus `binary`, which the wire has no
- * field for yet.
+ * stays `""`. Same shape as the wire's `ConflictSides`, plus `binary`.
  */
 export interface ConflictSides {
   path: string
@@ -120,7 +119,7 @@ export interface ConflictSides {
   ours?: string
   theirs?: string
   /** A stage is not valid UTF-8, so the host sent no text for any side. */
-  binary?: true
+  binary?: boolean
 }
 
 interface Request {
@@ -216,11 +215,13 @@ function sidesOf(
   const path = str(body.path) ?? fallback
   if (path === undefined) return undefined
   const sides: ConflictSides = { path, conflict: body.conflict !== false }
+  const binary = body.binary === true
+  if (binary) sides.binary = true
   for (const side of ['base', 'ours', 'theirs'] as const) {
     const text = body[side]
-    if (typeof text === 'string') sides[side] = text
+    // A binary side is only present or absent: present is the empty string, never its bytes.
+    if (typeof text === 'string') sides[side] = binary ? '' : text
   }
-  if (body.binary === true) sides.binary = true
   return sides
 }
 

@@ -287,6 +287,7 @@ describe('list', () => {
           started_at_ms: 1700,
         },
         { handle: 'h2', state: 'passed', exit_code: 0 },
+        { handle: 'h3', state: 'running', exit_code: null, kind: 'test' },
         { configuration: 'no handle' },
       ],
     }))
@@ -309,8 +310,10 @@ describe('list', () => {
             command: ['make', 'all'],
             state: 'running',
             startedAtMs: 1700,
+            kind: 'run',
           },
-          { handle: 'h2', state: 'passed' },
+          { handle: 'h2', state: 'passed', exitCode: 0 },
+          { handle: 'h3', state: 'running', kind: 'test' },
         ],
       },
     })

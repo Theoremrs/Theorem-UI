@@ -29,9 +29,13 @@ import type {
   HostMessage,
   Inbound,
   LayoutDocument,
+  MouseEncoding,
+  MouseProtocol,
   ResourceRef,
   Revision,
+  TerminalAdoption as WireAdoption,
   TerminalBackend,
+  TerminalModes as WireModes,
   TerminalProfileInfo,
   TerminalSessionInfo,
 } from './wire'
@@ -61,6 +65,15 @@ export type FilesPort = Pick<
   Files,
   'list' | 'stat' | 'search' | 'create' | 'rename' | 'copy' | 'delete' | 'watch'
 >
+
+const MOUSE_PROTOCOLS: readonly MouseProtocol[] = [
+  'none',
+  'press',
+  'press_release',
+  'button_motion',
+  'any_motion',
+]
+const MOUSE_ENCODINGS: readonly MouseEncoding[] = ['default', 'utf8', 'sgr']
 
 /** One terminal binding as the adapter drives it. `TerminalSession` satisfies it. */
 export type TerminalPort = Pick<
@@ -359,14 +372,69 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     })
   }
 
+  /** The host's adoption state as the wire names it; a state the wire does not know is left out, never guessed. */
+  function wireAdoption(): WireAdoption | undefined {
+    if (!adoption) return undefined
+    const state: string = adoption.state
+    if (state === 'pending' || state === 'settled') return { state }
+    if (state === 'unavailable') {
+      const { reason } = adoption as { reason?: unknown }
+      return typeof reason === 'string' && reason
+        ? { state, reason }
+        : { state }
+    }
+    return undefined
+  }
+
+  /** A row's modes as the wire names them. A value the wire has no word for leaves the modes out whole. */
+  function wireModes(modes: unknown): WireModes | undefined {
+    const m = (modes && typeof modes === 'object' ? modes : {}) as Record<
+      string,
+      unknown
+    >
+    const flags = [
+      m.alternate_screen,
+      m.application_cursor,
+      m.application_keypad,
+      m.bracketed_paste,
+      m.hide_cursor,
+    ]
+    const protocol = MOUSE_PROTOCOLS.find((word) => word === m.mouse_protocol)
+    const encoding = MOUSE_ENCODINGS.find((word) => word === m.mouse_encoding)
+    if (
+      !flags.every((flag) => typeof flag === 'boolean') ||
+      !protocol ||
+      !encoding
+    ) {
+      return undefined
+    }
+    return {
+      alternateScreen: m.alternate_screen as boolean,
+      applicationCursor: m.application_cursor as boolean,
+      applicationKeypad: m.application_keypad as boolean,
+      bracketedPaste: m.bracketed_paste as boolean,
+      hideCursor: m.hide_cursor as boolean,
+      mouseProtocol: protocol,
+      mouseEncoding: encoding,
+    }
+  }
+
   /** Reads what the host lists into the session list: unbound rows are the host's, bound ones stay the binding's. */
   function absorb(listed: TerminalListReply) {
     adoption = listed.adoption
     const rows = new Set<string>()
     for (const row of listed.sessions) {
       rows.add(row.session)
-      if (terminals.has(row.session)) continue
+      const modes = wireModes(row.modes)
+      const held = sessions.get(row.session)
+      if (terminals.has(row.session)) {
+        // The binding owns the rest of its entry; the host's modes are still the host's to say.
+        if (held)
+          sessions.set(row.session, { ...held, ...(modes ? { modes } : {}) })
+        continue
+      }
       sessions.set(row.session, {
+        ...(modes ? { modes } : {}),
         session: row.session,
         profile:
           sessions.get(row.session)?.profile ?? profileLabel(row.backend),
@@ -433,6 +501,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       workspace,
       profiles: profiles(),
       sessions: [...sessions.values()],
+      ...(wireAdoption() ? { adoption: wireAdoption() } : {}),
     }
     const key = JSON.stringify(message)
     if (key === lastSessions) return
@@ -455,6 +524,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       profile,
       backend,
       workspace,
+      ...(sessions.get(session)?.modes
+        ? { modes: sessions.get(session)?.modes }
+        : {}),
       ...(state.processOwnedBy ? { host: state.processOwnedBy } : {}),
       ...(state.program !== undefined ? { program: state.program } : {}),
       state:

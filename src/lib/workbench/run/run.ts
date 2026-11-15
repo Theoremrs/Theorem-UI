@@ -37,6 +37,10 @@ export interface RunSummary {
   /** The host's word: `running` while it runs, another word once it has ended. */
   state: string
   startedAtMs?: number
+  /** How it ended; absent while it runs or when the host sends none. */
+  exitCode?: number
+  /** The configuration's kind at start. */
+  kind?: string
 }
 
 interface Request {
@@ -170,6 +174,8 @@ export function createRunner(env: Environment<RunClient>): Runner {
         const { argv } = body
         const name = str(body.configuration)
         const startedAtMs = num(body.started_at_ms)
+        const exitCode = num(body.exit_code)
+        const kind = str(body.kind)
         return [
           {
             handle,
@@ -179,6 +185,8 @@ export function createRunner(env: Environment<RunClient>): Runner {
               : {}),
             state: str(body.state) ?? 'unknown',
             ...(startedAtMs !== undefined ? { startedAtMs } : {}),
+            ...(exitCode !== undefined ? { exitCode } : {}),
+            ...(kind ? { kind } : {}),
           },
         ]
       })

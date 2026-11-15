@@ -1406,6 +1406,15 @@ describe('host events', () => {
         mouse_encoding: 'default' as const,
       },
     })
+    const PLAIN_MODES = {
+      alternateScreen: false,
+      applicationCursor: false,
+      applicationKeypad: false,
+      bracketedPaste: false,
+      hideCursor: false,
+      mouseProtocol: 'none' as const,
+      mouseEncoding: 'default' as const,
+    }
     const sessionLists = (t: Awaited<ReturnType<typeof setup>>) =>
       t
         .hostMessages()
@@ -1435,6 +1444,7 @@ describe('host events', () => {
           program: 2,
           state: 'running',
           controlledElsewhere: true,
+          modes: PLAIN_MODES,
         },
         {
           session: 'pty-1',
@@ -1444,6 +1454,7 @@ describe('host events', () => {
           program: 2,
           state: 'running',
           controlledElsewhere: false,
+          modes: PLAIN_MODES,
         },
       ])
 
@@ -1539,6 +1550,79 @@ describe('host events', () => {
           unavailableReason: 'the core refused the label',
         }),
       ])
+    })
+
+    test('the adoption state and each row’s modes are on the message; an unknown mode value leaves the modes out', async () => {
+      const modes = {
+        alternate_screen: true,
+        application_cursor: true,
+        application_keypad: false,
+        bracketed_paste: true,
+        hide_cursor: false,
+        mouse_protocol: 'any_motion' as const,
+        mouse_encoding: 'sgr' as const,
+      }
+      let answer: TerminalListReply = {
+        sessions: [
+          { ...row('pty-1', 'native'), modes },
+          {
+            ...row('pty-2', 'native'),
+            modes: { ...modes, mouse_protocol: 'future' as never },
+          },
+        ],
+        adoption: { state: 'pending' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer,
+        },
+      )
+      await t.settle()
+      let last = sessionLists(t).at(-1)!
+      expect(last.adoption).toEqual({ state: 'pending' })
+      expect(last.sessions[0]!.modes).toEqual({
+        alternateScreen: true,
+        applicationCursor: true,
+        applicationKeypad: false,
+        bracketedPaste: true,
+        hideCursor: false,
+        mouseProtocol: 'any_motion',
+        mouseEncoding: 'sgr',
+      })
+      expect(last.sessions[1]).not.toHaveProperty('modes')
+      answer = { sessions: [], adoption: { state: 'settled' } }
+      t.announce({ kind: 'terminal.adoption', data: { state: 'settled' } })
+      await t.settle()
+      expect(sessionLists(t).at(-1)!.adoption).toEqual({ state: 'settled' })
+      answer = {
+        sessions: [],
+        adoption: { state: 'unavailable', reason: 'core down' },
+      }
+      t.announce({
+        kind: 'terminal.adoption',
+        data: { state: 'unavailable', reason: 'core down' },
+      })
+      await t.settle()
+      last = sessionLists(t).at(-1)!
+      expect(last.adoption).toEqual({
+        state: 'unavailable',
+        reason: 'core down',
+      })
+    })
+
+    test('a host with no terminal.list leaves adoption absent, never settled', async () => {
+      const t = await setup({}, undefined, {}, { canList: async () => false })
+      await t.settle()
+      expect(sessionLists(t).at(-1)).not.toHaveProperty('adoption')
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.every((s) => !('modes' in s)),
+      ).toBe(true)
     })
 
     test('a list that cannot be read, or a host that does not list terminals, leaves the known sessions as they were', async () => {

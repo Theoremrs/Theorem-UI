@@ -429,7 +429,7 @@ describe('writes', () => {
       path: 'b.bin',
       conflict: true,
       base: null,
-      ours: null,
+      ours: '\u0000\u0001bytes',
       theirs: null,
       binary: true,
     }))
@@ -437,6 +437,7 @@ describe('writes', () => {
     expect(binary.outcome === 'accepted' && binary.value).toEqual({
       path: 'b.bin',
       conflict: true,
+      ours: '',
       binary: true,
     })
     on('merge', () => ({
