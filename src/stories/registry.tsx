@@ -1,7 +1,8 @@
 // SOURCING: the real components, wrapped only in the providers the app itself gives them. Loaded lazily by the story route so none of this reaches production. Artifact stories hand a committed OpenUI program to the thread's own part renderers inside an assistant-ui external-store message; the activity and composer stories hand committed messages to the thread itself the same way, converted by the SDK's toAssistantMessages.
+import { AppearanceControls } from './appearance-controls'
 import { ReactFlow, ReactFlowProvider, applyNodeChanges } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, useEffect, useMemo, useState } from 'react'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -72,6 +73,9 @@ import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
 
+// The table's settings route is not needed to boot every conversation fixture.
+const SettingsAiStory = lazy(() => import('./settings-ai').then((module) => ({ default: module.SettingsAiStory })))
+
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(
     'thread-app-gallery',
@@ -137,6 +141,9 @@ function ShellCompareStory() {
   return (
     <WithRuntime>
       <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
+      <div className="fixed right-2 top-2 z-40" data-story-appearance-controls>
+        <AppearanceControls />
+      </div>
     </WithRuntime>
   )
 }
@@ -814,6 +821,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,
+  'settings-ai': SettingsAiStory,
   'glass-compare': () => (
     <WithRuntime>
       <GlassCompareStory />

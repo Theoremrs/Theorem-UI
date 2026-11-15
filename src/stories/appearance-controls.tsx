@@ -1,5 +1,5 @@
-// The same appearance form in a Base UI dialog keeps the active conversation,
-// editor and runtime mounted while preferences change.
+// Development-only control harness: exercise the real settings form while the
+// fixture conversation stays mounted. Product controls live at /settings/appearance.
 import { lazy, Suspense } from 'react'
 import {
   Dialog,
@@ -15,7 +15,7 @@ const Settings = lazy(() =>
   })),
 )
 
-export function AppearanceDialog() {
+export function AppearanceControls() {
   return (
     <Dialog>
       <DialogTrigger

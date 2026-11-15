@@ -1,4 +1,4 @@
-// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, next-themes (theme), lib/palette (colors), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out)
+// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out)
 import { Menu } from '@base-ui/react/menu'
 import { LiveRegion, useAnnouncement } from '@dnd-kit/accessibility'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -14,7 +14,6 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { useTheme } from 'next-themes'
 import { useLayoutEffect, useRef, useState } from 'react'
 import type {
   ComponentProps,
@@ -23,10 +22,8 @@ import type {
   ReactNode,
 } from 'react'
 import { Icon } from '@/components/icons'
-import { AppearanceDialog } from '@/components/settings/appearance-dialog'
+import { ThemeToggle } from '@/components/settings/theme-toggle'
 import { KitPerch } from '@/components/kit/kit-stage'
-import { PALETTES, setPalette, usePalette } from '@/lib/palette'
-import type { Palette } from '@/lib/palette'
 import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
 import { useWorkspaces } from '@/lib/workspace/workspaces'
 import {
@@ -55,16 +52,8 @@ import { useCommandPalette } from './command-palette'
 const railButton =
   'group/rail relative flex size-8 items-center justify-center rounded-[10px] text-ink-faint transition-colors duration-100 outline-none hover:bg-ink/8 hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus'
 
-const THEMES = [
-  { value: 'light', label: 'Light' },
-  { value: 'dark', label: 'Dark' },
-  { value: 'system', label: 'Match system' },
-]
-
-/** The signed-in tenant as an initial outlined in the accent, with the theme and color choices behind it. */
+/** The signed-in tenant as an initial outlined in the accent, with account actions behind it. */
 function AccountMenu() {
-  const { theme, setTheme } = useTheme()
-  const palette = usePalette()
   const tenant = useTenant()
   const signIn = useSignInConfigured()
 
@@ -108,52 +97,6 @@ function AccountMenu() {
               <span className="min-w-0 flex-1">Search</span>
               <span className="text-xs text-ink-faint">⌘K</span>
             </Menu.Item>
-            <Menu.Separator className="my-1 h-px bg-separator" />
-            <Menu.Group>
-              <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
-                Theme
-              </Menu.GroupLabel>
-              <Menu.RadioGroup
-                value={theme}
-                onValueChange={(value) => setTheme(String(value))}
-              >
-                {THEMES.map(({ value, label }) => (
-                  <Menu.RadioItem
-                    key={value}
-                    value={value}
-                    className={`${menuItem} data-checked:font-medium`}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    <Menu.RadioItemIndicator>
-                      <Icon.Check className="size-3.5" />
-                    </Menu.RadioItemIndicator>
-                  </Menu.RadioItem>
-                ))}
-              </Menu.RadioGroup>
-            </Menu.Group>
-            <Menu.Separator className="my-1 h-px bg-separator" />
-            <Menu.Group>
-              <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
-                Colors
-              </Menu.GroupLabel>
-              <Menu.RadioGroup
-                value={palette}
-                onValueChange={(value) => setPalette(value as Palette)}
-              >
-                {PALETTES.map(({ value, label }) => (
-                  <Menu.RadioItem
-                    key={value}
-                    value={value}
-                    className={`${menuItem} data-checked:font-medium`}
-                  >
-                    <span className="min-w-0 flex-1 truncate">{label}</span>
-                    <Menu.RadioItemIndicator>
-                      <Icon.Check className="size-3.5" />
-                    </Menu.RadioItemIndicator>
-                  </Menu.RadioItem>
-                ))}
-              </Menu.RadioGroup>
-            </Menu.Group>
             {signIn && (
               <>
                 <Menu.Separator className="my-1 h-px bg-separator" />
@@ -513,7 +456,7 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
       <div className="flex-1" />
       <KitPerch name="rail" className="mb-1" />
       <TerminalToggle />
-      <AppearanceDialog />
+      <ThemeToggle />
       <AccountMenu />
     </div>
   )

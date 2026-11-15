@@ -1,5 +1,23 @@
 # Composable appearance implementation
 
+## Live appearance repairs — November 14, 2026
+
+### PR #104 review: custom background contrast and CI readiness
+
+Verified the open PR and local branch both pointed to `c8f1a631`. The custom-palette finding is valid: a browser regression using reversed light/dark palettes failed with a validated dark neutral of `#1c1d1e` behind light ink, while the sheet still started at `#ffffff`. Custom sheet stops and the dark-mode vignette now alias the validated neutral surface. Faint text and legacy raised/frame/rail surfaces alias their matching validated roles. These CSS relationships update on palette edits and light/dark changes without painting a separate reply rectangle. Built-in gradient stops and the existing scroll-responsive text-clipping utility are unchanged.
+
+The Composer CI log at that head passed native composer, policy and color checks, then failed in `oracle:interactions` before its first control assertion. The runner hid its exception in a report file; it now prints it, and CI prints the Vite log on failure. Local cold-start attempts timed out waiting for `data-story-ready`; one also hit host disk exhaustion, so these do not establish the exact CI failure. The newly added AI settings/table story is now lazy-loaded, and the interaction runner uses the same 60-second fixture-readiness allowance as the Expressive runner. Interaction assertions remain intact. The reversed custom-theme browser checks pass in light/dark/light, including primary, secondary, link and faint ink against the shared canvas and legacy raised/rail surfaces; TypeScript, affected-file lint and all 28 appearance tests pass. `oracle:custom-background` adds light/dark/light rendered checks for reversed-brightness custom themes and runs in CI; evidence lives in `evidence/custom-background`. The final local runs pass all 56 interaction checks and all 11 Expressive/settings checks. CI verification remains pending the pushed revision.
+
+PR #101 was verified merged into `main` at `2a479ca3`. These follow-up repairs use `Travis-Gilbert/appearance-live-repairs` in the existing checkout. The user's live feedback revises the original separate-reading-plane requirement: preserve the existing gradient and use one background for the canvas and assistant replies. No gradient tokens or Life rendering were changed.
+
+- Assistant content and its footer now expose the canvas instead of painting a solid rectangle. The Replies material control and its blur/shadow rules are removed. Version 1 saved/imported themes still validate; only the obsolete reply material override is discarded, preserving other preferences. Forced colors still supplies a system Canvas.
+- Unrecognized SDK data parts stay in the runtime and retain a hidden diagnostic name instead of producing unsupported-content bubbles. Known artifact/scene rendering failures still report a notice. A red SDK/runtime regression reproduced two bubbles before the fix. The supplied live conversation was inspected read-only after completion and had no visible fallback notices, so its original streaming part types remain unconfirmed.
+- The AI model table already uses the vendored TanStack table and shared controls. Its page now allows 1280px instead of 680px, with wrapping settings rows at narrow widths. Appearance's custom select/number/textarea controls now use installed coss components. No replacement table engine or new control implementation was introduced.
+
+Validation: 699 composer/runtime tests, 28 appearance/oracle tests, and 22 focused appearance/activity/AI tests passed; TypeScript and focused production ESLint passed. The Chromium reports in `evidence/live-repairs` record 56 control checks, seven phone-navigation/theme-export checks, 15 asynchronous SDK runtime checks, and 11 Expressive/settings checks. The latter covers all three built-in palettes in light/dark mode, Calm/Expressive round trips, unchanged draft/editor identity, transparent reply/footer paint, retired legacy overrides, keyboard/numeric controls, model filtering and 320/390px settings layouts. It is included in CI as `oracle:expressive`.
+
+Screenshots: `expressive-light.png`, `expressive-dark.png`, and `ai-settings-wide.png` under `evidence/live-repairs`. The two gradient endpoints meet the measured text contrast threshold; this does not establish every possible animated backdrop frame or custom palette. Earlier full-matrix evidence is historical and has not been reclassified for this revised background contract. These are local fixture/runtime results, not deployment acceptance. No live settings or messages were changed and no deployment was performed.
+
 ## Scope and source
 
 Implement `SPEC.md` (theorem-appearance-v1), supplied by the user on November 13, 2026. The requested result is independently composable appearance, resilient typography, reusable behavioral parts, and independent rendered evidence. Attached prose is supporting specification content, not separate operational authorization.
@@ -112,3 +130,52 @@ Verified origin `Travis-Gilbert/Theorem-UI`, branch `Travis-Gilbert/composable-a
 Validation: 21 shell/appearance unit tests and four story transport tests passed; TypeScript, focused ESLint and formatting checks passed. `PLAYWRIGHT_BROWSERS_PATH=/tmp/theorem-appearance-browsers bun run oracle:navigation-export` passed all seven Chromium checks with no uncaught browser errors. It checks Vault close/reopen, keyboard activation, Escape, Notes/Home navigation at 320px and 390px; note A → B → A selection and visible editors; desktop rail/header behavior; pristine JSON Apply, live export after import/control changes, draft-preserving clipboard export, and invalid JSON retention. The regression command is included in the existing browser CI step.
 
 Evidence: [browser results](evidence/review/navigation-export.json) and [390px Vault navigation screenshot](evidence/review/vault-phone-navigation.png). The fixture uses the real components, router, editors and SDK with deterministic story transport; it does not establish live backend acceptance. Earlier full-matrix evidence and its native input verification limits remain unchanged. The existing worktree is retained for this PR and the remaining acceptance checks; no new worktree was created.
+
+
+### PR #104 follow-up: settings location, glass and main integration (2026-11-15)
+
+Verified the existing Theorem-UI origin and `Travis-Gilbert/appearance-live-repairs`
+branch at `9db8dbc5` before merging `origin/main` (`4e7dc0f2`). Resolved the
+browser-runner conflicts by keeping main's shared full-Chromium launcher and
+temporary evidence directory, the existing coss control helpers, and both log
+and artifact diagnostics. No new PR or branch was created.
+
+The rail and phone header now reuse a next-themes light/dark toggle. Full
+appearance controls remain on the real Settings → Appearance route; duplicate
+Theme/Colors groups were removed from the account menu. The old dialog is now
+only a development story harness for exercising the real form while verifying
+mounted-editor and streaming continuity. It is absent from the product shell.
+A separate browser check follows Account → Settings → Appearance and operates
+the actual page; the story-only harness is hidden during that product check.
+
+History confirms that `361d7191` introduced CSS Frosted glass; the later Liquid
+glass renderer adapts `ybouane/liquidglass`. Both still exist. The redesign's
+opaque composer reading planes hid their interior and replaced Liquid glass's
+stronger ink. Built-in glass composers now let the existing renderer paint the
+whole surface and inherit its foreground. Validated custom palettes retain
+solid reading planes; forced colors and reduced transparency retain their
+solid fallback. No glass renderer, gradient, or material preference was replaced.
+
+Validation: 703 composer/runtime tests and 28 appearance tests passed; TypeScript
+and focused production lint passed. Browser runs passed 56 real-form interaction
+checks, 15 upload/stream/runtime checks, nine reflow/forced-color checks, and
+seven new theme/glass/settings checks. The latter covers desktop and phone
+mode toggles, draft/DOM continuity, both glass materials in light/dark mode,
+active Liquid glass canvas dimensions, transparent interiors, and the dedicated
+settings route. These use local real components with fixture data, not a live
+production backend. One evidence write hit transient local disk exhaustion;
+follow-up evidence uses the external SSD. See [glass evidence](evidence/theme-glass/theme-glass.json)
+and [Liquid glass light](evidence/theme-glass/composer-liquid-light.png).
+
+The remaining browser reruns passed: seven navigation/export checks, 11
+Expressive/settings checks and three reversed custom-palette checks. The
+production Vite build and all 10 built composer interaction checks passed.
+
+The first GitHub run at `cbc4d12a` passed unit, built composer, palette and all
+56 interaction checks, then timed out locating Custom appearance in the
+continuity harness dialog. Its saved artifact confirmed the failing locator;
+the same run passed locally. Portability coverage now follows the dedicated
+`/settings/appearance` route after the editor/IME assertions, including actual
+page reload and reset. All 14 continuity checks pass locally with this change.
+Failures also print their exception and save a screenshot and visible text.
+See [route continuity evidence](evidence/theme-glass/chromium-continuity.json).
