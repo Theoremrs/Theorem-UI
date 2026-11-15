@@ -57,6 +57,7 @@ export type { FileEntry } from "./FileEntry";
 export type { FileKind } from "./FileKind";
 export type { FileListing } from "./FileListing";
 export type { FileStat } from "./FileStat";
+export type { FilesCopy } from "./FilesCopy";
 export type { FilesCreate } from "./FilesCreate";
 export type { FilesPath } from "./FilesPath";
 export type { FilesRename } from "./FilesRename";

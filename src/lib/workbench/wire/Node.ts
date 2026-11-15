@@ -9,6 +9,19 @@ import type { Role } from "./Role";
 
 export type Node = { id: NodeId, role: Role, name: string, state: NodeState, rect: CellRect, actions: Array<NodeAction>, binding: ResourceRef, revision?: Revision, 
 /**
+ * Depth in a tree, counted from 1 (`aria-level`).
+ */
+level?: number, 
+/**
+ * Position among the item's siblings, counted from 1 (`aria-posinset`).
+ * Always given together with `set_size`.
+ */
+posInSet?: number, 
+/**
+ * How many siblings there are, counting the item (`aria-setsize`).
+ */
+setSize?: number, 
+/**
  * Children in reading order. A node has exactly one parent.
  */
 children: Array<NodeId>, };

@@ -175,6 +175,25 @@ impl Generation {
     }
 }
 
+/// The workspace and environment the workbench is about, as the host last said
+/// (`HostMessage::WorkspaceChanged`). `generation` goes up with every change of
+/// either, so a workspace-bound panel binds with it and a listing of the old
+/// workspace is dropped as stale. Before the host says anything the workspace is
+/// empty and the generation 0.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct WorkspaceIdentity {
+    pub workspace: String,
+    pub environment: Option<String>,
+    pub generation: Generation,
+}
+
+impl WorkspaceIdentity {
+    /// Whether the host has named a workspace yet.
+    pub fn is_set(&self) -> bool {
+        !self.workspace.is_empty()
+    }
+}
+
 /// Who asked for an operation. A model-origin request never carries a human's
 /// approval, whatever action id it names.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

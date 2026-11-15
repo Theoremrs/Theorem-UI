@@ -19,7 +19,7 @@ use theorem_workbench_dock::CellMetrics;
 use crate::completion::Completion;
 use crate::effect::{Effect, EffectKind};
 use crate::host::HostMessage;
-use crate::ids::{ActionId, EffectId, EffectIds, PanelInstanceId};
+use crate::ids::{ActionId, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity};
 use crate::queue::SourceQueues;
 use crate::registry::PickerRow;
 use crate::semantics::Node;
@@ -54,6 +54,69 @@ pub struct PanelPointer {
     pub x: i32,
     pub y: i32,
     pub mods: Mods,
+    /// Consecutive presses at this spot, from the host: 1 for a single press,
+    /// 2 for a double click. Only a `Down` carries a count above 1.
+    pub clicks: u8,
+}
+
+/// Something a panel asks the root to show in a panel of its own. The root
+/// decides which panel kind serves it (see [`PanelFactories::register_opener`](crate::factory::PanelFactories::register_opener)),
+/// so the asking panel names the thing, never a kind.
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum OpenTarget {
+    /// A file of a workspace, as a document.
+    File { workspace: String, path: String },
+}
+
+impl OpenTarget {
+    /// The resource a panel showing this target is bound to. A panel already
+    /// bound to it is focused instead of opening a second one.
+    pub fn resource(&self) -> ResourceRef {
+        match self {
+            Self::File { workspace, path } => ResourceRef::Document {
+                workspace: workspace.clone(),
+                resource_id: path.clone(),
+            },
+        }
+    }
+
+    /// The panel kind named when nothing serves the target: the placeholder
+    /// keeps [`state`](Self::state) under it, so a build that serves the kind
+    /// can open it later.
+    pub fn fallback_kind(&self) -> &'static str {
+        match self {
+            Self::File { .. } => "document",
+        }
+    }
+
+    /// The view state a constructor of a serving kind is built from.
+    pub fn state(&self) -> Value {
+        match self {
+            Self::File { workspace, path } => {
+                serde_json::json!({ "workspace": workspace, "path": path })
+            }
+        }
+    }
+
+    /// A tab title: the last part of the path.
+    pub fn title(&self) -> String {
+        match self {
+            Self::File { path, .. } => path
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or(path)
+                .to_owned(),
+        }
+    }
+
+    /// The target in words, for a reason a person reads.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::File { path, .. } => format!("the file \"{path}\""),
+        }
+    }
 }
 
 /// Everything the root says to a panel.
@@ -104,11 +167,12 @@ pub enum PanelMsg {
         offset: u64,
         formatted: Vec<u8>,
     },
-    /// Output was dropped before it reached the pane (the PTY queue was full,
-    /// or one frame was larger than the queue): the screen is no longer
-    /// contiguous with the stream. Never silent: ask the host for a reset, by
-    /// attaching again from the screen's applied offset. `frames` and `bytes`
-    /// count what was lost, across every terminal, because the queue is shared.
+    /// Output was dropped before it reached the pane (its session's queue was
+    /// full, the total bound was reached by this session, or one frame was
+    /// larger than the queue): the screen is no longer contiguous with the
+    /// stream. Never silent: ask the host for a reset, by attaching again from
+    /// the screen's applied offset. Sent only to the panes bound to the session
+    /// that lost output; `frames` and `bytes` count what that session lost.
     TerminalResetRequest {
         frames: u64,
         bytes: u64,
@@ -116,6 +180,11 @@ pub enum PanelMsg {
     /// A registered action of the panel's kind with intent `Create`, `Start`
     /// or `Destroy`. The panel supplies the effect's payload.
     Action(ActionId),
+    /// The host named a different workspace or environment, or this panel was
+    /// built after it did. Arrives on a silent `Ctx`: a panel that needs data
+    /// for the new workspace records the need and emits on its next `Tick`. Its
+    /// `generation` is the binding generation for workspace-bound state.
+    Workspace(WorkspaceIdentity),
     /// One frame. Work that was deferred from a silent message starts here.
     Tick,
 }
@@ -149,12 +218,31 @@ pub struct Ctx<'a> {
     pub(crate) origins: &'a mut BTreeMap<EffectId, PanelInstanceId>,
     pub(crate) queues: &'a mut SourceQueues,
     pub(crate) mode: Mode,
+    pub(crate) workspace: &'a WorkspaceIdentity,
     pub(crate) effects: Vec<Effect>,
+    pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
 }
 
 impl Ctx<'_> {
+    /// Ask the root to show `target`: focus the panel already bound to it, else
+    /// open the panel kind that serves it in the main region and focus that,
+    /// else open the unavailable placeholder with a reason. Opening emits no
+    /// effect; the new panel loads on its own first `Tick`. Ignored on a silent
+    /// `Ctx` and while a view is closing.
+    pub fn open(&mut self, target: OpenTarget) {
+        if matches!(self.mode, Mode::Silent | Mode::Forbid(_)) {
+            return;
+        }
+        self.opens.push(target);
+    }
+
+    /// The workspace and environment now, read-only.
+    pub fn workspace(&self) -> &WorkspaceIdentity {
+        self.workspace
+    }
+
     /// Emit an effect. `build` receives the id to put in its envelope. The
     /// effect is registered as in flight, and its completion comes back to
     /// this panel as [`PanelMsg::Completion`] or [`PanelMsg::Cached`].
@@ -213,10 +301,24 @@ pub struct PickerView {
 /// Read-only context for `view` and `semantics`.
 pub struct ViewCtx<'a> {
     pub theme: &'a Theme,
+    /// The workspace and environment now.
+    pub workspace: &'a WorkspaceIdentity,
     /// This panel owns the keyboard and the window has focus.
     pub focused: bool,
     /// Present while the tool picker is open.
     pub picker: Option<&'a PickerView>,
+}
+
+impl<'a> ViewCtx<'a> {
+    /// A context for `theme` and `workspace`, unfocused, with no picker.
+    pub fn new(theme: &'a Theme, workspace: &'a WorkspaceIdentity) -> Self {
+        Self {
+            theme,
+            workspace,
+            focused: false,
+            picker: None,
+        }
+    }
 }
 
 /// A child panel. Files, the tool picker, the Theo transcript, a terminal pane

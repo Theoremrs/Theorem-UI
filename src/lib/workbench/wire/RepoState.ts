@@ -3,7 +3,8 @@
 /**
  * What the host says about the repository when it answers: the state a result
  * was read at, so a late answer can be told from the current one (AC-43).
- * Every field is the host's own and absent when it reported none. A detached
- * head and an unreported branch are both an absent `branch`.
+ * Every field is the host's own and absent when it reported none. `branch`
+ * tells a detached head ([`BranchState::Detached`], JSON `null`) from a branch
+ * the host did not report (absent), the way `scm.ts` `RepoState.branch` does.
  */
-export type RepoState = { head?: string, branch?: string, indexGeneration?: string, worktreeGeneration?: string, };
+export type RepoState = { head?: string, branch?: string | null, indexGeneration?: string, worktreeGeneration?: string, };

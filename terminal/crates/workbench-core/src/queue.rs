@@ -141,6 +141,20 @@ impl<T: Item> BoundedQueue<T> {
         }
     }
 
+    /// Drop the oldest item, leaving its place in the visible gap. For a
+    /// coordinator that has to free room across several queues.
+    pub fn drop_oldest(&mut self) -> bool {
+        let Some(old) = self.items.pop_front() else {
+            return false;
+        };
+        let weight = old.weight();
+        self.weight -= weight;
+        let gap = self.gap.get_or_insert((0, 0));
+        gap.0 += 1;
+        gap.1 += weight as u64;
+        true
+    }
+
     pub fn pop(&mut self) -> Option<Popped<T>> {
         if let Some((items, weight)) = self.gap.take() {
             return Some(Popped::Gap { items, weight });
@@ -191,6 +205,108 @@ impl Item for PtyFrame {
     }
 }
 
+/// PTY frames, one bounded queue per terminal session plus a bound on all of
+/// them together. A session that floods loses its own oldest frames and gets
+/// the gap; a quiet session keeps what it queued and sees no gap. When the
+/// total bound is reached, room is made by dropping the oldest frames of the
+/// session holding the most, which is the flooder, not whoever pushed last.
+#[derive(Debug)]
+pub struct PtyQueues {
+    max_items: usize,
+    max_bytes: usize,
+    total_bytes: usize,
+    /// In the order each session first queued something.
+    sessions: Vec<(ResourceRef, BoundedQueue<PtyFrame>)>,
+}
+
+impl PtyQueues {
+    pub fn new(per_session_items: usize, per_session_bytes: usize, total_bytes: usize) -> Self {
+        Self {
+            max_items: per_session_items,
+            max_bytes: per_session_bytes,
+            total_bytes,
+            sessions: Vec::new(),
+        }
+    }
+
+    /// Bytes queued across every session.
+    pub fn weight(&self) -> usize {
+        self.sessions.iter().map(|(_, q)| q.weight()).sum()
+    }
+
+    /// Frames queued across every session.
+    pub fn len(&self) -> usize {
+        self.sessions.iter().map(|(_, q)| q.len()).sum()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.sessions.is_empty()
+    }
+
+    /// Bytes queued for one session.
+    pub fn weight_of(&self, resource: &ResourceRef) -> usize {
+        self.sessions
+            .iter()
+            .find(|(r, _)| r == resource)
+            .map_or(0, |(_, q)| q.weight())
+    }
+
+    /// Offer a frame to its session's queue. `Full` hands back a frame larger
+    /// than a session (or the total) can ever hold: that session is to be
+    /// reset, nothing is queued.
+    pub fn push(&mut self, frame: PtyFrame) -> Push<PtyFrame> {
+        let w = frame.weight();
+        if w > self.max_bytes || w > self.total_bytes || self.max_items == 0 {
+            return Push::Full(frame);
+        }
+        let slot = match self.sessions.iter().position(|(r, _)| *r == frame.resource) {
+            Some(i) => i,
+            None => {
+                self.sessions.push((
+                    frame.resource.clone(),
+                    BoundedQueue::new(self.max_items, self.max_bytes, Overflow::DropOldest),
+                ));
+                self.sessions.len() - 1
+            }
+        };
+        let mut dropped = 0;
+        while self.weight() + w > self.total_bytes {
+            // The heaviest session pays, the pushing one included.
+            let Some(heaviest) = self
+                .sessions
+                .iter_mut()
+                .max_by_key(|(_, q)| q.weight())
+                .filter(|(_, q)| q.weight() > 0)
+            else {
+                break;
+            };
+            if !heaviest.1.drop_oldest() {
+                break;
+            }
+            dropped += 1;
+        }
+        match self.sessions[slot].1.push(frame) {
+            Push::QueuedAfterDrop { dropped: more } => Push::QueuedAfterDrop {
+                dropped: dropped + more,
+            },
+            Push::Queued if dropped > 0 => Push::QueuedAfterDrop { dropped },
+            other => other,
+        }
+    }
+
+    /// The next thing to hand over: a session's gap before its frames, its
+    /// frames in order, then the next session. Nothing crosses sessions.
+    pub fn pop(&mut self) -> Option<(ResourceRef, Popped<PtyFrame>)> {
+        let i = self.sessions.iter().position(|(_, q)| !q.is_empty())?;
+        let popped = self.sessions[i].1.pop()?;
+        let resource = self.sessions[i].0.clone();
+        if self.sessions[i].1.is_empty() {
+            self.sessions.remove(i);
+        }
+        Some((resource, popped))
+    }
+}
+
 /// A document event: one `document.changed` and the like. Order matters, so
 /// none is merged or dropped.
 #[derive(Debug, PartialEq, Eq)]
@@ -236,8 +352,12 @@ impl Item for EditorInput {
 pub struct QueueLimits {
     pub model_items: usize,
     pub model_bytes: usize,
+    /// Per terminal session.
     pub pty_items: usize,
+    /// Per terminal session.
     pub pty_bytes: usize,
+    /// Across every terminal session together.
+    pub pty_total_bytes: usize,
     pub document_events: usize,
     pub editor_items: usize,
     pub editor_bytes: usize,
@@ -250,6 +370,7 @@ impl Default for QueueLimits {
             model_bytes: 256 * 1024,
             pty_items: 4096,
             pty_bytes: 1024 * 1024,
+            pty_total_bytes: 4 * 1024 * 1024,
             document_events: 1024,
             editor_items: 256,
             editor_bytes: 64 * 1024,
@@ -263,9 +384,11 @@ pub struct SourceQueues {
     /// Coalesces deltas of one run; refuses when a different run's delta will
     /// not join.
     pub model: BoundedQueue<ModelDelta>,
-    /// Drops the oldest frames with a visible gap. Offsets are absolute, so
-    /// the consumer resnapshots from the gap instead of guessing.
-    pub pty: BoundedQueue<PtyFrame>,
+    /// One queue per session, bounded each and together. Drops the oldest
+    /// frames of the session that floods, with a visible gap for that session
+    /// only. Offsets are absolute, so the consumer resnapshots from the gap
+    /// instead of guessing.
+    pub pty: PtyQueues,
     /// Back-pressure: an edit is never merged or dropped. A refusal sends the
     /// consumer to catch up from history.
     pub documents: BoundedQueue<DocumentEvent>,
@@ -278,7 +401,7 @@ impl SourceQueues {
     pub fn new(limits: QueueLimits) -> Self {
         Self {
             model: BoundedQueue::new(limits.model_items, limits.model_bytes, Overflow::Coalesce),
-            pty: BoundedQueue::new(limits.pty_items, limits.pty_bytes, Overflow::DropOldest),
+            pty: PtyQueues::new(limits.pty_items, limits.pty_bytes, limits.pty_total_bytes),
             documents: BoundedQueue::new(
                 limits.document_events,
                 usize::MAX,
@@ -411,6 +534,65 @@ mod tests {
         );
     }
 
+    fn session(name: &str) -> ResourceRef {
+        ResourceRef::Terminal {
+            workspace: "w".into(),
+            session: name.into(),
+        }
+    }
+
+    fn frame_of(name: &str, offset: u64, len: usize) -> PtyFrame {
+        PtyFrame {
+            resource: session(name),
+            ..frame(offset, len)
+        }
+    }
+
+    #[test]
+    fn a_flooding_session_gaps_alone_and_a_quiet_one_keeps_its_frames() {
+        let mut q = PtyQueues::new(100, 8, 1000);
+        assert_eq!(q.push(frame_of("quiet", 0, 3)), Push::Queued);
+        for i in 0..5 {
+            q.push(frame_of("flood", i * 4, 4));
+        }
+        let mut gaps = vec![];
+        let mut quiet = vec![];
+        while let Some((resource, popped)) = q.pop() {
+            match popped {
+                Popped::Gap { .. } => gaps.push(resource),
+                Popped::Item(f) => quiet.push((resource, f.offset)),
+            }
+        }
+        assert_eq!(gaps, vec![session("flood")]);
+        assert!(quiet.contains(&(session("quiet"), 0)));
+        assert!(q.is_empty());
+    }
+
+    #[test]
+    fn the_total_bound_is_paid_by_the_heaviest_session() {
+        let mut q = PtyQueues::new(100, 100, 20);
+        q.push(frame_of("small", 0, 2));
+        for i in 0..4 {
+            q.push(frame_of("big", i * 8, 8));
+        }
+        assert!(q.weight() <= 20);
+        let mut gapped = vec![];
+        while let Some((resource, popped)) = q.pop() {
+            if matches!(popped, Popped::Gap { .. }) {
+                gapped.push(resource);
+            }
+        }
+        assert_eq!(gapped, vec![session("big")]);
+    }
+
+    #[test]
+    fn a_frame_too_big_for_a_session_is_handed_back_not_queued() {
+        let mut q = PtyQueues::new(100, 8, 1000);
+        q.push(frame_of("a", 0, 4));
+        assert_eq!(q.push(frame_of("a", 4, 9)), Push::Full(frame_of("a", 4, 9)));
+        assert_eq!(q.weight(), 4);
+    }
+
     #[test]
     fn one_busy_source_does_not_fill_another() {
         let mut queues = SourceQueues::new(QueueLimits {
@@ -418,6 +600,7 @@ mod tests {
             model_bytes: 8,
             pty_items: 2,
             pty_bytes: 8,
+            pty_total_bytes: 16,
             document_events: 2,
             editor_items: 2,
             editor_bytes: 8,

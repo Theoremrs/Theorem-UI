@@ -30,17 +30,18 @@ pub mod view;
 
 pub use completion::{Completion, CompletionPayload, Outcome};
 pub use effect::{Effect, EffectBody, EffectKind, Owner};
-pub use factory::PanelFactories;
+pub use factory::{Opener, PanelFactories};
 pub use host::HostMessage;
 pub(crate) use ids::string_id;
 pub use ids::{
     ActionId, Actor, Capability, EffectId, EffectIds, Generation, PanelInstanceId, PanelKind,
-    ResourceKind, ResourceRef, Revision,
+    ResourceKind, ResourceRef, Revision, WorkspaceIdentity,
 };
 pub use model::{Counters, Focus, Model, Notice, RestoreError, Viewport};
 pub use msg::{DockMsg, Inbound, Msg, Pointer};
 pub use panel::{
-    Button, Ctx, EmitError, Panel, PanelMsg, PanelPointer, PickerView, PointerKind, ViewCtx,
+    Button, Ctx, EmitError, OpenTarget, Panel, PanelMsg, PanelPointer, PickerView, PointerKind,
+    ViewCtx,
 };
 pub use theme::Theme;
 pub use tree::semantics;

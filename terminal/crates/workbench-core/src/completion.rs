@@ -170,6 +170,26 @@ pub enum FileKind {
 pub struct FileEntry {
     pub name: String,
     pub kind: FileKind,
+    /// The host's gitignore verdict, when it gave one (`files.ts` `ignored`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub ignored: Option<bool>,
+    /// A dot-entry the host marks hidden, when it gave a verdict.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub hidden: Option<bool>,
+}
+
+impl FileEntry {
+    /// An entry with no ignored or hidden verdict.
+    pub fn new(name: impl Into<String>, kind: FileKind) -> Self {
+        Self {
+            name: name.into(),
+            kind,
+            ignored: None,
+            hidden: None,
+        }
+    }
 }
 
 /// A directory listing or a name search. `partial` is true when the result is
@@ -322,8 +342,9 @@ pub struct DocumentReconciled {
 
 /// What the host says about the repository when it answers: the state a result
 /// was read at, so a late answer can be told from the current one (AC-43).
-/// Every field is the host's own and absent when it reported none. A detached
-/// head and an unreported branch are both an absent `branch`.
+/// Every field is the host's own and absent when it reported none. `branch`
+/// tells a detached head ([`BranchState::Detached`], JSON `null`) from a branch
+/// the host did not report (absent), the way `scm.ts` `RepoState.branch` does.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -331,15 +352,36 @@ pub struct RepoState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub head: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub branch: Option<String>,
+    #[serde(default, skip_serializing_if = "BranchState::is_unreported")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<Option<String>>", optional))]
+    pub branch: BranchState,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub index_generation: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub worktree_generation: Option<String>,
+}
+
+/// Where HEAD points, as the host reported it. On the wire it is the branch
+/// name, `null` for a detached head, or no field at all when the host did not
+/// say (`scm.ts` `RepoState.branch`).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum BranchState {
+    /// The host did not report a branch. Never on the wire.
+    #[default]
+    #[serde(skip)]
+    Unreported,
+    /// A detached HEAD: JSON `null`.
+    Detached,
+    Named(String),
+}
+
+impl BranchState {
+    pub fn is_unreported(&self) -> bool {
+        matches!(self, Self::Unreported)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -888,7 +930,7 @@ mod tests {
     fn scm_payloads() {
         let state = RepoState {
             head: Some("abc1234".into()),
-            branch: Some("main".into()),
+            branch: BranchState::Named("main".into()),
             index_generation: Some("4".into()),
             worktree_generation: None,
         };
@@ -1133,5 +1175,51 @@ mod tests {
         let uncertain: Outcome =
             serde_json::from_value(json!({"status": "uncertain", "reason": "reply lost"})).unwrap();
         assert_ne!(uncertain, Outcome::Accepted);
+    }
+
+    #[test]
+    fn a_detached_head_is_not_an_unreported_branch() {
+        let named: RepoState = serde_json::from_value(json!({"branch": "main"})).unwrap();
+        let detached: RepoState = serde_json::from_value(json!({"branch": null})).unwrap();
+        let unreported: RepoState = serde_json::from_value(json!({"head": "abc"})).unwrap();
+        assert_eq!(named.branch, BranchState::Named("main".into()));
+        assert_eq!(detached.branch, BranchState::Detached);
+        assert_eq!(unreported.branch, BranchState::Unreported);
+        // Each says again what it said.
+        assert_eq!(
+            serde_json::to_value(&named).unwrap(),
+            json!({"branch": "main"})
+        );
+        assert_eq!(
+            serde_json::to_value(&detached).unwrap(),
+            json!({"branch": null})
+        );
+        assert_eq!(
+            serde_json::to_value(&unreported).unwrap(),
+            json!({"head": "abc"})
+        );
+    }
+
+    #[test]
+    fn file_entry_flags_are_optional_and_absent_when_not_given() {
+        let plain = FileEntry::new("a.rs", FileKind::File);
+        assert_eq!(
+            serde_json::to_value(&plain).unwrap(),
+            json!({"name": "a.rs", "kind": "file"})
+        );
+        let flagged = FileEntry {
+            ignored: Some(true),
+            hidden: Some(false),
+            ..plain.clone()
+        };
+        let value = serde_json::to_value(&flagged).unwrap();
+        assert_eq!(value["ignored"], true);
+        assert_eq!(value["hidden"], false);
+        assert_eq!(serde_json::from_value::<FileEntry>(value).unwrap(), flagged);
+        // An older host's entry still reads.
+        assert_eq!(
+            serde_json::from_value::<FileEntry>(json!({"name": "a.rs", "kind": "file"})).unwrap(),
+            plain
+        );
     }
 }

@@ -100,6 +100,9 @@ pub enum EffectBody {
     FilesSearch(FilesSearch),
     FilesCreate(FilesCreate),
     FilesRename(FilesRename),
+    /// Copy `from` to `to` (`files.copy`). Same intent class and completion as
+    /// rename: an accepted outcome with no payload.
+    FilesCopy(FilesCopy),
     FilesDelete(FilesPath),
 
     // Documents (the SDK `DocumentSession`)
@@ -192,9 +195,8 @@ impl EffectKind {
     pub fn owner(self) -> Owner {
         use EffectKind::*;
         match self {
-            FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesDelete => {
-                Owner::Files
-            }
+            FilesList | FilesStat | FilesSearch | FilesCreate | FilesRename | FilesCopy
+            | FilesDelete => Owner::Files,
             DocumentCreate | DocumentOpen | DocumentEdit | DocumentSave | DocumentClose
             | DocumentReconcile => Owner::Documents,
             ScmStatus | ScmDiff | ScmShow | ScmStage | ScmUnstage | ScmDiscard | ScmRestore
@@ -250,6 +252,16 @@ pub struct FilesCreate {
 pub struct FilesRename {
     pub from: String,
     pub to: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct FilesCopy {
+    pub from: String,
+    pub to: String,
+    /// Replace `to` when it exists; without it an existing `to` is refused.
+    pub overwrite: bool,
 }
 
 // ---- documents ---------------------------------------------------------
@@ -785,6 +797,20 @@ mod tests {
         assert_eq!(value["kind"], kind);
         assert_eq!(value["payload"], payload);
         assert_eq!(serde_json::from_value::<Effect>(value).unwrap(), effect);
+    }
+
+    #[test]
+    fn files_copy_round_trips_and_belongs_to_files() {
+        round_trip(
+            EffectBody::FilesCopy(FilesCopy {
+                from: "a.md".into(),
+                to: "b.md".into(),
+                overwrite: false,
+            }),
+            "filesCopy",
+            json!({"from": "a.md", "to": "b.md", "overwrite": false}),
+        );
+        assert_eq!(EffectKind::FilesCopy.owner(), Owner::Files);
     }
 
     #[test]

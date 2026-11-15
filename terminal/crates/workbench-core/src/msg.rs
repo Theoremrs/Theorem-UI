@@ -18,6 +18,10 @@ pub struct Pointer {
     pub x: u16,
     pub y: u16,
     pub mods: Mods,
+    /// Consecutive presses at this spot: 1 for a single press, 2 for a double
+    /// (the DOM's `event.detail`). Only a `Down` carries a count above 1. The
+    /// JSON the host sends should default it to 1 when absent.
+    pub clicks: u8,
 }
 
 /// Dock operations a person or an adapter can ask for directly. Each is the

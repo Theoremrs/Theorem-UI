@@ -25,8 +25,8 @@ use theorem_workbench_core::registry::{
 use theorem_workbench_core::semantics::{Node, Role};
 use theorem_workbench_core::stale::{Binding, Stale};
 use theorem_workbench_core::{
-    Button, Ctx, DockMsg, EmitError, Model, Msg, Notice, Panel, PanelFactories, PanelMsg, Pointer,
-    PointerKind, Theme, ViewCtx, semantics, update, view,
+    Button, Ctx, DockMsg, EmitError, Model, Msg, Notice, OpenTarget, Panel, PanelFactories,
+    PanelMsg, Pointer, PointerKind, Theme, ViewCtx, semantics, update, view,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 
@@ -38,6 +38,16 @@ struct Log {
     greedy: bool,
     /// The binding epoch the next "term" panel is bound at; 0 means none.
     term_epoch: u64,
+    /// The session the next "term" panel is bound to; empty means "s1".
+    term_session: String,
+    /// What each "term" panel was sent, by the session it is bound to.
+    by_session: Vec<(String, PanelMsg)>,
+    /// A "note" panel asks to open a file on every environment message.
+    open_on_env: bool,
+    /// The workspace generation a panel read from its `Ctx` on a tick.
+    ws_at_tick: Vec<(String, u64)>,
+    /// The workspace a panel read from its `ViewCtx` while drawing.
+    ws_in_view: Option<String>,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -51,16 +61,26 @@ struct TestPanel {
     doc: String,
     taps: u64,
     epoch: u64,
+    session: String,
 }
 
 impl TestPanel {
     fn new(kind: &'static str, state: &Value, log: Shared) -> Self {
         let term_epoch = log.borrow().term_epoch;
+        let session = match log.borrow().term_session.as_str() {
+            "" => "s1".to_owned(),
+            other => other.to_owned(),
+        };
         Self {
             kind,
             log,
+            session,
             rev: state["rev"].as_u64().unwrap_or(5),
-            doc: state["doc"].as_str().unwrap_or("a.md").to_owned(),
+            doc: state["doc"]
+                .as_str()
+                .or_else(|| state["path"].as_str())
+                .unwrap_or("a.md")
+                .to_owned(),
             taps: state["taps"].as_u64().unwrap_or(0),
             epoch: state["epoch"].as_u64().unwrap_or(term_epoch),
         }
@@ -70,7 +90,7 @@ impl TestPanel {
         match self.kind {
             "term" => ResourceRef::Terminal {
                 workspace: "w".into(),
-                session: "s1".into(),
+                session: self.session.clone(),
             },
             "chat" => ResourceRef::Conversation {
                 project: "p".into(),
@@ -93,8 +113,35 @@ impl TestPanel {
 impl Panel for TestPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
         self.log.borrow_mut().msgs.push((self.kind, msg.clone()));
+        if self.kind == "term" {
+            let entry = (self.session.clone(), msg.clone());
+            self.log.borrow_mut().by_session.push(entry);
+        }
         let greedy = self.log.borrow().greedy;
+        if self.log.borrow().open_on_env
+            && matches!(msg, PanelMsg::Resize { .. } | PanelMsg::Focus(_))
+        {
+            cx.open(OpenTarget::File {
+                workspace: "w".into(),
+                path: "env.md".into(),
+            });
+        }
+        if matches!(msg, PanelMsg::Tick) {
+            let ws = (
+                cx.workspace().workspace.clone(),
+                cx.workspace().generation.0,
+            );
+            self.log.borrow_mut().ws_at_tick.push(ws);
+        }
         match msg {
+            PanelMsg::Key(k) if k.key() == Key::Char('o') => cx.open(OpenTarget::File {
+                workspace: "w".into(),
+                path: "c.md".into(),
+            }),
+            PanelMsg::Key(k) if k.key() == Key::Char('x') => cx.open(OpenTarget::File {
+                workspace: "w".into(),
+                path: "docs/pic.png".into(),
+            }),
             PanelMsg::Key(k) if k.key() == Key::Char('+') => {
                 self.rev += 1;
                 self.taps += 1;
@@ -113,6 +160,7 @@ impl Panel for TestPanel {
     }
 
     fn view(&self, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
+        self.log.borrow_mut().ws_in_view = Some(cx.workspace.workspace.clone());
         buf.set_stringn(
             area.x,
             area.y,
@@ -238,6 +286,11 @@ fn model(log: &Shared) -> Model {
             Box::new(TestPanel::new(kind, state, log.clone()))
         });
     }
+    // Notes open Markdown files; nothing opens anything else.
+    factories.register_opener(
+        "note",
+        |target| matches!(target, OpenTarget::File { path, .. } if path.ends_with(".md")),
+    );
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
     let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -294,6 +347,7 @@ fn click(m: &mut Model, x: u16, y: u16) -> Vec<Effect> {
             x,
             y,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     );
     fx.extend(send(
@@ -303,6 +357,7 @@ fn click(m: &mut Model, x: u16, y: u16) -> Vec<Effect> {
             x,
             y,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     ));
     fx
@@ -798,6 +853,7 @@ fn a_tab_click_focuses_and_a_body_click_reaches_the_panel_in_body_coordinates() 
             x: body.x + 1,
             y: body.y + 1,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     );
     send(
@@ -807,6 +863,7 @@ fn a_tab_click_focuses_and_a_body_click_reaches_the_panel_in_body_coordinates() 
             x: body.x - 1,
             y: body.y + 1,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     );
     let last = msgs_of(&log, "note")
@@ -831,6 +888,7 @@ fn dragging_a_splitter_resizes_through_the_dock() {
             x,
             y,
             mods: Mods::NONE,
+            clicks: 1,
         })
     };
     let moved = |x, y| {
@@ -839,6 +897,7 @@ fn dragging_a_splitter_resizes_through_the_dock() {
             x,
             y,
             mods: Mods::NONE,
+            clicks: 1,
         })
     };
     send(&mut m, down(at.0, at.1));
@@ -851,6 +910,7 @@ fn dragging_a_splitter_resizes_through_the_dock() {
             x: at.0 + 7,
             y: at.1,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     );
     let after = m.frame().unwrap().splitters[0].clone();
@@ -1462,6 +1522,7 @@ fn hovering_a_picker_row_selects_it_and_clicking_chooses_it_with_no_effects() {
             x,
             y,
             mods: Mods::NONE,
+            clicks: 1,
         }),
     );
     assert!(fx.is_empty());
@@ -1486,4 +1547,503 @@ fn a_click_on_the_pickers_filter_line_or_below_its_rows_chooses_nothing() {
     assert!(m.picker().is_open());
     click(&mut m, x, y + 20);
     assert!(m.picker().is_open());
+}
+
+// ---- a panel asks the root to open something ----------------------------
+
+fn role_of(m: &Model, id: &PanelInstanceId) -> theorem_workbench_dock::Role {
+    let group = m
+        .dock()
+        .find_panel(&theorem_workbench_dock::PanelId(id.as_str().to_owned()))
+        .expect("the panel is in a tab");
+    m.dock().group(group).unwrap().role()
+}
+
+#[test]
+fn a_panel_opens_what_a_registered_opener_serves_in_main_and_focuses_it() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let first = kinds(&m, "note")[0].clone();
+    assert_eq!(m.focus().panel, Some(first.clone()));
+
+    let fx = ch(&mut m, 'o');
+    assert!(fx.is_empty(), "opening emits nothing");
+    let notes = kinds(&m, "note");
+    assert_eq!(notes.len(), 2);
+    let opened = notes.iter().find(|id| **id != first).unwrap().clone();
+    assert_eq!(m.focus().panel, Some(opened.clone()));
+    assert_eq!(role_of(&m, &opened), theorem_workbench_dock::Role::Main);
+    assert!(!m.is_unavailable(&opened));
+    // Built from the target, bound to its document, and nothing was emitted.
+    assert_eq!(
+        m.panel(&opened).unwrap().binding().unwrap().resource,
+        ResourceRef::Document {
+            workspace: "w".into(),
+            resource_id: "c.md".into()
+        }
+    );
+    assert!(log.borrow().emits.is_empty());
+
+    // The same target again focuses the panel bound to it instead of opening a
+    // second one.
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(first.clone())));
+    assert_eq!(m.focus().panel, Some(first));
+    ch(&mut m, 'o');
+    assert_eq!(kinds(&m, "note").len(), 2);
+    assert_eq!(m.focus().panel, Some(opened));
+}
+
+#[test]
+fn a_target_nothing_serves_opens_the_placeholder_with_a_reason_once() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let fx = ch(&mut m, 'x');
+    assert!(fx.is_empty());
+    let docs = kinds(&m, "document");
+    assert_eq!(
+        docs.len(),
+        1,
+        "the placeholder is named for what it stands in for"
+    );
+    assert!(m.is_unavailable(&docs[0]));
+    assert_eq!(m.focus().panel, Some(docs[0].clone()));
+    let tree = semantics(&m);
+    tree.validate().unwrap();
+    let node = tree
+        .nodes
+        .iter()
+        .find(|n| n.name.ends_with("is unavailable") && n.name.starts_with("document"))
+        .expect("the placeholder is on the tree");
+    assert_eq!(
+        node.state.description.as_deref(),
+        Some("This build has no panel that can open the file \"docs/pic.png\".")
+    );
+    // Asking again does not stack a second one.
+    let note = kinds(&m, "note")[0].clone();
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(note)));
+    ch(&mut m, 'x');
+    assert_eq!(kinds(&m, "document").len(), 1);
+    assert!(log.borrow().emits.is_empty());
+    // The target survives a save, for a build that serves it.
+    let saved = m.document().to_string();
+    assert!(saved.contains("docs/pic.png"));
+}
+
+#[test]
+fn an_environment_message_cannot_open_anything() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    log.borrow_mut().open_on_env = true;
+    let before = m.panel_ids().count();
+    send(&mut m, Msg::Focus(false));
+    send(&mut m, Msg::Focus(true));
+    send(
+        &mut m,
+        Msg::Resize {
+            area: Rect::new(0, 0, 180, 50),
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+    assert_eq!(
+        m.panel_ids().count(),
+        before,
+        "silent messages open nothing"
+    );
+}
+
+// ---- workspace identity ----------------------------------------------------
+
+fn workspace(name: &str, environment: Option<&str>) -> Msg {
+    Msg::Host(HostMessage::WorkspaceChanged {
+        workspace: name.into(),
+        environment: environment.map(Into::into),
+    })
+}
+
+fn workspace_msgs(log: &Shared) -> Vec<theorem_workbench_core::WorkspaceIdentity> {
+    log.borrow()
+        .msgs
+        .iter()
+        .filter_map(|(_, m)| match m {
+            PanelMsg::Workspace(w) => Some(w.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn the_workspace_is_held_by_the_root_and_told_to_panels_with_a_new_generation() {
+    let (mut m, log) = new_model();
+    assert!(!m.workspace().is_set());
+    action(&mut m, "note.open");
+    assert!(
+        workspace_msgs(&log).is_empty(),
+        "nothing to tell before the host says"
+    );
+
+    let fx = send(&mut m, workspace("w1", Some("env-a")));
+    assert!(fx.is_empty());
+    assert_eq!(m.workspace().workspace, "w1");
+    assert_eq!(m.workspace().environment.as_deref(), Some("env-a"));
+    assert_eq!(m.workspace().generation, Generation(1));
+    let told = workspace_msgs(&log);
+    assert_eq!(told.len(), 1);
+    assert_eq!(told[0].generation, Generation(1));
+
+    // Saying the same again changes nothing and tells nobody.
+    send(&mut m, workspace("w1", Some("env-a")));
+    assert_eq!(m.workspace().generation, Generation(1));
+    assert_eq!(workspace_msgs(&log).len(), 1);
+
+    // Another workspace, or another environment, is a new generation.
+    send(&mut m, workspace("w2", Some("env-a")));
+    send(&mut m, workspace("w2", None));
+    assert_eq!(m.workspace().generation, Generation(3));
+    assert_eq!(workspace_msgs(&log).len(), 3);
+
+    // A panel opened afterwards is told the current one, not the history.
+    action(&mut m, "term.open");
+    let all = workspace_msgs(&log);
+    assert_eq!(all.len(), 4);
+    assert_eq!(all[3].workspace, "w2");
+    assert_eq!(all[3].generation, Generation(3));
+
+    // Panels read it on their Ctx and ViewCtx.
+    send(&mut m, Msg::Tick);
+    assert!(
+        log.borrow()
+            .ws_at_tick
+            .iter()
+            .all(|(w, g)| w == "w2" && *g == 3)
+    );
+    let mut buf = Buffer::empty(Rect::new(0, 0, 200, 50));
+    view(&m, Rect::new(0, 0, 200, 50), &mut buf, &Theme::plain());
+    assert_eq!(log.borrow().ws_in_view.as_deref(), Some("w2"));
+}
+
+#[test]
+fn a_workspace_change_cannot_start_work_by_itself() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    log.borrow_mut().greedy = true;
+    // The greedy panel tries to emit on Resize/Focus/Tick; the workspace
+    // message is environment too, so its answer to it is refused.
+    let fx = send(&mut m, workspace("w1", None));
+    assert!(fx.is_empty());
+}
+
+// ---- pointer click counts --------------------------------------------------
+
+#[test]
+fn a_pointer_carries_its_click_count_to_the_panel() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let body = m
+        .frame()
+        .unwrap()
+        .groups
+        .iter()
+        .find(|g| g.active.is_some())
+        .unwrap()
+        .body;
+    for clicks in [1u8, 2] {
+        send(
+            &mut m,
+            Msg::Pointer(Pointer {
+                kind: PointerKind::Down(Button::Left),
+                x: body.x + 1,
+                y: body.y + 1,
+                mods: Mods::NONE,
+                clicks,
+            }),
+        );
+        send(
+            &mut m,
+            Msg::Pointer(Pointer {
+                kind: PointerKind::Up(Button::Left),
+                x: body.x + 1,
+                y: body.y + 1,
+                mods: Mods::NONE,
+                clicks: 1,
+            }),
+        );
+    }
+    let downs: Vec<u8> = msgs_of(&log, "note")
+        .iter()
+        .filter_map(|m| match m {
+            PanelMsg::Pointer(p) if matches!(p.kind, PointerKind::Down(_)) => Some(p.clicks),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(downs, [1, 2]);
+}
+
+// ---- per-session PTY queues ------------------------------------------------
+
+#[test]
+fn a_flooding_session_resets_only_its_own_pane() {
+    let (mut m, log) = new_model();
+    log.borrow_mut().term_epoch = 1;
+    action(&mut m, "term.open");
+    log.borrow_mut().term_session = "s2".into();
+    action(&mut m, "term.open");
+    // The quiet session sends one frame, then the other floods past its bound.
+    send(&mut m, output("s2", 1, 0, b"quiet"));
+    for i in 0..4200u64 {
+        send(&mut m, output("s1", 1, i, b"x"));
+    }
+    send(&mut m, Msg::Tick);
+    let of = |session: &str| -> Vec<PanelMsg> {
+        log.borrow()
+            .by_session
+            .iter()
+            .filter(|(s, _)| s == session)
+            .map(|(_, m)| m.clone())
+            .filter(|m| {
+                matches!(
+                    m,
+                    PanelMsg::TerminalOutput { .. } | PanelMsg::TerminalResetRequest { .. }
+                )
+            })
+            .collect()
+    };
+    assert_eq!(
+        of("s2"),
+        [PanelMsg::TerminalOutput {
+            epoch: 1,
+            offset: 0,
+            bytes: b"quiet".to_vec()
+        }],
+        "the quiet pane saw its frame and no reset"
+    );
+    let flooded = of("s1");
+    assert_eq!(
+        flooded[0],
+        PanelMsg::TerminalResetRequest {
+            frames: 104,
+            bytes: 104
+        }
+    );
+    assert_eq!(flooded.len(), 1 + 4096);
+}
+
+#[test]
+fn a_session_too_big_for_the_queue_resets_only_its_own_pane() {
+    let (mut m, log) = new_model();
+    log.borrow_mut().term_epoch = 1;
+    action(&mut m, "term.open");
+    log.borrow_mut().term_session = "s2".into();
+    action(&mut m, "term.open");
+    send(&mut m, output("s1", 1, 0, &vec![b'z'; 1024 * 1024 + 1]));
+    let resets = |session: &str| {
+        log.borrow()
+            .by_session
+            .iter()
+            .filter(|(s, m)| s == session && matches!(m, PanelMsg::TerminalResetRequest { .. }))
+            .count()
+    };
+    assert_eq!((resets("s1"), resets("s2")), (1, 0));
+}
+
+// ---- the root's view: tab overflow and presentation --------------------------
+
+fn draw(m: &Model, w: u16, h: u16) -> Buffer {
+    let area = Rect::new(0, 0, w, h);
+    let mut buf = Buffer::empty(area);
+    view(m, area, &mut buf, &Theme::plain());
+    buf
+}
+
+fn row(buf: &Buffer, y: u16, x0: u16, x1: u16) -> String {
+    (x0..x1)
+        .map(|x| buf.cell((x, y)).map_or(" ", |c| c.symbol()))
+        .collect()
+}
+
+fn tools_group(m: &Model) -> theorem_workbench_dock::GroupFrame {
+    m.frame()
+        .unwrap()
+        .groups
+        .iter()
+        .find(|g| g.role == theorem_workbench_dock::Role::Tools)
+        .cloned()
+        .expect("a tools group is shown")
+}
+
+#[test]
+fn tab_overflow_is_drawn_on_both_sides_of_the_strip() {
+    let (mut m, _) = new_model();
+    for _ in 0..24 {
+        action(&mut m, "note.open");
+    }
+    let g = tools_group(&m);
+    assert!(g.tabs_before > 0, "the active tab is the newest");
+    let strip = g.tab_strip;
+    let buf = draw(&m, 200, 50);
+    let line = row(&buf, strip.y, strip.x, strip.right());
+    assert!(line.starts_with('\u{2039}'), "{line:?}");
+    assert!(!line.contains('\u{203a}'), "nothing is after the last tab");
+
+    // Slide to the first tab: tabs are now after it.
+    let first = kinds(&m, "note")[0].clone();
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(first)));
+    let g = tools_group(&m);
+    assert_eq!(g.tabs_before, 0);
+    assert!(g.tabs_after > 0);
+    let buf = draw(&m, 200, 50);
+    let line = row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right());
+    assert!(!line.starts_with('\u{2039}'));
+    // The strip is packed, so only the glyph fits.
+    assert!(line.trim_end().ends_with('\u{203a}'), "{line:?}");
+    // With room to spare, it also counts what is out of sight.
+    let mut counted = false;
+    for width in 150..230u16 {
+        send(
+            &mut m,
+            Msg::Resize {
+                area: Rect::new(0, 0, width, 50),
+                metrics: CellMetrics::new(8.0, 16.0),
+            },
+        );
+        let g = tools_group(&m);
+        let last = g.tabs.last().map_or(g.tab_strip.x, |t| t.rect.right());
+        if g.tabs_after > 0 && last + 3 <= g.tab_strip.right() {
+            let buf = draw(&m, width, 50);
+            let line = row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right());
+            assert!(
+                line.trim_end()
+                    .ends_with(&format!("\u{203a}{}", g.tabs_after)),
+                "{line:?}"
+            );
+            counted = true;
+            break;
+        }
+    }
+    assert!(counted, "some width leaves room for the count");
+    send(
+        &mut m,
+        Msg::Resize {
+            area: Rect::new(0, 0, 200, 50),
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+    let g = tools_group(&m);
+    // The strip says it too, for those who cannot see it.
+    let tree = semantics(&m);
+    let strip_node = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == format!("tabs:{}", g.id.raw()))
+        .unwrap();
+    assert!(
+        strip_node
+            .state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("scrolled out")
+    );
+}
+
+#[test]
+fn a_group_that_fits_its_tabs_draws_no_overflow_mark() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let g = tools_group(&m);
+    let buf = draw(&m, 200, 50);
+    let line = row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right());
+    assert!(
+        !line.contains('\u{2039}') && !line.contains('\u{203a}'),
+        "{line:?}"
+    );
+}
+
+#[test]
+fn a_maximized_group_says_so_and_the_others_stay_on_the_tree() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    let tools = tools_group(&m).id;
+    send(&mut m, Msg::Dock(DockMsg::Maximize(tools)));
+    let frame = m.frame().unwrap().clone();
+    assert_eq!(
+        frame.presentation,
+        theorem_workbench_dock::Presentation::Maximized
+    );
+    assert_eq!(frame.groups.len(), 1);
+    let g = &frame.groups[0];
+    let buf = draw(&m, 200, 50);
+    assert!(row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right()).contains("maximized"));
+
+    let tree = semantics(&m);
+    tree.validate().unwrap();
+    assert!(!frame.suppressed.is_empty());
+    for (id, _) in &frame.suppressed {
+        let node = tree
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == format!("group:{}", id.raw()))
+            .expect("a group behind the maximized one is on the tree");
+        assert!(
+            node.state
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("maximized")
+        );
+    }
+    let root = tree.node(&tree.root).unwrap();
+    assert_eq!(
+        root.state.description.as_deref(),
+        Some("One panel maximized")
+    );
+}
+
+#[test]
+fn when_only_one_group_fits_the_principal_one_says_how_many_wait() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    send(
+        &mut m,
+        Msg::Resize {
+            area: Rect::new(0, 0, 40, 20),
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+    let frame = m.frame().unwrap().clone();
+    assert_eq!(
+        frame.presentation,
+        theorem_workbench_dock::Presentation::Principal
+    );
+    let waiting = frame
+        .suppressed
+        .iter()
+        .filter(|(_, why)| *why == theorem_workbench_dock::Suppressed::Collapsed)
+        .count();
+    assert!(waiting > 0);
+    let g = &frame.groups[0];
+    let buf = draw(&m, 40, 20);
+    let line = row(&buf, g.tab_strip.y, g.tab_strip.x, g.tab_strip.right());
+    assert!(
+        line.contains(&format!("{waiting} more")) || line.contains(&format!("+{waiting}")),
+        "{line:?}"
+    );
+
+    let tree = semantics(&m);
+    tree.validate().unwrap();
+    for (id, why) in &frame.suppressed {
+        let node = tree
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == format!("group:{}", id.raw()))
+            .expect("a suppressed group is on the tree");
+        if *why == theorem_workbench_dock::Suppressed::Collapsed {
+            assert!(
+                node.state
+                    .description
+                    .as_deref()
+                    .unwrap()
+                    .contains("no room")
+            );
+        }
+    }
 }

@@ -162,6 +162,16 @@ pub enum HostMessage {
     CapabilitiesChanged {
         capabilities: Capabilities,
     },
+    /// The workspace (and the environment serving it) the workbench is about.
+    /// The root holds it, tells every panel with `PanelMsg::Workspace`, and
+    /// bumps the generation workspace-bound panels bind with. A message that
+    /// repeats the current identity changes nothing.
+    WorkspaceChanged {
+        workspace: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        environment: Option<String>,
+    },
     ConnectionChanged {
         workspace: String,
         state: ConnectionState,

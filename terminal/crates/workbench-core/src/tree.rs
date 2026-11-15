@@ -3,7 +3,7 @@
 //! agent views read the same tree.
 
 use ratatui::layout::Rect;
-use theorem_workbench_dock::{GroupFrame, Role as DockRole, SolvedFrame};
+use theorem_workbench_dock::{GroupFrame, GroupId, Role as DockRole, SolvedFrame, Suppressed};
 
 use crate::ids::{PanelInstanceId, ResourceRef};
 use crate::model::Model;
@@ -42,6 +42,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
     for group in &frame.groups {
         let cx = ViewCtx {
             theme: &theme,
+            workspace: model.workspace(),
             focused: group.focused && window,
             picker: picker.as_ref(),
         };
@@ -67,6 +68,25 @@ pub fn semantics(model: &Model) -> SemanticTree {
         root.children.push(node.id.clone());
         nodes.push(node);
     }
+    // A group with no rectangle this frame is still on the tree, so the person
+    // or agent who cannot see it can find it and say why it is not shown.
+    for (id, why) in &frame.suppressed {
+        let reason = match why {
+            Suppressed::Hidden => "Hidden. Show the group to see it.",
+            Suppressed::Collapsed => "Not shown: the window has no room for every panel.",
+            Suppressed::Maximized => "Not shown: another panel is maximized.",
+        };
+        root.children
+            .push(unshown_group(model, *id, reason, &mut nodes));
+    }
+    for drawer in frame.drawers.iter().filter(|d| !d.open) {
+        root.children.push(unshown_group(
+            model,
+            drawer.group,
+            "Collapsed to a drawer: open the drawer to see it.",
+            &mut nodes,
+        ));
+    }
     describe_frame(frame, &mut root);
     nodes.insert(0, root);
     SemanticTree {
@@ -82,6 +102,51 @@ fn describe_frame(frame: &SolvedFrame, root: &mut Node) {
         Presentation::Principal => Some("One panel shown at a time".to_owned()),
         Presentation::Maximized => Some("One panel maximized".to_owned()),
     };
+}
+
+/// A group that has no rectangle in this frame: its tabs, each by name, and
+/// why it is not drawn.
+fn unshown_group(model: &Model, id: GroupId, reason: &str, out: &mut Vec<Node>) -> NodeId {
+    let group = model.dock().group(id);
+    let name = match group.map(|g| g.role()) {
+        Some(DockRole::Files) => "Files",
+        Some(DockRole::Main) => "Main",
+        Some(DockRole::Tools) => "Tools",
+        None => "Group",
+    };
+    let gid = id.raw();
+    let mut node = Node::new(&format!("group:{gid}"), Role::Group, name, Rect::default());
+    node.state.disabled = true;
+    node.state.description = Some(reason.to_owned());
+    let mut strip = Node::new(
+        &format!("tabs:{gid}"),
+        Role::TabList,
+        &format!("{name} tabs"),
+        Rect::default(),
+    );
+    for tab in group.map(|g| g.tabs()).unwrap_or(&[]) {
+        let pid = PanelInstanceId::new(tab.panel.0.clone());
+        let mut tab_node = Node::new(
+            &format!("tab:{}", pid.as_str()),
+            Role::Tab,
+            &tab.title,
+            Rect::default(),
+        );
+        tab_node.state.selected =
+            group.is_some_and(|g| g.active().is_some_and(|a| a.panel == tab.panel));
+        tab_node.state.disabled = tab.unavailable;
+        if let Some(binding) = model.panels.get(&pid).and_then(|e| e.panel.binding()) {
+            tab_node.binding = binding.resource;
+            tab_node.revision = binding.revision;
+        }
+        strip.children.push(tab_node.id.clone());
+        out.push(tab_node);
+    }
+    node.children.push(strip.id.clone());
+    out.push(strip);
+    let id = node.id.clone();
+    out.push(node);
+    id
 }
 
 /// Push the nodes of one group and return the group node's id.
@@ -122,6 +187,12 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
         }
         strip.children.push(node.id.clone());
         out.push(node);
+    }
+    if group.tabs_before > 0 || group.tabs_after > 0 {
+        strip.state.description = Some(format!(
+            "{} tabs scrolled out before, {} after",
+            group.tabs_before, group.tabs_after
+        ));
     }
     group_node.children.push(strip.id.clone());
     out.push(strip);

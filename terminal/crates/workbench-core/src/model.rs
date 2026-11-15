@@ -12,7 +12,9 @@ use theorem_workbench_dock::{
 
 use crate::effect::EffectKind;
 use crate::factory::PanelFactories;
-use crate::ids::{ActionId, EffectId, EffectIds, PanelInstanceId, PanelKind, ResourceRef};
+use crate::ids::{
+    ActionId, EffectId, EffectIds, PanelInstanceId, PanelKind, ResourceRef, WorkspaceIdentity,
+};
 use crate::keys::KeyTable;
 use crate::panel::{Panel, PickerView};
 use crate::panels::{PICKER_KIND, Unavailable};
@@ -75,6 +77,8 @@ pub(crate) struct Entry {
     pub(crate) available: bool,
     /// The body last announced to the panel.
     pub(crate) body: Option<Rect>,
+    /// The workspace generation last announced to the panel.
+    pub(crate) workspace_seen: Option<u64>,
 }
 
 impl Entry {
@@ -112,6 +116,8 @@ pub struct Model {
     /// The panel that emitted each pending effect.
     pub(crate) origins: BTreeMap<EffectId, PanelInstanceId>,
     pub(crate) queues: SourceQueues,
+    /// The workspace and environment the host last named.
+    pub(crate) workspace: WorkspaceIdentity,
     /// Effect kinds some `Destroy` action emits: a view closing may not.
     pub(crate) destroying: Vec<EffectKind>,
 
@@ -161,6 +167,7 @@ impl Model {
             in_flight: InFlight::new(IN_FLIGHT_LIMIT),
             origins: BTreeMap::new(),
             queues: SourceQueues::new(QueueLimits::default()),
+            workspace: WorkspaceIdentity::default(),
             destroying,
             viewport: None,
             frame: None,
@@ -198,6 +205,11 @@ impl Model {
     pub fn set_pinned(&mut self, pinned: std::collections::BTreeSet<PanelKind>) {
         self.pinned = pinned;
         self.dirty = true;
+    }
+
+    /// The workspace and environment the host last named (empty until it does).
+    pub fn workspace(&self) -> &WorkspaceIdentity {
+        &self.workspace
     }
 
     pub fn in_flight(&self) -> &InFlight {
@@ -390,6 +402,7 @@ impl Model {
                         kind,
                         available,
                         body: None,
+                        workspace_seen: None,
                     },
                 );
             }

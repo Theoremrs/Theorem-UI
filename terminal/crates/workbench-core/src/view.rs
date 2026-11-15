@@ -3,7 +3,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Direction, Rect};
-use theorem_workbench_dock::{GroupFrame, SolvedFrame, TabFrame};
+use theorem_workbench_dock::{GroupFrame, Presentation, SolvedFrame, Suppressed, TabFrame};
 
 use crate::ids::PanelInstanceId;
 use crate::model::Model;
@@ -11,6 +11,11 @@ use crate::panel::ViewCtx;
 use crate::theme::Theme;
 
 const CLOSE: &str = "\u{00d7}";
+/// Tabs are scrolled out of the strip on this side.
+const MORE_BEFORE: &str = "\u{2039}";
+const MORE_AFTER: &str = "\u{203a}";
+/// The group shown is maximized.
+const MAXIMIZED: &str = "\u{25a3}";
 
 pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
     let area = area.intersection(buf.area);
@@ -32,7 +37,7 @@ pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
     // A drawer is drawn over the content, so it goes last.
     for overlay in [false, true] {
         for group in frame.groups.iter().filter(|g| g.overlay == overlay) {
-            draw_group(model, group, buf, theme, picker.as_ref(), window);
+            draw_group(model, frame, group, buf, theme, picker.as_ref(), window);
         }
     }
     draw_gutters(model, frame, buf, theme);
@@ -40,6 +45,7 @@ pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
 
 fn draw_group(
     model: &Model,
+    frame: &SolvedFrame,
     group: &GroupFrame,
     buf: &mut Buffer,
     theme: &Theme,
@@ -58,6 +64,7 @@ fn draw_group(
             .map_or("", |t| t.title.as_str());
         draw_tab(tab, title, group.focused && window, buf, theme);
     }
+    draw_strip_marks(group, frame, buf, theme);
 
     let active = group
         .active
@@ -70,6 +77,7 @@ fn draw_group(
             buf,
             &ViewCtx {
                 theme,
+                workspace: &model.workspace,
                 focused: group.focused && window,
                 picker,
             },
@@ -84,6 +92,84 @@ fn draw_group(
             );
         }
         None => {}
+    }
+}
+
+/// What the strip says besides its tabs: that tabs are scrolled out of it on
+/// either side, and that the group is shown alone (maximized, or the only one
+/// the window has room for). The left mark replaces the first tab's leading
+/// space; the right marks sit in the free cells after the last tab and its own
+/// trailing space, in the longest form that fits, so they never cover a title
+/// or a close control.
+fn draw_strip_marks(group: &GroupFrame, frame: &SolvedFrame, buf: &mut Buffer, theme: &Theme) {
+    let strip = group.tab_strip;
+    if strip.is_empty() || group.overlay {
+        return;
+    }
+    if group.tabs_before > 0
+        && let Some(cell) = buf.cell_mut((strip.x, strip.y))
+    {
+        cell.set_symbol(MORE_BEFORE);
+    }
+
+    let hidden = frame
+        .suppressed
+        .iter()
+        .filter(|(_, why)| *why == Suppressed::Collapsed)
+        .count();
+    // Longest first; the last of each is as short as it gets.
+    let presentation: Vec<String> = match frame.presentation {
+        Presentation::Tiled => vec![],
+        Presentation::Maximized => vec!["maximized".into(), "max".into(), MAXIMIZED.into()],
+        Presentation::Principal => vec![format!("{hidden} more"), format!("+{hidden}")],
+    };
+    let overflow: Vec<String> = if group.tabs_after > 0 {
+        vec![
+            format!("{MORE_AFTER}{}", group.tabs_after),
+            MORE_AFTER.to_owned(),
+        ]
+    } else {
+        vec![]
+    };
+    if presentation.is_empty() && overflow.is_empty() {
+        return;
+    }
+    // The cells after the last tab, plus that tab's trailing space.
+    let used = group.tabs.last().map_or(strip.x, |t| t.rect.right());
+    let room =
+        usize::from(strip.right().saturating_sub(used)) + usize::from(!group.tabs.is_empty());
+    let width = |s: &String| s.chars().count();
+    let pick = |list: &[String], level: usize| -> String {
+        list.get(level.min(list.len().saturating_sub(1)))
+            .cloned()
+            .unwrap_or_default()
+    };
+    let levels = presentation.len().max(overflow.len());
+    let mut chosen = None;
+    for level in 0..levels {
+        let (p, o) = (pick(&presentation, level), pick(&overflow, level));
+        let gap = usize::from(!p.is_empty() && !o.is_empty());
+        if width(&p) + gap + width(&o) <= room {
+            chosen = Some((p, o, gap));
+            break;
+        }
+    }
+    // Too narrow for both: the overflow mark, else the presentation's shortest.
+    let (p, o, gap) = chosen.unwrap_or_else(|| match overflow.last() {
+        Some(o) if width(o) <= room => (String::new(), o.clone(), 0),
+        _ => (pick(&presentation, usize::MAX), String::new(), 0),
+    });
+    let total = width(&p) + gap + width(&o);
+    let Some(start) = (usize::from(strip.right())).checked_sub(total) else {
+        return;
+    };
+    let mut x = u16::try_from(start).unwrap_or(strip.x).max(strip.x);
+    if !o.is_empty() {
+        buf.set_stringn(x, strip.y, &o, width(&o), theme.muted);
+        x += u16::try_from(width(&o) + gap).unwrap_or(0);
+    }
+    if !p.is_empty() {
+        buf.set_stringn(x, strip.y, &p, width(&p), theme.selected);
     }
 }
 

@@ -14,7 +14,8 @@
 //! 4. Terminal output does not go straight to a panel: it is judged against the
 //!    pane's binding epoch, queued in the bounded PTY queue and handed over on
 //!    the next `Tick` or before the next terminal event, in order. A frame lost
-//!    to the bound reaches every terminal pane as a reset request.
+//!    to the bound reaches only the panes bound to its session, as a reset
+//!    request.
 //! 5. Closing a view detaches. A destroying effect is refused unless a
 //!    `Destroy` action is running (R36).
 
@@ -27,12 +28,14 @@ use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
 use crate::completion::{Completion, Outcome};
 use crate::effect::Effect;
 use crate::host::HostMessage;
-use crate::ids::{ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceRef, Revision};
+use crate::ids::{
+    ActionId, Actor, EffectId, PanelInstanceId, PanelKind, ResourceRef, Revision, WorkspaceIdentity,
+};
 use crate::keys::active_contexts;
 use crate::model::{Drag, Entry, Model, Notice, Viewport};
 use crate::msg::{DockMsg, Inbound, Msg, Pointer};
-use crate::panel::{Button, Ctx, Mode, Panel, PanelMsg, PanelPointer, PointerKind};
-use crate::panels::PICKER_KIND;
+use crate::panel::{Button, Ctx, Mode, OpenTarget, Panel, PanelMsg, PanelPointer, PointerKind};
+use crate::panels::{PICKER_KIND, Unavailable};
 use crate::picker::{PickerMsg, PickerOutcome};
 use crate::queue::{Popped, PtyFrame, Push};
 use crate::registry::{ActionIntent, Placement, Refusal};
@@ -80,6 +83,7 @@ impl Model {
 /// What a call into a panel left behind.
 pub(crate) struct CtxOut {
     pub(crate) effects: Vec<Effect>,
+    pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
 }
@@ -95,13 +99,16 @@ impl Model {
             origins: &mut self.origins,
             queues: &mut self.queues,
             mode,
+            workspace: &self.workspace,
             effects: vec![],
+            opens: vec![],
             close: false,
             invalidated: false,
         };
         f(&mut cx);
         CtxOut {
             effects: cx.effects,
+            opens: cx.opens,
             close: cx.close,
             invalidated: cx.invalidated,
         }
@@ -124,6 +131,9 @@ impl Model {
         self.panels.insert(id.clone(), entry);
         self.dirty |= out.invalidated;
         let mut effects = out.effects;
+        for target in out.opens {
+            self.open_target(target);
+        }
         if out.close && !silent {
             effects.extend(self.close_panel(id, destroying));
         }
@@ -137,6 +147,7 @@ impl Model {
     /// Re-solve the dock and tell panels what changed around them: their body,
     /// and whether they own the keyboard. Neither can start work.
     pub(crate) fn settle(&mut self) {
+        self.announce_workspace();
         let Some(vp) = self.viewport else {
             self.frame = None;
             return;
@@ -183,6 +194,30 @@ impl Model {
                 });
             }
             self.announced_focus = desired;
+        }
+    }
+
+    /// Tell each panel the workspace it has not been told yet: a panel built
+    /// after the host named it, and every panel when it changes. Silent: the
+    /// panel emits on its next tick or input.
+    fn announce_workspace(&mut self) {
+        let identity = self.workspace.clone();
+        if identity.generation.0 == 0 {
+            return;
+        }
+        let stale: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(_, e)| e.workspace_seen != Some(identity.generation.0))
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in stale {
+            if let Some(entry) = self.panels.get_mut(&id) {
+                entry.workspace_seen = Some(identity.generation.0);
+            }
+            let msg = PanelMsg::Workspace(identity.clone());
+            self.call(&id, Mode::Silent, |p, cx| p.update(msg, cx));
+            self.dirty = true;
         }
     }
 
@@ -325,20 +360,43 @@ impl Model {
     /// nothing: the panel is built from no saved state and sent no message that
     /// could emit an effect.
     pub(crate) fn open_panel(&mut self, kind: &PanelKind) -> Option<PanelInstanceId> {
+        self.open_panel_with(kind, &Value::Null, None)
+    }
+
+    /// Open a new panel of `kind` built from `state`, in `role`'s region or, by
+    /// default, the kind's own.
+    fn open_panel_with(
+        &mut self,
+        kind: &PanelKind,
+        state: &Value,
+        role: Option<dock::Role>,
+    ) -> Option<PanelInstanceId> {
         let desc = self.registry.get(kind)?;
         let (title, version, placement) =
             (desc.title.clone(), desc.version, desc.default_placement);
-        let role = match placement {
+        let role = role.unwrap_or(match placement {
             Placement::Left => dock::Role::Files,
             Placement::Main => dock::Role::Main,
             Placement::Tools => dock::Role::Tools,
-        };
-        let (panel, available) = self.build_panel(kind, version, &Value::Null);
+        });
+        let (panel, available) = self.build_panel(kind, version, state);
+        self.place_panel(kind, version, &title, panel, available, role)
+    }
+
+    fn place_panel(
+        &mut self,
+        kind: &PanelKind,
+        version: u32,
+        title: &str,
+        panel: Box<dyn Panel>,
+        available: bool,
+        role: dock::Role,
+    ) -> Option<PanelInstanceId> {
         let id = self.mint_panel();
         let mut tab = Tab::new(
             id.as_str(),
             dock::PanelKind::new(kind.as_str(), version),
-            &title,
+            title,
         );
         tab.unavailable = !available;
         let at = match self.group_of_role(role) {
@@ -361,6 +419,7 @@ impl Model {
                         kind: kind.clone(),
                         available,
                         body: None,
+                        workspace_seen: None,
                     },
                 );
                 Some(id)
@@ -370,6 +429,61 @@ impl Model {
                 None
             }
         }
+    }
+
+    /// A panel asked to show `target`. Focus the panel already bound to it;
+    /// else open the kind a registered opener names, in the main region; else
+    /// the placeholder, with the reason. Never an effect: the new panel loads
+    /// on its own first tick (R06).
+    fn open_target(&mut self, target: OpenTarget) {
+        let resource = target.resource();
+        let bound = self
+            .panels
+            .iter()
+            .find(|(_, e)| e.available && e.binding().resource == resource)
+            .map(|(id, _)| id.clone());
+        let opened = match bound {
+            Some(id) => Some(id),
+            None => match self.factories.opener_of(&target).cloned() {
+                Some(kind) if self.registry.get(&kind).is_some() => {
+                    self.open_panel_with(&kind, &target.state(), Some(dock::Role::Main))
+                }
+                _ => self.open_unavailable(&target),
+            },
+        };
+        if let Some(id) = opened {
+            let r = self.dock.focus_panel(&Self::dock_id(&id));
+            self.dock_result(r);
+        }
+    }
+
+    /// The placeholder for a target nothing in this build opens. It keeps the
+    /// target as its saved state, so a build that serves it can open it later.
+    fn open_unavailable(&mut self, target: &OpenTarget) -> Option<PanelInstanceId> {
+        let kind = PanelKind::new(target.fallback_kind());
+        let state = target.state();
+        let again = self
+            .panels
+            .iter()
+            .find(|(_, e)| !e.available && e.kind == kind && e.panel.serialize() == state)
+            .map(|(id, _)| id.clone());
+        if again.is_some() {
+            return again;
+        }
+        let reason = format!(
+            "This build has no panel that can open {}.",
+            target.describe()
+        );
+        let version = self.registry.get(&kind).map_or(1, |d| d.version);
+        let panel = Box::new(Unavailable::new(kind.as_str(), reason, state));
+        self.place_panel(
+            &kind,
+            version,
+            &target.title(),
+            panel,
+            false,
+            dock::Role::Main,
+        )
     }
 
     pub(crate) fn picker_msg(&mut self, msg: PickerMsg) -> Vec<Effect> {
@@ -645,6 +759,7 @@ impl Model {
                 x: i32::from(p.x) - i32::from(body.x),
                 y: i32::from(p.y) - i32::from(body.y),
                 mods: p.mods,
+                clicks: p.clicks,
             }),
         )
     }
@@ -739,6 +854,23 @@ impl Model {
     pub(crate) fn on_host(&mut self, message: HostMessage) -> Vec<Effect> {
         if let HostMessage::CapabilitiesChanged { capabilities } = &message {
             self.caps = capabilities.clone();
+        }
+        if let HostMessage::WorkspaceChanged {
+            workspace,
+            environment,
+        } = &message
+        {
+            // The root's own state, not a panel's: panels are told by `settle`.
+            if self.workspace.workspace != *workspace || self.workspace.environment != *environment
+            {
+                self.workspace = WorkspaceIdentity {
+                    workspace: workspace.clone(),
+                    environment: environment.clone(),
+                    generation: self.workspace.generation.next(),
+                };
+                self.dirty = true;
+            }
+            return vec![];
         }
         let mut effects = match &message {
             HostMessage::TerminalOutput {
@@ -839,7 +971,7 @@ impl Model {
             bytes,
         };
         match self.queues.pty.push(frame) {
-            Push::Full(frame) => self.request_reset(1, frame.bytes.len() as u64),
+            Push::Full(frame) => self.request_reset(&frame.resource, 1, frame.bytes.len() as u64),
             Push::Queued | Push::Merged | Push::QueuedAfterDrop { .. } => vec![],
         }
     }
@@ -877,14 +1009,17 @@ impl Model {
         effects
     }
 
-    /// Hand every queued frame to its panes, oldest first. A gap in front of
-    /// them means frames were dropped for the bound: every terminal pane is
-    /// asked to reset, because the queue is shared and does not say whose.
+    /// Hand every queued frame to its panes, oldest first within a session. A
+    /// gap in front of a session's frames means frames were dropped for the
+    /// bound: the panes bound to that session, and no others, are asked to
+    /// reset.
     pub(crate) fn drain_pty(&mut self) -> Vec<Effect> {
         let mut effects = vec![];
-        while let Some(popped) = self.queues.pty.pop() {
+        while let Some((resource, popped)) = self.queues.pty.pop() {
             match popped {
-                Popped::Gap { items, weight } => effects.extend(self.request_reset(items, weight)),
+                Popped::Gap { items, weight } => {
+                    effects.extend(self.request_reset(&resource, items, weight))
+                }
                 Popped::Item(frame) => effects.extend(self.deliver_frame(frame)),
             }
         }
@@ -915,13 +1050,9 @@ impl Model {
         effects
     }
 
-    fn request_reset(&mut self, frames: u64, bytes: u64) -> Vec<Effect> {
-        let terminals: Vec<PanelInstanceId> = self
-            .panels
-            .iter()
-            .filter(|(_, e)| matches!(e.binding().resource, ResourceRef::Terminal { .. }))
-            .map(|(id, _)| id.clone())
-            .collect();
+    /// Ask the panes bound to `resource` (one terminal session) to reset.
+    fn request_reset(&mut self, resource: &ResourceRef, frames: u64, bytes: u64) -> Vec<Effect> {
+        let terminals = self.bound_to(Some(resource));
         let mut effects = vec![];
         for id in terminals {
             self.dirty = true;
@@ -963,6 +1094,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         FileChanged { .. }
         | ThemeChanged { .. }
         | CapabilitiesChanged { .. }
+        | WorkspaceChanged { .. }
         | ConnectionChanged { .. }
         | Resync { .. } => (None, None),
     }

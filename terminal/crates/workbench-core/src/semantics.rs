@@ -127,6 +127,19 @@ pub struct Node {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub revision: Option<Revision>,
+    /// Depth in a tree, counted from 1 (`aria-level`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub level: Option<u16>,
+    /// Position among the item's siblings, counted from 1 (`aria-posinset`).
+    /// Always given together with `set_size`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub pos_in_set: Option<u16>,
+    /// How many siblings there are, counting the item (`aria-setsize`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub set_size: Option<u16>,
     /// Children in reading order. A node has exactly one parent.
     pub children: Vec<NodeId>,
 }
@@ -154,6 +167,9 @@ impl Node {
             actions: vec![],
             binding: ResourceRef::None,
             revision: None,
+            level: None,
+            pos_in_set: None,
+            set_size: None,
             children: vec![],
         }
     }
@@ -186,6 +202,15 @@ pub enum TreeError {
     },
     /// A node no path from the root reaches.
     Unreachable {
+        id: NodeId,
+    },
+    /// A `level` of 0: levels count from 1.
+    BadLevel {
+        id: NodeId,
+    },
+    /// A `pos_in_set` or `set_size` that cannot describe a place in a set:
+    /// zero, past the end, or one given without the other.
+    BadPosition {
         id: NodeId,
     },
 }
@@ -228,6 +253,23 @@ impl SemanticTree {
         }
         if !by_id.contains_key(&self.root) {
             return Err(TreeError::MissingRoot);
+        }
+        for node in &self.nodes {
+            if node.level == Some(0) {
+                return Err(TreeError::BadLevel {
+                    id: node.id.clone(),
+                });
+            }
+            let position_ok = match (node.pos_in_set, node.set_size) {
+                (None, None) => true,
+                (Some(pos), Some(size)) => pos >= 1 && pos <= size,
+                _ => false,
+            };
+            if !position_ok {
+                return Err(TreeError::BadPosition {
+                    id: node.id.clone(),
+                });
+            }
         }
         let mut owned: BTreeSet<&NodeId> = BTreeSet::new();
         for node in &self.nodes {
@@ -373,6 +415,9 @@ mod tests {
             actions: vec![],
             binding: ResourceRef::None,
             revision: None,
+            level: None,
+            pos_in_set: None,
+            set_size: None,
             children: children.iter().map(|c| NodeId::new(*c)).collect(),
         }
     }
@@ -430,6 +475,42 @@ mod tests {
             dup.validate(),
             Err(TreeError::DuplicateNode { .. })
         ));
+    }
+
+    #[test]
+    fn level_and_position_are_checked_and_round_trip() {
+        let mut t = tree();
+        t.nodes[2].level = Some(2);
+        t.nodes[2].pos_in_set = Some(3);
+        t.nodes[2].set_size = Some(7);
+        assert_eq!(t.validate(), Ok(()));
+        let value = serde_json::to_value(&t.nodes[2]).unwrap();
+        assert_eq!(value["level"], 2);
+        assert_eq!(value["posInSet"], 3);
+        assert_eq!(value["setSize"], 7);
+        // Absent when not given.
+        let plain = serde_json::to_value(&t.nodes[1]).unwrap();
+        assert!(plain.get("level").is_none() && plain.get("posInSet").is_none());
+        assert_eq!(serde_json::from_value::<Node>(value).unwrap(), t.nodes[2]);
+
+        let id = t.nodes[2].id.clone();
+        let mut zero = t.clone();
+        zero.nodes[2].level = Some(0);
+        assert_eq!(zero.validate(), Err(TreeError::BadLevel { id: id.clone() }));
+        for (pos, size) in [
+            (Some(8), Some(7)),
+            (Some(0), Some(7)),
+            (Some(1), None),
+            (None, Some(7)),
+        ] {
+            let mut bad = t.clone();
+            bad.nodes[2].pos_in_set = pos;
+            bad.nodes[2].set_size = size;
+            assert_eq!(
+                bad.validate(),
+                Err(TreeError::BadPosition { id: id.clone() })
+            );
+        }
     }
 
     #[test]
