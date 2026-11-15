@@ -31,6 +31,25 @@ pub enum Outcome {
     },
 }
 
+/// The owner's own words for "you may no longer see this": the refusal says
+/// the access itself is gone, not that one request failed. The list is closed;
+/// anything else is an ordinary refusal and what is shown stays.
+pub const ACCESS_REVOKED_CODES: [&str; 5] = [
+    "forbidden",
+    "unauthorized",
+    "signed_out",
+    "account_changed",
+    "access_revoked",
+];
+
+impl Outcome {
+    /// Whether this is a refusal that says access to the resource is gone, so
+    /// a panel clears what it shows instead of keeping it.
+    pub fn is_access_revoked(&self) -> bool {
+        matches!(self, Outcome::Refused { code, .. } if ACCESS_REVOKED_CODES.contains(&code.as_str()))
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
@@ -326,6 +345,12 @@ pub struct DocumentOpened {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub read_only: Option<ReadOnly>,
+    /// Edits the owner holds that this page session has not settled, among
+    /// them the ones recovered from the local checkpoint (`restored`). Absent
+    /// when there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "ts", ts(as = "Option<Vec<PendingEdit>>", optional))]
+    pub pending: Vec<PendingEdit>,
 }
 
 /// Why a document cannot be edited, in words a person can act on.
@@ -366,6 +391,10 @@ pub enum PendingState {
     Refused,
     /// The answer was lost: it may or may not be applied. Never resent blind.
     Uncertain,
+    /// Recovered from the local checkpoint after a reload: never sent in this
+    /// page session. The owner does not send it on its own and refuses new
+    /// edits (`unreconciled_local_draft`) until the person settles it.
+    Restored,
 }
 
 /// An edit the owner holds. `edits` are ranges against the text at
@@ -730,12 +759,26 @@ pub struct LayoutDocument {
     pub named_layouts: String,
 }
 
+/// Which store a layout was read from (R35).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub enum LayoutSource {
+    /// The account's workbench record.
+    Account,
+    /// This browser's copy, used when the account could not be reached.
+    Device,
+}
+
 /// What the server holds. `document` is absent until the first save, and the
 /// revision is then 0. The revision is the one to save against.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct LayoutLoaded {
+    /// Where the copy came from. A `device` copy is the browser's own
+    /// fallback, not the account's record.
+    pub source: LayoutSource,
     pub revision: Revision,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
@@ -948,9 +991,43 @@ mod tests {
     }
 
     #[test]
+    fn a_restored_edit_travels_with_a_document_opened() {
+        shape(
+            CompletionPayload::DocumentOpened(DocumentOpened {
+                text: "t".into(),
+                revision: seq(2),
+                saved_revision: None,
+                dirty: true,
+                read_only: None,
+                pending: vec![PendingEdit {
+                    operation_id: "op-9".into(),
+                    base_revision: seq(1),
+                    edits: vec![TextChange {
+                        start: 0,
+                        end: 0,
+                        insert: "x".into(),
+                    }],
+                    state: PendingState::Restored,
+                    reason: Some("recovered from the local checkpoint".into()),
+                }],
+            }),
+            json!({
+                "type": "documentOpened", "text": "t", "dirty": true,
+                "revision": {"scheme": "seq", "value": 2},
+                "pending": [{
+                    "operationId": "op-9", "baseRevision": {"scheme": "seq", "value": 1},
+                    "edits": [{"start": 0, "end": 0, "insert": "x"}],
+                    "state": "restored", "reason": "recovered from the local checkpoint"
+                }]
+            }),
+        );
+    }
+
+    #[test]
     fn layout_payloads() {
         shape(
             CompletionPayload::LayoutLoaded(LayoutLoaded {
+                source: LayoutSource::Device,
                 revision: seq(3),
                 document: Some(LayoutDocument {
                     current: "{\"a\":1}".into(),
@@ -959,6 +1036,7 @@ mod tests {
             }),
             json!({
                 "type": "layoutLoaded",
+                "source": "device",
                 "revision": {"scheme": "seq", "value": 3},
                 "document": {"current": "{\"a\":1}", "namedLayouts": "{}"}
             }),
@@ -966,10 +1044,11 @@ mod tests {
         // Before the first save there is a revision and no document.
         shape(
             CompletionPayload::LayoutLoaded(LayoutLoaded {
+                source: LayoutSource::Account,
                 revision: seq(0),
                 document: None,
             }),
-            json!({"type": "layoutLoaded", "revision": {"scheme": "seq", "value": 0}}),
+            json!({"type": "layoutLoaded", "source": "account", "revision": {"scheme": "seq", "value": 0}}),
         );
         shape(
             CompletionPayload::LayoutSaved(LayoutSaved { revision: seq(4) }),
@@ -992,6 +1071,7 @@ mod tests {
                 read_only: Some(ReadOnly {
                     reason: "the file is locked".into(),
                 }),
+                pending: vec![],
             }),
             json!({
                 "type": "documentOpened", "text": "hi", "dirty": true,

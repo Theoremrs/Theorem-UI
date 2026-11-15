@@ -177,6 +177,7 @@ impl Rig {
                 saved_revision: None,
                 dirty: !clean,
                 read_only: None,
+                pending: vec![],
             }),
         );
         self.send(Msg::Completion(c))
@@ -2004,6 +2005,7 @@ fn a_new_page_asks_for_a_name_and_creates_it_through_the_owner() {
             saved_revision: None,
             dirty: false,
             read_only: None,
+            pending: vec![],
         })),
     );
     assert!(rig.state()["path"] == "notes/new.md", "{}", rig.state());
@@ -2078,6 +2080,7 @@ fn a_document_the_owner_opened_read_only_takes_no_edits_and_says_why() {
         &open,
         Outcome::Accepted,
         Some(CompletionPayload::DocumentOpened(DocumentOpened {
+            pending: vec![],
             text: "hello\n".into(),
             revision: seq(1),
             saved_revision: None,
@@ -2711,6 +2714,7 @@ fn the_read_only_reason_is_not_cut_at_any_width() {
             &open,
             Outcome::Accepted,
             Some(CompletionPayload::DocumentOpened(DocumentOpened {
+                pending: vec![],
                 text: "hello\n".into(),
                 revision: seq(1),
                 saved_revision: None,

@@ -4,6 +4,7 @@ import type { ConnectionState } from "./ConnectionState";
 import type { CoordinateUnit } from "./CoordinateUnit";
 import type { DraftAttachment } from "./DraftAttachment";
 import type { FindingAt } from "./FindingAt";
+import type { LocalState } from "./LocalState";
 import type { ModelChoice } from "./ModelChoice";
 import type { ReadAt } from "./ReadAt";
 import type { ResourceRef } from "./ResourceRef";
@@ -18,7 +19,7 @@ import type { TerminalSessionInfo } from "./TerminalSessionInfo";
 import type { TextChange } from "./TextChange";
 import type { TokenSpan } from "./TokenSpan";
 
-export type HostMessage = { "type": "documentChanged", resource: ResourceRef, revision: Revision, actor: string, operationId?: string, unit: CoordinateUnit, edits: Array<TextChange>, } | { "type": "documentAcknowledged", resource: ResourceRef, revision: Revision, operationId: string, } | { "type": "documentResync", resource: ResourceRef, revision: Revision, text: string, } | { "type": "documentConflict", resource: ResourceRef, revision: Revision, diskDeleted: boolean, } | { "type": "documentSaved", resource: ResourceRef, revision: Revision, } | { "type": "documentMoved", from: ResourceRef, to: ResourceRef, } | { "type": "documentRetired", resource: ResourceRef, } | { "type": "fileChanged", workspace: string, path: string, } | { "type": "terminalOutput", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalReset", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalResized", resource: ResourceRef, epoch?: number, cols: number, rows: number, } | { "type": "terminalOpened", resource: ResourceRef, epoch: number, program: number, backend: TerminalBackend, 
+export type HostMessage = { "type": "documentChanged", resource: ResourceRef, revision: Revision, actor: string, operationId?: string, unit: CoordinateUnit, edits: Array<TextChange>, } | { "type": "documentAcknowledged", resource: ResourceRef, revision: Revision, operationId: string, } | { "type": "documentResync", resource: ResourceRef, revision: Revision, text: string, } | { "type": "documentConflict", resource: ResourceRef, revision: Revision, diskDeleted: boolean, } | { "type": "documentSaved", resource: ResourceRef, revision: Revision, } | { "type": "documentLocal", resource: ResourceRef, local: LocalState, } | { "type": "documentMoved", from: ResourceRef, to: ResourceRef, } | { "type": "documentRetired", resource: ResourceRef, } | { "type": "fileChanged", workspace: string, path: string, } | { "type": "terminalOutput", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalReset", resource: ResourceRef, epoch: number, offset: number, data: string, } | { "type": "terminalResized", resource: ResourceRef, epoch?: number, cols: number, rows: number, } | { "type": "terminalOpened", resource: ResourceRef, epoch: number, program: number, backend: TerminalBackend, 
 /**
  * `adopted`, `replacement` or the host's other origin words.
  */

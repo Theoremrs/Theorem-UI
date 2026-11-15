@@ -110,6 +110,8 @@ pub(crate) const RETAINED_SNAPSHOTS: usize = 32;
 pub(crate) const RETAINED_SESSION_LISTS: usize = 4;
 /// How many paths' latest diagnostics the root keeps.
 pub(crate) const RETAINED_DIAGNOSTIC_PATHS: usize = 256;
+/// How many documents' latest local state the root keeps.
+pub(crate) const RETAINED_LOCALS: usize = 256;
 
 /// The latest state a panel mounted later needs and would otherwise have
 /// missed: one `ConversationSnapshot` per conversation resource and one
@@ -123,6 +125,8 @@ pub(crate) struct Retained {
     pub(crate) models: Vec<(ResourceRef, HostMessage)>,
     /// The latest `DiagnosticsSet` per path, oldest first.
     pub(crate) diagnostics: Vec<(String, HostMessage)>,
+    /// The latest `DocumentLocal` of each document.
+    pub(crate) locals: Vec<(ResourceRef, HostMessage)>,
     /// How many held messages their bounds have pushed out, oldest first.
     pub(crate) evicted: u64,
 }
@@ -185,6 +189,20 @@ impl Retained {
             self.diagnostics.remove(0);
         }
         true
+    }
+
+    /// Keep the latest local state of a document, bounded.
+    pub(crate) fn keep_local(&mut self, resource: &ResourceRef, message: &HostMessage) {
+        self.locals.retain(|(r, _)| r != resource);
+        self.locals.push((resource.clone(), message.clone()));
+        if self.locals.len() > RETAINED_LOCALS {
+            self.evicted += 1;
+            self.locals.remove(0);
+        }
+    }
+
+    pub(crate) fn forget_local(&mut self, resource: &ResourceRef) {
+        self.locals.retain(|(r, _)| r != resource);
     }
 
     pub(crate) fn forget_diagnostics(&mut self, path: &str) {

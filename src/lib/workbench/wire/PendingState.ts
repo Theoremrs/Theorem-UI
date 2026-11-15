@@ -3,4 +3,4 @@
 /**
  * Why an edit is held by the owner until the caller settles it.
  */
-export type PendingState = "inflight" | "conflicted" | "refused" | "uncertain";
+export type PendingState = "inflight" | "conflicted" | "refused" | "uncertain" | "restored";

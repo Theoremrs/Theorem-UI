@@ -3446,7 +3446,7 @@ fn a_blinking_caret_is_steady_while_motion_is_reduced() {
 use theorem_workbench_core::ArrangementMsg;
 use theorem_workbench_core::ArrangementNotice;
 use theorem_workbench_core::completion::{
-    CompletionPayload, LayoutDocument, LayoutLoaded, LayoutSaved,
+    CompletionPayload, LayoutDocument, LayoutLoaded, LayoutSaved, LayoutSource,
 };
 
 fn notices(m: &mut Model) -> Vec<Notice> {
@@ -3485,9 +3485,20 @@ fn saved(effect: EffectId, revision: u64) -> Msg {
 }
 
 fn loaded(effect: EffectId, revision: u64, current: &str, named: &str) -> Msg {
+    loaded_from(effect, LayoutSource::Account, revision, current, named)
+}
+
+fn loaded_from(
+    effect: EffectId,
+    source: LayoutSource,
+    revision: u64,
+    current: &str,
+    named: &str,
+) -> Msg {
     Msg::Completion(
         Completion::new(effect, ResourceRef::None, Outcome::Accepted).with_payload(
             CompletionPayload::LayoutLoaded(LayoutLoaded {
+                source,
                 revision: Revision::Seq(revision),
                 document: Some(LayoutDocument {
                     current: current.into(),
@@ -4170,4 +4181,210 @@ fn esc_in_a_drawer_goes_to_a_text_panel_and_closes_it_otherwise_and_the_action_c
     action(&mut m, "workbench.drawer.close");
     assert_eq!(m.dock().drawer(), None);
     assert_eq!(m.focus().panel, Some(note));
+}
+
+// ---- local state, restored edits, where a layout came from, revoked access ----
+
+use theorem_workbench_core::{LocalProblem, LocalState, LocalStatus};
+
+fn local(path: &str, local: LocalState) -> Msg {
+    Msg::Host(HostMessage::DocumentLocal {
+        resource: doc(path),
+        local,
+    })
+}
+
+fn locals_seen(log: &Shared) -> Vec<LocalState> {
+    msgs_of(log, "note")
+        .into_iter()
+        .filter_map(|m| match m {
+            PanelMsg::Host(HostMessage::DocumentLocal { local, .. }) => Some(local),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn a_documents_local_state_reaches_its_panels_is_kept_for_later_ones_and_dropped_with_the_document()
+{
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let checkpointed = LocalState {
+        status: LocalStatus::Checkpointed {
+            saved_at_ms: 1_700_000_000_000,
+            recovered: true,
+        },
+        problem: None,
+    };
+    send(&mut m, local("a.md", checkpointed.clone()));
+    send(
+        &mut m,
+        local(
+            "other.md",
+            LocalState {
+                status: LocalStatus::Draft,
+                problem: None,
+            },
+        ),
+    );
+    assert_eq!(
+        locals_seen(&log),
+        vec![checkpointed.clone()],
+        "only the panel bound to a.md"
+    );
+
+    // A panel that binds later is told the latest at once.
+    let draft = LocalState {
+        status: LocalStatus::Draft,
+        problem: Some(LocalProblem {
+            code: "write_failed".into(),
+            reason: "The local store is full.".into(),
+        }),
+    };
+    send(&mut m, local("a.md", draft.clone()));
+    action(&mut m, "note.open");
+    let seen = locals_seen(&log);
+    assert_eq!(seen.last(), Some(&draft));
+    assert_eq!(seen.len(), 3);
+
+    // Retired: nothing is replayed to the next panel.
+    send(
+        &mut m,
+        Msg::Host(HostMessage::DocumentRetired {
+            resource: doc("a.md"),
+        }),
+    );
+    let before = locals_seen(&log).len();
+    action(&mut m, "note.open");
+    assert_eq!(locals_seen(&log).len(), before);
+
+    // Closing the last panel of a document drops it too.
+    send(&mut m, local("a.md", draft));
+    for id in kinds(&m, "note") {
+        send(&mut m, Msg::Dock(DockMsg::ClosePanel(id)));
+    }
+    let before = locals_seen(&log).len();
+    action(&mut m, "note.open");
+    assert_eq!(locals_seen(&log).len(), before);
+}
+
+#[test]
+fn a_layout_read_from_the_device_is_labelled_and_never_the_base_of_a_save() {
+    let (mut m, _) = new_model();
+    action(&mut m, "note.open");
+    assert!(!m.layout_is_device_copy());
+    let mut doc = m.document();
+    doc["version"] = json!(1);
+    let named = named_item("Mine", &doc);
+
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded_from(load[0].id, LayoutSource::Device, 12, "", &named),
+    );
+    assert!(m.layout_is_device_copy(), "the mount can keep showing it");
+    assert!(arrangement_notices(&mut m).contains(&ArrangementNotice::DeviceCopy));
+    // It can be read and applied.
+    assert!(m.arrangements().iter().any(|a| a.name == "Mine"));
+    assert!(
+        arrange(
+            &mut m,
+            ArrangementMsg::Apply {
+                name: "Mine".into()
+            }
+        )
+        .is_empty()
+    );
+
+    // Every change that would be saved is refused, with the reason, and sends nothing.
+    notices(&mut m);
+    for msg in [
+        ArrangementMsg::Save { name: "New".into() },
+        ArrangementMsg::Rename {
+            from: "Mine".into(),
+            to: "Yours".into(),
+        },
+        ArrangementMsg::Delete {
+            name: "Mine".into(),
+        },
+    ] {
+        assert!(arrange(&mut m, msg).is_empty());
+    }
+    let told = arrangement_notices(&mut m);
+    assert_eq!(told.len(), 3);
+    assert!(
+        told.iter()
+            .all(|n| matches!(n, ArrangementNotice::NeedsAccountLoad { .. }))
+    );
+    assert!(
+        m.arrangements().iter().any(|a| a.name == "Mine"),
+        "nothing changed"
+    );
+    assert!(m.in_flight().is_empty());
+
+    // An account load clears the label, and the save is based on its revision.
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded_from(load[0].id, LayoutSource::Account, 21, "", &named),
+    );
+    assert!(!m.layout_is_device_copy());
+    let fx = arrange(&mut m, ArrangementMsg::Save { name: "New".into() });
+    assert_eq!(fx[0].revision, Some(Revision::Seq(21)));
+
+    // A device load never leaves a stale account revision behind to save on.
+    send(&mut m, saved(fx[0].id, 22));
+    let load = arrange(&mut m, ArrangementMsg::Load);
+    send(
+        &mut m,
+        loaded_from(load[0].id, LayoutSource::Device, 99, "", &named),
+    );
+    assert!(arrange(&mut m, ArrangementMsg::Save { name: "x".into() }).is_empty());
+}
+
+#[test]
+fn a_refusal_that_says_access_is_gone_is_told_apart_from_one_that_is_not() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let revoked = [
+        "forbidden",
+        "unauthorized",
+        "signed_out",
+        "account_changed",
+        "access_revoked",
+    ];
+    let mut seen = Vec::new();
+    for code in revoked
+        .iter()
+        .chain(&["conflict", "stale_revision", "not_found"])
+    {
+        let id = last_effect_id(&action(&mut m, "note.save"));
+        let refused = Outcome::Refused {
+            code: (*code).into(),
+            reason: "no".into(),
+        };
+        send(&mut m, Msg::Completion(completion(id, "a.md", 5, refused)));
+        seen.push(
+            msgs_of(&log, "note")
+                .into_iter()
+                .rev()
+                .find_map(|m| match m {
+                    PanelMsg::Completion(c) => Some(c.outcome.is_access_revoked()),
+                    _ => None,
+                }),
+        );
+    }
+    assert_eq!(
+        seen,
+        [Some(true); 5]
+            .into_iter()
+            .chain([Some(false); 3])
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !Outcome::Failed {
+            reason: "forbidden".into()
+        }
+        .is_access_revoked()
+    );
 }

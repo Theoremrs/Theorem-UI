@@ -254,6 +254,7 @@ impl Rig {
                 saved_revision: None,
                 dirty: false,
                 read_only: None,
+                pending: vec![],
             }),
         );
         self.send(Msg::Completion(c))
@@ -983,6 +984,7 @@ fn a_document_the_owner_opened_read_only_takes_no_edits_and_says_why() {
         &open,
         Outcome::Accepted,
         Some(CompletionPayload::DocumentOpened(DocumentOpened {
+            pending: vec![],
             text: "hello\n".into(),
             revision: seq(1),
             saved_revision: None,
@@ -1263,6 +1265,7 @@ impl Rig {
                 saved_revision: None,
                 dirty: false,
                 read_only: None,
+                pending: vec![],
             }),
         );
         self.send(Msg::Completion(c));

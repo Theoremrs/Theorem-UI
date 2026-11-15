@@ -64,6 +64,48 @@ pub enum TerminalSessionState {
     Lost,
 }
 
+/// How far a document's edits are from being safe (spec 11, R40).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(
+    tag = "state",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum LocalStatus {
+    /// The owner has them.
+    Accepted,
+    /// Held in this page only.
+    Draft,
+    /// Written to the local checkpoint at `saved_at_ms` (milliseconds since
+    /// the epoch); `recovered` is true when this page found it after a reload.
+    Checkpointed {
+        #[cfg_attr(feature = "ts", ts(type = "number"))]
+        saved_at_ms: u64,
+        recovered: bool,
+    },
+}
+
+/// A failed or unknown local write, or no local store, in a person's words.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LocalProblem {
+    pub code: String,
+    pub reason: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct LocalState {
+    #[serde(flatten)]
+    pub status: LocalStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub problem: Option<LocalProblem>,
+}
+
 /// A terminal session of the workspace a pane may attach to.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -143,6 +185,14 @@ pub enum HostMessage {
     DocumentSaved {
         resource: ResourceRef,
         revision: Revision,
+    },
+    /// Where a document's edits stand locally: accepted by the owner, held as
+    /// a draft, or checkpointed on this device. Delivered to the panels bound
+    /// to the document; the latest is kept for a panel that binds later and
+    /// dropped when the document is retired or no panel has it open.
+    DocumentLocal {
+        resource: ResourceRef,
+        local: LocalState,
     },
     DocumentMoved {
         from: ResourceRef,
@@ -490,6 +540,41 @@ mod tests {
             project: "p".into(),
             thread: "t1".into(),
         }
+    }
+
+    #[test]
+    fn local_state_is_a_flat_tagged_object_with_an_optional_problem() {
+        let message = HostMessage::DocumentLocal {
+            resource: ResourceRef::None,
+            local: LocalState {
+                status: LocalStatus::Checkpointed {
+                    saved_at_ms: 1_700_000_000_000,
+                    recovered: true,
+                },
+                problem: Some(LocalProblem {
+                    code: "no_store".into(),
+                    reason: "This browser has no local store.".into(),
+                }),
+            },
+        };
+        let value = serde_json::to_value(&message).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "type": "documentLocal", "resource": {"type": "none"},
+                "local": {
+                    "state": "checkpointed", "savedAtMs": 1_700_000_000_000u64, "recovered": true,
+                    "problem": {"code": "no_store", "reason": "This browser has no local store."}
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<HostMessage>(value).unwrap(),
+            message
+        );
+        let plain: LocalState = serde_json::from_value(json!({"state": "accepted"})).unwrap();
+        assert_eq!(plain.status, LocalStatus::Accepted);
+        assert!(plain.problem.is_none());
     }
 
     #[test]

@@ -18,7 +18,7 @@ use theorem_workbench_dock::{
     Dock, DockDocument, GroupId, OpenAt, PanelId, Preset, Role as DockRole, Tab,
 };
 
-use crate::completion::{Completion, CompletionPayload, Outcome};
+use crate::completion::{Completion, CompletionPayload, LayoutSource, Outcome};
 use crate::effect::{Effect, EffectBody, LayoutSave};
 use crate::ids::{PanelInstanceId, PanelKind, Revision};
 use crate::model::{DOCUMENT_SCHEMA, DOCUMENT_VERSION, Entry, Model, Notice};
@@ -116,6 +116,14 @@ pub enum ArrangementNotice {
     NotSaved {
         reason: String,
     },
+    /// The layout shown is this browser's own copy, not the account's record.
+    /// It stays so until a load from the account succeeds.
+    DeviceCopy,
+    /// A change was not made because the list on screen is not the account's:
+    /// it would be saved over a record that was never read.
+    NeedsAccountLoad {
+        reason: String,
+    },
     /// The record could not be read as arrangements; `skipped` entries were
     /// left out of what was kept.
     LoadedWithLoss {
@@ -145,6 +153,8 @@ pub(crate) struct Arrangements {
     /// A save is out; another change waits for its answer.
     pub(crate) saving: bool,
     pub(crate) save_again: bool,
+    /// What is held came from this browser, not the account.
+    pub(crate) device: bool,
 }
 
 impl Arrangements {
@@ -261,6 +271,17 @@ impl Model {
     pub(crate) fn on_arrangement(&mut self, msg: ArrangementMsg) -> Vec<Effect> {
         match msg {
             ArrangementMsg::Load => self.send_layout(EffectBody::LayoutLoad, LayoutOp::Load, None),
+            ArrangementMsg::Save { .. }
+            | ArrangementMsg::Rename { .. }
+            | ArrangementMsg::Delete { .. }
+                if self.arrangements.device =>
+            {
+                self.say(ArrangementNotice::NeedsAccountLoad {
+                    reason: "These layouts are this browser's copy. Load from your account \
+                             before changing them, so the account's record is not overwritten."
+                        .into(),
+                })
+            }
             ArrangementMsg::Save { name } => {
                 let name = match self.valid_name(&name) {
                     Ok(name) => name,
@@ -394,7 +415,14 @@ impl Model {
         let mut effects = vec![];
         match (op, &completion.outcome, &completion.payload) {
             (LayoutOp::Load, Outcome::Accepted, Some(CompletionPayload::LayoutLoaded(loaded))) => {
-                self.arrangements.revision = Some(loaded.revision.clone());
+                self.arrangements.device = loaded.source == LayoutSource::Device;
+                // A device copy's revision is not the account record's: no
+                // save is ever based on it.
+                self.arrangements.revision =
+                    (!self.arrangements.device).then(|| loaded.revision.clone());
+                if self.arrangements.device {
+                    self.notify(Notice::Arrangement(ArrangementNotice::DeviceCopy));
+                }
                 if let Some(document) = &loaded.document {
                     self.read_record(&document.named_layouts, &document.current);
                 }
@@ -455,6 +483,12 @@ impl Model {
                 })),
             }
         }
+    }
+
+    /// Whether the layouts shown are this browser's copy (a device load) and
+    /// not the account's. True until a load from the account succeeds.
+    pub fn layout_is_device_copy(&self) -> bool {
+        self.arrangements.device
     }
 
     /// Forget everything that belongs to the account before this one.

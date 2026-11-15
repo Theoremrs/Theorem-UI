@@ -387,6 +387,7 @@ impl Model {
                     replay.push(message);
                 }
             }
+            replay.extend(find(&self.retained.locals));
             replay.extend(find(&self.retained.attachments));
             replay.extend(find(&self.retained.models));
             for message in replay {
@@ -948,8 +949,17 @@ impl Model {
         let out = self.run_ctx(id, mode, |cx| entry.panel.teardown(cx, destroy));
         self.origins.retain(|e, _| self.in_flight.is_pending(*e));
         self.searches.retain(|_, panel| panel != id);
+        let resource = entry.binding().resource;
         if destroy {
-            self.retained.forget(&entry.binding().resource);
+            self.retained.forget(&resource);
+        }
+        // A document nobody has open any more keeps no local state.
+        if !self
+            .panels
+            .values()
+            .any(|e| e.binding().resource == resource)
+        {
+            self.retained.forget_local(&resource);
         }
         self.dirty = true;
         out.effects
@@ -1494,6 +1504,11 @@ impl Model {
                 conversation_id,
                 ..
             } if thread == conversation_id => self.retained.keep_attachments(resource, &message),
+            HostMessage::DocumentLocal { resource, .. } => {
+                self.retained.keep_local(resource, &message);
+            }
+            HostMessage::DocumentRetired { resource } => self.retained.forget_local(resource),
+            HostMessage::DocumentMoved { from, .. } => self.retained.forget_local(from),
             HostMessage::ConversationModels {
                 resource: resource @ ResourceRef::Conversation { thread, .. },
                 conversation_id,
@@ -1733,6 +1748,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         }
         DocumentMoved { from, .. } => (Some(from), None),
         DocumentRetired { resource }
+        | DocumentLocal { resource, .. }
         | TerminalOutput { resource, .. }
         | TerminalReset { resource, .. }
         | TerminalResized { resource, .. }
