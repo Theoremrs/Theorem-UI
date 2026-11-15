@@ -40,7 +40,7 @@ export interface StubHost {
 /** The files and workspace methods of the SDK client, answering from `handlers`. */
 export function stubHost(
   operations: ReturnType<typeof op>[],
-  extra: { copy?: boolean } = {},
+  extra: { copy?: boolean; backends?: Record<string, { ready: boolean }> } = {},
 ): StubHost {
   const handlers = new Map<string, Handler>()
   const calls: StubHost['calls'] = []
@@ -73,6 +73,7 @@ export function stubHost(
         epoch: 'e1',
         cursor: '0',
         granted_by: 'test-host',
+        ...(extra.backends ? { backends: extra.backends } : {}),
         operations,
       }),
     },

@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk — TheoremClient carries every request (remoteWorkspaces.open and
+// SOURCING: @theoremharness/sdk-ide — TheoremClient carries every request (remoteWorkspaces.open and
 // .capabilities, documentSessions.open) and WorkspaceLive is the live stream; recovery,
 // open-until-ready and error wording come from ./workspace-recovery, copied verbatim from the Theia
 // extension's TheoremConnection helpers. This file is the plain-TypeScript counterpart of
@@ -12,7 +12,7 @@ import type {
   WorkspaceLiveKind,
   WorkspaceLiveState,
   WorkspaceResync,
-} from '@theoremharness/sdk'
+} from '@theoremharness/sdk-ide'
 import { availabilityOf } from './result'
 import type { Availability, UnavailableCause } from './result'
 import { openUntilReady, recoveringSend } from './workspace-recovery'

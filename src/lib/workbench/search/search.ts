@@ -1,7 +1,7 @@
-// SOURCING: @theoremharness/sdk — each call is the generated client.ide.search.query / cancel operation, sent through ../ask with the request id as the idempotency key; scalarToUtf16 is the SDK's own offset helper (the host counts match columns in Unicode scalars). Paging follows the host's contract as the Theia extension's theorem-search.ts uses it: the first query answers {id, results, complete, cancelled}, and a follow-up {id, limit} answers the next page. There is no typed search class in the SDK.
+// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.search.query / cancel operation, sent through ../ask with the request id as the idempotency key; scalarToUtf16 is the SDK's own offset helper (the host counts match columns in Unicode scalars). Paging follows the host's contract as the Theia extension's theorem-search.ts uses it: the first query answers {id, results, complete, cancelled}, and a follow-up {id, limit} answers the next page. There is no typed search class in the SDK.
 
-import { scalarToUtf16 } from '@theoremharness/sdk'
-import type { TheoremClient } from '@theoremharness/sdk'
+import { scalarToUtf16 } from '@theoremharness/sdk-ide'
+import type { TheoremClient } from '@theoremharness/sdk-ide'
 import type { Environment, HostClient } from '../environment/environment'
 import { accepted, refused } from '../environment/result'
 import type { Completion } from '../environment/result'

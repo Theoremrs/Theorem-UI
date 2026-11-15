@@ -1,10 +1,11 @@
-// SOURCING: @theoremharness/sdk — each call is the generated client.ide.scm.* operation, sent through
+// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.scm.* operation, sent through
 // ../environment with the request id as the idempotency key. The SDK's WorkspaceScm class is not used:
 // it freezes one CSRF token at construction, mints its own idempotency key per call (so the workbench's
 // request id cannot be the host's), returns bare results with no state revision, and has no diff, log,
 // blame, merge or amend. ./blame-hunks is copied from the Theia extension. A diff is read as the
 // unified text plus the hunks the host already parses, so jsdiff (installed) is not needed here.
 
+import type { ScmResolveRequest } from '@theoremharness/sdk-ide'
 import type {
   Environment,
   HostClient,
@@ -108,7 +109,9 @@ export interface LogEntry {
 /**
  * One conflicted path: whether it is still in conflict and the text of each
  * side. A side the host does not have (a file added on one branch has no
- * `base`) is absent, not empty. Same shape as the wire's `ConflictSides`.
+ * `base`) is absent, not empty: the host's null side is left out, and an existing empty file
+ * stays `""`. Same shape as the wire's `ConflictSides`, plus `binary`, which the wire has no
+ * field for yet.
  */
 export interface ConflictSides {
   path: string
@@ -116,6 +119,8 @@ export interface ConflictSides {
   base?: string
   ours?: string
   theirs?: string
+  /** A stage is not valid UTF-8, so the host sent no text for any side. */
+  binary?: true
 }
 
 interface Request {
@@ -215,6 +220,7 @@ function sidesOf(
     const text = body[side]
     if (typeof text === 'string') sides[side] = text
   }
+  if (body.binary === true) sides.binary = true
   return sides
 }
 
@@ -672,7 +678,13 @@ export function createScm(env: Environment<ScmClient>): Scm {
 
     async resolve({ requestId, path, take, text }) {
       if (outsideWorkspace(path)) return outside(requestId, path)
-      if (take === 'merged' && text === undefined) {
+      const resolution: ScmResolveRequest | undefined =
+        take !== 'merged'
+          ? { path, take }
+          : text === undefined
+            ? undefined
+            : { path, take, text }
+      if (!resolution) {
         return refused(
           { workspaceId, requestId },
           'missing_text',
@@ -683,14 +695,7 @@ export function createScm(env: Environment<ScmClient>): Scm {
         requestId,
         'scm.resolve',
         true,
-        (headers) =>
-          scm().resolve(
-            {
-              ...headers,
-              body: take === 'merged' ? { path, take, text } : { path, take },
-            },
-            once,
-          ),
+        (headers) => scm().resolve({ ...headers, body: resolution }, once),
         (answer) => stated(answer, { path }),
         true,
       )

@@ -1,8 +1,18 @@
 // SOURCING: none — thin mapping from the wire's scm effects to ./scm (the owner): one owner call per effect, the owner's answer reshaped to the wire's payload and nothing else
 import { reply } from '../port'
 import type { Of, OwnerPort } from '../port'
-import type { CompletionPayload, ScmChange } from '../wire'
-import type { ChangeEntry, Scm, ScmStatusResult, Stated } from './scm'
+import type {
+  CompletionPayload,
+  ConflictSides as WireConflictSides,
+  ScmChange,
+} from '../wire'
+import type {
+  ChangeEntry,
+  ConflictSides,
+  Scm,
+  ScmStatusResult,
+  Stated,
+} from './scm'
 
 /** `{type:'scmState'}` when the host reported the repository's state, else nothing to carry. */
 const stateOnly = (value: Stated) =>
@@ -32,6 +42,12 @@ function changesOf(status: ScmStatusResult): ScmChange[] {
     if (!rows.has(path))
       rows.set(path, { path, index: '', worktree: '', conflict: false })
   return [...rows.values()]
+}
+
+/** The wire's `ConflictSides` has no field for `binary` yet (a binary conflict reads as one with no text). */
+function wireSides({ binary, ...sides }: ConflictSides): WireConflictSides {
+  void binary
+  return sides
 }
 
 export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
@@ -153,7 +169,9 @@ export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
               value: {
                 type: 'scmMerged',
                 merged,
-                ...(conflicts.length > 0 ? { conflicts } : {}),
+                ...(conflicts.length > 0
+                  ? { conflicts: conflicts.map(wireSides) }
+                  : {}),
                 ...(state ? { state } : {}),
               },
             }),
@@ -182,7 +200,9 @@ export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
             await scm.conflict({ requestId, path: effect.payload.path }),
             ({ state, ...sides }) => {
               void state
-              return { value: { type: 'scmConflict', ...sides } as const }
+              return {
+                value: { type: 'scmConflict', ...wireSides(sides) } as const,
+              }
             },
           )
         case 'scmResolve':

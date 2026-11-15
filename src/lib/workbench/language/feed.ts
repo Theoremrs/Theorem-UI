@@ -1,6 +1,6 @@
-// SOURCING: @theoremharness/sdk's utf8ToUtf16 (the host's findings count UTF-8 bytes of the document text at one revision); the line and column of a UTF-16 offset is the one thing computed here, because the SDK has an offset converter but no position one and @codemirror/state's Text would count a CRLF as one unit where the host's text counts two. The host has no push for diagnostics (only `diagnostics.subscribe`, one snapshot per call), so the feed asks again when a document's revision moves.
+// SOURCING: @theoremharness/sdk-ide's utf8ToUtf16 (the host's findings count UTF-8 bytes of the document text at one revision); the line and column of a UTF-16 offset is the one thing computed here, because the SDK has an offset converter but no position one and @codemirror/state's Text would count a CRLF as one unit where the host's text counts two. The host has no push for diagnostics (only `diagnostics.subscribe`, one snapshot per call), so the feed asks again when a document's revision moves.
 
-import { utf8ToUtf16 } from '@theoremharness/sdk'
+import { utf8ToUtf16 } from '@theoremharness/sdk-ide'
 import type { DocumentsView, OpenDocument } from '../documents/port'
 import type { FindingAt, HostMessage } from '../wire'
 import type { Language } from './language'

@@ -1,4 +1,4 @@
-// SOURCING: none — request handling around @theoremharness/sdk's transport for answers only this
+// SOURCING: none — request handling around @theoremharness/sdk-ide's transport for answers only this
 // host gives: the SDK has no recovery from a host that restarted, and takes a 404 on its live
 // stream as final. Keep this file free of Theia imports so its tests run outside the workbench.
 // *****************************************************************************

@@ -1,6 +1,6 @@
-// SOURCING: hand-roll — the binding state machine (four separate versions, lease, reset, input ledger) is Theorem's own host contract; the SDK's TerminalChannel ignores epochs, origin, leases and kill, and the backend SDK that adds them is not vendored. Transport is the SDK (host.ts); profiles are terminal-profile.ts.
+// SOURCING: hand-roll — the binding state machine (four separate versions, lease, reset, input ledger) is Theorem's own host contract; the SDK's TerminalChannel (0.6.0-alpha.8) now tracks epochs, leases and kill, but answers a bare boolean, reports a refused claim to a listener, mints its own input ids and has no `uncertain`, while this workbench needs the panel's `input_id` and claim and four outcomes. Transport is the SDK (host.ts); profiles are terminal-profile.ts.
 import { terminalHost } from './host'
-import type { TerminalDeps, TerminalHost } from './host'
+import type { InputBody, TerminalDeps, TerminalHost } from './host'
 import { openBody } from './terminal-profile'
 import type { TheoremTerminalProfile } from './terminal-profile'
 import { classify } from './wire'
@@ -54,7 +54,7 @@ export interface TerminalState {
     | {
         reason: string
         code: number | null | undefined
-        signal: string | null | undefined
+        signal: number | null | undefined
       }
     | undefined
 }
@@ -87,7 +87,7 @@ export type TerminalEvent =
       type: 'exited'
       reason: string
       code: number | null | undefined
-      signal: string | null | undefined
+      signal: number | null | undefined
     }
   /** The program or its session is gone and cannot be resumed. A new program is a new `open`. */
   | { type: 'lost'; cause: 'program_lost' | 'session_gone' | 'stream_closed' }
@@ -115,7 +115,7 @@ export interface Bound {
 const decode = (base64: string) =>
   Uint8Array.from(atob(base64), (char) => char.charCodeAt(0))
 
-function programOf(binding: WireBinding | undefined): {
+function programOf(binding: Pick<WireBinding, 'program'> | undefined): {
   program?: number
   origin?: ProgramOrigin
 } {
@@ -136,7 +136,8 @@ interface SuppliedClaim {
 }
 
 interface Sent {
-  bytes: string
+  /** Text or exact bytes, as the first send chose; a resend uses the same one. */
+  body: InputBody
   kind: InputKind
   claim: WriteClaim
   /** No reply was seen, so the host may or may not have written it. */
@@ -275,6 +276,51 @@ export class TerminalSession {
   ): Promise<
     Outcome<{ inputId: string; duplicate: boolean; discarded: boolean }>
   > {
+    return this.enter(options, kind, async () => ({ bytes }))
+  }
+
+  /**
+   * Type exact bytes (base64), which need not be UTF-8: sent as `bytes_base64` on the host's bytes
+   * input, with the same id, claim and ledger as text. A host that does not list
+   * `terminal.input.bytes` reads text only, so bytes that are valid UTF-8 go as that text and any
+   * others are refused `missing_capability` rather than corrupted.
+   */
+  async inputBytes(
+    base64: string,
+    kind: InputKind = 'human',
+    options: {
+      inputId?: string
+      claim?: SuppliedClaim
+    } = {},
+  ): Promise<
+    Outcome<{ inputId: string; duplicate: boolean; discarded: boolean }>
+  > {
+    return this.enter(options, kind, async () => {
+      if (await this.host.canInputBytes()) return { bytes_base64: base64 }
+      try {
+        return {
+          bytes: new TextDecoder('utf-8', { fatal: true }).decode(
+            decode(base64),
+          ),
+        }
+      } catch {
+        return {
+          outcome: 'refused',
+          code: 'missing_capability',
+          reason:
+            'the host does not advertise terminal.input.bytes, so it cannot take bytes that are not UTF-8 text',
+        } as const
+      }
+    })
+  }
+
+  private async enter(
+    options: { inputId?: string; claim?: SuppliedClaim },
+    kind: InputKind,
+    body: () => Promise<InputBody | Failure>,
+  ): Promise<
+    Outcome<{ inputId: string; duplicate: boolean; discarded: boolean }>
+  > {
     const inputId = options.inputId ?? crypto.randomUUID()
     const known = this.ledger.get(inputId)
     if (known) {
@@ -290,8 +336,12 @@ export class TerminalSession {
     if (unfit) {
       return unfit
     }
+    const chosen = await body()
+    if ('outcome' in chosen) {
+      return this.answer(chosen)
+    }
     return this.send(inputId, {
-      bytes,
+      body: chosen,
       kind,
       claim: this.claim(options.claim),
       uncertain: false,
@@ -480,7 +530,7 @@ export class TerminalSession {
     const result = await this.write(async (id) => {
       const reply = await this.host.input({
         session: id,
-        bytes: sent.bytes,
+        ...sent.body,
         input_id: inputId,
         kind: sent.kind,
         ...sent.claim,
@@ -494,7 +544,7 @@ export class TerminalSession {
     // Only a call with no reply may still have been written; every other answer settles it.
     if (result.outcome !== 'uncertain') {
       sent.uncertain = false
-      sent.bytes = ''
+      sent.body = { bytes: '' }
     }
     return result
   }
@@ -594,10 +644,9 @@ export class TerminalSession {
       const { control } = reply
       state.lease = {
         role: control.controlling ? 'controller' : 'observer',
-        generation: control.generation ?? state.lease.generation,
+        generation: control.generation,
         held: control.controlled === true,
-        attachment:
-          reply.attachment ?? control.attachment ?? state.lease.attachment,
+        attachment: reply.attachment ?? control.attachment,
       }
     } else if (reply.attachment) {
       state.lease.attachment = reply.attachment
@@ -620,7 +669,7 @@ export class TerminalSession {
       state.offset = reply.offset_end
       this.emit({
         type: 'reset',
-        formatted: reply.formatted ?? reply.screen ?? '',
+        formatted: reply.formatted,
         epoch: state.bindingEpoch,
       })
     } else {
@@ -698,6 +747,10 @@ export class TerminalSession {
 
   private onLive(event: TerminalLiveEvent): void {
     const state = this.current
+    // Adoption is the workspace's, not one terminal's: the adapter's session list reads it.
+    if (event.kind === 'terminal.adoption') {
+      return
+    }
     if (event.data.session !== state.terminalId || state.phase === 'detached') {
       return
     }
@@ -791,10 +844,7 @@ export class TerminalSession {
       case 'terminal.control': {
         const generation = event.data.generation
         // The event names no attachment: a generation that is not ours means someone else holds the lease.
-        if (
-          generation === undefined ||
-          generation < (state.lease.generation ?? 0)
-        ) {
+        if (generation < (state.lease.generation ?? 0)) {
           return
         }
         const displaced =
@@ -803,7 +853,7 @@ export class TerminalSession {
         state.lease = {
           ...state.lease,
           generation,
-          held: event.data.controlled ?? state.lease.held,
+          held: event.data.controlled,
           role: displaced ? 'observer' : state.lease.role,
         }
         this.emit({ type: 'lease', lease: { ...state.lease } })
@@ -847,8 +897,8 @@ export function watchAnnouncements(
       backend,
       bindingEpoch: epoch,
       program,
-      ...(cols !== undefined ? { cols } : {}),
-      ...(rows !== undefined ? { rows } : {}),
+      cols,
+      rows,
     })
   })
 }

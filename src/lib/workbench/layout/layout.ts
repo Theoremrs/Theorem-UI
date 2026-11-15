@@ -1,10 +1,10 @@
-// SOURCING: @theoremharness/sdk — `client.workbench.get/save` (`/api/workbench/v1/:workspace_id`)
+// SOURCING: @theoremharness/sdk-ide — `client.workbench.get/save` (`/api/workbench/v1/:workspace_id`)
 // through ../environment, which owns the session's CSRF token and the client; the record's
 // schema string and its If-Match rule come from the backend's theorem_workbench.rs. The device copy
 // is ./checkpoint over @rustyreddb/browser. This file is the one owner of the saved workbench
 // record: it keeps the revision with every read and refuses a stale save as a conflict.
 
-import type { TheoremClient } from '@theoremharness/sdk'
+import type { TheoremClient } from '@theoremharness/sdk-ide'
 import type { Environment, HostClient } from '../environment/environment'
 import {
   accepted,

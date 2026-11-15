@@ -279,13 +279,15 @@ describe('list', () => {
       runs: [
         {
           handle: 'h1',
-          name: 'build',
+          configuration: 'build',
+          kind: 'run',
           argv: ['make', 'all'],
           state: 'running',
+          exit_code: null,
           started_at_ms: 1700,
         },
-        { handle: 'h2', state: 'exited' },
-        { name: 'no handle' },
+        { handle: 'h2', state: 'passed', exit_code: 0 },
+        { configuration: 'no handle' },
       ],
     }))
     const done = await port.perform(
@@ -308,7 +310,7 @@ describe('list', () => {
             state: 'running',
             startedAtMs: 1700,
           },
-          { handle: 'h2', state: 'exited' },
+          { handle: 'h2', state: 'passed' },
         ],
       },
     })

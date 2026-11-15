@@ -1,4 +1,5 @@
-// SOURCING: none — the host's terminal contract (docs/plans/theo-workbench/gate-0/terminal-path.md) as types, and the one outcome shape every call returns; no upstream library models either.
+// SOURCING: @theoremharness/sdk-ide for the host's terminal types (attach reply, binding, lease, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
+import type { Theorem, WorkspaceLiveEvent } from '@theoremharness/sdk-ide'
 
 /** The five reasons the host refuses a keystroke, paste or resize with `terminal_control_refused`. */
 export type LeaseRefusalReason =
@@ -46,22 +47,11 @@ export interface OpenReply {
   process_owned_by?: string
 }
 
-export interface AttachReply {
-  session?: string
-  attachment?: string
-  control?: WireControl
-  epoch?: number
-  binding?: WireBinding
-  /** Escape-coded repaint of the visible grid at `offset_end`. */
-  formatted?: string
-  screen?: string
-  offset_start: number
-  offset_end: number
-  /** Base64 bytes from `offset_start` to `offset_end`. */
-  data?: string
-  /** The requested offset is no longer in the log. */
-  truncated?: boolean
-}
+/**
+ * What `terminal.attach` answers, as the SDK types it: the offsets and bytes, the binding (one
+ * `program` number), the lease `control`, the screen `modes` and the repaint.
+ */
+export type AttachReply = Theorem.IdeTerminalAttachReply
 
 export interface InputReply {
   accepted?: boolean
@@ -76,53 +66,32 @@ export interface WriteClaim {
   epoch?: number
 }
 
-/** Live events as the host publishes them. The SDK's typed events drop everything after `session`. */
-export type TerminalLiveEvent =
-  | {
-      kind: 'terminal.opened'
-      data: {
-        session: string
-        epoch?: number
-        program?: number
-        backend?: string
-        origin?: ProgramOrigin
-        cols?: number
-        rows?: number
-      }
-    }
-  | {
-      kind: 'terminal.output'
-      data: { session: string; epoch?: number; offset: number; data: string }
-    }
-  | {
-      kind: 'terminal.resized'
-      data: { session: string; cols: number; rows: number }
-    }
-  | {
-      kind: 'terminal.exited'
-      data: {
-        session: string
-        epoch?: number
-        exit_code?: number | null
-        signal?: string | null
-        reason?: string
-      }
-    }
-  | {
-      kind: 'terminal.control'
-      data: {
-        session: string
-        epoch?: number
-        generation?: number
-        controlled?: boolean
-      }
-    }
+const TERMINAL_KINDS = [
+  'terminal.adoption',
+  'terminal.opened',
+  'terminal.output',
+  'terminal.resized',
+  'terminal.exited',
+  'terminal.control',
+] as const
+
+/** Every terminal event the host publishes, as the SDK types the live stream. */
+export type TerminalLiveEvent = {
+  [K in (typeof TERMINAL_KINDS)[number]]: WorkspaceLiveEvent<K>
+}[(typeof TERMINAL_KINDS)[number]]
+
+export const isTerminalEvent = (
+  event: WorkspaceLiveEvent,
+): event is TerminalLiveEvent =>
+  (TERMINAL_KINDS as readonly string[]).includes(event.kind)
 
 /** Each refusal the host or this module can give. */
 export type Refusal =
   | { code: 'terminal_control_refused'; reason: LeaseRefusalReason }
   | { code: 'terminal_backend_unavailable'; reason: string; backend?: string }
   | { code: 'terminal_session_not_found'; reason: string }
+  /** The host does not list the operation this call needs (`terminal.input.bytes`). */
+  | { code: 'missing_capability'; reason: string }
   /** The host does not advertise `terminal.kill`, or no generic operation call was supplied. */
   | { code: 'kill_unavailable'; reason: string }
 

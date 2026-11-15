@@ -9,6 +9,8 @@ import type {
   OwnerReply,
   TerminalPort,
 } from './adapter'
+import type { TerminalListReply } from '@theoremharness/sdk-ide'
+import type { TerminalHost } from './terminal'
 import {
   FakeLive,
   HttpError,
@@ -233,6 +235,7 @@ class FakePort {
   }
   seen: {
     input?: unknown[]
+    inputBytes?: unknown[]
     attach?: unknown[]
     resize?: unknown[]
     open?: unknown
@@ -278,6 +281,14 @@ class FakePort {
       discarded: false,
     })
   }
+  inputBytes = (...args: unknown[]) => {
+    this.seen.inputBytes = args
+    return this.answer('terminalInputBytes', {
+      inputId: 'x',
+      duplicate: false,
+      discarded: false,
+    })
+  }
   resize = (...args: unknown[]) => {
     this.seen.resize = args
     return this.answer('terminalResize', { cols: 100, rows: 30 })
@@ -300,9 +311,13 @@ async function setup(
     'clipboard',
   ],
   fileOverrides: Record<string, unknown> = {},
+  terminalList: Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
+    herdr?: boolean
+  } = {},
 ) {
   const calls: Call[] = []
   const messages: Inbound[] = []
+  const { herdr, ...hostList } = terminalList
   const host = stubHost(
     [
       'workspace.files.list',
@@ -310,6 +325,7 @@ async function setup(
       'scm.status',
       'terminal.open',
     ].map((name) => op(name)),
+    herdr ? { backends: { herdr: { ready: true } } } : {},
   )
   const live = new FakeLive()
   const { environment } = testEnvironment(host, live)
@@ -383,6 +399,7 @@ async function setup(
           terminalHostListeners.add(listener)
           return () => void terminalHostListeners.delete(listener)
         },
+        ...hostList,
       },
     },
     layout: { load: layoutCall('layoutLoad'), save: layoutCall('layoutSave') },
@@ -451,12 +468,8 @@ describe('routing', () => {
     )
     await t.settle()
 
-    // Bytes go through the session's input.
-    const recordedAs = (kind: EffectKind) =>
-      kind === 'terminalInputBytes' ? 'terminalInput' : kind
     for (const kind of kinds) {
-      const recorded = recordedAs(kind)
-      const made = t.calls.filter((call) => call.kind === recorded)
+      const made = t.calls.filter((call) => call.kind === kind)
       const owners = new Set(made.map((call) => call.owner))
       expect({ kind, owners: [...owners] }).toEqual({
         kind,
@@ -464,7 +477,7 @@ describe('routing', () => {
       })
       expect({ kind, calls: made.length }).toEqual({
         kind,
-        calls: kinds.filter((other) => recordedAs(other) === recorded).length,
+        calls: 1,
       })
     }
   })
@@ -1032,34 +1045,31 @@ describe('terminals', () => {
     })
   })
 
-  test('input bytes that are UTF-8 go through the session input with the panel id and claim; other bytes are refused', async () => {
+  test('input bytes go to the session as base64 with the panel id and claim, whatever the bytes are', async () => {
     const t = await setup()
     t.adapter.perform(effectOf(1, 'terminalOpen'))
     await t.settle()
-    t.adapter.perform(effectOf(2, 'terminalInputBytes'))
+    const raw = btoa(String.fromCharCode(0x1b, 0x5b, 0x4d, 0x20, 0xe0, 0xf0))
     t.adapter.perform({
-      ...effectOf(3, 'terminalInputBytes'),
+      ...effectOf(2, 'terminalInputBytes'),
       payload: {
-        data: btoa(String.fromCharCode(0xff, 0xfe)),
+        data: raw,
         kind: 'human',
-        inputId: 'bad',
+        inputId: 'ib',
         claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
       },
     } as never)
     await t.settle()
-    expect(t.port.seen.input).toEqual([
-      'ls\n',
+    expect(t.port.seen.inputBytes).toEqual([
+      raw,
       'human',
       {
         inputId: 'ib',
         claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
       },
     ])
+    expect(t.port.seen.input).toBeUndefined()
     expect(t.completions()[1]!.outcome).toEqual({ status: 'accepted' })
-    expect(t.completions()[2]!.outcome).toMatchObject({
-      status: 'refused',
-      code: 'unsupported_binary_input',
-    })
   })
 
   test('what the session did not report is left out of the binding, never filled in', async () => {
@@ -1362,6 +1372,223 @@ describe('host events', () => {
     expect(lists().at(-1)!.sessions[0]).toMatchObject({
       session: 't1',
       controlledElsewhere: true,
+    })
+  })
+
+  describe('the host lists its terminals', () => {
+    const row = (
+      session: string,
+      backend: 'native' | 'herdr',
+      controlled = false,
+    ) => ({
+      session,
+      backend,
+      epoch: 1,
+      origin: 'adopted' as const,
+      binding: {
+        backend,
+        epoch: 1,
+        program: 2,
+        core_id: null,
+        terminal: null,
+      },
+      cols: 80,
+      rows: 24,
+      state: 'running' as const,
+      controlled,
+      modes: {
+        alternate_screen: false,
+        application_cursor: false,
+        application_keypad: false,
+        bracketed_paste: false,
+        hide_cursor: false,
+        mouse_protocol: 'none' as const,
+        mouse_encoding: 'default' as const,
+      },
+    })
+    const sessionLists = (t: Awaited<ReturnType<typeof setup>>) =>
+      t
+        .hostMessages()
+        .flatMap((m) => (m.type === 'terminalSessions' ? [m] : []))
+
+    test('a settled list is the host’s: its rows are the sessions, and what it no longer holds is dropped', async () => {
+      let answer: TerminalListReply = {
+        sessions: [row('hc-1', 'herdr', true), row('pty-1', 'native')],
+        adoption: { state: 'settled' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer,
+        },
+      )
+      await t.settle()
+      expect(sessionLists(t).at(-1)!.sessions).toEqual([
+        {
+          session: 'hc-1',
+          profile: 'Herdr shell',
+          backend: 'herdr',
+          workspace: 'w1',
+          program: 2,
+          state: 'running',
+          controlledElsewhere: true,
+        },
+        {
+          session: 'pty-1',
+          profile: 'Shell',
+          backend: 'native',
+          workspace: 'w1',
+          program: 2,
+          state: 'running',
+          controlledElsewhere: false,
+        },
+      ])
+
+      answer = {
+        sessions: [row('pty-1', 'native')],
+        adoption: { state: 'settled' },
+      }
+      t.announce({ kind: 'terminal.adoption', data: { state: 'settled' } })
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.map((s) => s.session),
+      ).toEqual(['pty-1'])
+    })
+
+    test('a pending list proves nothing: a terminal it does not name stays in the list', async () => {
+      let answer: TerminalListReply = {
+        sessions: [row('hc-1', 'herdr'), row('pty-1', 'native')],
+        adoption: { state: 'settled' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer,
+        },
+      )
+      await t.settle()
+      answer = {
+        sessions: [row('pty-1', 'native')],
+        adoption: { state: 'pending' },
+      }
+      t.announce({ kind: 'terminal.adoption', data: { state: 'pending' } })
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.map((s) => s.session),
+      ).toEqual(['hc-1', 'pty-1'])
+    })
+
+    test('an unavailable adoption is stated on the Herdr profiles with its reason, and no session is dropped', async () => {
+      let answer: TerminalListReply = {
+        sessions: [row('hc-1', 'herdr'), row('pty-1', 'native')],
+        adoption: { state: 'settled' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          herdr: true,
+          canList: async () => true,
+          list: async () => answer,
+        },
+      )
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .profiles.filter((p) => p.backend === 'herdr')
+          .map((p) => p.available),
+      ).toEqual([true, true, true])
+
+      answer = {
+        sessions: [row('pty-1', 'native')],
+        adoption: {
+          state: 'unavailable',
+          reason: 'the core refused the label',
+        },
+      }
+      t.announce({
+        kind: 'terminal.adoption',
+        data: { state: 'unavailable', reason: 'the core refused the label' },
+      })
+      await t.settle()
+      const last = sessionLists(t).at(-1)!
+      expect(last.sessions.map((s) => s.session)).toEqual(['hc-1', 'pty-1'])
+      expect(last.profiles.filter((p) => p.backend === 'herdr')).toEqual([
+        expect.objectContaining({
+          available: false,
+          unavailableReason: 'the core refused the label',
+        }),
+        expect.objectContaining({
+          available: false,
+          unavailableReason: 'the core refused the label',
+        }),
+        expect.objectContaining({
+          available: false,
+          unavailableReason: 'the core refused the label',
+        }),
+      ])
+    })
+
+    test('a list that cannot be read, or a host that does not list terminals, leaves the known sessions as they were', async () => {
+      const warn = console.warn
+      console.warn = () => {}
+      try {
+        let fail = false
+        const t = await setup(
+          {},
+          undefined,
+          {},
+          {
+            canList: async () => true,
+            list: async () => {
+              if (fail) throw new Error('gateway timeout')
+              return {
+                sessions: [row('pty-1', 'native')],
+                adoption: { state: 'settled' },
+              }
+            },
+          },
+        )
+        await t.settle()
+        fail = true
+        t.announce({ kind: 'terminal.adoption', data: { state: 'pending' } })
+        await t.settle()
+        expect(
+          sessionLists(t)
+            .at(-1)!
+            .sessions.map((s) => s.session),
+        ).toEqual(['pty-1'])
+
+        let asked = 0
+        const old = await setup(
+          {},
+          undefined,
+          {},
+          {
+            canList: async () => false,
+            list: async () => {
+              asked += 1
+              return { sessions: [], adoption: { state: 'settled' } }
+            },
+          },
+        )
+        await old.settle()
+        expect(asked).toBe(0)
+      } finally {
+        console.warn = warn
+      }
     })
   })
 

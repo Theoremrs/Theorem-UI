@@ -408,6 +408,56 @@ describe('writes', () => {
     expect(calls[0]?.request.body).toEqual({ path: 'a.rs' })
   })
 
+  test('a missing side (null) is left out, an existing empty file stays empty, and binary is carried', async () => {
+    const { scm, on } = await setup()
+    on('conflict', () => ({
+      path: 'a.rs',
+      conflict: true,
+      base: null,
+      ours: '',
+      theirs: 't\n',
+      host: 'live',
+    }))
+    const done = await scm.conflict({ requestId: 'r', path: 'a.rs' })
+    expect(done.outcome === 'accepted' && done.value).toEqual({
+      path: 'a.rs',
+      conflict: true,
+      ours: '',
+      theirs: 't\n',
+    })
+    on('conflict', () => ({
+      path: 'b.bin',
+      conflict: true,
+      base: null,
+      ours: null,
+      theirs: null,
+      binary: true,
+    }))
+    const binary = await scm.conflict({ requestId: 'r2', path: 'b.bin' })
+    expect(binary.outcome === 'accepted' && binary.value).toEqual({
+      path: 'b.bin',
+      conflict: true,
+      binary: true,
+    })
+    on('merge', () => ({
+      ref: 'dev',
+      state: 'conflict',
+      conflicts: [
+        {
+          path: 'b.bin',
+          conflict: true,
+          base: null,
+          ours: null,
+          theirs: null,
+          binary: true,
+        },
+      ],
+    }))
+    expect(await scm.merge({ requestId: 'r3', branch: 'dev' })).toMatchObject({
+      value: { merged: false, conflicts: [{ path: 'b.bin', binary: true }] },
+    })
+  })
+
   test('resolve sends the side taken, and the merged text only for merged', async () => {
     const { scm, calls } = await setup()
     await scm.resolve({ requestId: 'r1', path: 'a.rs', take: 'ours' })

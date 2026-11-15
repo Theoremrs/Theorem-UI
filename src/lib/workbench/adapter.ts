@@ -12,6 +12,10 @@ import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import { profileById, TERMINAL_PROFILES } from './terminal'
+import type {
+  TerminalAdoption,
+  TerminalListReply,
+} from '@theoremharness/sdk-ide'
 import type { Layout } from './layout'
 import type { AccountChange, AccountWatch } from './account'
 import { grantedCapabilities } from './capabilities'
@@ -64,6 +68,7 @@ export type TerminalPort = Pick<
   | 'open'
   | 'attach'
   | 'input'
+  | 'inputBytes'
   | 'resize'
   | 'detach'
   | 'kill'
@@ -74,8 +79,12 @@ export type TerminalPort = Pick<
 export interface TerminalOwner {
   /** A fresh binding; the adapter keeps one per terminal id. */
   create: () => TerminalPort
-  /** Where the host announces terminals (`terminal.opened`). */
-  host: Pick<TerminalHost, 'onEvent'>
+  /**
+   * Where the host announces terminals (`terminal.opened`, `terminal.adoption`) and, when it lists
+   * `terminal.list`, its inventory. Without `list`, the session list is what this workbench knows.
+   */
+  host: Pick<TerminalHost, 'onEvent'> &
+    Partial<Pick<TerminalHost, 'canList' | 'list'>>
 }
 
 /** What the adapter reads of the environment. `Environment` satisfies it. */
@@ -310,11 +319,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   }
 
   // ---- the terminal session list ---------------------------------------------------------
-  // The host has no list operation, so the list is what this workbench knows: the bindings it
-  // holds and the programs the host announced. It is sent whole whenever it changes.
+  // A host that lists `terminal.list` says which terminals the workspace has and whether that
+  // inventory is complete (`adoption`): `settled`, so a terminal it does not list does not exist;
+  // `pending`, so absence proves nothing yet; or `unavailable`, with the reason. Without the
+  // operation the list is what this workbench knows: the bindings it holds and the programs the
+  // host announced. It is sent whole whenever it changes.
 
   const sessions = new Map<string, TerminalSessionInfo>()
   let lastSessions = ''
+  /** What the host last said about its inventory; undefined until `terminal.list` or `terminal.adoption` has said. */
+  let adoption: TerminalAdoption | undefined
 
   const profileLabel = (backend: TerminalBackend) =>
     TERMINAL_PROFILES.find((profile) => profile.backend === backend)?.id ??
@@ -322,16 +336,94 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
 
   function profiles(): TerminalProfileInfo[] {
     const herdr = env.backends().includes('herdr')
-    return TERMINAL_PROFILES.map((profile) => ({
-      id: profile.id,
-      label: profile.id,
-      backend: profile.backend,
-      ...(profile.argv ? { argv: [...profile.argv] } : {}),
-      available: profile.backend === 'native' || herdr,
-      ...(profile.backend === 'herdr' && !herdr
-        ? { unavailableReason: 'The host reports Herdr terminals not ready' }
-        : {}),
-    }))
+    // Herdr's terminals cannot be reached while the host cannot read the core's inventory: that is
+    // stated here, on the profile the wire already gives a reason to, never as an empty list.
+    const unreachable = adoption?.state === 'unavailable' ? adoption : undefined
+    return TERMINAL_PROFILES.map((profile) => {
+      const herdrProfile = profile.backend === 'herdr'
+      const reason = !herdrProfile
+        ? undefined
+        : !herdr
+          ? 'The host reports Herdr terminals not ready'
+          : unreachable?.reason
+      return {
+        id: profile.id,
+        label: profile.id,
+        backend: profile.backend,
+        ...(profile.argv ? { argv: [...profile.argv] } : {}),
+        available: !herdrProfile || (herdr && !unreachable),
+        ...(herdrProfile && (!herdr || unreachable)
+          ? { unavailableReason: reason }
+          : {}),
+      }
+    })
+  }
+
+  /** Reads what the host lists into the session list: unbound rows are the host's, bound ones stay the binding's. */
+  function absorb(listed: TerminalListReply) {
+    adoption = listed.adoption
+    const rows = new Set<string>()
+    for (const row of listed.sessions) {
+      rows.add(row.session)
+      if (terminals.has(row.session)) continue
+      sessions.set(row.session, {
+        session: row.session,
+        profile:
+          sessions.get(row.session)?.profile ?? profileLabel(row.backend),
+        backend: row.backend,
+        workspace,
+        program: row.binding.program,
+        state: row.state,
+        controlledElsewhere: row.controlled,
+      })
+    }
+    // Only a settled inventory proves a terminal is gone; pending and unavailable ones prove nothing.
+    if (adoption.state === 'settled') {
+      for (const id of [...sessions.keys()]) {
+        if (!rows.has(id) && !terminals.has(id)) sessions.delete(id)
+      }
+    }
+  }
+
+  /** `disposed` read through a call, so a read made across an await is not narrowed to the value it had before it. */
+  const stopped = () => disposed
+  const again = () => relist
+  let listing: Promise<void> | undefined
+  let relist = false
+  /** Reads `terminal.list` once at a time; a request that arrives while one is out asks for another read after it. */
+  function refreshList(): Promise<void> {
+    if (listing) {
+      relist = true
+      return listing
+    }
+    const read = async () => {
+      do {
+        relist = false
+        const { host } = options.terminal
+        if (stopped() || !host.list || !host.canList) return
+        try {
+          await env.settled()
+          if (
+            stopped() ||
+            env.availability.status !== 'available' ||
+            !(await host.canList())
+          ) {
+            return
+          }
+          const listed = await host.list()
+          if (stopped()) return
+          absorb(listed)
+        } catch (error) {
+          // A list that could not be read changes nothing: the sessions known stay, none is dropped.
+          console.warn('The terminal list could not be read', error)
+        }
+        publishSessions()
+      } while (again())
+    }
+    listing = read().finally(() => {
+      listing = undefined
+    })
+    return listing
   }
 
   function publishSessions() {
@@ -378,6 +470,19 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
 
   stops.push(
     options.terminal.host.onEvent((event) => {
+      if (event.kind === 'terminal.adoption') {
+        // The inventory's completeness changed; a settled one is read again, and a terminal that
+        // arrived late is then listed.
+        adoption = event.data
+        publishSessions()
+        void refreshList()
+        return
+      }
+      if (event.kind === 'terminal.exited') {
+        // A terminal this workbench does not hold has ended; the host's list says whether it is still held.
+        if (!terminals.has(event.data.session)) void refreshList()
+        return
+      }
       if (event.kind !== 'terminal.opened') return
       const { session, epoch, program, origin, cols, rows, backend } =
         event.data
@@ -405,8 +510,8 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         program: program ?? 0,
         backend: backend === 'herdr' ? 'herdr' : 'native',
         origin: origin ?? 'unspecified',
-        cols: cols ?? 0,
-        rows: rows ?? 0,
+        cols,
+        rows,
       })
     }),
   )
@@ -581,28 +686,18 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
             claim: effect.payload.claim,
           }),
         )
-      case 'terminalInputBytes': {
-        // The host's input takes text. Bytes that are valid UTF-8 are that text; others cannot be sent faithfully.
-        let text: string
-        try {
-          text = new TextDecoder('utf-8', { fatal: true }).decode(
-            Uint8Array.from(atob(effect.payload.data), (char) =>
-              char.charCodeAt(0),
-            ),
-          )
-        } catch {
-          return refusal(
-            'unsupported_binary_input',
-            'The terminal host writes text; these bytes are not valid UTF-8 text',
-          )
-        }
+      case 'terminalInputBytes':
+        // Exact bytes, under the panel's id and claim; the session sends them as `bytes_base64`.
         return reply(
-          await bound.port.input(text, effect.payload.kind, {
-            inputId: effect.payload.inputId,
-            claim: effect.payload.claim,
-          }),
+          await bound.port.inputBytes(
+            effect.payload.data,
+            effect.payload.kind,
+            {
+              inputId: effect.payload.inputId,
+              claim: effect.payload.claim,
+            },
+          ),
         )
-      }
       case 'terminalResize':
         return reply(
           await bound.port.resize(effect.payload.cols, effect.payload.rows, {
@@ -1066,10 +1161,12 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           }
           reportCapabilities()
           publishSessions()
+          void refreshList()
           return
         case 'reopened':
           reportCapabilities()
           publishSessions()
+          void refreshList()
           send({ type: 'resync', workspace, reason: 'reopened' })
           return
         case 'live':
@@ -1089,6 +1186,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   void env.settled().then(() => {
     reportCapabilities()
     publishSessions()
+    void refreshList()
   })
 
   for (const port of [

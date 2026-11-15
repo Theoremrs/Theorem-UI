@@ -303,6 +303,22 @@ describe('writes', () => {
     })
   })
 
+  test('a binary conflict reaches the wire as the wire has it: no sides, and no field the wire lacks', async () => {
+    const { perform, on } = await setup()
+    on('conflict', () => ({
+      path: 'b.bin',
+      conflict: true,
+      base: null,
+      ours: null,
+      theirs: null,
+      binary: true,
+    }))
+    expect(await perform('scmConflict', { path: 'b.bin' })).toEqual({
+      outcome: 'accepted',
+      value: { type: 'scmConflict', path: 'b.bin', conflict: true },
+    })
+  })
+
   test('a conflicted path answers its sides, and resolving answers the state it left', async () => {
     const { perform, on, calls } = await setup()
     on('conflict', () => ({

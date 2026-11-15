@@ -78,6 +78,7 @@
         "@tanstack/react-table": "9.3.1",
         "@tanstack/react-virtual": "3.14.21",
         "@theoremharness/sdk": "file:vendor/theoremharness-sdk-0.6.0-alpha.5.tgz",
+        "@theoremharness/sdk-ide": "file:vendor/theoremharness-sdk-0.6.0-alpha.8.tgz",
         "@tsrs/wasm": "0.23.0-ts7.1.0-beta",
         "@uiw/react-codemirror": "4.25.12",
         "@vscode/codicons": "0.0.45",
@@ -1231,6 +1232,7 @@
     "@tanstack/virtual-file-routes": ["@tanstack/virtual-file-routes@1.162.0", "", {}, "sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA=="],
 
     "@theoremharness/sdk": ["@theoremharness/sdk@vendor/theoremharness-sdk-0.6.0-alpha.5.tgz", { "dependencies": { "dequal": "2.0.3", "lossless-json": "4.3.3", "write-file-atomic": "6.0.0" }, "peerDependencies": { "@assistant-ui/react": ">=0.15.30 <0.16.0" }, "optionalPeers": ["@assistant-ui/react"] }, "sha512-BRwBPk8GT757W/67tB0pxAIJLWCJFpzFD+a0OSRE6mGgDiAt0eP1NDakvj0D+GoTOmcNI2BFgicwbGHtK53tNw=="],
+    "@theoremharness/sdk-ide": ["@theoremharness/sdk@vendor/theoremharness-sdk-0.6.0-alpha.8.tgz", { "dependencies": { "dequal": "2.0.3", "lossless-json": "4.3.3", "write-file-atomic": "6.0.0" }, "peerDependencies": { "@assistant-ui/core": ">=0.3.30 <0.4.0" }, "optionalPeers": ["@assistant-ui/core"] }, "sha512-TEjC5TSGf9A6wL0g5Q1t3FhlDFHrbjXxPiE8Lv6qyMpLfrYqVY4jkTv2FYytSspJ5SlYg09NbLYKKmmKSjBobQ=="],
 
     "@tiptap/core": ["@tiptap/core@3.32.2", "", { "peerDependencies": { "@tiptap/pm": "3.32.2" } }, "sha512-EitM8KY3agYfnp/bqhfxcaReVq4CUqVzMqoSIl7xSfYABTGYoTDtVXUdYSGutcCBFjc86BbXjrOlDlqkgC8BsQ=="],
 
@@ -2859,6 +2861,8 @@
     "@tanstack/start-plugin-core/@tanstack/router-generator": ["@tanstack/router-generator@1.167.45", "", { "dependencies": { "@babel/types": "^7.29.8", "@tanstack/router-core": "1.171.38", "@tanstack/router-utils": "1.162.4", "@tanstack/virtual-file-routes": "1.162.0", "jiti": "^2.7.0", "magic-string": "^0.30.21", "prettier": "^3.9.6", "zod": "^4.5.4" } }, "sha512-oCtNqtsMNcBJkPIOu1O7a68jnxt4TkVJj3jHrW3VgiZdBeaj/lBJQh50yvzmNRswRcyIkRg0g30g25bbLRrAGw=="],
 
     "@theoremharness/sdk/write-file-atomic": ["write-file-atomic@6.0.0", "", { "dependencies": { "imurmurhash": "^0.1.4", "signal-exit": "^4.0.1" } }, "sha512-GmqrO8WJ1NuzJ2DrziEI2o57jKAVIQNf8a18W3nCYU3H7PNWqCCVTeH6/NQE93CIllIgQS98rrmVkYgTX9fFJQ=="],
+
+    "@theoremharness/sdk-ide/write-file-atomic": ["write-file-atomic@6.0.0", "", { "dependencies": { "imurmurhash": "^0.1.4", "signal-exit": "^4.0.1" } }, "sha512-GmqrO8WJ1NuzJ2DrziEI2o57jKAVIQNf8a18W3nCYU3H7PNWqCCVTeH6/NQE93CIllIgQS98rrmVkYgTX9fFJQ=="],
 
     "@tiptap/react/fast-equals": ["fast-equals@5.4.5", "", {}, "sha512-yKEpcFuRPu/pTQL2VB8YKE2yFldrLlIsoWtJeBnAdqEhvu21OgkFT0C8njf/xYc2LSZGEr3K9JGjthHJxnVLvQ=="],
 

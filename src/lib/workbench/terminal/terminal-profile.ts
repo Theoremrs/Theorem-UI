@@ -7,6 +7,8 @@
 // SPDX-License-Identifier: EPL-2.0 OR GPL-2.0-only WITH Classpath-exception-2.0
 // *****************************************************************************
 
+import type { TerminalOpenRequest } from '@theoremharness/sdk-ide'
+
 /** Which host terminal backend runs the program. `native` is the host's own PTY. */
 export type TerminalBackend = 'native' | 'herdr'
 
@@ -70,7 +72,7 @@ export function openBody(
   profile: TheoremTerminalProfile | undefined,
   cols: number,
   rows: number,
-): Record<string, unknown> {
+): TerminalOpenRequest {
   if (!profile || profile.backend === 'native') {
     return { cols, rows }
   }

@@ -21,7 +21,9 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 type Call = Record<string, unknown> & { op: string }
 
 /** A client with the SDK's method shapes and a live stream we can drive, with no network. */
-function rig(options: { offers?: boolean } = {}) {
+const OFFERED = ['terminal.kill', 'terminal.input.bytes', 'terminal.list']
+
+function rig(options: { offers?: boolean | string[] } = {}) {
   const calls: Call[] = []
   const handlers: Record<
     string,
@@ -46,7 +48,6 @@ function rig(options: { offers?: boolean } = {}) {
     }) => void | Promise<void>
   >()
   const state = new Set<(state: string) => void>()
-  const operated: { operation: string; body: Record<string, unknown> }[] = []
   const deps = {
     client: {
       ide: {
@@ -54,9 +55,12 @@ function rig(options: { offers?: boolean } = {}) {
           open: call('open'),
           attach: call('attach'),
           input: call('input'),
+          inputBytes: call('inputBytes'),
           resize: call('resize'),
           paste: call('paste'),
           close: call('close'),
+          kill: call('kill'),
+          list: call('list'),
         },
       },
     },
@@ -76,12 +80,12 @@ function rig(options: { offers?: boolean } = {}) {
     },
     workspaceId: 'ws-1',
     csrfToken: () => 'csrf-1',
-    operate: async (operation: string, body: Record<string, unknown>) => {
-      operated.push({ operation, body })
-      return { process_killed: true, session_live: false }
-    },
     offers: async (operation: string) =>
-      (options.offers ?? true) && operation === 'terminal.kill',
+      options.offers === false
+        ? false
+        : (Array.isArray(options.offers) ? options.offers : OFFERED).includes(
+            operation,
+          ),
   } as unknown as TerminalDeps
   const host = terminalHost(deps)
   const session = new TerminalSession(host)
@@ -90,7 +94,6 @@ function rig(options: { offers?: boolean } = {}) {
   return {
     calls,
     handlers,
-    operated,
     host,
     session,
     events,
@@ -687,6 +690,86 @@ describe('lease and input', () => {
     })
   })
 
+  describe('bytes that are not text', () => {
+    // 1b 5b 4d 20 e0 f0: an X10 mouse report, which is not valid UTF-8.
+    const raw = btoa(String.fromCharCode(0x1b, 0x5b, 0x4d, 0x20, 0xe0, 0xf0))
+
+    test('go as bytes_base64 on the bytes input, under the panel id and claim', async () => {
+      const r = rig()
+      await opened(r)
+      r.handlers.inputBytes = () => ({ accepted: true })
+      const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+      expect(
+        await r.session.inputBytes(raw, 'human', { inputId: 'panel-7', claim }),
+      ).toMatchObject({ outcome: 'accepted', value: { inputId: 'panel-7' } })
+      expect(r.of('input')).toHaveLength(0)
+      const [sent] = r.of('inputBytes')
+      expect(sent).toMatchObject({
+        session: 'pty-1',
+        bytes_base64: raw,
+        input_id: 'panel-7',
+        'Idempotency-Key': 'panel-7',
+        kind: 'human',
+        attachment: 'ta-9',
+        generation: 4,
+        epoch: 1,
+      })
+      expect(sent).not.toHaveProperty('bytes')
+    })
+
+    test('a lost answer is uncertain and a repeat of the id resends the same bytes once', async () => {
+      const r = rig()
+      await opened(r)
+      r.handlers.inputBytes = () => {
+        throw new HostError(undefined)
+      }
+      expect(
+        (await r.session.inputBytes(raw, 'human', { inputId: 'panel-8' }))
+          .outcome,
+      ).toBe('uncertain')
+      r.handlers.inputBytes = () => ({ accepted: false, duplicate: true })
+      expect(
+        await r.session.inputBytes('AAAA', 'human', { inputId: 'panel-8' }),
+      ).toMatchObject({ outcome: 'accepted', value: { duplicate: true } })
+      const [first, second] = r.of('inputBytes')
+      expect(second).toMatchObject({
+        input_id: 'panel-8',
+        bytes_base64: first!.bytes_base64,
+      })
+      expect(r.of('inputBytes')).toHaveLength(2)
+    })
+
+    test('an observer is refused locally and nothing is sent', async () => {
+      const r = rig()
+      await opened(r, 'Herdr shell', 'observer')
+      expect(await r.session.inputBytes(raw)).toMatchObject({
+        outcome: 'refused',
+        code: 'terminal_control_refused',
+        reason: 'observer',
+      })
+      expect(r.of('inputBytes')).toHaveLength(0)
+    })
+
+    test('a host that does not list terminal.input.bytes gets UTF-8 text as text and refuses the rest', async () => {
+      const r = rig({ offers: ['terminal.kill'] })
+      await opened(r)
+      r.handlers.input = () => ({ accepted: true })
+      expect(
+        (await r.session.inputBytes(btoa('ls\n'), 'human', { inputId: 'a' }))
+          .outcome,
+      ).toBe('accepted')
+      expect(r.of('input')[0]).toMatchObject({ bytes: 'ls\n', input_id: 'a' })
+      expect(
+        await r.session.inputBytes(raw, 'human', { inputId: 'b' }),
+      ).toMatchObject({
+        outcome: 'refused',
+        code: 'missing_capability',
+      })
+      expect(r.of('inputBytes')).toHaveLength(0)
+      expect(r.of('input')).toHaveLength(1)
+    })
+  })
+
   test('an observer query reply the host discards is an acknowledgement, not an error', async () => {
     const r = rig()
     await opened(r)
@@ -713,7 +796,7 @@ describe('detach and kill', () => {
     expect(r.of('close')[0]).toMatchObject({
       body: { session: 'pty-1', attachment: 'ta-1' },
     })
-    expect(r.operated).toHaveLength(0)
+    expect(r.of('kill')).toHaveLength(0)
     expect(r.session.state.phase).toBe('detached')
     // Live events after a detach are not applied.
     r.live('terminal.output', {
@@ -725,17 +808,20 @@ describe('detach and kill', () => {
     expect(r.events.filter((e) => e.type === 'output')).toHaveLength(0)
   })
 
-  test('kill goes through the generic operation call, and only when the host advertises it', async () => {
+  test('kill is the host’s typed terminal.kill, and only when the host advertises it', async () => {
     const r = rig()
     await opened(r)
+    r.handlers.kill = () => ({ process_killed: true, session_live: false })
     const result = await r.session.kill()
     expect(result).toMatchObject({
       outcome: 'accepted',
       value: { processKilled: true, sessionLive: false },
     })
-    expect(r.operated).toEqual([
-      { operation: 'terminal.kill', body: { session: 'pty-1' } },
-    ])
+    expect(r.of('kill')).toHaveLength(1)
+    expect(r.of('kill')[0]).toMatchObject({
+      workspaceId: 'ws-1',
+      body: { session: 'pty-1' },
+    })
     expect(r.of('close')).toHaveLength(0)
   })
 
@@ -747,7 +833,7 @@ describe('detach and kill', () => {
       code: 'kill_unavailable',
       terminalId: 'pty-1',
     })
-    expect(r.operated).toHaveLength(0)
+    expect(r.of('kill')).toHaveLength(0)
     expect(r.of('close')).toHaveLength(0)
   })
 })
@@ -919,5 +1005,33 @@ describe('exit, loss and adoption', () => {
       attachment: 'att-mine',
     })
     expect(r.of('attach')[0]).toMatchObject({ attachment: 'att-mine' })
+  })
+})
+
+describe('the host’s terminal list', () => {
+  test('is read with the workspace headers and a free body, and only offered when the host lists it', async () => {
+    const r = rig()
+    const answer = {
+      sessions: [],
+      adoption: { state: 'unavailable' as const, reason: 'the core is down' },
+    }
+    r.handlers.list = () => answer
+    expect(await r.host.canList()).toBe(true)
+    expect(await r.host.list()).toEqual(answer)
+    expect(r.of('list')[0]).toMatchObject({
+      workspaceId: 'ws-1',
+      'X-CSRF-Token': 'csrf-1',
+      body: {},
+    })
+    expect(await rig({ offers: ['terminal.kill'] }).host.canList()).toBe(false)
+  })
+
+  test('the adoption event is the workspace’s, so no terminal binding reacts to it', async () => {
+    const r = rig()
+    await opened(r)
+    const before = r.events.length
+    r.live('terminal.adoption', { state: 'pending' })
+    expect(r.events).toHaveLength(before)
+    expect(r.session.state.phase).toBe('attached')
   })
 })

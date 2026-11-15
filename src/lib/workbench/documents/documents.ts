@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk — each call is the generated client.documentSessions.* operation
+// SOURCING: @theoremharness/sdk-ide — each call is the generated client.documentSessions.* operation
 // (open, edit, save, close, head, reconcile), live document events arrive on WorkspaceLive through
 // ../environment, and utf16ToScalar / scalarToUtf16 are the SDK's own offset helpers. The SDK's
 // DocumentSession class is NOT used: its constructor is private and wants a full TheoremClient and
@@ -7,8 +7,8 @@
 // workbench's contract is the opposite: the Rust side rebases, so a stale edit is refused as a conflict
 // and its text is kept here until the caller settles it. This file maps the host's answers to that.
 
-import { scalarToUtf16, utf16ToScalar } from '@theoremharness/sdk'
-import type { WorkspaceLiveEvents } from '@theoremharness/sdk'
+import { scalarToUtf16, utf16ToScalar } from '@theoremharness/sdk-ide'
+import type { WorkspaceLiveEvents } from '@theoremharness/sdk-ide'
 import type {
   Environment,
   HostClient,
@@ -187,7 +187,14 @@ interface Head {
   disk_hash?: string | null
 }
 
-type RevisionRecord = WorkspaceLiveEvents['document.changed']
+/**
+ * A revision from the live stream. 0.6.0-alpha.8's generated record dropped `binary`, which
+ * 0.6.0-alpha.5 typed and a host sends for a revision it will not describe as text edits; it is
+ * still read here, so a binary revision is re-read instead of applied.
+ */
+type RevisionRecord = WorkspaceLiveEvents['document.changed'] & {
+  binary?: boolean
+}
 
 interface Session {
   path: string

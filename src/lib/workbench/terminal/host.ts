@@ -1,5 +1,11 @@
-// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` and `WorkspaceLive`. The typed surface of 0.6.0-alpha.5 drops contract fields (launch backend/argv/name, lease claims, epochs, origin), so this file is the one place that widens them. Delete it when the SDK types catch up.
-import type { TheoremClient, WorkspaceLive } from '@theoremharness/sdk'
+// SOURCING: @theoremharness/sdk-ide — `client.ide.terminal.*` (attach, input, inputBytes, kill, list and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
+import type {
+  TerminalListReply,
+  TerminalOpenRequest,
+  TheoremClient,
+  WorkspaceLive,
+} from '@theoremharness/sdk-ide'
+import { isTerminalEvent } from './wire'
 import type {
   AttachReply,
   InputKind,
@@ -18,7 +24,15 @@ export interface TerminalDeps {
     ide: {
       terminal: Pick<
         SdkTerminal,
-        'open' | 'attach' | 'input' | 'resize' | 'paste' | 'close'
+        | 'open'
+        | 'attach'
+        | 'input'
+        | 'inputBytes'
+        | 'resize'
+        | 'paste'
+        | 'close'
+        | 'kill'
+        | 'list'
       >
     }
   }
@@ -26,14 +40,10 @@ export interface TerminalDeps {
   workspaceId: string
   csrfToken: () => string | Promise<string>
   /**
-   * The environment owner's generic operation call. Only `terminal.kill` needs it: the SDK has
-   * no typed kill and no generic call of its own, and this module never builds a URL.
+   * Whether the host advertises an operation (the environment owner's `has`, once the workspace is
+   * open). `terminal.kill`, `terminal.input.bytes` and `terminal.list` are sent only to a host that
+   * lists them; absent, none of the three is offered.
    */
-  operate?: (
-    operation: string,
-    body: Record<string, unknown>,
-  ) => Promise<unknown>
-  /** Whether the host advertises an operation (the environment owner's `offers`). */
   offers?: (operation: string) => Promise<boolean>
 }
 
@@ -44,17 +54,20 @@ export interface AttachRequest {
   role?: Exclude<LeaseRole, 'unleased'>
 }
 
+/** Exactly one wire form of the input: UTF-8 text, or the standard base64 of the exact bytes. */
+export type InputBody = { bytes: string } | { bytes_base64: string }
+
 /** What the session talks to: one method per host operation, bodies as the contract defines them. */
 export interface TerminalHost {
-  open: (body: Record<string, unknown>, key: string) => Promise<OpenReply>
+  open: (body: TerminalOpenRequest, key: string) => Promise<OpenReply>
   attach: (request: AttachRequest) => Promise<AttachReply>
   input: (
     request: {
       session: string
-      bytes: string
       input_id: string
       kind: InputKind
-    } & WriteClaim,
+    } & InputBody &
+      WriteClaim,
   ) => Promise<InputReply>
   resize: (
     request: { session: string; cols: number; rows: number } & WriteClaim,
@@ -66,7 +79,12 @@ export interface TerminalHost {
   kill: (
     session: string,
   ) => Promise<{ process_killed?: boolean; session_live?: boolean }>
+  /** The host's workspace terminals and whether that inventory is complete. */
+  list: () => Promise<TerminalListReply>
   canKill: () => Promise<boolean>
+  /** Whether bytes may be sent as `bytes_base64`; a host that does not list `terminal.input.bytes` reads text only. */
+  canInputBytes: () => Promise<boolean>
+  canList: () => Promise<boolean>
   onEvent: (listener: (event: TerminalLiveEvent) => void) => () => void
   onResync: (
     listener: (resync: { epoch: string }) => void | Promise<void>,
@@ -79,29 +97,26 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
   const headers = async (key: string = crypto.randomUUID()) => ({
     workspaceId: deps.workspaceId,
     'X-CSRF-Token': await deps.csrfToken(),
-    // The generated request types the key as a UUID string.
-    'Idempotency-Key': key as ReturnType<typeof crypto.randomUUID>,
+    'Idempotency-Key': key,
   })
+  const offers = (operation: string) =>
+    deps.offers ? deps.offers(operation) : Promise.resolve(false)
   return {
-    // The generated `open`, `resize`, `paste` and `close` take the body as a free record, so the
-    // launch fields pass through; `input` and `attach` are flat typed but spread extra fields.
+    // The generated `open`, `resize`, `paste`, `close`, `kill` and `list` take the body as a free
+    // record; `input`, `inputBytes` and `attach` are flat and typed.
     async open(body, key) {
       return (await terminal.open({
         ...(await headers(key)),
-        body,
+        body: { ...body },
       })) as OpenReply
     },
-    async attach(request) {
-      return (await terminal.attach({
-        ...(await headers()),
-        ...request,
-      })) as AttachReply
-    },
+    attach: async (request) =>
+      terminal.attach({ ...(await headers()), ...request }),
     async input(request) {
-      return (await terminal.input({
-        ...(await headers(request.input_id)),
-        ...request,
-      })) as InputReply
+      const sent = { ...(await headers(request.input_id)), ...request }
+      return (await ('bytes_base64' in request
+        ? terminal.inputBytes(sent)
+        : terminal.input(sent))) as InputReply
     },
     resize: async (request) =>
       terminal.resize({ ...(await headers()), body: { ...request } }),
@@ -110,20 +125,17 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
     close: async (request) =>
       terminal.close({ ...(await headers()), body: { ...request } }),
     async kill(session) {
-      if (!deps.operate) {
-        throw new Error('no operation call was supplied for terminal.kill')
-      }
-      return (await deps.operate('terminal.kill', { session })) ?? {}
+      return (
+        (await terminal.kill({ ...(await headers()), body: { session } })) ?? {}
+      )
     },
-    canKill: async () =>
-      Boolean(
-        deps.operate && deps.offers && (await deps.offers('terminal.kill')),
-      ),
+    list: async () => terminal.list({ ...(await headers()), body: {} }),
+    canKill: () => offers('terminal.kill'),
+    canInputBytes: () => offers('terminal.input.bytes'),
+    canList: () => offers('terminal.list'),
     onEvent(listener) {
       return deps.live.onAny((event) => {
-        if (event.kind.startsWith('terminal.')) {
-          listener(event as unknown as TerminalLiveEvent)
-        }
+        if (isTerminalEvent(event)) listener(event)
       })
     },
     onResync: (listener) => deps.live.onResync(listener),

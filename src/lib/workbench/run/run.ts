@@ -1,6 +1,6 @@
-// SOURCING: @theoremharness/sdk — each call is the generated client.ide.run.* operation (configure, start, stop, subscribe), sent through ../ask with the request id as the idempotency key. The SDK has no typed run class; the body and answer fields (name, argv, wait, handle, state, exit_code, stdout, stderr) are the ones the Theia extension's theorem-run.ts already uses.
+// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.run.* operation (configure, start, stop, subscribe), sent through ../ask with the request id as the idempotency key. `run.list` answers `{configurations, runs}`, each run `{handle, configuration, kind, argv, state, exit_code, started_at_ms}`; the SDK's `WorkspaceRuns` freezes one CSRF token, so the generated operation is called directly. the body and answer fields (name, argv, wait, handle, state, exit_code, stdout, stderr) are the ones the Theia extension's theorem-run.ts already uses.
 
-import type { TheoremClient } from '@theoremharness/sdk'
+import type { TheoremClient } from '@theoremharness/sdk-ide'
 import type { Environment, HostClient } from '../environment/environment'
 import { refused } from '../environment/result'
 import type { Completion } from '../environment/result'
@@ -166,12 +166,14 @@ export function createRunner(env: Environment<RunClient>): Runner {
         const body = raw(entry)
         const handle = str(body.handle)
         if (!handle) return []
-        const argv = body.command ?? body.argv
+        // A run row names its configuration and the argv actually launched (`run.list`'s `runs`).
+        const { argv } = body
+        const name = str(body.configuration)
         const startedAtMs = num(body.started_at_ms)
         return [
           {
             handle,
-            ...(str(body.name) ? { name: str(body.name) } : {}),
+            ...(name ? { name } : {}),
             ...(Array.isArray(argv) && argv.every((a) => typeof a === 'string')
               ? { command: argv }
               : {}),
