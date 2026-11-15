@@ -25,7 +25,11 @@ use theorem_workbench_core::{
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 
-const ALL: [&str; 11] = [
+const ALL: [&str; 15] = [
+    "diagnostics.subscribe",
+    "run.start",
+    "run.subscribe",
+    "search.query",
     "files",
     "documents",
     "scm",
@@ -693,14 +697,14 @@ fn reason_node(tree: &SemanticTree) -> Option<&Node> {
 fn choosing_an_unavailable_row_keeps_the_picker_open_and_shows_why_until_selection_moves() {
     // Everything but "run": Run output is unavailable.
     let mut m = model(Capabilities::of(
-        ALL.iter().copied().filter(|c| *c != "run"),
+        ALL.iter().copied().filter(|c| !c.starts_with("run")),
     ));
     open_more(&mut m);
     picker(&mut m, PickerMsg::Select(2));
     let fx = picker(&mut m, PickerMsg::Choose);
     assert!(fx.is_empty());
     assert!(m.picker().is_open(), "stays open");
-    let why = "This host does not report the \"run\" capability.";
+    let why = "This host does not report the \"run.start\" capability.";
     assert_eq!(m.picker().reason(), Some(why));
 
     let tree = semantics(&m);
@@ -896,7 +900,7 @@ fn browsing_the_picker_has_no_effects_and_only_an_available_choice_chooses() {
     ];
     for script in scripts {
         let mut m = model(Capabilities::of(
-            ALL.iter().copied().filter(|c| *c != "run"),
+            ALL.iter().copied().filter(|c| !c.starts_with("run")),
         ));
         for msg in script {
             let fx = picker(&mut m, msg.clone());
@@ -907,7 +911,7 @@ fn browsing_the_picker_has_no_effects_and_only_an_available_choice_chooses() {
 
     // Through the state machine: only an available chosen row says Chosen.
     let registry = registry();
-    let caps = Capabilities::of(ALL.iter().copied().filter(|c| *c != "run"));
+    let caps = Capabilities::of(ALL.iter().copied().filter(|c| !c.starts_with("run")));
     let pins = Default::default();
     let mut p = Picker::default();
     p.set_area(Rect::new(0, 0, 96, 14));

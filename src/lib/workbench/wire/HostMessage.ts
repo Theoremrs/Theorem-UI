@@ -2,8 +2,12 @@
 import type { Capabilities } from "./Capabilities";
 import type { ConnectionState } from "./ConnectionState";
 import type { CoordinateUnit } from "./CoordinateUnit";
+import type { ReadAt } from "./ReadAt";
 import type { ResourceRef } from "./ResourceRef";
 import type { Revision } from "./Revision";
+import type { SearchEnd } from "./SearchEnd";
+import type { SearchRow } from "./SearchRow";
+import type { SearchState } from "./SearchState";
 import type { TerminalBackend } from "./TerminalBackend";
 import type { TerminalProfileInfo } from "./TerminalProfileInfo";
 import type { TerminalSessionInfo } from "./TerminalSessionInfo";
@@ -17,4 +21,16 @@ origin: string, cols: number, rows: number, } | { "type": "terminalExited", reso
 /**
  * `exited`, `killed`, `lost` or the core's word.
  */
-reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "resync", workspace: string, reason: string, };
+reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "searchPage", id: string, rows: Array<SearchRow>, 
+/**
+ * Rows of a kind the owner does not read (the host's non-text rows).
+ */
+skipped: number, state: SearchState, 
+/**
+ * Why the search ended early; only with state `ended`.
+ */
+end?: SearchEnd, 
+/**
+ * The host and generation the rows were read from.
+ */
+readAt: ReadAt, } | { "type": "resync", workspace: string, reason: string, };

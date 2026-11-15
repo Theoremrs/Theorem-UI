@@ -22,6 +22,7 @@ pub mod picker;
 pub mod picker_layout;
 pub mod queue;
 pub mod registry;
+pub mod results;
 pub mod semantics;
 pub mod stale;
 pub mod theme;

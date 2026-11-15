@@ -66,6 +66,7 @@ pub fn log_answer(subjects: &[&str]) -> CompletionPayload {
                 email: None,
                 timestamp: "0".into(),
                 subject: (*subject).into(),
+                body: None,
             })
             .collect(),
         state: None,

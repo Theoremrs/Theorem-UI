@@ -45,6 +45,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
             workspace: model.workspace(),
             focused: group.focused && window,
             picker: picker.as_ref(),
+            capabilities: model.capabilities(),
         };
         root.children
             .push(group_nodes(model, group, &cx, &mut nodes));

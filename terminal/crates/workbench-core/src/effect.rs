@@ -573,12 +573,15 @@ pub struct SearchQuery {
     pub regex: bool,
     pub case_sensitive: bool,
     pub whole_word: bool,
+    /// Globs a path must match one of, as the host takes them: a list, never
+    /// one comma-separated string. Absent or empty: every path.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
-    pub include: Option<String>,
+    pub include: Option<Vec<String>>,
+    /// Globs that leave a path out, as a list.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
-    pub exclude: Option<String>,
+    pub exclude: Option<Vec<String>>,
     pub limit: u32,
 }
 

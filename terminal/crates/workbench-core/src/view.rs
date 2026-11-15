@@ -80,6 +80,7 @@ fn draw_group(
                 workspace: &model.workspace,
                 focused: group.focused && window,
                 picker,
+                capabilities: &model.caps,
             },
         ),
         None if !group.body.is_empty() => {

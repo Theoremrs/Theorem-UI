@@ -401,6 +401,10 @@ mod tests {
 
     fn all_caps() -> Capabilities {
         Capabilities::of([
+            "diagnostics.subscribe",
+            "run.start",
+            "run.subscribe",
+            "search.query",
             "files",
             "documents",
             "scm",

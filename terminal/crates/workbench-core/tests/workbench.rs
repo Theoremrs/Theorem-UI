@@ -48,6 +48,10 @@ struct Log {
     ws_at_tick: Vec<(String, u64)>,
     /// The workspace a panel read from its `ViewCtx` while drawing.
     ws_in_view: Option<String>,
+    /// How many capabilities a panel read from its `Ctx` on a tick.
+    caps_at_tick: Vec<usize>,
+    /// Whether a panel read `search.query` from its `ViewCtx` while drawing.
+    search_in_view: Option<bool>,
 }
 
 type Shared = Rc<RefCell<Log>>;
@@ -132,12 +136,32 @@ impl Panel for TestPanel {
                 cx.workspace().generation.0,
             );
             self.log.borrow_mut().ws_at_tick.push(ws);
+            let granted = cx.capabilities().granted.len();
+            self.log.borrow_mut().caps_at_tick.push(granted);
         }
         match msg {
             PanelMsg::Key(k) if k.key() == Key::Char('o') => cx.open(OpenTarget::File {
                 workspace: "w".into(),
                 path: "c.md".into(),
             }),
+            PanelMsg::Key(k) if k.key() == Key::Char('g') => cx.open(OpenTarget::FileAt {
+                workspace: "w".into(),
+                path: "c.md".into(),
+                line: 12,
+                column: 4,
+            }),
+            PanelMsg::Key(k) if k.key() == Key::Char('q') => self.try_emit(
+                cx,
+                EffectBody::SearchQuery(theorem_workbench_core::effect::SearchQuery {
+                    query: "x".into(),
+                    regex: false,
+                    case_sensitive: false,
+                    whole_word: false,
+                    include: Some(vec!["*.rs".into()]),
+                    exclude: None,
+                    limit: 50,
+                }),
+            ),
             PanelMsg::Key(k) if k.key() == Key::Char('x') => cx.open(OpenTarget::File {
                 workspace: "w".into(),
                 path: "docs/pic.png".into(),
@@ -161,6 +185,9 @@ impl Panel for TestPanel {
 
     fn view(&self, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
         self.log.borrow_mut().ws_in_view = Some(cx.workspace.workspace.clone());
+        self.log.borrow_mut().search_in_view = Some(cx.capabilities().has(
+            &theorem_workbench_core::ids::Capability::new("search.query"),
+        ));
         buf.set_stringn(
             area.x,
             area.y,
@@ -228,7 +255,11 @@ fn descriptor(
     }
 }
 
-const ALL_CAPS: [&str; 11] = [
+const ALL_CAPS: [&str; 15] = [
+    "diagnostics.subscribe",
+    "run.start",
+    "run.subscribe",
+    "search.query",
     "files",
     "documents",
     "scm",
@@ -287,10 +318,13 @@ fn model(log: &Shared) -> Model {
         });
     }
     // Notes open Markdown files; nothing opens anything else.
-    factories.register_opener(
-        "note",
-        |target| matches!(target, OpenTarget::File { path, .. } if path.ends_with(".md")),
-    );
+    factories.register_opener("note", |target| {
+        matches!(
+            target,
+            OpenTarget::File { path, .. } | OpenTarget::FileAt { path, .. }
+                if path.ends_with(".md")
+        )
+    });
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
     let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -1601,6 +1635,121 @@ fn a_panel_opens_what_a_registered_opener_serves_in_main_and_focuses_it() {
     ch(&mut m, 'o');
     assert_eq!(kinds(&m, "note").len(), 2);
     assert_eq!(m.focus().panel, Some(opened));
+}
+
+#[test]
+fn opening_a_file_at_a_place_tells_the_new_panel_and_the_one_already_open_where() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let reveals = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter_map(|m| match m {
+                PanelMsg::Reveal { line, column } => Some((line, column)),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    };
+    assert!(reveals(&log).is_empty());
+
+    // A panel is created for the file: it is told the place.
+    let fx = ch(&mut m, 'g');
+    assert!(fx.is_empty(), "revealing emits nothing");
+    assert_eq!(kinds(&m, "note").len(), 2);
+    assert_eq!(reveals(&log), vec![(12, 4)]);
+
+    // The panel already showing the file is focused and told again.
+    ch(&mut m, 'g');
+    assert_eq!(kinds(&m, "note").len(), 2, "no second panel");
+    assert_eq!(reveals(&log), vec![(12, 4), (12, 4)]);
+    assert!(log.borrow().emits.is_empty());
+}
+
+#[test]
+fn a_panel_built_after_a_capability_change_reads_the_current_set_and_so_does_its_view() {
+    let (mut m, log) = new_model();
+    send(
+        &mut m,
+        Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files", "scm"]),
+        }),
+    );
+    action(&mut m, "note.open");
+    send(&mut m, Msg::Tick);
+    assert_eq!(log.borrow().caps_at_tick.last(), Some(&2));
+    let theme = Theme::plain();
+    let mut buf = Buffer::empty(Rect::new(0, 0, 200, 50));
+    view(&m, Rect::new(0, 0, 200, 50), &mut buf, &theme);
+    assert_eq!(log.borrow().search_in_view, Some(false));
+
+    // A later change is read on the next call, not replayed.
+    send(
+        &mut m,
+        Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files", "scm", "search.query"]),
+        }),
+    );
+    send(&mut m, Msg::Tick);
+    assert_eq!(log.borrow().caps_at_tick.last(), Some(&3));
+    view(&m, Rect::new(0, 0, 200, 50), &mut buf, &theme);
+    assert_eq!(log.borrow().search_in_view, Some(true));
+}
+
+#[test]
+fn search_pages_reach_only_the_panel_that_started_the_search_until_the_last_one() {
+    use theorem_workbench_core::completion::{CompletionPayload, SearchStarted};
+    use theorem_workbench_core::results::{ReadAt, SearchRow, SearchState};
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "note.open");
+    let asker = kinds(&m, "note")[0].clone();
+    send(&mut m, Msg::Dock(DockMsg::FocusPanel(asker)));
+    let fx = ch(&mut m, 'q');
+    let effect = last_effect_id(&fx);
+    send(
+        &mut m,
+        Msg::Completion(
+            completion(effect, "a.md", 5, Outcome::Accepted).with_payload(
+                CompletionPayload::SearchStarted(SearchStarted { id: "s1".into() }),
+            ),
+        ),
+    );
+    let page = |id: &str, state: SearchState| HostMessage::SearchPage {
+        id: id.into(),
+        rows: vec![SearchRow {
+            path: "a.rs".into(),
+            line: 3,
+            text: "x".into(),
+            matches: vec![],
+            text_offset: None,
+        }],
+        skipped: 0,
+        state,
+        end: None,
+        read_at: ReadAt {
+            workspace_id: "w".into(),
+            version: None,
+            epoch: None,
+            generation: 1,
+        },
+    };
+    let pages = |log: &Shared| {
+        msgs_of(log, "note")
+            .into_iter()
+            .filter(|m| matches!(m, PanelMsg::Host(HostMessage::SearchPage { .. })))
+            .count()
+    };
+    send(&mut m, Msg::Host(page("s1", SearchState::More)));
+    assert_eq!(pages(&log), 1, "one panel, not both");
+    send(&mut m, Msg::Host(page("s1", SearchState::Complete)));
+    assert_eq!(pages(&log), 2);
+
+    // After the last page, and for a search nobody here started, it is dropped.
+    let dropped = m.counters().dropped;
+    send(&mut m, Msg::Host(page("s1", SearchState::More)));
+    send(&mut m, Msg::Host(page("other", SearchState::More)));
+    assert_eq!(pages(&log), 2);
+    assert_eq!(m.counters().dropped, dropped + 2);
 }
 
 #[test]

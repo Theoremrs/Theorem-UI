@@ -250,7 +250,7 @@ pub fn registry() -> Registry {
             min: (32, 6),
             role: Role::Region,
             theme_roles: CHROME,
-            requires: &["language"],
+            requires: &["diagnostics.subscribe"],
         }
         .build(vec![
             ActionDescriptor::new("diagnostics.open", "Diagnostics", Open).more(),
@@ -264,7 +264,7 @@ pub fn registry() -> Registry {
             min: (32, 6),
             role: Role::Log,
             theme_roles: CHROME,
-            requires: &["run"],
+            requires: &["run.start", "run.subscribe"],
         }
         .build(vec![
             ActionDescriptor::new("run-output.open", "Run output", Open).more(),
@@ -278,7 +278,7 @@ pub fn registry() -> Registry {
             min: (32, 6),
             role: Role::Region,
             theme_roles: CHROME,
-            requires: &["search"],
+            requires: &["search.query"],
         }
         .build(vec![
             ActionDescriptor::new("search.open", "Search", Open).more(),

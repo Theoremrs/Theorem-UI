@@ -408,6 +408,7 @@ impl ChangesPanel {
             | HostMessage::ConversationSnapshot { .. }
             | HostMessage::ThemeChanged { .. }
             | HostMessage::WorkspaceChanged { .. } => {}
+            _ => {}
         }
     }
 
@@ -1126,6 +1127,8 @@ impl Panel for ChangesPanel {
             PanelMsg::TerminalOutput { .. }
             | PanelMsg::TerminalReset { .. }
             | PanelMsg::TerminalResetRequest { .. } => {}
+            // A message added to the core after this panel was written.
+            _ => {}
         }
         if !quiet {
             self.pump(cx);

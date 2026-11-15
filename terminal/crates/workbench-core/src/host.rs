@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::effect::{CoordinateUnit, TerminalBackend, TextChange};
 use crate::ids::{ResourceRef, Revision};
 use crate::registry::Capabilities;
+use crate::results::{ReadAt, SearchEnd, SearchRow, SearchState};
 
 fn yes() -> bool {
     true
@@ -88,6 +89,7 @@ pub enum ConnectionState {
     rename_all = "camelCase",
     rename_all_fields = "camelCase"
 )]
+#[non_exhaustive]
 pub enum HostMessage {
     /// `document.changed`: a remote edit, in the stated unit. `operation_id`
     /// matches one of our own edits when this is its acknowledgement.
@@ -245,6 +247,22 @@ pub enum HostMessage {
         workspace: String,
         profiles: Vec<TerminalProfileInfo>,
         sessions: Vec<TerminalSessionInfo>,
+    },
+    /// One page of a search's results, after the `searchStarted` completion
+    /// that named `id`. The root delivers it to the panel that started the
+    /// search and to no other; once the state is not `more` it forgets the id.
+    SearchPage {
+        id: String,
+        rows: Vec<SearchRow>,
+        /// Rows of a kind the owner does not read (the host's non-text rows).
+        skipped: u32,
+        state: SearchState,
+        /// Why the search ended early; only with state `ended`.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        end: Option<SearchEnd>,
+        /// The host and generation the rows were read from.
+        read_at: ReadAt,
     },
     /// The live stream says everything listeners know may be stale
     /// (`onResync`): `malformed_cursor`, `epoch_changed`, `cursor_ahead`,

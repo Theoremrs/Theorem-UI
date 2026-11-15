@@ -21,7 +21,7 @@ use crate::effect::{Effect, EffectKind};
 use crate::host::HostMessage;
 use crate::ids::{ActionId, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity};
 use crate::queue::SourceQueues;
-use crate::registry::PickerRow;
+use crate::registry::{Capabilities, PickerRow};
 use crate::semantics::Node;
 use crate::stale::{Binding, InFlight, InFlightFull};
 use crate::theme::Theme;
@@ -68,7 +68,7 @@ pub enum OpenTarget {
     /// A file of a workspace, as a document.
     File { workspace: String, path: String },
     /// A file at a line and column (a transcript's file reference, a
-    /// diagnostic), both counted from 1. It is the same document as `File`, so
+    /// diagnostic), both counted from 1, the column in UTF-16 code units. It is the same document as `File`, so
     /// a panel already showing the file is focused.
     FileAt {
         workspace: String,
@@ -182,6 +182,15 @@ impl OpenTarget {
         }
     }
 
+    /// The place to put the caret once the target is shown: `(line, column)`,
+    /// both from 1, the column in UTF-16 code units. Only `FileAt` has one.
+    pub fn reveal(&self) -> Option<(u32, u32)> {
+        match self {
+            Self::FileAt { line, column, .. } => Some((*line, *column)),
+            _ => None,
+        }
+    }
+
     /// A tab title: the last part of the path.
     pub fn title(&self) -> String {
         match self {
@@ -223,8 +232,10 @@ fn short(commit: &str) -> String {
     commit.chars().take(7).collect()
 }
 
-/// Everything the root says to a panel.
+/// Everything the root says to a panel. New messages are added over time, so
+/// a match outside the core ends in a wildcard arm.
 #[derive(Clone, Debug, PartialEq)]
+#[non_exhaustive]
 pub enum PanelMsg {
     /// A key the workbench did not claim.
     Key(KeyInput),
@@ -289,6 +300,20 @@ pub enum PanelMsg {
     /// for the new workspace records the need and emits on its next `Tick`. Its
     /// `generation` is the binding generation for workspace-bound state.
     Workspace(WorkspaceIdentity),
+    /// Put the caret at a place in the document the panel shows: sent after
+    /// `OpenTarget::FileAt` focuses the panel already showing the file, and
+    /// after it creates one. Arrives on a silent `Ctx`, possibly before the
+    /// document has loaded: a panel that is not ready keeps the place and
+    /// applies it when it is, and a later `Reveal` replaces an earlier one.
+    ///
+    /// `line` counts from 1, as search rows and diagnostics give it. `column`
+    /// counts from 1 in UTF-16 code units: the unit of LSP `character` and of
+    /// Monaco's column, and what a search row's `textOffset + match.start` is
+    /// in, plus one. Neither is a byte or a scalar offset.
+    Reveal {
+        line: u32,
+        column: u32,
+    },
     /// One frame. Work that was deferred from a silent message starts here.
     Tick,
 }
@@ -323,6 +348,7 @@ pub struct Ctx<'a> {
     pub(crate) queues: &'a mut SourceQueues,
     pub(crate) mode: Mode,
     pub(crate) workspace: &'a WorkspaceIdentity,
+    pub(crate) caps: &'a Capabilities,
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
@@ -330,6 +356,13 @@ pub struct Ctx<'a> {
 }
 
 impl Ctx<'_> {
+    /// What the host offers now. It reads the root's own set when called, so
+    /// a panel built after `CapabilitiesChanged` (or restored from a layout)
+    /// sees the current set, and one that asks again later sees a change.
+    pub fn capabilities(&self) -> &Capabilities {
+        self.caps
+    }
+
     /// Ask the root to show `target`: focus the panel already bound to it, else
     /// open the panel kind that serves it in the main region and focus that,
     /// else open the unavailable placeholder with a reason. Opening emits no
@@ -416,9 +449,27 @@ pub struct ViewCtx<'a> {
     pub focused: bool,
     /// Present while the tool picker is open.
     pub picker: Option<&'a PickerView>,
+    /// What the host offers now: the root's own set, never a copy. A context
+    /// built by [`ViewCtx::new`] offers nothing until [`ViewCtx::with_capabilities`].
+    pub capabilities: &'a Capabilities,
 }
 
+static NO_CAPABILITIES: Capabilities = Capabilities {
+    granted: std::collections::BTreeSet::new(),
+};
+
 impl<'a> ViewCtx<'a> {
+    /// The same context reading `capabilities` (the model's, usually).
+    pub fn with_capabilities(mut self, capabilities: &'a Capabilities) -> Self {
+        self.capabilities = capabilities;
+        self
+    }
+
+    /// What the host offers now.
+    pub fn capabilities(&self) -> &Capabilities {
+        self.capabilities
+    }
+
     /// A context for `theme` and `workspace`, unfocused, with no picker.
     pub fn new(theme: &'a Theme, workspace: &'a WorkspaceIdentity) -> Self {
         Self {
@@ -426,6 +477,7 @@ impl<'a> ViewCtx<'a> {
             workspace,
             focused: false,
             picker: None,
+            capabilities: &NO_CAPABILITIES,
         }
     }
 }

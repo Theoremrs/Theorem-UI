@@ -4,4 +4,8 @@ export type LogEntry = { commit: string, author: string, email?: string,
 /**
  * Seconds since the epoch, as the host sends it.
  */
-timestamp: string, subject: string, };
+timestamp: string, subject: string, 
+/**
+ * The message after the subject. Absent when the host sent none.
+ */
+body?: string, };

@@ -16,11 +16,16 @@ import type { DocumentSnapshot } from "./DocumentSnapshot";
 import type { FileListing } from "./FileListing";
 import type { FileSearchPage } from "./FileSearchPage";
 import type { FileStat } from "./FileStat";
+import type { LanguageCompletions } from "./LanguageCompletions";
+import type { LanguageDiagnostics } from "./LanguageDiagnostics";
+import type { LanguageHover } from "./LanguageHover";
+import type { LanguageLocations } from "./LanguageLocations";
 import type { LanguagePlan } from "./LanguagePlan";
 import type { LayoutLoaded } from "./LayoutLoaded";
 import type { LayoutSaved } from "./LayoutSaved";
 import type { RepoState } from "./RepoState";
 import type { RunStarted } from "./RunStarted";
+import type { RunState } from "./RunState";
 import type { ScmBlameResult } from "./ScmBlameResult";
 import type { ScmBranches } from "./ScmBranches";
 import type { ScmDiffResult } from "./ScmDiffResult";
@@ -41,4 +46,4 @@ import type { TerminalOpened } from "./TerminalOpened";
  * The `type` tag is the variant name; no payload struct has a field called
  * `type`, so the JSON never has two.
  */
-export type CompletionPayload = { "type": "files" } & FileListing | { "type": "fileStat" } & FileStat | { "type": "document" } & DocumentSnapshot | { "type": "documentOpened" } & DocumentOpened | { "type": "documentEdited" } & DocumentEdited | { "type": "documentConflicted" } & DocumentConflicted | { "type": "documentSaved" } & DocumentSaved | { "type": "documentReconciled" } & DocumentReconciled | { "type": "scm" } & ScmStatus | { "type": "scmDiff" } & ScmDiffResult | { "type": "scmShow" } & ScmShowResult | { "type": "scmLog" } & ScmLogResult | { "type": "scmBlame" } & ScmBlameResult | { "type": "scmBranches" } & ScmBranches | { "type": "scmDiscarded" } & ScmDiscarded | { "type": "scmMerged" } & ScmMerged | { "type": "scmState" } & RepoState | { "type": "terminal" } & TerminalOpened | { "type": "layoutLoaded" } & LayoutLoaded | { "type": "layoutSaved" } & LayoutSaved | { "type": "clipboard" } & ClipboardText | { "type": "conversationSent" } & ConversationSent | { "type": "conversationRetried" } & ConversationRetried | { "type": "conversationStopped" } & ConversationStopped | { "type": "conversationApproved" } & ConversationApproved | { "type": "conversationOpened" } & ConversationOpened | { "type": "conversationSideOpened" } & ConversationOpened | { "type": "fileSearchPage" } & FileSearchPage | { "type": "artifacts" } & ArtifactsListing | { "type": "artifactContent" } & ArtifactContent | { "type": "languagePlan" } & LanguagePlan | { "type": "runStarted" } & RunStarted | { "type": "searchStarted" } & SearchStarted;
+export type CompletionPayload = { "type": "files" } & FileListing | { "type": "fileStat" } & FileStat | { "type": "document" } & DocumentSnapshot | { "type": "documentOpened" } & DocumentOpened | { "type": "documentEdited" } & DocumentEdited | { "type": "documentConflicted" } & DocumentConflicted | { "type": "documentSaved" } & DocumentSaved | { "type": "documentReconciled" } & DocumentReconciled | { "type": "scm" } & ScmStatus | { "type": "scmDiff" } & ScmDiffResult | { "type": "scmShow" } & ScmShowResult | { "type": "scmLog" } & ScmLogResult | { "type": "scmBlame" } & ScmBlameResult | { "type": "scmBranches" } & ScmBranches | { "type": "scmDiscarded" } & ScmDiscarded | { "type": "scmMerged" } & ScmMerged | { "type": "scmState" } & RepoState | { "type": "terminal" } & TerminalOpened | { "type": "layoutLoaded" } & LayoutLoaded | { "type": "layoutSaved" } & LayoutSaved | { "type": "clipboard" } & ClipboardText | { "type": "conversationSent" } & ConversationSent | { "type": "conversationRetried" } & ConversationRetried | { "type": "conversationStopped" } & ConversationStopped | { "type": "conversationApproved" } & ConversationApproved | { "type": "conversationOpened" } & ConversationOpened | { "type": "conversationSideOpened" } & ConversationOpened | { "type": "fileSearchPage" } & FileSearchPage | { "type": "artifacts" } & ArtifactsListing | { "type": "artifactContent" } & ArtifactContent | { "type": "languagePlan" } & LanguagePlan | { "type": "runStarted" } & RunStarted | { "type": "searchStarted" } & SearchStarted | { "type": "languageHover" } & LanguageHover | { "type": "languageCompletions" } & LanguageCompletions | { "type": "languageLocations" } & LanguageLocations | { "type": "languageDiagnostics" } & LanguageDiagnostics | { "type": "runState" } & RunState;

@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::effect::TextChange;
 use crate::ids::{EffectId, Generation, ResourceRef, Revision};
+use crate::results::{
+    LanguageCompletions, LanguageDiagnostics, LanguageHover, LanguageLocations, RunState,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
@@ -158,6 +161,17 @@ pub enum CompletionPayload {
     RunStarted(RunStarted),
     /// `searchQuery`: the id `searchCancel` takes.
     SearchStarted(SearchStarted),
+    /// `languageHover`.
+    LanguageHover(LanguageHover),
+    /// `languageComplete`.
+    LanguageCompletions(LanguageCompletions),
+    /// `languageNavigate`, `languageReferences`.
+    LanguageLocations(LanguageLocations),
+    /// `languageDiagnostics`: its revision stamp is the document revision the
+    /// byte offsets are against.
+    LanguageDiagnostics(LanguageDiagnostics),
+    /// `runPoll`.
+    RunState(RunState),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -513,6 +527,10 @@ pub struct LogEntry {
     /// Seconds since the epoch, as the host sends it.
     pub timestamp: String,
     pub subject: String,
+    /// The message after the subject. Absent when the host sent none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub body: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1052,13 +1070,14 @@ mod tests {
                     email: Some("a@b".into()),
                     timestamp: "1700000000".into(),
                     subject: "s".into(),
+                    body: Some("why".into()),
                 }],
                 state: Some(state.clone()),
             }),
             json!({
                 "type": "scmLog",
                 "commits": [{"commit": "abc", "author": "A", "email": "a@b",
-                             "timestamp": "1700000000", "subject": "s"}],
+                             "timestamp": "1700000000", "subject": "s", "body": "why"}],
                 "state": state_json
             }),
         );

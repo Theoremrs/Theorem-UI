@@ -25,7 +25,7 @@ use ratatui::layout::{Direction, Rect};
 use serde_json::Value;
 use theorem_workbench_dock::{self as dock, GroupId, Hit, OpenAt, Tab};
 
-use crate::completion::{Completion, Outcome};
+use crate::completion::{Completion, CompletionPayload, Outcome};
 use crate::effect::Effect;
 use crate::host::HostMessage;
 use crate::ids::{
@@ -40,6 +40,7 @@ use crate::picker::{PickerMsg, PickerOutcome};
 use crate::picker_layout::{Layout, PickerHit};
 use crate::queue::{Popped, PtyFrame, Push};
 use crate::registry::{ActionIntent, Placement, Refusal};
+use crate::results::SearchState;
 use crate::stale::{Binding, Stale, Verdict, judge};
 use keybinds::{Key, KeyInput, Mods};
 
@@ -101,6 +102,7 @@ impl Model {
             queues: &mut self.queues,
             mode,
             workspace: &self.workspace,
+            caps: &self.caps,
             effects: vec![],
             opens: vec![],
             close: false,
@@ -480,6 +482,15 @@ impl Model {
         if let Some(id) = opened {
             let r = self.dock.focus_panel(&Self::dock_id(&id));
             self.dock_result(r);
+            // The same document, a different place: say where. A placeholder
+            // has no caret to move.
+            if let Some((line, column)) = target.reveal()
+                && self.panels.get(&id).is_some_and(|e| e.available)
+            {
+                self.call(&id, Mode::Silent, |p, cx| {
+                    p.update(PanelMsg::Reveal { line, column }, cx)
+                });
+            }
         }
     }
 
@@ -631,6 +642,7 @@ impl Model {
         };
         let out = self.run_ctx(id, mode, |cx| entry.panel.teardown(cx, destroy));
         self.origins.retain(|e, _| self.in_flight.is_pending(*e));
+        self.searches.retain(|_, panel| panel != id);
         self.dirty = true;
         out.effects
     }
@@ -896,6 +908,9 @@ impl Model {
         match (verdict, target) {
             (Verdict::Apply, Some(id)) => {
                 self.counters.applied += 1;
+                if let Some(CompletionPayload::SearchStarted(started)) = &completion.payload {
+                    self.searches.insert(started.id.clone(), id.clone());
+                }
                 self.send(&id, PanelMsg::Completion(completion))
             }
             (Verdict::CacheOnly, Some(id)) => {
@@ -935,6 +950,15 @@ impl Model {
                 self.dirty = true;
             }
             return vec![];
+        }
+        if let HostMessage::SearchPage { id, state, .. } = &message {
+            let Some(panel) = self.searches.get(id).cloned() else {
+                return self.drop_stale(Stale::NotBound);
+            };
+            if *state != SearchState::More {
+                self.searches.remove(id);
+            }
+            return self.send(&panel, PanelMsg::Host(message));
         }
         let mut effects = match &message {
             HostMessage::TerminalOutput {
@@ -1161,6 +1185,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | WorkspaceChanged { .. }
         | ConnectionChanged { .. }
         | TerminalSessions { .. }
+        | SearchPage { .. }
         | Resync { .. } => (None, None),
     }
 }

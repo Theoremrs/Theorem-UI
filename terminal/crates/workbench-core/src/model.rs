@@ -115,6 +115,8 @@ pub struct Model {
     pub(crate) in_flight: InFlight,
     /// The panel that emitted each pending effect.
     pub(crate) origins: BTreeMap<EffectId, PanelInstanceId>,
+    /// The panel that started each search whose pages are still arriving.
+    pub(crate) searches: BTreeMap<String, PanelInstanceId>,
     pub(crate) queues: SourceQueues,
     /// The workspace and environment the host last named.
     pub(crate) workspace: WorkspaceIdentity,
@@ -166,6 +168,7 @@ impl Model {
             ids: EffectIds::default(),
             in_flight: InFlight::new(IN_FLIGHT_LIMIT),
             origins: BTreeMap::new(),
+            searches: BTreeMap::new(),
             queues: SourceQueues::new(QueueLimits::default()),
             workspace: WorkspaceIdentity::default(),
             destroying,
@@ -480,6 +483,7 @@ impl Model {
         self.panels = panels;
         self.in_flight = InFlight::new(IN_FLIGHT_LIMIT);
         self.origins.clear();
+        self.searches.clear();
         self.drag = None;
         self.capture = None;
         self.announced_focus = None;
