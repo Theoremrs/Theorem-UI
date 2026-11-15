@@ -472,7 +472,11 @@ impl Cabinet {
                 filter.label.clone()
             };
             let lw = label.width() as u16;
-            let room = if y == first_y { w.saturating_sub(ow + 2) } else { w };
+            let room = if y == first_y {
+                w.saturating_sub(ow + 2)
+            } else {
+                w
+            };
             if cx > x && cx + lw > x + room {
                 cx = x;
                 y += 1;
@@ -506,16 +510,18 @@ impl Cabinet {
             );
         }
         y += 1;
-        if !self.view.status.is_empty() {
+        // The status (loading, unavailable, stale) gets up to two rows.
+        let status = wrap(&self.view.status, w as usize, 2);
+        for row in &status {
             frame.render_widget(
-                Paragraph::new(Span::styled(
-                    clip_text(&self.view.status, w as usize),
-                    Style::new().fg(p.warning),
-                )),
+                Paragraph::new(Span::styled(row.clone(), Style::new().fg(p.warning))),
                 Rect::new(x, y, w, 1),
             );
+            y += 1;
         }
-        y += 1;
+        if status.is_empty() {
+            y += 1;
+        }
         y - area.y
     }
 
@@ -709,7 +715,8 @@ impl Cabinet {
         self.scroll_by(0);
 
         let mut slots = Vec::new();
-        if self.view.entries.is_empty() && gallery.height > 0 {
+        // With a status line (loading, unavailable) the gallery claims nothing.
+        if self.view.entries.is_empty() && self.view.status.is_empty() && gallery.height > 0 {
             let text = if self.view.query.is_empty() {
                 "Nothing in this collection yet."
             } else {
@@ -725,12 +732,7 @@ impl Cabinet {
         let last = (usize::from((self.scroll + gallery.height) / card_rows.max(1)) + 1) * columns;
         let entries = &self.view.entries;
         let end = last.min(entries.len());
-        for (index, entry) in entries
-            .iter()
-            .enumerate()
-            .take(end)
-            .skip(first.min(end))
-        {
+        for (index, entry) in entries.iter().enumerate().take(end).skip(first.min(end)) {
             let (r, c) = ((index / columns) as u16, (index % columns) as u16);
             let top = i32::from(r * card_rows) - i32::from(self.scroll);
             let bottom = top + i32::from(card_rows);
@@ -879,9 +881,15 @@ mod tests {
         assert_eq!(columns_for(1400.0, 22.0, 178.0, 3), 3);
         assert_eq!(columns_for(10.0, 14.0, 178.0, 2), 1);
         // 200% text: 15 px cells make the minimum 330 px, so one column.
-        assert_eq!(columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 15.0), 2), 1);
+        assert_eq!(
+            columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 15.0), 2),
+            1
+        );
         // Normal text keeps the pixel minimum.
-        assert_eq!(columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 7.5), 2), 2);
+        assert_eq!(
+            columns_for(426.0, 14.0, CARD_MIN_PX.max(CARD_MIN_CELLS * 7.5), 2),
+            2
+        );
     }
 
     #[test]

@@ -296,7 +296,11 @@ mod tests {
         let out = convert(&wide, 4000, 1, 96, 60, true).unwrap().raster;
         assert_eq!(out.height, 1);
         assert!(out.width >= 1 && out.width <= 96);
-        assert!(out.indices.iter().all(|i| *i == ix::RED), "{:?}", out.indices);
+        assert!(
+            out.indices.iter().all(|i| *i == ix::RED),
+            "{:?}",
+            out.indices
+        );
         let tall = convert(&wide, 1, 4000, 96, 60, true).unwrap().raster;
         assert_eq!(tall.width, 1);
         assert!(tall.height >= 1 && tall.height <= 60);

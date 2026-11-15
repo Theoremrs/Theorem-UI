@@ -81,4 +81,13 @@ describe('preview notes', () => {
     expect(previewNote(ready('source_raster', null))).toBeUndefined()
     expect(previewNote({ status: 'loading' })).toBeUndefined()
   })
+
+  test('a failed preview names why and does not claim the original is gone', () => {
+    const note = previewNote({
+      status: 'unavailable',
+      detail: 'the content could not be read',
+    })
+    expect(note).toContain('the content could not be read')
+    expect(note).toContain('original can still be opened')
+  })
 })

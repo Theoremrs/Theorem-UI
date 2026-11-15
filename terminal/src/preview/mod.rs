@@ -238,10 +238,18 @@ mod tests {
     fn every_recipe_is_repeatable() {
         // A21: same normalized input, same indices, every time.
         for (kind, media, text) in [
-            ("document", "text/markdown", "# Title\n\nA paragraph.\n\n- a\n- b\n"),
+            (
+                "document",
+                "text/markdown",
+                "# Title\n\nA paragraph.\n\n- a\n- b\n",
+            ),
             ("diagram", "text/vnd.mermaid", "graph LR\nA-->B\nB-->C\n"),
             ("chart", "", "pie\n\"A\" : 3\n\"B\" : 2\n"),
-            ("app", "text/html", "<body><h1>x</h1><button>a</button></body>"),
+            (
+                "app",
+                "text/html",
+                "<body><h1>x</h1><button>a</button></body>",
+            ),
             ("code", "", "fn main() {}\n"),
         ] {
             let s = Source {

@@ -464,8 +464,12 @@ export function Cabinet({
       : preference === 'pixel'
         ? 'Pixel'
         : 'Original'
+  // §11: an unreachable catalog is unavailable, never empty; a failed
+  // refresh keeps the last loaded collection and says it may be stale.
   const status = outputs.error
-    ? describeError(outputs.error)
+    ? entries.length
+      ? `Showing the last loaded collection; refreshing failed: ${describeError(outputs.error)}`
+      : `The collection is unavailable, not empty: ${describeError(outputs.error)}`
     : outputs.isPending
       ? 'Loading the collection…'
       : outputs.isFetchingNextPage
@@ -479,9 +483,11 @@ export function Cabinet({
         title: 'Artifact cabinet',
         scope: `${projectTitle} · every session`,
         count:
-          total === undefined
-            ? `${entries.length} loaded`
-            : `${String(total).padStart(2, '0')} objects`,
+          outputs.error && !entries.length
+            ? 'unavailable'
+            : total === undefined
+              ? `${entries.length} loaded`
+              : `${String(total).padStart(2, '0')} objects`,
         modeLabel,
         preferenceLabel,
         filters: FILTERS,

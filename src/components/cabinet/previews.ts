@@ -41,7 +41,11 @@ export type PreviewState =
 export function previewNote(
   state: PreviewState | undefined,
 ): string | undefined {
-  if (!state || state.status !== 'ready' || state.mode !== 'pixel') return
+  if (!state || state.status === 'loading') return
+  // A preview that could not be made says so, and that the original stands.
+  if (state.status !== 'ready')
+    return `No preview: ${state.detail}. The original can still be opened`
+  if (state.mode !== 'pixel') return
   const notes: string[] = []
   if (state.meta.method === 'type_illustration')
     notes.push('A type illustration, not drawn from this file')

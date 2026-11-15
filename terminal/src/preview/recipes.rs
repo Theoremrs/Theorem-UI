@@ -1246,8 +1246,7 @@ mod tests {
         let (nodes, edges, _) = parse_graph("graph LR\nA-->B; D-->E\n").unwrap();
         assert_eq!(nodes, ["A", "B", "D", "E"]);
         assert_eq!(edges, [(0, 1), (2, 3)]);
-        let (nodes, edges, _) =
-            parse_graph("graph TD\nA[\"x --> y\"] -->|go --> on| B\n").unwrap();
+        let (nodes, edges, _) = parse_graph("graph TD\nA[\"x --> y\"] -->|go --> on| B\n").unwrap();
         assert_eq!(nodes, ["A", "B"]);
         assert_eq!(edges, [(0, 1)]);
         assert!(parse_graph("graph TD\nA & B --> C\n").is_none());
@@ -1279,7 +1278,10 @@ mod tests {
 
     #[test]
     fn an_overflowing_total_falls_back() {
-        let p = render(&src("chart", "", "pie\n\"A\" : 1e308\n\"B\" : 1e308\n"), None);
+        let p = render(
+            &src("chart", "", "pie\n\"A\" : 1e308\n\"B\" : 1e308\n"),
+            None,
+        );
         assert_eq!(p.method, Method::TypeIllustration);
         assert_eq!(p.limitation.unwrap().code, "unsupported");
     }
