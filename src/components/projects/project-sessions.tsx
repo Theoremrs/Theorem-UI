@@ -1,5 +1,4 @@
-// SOURCING: TanStack Table v9 through the app's kit hook (useAppTable: sorting, fuzzy global filter, column filters and faceted counts), coss ui Menu checkbox items for the category filter, the kit's DebouncedInput for search, date-fns for how long ago. The owner's review on 2026-11-14: no heading and no cut-off, newest first, a search button and a filter by common categories.
-import { formatDistanceToNowStrict } from 'date-fns'
+// SOURCING: TanStack Table v9 through the app's kit hook (useAppTable: sorting, fuzzy global filter, column filters and faceted counts), coss ui Menu checkbox items for the category filter, the kit's DebouncedInput for search, components/work/marks' compact ago ("3h") for how long ago. Rows are DESIGN.md's structured-data rows: one line, 32 du for a two-part row, with status and time in fixed right-aligned slots rather than pushed to the track's far edge. The owner's review on 2026-11-14: no heading, newest first, a search button and a filter by common categories; on 2026-11-15, the first view capped at ten with Show more, so the project's context below stays in reach.
 import { Link } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import type { ColumnFiltersState, FilterFn } from '@tanstack/react-table'
@@ -20,16 +19,12 @@ import {
 } from '@/components/data-table/table-hook'
 import { Icon } from '@/components/icons'
 import { SessionGlyph } from '@/components/organize/glyphs'
+import { ago } from '@/components/work/marks'
 import { Button } from '@/components/ui/button'
 import { lastMoved } from '@/lib/theorem/organization'
 import type { ThreadEntry } from '@/lib/theorem/organization'
 import { typeOf, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
-
-const ago = (atMs: number) =>
-  Date.now() - atMs < 60_000
-    ? 'just now'
-    : `${formatDistanceToNowStrict(atMs)} ago`
 
 type Row = {
   thread: ThreadEntry
@@ -72,35 +67,44 @@ const columns = helper.columns([
 ])
 
 const NEWEST_FIRST = [{ id: 'moved', desc: true }]
+/** Sessions on first view, and how many more each Show more adds. */
+const FIRST = 10
+const MORE = 25
 const ALL_ROWS = { pageIndex: 0, pageSize: Number.MAX_SAFE_INTEGER }
 
-/** A session in the list: its mark, its name, where it came from, when it last moved. */
+/** A session in the list, on one line: its mark, its name and where it came from, its state, when it last moved. */
 function SessionLine({ row }: { row: Row }) {
   const { thread } = row
+  const moved = new Date(row.moved)
   return (
     <li>
       <Link
         to="/c/$threadId"
         params={{ threadId: thread.threadId }}
-        className="flex min-h-11 items-center gap-3 rounded-lg px-3 py-1.5 hover:bg-hover"
+        className="flex h-8 items-center gap-2 rounded-md px-2 hover:bg-hover"
       >
         <SessionGlyph threadId={thread.threadId} className="text-ink-muted" />
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span data-appearance-recipe="ui.label" className="truncate">
+        <span className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span data-appearance-recipe="ui.label" className="min-w-0 truncate">
             {row.title}
           </span>
           {row.detail && (
-            <span className="truncate text-xs text-ink-muted">
+            <span className="min-w-0 flex-1 truncate text-xs text-ink-muted">
               {row.detail}
             </span>
           )}
         </span>
-        {row.status !== 'Idle' && (
-          <span className="text-xs text-ink-muted">{row.status}</span>
-        )}
-        <span className="shrink-0 text-xs text-ink-muted tabular-nums">
-          {ago(row.moved)}
+        {/* Fixed slots, so a column of states and times lines up. */}
+        <span className="w-16 shrink-0 text-end text-xs text-ink-muted">
+          {row.status === 'Idle' ? '' : row.status}
         </span>
+        <time
+          dateTime={moved.toISOString()}
+          title={moved.toLocaleString()}
+          className="w-8 shrink-0 text-end text-xs text-ink-muted tabular-nums"
+        >
+          {ago(moved.toISOString())}
+        </time>
       </Link>
     </li>
   )
@@ -122,6 +126,7 @@ export function ProjectSessions({
   const [searching, setSearching] = useState(false)
   const [search, setSearch] = useState('')
   const [filters, setFilters] = useState<ColumnFiltersState>([])
+  const [shown, setShown] = useState(FIRST)
 
   const rows = useMemo(
     () =>
@@ -284,13 +289,31 @@ export function ProjectSessions({
         )}
       </div>
       {matched.length ? (
-        <ul className="-mx-3 flex flex-col">
-          {matched.map((row) => (
-            <SessionLine key={row.thread.threadId} row={row} />
-          ))}
-        </ul>
+        <>
+          <ul className="-mx-2 flex flex-col">
+            {matched.slice(0, shown).map((row) => (
+              <SessionLine key={row.thread.threadId} row={row} />
+            ))}
+          </ul>
+          {matched.length > shown && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShown((n) => n + MORE)}
+                className="-ms-2 text-ink-muted"
+              >
+                <Icon.ChevronDown className="size-4" />
+                Show more
+              </Button>
+              <span className="text-xs text-ink-muted tabular-nums">
+                {shown} of {matched.length}
+              </span>
+            </div>
+          )}
+        </>
       ) : (
-        <p className="px-3 py-2 text-sm text-ink-muted">No sessions match.</p>
+        <p className="py-2 text-sm text-ink-muted">No sessions match.</p>
       )}
     </section>
   )

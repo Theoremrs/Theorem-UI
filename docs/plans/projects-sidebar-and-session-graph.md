@@ -122,30 +122,37 @@ Route `/projects/$projectId`, `src/components/projects/project-home.tsx`.
 one page with no tabs (the owner's review on 2026-11-14 removed Overview,
 Sessions, Graph and Context as tabs).
 
-One 680px track, the artifact cabinet spec's (§3.4), so a docked cabinet
-beside it leaves the composer a usable width. The owner chose this on
-2026-11-15, in place of the context column approved the day before.
+The composer and sessions run on one 680px track, the artifact cabinet spec's
+(§3.4), with the project's context in a small column (15rem) beside them. When
+the page is too narrow for both (a container query at 44rem, where the composer would drop below about 430px, so an open
+terminal or panel counts, not only the window), the context moves below the
+sessions. The owner chose this on 2026-11-15, after a day with the context
+folded into a disclosure above the composer.
 
 - **Header:** folder mark, title, session count, last moved, Pin and Edit.
   Edit sets the title and instructions through `chat.projects.update`,
   sending only what changed; instructions that could not be read are locked.
-- **Project context**, a compact disclosure under the header. Its row says
-  in one line whether there are instructions and when "Where it stands" was
-  last written; "Project context" opens:
-  - Instructions and Where it stands, each with Edit;
-  - Knowledge and connections: Documents, Repositories, Links, and
-    Databases and servers, each labelled "Not served yet" (§8: no
-    working-looking placeholders).
-
-  The owner expects the WASM terminal to hold this context eventually.
-- **Below it:**
+- **Main column:**
   - the real composer, which files the new session in this project through
     the shell's project;
-  - the project's sessions below it (`project-sessions.tsx`), all of them,
-    newest first, with their provenance and no heading. A Search button
-    opens a fuzzy search, and Filter narrows by type, status (Running, Needs
-    you, Idle) and origin (Started here, Forked, Continued), with counts.
-    It runs on the app's TanStack Table v9 kit (`useAppTable`).
+  - the project's sessions below it (`project-sessions.tsx`), newest first,
+    with their provenance and no heading. Each is one 32px line (DESIGN.md's
+    two-part structured row): mark, title, then where it came from in muted
+    text, with its state and a compact time ("8m", "1d") in fixed,
+    right-aligned slots so they line up down the list. The first view shows ten; Show more
+    adds 25 at a time, with a count ("10 of 34"), so the context below stays
+    in reach when the page is narrow. A Search button opens a fuzzy search,
+    and Filter narrows by type, status (Running, Needs you, Idle) and origin
+    (Started here, Forked, Continued), with counts. It runs on the app's
+    TanStack Table v9 kit (`useAppTable`).
+- **Project context**, the small column (`aside`, "Project context"):
+  - Instructions and Where it stands, each with Edit;
+  - Knowledge and connections: Documents, Repositories, Links, and
+    Databases and servers, under one line saying Theorem does not serve
+    these per project yet (§8: no working-looking placeholders).
+
+  The owner expects the WASM terminal to hold this context eventually.
+
 - The phone header, the dock tab and the breadcrumb name the project while its
   page is open.
 - **Apps and outputs live in the right-hand drawer**, not on the page
@@ -170,33 +177,67 @@ beside it leaves the composer a usable width. The owner chose this on
 
 ### Session graph (§9)
 
-The graph no longer sits on the project page. It moves to the Canvas mode
-(the programmable graph surface), opened from a project's or a session's
-menu; that change follows. What is described below is the projection and
-layout it reuses.
+The graph is on the Canvas mode (`/canvas`), beside the programmable graphs,
+not on the project page. It is offered only where there is something to draw:
+"Open graph" appears in a project's menu when a session filed in it was
+forked or continued (or another was from it), and in a session's menu, the
+chat header and the sessions panel when that session was.
 
-- **Projection:** `src/lib/theorem/session-graph.ts` computes P(records, lens,
-  scope). It is a pure function and writes nothing (VIEW-01).
-  - **Lineage** draws forks as solid arrows and continuations as dashed
-    arrows labelled "continues". A source outside the project is drawn with a
-    dashed outline. A missing source is not invented.
-  - **Projects** draws every project a session is filed in. A kept placement
-    is labelled "kept".
-  - **Delegation, Team and Related** say why they are not served, and draw
-    nothing.
-- **Layout:** `src/lib/theorem/session-graph-layout.ts` uses ELK:
-  - layered for lineage and membership;
-  - mrtree for a team's one-way tree;
-  - stress for related sessions.
-
-  It keeps the projection's node order, so a refresh does not reshuffle the
-  graph.
-- **View:** `src/components/projects/session-graph.tsx` uses React Flow 12.
-  - Nodes cannot be dragged or connected, and Delete does nothing.
+- **Read:** `src/lib/theorem/sessions.ts`, Theorem's
+  `GET /api/chat/v1/session-graph?projectId=|treeId=`
+  (Travis-Gilbert/Theorem#1075), mirrored field for field. It returns each fork
+  tree rooted at its main, connections (continued and session messages, with
+  a count and whether any spoke for the person), artifacts, documents and tool
+  use per session, and the facets Theorem does not serve. `?sessions=project:<id>`
+  or `?sessions=tree:<any chat of it>` opens a graph; `?view=<id>` opens a
+  saved one.
+- **Projection:** `src/lib/theorem/session-graph.ts` computes
+  P(read, show, titles). It is a pure function and writes nothing (VIEW-01).
+  - Forks join each chat to its authority parent, so the tree runs out from
+    the main. Making another chat main turns the path between the two around
+    and leaves every other edge where it was.
+  - Connections draw continued chats (dashed, arrowed) and session messages
+    (dotted arcs, labelled "3 messages · for you" when any spoke for the
+    person). A chat a connection reaches outside the trees read is drawn
+    with a dashed outline.
+  - Artifacts, documents and tools hang from the session that made or called
+    them.
+  - In a project graph, a session nothing joins (no fork, continuation or
+    message) is counted in the header ("2 on their own, not drawn") instead
+    of drawn. The only chat in its tree carries no Main or Origin mark.
+  - A hidden facet is left out, with the edges it carried.
+- **Show:** sessions, forks, connections, artifacts, documents and tools, each
+  a checkbox in the Show menu. Forks and connections need sessions; a facet
+  Theorem does not serve says so.
+- **Make main chat:** right-click a session (or the inspector's button). It
+  posts `POST /threads/:id/main` with the revision the person saw, so a choice
+  made elsewhere meanwhile is refused, not overwritten. The main then messages
+  the others on the person's behalf; any session can message any other as
+  itself.
+- **Saved views:** Save names the view and keeps its facets, where nodes were
+  dragged and which way it runs, through `programmable_graph_apply`
+  (`save_session_graph`, `delete_session_graph`) with the revision it was
+  opened at. The sessions are read fresh each time. Saved views are listed in
+  the Canvas sidebar under "Session graphs", with Rename and Delete in the
+  view's menu.
+- **Layout:** `src/lib/theorem/session-graph-layout.ts`, ELK layered, from
+  the fork, continuation, made and called edges, so each runs one column out.
+  Messages are drawn over the layout as arcs (a floating edge between the two
+  cards) and never pull a fork out of its column. A new view runs left to
+  right unless running down fits its panel at least 15% larger; the choice is
+  kept, and saved with the view, so showing or hiding a facet does not turn
+  it. The projection's node order is kept, so a refresh does not reshuffle it.
+- **View:** `src/components/sessions/session-graph-canvas.tsx`, React Flow 12.
+  - Nodes can be dragged; a moved node marks the view unsaved. Nothing can be
+    connected, and Delete does nothing.
   - Selecting a node opens an inspector that lists its relations in words.
-  - The graph refits when its panel resizes, until the person pans or zooms.
-  - Below a readable zoom it starts at the top instead of shrinking.
+  - The graph refits when its panel resizes, until the person pans, zooms or
+    drags. Below a readable zoom (0.6) it starts at the main instead of
+    shrinking.
   - "Show as list" gives the same graph as text, with no canvas (INPUT-02).
+- The earlier read-only view on the project page
+  (`src/components/projects/session-graph.tsx`) and its Lineage, Projects,
+  Delegation, Team and Related lenses are removed.
 
 ## Decisions
 
@@ -205,16 +246,18 @@ layout it reuses.
 | Layout engine | ELK (elkjs, bundled, on the main thread as `lib/theorem/plans.ts` does) | Layered, tree and force layouts come from one engine with model-order constraints. dagre has only layered layout, and Graphviz needs WASM for no added layout here. dagre stays in `package.json`, unused by this change. |
 | Renderer | React Flow 12 (already a dependency) | Accessible nodes, panning and zooming, and custom edges. gpucanvas would only pay off at node counts a project does not reach. |
 | Pins | Per browser, in zustand persist | Theorem has no per-user pin route yet. The UI says pins are kept in this browser. |
-| Unserved lenses | Present, and labelled with the reason | A lens that draws something made up would break VIEW-03. |
+| Unserved facets | Present in Show, labelled with Theorem's reason | A facet that draws something made up would break VIEW-03. |
+| Lone sessions in a project graph | Counted, not drawn | A graph is of relations; a project of mostly unforked sessions would otherwise be a grid of unconnected cards. |
 
 ## Not in this change
 
 These are the backend half. They need Theorem routes, so they are not
 fabricated here:
 
-- `related_to`, `directs` and child-session relations: the Related and Team
-  lenses, NAV-04, and REL-01 to REL-04.
-- A project-wide delegation index: the Delegation lens.
+- `related_to`, `directs` and child-session relations: NAV-04 and REL-01 to
+  REL-04.
+- The session graph routes in the vendored `@theoremharness/sdk`: they are
+  reached through `lib/theorem/passthrough` until it carries them.
 - Per-user pins (§5.2): NAV-06 holds today only within one browser.
 - Project documents, repositories, links and connections (§8.2).
 - Graph editing, organization presets and governance (slices D and E).

@@ -53,6 +53,7 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
   },
   { id: 'project-home', title: 'Project home: composer, sessions and context on one page', lane: 'original', viewport: { width: 1440, height: 900 } },
+  { id: 'session-graph', title: 'Session graph on the canvas: forks from the main, connections, outputs, Make main chat and saved views', lane: 'original', viewport: { width: 1440, height: 900 } },
   { id: 'outputs-drawer', title: 'Apps and outputs drawer: a chat\'s artifacts as thumbnails', lane: 'original', viewport: { width: 1440, height: 900 } },
   {
     id: 'librarian-footer',

@@ -1,22 +1,10 @@
-// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a compact Project context disclosure, a composer, the sessions below it, and its apps and outputs in the right-hand drawer, components/shell/outputs-drawer) follows Claude's project page on Mobbin, narrowed to the artifact cabinet spec's 680px track with context folded away (docs/plans/artifact-cabinet SPEC §3.4, the owner's call on 2026-11-15); docs/plans/projects-sidebar-and-session-graph.md §7. coss ui Collapsible (Base UI) folds the context.
+// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, the project's context in a small column beside them, and its apps and outputs in the right-hand drawer, components/shell/outputs-drawer) follows Claude's project page on Mobbin, with the composer on the artifact cabinet spec's 680px track (docs/plans/artifact-cabinet SPEC §3.4). The owner's call on 2026-11-15: context in a small right column, and below the sessions when the page is too narrow for both (a container query, so an open terminal counts), with the sessions capped so the context stays in reach; docs/plans/projects-sidebar-and-session-graph.md §7.
 import { useParams } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
-import {
-  ChevronDown,
-  Database,
-  FileText,
-  FolderGit2,
-  Layers,
-  Link2,
-} from 'lucide-react'
+import { Database, FileText, FolderGit2, Link2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Composer } from '@/components/chat/composer'
-import {
-  Collapsible,
-  CollapsiblePanel,
-  CollapsibleTrigger,
-} from '@/components/coss/collapsible'
 import { Icon } from '@/components/icons'
 import { ProjectGlyph } from '@/components/organize/glyphs'
 import { ProjectStateDialog } from '@/components/organize/project-state-dialog'
@@ -84,24 +72,23 @@ const NOT_SERVED = [
 
 function NotServedList() {
   return (
-    <ul className="flex flex-col gap-3">
-      {NOT_SERVED.map(({ Mark, label, detail }) => (
-        <li key={label} className="flex items-start gap-3">
-          <Mark
-            aria-hidden
-            strokeWidth={1.75}
-            className="mt-0.5 size-4 shrink-0 text-ink-muted"
-          />
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span data-appearance-recipe="ui.label">{label}</span>
-            <span className="text-xs text-ink-muted">{detail}</span>
-          </span>
-          <span className="shrink-0 text-xs text-ink-muted">
-            Not served yet
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <p className="text-xs text-ink-muted">
+        Theorem does not serve these per project yet.
+      </p>
+      <ul className="flex flex-col gap-1.5">
+        {NOT_SERVED.map(({ Mark, label, detail }) => (
+          <li
+            key={label}
+            title={detail}
+            className="flex items-center gap-2 text-sm text-ink-muted"
+          >
+            <Mark aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+            <span className="min-w-0 truncate">{label}</span>
+          </li>
+        ))}
+      </ul>
+    </>
   )
 }
 
@@ -117,7 +104,8 @@ export function useProjectHomeTitle() {
 
 /**
  * A project's page, as one page: what it is, a composer that starts a session
- * in it, its sessions below, and beside them the context its sessions share.
+ * in it, its sessions below, and beside them (below them, when the page is too
+ * narrow for both) the context its sessions share.
  */
 export function ProjectHome({ projectId }: { projectId: string }) {
   const { data: organization, isPending } = useOrganization()
@@ -167,25 +155,9 @@ export function ProjectHome({ projectId }: { projectId: string }) {
   // Undefined while unknown: not yet read, or past the pages that were.
   const instructions = record?.instructions
 
-  const summary = [
-    instructions === undefined
-      ? recordsPending
-        ? 'Loading instructions'
-        : 'Instructions could not be read'
-      : instructions.trim()
-        ? 'Instructions set'
-        : 'No instructions',
-    organization?.served &&
-      (project.state
-        ? `Where it stands updated ${ago(project.state.atMs)}`
-        : 'Where it stands not written'),
-  ]
-    .filter(Boolean)
-    .join(' · ')
-
   return (
-    <div className="h-full overflow-y-auto px-4 sm:px-8">
-      <div className="mx-auto flex w-full max-w-[680px] flex-col gap-6 py-8">
+    <div className="@container h-full overflow-y-auto px-4 sm:px-8">
+      <div className="mx-auto flex w-full max-w-[calc(680px+2rem+15rem)] flex-col gap-6 py-8">
         <header className="flex flex-wrap items-start gap-3">
           <ProjectGlyph aria-hidden className="mt-1 size-6 shrink-0" />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -225,102 +197,88 @@ export function ProjectHome({ projectId }: { projectId: string }) {
           </div>
         </header>
 
-        {/* What the sessions share, folded so the composer keeps the track. */}
-        <Collapsible className="flex flex-col">
-          <div className="flex min-h-9 items-center gap-2 border-b border-separator pb-2 text-sm text-ink-muted">
-            <Layers
-              aria-hidden
-              strokeWidth={1.75}
-              className="size-4 shrink-0"
-            />
-            <span className="min-w-0 flex-1 truncate">{summary}</span>
-            <CollapsibleTrigger
-              render={<Button variant="ghost" size="sm" />}
-              className="group/context"
+        {/* Beside the sessions while there is room for a readable composer; below them when not. */}
+        <div className="grid gap-8 @min-[44rem]:grid-cols-[minmax(0,680px)_15rem]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {/* The face perches on the composer's top edge, so the space above it stays clear. */}
+            <section
+              aria-label={`Start a session in ${project.title}`}
+              className="pt-6"
             >
-              Project context
-              <ChevronDown
-                aria-hidden
-                className="size-4 transition-transform group-data-panel-open/context:rotate-180"
-              />
-            </CollapsibleTrigger>
+              <Composer autoFocus={false} />
+            </section>
+            <ProjectSessions threads={threads} titles={titles} />
           </div>
-          <CollapsiblePanel className="px-px pb-px">
-            <div className="mt-3 flex flex-col divide-y divide-separator rounded-xl ring-1 ring-separator">
+
+          <aside
+            aria-label="Project context"
+            // Level with the composer, below the face that perches on it.
+            className="flex flex-col divide-y divide-separator self-start rounded-xl ring-1 ring-separator @min-[44rem]:mt-6"
+          >
+            <Section
+              title="Instructions"
+              className="p-3"
+              action={
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit
+                </Button>
+              }
+            >
+              {instructions === undefined ? (
+                <p className="text-sm text-ink-muted">
+                  {recordsPending ? 'Loading…' : 'Could not be read.'}
+                </p>
+              ) : instructions.trim() ? (
+                <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
+                  {instructions}
+                </p>
+              ) : (
+                <p className="text-sm text-ink-muted">
+                  None yet. Instructions are given to every session started
+                  here.
+                </p>
+              )}
+            </Section>
+            {organization?.served && (
               <Section
-                title="Instructions"
-                className="p-4"
+                title="Where it stands"
+                className="p-3"
                 action={
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setEditing(true)}
+                    onClick={() => setEditingState(true)}
                   >
                     Edit
                   </Button>
                 }
               >
-                {instructions === undefined ? (
-                  <p className="text-sm text-ink-muted">
-                    {recordsPending ? 'Loading…' : 'Could not be read.'}
-                  </p>
-                ) : instructions.trim() ? (
-                  <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
-                    {instructions}
-                  </p>
+                {project.state ? (
+                  <>
+                    <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
+                      {project.state.text}
+                    </p>
+                    <p className="text-xs text-ink-muted">
+                      {project.state.by === 'librarian'
+                        ? 'The Librarian'
+                        : 'You'}
+                      , {ago(project.state.atMs)}
+                    </p>
+                  </>
                 ) : (
-                  <p className="text-sm text-ink-muted">
-                    None yet. Instructions are given to every session started
-                    here.
-                  </p>
+                  <p className="text-sm text-ink-muted">Not written yet.</p>
                 )}
               </Section>
-              {organization?.served && (
-                <Section
-                  title="Where it stands"
-                  className="p-4"
-                  action={
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setEditingState(true)}
-                    >
-                      Edit
-                    </Button>
-                  }
-                >
-                  {project.state ? (
-                    <>
-                      <p className="line-clamp-6 text-sm whitespace-pre-wrap text-ink">
-                        {project.state.text}
-                      </p>
-                      <p className="text-xs text-ink-muted">
-                        {project.state.by === 'librarian'
-                          ? 'The Librarian'
-                          : 'You'}
-                        , {ago(project.state.atMs)}
-                      </p>
-                    </>
-                  ) : (
-                    <p className="text-sm text-ink-muted">Not written yet.</p>
-                  )}
-                </Section>
-              )}
-              <Section title="Knowledge and connections" className="p-4">
-                <NotServedList />
-              </Section>
-            </div>
-          </CollapsiblePanel>
-        </Collapsible>
-
-        {/* The face perches on the composer's top edge, so the space above it stays clear. */}
-        <section
-          aria-label={`Start a session in ${project.title}`}
-          className="pt-6"
-        >
-          <Composer autoFocus={false} />
-        </section>
-        <ProjectSessions threads={threads} titles={titles} />
+            )}
+            <Section title="Knowledge and connections" className="p-3">
+              <NotServedList />
+            </Section>
+          </aside>
+        </div>
       </div>
       <ProjectEditDialog
         projectId={projectId}
