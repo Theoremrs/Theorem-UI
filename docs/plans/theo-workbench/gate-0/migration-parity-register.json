@@ -1,0 +1,406 @@
+{
+  "spec": "SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0",
+  "status": "inventory_populated_not_verified",
+  "scope": "web-only",
+  "basis": "Inspected ide/README.md and terminal adapters; reconcile against current mounted implementation at Gate 0. Operations below are responsibilities, not invented endpoint schemas. Gate 0 populated copy: current_consumer filled from source at worktree revision 287997fc (ide/ and src/ identical to 4240360b); candidate_consumer, status and verified_source_revision intentionally left unfilled; entries P16 onward are capabilities the starting register did not list and carry empty acceptance_references because the source does not map them.",
+  "entries": [
+    {
+      "id": "P01",
+      "capability": "Workspace identity and navigation",
+      "existing_owner": "Theorem workspace connection and outer route",
+      "required_parity": "Workspace/project identity, environment display and permission scope survive replacement; files refer to the correct execution environment.",
+      "acceptance_references": [
+        "AC-01",
+        "AC-03",
+        "AC-08"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-connection.ts:63-114; ide/theia-extensions/theorem-workspace/src/browser/theorem-workspace-environment.ts; src/components/ide/ide-frame.tsx:149-203; src/components/ide/follow.ts (workspaceIdOf); src/routes/_chat/ide.tsx",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P02",
+      "capability": "Files and quick open",
+      "existing_owner": "SDK workspace file operations and live changes",
+      "required_parity": "Real listing/search/reveal and supported file mutations reach the existing owner; unavailable operations remain explicit.",
+      "acceptance_references": [
+        "AC-08",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-file-system-provider.ts:102-222; ide/theia-extensions/theorem-workspace/src/browser/theorem-search.ts:138 (Quick Open); src/components/ide/ide-file-tree.tsx; src/components/organize/sessions-panel.tsx:423,474",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P03",
+      "capability": "Source document editing",
+      "existing_owner": "SDK DocumentSession",
+      "required_parity": "Pending edits, conflicts, save and per-client undo remain usable; no second writer or lost local edits.",
+      "acceptance_references": [
+        "AC-10",
+        "AC-12",
+        "AC-14",
+        "AC-15",
+        "AC-16"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-editor-model.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-connection.ts:250; ide/theia-extensions/theorem-workspace/src/browser/line-map.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P04",
+      "capability": "Markdown reading and editing",
+      "existing_owner": "DocumentSession plus the selected ELY port",
+      "required_parity": "Visual, Source, Split and Preview refer to the same source and preserve unsupported source constructs and concurrent edits.",
+      "acceptance_references": [
+        "AC-11",
+        "AC-12",
+        "AC-13"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/applications/browser/package.json (theiaPlugins: vscode.markdown, vscode.markdown-language-features); vite.config.ts:108-150 (/theia/webview)",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P05",
+      "capability": "Language/navigation/refactor",
+      "existing_owner": "SDK WorkspaceLanguage and host language services",
+      "required_parity": "Completion/definition/diagnostics/format/rename retain document revision and workspace scope; returned edits use the authoritative apply path.",
+      "acceptance_references": [
+        "AC-22",
+        "AC-23",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-language-features.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-call-hierarchy.ts:78",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P06",
+      "capability": "Source control and diffs",
+      "existing_owner": "SDK WorkspaceScm",
+      "required_parity": "Staged/unstaged/conflict state, diff, stage, unstage, commit and supported branch/remote operations remain reachable through the chosen Changes UI.",
+      "acceptance_references": [
+        "AC-19",
+        "AC-20",
+        "AC-21",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-scm.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-blame.ts:123",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P07",
+      "capability": "Run and output",
+      "existing_owner": "Existing run operations and output owner",
+      "required_parity": "Start/stop/configuration/output target the selected environment; view closure does not terminate work implicitly.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-run.ts:74-113",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P08",
+      "capability": "History and source references",
+      "existing_owner": "Existing history/navigation and reference operations",
+      "required_parity": "History/log and supported source-range reveal remain reachable; adding a selection sends a typed scoped reference.",
+      "acceptance_references": [
+        "AC-19",
+        "AC-22",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-timeline.ts:51,124,152,196; ide/theia-extensions/theorem-workspace/src/browser/theorem-blame.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-ide-bridge.ts (reveal, addToChat)",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P09",
+      "capability": "Native shell sessions",
+      "existing_owner": "SDK TerminalChannel and host native PTY",
+      "required_parity": "Input, byte stream, resize, copy/search, resets, detach and explicit kill retain their behavior and truthful host-lifetime limits.",
+      "acceptance_references": [
+        "AC-26",
+        "AC-30",
+        "AC-31",
+        "AC-34",
+        "AC-35",
+        "AC-54"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-terminal.ts:47-228",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P10",
+      "capability": "Herdr profiles and readiness",
+      "existing_owner": "Existing terminal profile/capability path",
+      "required_parity": "Herdr shell and configured external-agent profiles remain explicit and readiness-gated, with no native fallback.",
+      "acceptance_references": [
+        "AC-24",
+        "AC-29",
+        "AC-47"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/terminal-profile.ts:28-42; ide/theia-extensions/theorem-workspace/src/browser/theorem-terminal.ts:248",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P11",
+      "capability": "Herdr reconnect and control",
+      "existing_owner": "Theorem terminal registry and Herdr Core adapter",
+      "required_parity": "Binding epochs, adoption, snapshots, stream offsets, observer/control leases, process identity and replacement semantics reach the new consumer.",
+      "acceptance_references": [
+        "AC-31",
+        "AC-32",
+        "AC-33",
+        "AC-34",
+        "AC-35",
+        "AC-36",
+        "AC-37",
+        "AC-38",
+        "AC-39",
+        "AC-40",
+        "AC-58",
+        "AC-62"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-terminal.ts:81-100,148,200-220,281",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P12",
+      "capability": "Follow agent and selection-to-chat",
+      "existing_owner": "Existing Follow/reveal and typed reference bridge",
+      "required_parity": "Following actual agent navigation and user pause/override remain explicit; opening another file does not corrupt the current draft.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-ide-bridge.ts:44,116-134,186,190; src/components/ide/follow.ts; ide/theia-extensions/theorem-workspace/src/common/ide-bridge.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P13",
+      "capability": "Themes, preferences and restoration",
+      "existing_owner": "Existing appearance/account configuration and browser owner",
+      "required_parity": "Mapped layouts and preferences restore safely without starting processes; themes retain drafts, focus and resource identity.",
+      "acceptance_references": [
+        "AC-05",
+        "AC-16",
+        "AC-28",
+        "AC-45",
+        "AC-49"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-stone-theme.ts; ide/theia-extensions/theorem-workspace/src/common/ide-theme.ts; src/components/ide/ide-theme.ts; ide/applications/browser/package.json (theia.frontend.config.preferences); ide/theia-extensions/theorem-workspace/src/browser/theorem-workspace-environment.ts (theia-user: over OPFS)",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P14",
+      "capability": "Artifacts",
+      "existing_owner": "Existing artifact contributions/renderer and approved cabinet contract",
+      "required_parity": "Project artifacts retain revision identity, preview modes, originals, visibility and running editor state.",
+      "acceptance_references": [
+        "AC-46",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-chat.ts (theorem-artifact parts, openArtifact); src/components/ide/follow.ts (followArtifact); src/components/artifacts/artifact-message.tsx:24,227; src/components/chat/theorem-parts.tsx:48,571",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P15",
+      "capability": "Routes, build and deployment retirement",
+      "existing_owner": "Theo web route and Theia build owners",
+      "required_parity": "Actual supported workflows have replacement paths before obsolete Theia routes/dependencies are removed; migration/rollback is recorded.",
+      "acceptance_references": [
+        "AC-54",
+        "AC-55",
+        "AC-56",
+        "AC-60"
+      ],
+      "status": "not_run",
+      "current_consumer": "src/routes/_chat/ide.tsx; src/routes/theia/$.ts; vite.config.ts:108-150; scripts/build-cloudflare.sh:31-34; ide/package.json; ide/patches/; eslint.config.js:42; tsconfig.json (excludes ide); .prettierignore:5",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P16",
+      "capability": "Diagnostics and Problems",
+      "existing_owner": "SDK WorkspaceLanguage diagnostics and Theia ProblemManager",
+      "required_parity": "Diagnostics for an open document are bound to its revision and dropped when stale or while edits are pending; severities error, warning, info, hint; refreshed on file change and resync.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-diagnostics.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P17",
+      "capability": "Workspace text search and replace",
+      "existing_owner": "Host search operations",
+      "required_parity": "Text search with regex, case, whole-word, include/exclude, continuation and cancel. Replace is reachable in Theia UI but has no bound host path today; decide parity or deprecation explicitly.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-search.ts:64,101,138; ide/theia-extensions/theorem-workspace/src/browser/search-rows.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P18",
+      "capability": "Blame, file history and revision restore",
+      "existing_owner": "Host scm.blame, scm.log, history.* operations",
+      "required_parity": "Line blame toggle, file history list, git log entries, open a past revision, restore a revision, with empty-state behavior for files unknown to the journal or git. Listed in P06/P08 only implicitly.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-blame.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-timeline.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P19",
+      "capability": "Terminal process termination",
+      "existing_owner": "Host terminal.kill (not on origin/main)",
+      "required_parity": "End the host process of a terminal, distinct from detaching; offered only when the host advertises terminal.kill.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-terminal.ts:32,211-220,268-281",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P20",
+      "capability": "Chat mirror, approvals and change sets in the frame",
+      "existing_owner": "Parent conversation via IdeHostMethods",
+      "required_parity": "The in-frame Theorem chat agent mirrors the parent conversation: send, cancel, approval decisions with settled state, thread and artifact open, change-set elements with admission states.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-chat.ts; src/components/ide/chat-mirror.ts; src/components/ide/ide-frame.tsx:149-203",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P21",
+      "capability": "Delegation before/after diffs",
+      "existing_owner": "chat.runs.delegations and delegationContent",
+      "required_parity": "Read-only before/after documents per delegation change, open-changes from the parent, missing-content state, binary changes skipped.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-delegations.ts; src/components/ide/follow.ts (useOpenChanges); src/components/chat/delegation-parts.tsx:24,223,311,462,653",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P22",
+      "capability": "Connection status, recovery and capability negotiation",
+      "existing_owner": "TheoremConnection, workspace-recovery, host capabilities",
+      "required_parity": "Workspace open/reopen, retry schedule 1/2/4/8/15/30 s, resync handling, stale_revision reseat, offers() and capabilities gating, connection status shown to the parent with a retry action.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-connection.ts:106-209; ide/theia-extensions/theorem-workspace/src/browser/workspace-recovery.ts; ide/theia-extensions/theorem-workspace/src/browser/theorem-ide-bridge.ts (connectionChanged, retryConnection); src/components/ide/ide-status-bar.tsx",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P23",
+      "capability": "Syntax grammars and Theia-local editor features",
+      "existing_owner": "Theia/Monaco in the browser, no host operation",
+      "required_parity": "TextMate highlighting for 29 language ids and Monaco-local features (find/replace in file, multi-cursor, command palette, keybindings and preferences UI, outline) that no host operation backs.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-grammars.ts; ide/applications/browser/package.json (@theia/* dependencies)",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P24",
+      "capability": "Frame chrome, layout and status bar mirroring",
+      "existing_owner": "zed-look extension and parent IDE panel state",
+      "required_parity": "Embedded layout, title bar, dock buttons, status bar, side-panel and sidebar state, explorer menu, fonts, and the frame-to-parent status bar mirror.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/zed-look/src/browser/zed-look-frontend-module.ts; ide/theia-extensions/zed-look/src/browser/zed-embedded.ts; ide/theia-extensions/zed-look/src/browser/zed-dock-buttons.ts; ide/theia-extensions/zed-look/src/browser/zed-status-bar.ts; src/components/ide/ide-status-bar.tsx; src/components/shell/shell-state.ts:59-64,105-107,144,176-179,269-314; src/components/shell/dock.tsx:68-69,320,358,525",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P25",
+      "capability": "Parent IDE surfaces and entry points",
+      "existing_owner": "Parent app shell and builtins module",
+      "required_parity": "IDE shell modes, the theorem.ide module with its chat setting (own/conversation/terminal/page), sessions-panel file tree and IDE toggle, Open in IDE links, and the terminal-screen reveal action.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "src/components/shell/modes.tsx:5,30,43,89,107,138; src/components/pages/builtins.tsx:384,397-433,463,629-655; src/components/organize/sessions-panel.tsx:50-51,423,474,807; src/components/shell/sidebar.tsx:178,188; src/components/terminal/terminal-screen.tsx:164,189; src/components/chat/delegation-parts.tsx; src/components/chat/theorem-parts.tsx:571",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P26",
+      "capability": "File copy and binary file writes",
+      "existing_owner": "Host workspace.files.copy (not advertised on origin/main)",
+      "required_parity": "Copy and paste of files and binary writes in the explorer; today refused with Unavailable when the host does not offer workspace.files.copy.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/theia-extensions/theorem-workspace/src/browser/theorem-file-system-provider.ts:163-182,244; ide/theia-extensions/theorem-workspace/src/browser/replace-entry.ts",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    },
+    {
+      "id": "P27",
+      "capability": "SDK vendoring and Theia patch set",
+      "existing_owner": "Build owner",
+      "required_parity": "The vendored @theoremharness/sdk tarballs (alpha.3 in ide/, alpha.5 at the repo root) and Theia/native patches are shared build inputs to retire or keep with the build.",
+      "acceptance_references": [],
+      "status": "not_run",
+      "current_consumer": "ide/patches/; ide/package.json (patchedDependencies); package.json (@theoremharness/sdk)",
+      "candidate_consumer": null,
+      "verified_source_revision": null,
+      "evidence": []
+    }
+  ]
+}
