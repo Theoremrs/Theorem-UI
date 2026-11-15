@@ -29,7 +29,7 @@ Project and conversation navigation, which the sidebar carried, moves to the wor
 | `workbench-dock` | The one layout owner: tab groups over layout leaves, stable panel-instance ids, minimum sizes, CSS-px to cell quantization, collapse rules, hide/expand/restore, presets, the persisted layout document | `workbench-layout` |
 | `workbench-core` | Elm root: `Msg`, `Model`, `update`, `Effect`, the panel registry, focus and key routing, the command and keybinding table, the semantic tree | `workbench-dock` |
 | `workbench-panels` | Header chrome, tool picker, Files, More tools, unavailable/empty states | `workbench-core` |
-| `workbench-text` | Coordinate conversions (bytes, UTF-16, scalars, graphemes, cells) and the shared editing session over `ratatui-textarea` | |
+| `workbench-text` | Coordinate conversions (bytes, UTF-16, scalars, graphemes, cells) and the shared editing session: a `ropey` rope edited through `operational-transform` operations, so a remote edit rebases pending local edits and the undo stack instead of clearing them | `ropey`, `operational-transform` |
 | `workbench-vt` | VT byte-to-screen interpreter and input encoder for process panes | `vt100`, `tui-term` |
 | `workbench-markdown` | ELY-derived parse/block/edit logic and the four modes | `workbench-text`, `pulldown-cmark` |
 | `workbench-changes` | Changes panel model and view over Theorem SCM | `workbench-core` |
