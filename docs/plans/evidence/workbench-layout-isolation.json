@@ -1,0 +1,222 @@
+{
+  "case": "AC-61",
+  "requirements": [
+    "R03",
+    "R05",
+    "R29",
+    "R48"
+  ],
+  "target": "wasm32-unknown-unknown",
+  "pin": {
+    "repo": "herdrdev/herdr",
+    "commit": "ee5bfb5041bb3e4a49d591c72308aae3c81ecdde",
+    "path": "src/layout.rs",
+    "blob": "aaa207ae38119e03fb20412759f8b38a6708038e",
+    "license": "Apache-2.0",
+    "source": "terminal/crates/workbench-layout/src/lib.rs header"
+  },
+  "rustc": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "banned": [
+    {
+      "pattern": "^ghostty.*",
+      "why": "Ghostty VT: Herdr's terminal emulator (crates/ghostty-vt, a Zig build)"
+    },
+    {
+      "pattern": "^portable-pty$",
+      "why": "pseudo-terminal spawn and kill: Herdr's process launcher"
+    },
+    {
+      "pattern": "^crossterm$",
+      "why": "native terminal backend of Herdr's TUI (raw mode, input, signals)"
+    },
+    {
+      "pattern": "^ratatui-crossterm$",
+      "why": "ratatui 0.30 split the crossterm backend into its own crate"
+    },
+    {
+      "pattern": "^ratatui-termwiz$",
+      "why": "ratatui's termwiz backend, the other native terminal backend"
+    },
+    {
+      "pattern": "^termwiz$",
+      "why": "native terminal backend and escape parser"
+    },
+    {
+      "pattern": "^tokio$",
+      "why": "async runtime; Herdr enables its `process` and `signal` features"
+    },
+    {
+      "pattern": "^libc$",
+      "why": "raw syscalls: fork, kill, waitpid and pty ioctl in Herdr's runtime"
+    },
+    {
+      "pattern": "^nix$",
+      "why": "POSIX process and pty control"
+    },
+    {
+      "pattern": "^rustix$",
+      "why": "process, pty and fd syscalls"
+    },
+    {
+      "pattern": "^signal-hook(-registry)?$",
+      "why": "Unix signal handling, Herdr's cfg(unix) dependency"
+    },
+    {
+      "pattern": "^ctrlc$",
+      "why": "Ctrl-C and termination handler installed by Herdr's server"
+    },
+    {
+      "pattern": "^interprocess$",
+      "why": "local sockets and named pipes to the Herdr server process"
+    },
+    {
+      "pattern": "^mio$",
+      "why": "native event loop under tokio and pty readers"
+    },
+    {
+      "pattern": "^socket2$",
+      "why": "native sockets under tokio and interprocess"
+    },
+    {
+      "pattern": "^filedescriptor$",
+      "why": "pty and pipe file descriptors (portable-pty's helper)"
+    },
+    {
+      "pattern": "^zbus$",
+      "why": "D-Bus logind shutdown inhibitor, Herdr's cfg(linux) dependency"
+    },
+    {
+      "pattern": "^windows([-_].*)?$",
+      "why": "Windows APIs: job objects, pipes and console, Herdr's cfg(windows) tables"
+    },
+    {
+      "pattern": "^widestring$",
+      "why": "UTF-16 SDDL for Herdr's Windows pipe security descriptors"
+    },
+    {
+      "pattern": "^wmi$",
+      "why": "Windows Management Instrumentation, Herdr's cfg(windows) dependency"
+    }
+  ],
+  "commands": [
+    {
+      "command": "cargo build -p theorem-workbench-layout --target wasm32-unknown-unknown --locked",
+      "cwd": "terminal",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo tree -p theorem-workbench-layout --target wasm32-unknown-unknown --edges normal --prefix none",
+      "cwd": "terminal",
+      "exit_code": 0
+    },
+    {
+      "command": "cargo tree -p theorem-workbench-dock --target wasm32-unknown-unknown --edges normal --prefix none",
+      "cwd": "terminal",
+      "exit_code": 0
+    }
+  ],
+  "trees": {
+    "theorem-workbench-layout": {
+      "dependencies": [
+        "allocator-api2",
+        "bitflags",
+        "castaway",
+        "cfg-if",
+        "compact_str",
+        "darling",
+        "darling_core",
+        "darling_macro",
+        "either",
+        "equivalent",
+        "foldhash",
+        "hashbrown",
+        "heck",
+        "ident_case",
+        "indoc",
+        "instability",
+        "itertools",
+        "itoa",
+        "kasuari",
+        "line-clipping",
+        "lru",
+        "proc-macro2",
+        "quote",
+        "ratatui",
+        "ratatui-core",
+        "ratatui-widgets",
+        "rustversion",
+        "ryu",
+        "serde",
+        "serde_core",
+        "serde_derive",
+        "static_assertions",
+        "strsim",
+        "strum",
+        "strum_macros",
+        "syn",
+        "theorem-workbench-layout",
+        "thiserror",
+        "thiserror-impl",
+        "unicode-ident",
+        "unicode-segmentation",
+        "unicode-truncate",
+        "unicode-width"
+      ],
+      "banned_hits": []
+    },
+    "theorem-workbench-dock": {
+      "dependencies": [
+        "allocator-api2",
+        "bitflags",
+        "castaway",
+        "cfg-if",
+        "compact_str",
+        "darling",
+        "darling_core",
+        "darling_macro",
+        "either",
+        "equivalent",
+        "foldhash",
+        "hashbrown",
+        "heck",
+        "ident_case",
+        "indoc",
+        "instability",
+        "itertools",
+        "itoa",
+        "kasuari",
+        "line-clipping",
+        "lru",
+        "memchr",
+        "proc-macro2",
+        "quote",
+        "ratatui",
+        "ratatui-core",
+        "ratatui-widgets",
+        "rustversion",
+        "ryu",
+        "serde",
+        "serde_core",
+        "serde_derive",
+        "serde_json",
+        "static_assertions",
+        "strsim",
+        "strum",
+        "strum_macros",
+        "syn",
+        "theorem-workbench-dock",
+        "theorem-workbench-layout",
+        "thiserror",
+        "thiserror-impl",
+        "unicode-ident",
+        "unicode-segmentation",
+        "unicode-truncate",
+        "unicode-width",
+        "zmij"
+      ],
+      "banned_hits": []
+    }
+  },
+  "result": "pass",
+  "failures": []
+}
