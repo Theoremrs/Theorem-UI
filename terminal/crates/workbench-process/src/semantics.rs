@@ -174,7 +174,8 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         } else {
             Aria::Alert
         };
-        out.push(Node::new("notice", role, &text, g.footer));
+        let rect = draw::footer_view(area, b).map_or(g.footer, |f| f.rect);
+        out.push(Node::new("notice", role, &text, rect));
     }
 
     let can_act = b.running() && !b.attaching();

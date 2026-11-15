@@ -13,6 +13,7 @@ use crate::catalog::{backend_word, persistence};
 use crate::chooser::{self, LineKind};
 use crate::panel::ProcessPanel;
 use crate::state::{Failure, FailureKind, Opening, Saved, Stage, reason_text};
+use crate::wrap::{wrap, wrap_first};
 
 /// The three bands of a live pane.
 #[derive(Clone, Copy)]
@@ -69,6 +70,18 @@ fn put(buf: &mut Buffer, area: Rect, y: u16, text: &str, style: Style) {
         return;
     }
     buf.set_stringn(area.x, y, text, usize::from(area.width), style);
+}
+
+/// Text wrapped to the pane's width on word boundaries, one row after
+/// another from `y`; returns the row after the last. A word wider than the
+/// pane is the only thing cut.
+fn put_wrapped(buf: &mut Buffer, area: Rect, y: u16, text: &str, style: Style) -> u16 {
+    let mut y = y;
+    for row in wrap(text, area.width) {
+        put(buf, area, y, &row, style);
+        y = y.saturating_add(1);
+    }
+    y
 }
 
 /// The one line that says what the pane is, from host fields only.
@@ -196,6 +209,7 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
         &p.identity,
         data.adoption.as_ref(),
         p.note.as_deref(),
+        area.width,
     );
     let selected = p.selected.min(rows.len().saturating_sub(1));
     let top = chooser::top_for(&lines, selected, usize::from(area.height));
@@ -221,7 +235,11 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             _ => base,
         };
         let text = match line.kind {
-            LineKind::Row => format!("{} {}", if is_selected { ">" } else { " " }, line.text),
+            LineKind::Row => format!(
+                "{} {}",
+                if is_selected && !line.cont { ">" } else { " " },
+                line.text
+            ),
             LineKind::RowDetail => format!("  {}", line.text),
             _ => line.text.clone(),
         };
@@ -233,17 +251,17 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
 }
 
 fn restoring(saved: &Saved, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
-    put(
+    let y = put_wrapped(
         buf,
         area,
         area.y,
         &format!("Shell | re-attaching to {}", saved.session),
         cx.theme.text,
     );
-    put(
+    put_wrapped(
         buf,
         area,
-        area.y + 1,
+        y,
         &format!(
             "Saved terminal {} in workspace {} ({}). Attaching by identity; nothing is relaunched. Esc returns to the chooser.",
             saved.session,
@@ -256,7 +274,7 @@ fn restoring(saved: &Saved, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
 
 fn opening(p: &ProcessPanel, op: &Opening, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
     let host = chooser::host_of(&p.identity, None);
-    put(
+    let mut y = put_wrapped(
         buf,
         area,
         area.y,
@@ -265,39 +283,40 @@ fn opening(p: &ProcessPanel, op: &Opening, area: Rect, buf: &mut Buffer, cx: &Vi
     );
     match &op.uncertain {
         Some(reason) => {
-            put(
+            y = put_wrapped(
                 buf,
                 area,
-                area.y + 1,
+                y,
                 &format!(
                     "Unknown whether a shell started ({}). It was not retried and is not assumed.",
                     reason_text(reason)
                 ),
                 cx.theme.warning,
             );
-            put(
+            y = put_wrapped(
                 buf,
                 area,
-                area.y + 2,
+                y,
                 "If it did start, it will be listed under existing sessions. Esc returns to the chooser.",
                 cx.theme.muted,
             );
         }
         None => {
-            put(
+            y = put_wrapped(
                 buf,
                 area,
-                area.y + 1,
+                y,
                 "Waiting for the host to start it.",
                 cx.theme.muted,
             );
+            y += 1;
         }
     }
     if let Some(from) = &op.follows {
-        put(
+        put_wrapped(
             buf,
             area,
-            area.y + 3,
+            y,
             &format!("This is a new process. It does not continue {from}."),
             cx.theme.muted,
         );
@@ -314,36 +333,73 @@ pub(crate) fn failure_title(failure: &Failure) -> &'static str {
 }
 
 fn failed(failure: &Failure, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
-    put(
+    let mut y = put_wrapped(
         buf,
         area,
         area.y,
         &format!("Shell | {}", failure_title(failure)),
         cx.theme.error,
     );
-    put(
+    y = put_wrapped(
         buf,
         area,
-        area.y + 1,
+        y,
         &format!("Host reason: {}", reason_text(&failure.reason)),
         cx.theme.text,
     );
-    if let Some(code) = &failure.code {
-        put(
-            buf,
-            area,
-            area.y + 2,
-            &format!("Code: {code}"),
-            cx.theme.muted,
-        );
-    }
-    put(
+    y = match &failure.code {
+        Some(code) => put_wrapped(buf, area, y, &format!("Code: {code}"), cx.theme.muted),
+        None => y + 1,
+    };
+    put_wrapped(
         buf,
         area,
-        area.y + 4,
+        y + 1,
         "Enter tries it again as a new request. Esc returns to the chooser.",
         cx.theme.muted,
     );
+}
+
+/// The footer as it is drawn: wrapped to the pane's width, growing upward over
+/// the screen's bottom rows so the grid keeps the size the host confirmed.
+pub(crate) struct FooterView {
+    pub rect: Rect,
+    pub rows: Vec<String>,
+    pub tone: Tone,
+}
+
+pub(crate) fn footer_view(area: Rect, b: &Bound) -> Option<FooterView> {
+    if area.height < 3 {
+        return None;
+    }
+    let (text, tone) = footer(b)?;
+    let mut rows = wrap(&text, area.width);
+    // Never over the header's own row.
+    rows.truncate(usize::from(area.height - 1));
+    let n = u16::try_from(rows.len()).unwrap_or(u16::MAX);
+    Some(FooterView {
+        rect: Rect::new(area.x, area.bottom() - n, area.width, n),
+        rows,
+        tone,
+    })
+}
+
+/// The status line's rows: the first shares its row with the End control.
+pub(crate) fn header_rows(head: &str, area: Rect, button: Option<Rect>) -> Vec<String> {
+    let room = button.map_or(area.width, |r| r.x - area.x - 1);
+    let mut rows = wrap_first(head, room, area.width);
+    rows.truncate(usize::from(area.height.saturating_sub(1)).max(1));
+    rows
+}
+
+/// Blank a rect so what is drawn over the screen does not show it through.
+fn blank(buf: &mut Buffer, r: Rect, style: Style) {
+    for y in r.y..r.bottom() {
+        for x in r.x..r.right() {
+            buf[(x, y)].reset();
+        }
+    }
+    buf.set_style(r, style);
 }
 
 fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
@@ -360,17 +416,7 @@ fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
         head.push_str(&format!(" | connection {c:?}"));
     }
     let button = end_button(g.header, b);
-    let room = button.map_or(g.header.width, |r| r.x - g.header.x - 1);
-    put(
-        buf,
-        Rect::new(g.header.x, g.header.y, room, 1),
-        g.header.y,
-        &head,
-        header_style,
-    );
-    if let Some(r) = button {
-        put(buf, r, r.y, END_LABEL, cx.theme.focus);
-    }
+    let head_rows = header_rows(&head, area, button);
 
     // The grid keeps the size the host last confirmed; the rest is background.
     let resolved = p.styles.resolve(cx.theme);
@@ -389,7 +435,22 @@ fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
         ratatui::widgets::Widget::render(view, shown, buf);
     }
 
-    if let Some((text, tone)) = footer(b) {
-        put(buf, g.footer, g.footer.y, &text, tone_style(tone, cx));
+    // Status rows past the first, and the footer, are drawn over the screen.
+    for (i, row) in head_rows.iter().enumerate() {
+        let y = area.y + u16::try_from(i).unwrap_or(0);
+        if i > 0 {
+            blank(buf, Rect::new(area.x, y, area.width, 1), cx.theme.bg);
+        }
+        put(buf, area, y, row, header_style);
+    }
+    if let Some(r) = button {
+        put(buf, r, r.y, END_LABEL, cx.theme.focus);
+    }
+    if let Some(f) = footer_view(area, b) {
+        blank(buf, f.rect, cx.theme.bg);
+        for (i, row) in f.rows.iter().enumerate() {
+            let y = f.rect.y + u16::try_from(i).unwrap_or(0);
+            put(buf, f.rect, y, row, tone_style(f.tone, cx));
+        }
     }
 }

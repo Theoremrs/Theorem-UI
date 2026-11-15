@@ -355,6 +355,11 @@ impl Rig {
     }
 }
 
+/// A screen read as running text: a wrapped notice has its words on one line again.
+fn one_line(screen: &str) -> String {
+    screen.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 fn only_attach(fx: &[Effect]) -> Effect {
     let found: Vec<&Effect> = fx
         .iter()
@@ -855,7 +860,7 @@ fn a_refused_input_moves_a_controller_to_observing_with_the_hosts_reason() {
         },
         None,
     );
-    assert!(r.screen().contains("(host: stale_generation)"));
+    assert!(one_line(&r.screen()).contains("(host: stale_generation)"));
     assert!(r.typed("b").is_empty());
 }
 
@@ -1664,6 +1669,13 @@ fn sgr_rig() -> (Rig, u16, u16) {
 fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
     use ratatui::style::{Modifier, Style};
     let (r, w, h) = sgr_rig();
+    // A wrapped notice is drawn over the grid's bottom rows, in the chrome's colours.
+    let grid_end = r
+        .semantics()
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "notice")
+        .map_or(h - 1, |n| n.rect.y);
     let plain = r.draw_with(w, h, &Theme::plain());
     let bare = Theme::chrome(
         Style::default(),
@@ -1676,7 +1688,7 @@ fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
     // The header and footer take the chrome roles, which differ by theme; the
     // terminal grid takes only the palette.
     let bare_drawn = r.draw_with(w, h, &bare);
-    for y in 1..h - 1 {
+    for y in 1..grid_end {
         for x in 0..w {
             assert_eq!(bare_drawn[(x, y)], plain[(x, y)], "({x},{y})");
         }
@@ -1696,7 +1708,7 @@ fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
     for y in 0..h {
         for x in 0..w {
             // Only the chrome roles' own modifiers differ; the grid is the palette's.
-            if y > 1 && y < h - 1 {
+            if y > 1 && y < grid_end {
                 assert_eq!(drawn[(x, y)].fg, plain[(x, y)].fg, "({x},{y})");
                 assert_eq!(drawn[(x, y)].bg, plain[(x, y)].bg, "({x},{y})");
             }
@@ -2601,18 +2613,87 @@ fn escape_in_a_failure_inside_a_drawer_leaves_the_failure_and_the_pane_to_the_pa
     assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
 }
 
-#[test]
-fn escape_keeps_its_meaning_in_a_wait_an_end_prompt_and_an_ended_program_inside_a_drawer() {
-    let mut r = bound();
+fn drawer_on(r: &mut Rig) -> theorem_workbench_dock::GroupId {
     let group = r.m.focus().group;
     r.send(Msg::Dock(DockMsg::OpenDrawer(group)));
-    r.key(Key::Char('d')); // typing goes to the program
+    assert_eq!(r.m.dock().drawer(), Some(group));
+    group
+}
+
+#[test]
+fn in_the_failed_state_the_pane_holds_escape_and_keeps_its_own_key_context() {
+    use theorem_workbench_core::keys::{KeyContext, active_contexts};
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: "boom".into(),
+        },
+        None,
+    );
+    let panel = r.m.panel(&r.id).unwrap();
+    assert!(panel.holds_escape());
+    assert!(!panel.text_entry(), "nothing is typed in a failure");
+    let kind = theorem_workbench_core::ids::PanelKind::new("shell");
+    assert_eq!(
+        active_contexts(Some(&kind), panel.text_entry()),
+        [KeyContext::Panel { kind }, KeyContext::Global]
+    );
+}
+
+#[test]
+fn escape_during_the_opening_wait_inside_a_drawer_stops_the_wait_and_the_drawer_stays() {
+    let (mut r, _open) = opening();
+    let group = drawer_on(&mut r);
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"], "Esc stops the wait");
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+#[test]
+fn escape_at_the_end_prompt_inside_a_drawer_cancels_the_prompt_and_the_drawer_stays() {
+    let mut r = bound();
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    assert!(fx.is_empty());
+    assert!(r.screen().contains("End process s1?"));
+    let group = drawer_on(&mut r);
+    let fx = r.key(Key::Esc);
+    assert!(fx.is_empty(), "cancelling ends nothing: {fx:?}");
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(!r.screen().contains("End process s1?"), "{}", r.screen());
+}
+
+#[test]
+fn escape_at_an_offer_of_control_inside_a_drawer_dismisses_it_and_the_drawer_stays() {
+    let mut r = observing();
+    r.typed("x");
+    assert!(r.screen().contains("Enter requests control"));
+    let group = drawer_on(&mut r);
+    let fx = r.key(Key::Esc);
+    assert!(fx.is_empty(), "{fx:?}");
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(
+        !r.screen().contains("Enter requests control"),
+        "{}",
+        r.screen()
+    );
+}
+
+#[test]
+fn escape_after_the_program_ended_inside_a_drawer_returns_to_the_chooser_and_the_drawer_stays() {
+    let mut r = bound();
     r.host(HostMessage::TerminalExited {
         resource: terminal(),
         epoch: 1,
         exit_code: Some(0),
         reason: "exited".into(),
     });
+    let group = drawer_on(&mut r);
     r.key(Key::Esc);
     assert_eq!(r.m.dock().drawer(), Some(group), "an ended program's Esc");
     assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
@@ -2665,5 +2746,243 @@ fn a_host_that_lists_the_bound_session_as_lost_or_exited_ends_the_pane_s_control
             r.typed("z").is_empty(),
             "input went to a program the host calls {word}"
         );
+    }
+}
+
+// ---- wrapping to the pane's width ---------------------------------------------------
+
+const LONG_PROFILE_REASON: &str =
+    "the herdr core on devbox is older than the pinned release so terminals cannot be adopted yet";
+const LONG_LISTING_REASON: &str = "the herdr socket is missing from the runtime directory and nothing answers on the fallback path either";
+const LONG_FAILURE_REASON: &str =
+    "herdr is not running on devbox and its supervisor reported that it could not be started again";
+
+fn tokens(rows: &[String]) -> Vec<String> {
+    rows.iter()
+        .flat_map(|r| r.split_whitespace().map(str::to_owned))
+        .collect()
+}
+
+/// Every word of `text`, in order, among the words the cells show.
+fn shows_all_words(rows: &[String], text: &str, what: &str) {
+    let shown = tokens(rows);
+    let mut at = 0;
+    for word in text.split_whitespace() {
+        match shown[at..].iter().position(|t| t == word) {
+            Some(i) => at += i + 1,
+            None => panic!(
+                "{what}: `{word}` is missing or out of order\n{}",
+                rows.join("\n")
+            ),
+        }
+    }
+}
+
+fn no_ellipsis(rows: &[String], what: &str) {
+    assert!(
+        !rows.iter().any(|r| r.contains('\u{2026}')),
+        "{what}: a word was cut with an ellipsis\n{}",
+        rows.join("\n")
+    );
+}
+
+fn wrapping_widths(r: &Rig) -> [u16; 3] {
+    [r.body().width, 24, 120]
+}
+
+fn wrapping_chooser() -> Rig {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![
+            TerminalProfileInfo {
+                unavailable_reason: Some(LONG_PROFILE_REASON.into()),
+                ..profile("herdr-zsh", TerminalBackend::Herdr, false)
+            },
+            profile("native-zsh", TerminalBackend::Native, true),
+        ],
+        sessions: vec![session("s1", TerminalBackend::Herdr)],
+        adoption: Some(TerminalAdoption::Unavailable {
+            reason: Some(LONG_LISTING_REASON.into()),
+        }),
+    }));
+    r
+}
+
+#[test]
+fn the_choosers_notes_and_a_profiles_unavailable_reason_wrap_at_every_width_without_losing_a_word()
+{
+    use theorem_workbench_core::host::TerminalAdoption;
+    let r = wrapping_chooser();
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        let what = format!("width {w}");
+        shows_all_words(
+            &rows,
+            &format!("The host cannot list its terminals: {LONG_LISTING_REASON}"),
+            &what,
+        );
+        shows_all_words(&rows, LONG_PROFILE_REASON, &what);
+        no_ellipsis(&rows, &what);
+        assert!(
+            rows.iter().all(|row| row.chars().count() <= w as usize),
+            "{what}"
+        );
+    }
+    // The pending note and the empty-list line wrap too.
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Pending)));
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        let what = format!("pending at width {w}");
+        shows_all_words(
+            &rows,
+            "The host is still looking for running terminals. This list may be incomplete.",
+            &what,
+        );
+        shows_all_words(&rows, "No sessions listed yet", &what);
+        no_ellipsis(&rows, &what);
+    }
+    r.send(listing_with(vec![], Some(TerminalAdoption::Settled)));
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        shows_all_words(
+            &rows,
+            "No existing sessions to attach to",
+            &format!("width {w}"),
+        );
+        no_ellipsis(&rows, "settled");
+    }
+}
+
+#[test]
+fn a_word_wider_than_the_pane_is_the_only_thing_cut_and_the_rest_still_wraps() {
+    let mut r = rig();
+    let long = "x".repeat(40);
+    r.send(Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![TerminalProfileInfo {
+            unavailable_reason: Some(format!("because {long} is not here")),
+            ..profile("herdr-zsh", TerminalBackend::Herdr, false)
+        }],
+        sessions: vec![],
+        adoption: None,
+    }));
+    let rows = r.text(24, 40);
+    let shown = tokens(&rows);
+    for w in ["because", "is", "not", "here"] {
+        assert!(shown.iter().any(|t| t == w), "{w}\n{}", rows.join("\n"));
+    }
+    assert_eq!(
+        shown
+            .iter()
+            .filter(|t| t.chars().all(|c| c == 'x'))
+            .map(|t| t.len())
+            .sum::<usize>(),
+        40
+    );
+}
+
+#[test]
+fn the_selected_row_and_the_keyboards_target_stay_on_screen_when_wrapping_makes_the_list_taller() {
+    let mut r = wrapping_chooser();
+    for w in wrapping_widths(&r) {
+        for height in [8u16, 12] {
+            let mut r2 = wrapping_chooser();
+            r2.key(Key::Home);
+            let top = r2.text(w, height);
+            assert!(
+                top.iter().any(|row| row.starts_with('>')),
+                "width {w}, height {height}: the first row is selected and not drawn\n{}",
+                top.join("\n")
+            );
+            r2.key(Key::End);
+            let bottom = r2.text(w, height);
+            assert!(
+                bottom
+                    .iter()
+                    .any(|row| row.starts_with('>') && row.contains("native-zsh")),
+                "width {w}, height {height}: the last row is selected and not drawn\n{}",
+                bottom.join("\n")
+            );
+        }
+    }
+    // Walking down never loses the marker: scrolling, not dropping.
+    r.key(Key::Home);
+    for _ in 0..3 {
+        r.key(Key::Down);
+        let rows = r.text(24, 8);
+        assert!(
+            rows.iter().any(|row| row.starts_with('>')),
+            "{}",
+            rows.join("\n")
+        );
+    }
+}
+
+#[test]
+fn a_failure_wraps_at_every_width_and_its_semantic_description_stays_whole() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: LONG_FAILURE_REASON.into(),
+        },
+        None,
+    );
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 40);
+        let what = format!("failure at width {w}");
+        shows_all_words(&rows, LONG_FAILURE_REASON, &what);
+        shows_all_words(&rows, "Backend unavailable", &what);
+        no_ellipsis(&rows, &what);
+    }
+    let tree = r.valid_tree();
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.state.description.as_deref() == Some(LONG_FAILURE_REASON)),
+        "the alert keeps the whole reason on one line"
+    );
+}
+
+#[test]
+fn the_status_line_and_notices_wrap_over_the_screens_bottom_rows_at_every_width() {
+    let mut r = bound();
+    r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    let prompt =
+        "End process s1? This stops the program for everyone. Enter or y ends it, Esc cancels.";
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 14);
+        let what = format!("end prompt at width {w}");
+        shows_all_words(&rows, prompt, &what);
+        no_ellipsis(&rows, &what);
+    }
+    let tree = r.valid_tree();
+    assert!(
+        tree.nodes.iter().all(|n| !n.name.contains('\n')),
+        "names stay whole"
+    );
+
+    // An offer of control, and the same drawn narrow.
+    let r = {
+        let mut r = observing();
+        r.typed("x");
+        r
+    };
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 14);
+        shows_all_words(
+            &rows,
+            "Enter requests control, Esc dismisses.",
+            &format!("offer at width {w}"),
+        );
+        no_ellipsis(&rows, "offer");
     }
 }

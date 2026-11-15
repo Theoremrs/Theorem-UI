@@ -116,6 +116,8 @@ pub(crate) struct Line {
     pub text: String,
     pub kind: LineKind,
     pub row: Option<usize>,
+    /// A wrapped continuation of the line above it, not a line of its own.
+    pub cont: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -133,9 +135,30 @@ pub(crate) fn lines(
     identity: &WorkspaceIdentity,
     adoption: Option<&TerminalAdoption>,
     note: Option<&str>,
+    width: u16,
 ) -> Vec<Line> {
     let mut out = vec![];
-    let mut push = |text: String, kind, row| out.push(Line { text, kind, row });
+    // Rows are drawn behind a two-cell marker; everything wraps to what is left.
+    let mut push = |text: String, kind, row| {
+        let room = if matches!(kind, LineKind::Row | LineKind::RowDetail) {
+            width.saturating_sub(2).max(1)
+        } else {
+            width
+        };
+        let wrapped = if width == 0 {
+            vec![text]
+        } else {
+            crate::wrap::wrap(&text, room)
+        };
+        for (i, text) in wrapped.into_iter().enumerate() {
+            out.push(Line {
+                text,
+                kind,
+                row,
+                cont: i > 0,
+            });
+        }
+    };
     let host = host_of(identity, None);
     if identity.is_set() {
         push(
@@ -214,10 +237,17 @@ pub(crate) fn lines(
 }
 
 /// The first line to draw so the selected row's lines are visible.
+///
+/// A row wrapped taller than the pane keeps its first line on screen: the
+/// title is what names it.
 pub(crate) fn top_for(lines: &[Line], selected: usize, height: usize) -> usize {
     let last = lines
         .iter()
         .rposition(|l| l.row == Some(selected))
         .unwrap_or(0);
-    (last + 1).saturating_sub(height)
+    let first = lines
+        .iter()
+        .position(|l| l.row == Some(selected))
+        .unwrap_or(0);
+    (last + 1).saturating_sub(height).min(first)
 }

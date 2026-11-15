@@ -14,6 +14,7 @@ mod panel;
 mod semantics;
 mod state;
 mod styles;
+mod wrap;
 
 use std::rc::Rc;
 

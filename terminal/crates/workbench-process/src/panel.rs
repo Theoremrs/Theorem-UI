@@ -123,6 +123,13 @@ impl ProcessPanel {
         }
     }
 
+    fn bound(&self) -> Option<&Bound> {
+        match &self.stage {
+            Stage::Bound(b) => Some(b),
+            _ => None,
+        }
+    }
+
     fn bound_mut(&mut self) -> Option<&mut Bound> {
         match &mut self.stage {
             Stage::Bound(b) => Some(b),
@@ -634,6 +641,7 @@ impl ProcessPanel {
                     &self.identity,
                     data.adoption.as_ref(),
                     self.note.as_deref(),
+                    self.body.width,
                 );
                 let height = usize::from(self.body.height);
                 let top = chooser::top_for(
@@ -656,6 +664,7 @@ impl ProcessPanel {
 
     fn bound_pointer(&mut self, p: PanelPointer, cx: &mut Ctx) {
         let geo = self.geo();
+        let area = Rect::new(0, 0, self.body.width, self.body.height);
         let Some(b) = self.bound_mut() else { return };
         let (x, y) = (p.x, p.y);
         // The header's End process control and the footer's resend control.
@@ -669,7 +678,10 @@ impl ProcessPanel {
                 }
                 return;
             }
-            if y == i32::from(geo.footer.y) && geo.footer.height > 0 && b.unknown_inputs() > 0 {
+            let footer = draw::footer_view(area, b);
+            if footer.is_some_and(|f| y >= i32::from(f.rect.y) && y < i32::from(f.rect.bottom()))
+                && b.unknown_inputs() > 0
+            {
                 b.resend(cx);
                 return;
             }
@@ -1172,16 +1184,22 @@ impl Panel for ProcessPanel {
         })
     }
 
+    fn text_entry(&self) -> bool {
+        self.bound()
+            .is_some_and(|b| b.controlling() && b.running() && !b.attaching())
+    }
+
     /// Escape belongs to the pane wherever it means something here: out of a
     /// failure or a wait, off an end prompt, away from an offer of control, or
     /// back from an ended program. Otherwise a drawer takes it and the pane
-    /// vanishes with a failure unread.
-    fn text_entry(&self) -> bool {
+    /// vanishes with a failure unread. Nothing is typed in these states, so
+    /// the pane's own key context stays.
+    fn holds_escape(&self) -> bool {
         match &self.stage {
             Stage::Choosing => false,
             Stage::Restoring(_) | Stage::Opening(_) | Stage::Failed(_) => true,
             Stage::Bound(b) => {
-                (b.controlling() && b.running() && !b.attaching())
+                self.text_entry()
                     || b.end != EndAsk::No
                     || b.offer_control
                     || !b.running()

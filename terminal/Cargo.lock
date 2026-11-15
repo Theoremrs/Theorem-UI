@@ -2015,6 +2015,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+ "textwrap",
  "theorem-workbench-core",
  "theorem-workbench-dock",
  "tui-input",
@@ -2169,11 +2170,13 @@ dependencies = [
  "base64",
  "keybinds",
  "ratatui",
+ "ropey",
  "serde",
  "serde_json",
  "terminput",
  "theorem-workbench-core",
  "theorem-workbench-dock",
+ "theorem-workbench-text",
  "theorem-workbench-vt",
 ]
 
