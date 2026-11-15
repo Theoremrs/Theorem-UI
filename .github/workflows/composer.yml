@@ -119,7 +119,12 @@ jobs:
           bun run oracle:reflow
           bun run oracle:runtime
           bun run oracle:expressive
+          bun run oracle:custom-background
           bun run oracle:composition
           bun run oracle:code
           ORACLE_ENGINE=chromium bun run oracle:states
           bun run oracle:touch
+      - name: Show appearance server diagnostics on failure
+        if: ${{ failure() }}
+        run: |
+          if [ -f /tmp/appearance-vite.log ]; then tail -n 100 /tmp/appearance-vite.log; fi

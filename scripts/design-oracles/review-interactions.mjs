@@ -57,7 +57,9 @@ const settle = async () => {
 }
 try {
   await page.goto(`${base}/story/shell-compare`)
-  await page.locator('[data-story-ready]').waitFor({ state: 'attached' })
+  await page
+    .locator('[data-story-ready]')
+    .waitFor({ state: 'attached', timeout: 60_000 })
   const editor = page
     .locator('[data-appearance-part="main"] [contenteditable=true]')
     .first()
@@ -379,6 +381,7 @@ try {
   await close()
   check('No runtime errors', errors.length === 0, errors)
 } catch (error) {
+  console.error(error.stack, ...errors)
   check('Review runner completed', false, String(error.stack))
 } finally {
   await writeFile(

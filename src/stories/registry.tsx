@@ -1,7 +1,7 @@
 // SOURCING: the real components, wrapped only in the providers the app itself gives them. Loaded lazily by the story route so none of this reaches production. Artifact stories hand a committed OpenUI program to the thread's own part renderers inside an assistant-ui external-store message; the activity and composer stories hand committed messages to the thread itself the same way, converted by the SDK's toAssistantMessages.
 import { ReactFlow, ReactFlowProvider, applyNodeChanges } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { useEffect, useMemo, useState } from 'react'
+import { lazy, useEffect, useMemo, useState } from 'react'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -48,7 +48,6 @@ import { ContextPanel } from '@/components/shell/sidebar'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
-import { SettingsAiStory } from './settings-ai'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
@@ -72,6 +71,9 @@ import { PlanGraph } from '@/components/chat/plan-graph'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+
+// The table's settings route is not needed to boot every conversation fixture.
+const SettingsAiStory = lazy(() => import('./settings-ai').then((module) => ({ default: module.SettingsAiStory })))
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(

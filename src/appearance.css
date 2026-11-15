@@ -156,6 +156,22 @@
   background: transparent;
 }
 
+/* Custom palettes validate ink against their surfaces, not the built-in sheet
+   stops. Keep the whole shared canvas on that validated surface, including the
+   dark-mode vignette. CSS aliases follow palette edits and mode changes; the
+   scroll-responsive faint text uses the same validated secondary ink. */
+:root[data-palette='custom'] {
+  --surface-raised: var(--popover);
+  --surface-frame: var(--surface-sidebar);
+  --surface-rail: var(--surface-sidebar);
+  --sheet-from: var(--surface-neutral);
+  --sheet-to: var(--surface-neutral);
+  --sheet-shade: var(--surface-neutral);
+  --ink-faint: var(--ink-muted);
+  --ink-faint-top: var(--ink-muted);
+  --ink-faint-bottom: var(--ink-muted);
+}
+
 .appearance-surface.surface-paper {
   background-color: var(--appearance-surface-fill);
 }

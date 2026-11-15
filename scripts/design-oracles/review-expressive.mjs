@@ -6,7 +6,9 @@ import { wcagContrast } from 'culori'
 import { chooseOption } from './browser-controls.mjs'
 
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
-const out = 'docs/plans/composable-appearance/evidence/live-repairs'
+const out =
+  process.env.ORACLE_REVIEW_OUT ??
+  'docs/plans/composable-appearance/evidence/live-repairs'
 await mkdir(out, { recursive: true })
 const browser = await chromium.launch()
 const page = await browser.newPage({
