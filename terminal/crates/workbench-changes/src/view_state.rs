@@ -9,11 +9,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::{Changes, DiffLayout, Focus};
 use crate::status::RowKey;
+use crate::text::Withheld;
 
 /// The shape of the saved state; a reader that finds another number starts clean.
 pub const VERSION: u32 = 1;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ViewState {
     pub version: u32,
@@ -26,6 +27,22 @@ pub struct ViewState {
     pub amend: bool,
     pub layout: DiffLayout,
     pub focus: Focus,
+}
+
+// The draft message is the person's words: `Debug` counts it.
+impl std::fmt::Debug for ViewState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ViewState")
+            .field("version", &self.version)
+            .field("cursor", &self.cursor)
+            .field("scroll", &self.scroll)
+            .field("subject", &Withheld(self.subject.len()))
+            .field("body", &Withheld(self.body.len()))
+            .field("amend", &self.amend)
+            .field("layout", &self.layout)
+            .field("focus", &self.focus)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Changes {

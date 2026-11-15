@@ -24,10 +24,19 @@ const LARGEST_GAP: u64 = 1_000_000;
 
 /// What a resync changed in the accepted text: the characters the owner's text
 /// no longer has, and the ones it has instead.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Default, PartialEq, Eq)]
 pub struct Changed {
     pub removed: String,
     pub inserted: String,
+}
+
+impl std::fmt::Debug for Changed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Changed")
+            .field("removed", &crate::owner::Withheld(self.removed.len()))
+            .field("inserted", &crate::owner::Withheld(self.inserted.len()))
+            .finish()
+    }
 }
 
 /// Make `text` at `revision` the session's accepted text. Pending edits and

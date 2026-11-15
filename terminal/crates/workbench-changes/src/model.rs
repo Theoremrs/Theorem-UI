@@ -32,8 +32,10 @@ mod read;
 pub use read::{Caret, Field, Prompt, PromptKind, ReadBody, ReadKind, ReadView};
 
 use crate::diff::{Hunk, Parsed, parse};
+use crate::documents::{Landed, OpenDocument, Receipt};
 use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
 use crate::status::{Basis, Change, Groups, Head, RowKey, Section, is_folder, loss, shown};
+use crate::text::{Withheld, visible};
 
 /// A subject's comfortable length, and its most (donor `SUBJECT`).
 pub const SUBJECT: (usize, usize) = (50, 72);
@@ -72,13 +74,14 @@ pub enum Problem {
 }
 
 impl Problem {
+    /// In words, with any control or hidden character of the owner's reason spelled out.
     pub fn text(&self) -> String {
-        match self {
+        visible(&match self {
             Self::Stopped { reason } => format!("stopped: {reason}"),
             Self::Refused { code, reason } => format!("refused ({code}): {reason}"),
             Self::Uncertain { reason } => format!("unknown result: {reason}"),
             Self::Failed { reason } => format!("failed: {reason}"),
-        }
+        })
     }
 
     fn of(outcome: &Outcome) -> Option<Self> {
@@ -194,7 +197,7 @@ impl DiffView {
 }
 
 /// The log list.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum LogState {
     /// Not asked for.
     Idle,
@@ -204,6 +207,20 @@ pub enum LogState {
     Ready(Vec<LogEntry>),
     Problem(Problem),
     Outdated,
+}
+
+// A commit's subject and author are the person's words: `Debug` counts the entries.
+impl std::fmt::Debug for LogState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Idle => f.write_str("Idle"),
+            Self::Loading => f.write_str("Loading"),
+            Self::NoCommits => f.write_str("NoCommits"),
+            Self::Ready(entries) => write!(f, "Ready({} commits withheld)", entries.len()),
+            Self::Problem(problem) => f.debug_tuple("Problem").field(problem).finish(),
+            Self::Outdated => f.write_str("Outdated"),
+        }
+    }
 }
 
 /// The branch list, for switching.
@@ -330,7 +347,7 @@ pub(crate) struct Undo {
 }
 
 /// The Changes model.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Changes {
     pub(crate) next_intent: u64,
     pub(crate) generation: u64,
@@ -382,6 +399,31 @@ pub struct Changes {
     pub(crate) read: Option<ReadView>,
     pub(crate) prompt: Option<Prompt>,
     pub(crate) caret: Option<Caret>,
+    /// The documents the editor has open, by path.
+    documents: BTreeMap<String, OpenDocument>,
+    /// What the last stage, unstage and commit acted on.
+    receipts: Vec<Receipt>,
+}
+
+// The commit message being typed, the diffs and the log are the person's content: `Debug`
+// says where the panel stands and how much it holds, never what the files say.
+impl std::fmt::Debug for Changes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Changes")
+            .field("generation", &self.generation)
+            .field("state", &self.state())
+            .field("mode", &self.mode)
+            .field("focus", &self.focus)
+            .field("subject", &Withheld(self.subject.len()))
+            .field("body", &Withheld(self.body.len()))
+            .field("amend", &self.amend)
+            .field("diffs", &self.diffs.len())
+            .field("log", &self.log)
+            .field("notices", &self.notices)
+            .field("receipts", &self.receipts)
+            .field("counters", &self.counters)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for Changes {
@@ -433,6 +475,8 @@ impl Changes {
             read: None,
             prompt: None,
             caret: None,
+            documents: BTreeMap::new(),
+            receipts: Vec::new(),
         }
     }
 
@@ -484,7 +528,85 @@ impl Changes {
     }
 
     pub fn dismiss_notices(&mut self) {
+        self.receipts.clear();
         self.notices.clear();
+    }
+
+    /// Replaces what the model knows of the documents open in the editor. The host
+    /// sends the whole list each time, so a document that was saved or closed is
+    /// simply not in it, and its mark goes.
+    pub fn set_documents(&mut self, documents: impl IntoIterator<Item = OpenDocument>) {
+        self.documents = documents.into_iter().map(|d| (d.path.clone(), d)).collect();
+    }
+
+    /// Whether the editor holds unsaved changes to `path`, or to a file under it when
+    /// it names a folder.
+    pub fn unsaved(&self, path: &str) -> Option<&OpenDocument> {
+        let folder = is_folder(path).then_some(path);
+        self.documents.values().find(|d| {
+            d.unsaved && (d.path == path || folder.is_some_and(|f| d.path.starts_with(f)))
+        })
+    }
+
+    /// What the last stage, unstage and commit acted on, oldest first.
+    pub fn receipts(&self) -> &[Receipt] {
+        &self.receipts
+    }
+
+    /// Starts the receipt of a request that changes the index: the files it names, the
+    /// saved revision the editor has of each, and the drafts that are not part of it.
+    fn begin_receipt(&mut self, id: IntentId, kind: &IntentKind) {
+        let (action, paths) = match kind {
+            IntentKind::Stage { paths } => (ActionKind::Stage, paths.clone()),
+            IntentKind::Unstage { paths } => (ActionKind::Unstage, paths.clone()),
+            IntentKind::Commit { .. } => (
+                ActionKind::Commit,
+                self.snapshot
+                    .as_ref()
+                    .map(|s| s.groups.staged.iter().map(|c| c.path.clone()).collect())
+                    .unwrap_or_default(),
+            ),
+            _ => return,
+        };
+        let saved = paths
+            .iter()
+            .filter_map(|p| {
+                let revision = self.documents.get(p)?.saved_revision?;
+                Some((p.clone(), revision))
+            })
+            .collect();
+        let unsaved = if action == ActionKind::Unstage {
+            vec![]
+        } else {
+            paths
+                .iter()
+                .filter(|p| self.unsaved(p).is_some())
+                .cloned()
+                .collect()
+        };
+        self.receipts.push(Receipt {
+            id,
+            action,
+            paths,
+            saved,
+            unsaved,
+            landed: None,
+        });
+        let over = self.receipts.len().saturating_sub(2);
+        self.receipts.drain(..over);
+    }
+
+    /// The owner answered a request that has a receipt: accepted, it says where the
+    /// repository stood; anything else drops it, so nothing reads as done.
+    fn settle_receipt(&mut self, id: IntentId, landed: Option<Landed>) {
+        match landed {
+            Some(landed) => {
+                if let Some(r) = self.receipts.iter_mut().find(|r| r.id == id) {
+                    r.landed = Some(landed);
+                }
+            }
+            None => self.receipts.retain(|r| r.id != id),
+        }
     }
 
     /// The actions that have been asked for and not answered.
@@ -744,6 +866,7 @@ impl Changes {
             ..pending
         };
         self.pending.insert(id, pending);
+        self.begin_receipt(id, &kind);
         Intent {
             id,
             generation: self.generation,
@@ -1318,7 +1441,7 @@ impl Changes {
                 self.read_done(id, &pending, outcome, payload);
                 vec![]
             }
-            _ => self.mutation_done(&pending, outcome, payload),
+            _ => self.mutation_done(id, &pending, outcome, payload),
         }
     }
 
@@ -1568,6 +1691,7 @@ impl Changes {
 
     fn mutation_done(
         &mut self,
+        id: IntentId,
         pending: &Pending,
         outcome: &Outcome,
         payload: Option<&CompletionPayload>,
@@ -1575,6 +1699,16 @@ impl Changes {
         match outcome {
             Outcome::Accepted => {
                 self.generation += 1;
+                self.settle_receipt(
+                    id,
+                    Some(match payload {
+                        Some(CompletionPayload::ScmState(state)) => Landed::of(state),
+                        _ => Landed {
+                            head: None,
+                            index_generation: None,
+                        },
+                    }),
+                );
                 if let Some(CompletionPayload::ScmDiscarded(done)) = payload {
                     self.undo.push(Undo {
                         path: done.path.clone(),
@@ -1598,13 +1732,40 @@ impl Changes {
                         then_commit: None,
                     };
                     let amend = sent.amend;
-                    return vec![self.issue(
+                    // The files it commits are the ones just staged and the ones that
+                    // were already staged.
+                    let staged: Vec<String> = self
+                        .receipts
+                        .iter()
+                        .find(|r| r.id == id)
+                        .map(|r| r.paths.clone())
+                        .unwrap_or_default();
+                    let intent = self.issue(
                         IntentKind::Commit {
                             message: message.clone(),
                             amend,
                         },
                         commit,
-                    )];
+                    );
+                    if let Some(r) = self.receipts.iter_mut().find(|r| r.id == intent.id) {
+                        for path in staged {
+                            if !r.paths.contains(&path) {
+                                r.unsaved.extend(
+                                    self.documents
+                                        .get(&path)
+                                        .filter(|d| d.unsaved)
+                                        .map(|d| d.path.clone()),
+                                );
+                                if let Some(revision) =
+                                    self.documents.get(&path).and_then(|d| d.saved_revision)
+                                {
+                                    r.saved.push((path.clone(), revision));
+                                }
+                                r.paths.push(path);
+                            }
+                        }
+                    }
+                    return vec![intent];
                 }
                 if let Some((kind, next)) = self.queue.pop_front() {
                     return vec![self.issue(kind, next)];
@@ -1644,6 +1805,7 @@ impl Changes {
             other => {
                 // The rest of a batch is not sent after one that did not succeed.
                 self.queue.clear();
+                self.settle_receipt(id, None);
                 let problem = Problem::of(other).expect("not accepted");
                 if let Problem::Uncertain { reason } = &problem {
                     // The state is read again, and the log with it, when the user asks.

@@ -9,10 +9,19 @@ use theorem_workbench_core::semantics::{Node, NodeId, Role};
 use theorem_workbench_core::{Theme, ViewCtx};
 
 use super::tree::{NoteState, Row, Tone};
+use super::visible::visible;
 use super::{Edit, FilesPanel, Mode};
 
 /// Write `text` from `x`, stopping at `limit`; returns the next free column.
+///
+/// Names come from the host and may hold escapes or overrides: they are spelled
+/// out, so a row shows what the name is and not a cleaned-up lookalike.
 fn put(buf: &mut Buffer, x: u16, y: u16, limit: u16, text: &str, style: Style) -> u16 {
+    put_raw(buf, x, y, limit, &visible(text), style)
+}
+
+/// As `put`, for text the person is editing: its cells are the text's own.
+fn put_raw(buf: &mut Buffer, x: u16, y: u16, limit: u16, text: &str, style: Style) -> u16 {
     if x >= limit {
         return x;
     }
@@ -151,7 +160,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                     let width = usize::from(right.saturating_sub(x));
                     let scroll = input.visual_scroll(width.max(1));
                     let value: String = input.value().chars().skip(scroll).collect();
-                    let end = put(buf, x, y, right, &value, theme.focus);
+                    let end = put_raw(buf, x, y, right, &value, theme.focus);
                     let caret = x + (input.visual_cursor().saturating_sub(scroll)) as u16;
                     if caret < right {
                         let cell = &mut buf[(caret, y)];
@@ -196,7 +205,7 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     tree.binding = ResourceRef::Workspace {
         workspace: p.identity.workspace.clone(),
     };
-    tree.state.description = p.banner().map(str::to_owned);
+    tree.state.description = p.banner().map(visible);
     let mut items = vec![];
     let mut y = area.y + p.header() as u16;
     let mut last_entry: Option<String> = None;
@@ -220,8 +229,8 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 // A node has no field for the kind of file, so a link says so
                 // in its name; a folder is told by `expanded`.
                 let label = match kind {
-                    FileKind::Symlink => format!("{name} (symlink)"),
-                    FileKind::File | FileKind::Directory => name.clone(),
+                    FileKind::Symlink => format!("{} (symlink)", visible(name)),
+                    FileKind::File | FileKind::Directory => visible(name),
                 };
                 let mut n = Node::new(&format!("f:{path}"), Role::TreeItem, &label, rect);
                 n.level = Some(level(*depth));
@@ -232,22 +241,22 @@ pub(super) fn semantics(p: &FilesPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 n.state.expanded = *expanded;
                 n.state.busy = matches!(note, Some(NoteState::Pending(_)));
                 // Only what a person can act on: why a write was refused.
-                n.state.description = note.as_ref().map(NoteState::label);
+                n.state.description = note.as_ref().map(|n| visible(&n.label()));
                 n
             }
             Row::Status { text, depth, .. } => {
                 let id = format!("s:{}:{y}", last_entry.as_deref().unwrap_or(""));
-                let mut n = Node::new(&id, Role::Status, text, rect);
+                let mut n = Node::new(&id, Role::Status, &visible(text), rect);
                 n.level = Some(level(*depth));
                 n
             }
-            Row::Confirm { text, .. } => Node::new("confirm", Role::Alert, text, rect),
+            Row::Confirm { text, .. } => Node::new("confirm", Role::Alert, &visible(text), rect),
             Row::Edit { rename, .. } => {
                 let name = if *rename { "Rename" } else { "New name" };
                 let mut n = Node::new("edit", Role::TextBox, name, rect);
                 n.state.focused = cx.focused;
                 if let Mode::Edit(edit) = &p.mode {
-                    n.state.description = edit.error.clone();
+                    n.state.description = edit.error.as_deref().map(visible);
                 }
                 n
             }

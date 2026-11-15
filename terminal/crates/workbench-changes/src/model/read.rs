@@ -13,6 +13,7 @@ use theorem_workbench_core::effect::ScmRef;
 
 use crate::intent::Side;
 use crate::status::Section;
+use crate::text::Withheld;
 
 use super::{
     ActionKind, Changes, Confirm, Focus, Intent, IntentId, IntentKind, LogState, Mode, Pending,
@@ -73,7 +74,7 @@ impl ReadKind {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ReadBody {
     Loading,
     Blame(Vec<BlameHunk>),
@@ -89,6 +90,25 @@ pub enum ReadBody {
     Problem(Problem),
     /// The answer was for a repository state that has been left; nothing was kept.
     Outdated,
+}
+
+// What a file, a blame or a conflict holds is content: `Debug` says how much.
+impl std::fmt::Debug for ReadBody {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Loading => f.write_str("Loading"),
+            Self::Blame(hunks) => write!(f, "Blame({} hunks withheld)", hunks.len()),
+            Self::Text { exists, text } => f
+                .debug_struct("Text")
+                .field("exists", exists)
+                .field("text", &Withheld(text.len()))
+                .finish(),
+            Self::History(entries) => write!(f, "History({} commits withheld)", entries.len()),
+            Self::Conflict(_) => f.write_str("Conflict(sides withheld)"),
+            Self::Problem(problem) => f.debug_tuple("Problem").field(problem).finish(),
+            Self::Outdated => f.write_str("Outdated"),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

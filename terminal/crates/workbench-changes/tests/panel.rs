@@ -1475,3 +1475,92 @@ fn semantics_with_a_tiny_area_is_still_valid() {
             .unwrap();
     }
 }
+
+// ---- AC-53: nothing printed of a request, a diff, a file or a draft holds its content --
+
+const SECRET: &str = "sk_live_51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ";
+
+#[test]
+fn debug_and_display_of_a_request_a_diff_a_read_a_log_and_a_draft_never_hold_the_content() {
+    let mut model = mixed();
+    model.set_subject(format!("rotate {SECRET}"));
+    model.set_body(format!("the key was {SECRET}"));
+    let commit = model.commit().expect("a commit");
+    assert!(
+        matches!(commit.kind, IntentKind::Commit { .. }),
+        "{commit:?}"
+    );
+    let shown = format!("{commit:?} {:?}", commit.kind);
+    assert!(shown.contains("commit"), "still says what it is: {shown}");
+    assert!(!shown.contains(SECRET), "{shown}");
+
+    let diff_text = format!("@@ -1 +1 @@ fn {SECRET}\n-old\n+API_KEY={SECRET}\n");
+    model.select(&key(Section::Staged, "src/main.rs"), false);
+    let open = model.toggle_diff().unwrap().expect("a diff request");
+    accept(
+        &mut model,
+        &open,
+        diff_answer("src/main.rs", true, &diff_text, 1),
+    );
+    let hunks: Vec<Hunk> = model
+        .diff(&key(Section::Staged, "src/main.rs"))
+        .expect("the diff is open")
+        .hunks()
+        .to_vec();
+    assert_eq!(
+        hunks[0].lines[1].text,
+        format!("API_KEY={SECRET}"),
+        "the lines are there"
+    );
+    for dump in [
+        format!("{hunks:?}"),
+        format!("{model:?}"),
+        format!("{:?}", model.view_state()),
+    ] {
+        assert!(!dump.contains(SECRET), "{dump}");
+        assert!(!dump.contains("API_KEY"), "{dump}");
+    }
+    assert!(
+        format!("{model:?}").contains("generation"),
+        "it still says where it stands"
+    );
+
+    let bad = format!("@@ -1 +1 @@\n?{SECRET}\n");
+    let error = parse(&bad).unwrap_err();
+    for dump in [format!("{error:?}"), error.to_string()] {
+        assert!(!dump.contains(SECRET), "{dump}");
+    }
+
+    let text = ReadBody::Text {
+        exists: true,
+        text: format!("TOKEN={SECRET}\n"),
+    };
+    assert!(!format!("{text:?}").contains(SECRET));
+    let log = LogState::Ready(vec![theorem_workbench_core::completion::LogEntry {
+        commit: "a1b2c3d".into(),
+        author: "Ada".into(),
+        email: None,
+        timestamp: "0".into(),
+        subject: format!("rotate {SECRET}"),
+        body: Some(SECRET.into()),
+    }]);
+    assert!(!format!("{log:?}").contains(SECRET));
+}
+
+#[test]
+fn a_diff_the_panel_cannot_read_says_so_without_the_line_that_failed() {
+    let mut model = mixed();
+    model.select(&key(Section::Staged, "src/main.rs"), false);
+    let open = model.toggle_diff().unwrap().expect("a diff request");
+    let bad = format!("@@ -1 +1 @@\n?API_KEY={SECRET}\n");
+    accept(&mut model, &open, diff_answer("src/main.rs", true, &bad, 1));
+    let view = model.diff(&key(Section::Staged, "src/main.rs")).unwrap();
+    let DiffState::Unreadable(why) = &view.state else {
+        panic!("{:?}", view.state)
+    };
+    assert!(why.contains("malformed"), "{why}");
+    assert!(!why.contains(SECRET), "{why}");
+    let screen = render(&model, 100, 30).join("\n");
+    assert!(screen.contains("malformed"), "{screen}");
+    assert!(!screen.contains(SECRET), "{screen}");
+}

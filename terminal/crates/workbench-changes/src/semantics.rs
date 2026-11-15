@@ -14,6 +14,7 @@ use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role, Semantic
 use crate::layout::{Row, banners, regions, rows};
 use crate::model::{Changes, Confirm, Focus, LogState, Mode, PanelState, ReadBody};
 use crate::status::{LISTED, RowKey, Section, letter, shown};
+use crate::text::visible;
 
 /// The actions the panel registers, by id. Each is a registry action the core resolves
 /// for a person or the agent and delivers to the panel as `PanelMsg::Action`; see
@@ -142,8 +143,8 @@ impl Changes {
                 && let Some(confirm) = &self.confirm
             {
                 node.role = Role::Dialog;
-                node.name = confirm.text().0;
-                node.state.description = Some(confirm.text().1);
+                node.name = visible(&confirm.text().0);
+                node.state.description = Some(visible(&confirm.text().1));
                 node.actions = vec![act(actions::CONFIRM, None)];
                 if matches!(confirm, Confirm::Restore { .. }) {
                     node.state.description = Some(confirm.text().1);
@@ -211,11 +212,17 @@ impl Changes {
                 }
             });
         } else if let PanelState::Refused { code, reason } = self.state() {
-            list.state.description = Some(format!("{code}: {reason}"));
-        } else if let PanelState::Failed { reason } | PanelState::Uncertain { reason } =
-            self.state()
-        {
-            list.state.description = Some(reason);
+            list.state.description = Some(visible(&format!(
+                "Source control is unavailable ({code}): {reason}"
+            )));
+        } else if let PanelState::Failed { reason } = self.state() {
+            list.state.description = Some(visible(&format!(
+                "The repository could not be read: {reason}"
+            )));
+        } else if let PanelState::Uncertain { reason } = self.state() {
+            list.state.description = Some(visible(&format!(
+                "Unknown result: the repository was not read: {reason}"
+            )));
         } else if self.state() == PanelState::Empty {
             list.state.description = Some("No changes".into());
         } else if self.state() == PanelState::Loading {
@@ -291,6 +298,14 @@ impl Changes {
                         self.cursor.as_ref() == Some(key) && self.focus == Focus::Files;
                     node.state.expanded = Some(*expanded);
                     node.actions = self.file_actions(key, block.clone());
+                    if let Some(doc) = self.unsaved(&key.path) {
+                        node.state.description = Some(match doc.saved_revision {
+                            Some(r) => format!(
+                                "Unsaved draft in the editor, not included when staged or committed; the saved file is revision {r}"
+                            ),
+                            None => "Unsaved draft in the editor, not included when staged or committed; the saved file is used".to_owned(),
+                        });
+                    }
                     if let Some(view) = self.diffs.get(key) {
                         let mut diff = Node::new(
                             &format!("{id}/diff/{:?}/{}", key.section, key.path),
@@ -428,18 +443,18 @@ impl Changes {
                     let mut node = Node::new(
                         &format!("{id}/log/{}", entry.commit),
                         Role::TreeItem,
-                        &format!(
+                        &visible(&format!(
                             "{} {}",
                             entry.commit.chars().take(7).collect::<String>(),
                             entry.subject
-                        ),
+                        )),
                         Rect::new(r.x, r.y + 1 + at as u16, r.width, 1),
                     );
                     node.level = Some(1);
                     node.pos_in_set = Some(at as u16 + 1);
                     node.set_size = Some(size as u16);
                     node.state.selected = self.focus == Focus::Log && at == self.log_cursor;
-                    node.state.description = Some(format!("by {}", entry.author));
+                    node.state.description = Some(visible(&format!("by {}", entry.author)));
                     node.actions = vec![act(actions::OPEN_COMMIT, None)];
                     log.children.push(node.id.clone());
                     nodes.push(node);

@@ -54,7 +54,7 @@ impl Side {
 
 /// The requests the Changes panel makes. One for each call the SCM owner (`scm.ts`)
 /// answers that this panel uses.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum IntentKind {
     Status,
@@ -200,6 +200,19 @@ impl ActionKind {
                 | Self::ShowRevision
                 | Self::Conflict
         )
+    }
+}
+
+// The commit message is the person's words. `Debug` shows the request as it goes on the
+// wire, with the message counted, not printed.
+impl std::fmt::Debug for IntentKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut value = serde_json::to_value(self).map_err(|_| std::fmt::Error)?;
+        if let Some(message) = value.get_mut("message") {
+            let size = message.as_str().map_or(0, str::len);
+            *message = serde_json::Value::String(format!("<{size} bytes withheld>"));
+        }
+        write!(f, "IntentKind{value}")
     }
 }
 

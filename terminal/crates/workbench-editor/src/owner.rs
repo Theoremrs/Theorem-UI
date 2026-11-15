@@ -45,8 +45,18 @@ pub fn revision_number(r: &CoreRevision) -> Option<u64> {
     }
 }
 
+/// A length where a text would be: what a `Debug` of anything that holds the
+/// document's text prints in its place, so a log line never carries it.
+pub(crate) struct Withheld(pub usize);
+
+impl std::fmt::Debug for Withheld {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "<{} bytes withheld>", self.0)
+    }
+}
+
 /// Text the owner refused, held in the session until the person chooses.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Held {
     pub reason: String,
     /// What the owner has now where the person's edit was. `None` when the
@@ -55,10 +65,20 @@ pub struct Held {
     pub conflict: bool,
 }
 
+impl std::fmt::Debug for Held {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Held")
+            .field("reason", &self.reason)
+            .field("theirs", &self.theirs)
+            .field("conflict", &self.conflict)
+            .finish()
+    }
+}
+
 /// Edits the owner got back from this device's checkpoint after a reload. It
 /// sends none of them on its own and refuses new edits until each is settled,
 /// so nothing goes out until the person chooses.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Restored {
     /// The owner's operation ids, each settled once the person has chosen.
     pub ops: Vec<String>,
@@ -69,6 +89,17 @@ pub struct Restored {
     /// What the edits insert, so the person can copy it.
     pub text: String,
     pub reason: Option<String>,
+}
+
+impl std::fmt::Debug for Restored {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Restored")
+            .field("ops", &self.ops)
+            .field("moved_from", &self.moved_from)
+            .field("text", &Withheld(self.text.len()))
+            .field("reason", &self.reason)
+            .finish()
+    }
 }
 
 /// The file on disk changed under the document.
@@ -136,7 +167,6 @@ impl Step {
 }
 
 /// What is owed to the owner now.
-#[derive(Debug)]
 pub enum Owed {
     /// Send this edit, against `base`. It is marked in flight.
     Edit {
@@ -148,7 +178,21 @@ pub enum Owed {
     Save { revision: u64 },
 }
 
-#[derive(Debug, Default)]
+impl std::fmt::Debug for Owed {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Edit { op, base, body } => f
+                .debug_struct("Edit")
+                .field("op", op)
+                .field("base", base)
+                .field("changes", &body.edits.len())
+                .finish(),
+            Self::Save { revision } => f.debug_struct("Save").field("revision", revision).finish(),
+        }
+    }
+}
+
+#[derive(Default)]
 pub struct OwnerSync {
     /// The revision the owner says the checkout holds. `None`: unknown, which
     /// counts as modified.
@@ -170,6 +214,27 @@ pub struct OwnerSync {
     /// Settles of recovered operations not yet answered. The owner refuses
     /// edits until each is, so none goes out meanwhile.
     pub settling: usize,
+}
+
+impl std::fmt::Debug for OwnerSync {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OwnerSync")
+            .field("saved", &self.saved)
+            .field("read_only", &self.read_only)
+            .field("inflight", &self.inflight)
+            .field("unknown", &self.unknown)
+            .field("desync", &self.desync)
+            .field("held", &self.held)
+            .field("disk", &self.disk)
+            .field("save", &self.save)
+            .field(
+                "recoverable",
+                &self.recoverable.as_ref().map(|t| Withheld(t.len())),
+            )
+            .field("restored", &self.restored)
+            .field("settling", &self.settling)
+            .finish()
+    }
 }
 
 const BEHIND: &str = "waiting for the owner's resync.";

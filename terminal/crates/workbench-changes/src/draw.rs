@@ -295,6 +295,18 @@ impl Changes {
                 let hint_w = width(hint);
                 let body_x = 5usize;
                 let mut room = w.saturating_sub(body_x);
+                // A file the editor has unsaved changes to says so after its name, in
+                // words; a narrow row keeps the short form.
+                let draft = self.unsaved(&key.path).map(|_| {
+                    if room >= 40 {
+                        " [unsaved draft]"
+                    } else {
+                        " [draft]"
+                    }
+                });
+                let draft_w = draft.map_or(0, width);
+                let tag_w = if room > draft_w + 8 { draft_w } else { 0 };
+                room -= tag_w;
                 let hint_at = if hint_w > 0 && room > hint_w + 12 {
                     room -= hint_w + 1;
                     Some(w - hint_w)
@@ -319,7 +331,19 @@ impl Changes {
                 };
                 let used = put(buf, x, rect.y, room, &name, name_style);
                 x += used as u16;
-                let left = room.saturating_sub(used);
+                let mut left = (room + tag_w).saturating_sub(used);
+                if let (Some(tag), true) = (draft, tag_w > 0) {
+                    let said = put(
+                        buf,
+                        x,
+                        rect.y,
+                        tag_w,
+                        tag,
+                        on_row(row_style, styles.warning, filled),
+                    );
+                    x += said as u16;
+                    left = left.saturating_sub(said);
+                }
                 if !folder.is_empty() && left > 4 {
                     let folder = elide_middle(&printable(&folder), left - 2);
                     put(

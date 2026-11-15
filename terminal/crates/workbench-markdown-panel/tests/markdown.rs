@@ -2581,3 +2581,256 @@ fn takes_chord_leaves_a_plain_option_character_to_be_typed() {
         assert!(!rig.m.takes_chord(&option(c)), "{c}");
     }
 }
+
+// ---- AC-51: unsafe content and readable errors --------------------------------
+
+/// A character a terminal or a reader would act on or hide.
+fn unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{ad}' | '\u{61c}' | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
+                | '\u{2060}'..='\u{206f}' | '\u{feff}'
+        )
+}
+
+/// Every string the panel puts in the semantic tree for this panel.
+fn semantic_strings(rig: &Rig) -> Vec<String> {
+    let prefix = format!("{}/", rig.id.as_str());
+    let tree = semantics(&rig.m);
+    let mut out = vec![];
+    for n in tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().starts_with(&prefix))
+    {
+        out.push(n.name.clone());
+        out.extend(n.state.description.clone());
+        for a in &n.actions {
+            out.extend(a.reason.clone());
+        }
+    }
+    out
+}
+
+fn assert_nothing_unsafe(rig: &Rig, what: &str) {
+    let screen = rig.screen();
+    assert!(
+        !screen.chars().any(|c| unsafe_char(c) && c != '\n'),
+        "{what}: a cell holds an unsafe character in\n{screen:?}"
+    );
+    for s in semantic_strings(rig) {
+        assert!(
+            !s.chars().any(unsafe_char),
+            "{what}: a semantic string holds an unsafe character: {s:?}"
+        );
+    }
+}
+
+const HOSTILE_LINKS: &str = "# Links\n\n\
+    [one](javascript:alert(1)) \
+    [two](data:text/html;base64,PHNjcmlwdD4=) \
+    [https://good.example/](https://evil.example/\u{202e}gnp.exe) \
+    [four](https://a.example/%1b%5b31m) \
+    [five](vbscript:x) [six](file:///etc/passwd) [seven](//evil.example/x)\n";
+
+#[test]
+fn going_through_every_hostile_link_and_opening_each_sends_nothing_and_opens_nothing() {
+    let mut rig = Rig::start();
+    let mut all = rig.answer_open(HOSTILE_LINKS, 1);
+    all.extend(rig.alt('4'));
+    let panels = rig.m.panel_ids().count();
+    for _ in 0..8 {
+        all.extend(rig.key(Key::Tab));
+        all.extend(rig.mods(Key::Enter, Mods::ALT));
+        all.extend(rig.tick());
+        assert_nothing_unsafe(&rig, "a hostile link");
+    }
+    assert!(all.is_empty(), "nothing was sent: {all:#?}");
+    assert_eq!(rig.m.panel_ids().count(), panels, "nothing was opened");
+}
+
+#[test]
+fn the_strip_shows_the_real_target_of_a_link_whose_text_says_another_address() {
+    let mut rig = Rig::opened(HOSTILE_LINKS);
+    rig.alt('4');
+    let mut targets = vec![];
+    for _ in 0..8 {
+        rig.key(Key::Tab);
+        targets.push(rig.node("strip").name);
+    }
+    let shown = targets.join("\n");
+    assert!(shown.contains("javascript:alert(1)"), "{shown}");
+    assert!(
+        shown.contains("data:text/html;base64,PHNjcmlwdD4="),
+        "{shown}"
+    );
+    assert!(
+        shown.contains("https://evil.example/\\u{202e}gnp.exe"),
+        "the target, not the text, with the override spelled out: {shown}"
+    );
+    assert!(!shown.contains("https://good.example/ ("), "{shown}");
+    assert!(shown.contains("file:///etc/passwd"), "{shown}");
+    assert!(
+        shown.matches("is not opened or fetched").count() >= 5,
+        "every remote target says so: {shown}"
+    );
+}
+
+#[test]
+fn opening_a_remote_link_says_nothing_was_opened_and_spells_out_hidden_characters() {
+    let mut rig = Rig::opened("[x](https://evil.example/\u{202e}gnp.exe)\n");
+    rig.alt('4');
+    rig.key(Key::Tab);
+    let fx = rig.mods(Key::Enter, Mods::ALT);
+    assert!(fx.is_empty(), "{fx:#?}");
+    let note = rig.node("status").state.description.unwrap_or_default();
+    assert!(
+        note.contains("nothing is opened or fetched"),
+        "the notice is in the status node: {note}"
+    );
+    assert!(note.contains("\\u{202e}"), "{note}");
+    assert_nothing_unsafe(&rig, "the open notice");
+}
+
+#[test]
+fn text_imitating_an_approval_prompt_makes_no_button_alert_or_dialog() {
+    let fake = "# Approval required\n\n**Allow this agent to run `rm -rf /`?**\n\n\
+        [Allow] [Deny]  Press Enter to approve.\n\n> Notice: the workspace was saved\n";
+    let rig = Rig::opened(fake);
+    let tree = semantics(&rig.m);
+    let prefix = format!("{}/", rig.id.as_str());
+    let roles: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().starts_with(&prefix))
+        .map(|n| format!("{:?}", n.role))
+        .collect();
+    for role in ["Button", "Alert", "Dialog"] {
+        assert!(
+            !roles.iter().any(|r| r == role),
+            "document text made a {role}: {roles:?}"
+        );
+    }
+    let mut rig = rig;
+    rig.alt('4');
+    let fx = rig.key(Key::Enter);
+    assert!(fx.is_empty(), "Enter on the text sent {fx:#?}");
+}
+
+#[test]
+fn hostile_text_in_a_document_puts_no_unsafe_character_in_a_cell_or_a_semantic_string() {
+    let text = "# Head\u{202e}ing\n\nbody \u{1b}[31mred\u{7} \u{202d}rtl\u{2066}\n\n\
+        `code\u{1b}]52;c;ZXZpbA==\u{7}`\n\n```\nline\u{1b}[2J\u{9b}x\n```\n";
+    let mut rig = Rig::opened(text);
+    for mode in ['4', '3', '1', '2'] {
+        rig.alt(mode);
+        assert_nothing_unsafe(&rig, &format!("mode {mode}"));
+    }
+}
+
+#[test]
+fn a_refused_failed_or_uncertain_open_reads_as_text_in_the_panel_and_its_node() {
+    let cases = [
+        (
+            Outcome::Refused {
+                code: "unreadable".into(),
+                reason: "you may not read this file".into(),
+            },
+            [
+                "refused to open",
+                "you may not read this file",
+                "unreadable",
+            ],
+        ),
+        (
+            Outcome::Failed {
+                reason: "the disk went away".into(),
+            },
+            ["could not be opened", "the disk went away", ""],
+        ),
+        (
+            Outcome::Uncertain {
+                reason: "the owner stopped answering".into(),
+            },
+            ["Unknown", "the owner stopped answering", ""],
+        ),
+    ];
+    for (outcome, words) in cases {
+        let mut rig = Rig::start();
+        let open = rig.open.take().unwrap();
+        rig.answer(&open, outcome, None);
+        rig.tree_ok();
+        let screen = rig.screen();
+        let name = rig.node("state").name;
+        for w in words {
+            assert!(screen.contains(w), "{w:?} in the drawn text:\n{screen}");
+            assert!(name.contains(w), "{w:?} in the node: {name}");
+        }
+        for debug in ["Refused {", "Failed {", "Uncertain {", "reason:"] {
+            assert!(!screen.contains(debug), "{debug} in\n{screen}");
+            assert!(!name.contains(debug), "{debug} in {name}");
+        }
+        assert!(
+            rig.screen().contains(PATH),
+            "scoped to the file it is about"
+        );
+    }
+}
+
+#[test]
+fn a_hostile_reason_from_the_owner_is_shown_without_its_escapes() {
+    let mut rig = Rig::start();
+    let open = rig.open.take().unwrap();
+    rig.answer(
+        &open,
+        Outcome::Refused {
+            code: "x\u{1b}[31m".into(),
+            reason: "Approve? \u{202e}yes\nAllow\u{1b}[2J".into(),
+        },
+        None,
+    );
+    assert_nothing_unsafe(&rig, "an owner's reason");
+    assert!(rig.node("state").name.contains("Approve?"));
+}
+
+#[test]
+fn an_unavailable_document_is_told_apart_from_an_empty_one_in_the_text_and_the_node() {
+    let empty = Rig::opened("");
+    let mut gone = Rig::start();
+    let open = gone.open.take().unwrap();
+    gone.answer(
+        &open,
+        Outcome::Failed {
+            reason: "the disk went away".into(),
+        },
+        None,
+    );
+    empty.tree_ok();
+    gone.tree_ok();
+
+    assert!(
+        !empty.has_node("state"),
+        "an empty document is a document, with no problem node"
+    );
+    assert_eq!(
+        empty
+            .node("markdown")
+            .state
+            .description
+            .as_deref()
+            .map(|d| d.contains("saved")),
+        Some(true)
+    );
+    assert!(!empty.screen().contains("the disk went away"));
+    assert!(!empty.screen().contains("could not be opened"));
+
+    assert!(
+        !gone.has_node("markdown"),
+        "no document node for an unavailable file"
+    );
+    let node = gone.node("state");
+    assert_eq!(format!("{:?}", node.role), "Alert");
+    assert!(node.name.contains("the disk went away"), "{}", node.name);
+    assert!(gone.screen().contains("the disk went away"));
+}

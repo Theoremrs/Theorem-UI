@@ -10,7 +10,9 @@ use ratatui::layout::Rect;
 use serde_json::Value;
 use std::cell::{Ref, RefCell};
 use std::rc::Rc;
-use theorem_workbench_changes::{ChangesPanel, actions, descriptors, extend_registry};
+use theorem_workbench_changes::{
+    ChangesPanel, OpenDocument, actions, descriptors, extend_registry,
+};
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
     BlameHunk, BranchInfo, Completion, CompletionPayload, ConflictSides, LogEntry, Outcome,
@@ -2476,4 +2478,621 @@ fn a_text_conflict_still_offers_merging_by_hand_and_draws_its_lines() {
             .iter()
             .any(|a| a.id.as_str() == actions::EDIT_CONFLICT)
     );
+}
+
+// ---- AC-20: an unsaved draft in the editor and the Git index -----------------------
+
+const SECRET: &str = "sk_live_51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ";
+
+fn open_doc(path: &str, saved: Option<u64>, unsaved: bool) -> OpenDocument {
+    OpenDocument {
+        path: path.into(),
+        saved_revision: saved,
+        unsaved,
+    }
+}
+
+impl Rig {
+    fn set_documents(&mut self, docs: Vec<OpenDocument>) {
+        self.handle.borrow_mut().set_documents(docs);
+    }
+
+    /// Every name and description the panel's semantic nodes carry.
+    fn node_words(&self) -> Vec<String> {
+        let tree = theorem_workbench_core::tree::semantics(&self.m);
+        let mut out = vec![];
+        for n in tree
+            .nodes
+            .iter()
+            .filter(|n| n.id.as_str().contains("changes"))
+        {
+            out.push(n.name.clone());
+            out.extend(n.state.description.clone());
+        }
+        out
+    }
+
+    /// The panel's banner lines, as nodes say them.
+    fn banners(&self) -> Vec<String> {
+        let tree = theorem_workbench_core::tree::semantics(&self.m);
+        tree.nodes
+            .iter()
+            .filter(|n| n.id.as_str().contains("/banner/"))
+            .map(|n| n.name.clone())
+            .collect()
+    }
+
+    fn file_node(&self, section: &str, path: &str) -> Node {
+        let tree = theorem_workbench_core::tree::semantics(&self.m);
+        let id = format!("/file/{section}/{path}");
+        tree.nodes
+            .iter()
+            .find(|n| n.id.as_str().ends_with(&id))
+            .unwrap_or_else(|| panic!("no node for {id}"))
+            .clone()
+    }
+
+    fn row_of(&self, needle: &str) -> String {
+        self.text(100, 30)
+            .into_iter()
+            .find(|l| l.contains(needle))
+            .unwrap_or_else(|| panic!("{needle} is not on\n{}", self.screen()))
+    }
+}
+
+/// Stage README.md, the second row, as a person does: arrow down, then the key.
+fn stage_readme(rig: &mut Rig) -> Effect {
+    rig.key(Key::Down);
+    let fx = rig.ch('s');
+    once(&fx, "stage");
+    fx.into_iter().next().unwrap()
+}
+
+#[test]
+fn a_file_with_an_unsaved_draft_is_marked_in_words_and_in_its_node_apart_from_its_git_state() {
+    let mut rig = loaded();
+    rig.set_documents(vec![
+        open_doc("README.md", Some(7), true),
+        open_doc("notes.txt", Some(3), false),
+    ]);
+    let marked = rig.row_of("README.md");
+    assert!(marked.contains("unsaved draft"), "{marked}");
+    assert!(
+        marked.contains('M'),
+        "its working-tree state is still told: {marked}"
+    );
+    for other in ["notes.txt", "main.rs", "new.txt"] {
+        assert!(
+            !rig.row_of(other).contains("draft"),
+            "{other}: {}",
+            rig.screen()
+        );
+    }
+    let node = rig.file_node("Unstaged", "README.md");
+    let said = node.state.description.expect("the node says it");
+    assert!(
+        said.contains("Unsaved draft") && said.contains("not included"),
+        "{said}"
+    );
+    assert!(said.contains("revision 7"), "{said}");
+    assert!(node.name.starts_with('M'), "{}", node.name);
+    for clean in [("Unstaged", "notes.txt"), ("Staged", "src/main.rs")] {
+        assert_eq!(rig.file_node(clean.0, clean.1).state.description, None);
+    }
+    // A narrow pane keeps a short word.
+    assert!(
+        rig.text(30, 30)
+            .iter()
+            .any(|l| l.contains("README") && l.contains("draft")),
+        "{}",
+        rig.text(30, 30).join("\n")
+    );
+    assert_valid(&rig);
+}
+
+#[test]
+fn staging_a_file_with_a_draft_sends_the_saved_files_path_and_says_the_draft_is_not_included() {
+    let mut rig = loaded();
+    rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+    let effect = stage_readme(&mut rig);
+    let EffectBody::ScmStage(paths) = &effect.body else {
+        panic!("{effect:?}")
+    };
+    assert_eq!(paths.paths, vec!["README.md".to_owned()]);
+    assert_eq!(effect.resource, repo_resource("w"));
+    assert_eq!(effect.generation, rig.panel().binding().unwrap().generation);
+    // At the action, before any answer, the panel says what it will and will not do.
+    let said = rig.banners().join("\n");
+    assert!(
+        said.contains("Staging 1 file: README.md (saved revision 7)"),
+        "{said}"
+    );
+    assert!(
+        said.contains("Not included: the unsaved draft of README.md"),
+        "{said}"
+    );
+    assert!(
+        rig.screen().contains("Not included: the unsaved draft"),
+        "{}",
+        rig.screen()
+    );
+    assert!(
+        !said.contains("Staged"),
+        "nothing reads as done before the owner answers: {said}"
+    );
+}
+
+#[test]
+fn the_receipt_after_a_stage_names_the_file_the_saved_revision_and_the_index_it_made() {
+    let mut rig = loaded();
+    rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+    let effect = stage_readme(&mut rig);
+    rig.accept(&effect, CompletionPayload::ScmState(common::repo(2)));
+    let said = rig.banners().join("\n");
+    assert!(
+        said.contains("Staged 1 file: README.md (saved revision 7). Index generation 2."),
+        "{said}"
+    );
+    assert!(
+        said.contains("Not included: the unsaved draft of README.md"),
+        "{said}"
+    );
+    assert!(!said.contains("Staging"), "{said}");
+    assert_valid(&rig);
+}
+
+#[test]
+fn after_an_explicit_save_the_mark_is_gone_and_the_same_action_carries_the_new_revision() {
+    let mut rig = loaded();
+    rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+    assert!(rig.row_of("README.md").contains("draft"));
+    // The editor saved: revision 8 is on disk and the draft is gone.
+    rig.set_documents(vec![open_doc("README.md", Some(8), false)]);
+    assert!(
+        !rig.row_of("README.md").contains("draft"),
+        "{}",
+        rig.screen()
+    );
+    assert_eq!(
+        rig.file_node("Unstaged", "README.md").state.description,
+        None
+    );
+    let effect = stage_readme(&mut rig);
+    let EffectBody::ScmStage(paths) = &effect.body else {
+        panic!("{effect:?}")
+    };
+    assert_eq!(paths.paths, vec!["README.md".to_owned()]);
+    let said = rig.banners().join("\n");
+    assert!(said.contains("README.md (saved revision 8)"), "{said}");
+    assert!(!said.contains("Not included"), "{said}");
+    assert!(!said.contains("revision 7"), "{said}");
+}
+
+#[test]
+fn a_commit_names_the_staged_files_and_the_head_it_made_and_the_draft_that_is_not_in_it() {
+    let mut rig = loaded();
+    rig.set_documents(vec![open_doc("src/main.rs", Some(4), true)]);
+    rig.ch('c');
+    rig.typed("say hello");
+    let fx = rig.mods(Key::Enter, Mods::CTRL);
+    once(&fx, "commit");
+    let EffectBody::ScmCommit(c) = &fx[0].body else {
+        panic!("{fx:?}")
+    };
+    assert_eq!(
+        c.message, "say hello",
+        "the message only, never a file's text"
+    );
+    let said = rig.banners().join("\n");
+    assert!(
+        said.contains("Committing 1 staged file: src/main.rs (saved revision 4)"),
+        "{said}"
+    );
+    assert!(
+        said.contains("Not included: the unsaved draft of src/main.rs"),
+        "{said}"
+    );
+    let mut moved = common::repo(2);
+    moved.head = Some("fedcba98765".into());
+    rig.accept(&fx[0], CompletionPayload::ScmState(moved));
+    let said = rig.banners().join("\n");
+    assert!(
+        said.contains(
+            "Committed 1 staged file: src/main.rs (saved revision 4). Head is now fedcba9876."
+        ),
+        "{said}"
+    );
+    assert!(said.contains("Not included"), "{said}");
+}
+
+#[test]
+fn a_commit_that_stages_everything_first_names_what_it_staged_and_that_a_draft_is_left_out() {
+    let mut rig = loaded();
+    let fx = rig.ch('u');
+    let next = rig.accept(&fx[0], CompletionPayload::ScmState(common::repo(2)));
+    let more = rig.accept(
+        &next[0],
+        common::status(
+            2,
+            vec![
+                change("src/main.rs", " ", "M"),
+                change("README.md", " ", "M"),
+            ],
+        ),
+    );
+    for e in more {
+        rig.accept(&e, log_answer(&["x"]));
+    }
+    rig.set_documents(vec![open_doc("README.md", Some(9), true)]);
+    rig.ch('c');
+    rig.typed("all of it");
+    let fx = rig.mods(Key::Enter, Mods::CTRL);
+    once(&fx, "stage");
+    let next = rig.accept(&fx[0], CompletionPayload::ScmState(common::repo(3)));
+    once(&next, "commit");
+    let said = rig.banners().join("\n");
+    assert!(
+        said.contains("Staged 2 files: src/main.rs, README.md"),
+        "{said}"
+    );
+    assert!(
+        said.contains("Committing 2 staged files: src/main.rs, README.md (saved revision 9)"),
+        "{said}"
+    );
+    assert!(
+        said.contains("Not included: the unsaved draft of README.md"),
+        "{said}"
+    );
+}
+
+#[test]
+fn a_refused_or_uncertain_stage_leaves_nothing_reading_as_staged_and_the_draft_marked() {
+    for outcome in [
+        Outcome::Refused {
+            code: "locked".into(),
+            reason: "the index is locked".into(),
+        },
+        Outcome::Uncertain {
+            reason: "the owner did not answer".into(),
+        },
+        Outcome::Failed {
+            reason: "disk full".into(),
+        },
+    ] {
+        let mut rig = loaded();
+        rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+        let effect = stage_readme(&mut rig);
+        rig.answer(&effect, outcome.clone(), None);
+        let said = rig.banners().join("\n");
+        assert!(!said.contains("Staged"), "{outcome:?}: {said}");
+        assert!(!said.contains("Staging"), "{outcome:?}: {said}");
+        assert!(rig.model().receipts().is_empty(), "{outcome:?}");
+        let reason = match &outcome {
+            Outcome::Refused { reason, .. }
+            | Outcome::Uncertain { reason }
+            | Outcome::Failed { reason } => reason,
+            Outcome::Accepted => unreachable!(),
+        };
+        assert!(said.contains(reason.as_str()), "{outcome:?}: {said}");
+        if matches!(outcome, Outcome::Uncertain { .. }) {
+            assert!(said.contains("unknown result"), "{said}");
+            assert!(
+                said.contains("Refresh and check before trying again"),
+                "{said}"
+            );
+        }
+        assert!(
+            rig.row_of("README.md").contains("draft"),
+            "the draft stays marked: {}",
+            rig.screen()
+        );
+    }
+}
+
+// ---- AC-53: receipts and redaction, the Changes half ------------------------------
+
+#[test]
+fn an_outcome_carries_identity_and_never_a_secret_from_the_diff_or_the_message() {
+    for outcome in [
+        Outcome::Accepted,
+        Outcome::Refused {
+            code: "hook_failed".into(),
+            reason: "the pre-commit hook said no".into(),
+        },
+        Outcome::Uncertain {
+            reason: "the owner did not answer".into(),
+        },
+    ] {
+        let mut rig = loaded();
+        rig.set_documents(vec![open_doc("src/main.rs", Some(4), true)]);
+        let diff = format!("@@ -1 +1 @@\n-old\n+API_KEY={SECRET}\n");
+        let open = rig.key(Key::Right);
+        rig.accept(&open[0], diff_answer("src/main.rs", true, &diff, 1));
+        assert!(
+            rig.screen().contains(SECRET),
+            "the diff itself shows the change: {}",
+            rig.screen()
+        );
+        rig.ch('c');
+        rig.typed(&format!("rotate {SECRET}"));
+        let fx = rig.mods(Key::Enter, Mods::CTRL);
+        once(&fx, "commit");
+        let payload = matches!(outcome, Outcome::Accepted)
+            .then(|| CompletionPayload::ScmState(common::repo(2)));
+        rig.answer(&fx[0], outcome.clone(), payload);
+
+        let said = rig.banners().join("\n");
+        assert!(!said.contains(SECRET), "{outcome:?}: {said}");
+        assert!(!said.contains("API_KEY"), "{outcome:?}: {said}");
+        match &outcome {
+            Outcome::Accepted => {
+                assert!(
+                    said.contains("Committed 1 staged file: src/main.rs"),
+                    "{said}"
+                )
+            }
+            Outcome::Refused { .. } => {
+                assert!(said.contains("refused (hook_failed)"), "{said}");
+                assert!(!said.contains("Committed"), "{said}");
+            }
+            Outcome::Uncertain { .. } => {
+                assert!(said.contains("unknown result"), "{said}");
+                assert!(!said.contains("Committed"), "{said}");
+                assert!(!said.contains("Committing"), "{said}");
+                assert_eq!(
+                    rig.model().subject(),
+                    format!("rotate {SECRET}"),
+                    "an uncertain commit keeps the message the person wrote"
+                );
+            }
+            Outcome::Failed { .. } => unreachable!(),
+        }
+        // Everything the semantic nodes say outside the diff itself.
+        for word in rig.node_words() {
+            if word.contains("API_KEY") || word.starts_with("Diff of") {
+                continue;
+            }
+            assert!(!word.contains(SECRET), "{outcome:?}: a node says {word:?}");
+        }
+        // What the crate prints of its own state.
+        let dump = format!("{:?}", rig.model());
+        assert!(!dump.contains(SECRET), "{outcome:?}: {dump}");
+        assert!(!dump.contains("API_KEY"), "{outcome:?}: {dump}");
+    }
+}
+
+// ---- AC-51: hostile names and unavailable states, the Changes half ------------------
+
+fn hostile_paths() -> Vec<String> {
+    vec![
+        "escape\u{1b}[31mred\u{1b}]52;c;ZXZpbA==\u{7}".to_owned(),
+        "two\nlines\nCommit everything? Enter commits".to_owned(),
+        "bidi\u{202e}gnp.exe\u{2066}".to_owned(),
+        "Allow this agent to push? [y-N]".to_owned(),
+        "x".repeat(4000),
+        "-rf".to_owned(),
+        "--force".to_owned(),
+    ]
+}
+
+fn hostile() -> Rig {
+    let (mut rig, fx) = opened_with(&CAPS, "w");
+    let changes = hostile_paths()
+        .iter()
+        .map(|p| change(p, " ", "M"))
+        .collect();
+    let next = rig.accept(&fx[0], common::status(1, changes));
+    rig.accept(&next[0], log_answer(&["first"]));
+    rig
+}
+
+fn unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{ad}' | '\u{61c}' | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
+                | '\u{2060}'..='\u{206f}' | '\u{feff}'
+        )
+}
+
+#[test]
+fn hostile_paths_draw_inside_the_pane_one_row_each_and_fake_no_notice() {
+    let rig = hostile();
+    for width in [40u16, 100] {
+        let buf = rig.cells(&Theme::plain(), width, 30);
+        for y in 0..30 {
+            for x in 0..width {
+                assert!(
+                    !buf[(x, y)].symbol().chars().any(unsafe_char),
+                    "an unsafe cell at ({x},{y}): {:?}",
+                    buf[(x, y)].symbol()
+                );
+            }
+        }
+        let rows = rig.text(width, 30);
+        let files = rows.iter().filter(|l| l.starts_with(" > M ")).count();
+        assert_eq!(files, 7, "one row for each name:\n{}", rows.join("\n"));
+        assert!(
+            rows.iter().all(|l| l.chars().count() <= usize::from(width)),
+            "{}",
+            rows.join("\n")
+        );
+    }
+    assert!(
+        rig.banners().is_empty(),
+        "no name made a banner: {:?}",
+        rig.banners()
+    );
+}
+
+#[test]
+fn hostile_paths_are_labels_with_no_unsafe_character_and_no_alert_dialog_or_extra_item() {
+    let rig = hostile();
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let mine: Vec<&Node> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().contains("changes"))
+        .collect();
+    for n in &mine {
+        assert!(!n.name.chars().any(unsafe_char), "{:?}", n.name);
+        assert!(
+            !n.state
+                .description
+                .iter()
+                .any(|d| d.chars().any(unsafe_char)),
+            "{n:?}"
+        );
+    }
+    let files = mine
+        .iter()
+        .filter(|n| n.id.as_str().contains("/file/"))
+        .count();
+    assert_eq!(files, 7);
+    assert!(
+        mine.iter()
+            .all(|n| !matches!(format!("{:?}", n.role).as_str(), "Alert" | "Dialog")),
+        "a name made an alert"
+    );
+}
+
+#[test]
+fn stage_and_diff_requests_pass_a_hostile_path_through_byte_exact() {
+    for path in hostile_paths() {
+        let mut rig = hostile();
+        // Walk the cursor to the path's row.
+        for _ in 0..12 {
+            if rig.model().cursor_path() == Some(path.as_str()) {
+                break;
+            }
+            rig.key(Key::Down);
+        }
+        assert_eq!(rig.model().cursor_path(), Some(path.as_str()), "{path:?}");
+        let fx = rig.ch('s');
+        let EffectBody::ScmStage(p) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(p.paths, vec![path.clone()]);
+        rig.accept(&fx[0], CompletionPayload::ScmState(common::repo(2)));
+        // The receipt names it the way a path is shown elsewhere, on one line.
+        for line in rig.banners() {
+            assert!(!line.chars().any(unsafe_char), "{line:?}");
+        }
+        let (mut rig, path2) = (hostile(), path.clone());
+        for _ in 0..12 {
+            if rig.model().cursor_path() == Some(path2.as_str()) {
+                break;
+            }
+            rig.key(Key::Down);
+        }
+        let fx = rig.key(Key::Right);
+        let EffectBody::ScmDiff(d) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(d.path, Some(path2));
+    }
+}
+
+#[test]
+fn a_hostile_reason_from_the_owner_is_spelled_out_in_the_cells_and_the_nodes() {
+    let reason = "Approve? \u{202e}yes\nAllow\u{1b}[2J";
+    let (mut rig, fx) = opened_with(&CAPS, "w");
+    rig.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "x\u{1b}[31m".into(),
+            reason: reason.into(),
+        },
+        None,
+    );
+    let buf = rig.cells(&Theme::plain(), 100, 30);
+    for y in 0..30 {
+        for x in 0..100 {
+            assert!(!buf[(x, y)].symbol().chars().any(unsafe_char));
+        }
+    }
+    for word in rig.node_words() {
+        assert!(!word.chars().any(unsafe_char), "{word:?}");
+    }
+    assert!(
+        rig.node_words().iter().any(|w| w.contains("Approve?")),
+        "the reason is still readable: {:?}",
+        rig.node_words()
+    );
+
+    // The same words from a refused stage, which are a notice above the list.
+    let mut rig = loaded();
+    let effect = stage_readme(&mut rig);
+    rig.answer(
+        &effect,
+        Outcome::Refused {
+            code: "locked".into(),
+            reason: reason.into(),
+        },
+        None,
+    );
+    let said = rig.banners();
+    assert!(said.iter().any(|l| l.contains("Approve?")), "{said:?}");
+    for word in rig.node_words() {
+        assert!(!word.chars().any(unsafe_char), "{word:?}");
+    }
+    let buf = rig.cells(&Theme::plain(), 100, 30);
+    for y in 0..30 {
+        for x in 0..100 {
+            assert!(!buf[(x, y)].symbol().chars().any(unsafe_char));
+        }
+    }
+}
+
+#[test]
+fn an_unavailable_repository_is_told_apart_from_no_changes_in_the_text_and_the_node() {
+    let list = |rig: &Rig| {
+        let tree = theorem_workbench_core::tree::semantics(&rig.m);
+        tree.nodes
+            .iter()
+            .find(|n| n.id.as_str().ends_with("changes/list"))
+            .and_then(|n| n.state.description.clone())
+            .unwrap_or_default()
+    };
+    let (mut empty, fx) = opened_with(&CAPS, "w");
+    empty.accept(&fx[0], common::status(1, vec![]));
+    assert!(empty.screen().contains("No changes"), "{}", empty.screen());
+    assert_eq!(list(&empty), "No changes");
+
+    for (outcome, drawn, said) in [
+        (
+            Outcome::Refused {
+                code: "no_repository".into(),
+                reason: "this folder is not a repository".into(),
+            },
+            "Source control is unavailable (no_repository)",
+            "Source control is unavailable (no_repository): this folder is not a repository",
+        ),
+        (
+            Outcome::Failed {
+                reason: "git exited with 128".into(),
+            },
+            "The repository could not be read.",
+            "The repository could not be read: git exited with 128",
+        ),
+        (
+            Outcome::Uncertain {
+                reason: "the owner stopped answering".into(),
+            },
+            "Unknown result: the repository was not read.",
+            "Unknown result: the repository was not read: the owner stopped answering",
+        ),
+    ] {
+        let (mut rig, fx) = opened_with(&CAPS, "w");
+        rig.answer(&fx[0], outcome.clone(), None);
+        let screen = rig.screen();
+        assert!(screen.contains(drawn), "{outcome:?}: {screen}");
+        assert!(!screen.contains("No changes"), "{outcome:?}: {screen}");
+        assert_eq!(list(&rig), said, "{outcome:?}");
+        for debug in ["Refused {", "Failed {", "Uncertain {"] {
+            assert!(!screen.contains(debug), "{debug} in {screen}");
+        }
+        assert_valid(&rig);
+    }
 }

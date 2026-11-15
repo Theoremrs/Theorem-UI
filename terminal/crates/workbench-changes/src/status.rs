@@ -19,6 +19,7 @@
 //! host sent without its two status letters is kept in its own group and never guessed
 //! into another. A path is a string, so the donor's non-UTF-8 octal escapes are not needed.
 
+use crate::text::hidden;
 use serde::{Deserialize, Serialize};
 use theorem_workbench_core::completion::{BranchState, RepoState, ScmChange, ScmStatus};
 
@@ -216,7 +217,7 @@ pub fn letter(section: Section, change: &Change) -> char {
 /// trailing slash is dropped (donor `shown`).
 pub fn shown(path: &str) -> String {
     let path = path.strip_suffix('/').unwrap_or(path);
-    let plain = |c: char| !c.is_control() && c != '"' && c != '\\';
+    let plain = |c: char| !c.is_control() && !hidden(c) && c != '"' && c != '\\';
     if path.chars().all(plain) {
         return path.to_owned();
     }
@@ -229,7 +230,7 @@ pub fn shown(path: &str) -> String {
                 out.push('\\');
                 out.push(c);
             }
-            c if c.is_control() => {
+            c if c.is_control() || hidden(c) => {
                 let mut bytes = [0; 4];
                 for byte in c.encode_utf8(&mut bytes).bytes() {
                     out.push_str(&format!("\\{byte:03o}"));

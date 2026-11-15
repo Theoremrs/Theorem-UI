@@ -224,7 +224,7 @@ impl MarkdownPanel {
         let d = self.doc()?;
         let make = |text: String, tone, buttons, conflict| {
             Some(Strip {
-                text,
+                text: crate::visible::visible(&text),
                 tone,
                 buttons,
                 conflict,
@@ -604,7 +604,7 @@ impl MarkdownPanel {
     }
 
     fn status_flags(&self, d: &Doc, local: Option<(&str, bool)>) -> (String, bool) {
-        let mut s = self.path.clone();
+        let mut s = crate::visible::visible(&self.path);
         let mut attention = false;
         let mut flag = |text: String, warn: bool| {
             s.push_str(&format!(" [{text}]"));
@@ -837,7 +837,8 @@ impl MarkdownPanel {
     }
 
     fn message_lines(&self) -> Vec<(String, Tone)> {
-        let path = (self.path.clone(), Tone::Info);
+        let vis = crate::visible::visible;
+        let path = (vis(&self.path), Tone::Info);
         match &self.phase {
             Phase::Waiting if self.path.is_empty() => vec![
                 ("No file".to_owned(), Tone::Info),
@@ -859,13 +860,13 @@ impl MarkdownPanel {
                 let mut v = vec![
                     path,
                     (
-                        p.headline.clone(),
+                        vis(&p.headline),
                         if p.unknown { Tone::Warn } else { Tone::Error },
                     ),
-                    (p.reason.clone(), Tone::Info),
+                    (vis(&p.reason), Tone::Info),
                 ];
                 if let Some(code) = &p.code {
-                    v.push((format!("({code})"), Tone::Info));
+                    v.push((format!("({})", vis(code)), Tone::Info));
                 }
                 v
             }
@@ -945,7 +946,12 @@ impl MarkdownPanel {
         let revision = d.md.borrow().revision();
         let at = d.source.position(d.md.borrow().session());
 
-        let mut root = Node::new("markdown", Role::Document, &self.path, area);
+        let mut root = Node::new(
+            "markdown",
+            Role::Document,
+            &crate::visible::visible(&self.path),
+            area,
+        );
         root.binding = self.resource();
         root.revision = Some(CoreRevision::Seq(revision));
         root.state.focused = cx.focused;

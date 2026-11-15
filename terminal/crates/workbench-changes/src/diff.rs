@@ -20,6 +20,8 @@ use std::ops::Range;
 
 use similar::{ChangeTag, TextDiff};
 
+use crate::text::Withheld;
+
 /// Whether a diff line stayed, came in, or went.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LineKind {
@@ -29,7 +31,7 @@ pub enum LineKind {
 }
 
 /// A diff line: kind, numbers from one, text, changed words (byte ranges into `text`).
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DiffLine {
     pub kind: LineKind,
     pub old: Option<usize>,
@@ -39,10 +41,33 @@ pub struct DiffLine {
 }
 
 /// A hunk: its `@@ -old +new @@` line and the lines under it.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Hunk {
     pub header: String,
     pub lines: Vec<DiffLine>,
+}
+
+// A line's text is the file's content, and a header ends with the text of a source line:
+// neither is printed by `Debug`.
+impl std::fmt::Debug for DiffLine {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiffLine")
+            .field("kind", &self.kind)
+            .field("old", &self.old)
+            .field("new", &self.new)
+            .field("text", &Withheld(self.text.len()))
+            .field("words", &self.words.len())
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for Hunk {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Hunk")
+            .field("header", &Withheld(self.header.len()))
+            .field("lines", &self.lines)
+            .finish()
+    }
 }
 
 /// What a diff text holds.
@@ -55,18 +80,31 @@ pub enum Parsed {
     Hunks(Vec<Hunk>),
 }
 
-/// A diff the panel could not read.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// A diff the panel could not read. The offending line is kept for the caller, but it is
+/// the file's content, so neither `Debug` nor `Display` prints it.
+#[derive(Clone, PartialEq, Eq)]
 pub enum ParseError {
     Header(String),
     Line(String),
 }
 
+impl std::fmt::Debug for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Header(line) => f
+                .debug_tuple("Header")
+                .field(&Withheld(line.len()))
+                .finish(),
+            Self::Line(line) => f.debug_tuple("Line").field(&Withheld(line.len())).finish(),
+        }
+    }
+}
+
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Header(line) => write!(f, "hunk header {line:?} is malformed"),
-            Self::Line(line) => write!(f, "diff line {line:?} is malformed"),
+            Self::Header(line) => write!(f, "a hunk header of {} bytes is malformed", line.len()),
+            Self::Line(line) => write!(f, "a diff line of {} bytes is malformed", line.len()),
         }
     }
 }

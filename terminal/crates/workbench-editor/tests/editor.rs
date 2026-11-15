@@ -3383,3 +3383,256 @@ fn takes_chord_is_false_while_the_rename_name_is_typed() {
     rig.key(Key::F2);
     assert!(!rig.m.takes_chord(&option('h')), "the name takes every key");
 }
+
+// ---- AC-53: a save never puts the content in the panel's words or node -----
+
+/// Shaped like a provider key, so a scanner would take it for one.
+const SECRET: &str = "sk-live-4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8";
+
+/// Every string the panel puts in the semantic tree outside the text it
+/// shows: names, descriptions and the reasons an action is off.
+fn words(rig: &Rig) -> Vec<String> {
+    let prefix = format!("{}/", rig.id.as_str());
+    let tree = semantics(&rig.m);
+    let mut out = vec![];
+    for n in tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().starts_with(&prefix))
+    {
+        out.push(n.name.clone());
+        out.extend(n.state.description.clone());
+        for a in &n.actions {
+            out.extend(a.reason.clone());
+        }
+    }
+    out
+}
+
+/// What a person, a tab strip, a saved layout or a log line could learn
+/// beside the text itself.
+fn beside_the_text(rig: &Rig) -> String {
+    let tab = rig.m.panel(&rig.id).unwrap().tab_label();
+    format!(
+        "{}\n{}\n{}\n{:?}\n{:?}",
+        rig.status(),
+        words(rig).join("\n"),
+        rig.state(),
+        rig.binding(),
+        tab
+    )
+}
+
+fn secret_document() -> Rig {
+    Rig::opened(&format!("key = \"{SECRET}\"\n"))
+}
+
+/// Typed an edit, the owner took it as revision 2, and a save of 2 is out.
+fn saving(rig: &mut Rig) -> Effect {
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.accept(&e, 2);
+    one(&rig.chord('s'), EffectKind::DocumentSave)
+}
+
+#[test]
+fn a_successful_save_says_which_revision_and_carries_no_content_in_the_panel_words_or_node() {
+    let mut rig = secret_document();
+    let save = saving(&mut rig);
+    assert!(
+        !format!("{save:?}").contains(SECRET),
+        "the save effect names the revision and the resource, not the text"
+    );
+    rig.answer(
+        &save,
+        Outcome::Accepted,
+        Some(CompletionPayload::DocumentSaved(DocumentSaved {
+            revision: seq(2),
+        })),
+    );
+    assert!(
+        rig.status().contains("Saved revision 2"),
+        "{}",
+        rig.status()
+    );
+    let beside = beside_the_text(&rig);
+    assert!(!beside.contains(SECRET), "{beside}");
+    let binding = rig.binding();
+    assert_eq!(binding.resource, doc());
+    assert_eq!(binding.revision, Some(seq(2)));
+    assert!(binding.generation.is_some());
+    assert_eq!(rig.node("text").revision, Some(seq(2)));
+    assert_eq!(rig.node("text").binding, doc());
+    let tab = rig.m.panel(&rig.id).unwrap().tab_label().unwrap();
+    assert!(!tab.modified, "a save the owner confirmed clears the mark");
+}
+
+#[test]
+fn a_refused_save_says_so_keeps_the_draft_and_carries_no_content() {
+    let mut rig = secret_document();
+    let save = saving(&mut rig);
+    rig.answer(
+        &save,
+        Outcome::Refused {
+            code: "read_only".into(),
+            reason: "the file is read only".into(),
+        },
+        None,
+    );
+    assert!(rig.status().contains("Not saved"), "{}", rig.status());
+    assert!(!rig.status().contains("Saved revision"));
+    let beside = beside_the_text(&rig);
+    assert!(!beside.contains(SECRET), "{beside}");
+    let tab = rig.m.panel(&rig.id).unwrap().tab_label().unwrap();
+    assert!(tab.modified, "the draft is still unsaved");
+    assert!(rig.text().contains('X'), "the draft is still in the editor");
+    assert_eq!(rig.binding().revision, Some(seq(2)));
+}
+
+#[test]
+fn an_uncertain_save_reads_as_unknown_keeps_the_draft_and_never_as_saved() {
+    let mut rig = secret_document();
+    let save = saving(&mut rig);
+    rig.answer(
+        &save,
+        Outcome::Uncertain {
+            reason: "no answer from the owner".into(),
+        },
+        None,
+    );
+    let status = rig.status();
+    assert!(status.contains("save unknown"), "{status}");
+    assert!(!status.contains("Saved revision"), "{status}");
+    let beside = beside_the_text(&rig);
+    assert!(!beside.contains(SECRET), "{beside}");
+    assert!(
+        words(&rig).iter().any(|w| w.contains("modified")),
+        "the node still says modified: {:?}",
+        words(&rig)
+    );
+    let tab = rig.m.panel(&rig.id).unwrap().tab_label().unwrap();
+    assert!(tab.modified);
+    assert!(rig.text().contains('X'));
+    // The next save is the person's call, and it is of the same revision.
+    let again = one(&rig.chord('s'), EffectKind::DocumentSave);
+    assert_eq!(again.revision, Some(seq(2)));
+}
+
+#[test]
+fn a_failed_save_reads_as_not_saved_and_carries_no_content() {
+    let mut rig = secret_document();
+    let save = saving(&mut rig);
+    rig.answer(
+        &save,
+        Outcome::Failed {
+            reason: "the write failed".into(),
+        },
+        None,
+    );
+    assert!(rig.status().contains("Not saved"), "{}", rig.status());
+    let beside = beside_the_text(&rig);
+    assert!(!beside.contains(SECRET), "{beside}");
+    assert!(rig.m.panel(&rig.id).unwrap().tab_label().unwrap().modified);
+}
+
+#[test]
+fn recovered_edits_with_a_secret_are_offered_without_it_in_the_words_or_node() {
+    let mut rig = Rig::start();
+    open_with(
+        &mut rig,
+        "hello\n",
+        1,
+        vec![recovered_edit("op-r", 1, 0, SECRET)],
+    );
+    let beside = beside_the_text(&rig);
+    assert!(!beside.contains(SECRET), "{beside}");
+}
+
+#[test]
+fn debug_of_what_the_editor_holds_never_prints_the_text() {
+    use theorem_workbench_core::effect::{CoordinateUnit, DocumentEdit, TextChange};
+    use theorem_workbench_editor::{Changed, Held, Owed, OwnerSync, Restored};
+    use theorem_workbench_text::OpId;
+
+    let changed = Changed {
+        removed: SECRET.into(),
+        inserted: SECRET.into(),
+    };
+    let held = Held {
+        reason: "the owner changed it".into(),
+        theirs: Some(changed.clone()),
+        conflict: true,
+    };
+    let restored = Restored {
+        ops: vec!["op-r".into()],
+        moved_from: Some("made against revision 1".into()),
+        text: SECRET.into(),
+        reason: None,
+    };
+    let owed = Owed::Edit {
+        op: OpId("op-1".into()),
+        base: 3,
+        body: DocumentEdit {
+            operation_id: "op-1".into(),
+            unit: CoordinateUnit::Utf16,
+            edits: vec![TextChange {
+                start: 0,
+                end: 0,
+                insert: SECRET.into(),
+            }],
+        },
+    };
+    let sync = OwnerSync {
+        saved: Some(2),
+        held: Some(held.clone()),
+        restored: Some(restored.clone()),
+        recoverable: Some(SECRET.into()),
+        ..OwnerSync::default()
+    };
+    for (what, shown) in [
+        ("Changed", format!("{changed:?} {changed:#?}")),
+        ("Held", format!("{held:?} {held:#?}")),
+        ("Restored", format!("{restored:?} {restored:#?}")),
+        ("Owed", format!("{owed:?} {owed:#?}")),
+        ("OwnerSync", format!("{sync:?} {sync:#?}")),
+    ] {
+        assert!(!shown.contains(SECRET), "{what} printed the text: {shown}");
+    }
+    // What stays is the identity a log line needs.
+    assert!(format!("{owed:?}").contains("op-1"));
+    assert!(format!("{owed:?}").contains("base: 3"));
+    assert!(format!("{sync:?}").contains("saved: Some(2)"));
+    assert!(format!("{held:?}").contains("the owner changed it"));
+}
+
+// ---- AC-20, the editor's half -----------------------------------------------
+
+#[test]
+fn the_tab_and_the_binding_give_a_host_a_documents_path_and_whether_it_is_unsaved() {
+    let mut rig = Rig::opened("hello\n");
+    fn modified(rig: &Rig) -> bool {
+        rig.m.panel(&rig.id).unwrap().tab_label().unwrap().modified
+    }
+    let label = rig.m.panel(&rig.id).unwrap().tab_label().unwrap();
+    assert!(!label.modified, "a document the owner holds clean");
+    assert_eq!(rig.binding().resource, doc(), "the path the host names");
+
+    let e = the_edit(&rig.key(Key::Char('X')));
+    assert!(
+        modified(&rig),
+        "an edit the owner has not even taken is a draft"
+    );
+    rig.accept(&e, 2);
+    assert!(modified(&rig));
+    assert_eq!(rig.binding().revision, Some(seq(2)));
+
+    let save = one(&rig.chord('s'), EffectKind::DocumentSave);
+    assert!(modified(&rig), "a save in flight is not a save");
+    rig.answer(
+        &save,
+        Outcome::Accepted,
+        Some(CompletionPayload::DocumentSaved(DocumentSaved {
+            revision: seq(2),
+        })),
+    );
+    assert!(!modified(&rig), "only the owner's answer clears the mark");
+}

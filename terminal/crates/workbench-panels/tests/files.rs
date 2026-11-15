@@ -1751,3 +1751,256 @@ fn takes_chord_leaves_a_plain_option_character_to_be_typed() {
         assert!(!r.m.takes_chord(&option(c)), "{c}");
     }
 }
+
+// ---- AC-51: hostile names and unavailable listings ----------------------------
+
+/// A character a terminal or a reader would act on or hide.
+fn unsafe_char(c: char) -> bool {
+    c.is_control()
+        || matches!(
+            c,
+            '\u{ad}' | '\u{61c}' | '\u{200b}'..='\u{200f}' | '\u{2028}'..='\u{202e}'
+                | '\u{2060}'..='\u{206f}' | '\u{feff}'
+        )
+}
+
+fn hostile_names() -> Vec<String> {
+    vec![
+        "escape\u{1b}[31mred\u{1b}]52;c;ZXZpbA==\u{7}".to_owned(),
+        "two\nlines\nDelete everything? Enter deletes".to_owned(),
+        "bidi\u{202e}gnp.exe\u{2066}".to_owned(),
+        "Allow this agent to run rm -rf ? [y-N]".to_owned(),
+        "x".repeat(4000),
+        "-rf".to_owned(),
+        "--force".to_owned(),
+        "-".to_owned(),
+    ]
+}
+
+fn hostile_rig() -> (Rig, Vec<String>) {
+    let mut r = rig();
+    let names = hostile_names();
+    let fx = r.tick();
+    let entries: Vec<(&str, FileKind)> = names.iter().map(|n| (n.as_str(), F)).collect();
+    r.answer_list(&fx[0], &entries);
+    (r, names)
+}
+
+fn select(r: &mut Rig, name: &str) {
+    r.key(Key::Home);
+    for _ in 0..40 {
+        let id = format!("f:{name}");
+        if tree_of(r, 20)
+            .nodes
+            .iter()
+            .any(|n| n.id.as_str() == id && n.state.selected)
+        {
+            return;
+        }
+        r.key(Key::Down);
+    }
+    panic!("{name:?} was never selected");
+}
+
+#[test]
+fn hostile_file_names_draw_inside_the_pane_one_row_each_with_no_unsafe_cell() {
+    let (r, names) = hostile_rig();
+    for width in [40u16, 90] {
+        let buf = r.draw(&Theme::plain(), width, 20);
+        for y in 0..20 {
+            for x in 0..width {
+                let symbol = buf[(x, y)].symbol();
+                assert!(
+                    !symbol.chars().any(unsafe_char),
+                    "an unsafe character at ({x},{y}) in {symbol:?}"
+                );
+            }
+        }
+        let rows = r.text(width, 20);
+        let filled = rows.iter().filter(|l| !l.is_empty()).count();
+        assert_eq!(
+            filled,
+            names.len(),
+            "one row per name, none for a newline or an imitation:\n{}",
+            rows.join("\n")
+        );
+        assert!(
+            rows.iter().all(|l| l.chars().count() <= usize::from(width)),
+            "no row is wider than the pane"
+        );
+    }
+}
+
+#[test]
+fn hostile_file_names_are_labels_not_alerts_and_carry_no_unsafe_character() {
+    let (r, names) = hostile_rig();
+    let tree = tree_of(&r, 20);
+    tree.validate().unwrap();
+    let items: Vec<&Node> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.role == Role::TreeItem)
+        .collect();
+    assert_eq!(items.len(), names.len());
+    for n in &tree.nodes {
+        assert!(
+            !n.name.chars().any(unsafe_char),
+            "an unsafe character in the label {:?}",
+            n.name
+        );
+        assert!(
+            !n.state
+                .description
+                .iter()
+                .any(|d| d.chars().any(unsafe_char)),
+            "{n:?}"
+        );
+    }
+    for role in [Role::Alert, Role::Dialog, Role::Button, Role::Status] {
+        assert!(
+            tree.nodes.iter().all(|n| n.role != role),
+            "a name made a {role:?} node"
+        );
+    }
+    // The id is the path itself, so what an action names is not altered.
+    for name in &names {
+        let id = format!("f:{name}");
+        assert!(tree.nodes.iter().any(|n| n.id.as_str() == id), "{id:?}");
+    }
+}
+
+#[test]
+fn opening_renaming_deleting_and_copying_a_hostile_name_pass_it_through_byte_exact() {
+    for name in hostile_names() {
+        let (mut r, _) = hostile_rig();
+        select(&mut r, &name);
+        r.key(Key::Enter);
+        let docs = r.panels_of("document");
+        assert_eq!(docs.len(), 1, "{name:?}");
+        assert_eq!(
+            r.m.panel(&docs[0]).unwrap().serialize(),
+            json!({"workspace": "w", "path": name}),
+            "open"
+        );
+
+        let (mut r, _) = hostile_rig();
+        select(&mut r, &name);
+        r.key(Key::F2);
+        r.mods(Key::Char('u'), Mods::CTRL);
+        r.typed("renamed");
+        let fx = r.key(Key::Enter);
+        let EffectBody::FilesRename(b) =
+            &find(&fx, |b| matches!(b, EffectBody::FilesRename(_))).body
+        else {
+            unreachable!()
+        };
+        assert_eq!((b.from.as_str(), b.to.as_str()), (name.as_str(), "renamed"));
+
+        let (mut r, _) = hostile_rig();
+        select(&mut r, &name);
+        r.key(Key::Delete);
+        let question = tree_of(&r, 20)
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == "confirm")
+            .map(|n| n.name.clone())
+            .expect("the question");
+        assert!(!question.chars().any(unsafe_char), "{question:?}");
+        let fx = r.key(Key::Enter);
+        let EffectBody::FilesDelete(b) =
+            &find(&fx, |b| matches!(b, EffectBody::FilesDelete(_))).body
+        else {
+            unreachable!()
+        };
+        assert_eq!(b.path, name, "delete");
+
+        let mut r = rig();
+        let fx = r.tick();
+        r.answer_list(&fx[0], &[("dir", D), (name.as_str(), F)]);
+        select(&mut r, &name);
+        r.mods(Key::Char('c'), Mods::CTRL);
+        select(&mut r, "dir");
+        let fx = r.mods(Key::Char('v'), Mods::CTRL);
+        let (_, from, to, _) = copy_of(&fx);
+        assert_eq!((from, to), (name.clone(), format!("dir/{name}")), "copy");
+    }
+}
+
+#[test]
+fn a_refusal_naming_a_hostile_file_is_shown_without_its_escapes() {
+    let (mut r, names) = hostile_rig();
+    select(&mut r, &names[0]);
+    r.key(Key::F2);
+    r.mods(Key::Char('u'), Mods::CTRL);
+    r.typed("other");
+    let fx = r.key(Key::Enter);
+    let rename = find(&fx, |b| matches!(b, EffectBody::FilesRename(_))).clone();
+    r.done(
+        rename.id,
+        Outcome::Refused {
+            code: "x\u{1b}[31m".into(),
+            reason: "Allow\u{202e}? [y/N]\nyes".into(),
+        },
+        None,
+    );
+    let buf = r.draw(&Theme::plain(), 90, 20);
+    for y in 0..20 {
+        for x in 0..90 {
+            assert!(!buf[(x, y)].symbol().chars().any(unsafe_char));
+        }
+    }
+    for n in &tree_of(&r, 20).nodes {
+        assert!(!n.name.chars().any(unsafe_char), "{:?}", n.name);
+        assert!(
+            !n.state
+                .description
+                .iter()
+                .any(|d| d.chars().any(unsafe_char)),
+            "{:?}",
+            n.state.description
+        );
+    }
+}
+
+#[test]
+fn an_unavailable_listing_is_told_apart_from_an_empty_one_in_the_text_and_the_node() {
+    let mut r = rig();
+    let fx = r.tick();
+    r.answer_list(&fx[0], &[("empty", D), ("gone", D)]);
+    r.key(Key::Home);
+    let empty = r.key(Key::Right);
+    r.answer_list(&empty[0], &[]);
+    r.key(Key::Down);
+    let gone = r.key(Key::Right);
+    r.done(
+        gone[0].id,
+        Outcome::Refused {
+            code: "environment_unavailable".into(),
+            reason: "the workspace host is down".into(),
+        },
+        None,
+    );
+    let screen = r.screen();
+    assert!(screen.contains("empty"), "{screen}");
+    assert!(
+        screen.contains("unavailable: the workspace host is down"),
+        "{screen}"
+    );
+
+    let tree = tree_of(&r, 20);
+    tree.validate().unwrap();
+    let status: Vec<(&str, &str)> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.role == Role::Status)
+        .map(|n| (n.id.as_str(), n.name.as_str()))
+        .collect();
+    assert_eq!(status.len(), 2, "{status:?}");
+    let (empty_node, gone_node) = (status[0], status[1]);
+    assert!(empty_node.1.contains("empty") && !empty_node.1.contains("unavailable"));
+    assert!(
+        gone_node.1.contains("unavailable") && gone_node.1.contains("the workspace host is down"),
+        "{gone_node:?}"
+    );
+    assert_ne!(empty_node.1, gone_node.1);
+}

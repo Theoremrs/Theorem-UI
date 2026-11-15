@@ -19,7 +19,7 @@ use crate::model::{
     ReadKind, SUBJECT,
 };
 use crate::status::{Change, LISTED, RowKey, Section};
-use crate::text::width;
+use crate::text::{visible, width};
 
 /// How a line of text is toned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -196,19 +196,19 @@ pub(crate) fn rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
                     format!("Source control is unavailable ({code})"),
                     Tone::Error,
                 ));
-                out.push(text(reason, Tone::Muted));
+                out.push(text(visible(&reason), Tone::Muted));
             }
             PanelState::Uncertain { reason } => {
                 out.push(text(
                     "Unknown result: the repository was not read.",
                     Tone::Warning,
                 ));
-                out.push(text(reason, Tone::Muted));
+                out.push(text(visible(&reason), Tone::Muted));
                 out.push(text("Refresh to read it again.", Tone::Muted));
             }
             PanelState::Failed { reason } => {
                 out.push(text("The repository could not be read.", Tone::Error));
-                out.push(text(reason, Tone::Muted));
+                out.push(text(visible(&reason), Tone::Muted));
             }
             PanelState::Empty | PanelState::Ready => {}
         }
@@ -461,8 +461,16 @@ pub(crate) fn banners(model: &Changes) -> Vec<(Tone, String)> {
             ));
         }
     }
+    for receipt in model.receipts() {
+        out.push((Tone::Muted, receipt.text()));
+        if let Some(draft) = receipt.draft_text() {
+            out.push((Tone::Warning, draft));
+        }
+    }
     out.truncate(5);
-    out
+    // Words from a reason, a path or a subject may hold escapes or overrides: the
+    // banner spells them out, in the cells and in the semantic node alike.
+    out.into_iter().map(|(t, l)| (t, visible(&l))).collect()
 }
 
 /// The confirmation's third line: the two answers, as they are clicked and as the keys

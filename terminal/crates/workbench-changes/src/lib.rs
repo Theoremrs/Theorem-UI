@@ -12,6 +12,7 @@
 
 mod descriptors;
 mod diff;
+mod documents;
 mod draw;
 mod intent;
 mod layout;
@@ -28,6 +29,7 @@ pub use diff::{
     DiffLine, Hunk, LineKind, ParseError, Parsed, mark_words, pair_places, pairs, parse,
     side_numbers,
 };
+pub use documents::{Landed, OpenDocument, Receipt};
 pub use draw::SPLIT_MIN;
 pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
 pub use model::{

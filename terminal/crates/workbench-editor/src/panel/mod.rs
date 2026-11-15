@@ -290,7 +290,7 @@ pub(crate) enum Task {
     },
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub(crate) enum Clip {
     Copy,
     Cut {
@@ -298,6 +298,20 @@ pub(crate) enum Clip {
         selection: (usize, usize),
     },
     Paste,
+}
+
+impl std::fmt::Debug for Clip {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Copy => f.write_str("Copy"),
+            Self::Paste => f.write_str("Paste"),
+            Self::Cut { text, selection } => f
+                .debug_struct("Cut")
+                .field("text", &crate::owner::Withheld(text.len()))
+                .field("selection", selection)
+                .finish(),
+        }
+    }
 }
 
 pub struct EditorPanel {

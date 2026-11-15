@@ -8,6 +8,7 @@
 
 mod draw;
 mod tree;
+mod visible;
 
 use std::collections::BTreeMap;
 

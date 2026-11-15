@@ -145,6 +145,14 @@ impl ChangesPanel {
     }
 
     /// The model, for a host that reads it.
+    /// The documents the editor has open, whole list each time (see
+    /// [`Changes::set_documents`]). The host builds it from the document panels: a
+    /// panel's path, whether its tab says it is modified, and the revision the owner
+    /// last saved.
+    pub fn set_documents(&mut self, documents: impl IntoIterator<Item = crate::OpenDocument>) {
+        self.model.set_documents(documents);
+    }
+
     pub fn model(&self) -> &Changes {
         &self.model
     }
