@@ -165,10 +165,17 @@ pub fn convert(
                     lut[rgba[i + 1] as usize] * a + matte[1] * (1.0 - a),
                     lut[rgba[i + 2] as usize] * a + matte[2] * (1.0 - a),
                 ];
-                raster.set(x as i32, y as i32, palette::nearest(palette::oklab(c), &lab));
+                raster.set(
+                    x as i32,
+                    y as i32,
+                    palette::nearest(palette::oklab(c), &lab),
+                );
             }
         }
-        return Ok(Reduced { raster, limitation: None });
+        return Ok(Reduced {
+            raster,
+            limitation: None,
+        });
     }
     let (rw, rh) = fit(w, h, bw, bh);
     let reduced = reduce(rgba, w, h, rw, rh);
@@ -187,7 +194,9 @@ pub fn convert(
     }
     let limitation = (raster.colours() <= 2).then(|| Limitation {
         code: "low_palette_coverage".into(),
-        detail: "The image reduced to one or two reference colours; open the original for its detail.".into(),
+        detail:
+            "The image reduced to one or two reference colours; open the original for its detail."
+                .into(),
     });
     Ok(Reduced { raster, limitation })
 }
@@ -207,10 +216,22 @@ mod tests {
 
     #[test]
     fn rejects_before_allocating() {
-        assert!(matches!(check_bounds(5000, 10, 200_000), Err(PreviewError::TooLarge(_))));
-        assert!(matches!(check_bounds(3000, 3000, 36_000_000), Err(PreviewError::TooLarge(_))));
-        assert!(matches!(check_bounds(4, 4, 10), Err(PreviewError::Malformed(_))));
-        assert!(matches!(check_bounds(0, 4, 0), Err(PreviewError::Malformed(_))));
+        assert!(matches!(
+            check_bounds(5000, 10, 200_000),
+            Err(PreviewError::TooLarge(_))
+        ));
+        assert!(matches!(
+            check_bounds(3000, 3000, 36_000_000),
+            Err(PreviewError::TooLarge(_))
+        ));
+        assert!(matches!(
+            check_bounds(4, 4, 10),
+            Err(PreviewError::Malformed(_))
+        ));
+        assert!(matches!(
+            check_bounds(0, 4, 0),
+            Err(PreviewError::Malformed(_))
+        ));
     }
 
     #[test]
@@ -230,7 +251,11 @@ mod tests {
         }
         let out = convert(&rgba, w, h, 16, 16, false).unwrap().raster;
         let reds = [ix::RED_200, ix::RED, ix::RED_700, ix::MAGENTA, ix::ORANGE];
-        assert!(out.indices.iter().all(|i| !reds.contains(i)), "{:?}", out.indices);
+        assert!(
+            out.indices.iter().all(|i| !reds.contains(i)),
+            "{:?}",
+            out.indices
+        );
         assert_eq!(out.get(0, 0), Some(ix::BLACK));
         assert_eq!(out.get(8, 8), Some(ix::PAPER));
     }
@@ -250,7 +275,11 @@ mod tests {
         for y in 0..8 {
             for x in 0..16 {
                 let on = (x + y) % 2 == 0;
-                rgba.extend_from_slice(if on { &[0xD1, 0x4D, 0x41, 255] } else { &[0x10, 0x0F, 0x0F, 255] });
+                rgba.extend_from_slice(if on {
+                    &[0xD1, 0x4D, 0x41, 255]
+                } else {
+                    &[0x10, 0x0F, 0x0F, 255]
+                });
             }
         }
         let out = convert(&rgba, 16, 8, 96, 60, true).unwrap().raster;

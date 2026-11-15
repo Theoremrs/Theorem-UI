@@ -139,7 +139,12 @@ impl Raster {
             h ^= u64::from(b);
             h = h.wrapping_mul(0x0100_0000_01b3);
         };
-        for b in self.width.to_le_bytes().into_iter().chain(self.height.to_le_bytes()) {
+        for b in self
+            .width
+            .to_le_bytes()
+            .into_iter()
+            .chain(self.height.to_le_bytes())
+        {
             eat(b);
         }
         for &b in &self.indices {

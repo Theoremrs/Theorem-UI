@@ -12,12 +12,42 @@ use super::{
 };
 
 pub const REGISTRY: &[Recipe] = &[
-    Recipe { id: "image", version: 1, accepts: accepts_image, run: run_image },
-    Recipe { id: "chart", version: 1, accepts: accepts_chart, run: run_chart },
-    Recipe { id: "graph", version: 1, accepts: accepts_graph, run: run_graph },
-    Recipe { id: "code", version: 1, accepts: accepts_code, run: run_code },
-    Recipe { id: "app", version: 1, accepts: accepts_app, run: run_app },
-    Recipe { id: "document", version: 1, accepts: accepts_document, run: run_document },
+    Recipe {
+        id: "image",
+        version: 1,
+        accepts: accepts_image,
+        run: run_image,
+    },
+    Recipe {
+        id: "chart",
+        version: 1,
+        accepts: accepts_chart,
+        run: run_chart,
+    },
+    Recipe {
+        id: "graph",
+        version: 1,
+        accepts: accepts_graph,
+        run: run_graph,
+    },
+    Recipe {
+        id: "code",
+        version: 1,
+        accepts: accepts_code,
+        run: run_code,
+    },
+    Recipe {
+        id: "app",
+        version: 1,
+        accepts: accepts_app,
+        run: run_app,
+    },
+    Recipe {
+        id: "document",
+        version: 1,
+        accepts: accepts_document,
+        run: run_document,
+    },
 ];
 
 fn board() -> Raster {
@@ -28,12 +58,26 @@ fn text_of(source: &Source) -> Option<&str> {
     source.text.as_deref().filter(|t| !t.trim().is_empty())
 }
 
-fn ok(raster: Raster, recipe: &'static str, method: Method, limitation: Option<Limitation>) -> Preview {
-    Preview { raster, recipe, recipe_version: 1, method, limitation }
+fn ok(
+    raster: Raster,
+    recipe: &'static str,
+    method: Method,
+    limitation: Option<Limitation>,
+) -> Preview {
+    Preview {
+        raster,
+        recipe,
+        recipe_version: 1,
+        method,
+        limitation,
+    }
 }
 
 fn limit(code: &str, detail: impl Into<String>) -> Option<Limitation> {
-    Some(Limitation { code: code.into(), detail: detail.into() })
+    Some(Limitation {
+        code: code.into(),
+        detail: detail.into(),
+    })
 }
 
 // ── Image ────────────────────────────────────────────────────────────────
@@ -46,14 +90,25 @@ fn accepts_image(source: &Source, has_pixels: bool) -> bool {
 /// letterboxed, on the artboard.
 fn run_image(source: &Source, pixels: Option<&Pixels>) -> Result<Preview, PreviewError> {
     let p = pixels.ok_or_else(|| PreviewError::Unsupported("no decoded image".into()))?;
-    let reduced = image::convert(p.rgba, p.width, p.height, IMAGE_BOUNDS.0, IMAGE_BOUNDS.1, source.pixel_art)?;
+    let reduced = image::convert(
+        p.rgba,
+        p.width,
+        p.height,
+        IMAGE_BOUNDS.0,
+        IMAGE_BOUNDS.1,
+        source.pixel_art,
+    )?;
     let mut b = board();
     let (bw, bh) = (IMAGE_BOUNDS.0 as i32, IMAGE_BOUNDS.1 as i32);
     let (ox, oy) = ((ARTBOARD.0 as i32 - bw) / 2, (ARTBOARD.1 as i32 - bh) / 2);
     b.fill(ox - 2, oy - 2, bw + 4, bh + 4, ix::BASE_800);
     b.fill(ox, oy, bw, bh, ix::BASE_950);
     let r = &reduced.raster;
-    b.blit(r, ox + (bw - r.width as i32) / 2, oy + (bh - r.height as i32) / 2);
+    b.blit(
+        r,
+        ox + (bw - r.width as i32) / 2,
+        oy + (bh - r.height as i32) / 2,
+    );
     Ok(ok(b, "image", Method::SourceRaster, reduced.limitation))
 }
 
@@ -96,8 +151,14 @@ fn blocks(text: &str) -> Vec<Block> {
             }
             out.push(Block::Table { columns, rows });
         } else if let Some(h) = t.strip_prefix('#') {
-            out.push(Block::Heading(h.trim_start_matches('#').trim().chars().count()));
-        } else if t.starts_with("- ") || t.starts_with("* ") || t.split_once(". ").is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
+            out.push(Block::Heading(
+                h.trim_start_matches('#').trim().chars().count(),
+            ));
+        } else if t.starts_with("- ")
+            || t.starts_with("* ")
+            || t.split_once(". ")
+                .is_some_and(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        {
             out.push(Block::Item(t.chars().count()));
         } else if t.is_empty() {
             if out.last().is_some_and(|b| *b != Block::Gap) {
@@ -132,7 +193,13 @@ fn badge_for(media_type: &str, kind: &str) -> (&'static str, u8) {
 fn page(b: &mut Raster, depth: i32, badge: (&str, u8)) -> (i32, i32, i32, i32) {
     let (x, y, w, h) = (42, 10, 40, 58);
     for d in (1..=depth).rev() {
-        b.fill(x + 3 * d, y + 2 * d, w, h, if d == 1 { ix::BASE_600 } else { ix::BASE_800 });
+        b.fill(
+            x + 3 * d,
+            y + 2 * d,
+            w,
+            h,
+            if d == 1 { ix::BASE_600 } else { ix::BASE_800 },
+        );
     }
     b.fill(x, y, w, h, ix::BASE_200);
     // Folded corner.
@@ -143,7 +210,12 @@ fn page(b: &mut Raster, depth: i32, badge: (&str, u8)) -> (i32, i32, i32, i32) {
     b.fill(x + w - 6, y, 1, 6, ix::BASE_400);
     b.hline(x + w - 6, x + w - 1, y + 6, ix::BASE_400);
     // Ground line under the stack.
-    b.hline(x - 4, x + w + 3 * depth + 4, y + h + 2 * depth + 2, ix::BASE_800);
+    b.hline(
+        x - 4,
+        x + w + 3 * depth + 4,
+        y + h + 2 * depth + 2,
+        ix::BASE_800,
+    );
     let (label, colour) = badge;
     if !label.is_empty() {
         let bw = label.len() as i32 * 4 + 3;
@@ -161,7 +233,13 @@ fn run_document(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewE
     let blocks = blocks(text);
     let mut b = board();
     let lines = text.lines().count();
-    let depth = if lines > 120 { 2 } else if lines > 30 { 1 } else { 0 };
+    let depth = if lines > 120 {
+        2
+    } else if lines > 30 {
+        1
+    } else {
+        0
+    };
     let (cx, mut cy, cw, bottom) = page(&mut b, depth, badge_for(&source.media_type, &source.kind));
     let span = |chars: usize, full: usize| ((chars.min(full) * cw as usize) / full).max(3) as i32;
     for block in &blocks {
@@ -184,7 +262,12 @@ fn run_document(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewE
                 let mut left = n;
                 while left > 0 && cy < bottom - 1 {
                     let take = left.min(60);
-                    b.hline(cx + indent, cx + indent + span(take, 60) - 1 - indent, cy, ix::BASE_600);
+                    b.hline(
+                        cx + indent,
+                        cx + indent + span(take, 60) - 1 - indent,
+                        cy,
+                        ix::BASE_600,
+                    );
                     left -= take;
                     cy += 2;
                 }
@@ -207,7 +290,12 @@ fn run_document(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewE
                 let h = (n as i32 * 2 + 2).min(bottom - cy).max(3);
                 b.fill(cx, cy, cw, h, ix::BASE_800);
                 for i in 0..((h - 2) / 2) {
-                    b.hline(cx + 2, cx + 2 + 8 + (i * 7) % 14, cy + 1 + i * 2 + 1, ix::GREEN_200);
+                    b.hline(
+                        cx + 2,
+                        cx + 2 + 8 + (i * 7) % 14,
+                        cy + 1 + i * 2 + 1,
+                        ix::GREEN_200,
+                    );
                 }
                 cy += h + 2;
             }
@@ -220,11 +308,56 @@ fn run_document(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewE
 // ── Code ─────────────────────────────────────────────────────────────────
 
 const KEYWORDS: &[&str] = &[
-    "fn", "let", "mut", "pub", "struct", "enum", "impl", "use", "mod", "match", "if", "else",
-    "for", "while", "loop", "return", "const", "static", "type", "trait", "where", "async",
-    "await", "def", "class", "import", "from", "function", "var", "export", "interface",
-    "package", "func", "public", "private", "new", "in", "of", "true", "false", "null", "None",
-    "self", "this", "SELECT", "FROM", "WHERE", "select", "from", "where",
+    "fn",
+    "let",
+    "mut",
+    "pub",
+    "struct",
+    "enum",
+    "impl",
+    "use",
+    "mod",
+    "match",
+    "if",
+    "else",
+    "for",
+    "while",
+    "loop",
+    "return",
+    "const",
+    "static",
+    "type",
+    "trait",
+    "where",
+    "async",
+    "await",
+    "def",
+    "class",
+    "import",
+    "from",
+    "function",
+    "var",
+    "export",
+    "interface",
+    "package",
+    "func",
+    "public",
+    "private",
+    "new",
+    "in",
+    "of",
+    "true",
+    "false",
+    "null",
+    "None",
+    "self",
+    "this",
+    "SELECT",
+    "FROM",
+    "WHERE",
+    "select",
+    "from",
+    "where",
 ];
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -251,7 +384,10 @@ fn tokens(line: &str) -> Vec<(Tok, usize)> {
                 i += 1;
             }
             Tok::Space
-        } else if (c == '/' && chars.get(i + 1) == Some(&'/')) || c == '#' || (c == '-' && chars.get(i + 1) == Some(&'-')) {
+        } else if (c == '/' && chars.get(i + 1) == Some(&'/'))
+            || c == '#'
+            || (c == '-' && chars.get(i + 1) == Some(&'-'))
+        {
             i = chars.len();
             Tok::Comment
         } else if c == '"' || c == '\'' || c == '`' {
@@ -262,7 +398,9 @@ fn tokens(line: &str) -> Vec<(Tok, usize)> {
             i = (i + 1).min(chars.len());
             Tok::String
         } else if c.is_ascii_digit() {
-            while i < chars.len() && (chars[i].is_ascii_alphanumeric() || chars[i] == '.' || chars[i] == '_') {
+            while i < chars.len()
+                && (chars[i].is_ascii_alphanumeric() || chars[i] == '.' || chars[i] == '_')
+            {
                 i += 1;
             }
             Tok::Number
@@ -363,18 +501,35 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
     };
     if let Ok(json) = serde_json::from_str::<serde_json::Value>(text) {
         for n in json.get("nodes")?.as_array()? {
-            let id = n.get("id").and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_i64().map(|i| i.to_string())))?;
+            let id = n.get("id").and_then(|v| {
+                v.as_str()
+                    .map(str::to_owned)
+                    .or_else(|| v.as_i64().map(|i| i.to_string()))
+            })?;
             id_of(&mut nodes, &id);
         }
-        for e in json.get("edges").or_else(|| json.get("links"))?.as_array()? {
-            let end = |k: &str| e.get(k).and_then(|v| v.as_str().map(str::to_owned).or_else(|| v.as_i64().map(|i| i.to_string())));
+        for e in json
+            .get("edges")
+            .or_else(|| json.get("links"))?
+            .as_array()?
+        {
+            let end = |k: &str| {
+                e.get(k).and_then(|v| {
+                    v.as_str()
+                        .map(str::to_owned)
+                        .or_else(|| v.as_i64().map(|i| i.to_string()))
+                })
+            };
             let (s, t) = (end("source")?, end("target")?);
             let (s, t) = (id_of(&mut nodes, &s), id_of(&mut nodes, &t));
             edges.push((s, t));
         }
         return Some((nodes, edges, true));
     }
-    let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("%%"));
+    let mut lines = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("%%"));
     let header = lines.next()?;
     let lr = header.contains("LR") || header.contains("RL");
     if !(header.starts_with("graph") || header.starts_with("flowchart")) {
@@ -382,21 +537,37 @@ pub fn parse_graph(text: &str) -> Option<Graph> {
     }
     const ARROWS: [&str; 8] = ["-.->", "==>", "-->", "---", "-.-", "--o", "--x", "<-->"];
     for line in lines {
-        if line.starts_with("subgraph") || line == "end" || line.starts_with("classDef") || line.starts_with("class ") || line.starts_with("style ") || line.starts_with("click ") || line.starts_with("linkStyle") {
+        if line.starts_with("subgraph")
+            || line == "end"
+            || line.starts_with("classDef")
+            || line.starts_with("class ")
+            || line.starts_with("style ")
+            || line.starts_with("click ")
+            || line.starts_with("linkStyle")
+        {
             continue;
         }
         // Split the line on arrows, dropping |labels|.
         let mut rest = line.to_owned();
         let mut ids = Vec::new();
         loop {
-            let found = ARROWS.iter().filter_map(|a| rest.find(a).map(|i| (i, *a))).min();
+            let found = ARROWS
+                .iter()
+                .filter_map(|a| rest.find(a).map(|i| (i, *a)))
+                .min();
             let (head, tail) = match found {
                 Some((i, a)) => (rest[..i].to_owned(), Some(rest[i + a.len()..].to_owned())),
                 None => (rest.clone(), None),
             };
             let head = head.trim();
-            let head = head.strip_prefix('|').and_then(|h| h.split_once('|').map(|(_, r)| r.trim())).unwrap_or(head);
-            let id: String = head.chars().take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-').collect();
+            let head = head
+                .strip_prefix('|')
+                .and_then(|h| h.split_once('|').map(|(_, r)| r.trim()))
+                .unwrap_or(head);
+            let id: String = head
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_' || *c == '-')
+                .collect();
             if !id.is_empty() {
                 ids.push(id);
             }
@@ -442,7 +613,9 @@ fn run_graph(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewErro
         keep.truncate(GRAPH_MAX_NODES);
         keep.sort();
     }
-    let kept: Vec<Option<usize>> = (0..total).map(|i| keep.iter().position(|k| *k == i)).collect();
+    let kept: Vec<Option<usize>> = (0..total)
+        .map(|i| keep.iter().position(|k| *k == i))
+        .collect();
     let shown: Vec<(usize, usize)> = edges
         .iter()
         .filter_map(|&(s, t)| Some((kept[s]?, kept[t]?)))
@@ -529,21 +702,39 @@ pub fn parse_series(text: &str) -> Option<Result<Vec<(String, f64)>, PreviewErro
             .filter_map(|l| {
                 let (k, v) = l.trim().rsplit_once(':')?;
                 let k = k.trim().trim_matches('"');
-                (!k.is_empty() && !k.starts_with("title")).then(|| (k.to_owned(), v.trim().to_owned()))
+                (!k.is_empty() && !k.starts_with("title"))
+                    .then(|| (k.to_owned(), v.trim().to_owned()))
             })
             .collect()
     } else {
-        let sep = if t.lines().next()?.contains('|') { '|' } else { ',' };
+        let sep = if t.lines().next()?.contains('|') {
+            '|'
+        } else {
+            ','
+        };
         let mut rows: Vec<Vec<String>> = t
             .lines()
-            .map(|l| l.trim().trim_matches('|').split(sep).map(|c| c.trim().to_owned()).collect::<Vec<_>>())
-            .filter(|r: &Vec<String>| r.len() >= 2 && !r.iter().all(|c| c.chars().all(|ch| matches!(ch, '-' | ':' | ' '))))
+            .map(|l| {
+                l.trim()
+                    .trim_matches('|')
+                    .split(sep)
+                    .map(|c| c.trim().to_owned())
+                    .collect::<Vec<_>>()
+            })
+            .filter(|r: &Vec<String>| {
+                r.len() >= 2
+                    && !r
+                        .iter()
+                        .all(|c| c.chars().all(|ch| matches!(ch, '-' | ':' | ' ')))
+            })
             .collect();
         if rows.len() < 2 || rows.iter().any(|r| r.len() != 2) {
             return None;
         }
         rows.remove(0); // header
-        rows.into_iter().map(|r| (r[0].clone(), r[1].clone())).collect()
+        rows.into_iter()
+            .map(|r| (r[0].clone(), r[1].clone()))
+            .collect()
     };
     if rows.is_empty() {
         return None;
@@ -551,7 +742,9 @@ pub fn parse_series(text: &str) -> Option<Result<Vec<(String, f64)>, PreviewErro
     let mut out = Vec::new();
     for (k, v) in rows {
         let Ok(n) = v.trim_end_matches('%').parse::<f64>() else {
-            return Some(Err(PreviewError::Malformed(format!("“{v}” is not a number"))));
+            return Some(Err(PreviewError::Malformed(format!(
+                "“{v}” is not a number"
+            ))));
         };
         if !n.is_finite() || n < 0.0 {
             return Some(Err(PreviewError::Unsupported(format!(
@@ -561,7 +754,9 @@ pub fn parse_series(text: &str) -> Option<Result<Vec<(String, f64)>, PreviewErro
         out.push((k, n));
     }
     if out.iter().map(|(_, v)| v).sum::<f64>() <= 0.0 {
-        return Some(Err(PreviewError::Unsupported("the values sum to zero".into())));
+        return Some(Err(PreviewError::Unsupported(
+            "the values sum to zero".into(),
+        )));
     }
     Some(Ok(out))
 }
@@ -577,7 +772,10 @@ pub const DONUT: (i32, i32, f64, f64) = (40, 42, 30.0, 15.0);
 /// cumulative fractions. Pixel centres are tested, so the grid is exact.
 pub fn donut_category(x: i32, y: i32, fractions: &[f64]) -> Option<usize> {
     let (cx, cy, ro, ri) = DONUT;
-    let (dx, dy) = (f64::from(x) + 0.5 - f64::from(cx), f64::from(y) + 0.5 - f64::from(cy));
+    let (dx, dy) = (
+        f64::from(x) + 0.5 - f64::from(cx),
+        f64::from(y) + 0.5 - f64::from(cy),
+    );
     let r = (dx * dx + dy * dy).sqrt();
     if r > ro || r < ri {
         return None;
@@ -614,12 +812,26 @@ fn run_chart(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewErro
         }
     }
     // Legend: a swatch and a stroke per category, stroke length by value.
-    let max = fractions.iter().cloned().fold(0.0, f64::max).max(f64::MIN_POSITIVE);
+    let max = fractions
+        .iter()
+        .cloned()
+        .fold(0.0, f64::max)
+        .max(f64::MIN_POSITIVE);
     for (i, f) in fractions.iter().enumerate() {
         let y = 16 + i as i32 * 7;
         b.fill(82, y, 4, 4, CATEGORICAL[i]);
-        b.hline(89, 89 + ((f / max) * 26.0).round().max(1.0) as i32, y + 1, ix::BASE_200);
-        b.hline(89, 89 + ((f / max) * 18.0).round().max(1.0) as i32, y + 3, ix::BASE_600);
+        b.hline(
+            89,
+            89 + ((f / max) * 26.0).round().max(1.0) as i32,
+            y + 1,
+            ix::BASE_200,
+        );
+        b.hline(
+            89,
+            89 + ((f / max) * 18.0).round().max(1.0) as i32,
+            y + 3,
+            ix::BASE_600,
+        );
     }
     b.hline(18, 62, 78, ix::BASE_800);
     let below: Vec<&str> = series
@@ -636,7 +848,10 @@ fn run_chart(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewErro
     if series.len() > shown {
         notes.push(format!("Shows {shown} of {} categories.", series.len()));
     }
-    let limitation = (!notes.is_empty()).then(|| Limitation { code: "partial_chart".into(), detail: notes.join(" ") });
+    let limitation = (!notes.is_empty()).then(|| Limitation {
+        code: "partial_chart".into(),
+        detail: notes.join(" "),
+    });
     Ok(ok(b, "chart", Method::StructuredRecipe, limitation))
 }
 
@@ -663,7 +878,10 @@ fn widgets(html: &str) -> Vec<Widget> {
     let mut rest = body;
     while let Some(i) = rest.find('<') {
         rest = &rest[i + 1..];
-        let name: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric())
+            .collect();
         let w = match name.as_str() {
             "h1" | "h2" | "h3" | "header" => Widget::Heading,
             "button" => Widget::Button,
@@ -708,7 +926,10 @@ fn run_app(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError>
             }
             Widget::Button => {
                 // A run of buttons lays out as a key grid, as many as there are.
-                let run = found[i..].iter().take_while(|w| **w == Widget::Button).count();
+                let run = found[i..]
+                    .iter()
+                    .take_while(|w| **w == Widget::Button)
+                    .count();
                 let cols = if run > 4 { 4 } else { run } as i32;
                 let bw = ((right - left) - (cols - 1) * 2) / cols;
                 for k in 0..run as i32 {
@@ -717,7 +938,13 @@ fn run_app(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError>
                     if by + 4 > bottom {
                         break;
                     }
-                    b.fill(left + c * (bw + 2), by, bw, 4, if k == 0 { ix::CYAN } else { ix::BASE_800 });
+                    b.fill(
+                        left + c * (bw + 2),
+                        by,
+                        bw,
+                        4,
+                        if k == 0 { ix::CYAN } else { ix::BASE_800 },
+                    );
                 }
                 cy += ((run as i32 + cols - 1) / cols) * 6 + 1;
                 i += run;
@@ -761,7 +988,10 @@ fn run_app(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError>
         b,
         "app",
         Method::StructuredRecipe,
-        limit("markup_sketch", "A layout sketch read from the app's markup; not a capture of it running."),
+        limit(
+            "markup_sketch",
+            "A layout sketch read from the app's markup; not a capture of it running.",
+        ),
     ))
 }
 
@@ -771,7 +1001,11 @@ fn run_app(source: &Source, _: Option<&Pixels>) -> Result<Preview, PreviewError>
 /// method says so; nothing here depicts the missing content.
 pub fn type_illustration(source: &Source, limitation: Option<Limitation>) -> Preview {
     let mut b = board();
-    let kind = if source.media_type.starts_with("image/") { "image" } else { source.kind.as_str() };
+    let kind = if source.media_type.starts_with("image/") {
+        "image"
+    } else {
+        source.kind.as_str()
+    };
     match kind {
         "document" | "markdown" | "note" | "upload" if !source.media_type.starts_with("image/") => {
             let (cx, cy, cw, _) = page(&mut b, 0, badge_for(&source.media_type, &source.kind));
@@ -819,12 +1053,24 @@ mod tests {
     use super::*;
 
     fn src(kind: &str, media: &str, text: &str) -> Source {
-        Source { kind: kind.into(), media_type: media.into(), text: Some(text.into()), ..Default::default() }
+        Source {
+            kind: kind.into(),
+            media_type: media.into(),
+            text: Some(text.into()),
+            ..Default::default()
+        }
     }
 
     #[test]
     fn markdown_draws_its_own_blocks_and_no_pdf_badge() {
-        let p = render(&src("document", "text/markdown", "# Title\n\nA paragraph.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n"), None);
+        let p = render(
+            &src(
+                "document",
+                "text/markdown",
+                "# Title\n\nA paragraph.\n\n| a | b |\n|---|---|\n| 1 | 2 |\n",
+            ),
+            None,
+        );
         assert_eq!(p.method, Method::StructuredRecipe);
         assert_eq!(p.recipe, "document");
         // The PDF badge colour is never on a markdown page.
@@ -834,10 +1080,17 @@ mod tests {
 
     #[test]
     fn pdf_without_structure_is_a_labelled_type_illustration() {
-        let s = Source { kind: "document".into(), media_type: "application/pdf".into(), ..Default::default() };
+        let s = Source {
+            kind: "document".into(),
+            media_type: "application/pdf".into(),
+            ..Default::default()
+        };
         let p = render(&s, None);
         assert_eq!(p.method, Method::TypeIllustration);
-        assert!(p.raster.indices.contains(&ix::RED), "PDF badge from the verified media type");
+        assert!(
+            p.raster.indices.contains(&ix::RED),
+            "PDF badge from the verified media type"
+        );
     }
 
     #[test]
@@ -863,7 +1116,10 @@ mod tests {
 
     #[test]
     fn tiny_category_is_reported_not_enlarged() {
-        let p = render(&src("chart", "", "pie\n\"Big\" : 100000\n\"Tiny\" : 1\n"), None);
+        let p = render(
+            &src("chart", "", "pie\n\"Big\" : 100000\n\"Tiny\" : 1\n"),
+            None,
+        );
         assert_eq!(p.recipe, "chart");
         assert!(p.limitation.unwrap().detail.contains("Tiny"));
     }
@@ -879,11 +1135,15 @@ mod tests {
 
     #[test]
     fn graph_draws_only_source_edges() {
-        let (nodes, edges, lr) = parse_graph("graph LR\nA[Notes] --> B(Sources)\nB -->|cites| C\nA --- C\n").unwrap();
+        let (nodes, edges, lr) =
+            parse_graph("graph LR\nA[Notes] --> B(Sources)\nB -->|cites| C\nA --- C\n").unwrap();
         assert_eq!(nodes, ["A", "B", "C"]);
         assert_eq!(edges, [(0, 1), (1, 2), (0, 2)]);
         assert!(lr);
-        let p = render(&src("diagram", "text/vnd.mermaid", "graph TD\nA-->B\n"), None);
+        let p = render(
+            &src("diagram", "text/vnd.mermaid", "graph TD\nA-->B\n"),
+            None,
+        );
         assert_eq!(p.recipe, "graph");
     }
 
@@ -905,16 +1165,32 @@ mod tests {
         let p = render(&src("app", "text/html", calc), None);
         assert_eq!(p.recipe, "app");
         let board = "<body><h1>Tasks</h1><ul><li>a</li></ul><script>for(;;){}</script></body>";
-        assert_ne!(render(&src("app", "text/html", board), None).raster, p.raster);
+        assert_ne!(
+            render(&src("app", "text/html", board), None).raster,
+            p.raster
+        );
         // No markup: an honest app illustration.
-        let none = render(&Source { kind: "app".into(), ..Default::default() }, None);
+        let none = render(
+            &Source {
+                kind: "app".into(),
+                ..Default::default()
+            },
+            None,
+        );
         assert_eq!(none.method, Method::TypeIllustration);
     }
 
     #[test]
     fn code_follows_line_lengths() {
         let a = render(&src("code", "", "fn main() {\n    let x = 1;\n}\n"), None);
-        let b = render(&src("code", "", "fn main() {\n    let a_much_longer_name = \"string\";\n}\n"), None);
+        let b = render(
+            &src(
+                "code",
+                "",
+                "fn main() {\n    let a_much_longer_name = \"string\";\n}\n",
+            ),
+            None,
+        );
         assert_eq!(a.recipe, "code");
         assert_ne!(a.raster, b.raster);
     }
@@ -922,7 +1198,10 @@ mod tests {
     #[test]
     fn every_recipe_stays_in_bounds_and_palette() {
         for p in [
-            render(&src("document", "text/markdown", "# a\n- b\n```\nc\n```\n"), None),
+            render(
+                &src("document", "text/markdown", "# a\n- b\n```\nc\n```\n"),
+                None,
+            ),
             render(&src("code", "", "x"), None),
             render(&src("diagram", "", "graph TD\nA-->B"), None),
             render(&src("chart", "", "a,b\nx,1\ny,2"), None),

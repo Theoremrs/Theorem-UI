@@ -121,7 +121,11 @@ impl Preview {
             palette_colours: self.raster.colours(),
             result_digest: self.raster.digest(),
             limitation: self.limitation.as_ref(),
-            target: if cfg!(target_arch = "wasm32") { "wasm32" } else { "native" },
+            target: if cfg!(target_arch = "wasm32") {
+                "wasm32"
+            } else {
+                "native"
+            },
         }
     }
 }
@@ -153,7 +157,10 @@ pub fn render(source: &Source, pixels: Option<&Pixels>) -> Preview {
         text: source.text.as_ref().map(|t| clip(t, TEXT_LIMIT).to_owned()),
         ..source.clone()
     };
-    let Some(recipe) = RECIPES.iter().find(|r| (r.accepts)(source, pixels.is_some())) else {
+    let Some(recipe) = RECIPES
+        .iter()
+        .find(|r| (r.accepts)(source, pixels.is_some()))
+    else {
         return recipes::type_illustration(source, None);
     };
     match (recipe.run)(source, pixels) {
