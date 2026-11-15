@@ -9,6 +9,7 @@
 
 pub mod builtin;
 pub mod completion;
+pub mod draft;
 pub mod effect;
 pub mod factory;
 pub mod host;
@@ -31,6 +32,7 @@ pub mod update;
 pub mod view;
 
 pub use completion::{Completion, CompletionPayload, Outcome};
+pub use draft::{DraftAttachment, DraftAttachmentState, ModelChoice, SourceReference};
 pub use effect::{Effect, EffectBody, EffectKind, Owner};
 pub use factory::{OPENER_DEFAULT, OPENER_SPECIFIC, Opener, PanelFactories};
 pub use host::HostMessage;

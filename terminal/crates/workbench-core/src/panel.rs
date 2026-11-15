@@ -304,6 +304,13 @@ pub enum PanelMsg {
     /// for the new workspace records the need and emits on its next `Tick`. Its
     /// `generation` is the binding generation for workspace-bound state.
     Workspace(WorkspaceIdentity),
+    /// Whether the person asked for reduced motion. Sent when it changes and
+    /// to a panel built after it was set; a panel that was never told has
+    /// full motion. Arrives on a silent `Ctx`. Whether the window has focus
+    /// is `Focus`, sent to the panel that owns the keyboard.
+    Motion {
+        reduced: bool,
+    },
     /// Put the caret at a place in the document the panel shows: sent after
     /// `OpenTarget::FileAt` focuses the panel already showing the file, and
     /// after it creates one. Arrives on a silent `Ctx`, possibly before the

@@ -9,6 +9,7 @@
 use serde::{Deserialize, Serialize};
 use strum::EnumDiscriminants;
 
+use crate::draft::SourceReference;
 use crate::ids::{EffectId, Generation, ResourceRef, Revision};
 
 /// Which owner performs an effect. The adapter routes by this
@@ -219,6 +220,19 @@ pub enum EffectBody {
     /// End the side chat the effect's `conversation` resource names
     /// (`SideChat.close`). Accepted with no payload; Intent `Destroy`.
     ConversationSideClose,
+    /// Ask the host to open its file chooser for the draft. The result is the
+    /// host message `conversationAttachments`, never this effect's completion.
+    ConversationAttachPick,
+    /// Drop one file from the draft; answered by `conversationAttachments`.
+    ConversationAttachRemove(AttachRemove),
+    /// Ask for the models the conversation can run on; answered by the host
+    /// message `conversationModels`.
+    ConversationModels,
+    /// Choose the model the next turn runs on; answered by `conversationModels`.
+    ConversationSetModel(SetModel),
+    /// Choose the reasoning effort of the next turn; answered by
+    /// `conversationModels`.
+    ConversationSetEffort(SetEffort),
 
     // Layout (`client.workbench.get/save`, revisioned with `If-Match`)
     LayoutLoad,
@@ -265,6 +279,11 @@ impl EffectKind {
             | ConversationApproval
             | ConversationSideChat
             | ConversationSideList
+            | ConversationAttachPick
+            | ConversationAttachRemove
+            | ConversationModels
+            | ConversationSetModel
+            | ConversationSetEffort
             | ConversationSideClose => Owner::Conversation,
             LayoutLoad | LayoutSave => Owner::Layout,
             ArtifactsList | ArtifactRead => Owner::Artifacts,
@@ -803,6 +822,35 @@ pub struct ConversationSend {
     /// Absent on input means none.
     #[serde(default)]
     pub attachments: Vec<AttachmentRef>,
+    /// Workspace locations the turn carries. Absent on input means none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<SourceReference>,
+}
+
+/// One file of the draft, by the id `conversationAttachments` gave it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct AttachRemove {
+    pub id: String,
+}
+
+/// Choose a model by the `ref` a `ModelChoice` named it by.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SetModel {
+    #[serde(rename = "ref")]
+    #[cfg_attr(feature = "ts", ts(rename = "ref"))]
+    pub model_ref: String,
+}
+
+/// Choose an effort level, one of the `efforts` the host listed.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct SetEffort {
+    pub level: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -840,6 +888,10 @@ pub struct ConversationEdit {
     pub message_id: String,
     pub client_message_id: String,
     pub text: String,
+    /// The locations the edited message carries, restated whole. Absent on
+    /// input means none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub references: Vec<SourceReference>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -1004,6 +1056,7 @@ mod tests {
                     name: "x.png".into(),
                     content_type: Some("image/png".into()),
                 }],
+                references: vec![],
             }),
             "conversationSend",
             json!({
@@ -1044,6 +1097,7 @@ mod tests {
                 message_id: "m".into(),
                 client_message_id: "c3".into(),
                 text: "t".into(),
+                references: vec![],
             }),
             "conversationEdit",
             json!({"messageId": "m", "clientMessageId": "c3", "text": "t"}),
@@ -1160,6 +1214,11 @@ mod tests {
             (EffectKind::DocumentSettle, Owner::Documents),
             (EffectKind::ConversationSideChat, Owner::Conversation),
             (EffectKind::ConversationSideList, Owner::Conversation),
+            (EffectKind::ConversationAttachPick, Owner::Conversation),
+            (EffectKind::ConversationAttachRemove, Owner::Conversation),
+            (EffectKind::ConversationModels, Owner::Conversation),
+            (EffectKind::ConversationSetModel, Owner::Conversation),
+            (EffectKind::ConversationSetEffort, Owner::Conversation),
             (EffectKind::ScmConflict, Owner::Scm),
             (EffectKind::ScmResolve, Owner::Scm),
             (EffectKind::ConversationSideClose, Owner::Conversation),
@@ -1175,6 +1234,8 @@ mod tests {
             (EffectBody::DocumentRevert, "documentRevert"),
             (EffectBody::ConversationSideClose, "conversationSideClose"),
             (EffectBody::ConversationSideList, "conversationSideList"),
+            (EffectBody::ConversationAttachPick, "conversationAttachPick"),
+            (EffectBody::ConversationModels, "conversationModels"),
         ] {
             let v = serde_json::to_value(Effect::new(EffectId(1), ResourceRef::None, body.clone()))
                 .unwrap();

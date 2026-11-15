@@ -2,6 +2,8 @@
 import type { Capabilities } from "./Capabilities";
 import type { ConnectionState } from "./ConnectionState";
 import type { CoordinateUnit } from "./CoordinateUnit";
+import type { DraftAttachment } from "./DraftAttachment";
+import type { ModelChoice } from "./ModelChoice";
 import type { ReadAt } from "./ReadAt";
 import type { ResourceRef } from "./ResourceRef";
 import type { Revision } from "./Revision";
@@ -23,7 +25,7 @@ origin: string, cols: number, rows: number, } | { "type": "terminalExited", reso
 /**
  * `exited`, `killed`, `lost` or the core's word.
  */
-reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "documentTokens", resource: ResourceRef, revision: Revision, encoding: SpanEncoding, spans: Array<TokenSpan>, } | { "type": "searchPage", id: string, rows: Array<SearchRow>, 
+reason: string, } | { "type": "terminalControl", resource: ResourceRef, epoch: number, generation: number, controlled: boolean, } | { "type": "conversationSnapshot", resource: ResourceRef, revision: Revision, conversationId: string, snapshot: string, } | { "type": "conversationAttachments", resource: ResourceRef, conversationId: string, attachments: Array<DraftAttachment>, } | { "type": "conversationModels", resource: ResourceRef, conversationId: string, models: Array<ModelChoice>, selected?: string, effort?: string, efforts: Array<string>, } | { "type": "themeChanged", revision: number, dark: boolean, } | { "type": "capabilitiesChanged", capabilities: Capabilities, } | { "type": "workspaceChanged", workspace: string, environment?: string, } | { "type": "connectionChanged", workspace: string, state: ConnectionState, } | { "type": "terminalSessions", workspace: string, profiles: Array<TerminalProfileInfo>, sessions: Array<TerminalSessionInfo>, } | { "type": "documentTokens", resource: ResourceRef, revision: Revision, encoding: SpanEncoding, spans: Array<TokenSpan>, } | { "type": "searchPage", id: string, rows: Array<SearchRow>, 
 /**
  * Rows of a kind the owner does not read (the host's non-text rows).
  */

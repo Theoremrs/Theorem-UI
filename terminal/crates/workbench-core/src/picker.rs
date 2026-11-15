@@ -432,6 +432,8 @@ mod tests {
     fn all_caps() -> Capabilities {
         Capabilities::of([
             "conversation.side",
+            "conversation.attach",
+            "conversation.model",
             "diagnostics.subscribe",
             "run.start",
             "run.subscribe",

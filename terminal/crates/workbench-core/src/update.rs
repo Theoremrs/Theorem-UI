@@ -64,6 +64,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             model.window_focused = focused;
             vec![]
         }
+        Msg::ReducedMotion(reduced) => {
+            model.reduced_motion = reduced;
+            vec![]
+        }
         Msg::Host(message) => model.on_host(message),
         Msg::Completion(completion) => model.on_completion(completion),
         Msg::Action { id, actor } => model.run_action(id, actor, None),
@@ -156,6 +160,7 @@ impl Model {
     /// and whether they own the keyboard. Neither can start work.
     pub(crate) fn settle(&mut self) {
         self.announce_workspace();
+        self.announce_motion();
         self.replay_retained();
         self.sync_tab_titles();
         self.follow_focus_for_picker();
@@ -208,6 +213,29 @@ impl Model {
                 });
             }
             self.announced_focus = desired;
+        }
+    }
+
+    /// Tell each available panel the reduced-motion setting when it differs
+    /// from what it was last told (nothing told means full motion). Silent.
+    fn announce_motion(&mut self) {
+        let reduced = self.reduced_motion;
+        self.motion_told
+            .retain(|id, _| self.panels.contains_key(id));
+        let stale: Vec<PanelInstanceId> = self
+            .panels
+            .iter()
+            .filter(|(id, e)| {
+                e.available && self.motion_told.get(*id).copied().unwrap_or(false) != reduced
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in stale {
+            self.motion_told.insert(id.clone(), reduced);
+            self.call(&id, Mode::Silent, |p, cx| {
+                p.update(PanelMsg::Motion { reduced }, cx)
+            });
+            self.dirty = true;
         }
     }
 
@@ -276,28 +304,34 @@ impl Model {
                 continue;
             }
             entry.replayed = Some(binding.resource.clone());
-            let Some((_, message)) = self
-                .retained
-                .snapshots
-                .iter()
-                .find(|(r, _)| *r == binding.resource)
-            else {
-                continue;
+            let find = |held: &[(ResourceRef, HostMessage)]| {
+                held.iter()
+                    .find(|(r, _)| *r == binding.resource)
+                    .map(|(_, m)| m.clone())
             };
-            let message = message.clone();
-            if let (Some(resource), Some(revision)) =
-                (host_route(&message).0, host_route(&message).1)
-            {
-                let probe = Completion::new(EffectId(0), resource.clone(), Outcome::Accepted)
-                    .with_revision(revision);
-                if let Verdict::Drop(_) = judge(&binding, &probe) {
-                    continue;
+            let mut replay = Vec::new();
+            if let Some(message) = find(&self.retained.snapshots) {
+                let fresh = match (host_route(&message).0, host_route(&message).1) {
+                    (Some(resource), Some(revision)) => {
+                        let probe =
+                            Completion::new(EffectId(0), resource.clone(), Outcome::Accepted)
+                                .with_revision(revision);
+                        !matches!(judge(&binding, &probe), Verdict::Drop(_))
+                    }
+                    _ => true,
+                };
+                if fresh {
+                    replay.push(message);
                 }
             }
-            self.call(&id, Mode::Silent, |p, cx| {
-                p.update(PanelMsg::Host(message), cx)
-            });
-            self.dirty = true;
+            replay.extend(find(&self.retained.attachments));
+            replay.extend(find(&self.retained.models));
+            for message in replay {
+                self.call(&id, Mode::Silent, |p, cx| {
+                    p.update(PanelMsg::Host(message), cx)
+                });
+                self.dirty = true;
+            }
         }
     }
 
@@ -1177,6 +1211,16 @@ impl Model {
                 conversation_id,
                 ..
             } if thread == conversation_id => self.retained.keep_snapshot(resource, &message),
+            HostMessage::ConversationAttachments {
+                resource: resource @ ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            } if thread == conversation_id => self.retained.keep_attachments(resource, &message),
+            HostMessage::ConversationModels {
+                resource: resource @ ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            } if thread == conversation_id => self.retained.keep_models(resource, &message),
             HostMessage::TerminalSessions { workspace, .. } => {
                 self.retained.keep_sessions(workspace, &message);
             }
@@ -1205,6 +1249,16 @@ impl Model {
             | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalResized { .. } => self.drain_pty(),
             HostMessage::ConversationSnapshot {
+                resource: ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            }
+            | HostMessage::ConversationAttachments {
+                resource: ResourceRef::Conversation { thread, .. },
+                conversation_id,
+                ..
+            }
+            | HostMessage::ConversationModels {
                 resource: ResourceRef::Conversation { thread, .. },
                 conversation_id,
                 ..
@@ -1396,6 +1450,9 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | ConversationSnapshot {
             resource, revision, ..
         } => (Some(resource), Some(revision.clone())),
+        ConversationAttachments { resource, .. } | ConversationModels { resource, .. } => {
+            (Some(resource), None)
+        }
         DocumentMoved { from, .. } => (Some(from), None),
         DocumentRetired { resource }
         | TerminalOutput { resource, .. }

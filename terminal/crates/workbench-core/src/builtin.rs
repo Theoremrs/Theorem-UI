@@ -109,6 +109,18 @@ pub fn registry() -> Registry {
                 .emits(EffectKind::ConversationSwitch),
             ActionDescriptor::new("theo.branch", "Select branch", Start)
                 .emits(EffectKind::ConversationSwitchBranch),
+            // The composer's controls: each exists only where the host can do
+            // what it asks, and is the person's to use or the agent's to call.
+            ActionDescriptor::new("theo.attach", "Attach files", Start)
+                .emits(EffectKind::ConversationAttachPick)
+                .requires("conversation.attach"),
+            ActionDescriptor::new("theo.model", "Choose model", Start)
+                .emits(EffectKind::ConversationModels)
+                .emits(EffectKind::ConversationSetModel)
+                .requires("conversation.model"),
+            ActionDescriptor::new("theo.effort", "Set effort", Start)
+                .emits(EffectKind::ConversationSetEffort)
+                .requires("conversation.model"),
             ActionDescriptor::new("theo.new", "New conversation", Create)
                 .emits(EffectKind::ConversationCreate),
             // Stopping a run is destroying: closing the view must never do it.

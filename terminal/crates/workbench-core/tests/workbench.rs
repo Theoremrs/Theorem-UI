@@ -268,8 +268,10 @@ fn descriptor(
     }
 }
 
-const ALL_CAPS: [&str; 16] = [
+const ALL_CAPS: [&str; 18] = [
     "conversation.side",
+    "conversation.attach",
+    "conversation.model",
     "diagnostics.subscribe",
     "run.start",
     "run.subscribe",
@@ -2832,4 +2834,227 @@ fn when_only_one_group_fits_the_principal_one_says_how_many_wait() {
             );
         }
     }
+}
+
+// ---- the composer wire (batch six) --------------------------------------
+
+fn conv(thread: &str) -> ResourceRef {
+    ResourceRef::Conversation {
+        project: "p".into(),
+        thread: thread.into(),
+    }
+}
+
+fn attachments(thread: &str, id_in_message: &str, names: &[&str]) -> Msg {
+    Msg::Host(HostMessage::ConversationAttachments {
+        resource: conv(thread),
+        conversation_id: id_in_message.into(),
+        attachments: names
+            .iter()
+            .map(|n| theorem_workbench_core::DraftAttachment {
+                id: format!("id-{n}"),
+                name: (*n).into(),
+                content_type: None,
+                size: None,
+                state: theorem_workbench_core::DraftAttachmentState::Ready,
+                reason: None,
+            })
+            .collect(),
+    })
+}
+
+fn models(thread: &str, selected: &str) -> Msg {
+    Msg::Host(HostMessage::ConversationModels {
+        resource: conv(thread),
+        conversation_id: thread.into(),
+        models: vec![theorem_workbench_core::ModelChoice {
+            model_ref: "m/one".into(),
+            label: "One".into(),
+            context_tokens: None,
+        }],
+        selected: Some(selected.into()),
+        effort: None,
+        efforts: vec![],
+    })
+}
+
+fn draft_lists(log: &Shared) -> (Vec<Vec<String>>, Vec<String>) {
+    let mut lists = Vec::new();
+    let mut picked = Vec::new();
+    for m in msgs_of(log, "chat") {
+        match m {
+            PanelMsg::Host(HostMessage::ConversationAttachments { attachments, .. }) => {
+                lists.push(attachments.into_iter().map(|a| a.name).collect());
+            }
+            PanelMsg::Host(HostMessage::ConversationModels {
+                selected: Some(s), ..
+            }) => picked.push(s),
+            _ => {}
+        }
+    }
+    (lists, picked)
+}
+
+#[test]
+fn the_draft_and_model_messages_reach_the_bound_chat_and_only_it() {
+    let (mut m, log) = new_model();
+    action(&mut m, "chat.open"); // bound to p/t1
+    send(&mut m, attachments("t1", "t1", &["a.png"]));
+    send(&mut m, models("t1", "m/one"));
+    send(&mut m, attachments("t2", "t2", &["other.png"]));
+    // Names another conversation than its resource: dropped.
+    let dropped = m.counters().dropped;
+    send(&mut m, attachments("t1", "t2", &["wrong.png"]));
+    send(&mut m, models("t2", "m/one"));
+    assert!(m.counters().dropped > dropped);
+    let (lists, picked) = draft_lists(&log);
+    assert_eq!(lists, vec![vec!["a.png".to_string()]]);
+    assert_eq!(picked, vec!["m/one".to_string()]);
+}
+
+#[test]
+fn a_chat_mounted_late_is_handed_the_latest_draft_and_model_lists_once() {
+    let (mut m, log) = new_model();
+    send(&mut m, attachments("t1", "t1", &["a.png"]));
+    send(&mut m, attachments("t1", "t1", &["a.png", "b.png"]));
+    send(&mut m, models("t1", "m/one"));
+    send(&mut m, attachments("t1", "wrong", &["bad.png"])); // not retained
+    assert_eq!(draft_lists(&log), (vec![], vec![]), "nobody is bound yet");
+    let fx = action(&mut m, "chat.open");
+    assert!(fx.is_empty() && log.borrow().emits.is_empty());
+    let (lists, picked) = draft_lists(&log);
+    assert_eq!(lists, vec![vec!["a.png".to_string(), "b.png".to_string()]]);
+    assert_eq!(picked, vec!["m/one".to_string()]);
+    send(&mut m, Msg::Tick);
+    assert_eq!(draft_lists(&log).0.len(), 1, "replayed once");
+}
+
+#[test]
+fn an_ended_conversation_forgets_its_draft_and_models() {
+    let (mut m, log) = new_model();
+    send(&mut m, attachments("t1", "t1", &["a.png"]));
+    send(&mut m, models("t1", "m/one"));
+    action(&mut m, "chat.open");
+    assert_eq!(draft_lists(&log).0.len(), 1);
+    action(&mut m, "chat.end");
+    action(&mut m, "chat.open");
+    let (lists, picked) = draft_lists(&log);
+    assert_eq!(
+        (lists.len(), picked.len()),
+        (1, 1),
+        "nothing left to replay"
+    );
+}
+
+#[test]
+fn the_composer_actions_need_their_capability_word() {
+    let reg = builtin::registry();
+    let with = Capabilities::of(["conversation", "conversation.attach", "conversation.model"]);
+    let without = Capabilities::of(["conversation"]);
+    for (id, kinds, word) in [
+        (
+            "theo.attach",
+            vec![EffectKind::ConversationAttachPick],
+            "conversation.attach",
+        ),
+        (
+            "theo.model",
+            vec![
+                EffectKind::ConversationModels,
+                EffectKind::ConversationSetModel,
+            ],
+            "conversation.model",
+        ),
+        (
+            "theo.effort",
+            vec![EffectKind::ConversationSetEffort],
+            "conversation.model",
+        ),
+    ] {
+        let (_, action) = reg.action(&ActionId::new(id)).expect(id);
+        assert_eq!(action.emits, kinds, "{id}");
+        assert_eq!(action.intent, ActionIntent::Start, "{id}");
+        assert!(action.picker.is_none(), "{id}");
+        assert!(
+            reg.resolve(&ActionId::new(id), &Actor::Human, &with)
+                .is_ok()
+        );
+        assert!(
+            reg.resolve(&ActionId::new(id), &Actor::Human, &without)
+                .is_err(),
+            "{id} is absent without {word}"
+        );
+    }
+}
+
+#[test]
+fn the_composer_effects_are_the_conversations_and_carry_their_fields() {
+    use theorem_workbench_core::effect::{EffectBody, Owner};
+    for (value, kind) in [
+        (
+            json!({"kind": "conversationAttachPick"}),
+            EffectKind::ConversationAttachPick,
+        ),
+        (
+            json!({"kind": "conversationAttachRemove", "payload": {"id": "a1"}}),
+            EffectKind::ConversationAttachRemove,
+        ),
+        (
+            json!({"kind": "conversationModels"}),
+            EffectKind::ConversationModels,
+        ),
+        (
+            json!({"kind": "conversationSetModel", "payload": {"ref": "m/one"}}),
+            EffectKind::ConversationSetModel,
+        ),
+        (
+            json!({"kind": "conversationSetEffort", "payload": {"level": "high"}}),
+            EffectKind::ConversationSetEffort,
+        ),
+    ] {
+        let body: EffectBody = serde_json::from_value(value.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&body).unwrap(), value);
+        assert_eq!(EffectKind::from(&body), kind);
+        assert_eq!(kind.owner(), Owner::Conversation);
+    }
+    // References are optional on input, kept when present, skipped when empty.
+    let send_body: EffectBody = serde_json::from_value(json!({
+        "kind": "conversationSend",
+        "payload": {"clientMessageId": "c", "text": "hi", "references": [
+            {"path": "src/a.rs", "range": {"start": {"line": 1, "character": 0}, "end": {"line": 2, "character": 0}}, "label": "a"}
+        ]}
+    }))
+    .unwrap();
+    let EffectBody::ConversationSend(s) = &send_body else {
+        panic!("not a send");
+    };
+    assert_eq!(s.references.len(), 1);
+    assert!(s.attachments.is_empty());
+}
+
+#[test]
+fn reduced_motion_reaches_each_panel_when_it_changes_and_on_mount() {
+    let (mut m, log) = new_model();
+    action(&mut m, "note.open");
+    let motion = |log: &Shared, kind: &str| -> Vec<bool> {
+        msgs_of(log, kind)
+            .into_iter()
+            .filter_map(|m| match m {
+                PanelMsg::Motion { reduced } => Some(reduced),
+                _ => None,
+            })
+            .collect()
+    };
+    assert!(
+        motion(&log, "note").is_empty(),
+        "full motion is the default"
+    );
+    send(&mut m, Msg::ReducedMotion(true));
+    send(&mut m, Msg::ReducedMotion(true));
+    assert_eq!(motion(&log, "note"), vec![true], "told once");
+    action(&mut m, "chat.open"); // built after the setting
+    assert_eq!(motion(&log, "chat"), vec![true]);
+    send(&mut m, Msg::ReducedMotion(false));
+    assert_eq!(motion(&log, "note"), vec![true, false]);
+    assert!(log.borrow().emits.is_empty());
 }

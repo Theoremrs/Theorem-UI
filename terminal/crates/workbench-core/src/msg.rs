@@ -69,6 +69,9 @@ pub enum Msg {
     },
     /// The window gained or lost focus.
     Focus(bool),
+    /// The person asked the system for reduced motion (or stopped asking).
+    /// The root keeps it and tells each panel whose last word differs.
+    ReducedMotion(bool),
     Host(HostMessage),
     Completion(Completion),
     Action {

@@ -97,6 +97,9 @@ pub(crate) const RETAINED_SESSION_LISTS: usize = 4;
 pub(crate) struct Retained {
     pub(crate) snapshots: Vec<(ResourceRef, HostMessage)>,
     pub(crate) sessions: Vec<(String, HostMessage)>,
+    /// The latest draft attachment list and model list of each conversation.
+    pub(crate) attachments: Vec<(ResourceRef, HostMessage)>,
+    pub(crate) models: Vec<(ResourceRef, HostMessage)>,
 }
 
 impl Retained {
@@ -132,9 +135,34 @@ impl Retained {
         }
     }
 
+    /// Keep the latest draft attachment list for `resource`; each message is
+    /// the whole list, so it replaces the one held.
+    pub(crate) fn keep_attachments(&mut self, resource: &ResourceRef, message: &HostMessage) {
+        keep_latest(&mut self.attachments, resource, message);
+    }
+
+    /// Keep the latest model list for `resource`.
+    pub(crate) fn keep_models(&mut self, resource: &ResourceRef, message: &HostMessage) {
+        keep_latest(&mut self.models, resource, message);
+    }
+
     /// A conversation that was ended is forgotten.
     pub(crate) fn forget(&mut self, resource: &ResourceRef) {
         self.snapshots.retain(|(r, _)| r != resource);
+        self.attachments.retain(|(r, _)| r != resource);
+        self.models.retain(|(r, _)| r != resource);
+    }
+}
+
+fn keep_latest(
+    held: &mut Vec<(ResourceRef, HostMessage)>,
+    resource: &ResourceRef,
+    message: &HostMessage,
+) {
+    held.retain(|(r, _)| r != resource);
+    held.push((resource.clone(), message.clone()));
+    if held.len() > RETAINED_SNAPSHOTS {
+        held.remove(0);
     }
 }
 
@@ -184,6 +212,9 @@ pub struct Model {
     pub(crate) viewport: Option<Viewport>,
     pub(crate) frame: Option<SolvedFrame>,
     pub(crate) window_focused: bool,
+    /// Reduced motion as the host last said, and what each panel was last told.
+    pub(crate) reduced_motion: bool,
+    pub(crate) motion_told: BTreeMap<PanelInstanceId, bool>,
     pub(crate) announced_focus: Option<PanelInstanceId>,
     /// The last panel other than the picker that owned the keyboard: where
     /// focus goes back to when the picker closes.
@@ -237,6 +268,8 @@ impl Model {
             viewport: None,
             frame: None,
             window_focused: true,
+            reduced_motion: false,
+            motion_told: BTreeMap::new(),
             announced_focus: None,
             before_picker: None,
             drag: None,

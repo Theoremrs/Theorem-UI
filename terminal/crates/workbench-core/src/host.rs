@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::draft::{DraftAttachment, ModelChoice};
 use crate::effect::{CoordinateUnit, TerminalBackend, TextChange};
 use crate::ids::{ResourceRef, Revision};
 use crate::registry::Capabilities;
@@ -229,6 +230,32 @@ pub enum HostMessage {
         conversation_id: String,
         snapshot: String,
     },
+    /// The whole draft attachment list of a conversation, as the host holds it
+    /// now. Sent after every change (a pick, a remove, a paste or a drop), so a
+    /// panel never merges: the latest list replaces its own.
+    /// `conversation_id` must be the `thread` of `resource`.
+    ConversationAttachments {
+        resource: ResourceRef,
+        conversation_id: String,
+        attachments: Vec<DraftAttachment>,
+    },
+    /// The models a conversation can run on, and which one and which effort
+    /// the next turn will use. `efforts` lists the levels the selected model
+    /// accepts, empty when it has none. `conversation_id` must be the
+    /// `thread` of `resource`.
+    ConversationModels {
+        resource: ResourceRef,
+        conversation_id: String,
+        models: Vec<ModelChoice>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        selected: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        effort: Option<String>,
+        #[serde(default)]
+        efforts: Vec<String>,
+    },
     /// The role contract changed. The palette itself arrives through
     /// `set_palette`; this only says to repaint.
     ThemeChanged {
@@ -304,6 +331,7 @@ pub enum HostMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::draft::DraftAttachmentState;
     use serde_json::json;
 
     #[test]
@@ -426,5 +454,82 @@ mod tests {
                 "conversationId": "t1", "snapshot": "{}"
             }),
         );
+    }
+
+    fn conv() -> ResourceRef {
+        ResourceRef::Conversation {
+            project: "p".into(),
+            thread: "t1".into(),
+        }
+    }
+
+    #[test]
+    fn draft_attachments_and_models_round_trip() {
+        round(
+            HostMessage::ConversationAttachments {
+                resource: conv(),
+                conversation_id: "t1".into(),
+                attachments: vec![
+                    DraftAttachment {
+                        id: "a1".into(),
+                        name: "x.png".into(),
+                        content_type: Some("image/png".into()),
+                        size: Some(10),
+                        state: DraftAttachmentState::Ready,
+                        reason: None,
+                    },
+                    DraftAttachment {
+                        id: "a2".into(),
+                        name: "big.bin".into(),
+                        content_type: None,
+                        size: None,
+                        state: DraftAttachmentState::Refused,
+                        reason: Some("too large".into()),
+                    },
+                ],
+            },
+            json!({
+                "type": "conversationAttachments",
+                "resource": {"type": "conversation", "project": "p", "thread": "t1"},
+                "conversationId": "t1",
+                "attachments": [
+                    {"id": "a1", "name": "x.png", "contentType": "image/png", "size": 10, "state": "ready"},
+                    {"id": "a2", "name": "big.bin", "state": "refused", "reason": "too large"}
+                ]
+            }),
+        );
+        round(
+            HostMessage::ConversationModels {
+                resource: conv(),
+                conversation_id: "t1".into(),
+                models: vec![ModelChoice {
+                    model_ref: "m/one".into(),
+                    label: "One".into(),
+                    context_tokens: Some(200_000),
+                }],
+                selected: Some("m/one".into()),
+                effort: Some("high".into()),
+                efforts: vec!["low".into(), "high".into()],
+            },
+            json!({
+                "type": "conversationModels",
+                "resource": {"type": "conversation", "project": "p", "thread": "t1"},
+                "conversationId": "t1",
+                "models": [{"ref": "m/one", "label": "One", "contextTokens": 200000}],
+                "selected": "m/one", "effort": "high", "efforts": ["low", "high"]
+            }),
+        );
+        // Optionals and the effort list may be absent on input.
+        let bare: HostMessage = serde_json::from_value(json!({
+            "type": "conversationModels",
+            "resource": {"type": "conversation", "project": "p", "thread": "t1"},
+            "conversationId": "t1", "models": []
+        }))
+        .unwrap();
+        assert!(matches!(
+            bare,
+            HostMessage::ConversationModels { selected: None, effort: None, ref efforts, .. }
+                if efforts.is_empty()
+        ));
     }
 }
