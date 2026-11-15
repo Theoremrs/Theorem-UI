@@ -310,10 +310,11 @@ test('a GitHub sign-in error appears below the provider button', async () => {
   const detail = `GitHub is not configured. Reference: chatreq_${'A'.repeat(80)}`
   refuse['POST github/connect'] = { status: 503, detail }
   await mount(<GithubSection />)
-  await press(await waitFor(() => buttonNamed('GitHub')))
+  const button = await waitFor(() => buttonNamed('GitHub'))
+  await press(button)
   const alert = await waitFor(() => document.querySelector('[role="alert"]'))
   expect(alert.textContent).toBe(detail)
-  expect(alert.previousElementSibling).toBe(buttonNamed('GitHub'))
+  expect(alert.previousElementSibling).toBe(button)
   expect(alert.classList.contains('wrap-anywhere')).toBe(true)
 })
 
