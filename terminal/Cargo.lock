@@ -680,6 +680,7 @@ dependencies = [
  "serde_json",
  "tui-input",
  "tui-markdown",
+ "unicode-width",
  "wasm-bindgen",
  "web-sys",
 ]

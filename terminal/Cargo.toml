@@ -9,6 +9,7 @@ description = "The agent terminal drawer's TUI: Ratatui on Ratzilla's DOM backen
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+unicode-width = "0.2"
 ratzilla = "0.3.1"
 ratatui = { version = "0.30.1", default-features = false, features = ["unstable-rendered-line-info"] }
 tui-markdown = { version = "0.3.12", default-features = false }

@@ -43,6 +43,9 @@ use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
 pub mod preview;
+mod cabinet;
+
+pub use cabinet::{CabinetHandle, mount_cabinet};
 
 /// The terminal's colours. The page works them out from the workspace around
 /// the terminal (src/components/terminal/terminal-theme.ts) and sets them with
@@ -1571,6 +1574,32 @@ impl App {
     }
 }
 
+/// What a `Screen` draws each frame: the agent terminal or the cabinet.
+trait Drawn {
+    /// The backend's cell size in CSS pixels, measured each frame.
+    fn set_cell(&mut self, cell: (f32, f32));
+    fn draw(&mut self, frame: &mut Frame);
+    /// The hollow cursor: its cell, whether the view is focused, and when it
+    /// last took a key. None hides it.
+    fn caret(&self) -> Option<(Position, bool, f64)> {
+        None
+    }
+    /// Called after each draw, so a view can report what moved.
+    fn drawn(&mut self) {}
+}
+
+impl Drawn for App {
+    fn set_cell(&mut self, cell: (f32, f32)) {
+        self.cell = cell;
+    }
+    fn draw(&mut self, frame: &mut Frame) {
+        App::draw(self, frame);
+    }
+    fn caret(&self) -> Option<(Position, bool, f64)> {
+        self.cursor.map(|at| (at, self.focused, self.typed_at))
+    }
+}
+
 /// The mounted terminal. React calls these from its own event handlers.
 #[wasm_bindgen]
 pub struct TerminalHandle {
@@ -1709,9 +1738,9 @@ impl Screen {
         }
     }
 
-    fn frame(&mut self, app: &mut App) -> std::io::Result<()> {
+    fn frame<D: Drawn>(&mut self, app: &mut D) -> std::io::Result<()> {
         let (cell_w, cell_h) = self.terminal.backend().cell_size_css_px();
-        app.cell = (cell_w, cell_h);
+        app.set_cell((cell_w, cell_h));
         let rect = self.parent.get_bounding_client_rect();
         let measured = (
             (rect.width() / f64::from(cell_w)) as u16,
@@ -1747,27 +1776,28 @@ impl Screen {
         let area = self.terminal.get_frame().area();
         if area.width > 0 && area.height > 0 {
             self.terminal.draw(|frame| app.draw(frame))?;
+            app.drawn();
         }
-        self.place_cursor(app);
+        self.place_cursor(app, (cell_w, cell_h));
         Ok(())
     }
 
     /// Moves the hollow cursor to the prompt: blinking while focused, solid
     /// for a beat after each key, steady and dim while unfocused.
-    fn place_cursor(&mut self, app: &App) {
+    fn place_cursor<D: Drawn>(&mut self, app: &D, cell: (f32, f32)) {
         // A rebuild empties the parent, cursor included.
         if !self.cursor.is_connected() {
             let _ = self.parent.append_child(&self.cursor);
         }
-        let style = match app.cursor {
-            Some(at) => {
-                let lit = !app.focused || ((now() - app.typed_at) / BLINK_MS) as u64 % 2 == 0;
-                let color = match (lit, app.focused) {
+        let style = match app.caret() {
+            Some((at, focused, typed_at)) => {
+                let lit = !focused || ((now() - typed_at) / BLINK_MS) as u64 % 2 == 0;
+                let color = match (lit, focused) {
                     (false, _) => "transparent".to_owned(),
                     (true, true) => palette().sage.to_string(),
                     (true, false) => palette().idle.to_string(),
                 };
-                let (width, height) = app.cell;
+                let (width, height) = cell;
                 format!(
                     "position:absolute;pointer-events:none;box-sizing:border-box;\
                      border:1px solid {color};left:{}px;top:{}px;width:{width}px;height:{height}px",
@@ -1795,7 +1825,7 @@ impl Drop for Screen {
 }
 
 /// Draws a frame on every animation frame until the element leaves the page.
-fn run_frames(mut screen: Screen, app: Rc<RefCell<App>>) {
+fn run_frames<D: Drawn + 'static>(mut screen: Screen, app: Rc<RefCell<D>>) {
     let next: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
     let scheduled = next.clone();
     *next.borrow_mut() = Some(Closure::new(move || {
@@ -1804,7 +1834,7 @@ fn run_frames(mut screen: Screen, app: Rc<RefCell<App>>) {
             scheduled.borrow_mut().take();
             return;
         }
-        if let Err(error) = screen.frame(&mut app.borrow_mut()) {
+        if let Err(error) = screen.frame(&mut *app.borrow_mut()) {
             web_sys::console::error_1(&JsValue::from_str(&format!("terminal: {error}")));
         }
         if let Some(callback) = scheduled.borrow().as_ref() {
