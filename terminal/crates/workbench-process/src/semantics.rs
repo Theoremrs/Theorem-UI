@@ -11,7 +11,7 @@ use crate::bound::{Bound, EndAsk, Role, Status};
 use crate::chooser::{self, RowKind};
 use crate::draw;
 use crate::panel::ProcessPanel;
-use crate::state::Stage;
+use crate::state::{Stage, reason_text};
 
 fn action(id: &str, enabled: bool, reason: Option<String>) -> NodeAction {
     NodeAction {
@@ -54,12 +54,12 @@ pub(crate) fn nodes(p: &ProcessPanel, area: Rect, cx: &ViewCtx) -> Vec<Node> {
                 area,
             );
             status.state.busy = op.uncertain.is_none();
-            status.state.description = op.uncertain.clone();
+            status.state.description = op.uncertain.as_deref().map(|r| reason_text(r).to_owned());
             vec![status]
         }
         Stage::Failed(failure) => {
             let mut alert = Node::new("status", Aria::Alert, draw::failure_title(failure), area);
-            alert.state.description = Some(failure.reason.clone());
+            alert.state.description = Some(reason_text(&failure.reason).to_owned());
             let mut retry = Node::new("retry", Aria::Button, "Try again", area);
             retry.actions = vec![action("shell.start", true, None)];
             vec![alert, retry]

@@ -47,6 +47,16 @@ pub(crate) enum FailureKind {
     Failed,
 }
 
+/// A host reason as a person reads it: a reason the host left empty is said
+/// to be missing instead of drawn as a blank.
+pub(crate) fn reason_text(reason: &str) -> &str {
+    if reason.trim().is_empty() {
+        "The host gave no reason."
+    } else {
+        reason
+    }
+}
+
 pub(crate) struct Failure {
     pub kind: FailureKind,
     pub reason: String,

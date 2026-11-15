@@ -12,7 +12,7 @@ use crate::bound::{Bound, EndAsk, Role, Status, Tone};
 use crate::catalog::{backend_word, persistence};
 use crate::chooser::{self, LineKind};
 use crate::panel::ProcessPanel;
-use crate::state::{Failure, FailureKind, Opening, Saved, Stage};
+use crate::state::{Failure, FailureKind, Opening, Saved, Stage, reason_text};
 
 /// The three bands of a live pane.
 #[derive(Clone, Copy)]
@@ -270,7 +270,8 @@ fn opening(p: &ProcessPanel, op: &Opening, area: Rect, buf: &mut Buffer, cx: &Vi
                 area,
                 area.y + 1,
                 &format!(
-                    "Unknown whether a shell started ({reason}). It was not retried and is not assumed."
+                    "Unknown whether a shell started ({}). It was not retried and is not assumed.",
+                    reason_text(reason)
                 ),
                 cx.theme.warning,
             );
@@ -324,7 +325,7 @@ fn failed(failure: &Failure, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
         buf,
         area,
         area.y + 1,
-        &format!("Host reason: {}", failure.reason),
+        &format!("Host reason: {}", reason_text(&failure.reason)),
         cx.theme.text,
     );
     if let Some(code) = &failure.code {

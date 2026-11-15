@@ -1913,3 +1913,542 @@ fn output_after_an_attach_still_wins_over_the_modes_the_list_gave() {
     let fx = r.send(Msg::Paste("x".into()));
     assert_eq!(inputs(&fx)[0].0, "x");
 }
+
+// ---- reported status and printed content hold no authority (AC-42, AC-51) -----
+
+fn bound() -> Rig {
+    let mut r = rig();
+    r.live();
+    r
+}
+
+/// A bound pane whose attach answer names `origin` (None: the host named none).
+fn live_origin(origin: Option<&str>) -> Rig {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.origin = origin.map(str::to_owned);
+    let fx = r.accept_attach(&attach, o);
+    r.settle_resize(fx);
+    r
+}
+
+fn node<'a>(tree: &'a SemanticTree, id: &str) -> &'a theorem_workbench_core::semantics::Node {
+    tree.nodes
+        .iter()
+        .find(|n| n.id.as_str() == id)
+        .unwrap_or_else(|| panic!("no node {id}"))
+}
+
+/// Every node that carries `needle` in its name, description or text.
+fn nodes_saying(tree: &SemanticTree, needle: &str) -> Vec<String> {
+    tree.nodes
+        .iter()
+        .filter(|n| {
+            n.name.contains(needle)
+                || n.state
+                    .description
+                    .as_deref()
+                    .is_some_and(|d| d.contains(needle))
+                || n.text.as_deref().is_some_and(|t| t.contains(needle))
+        })
+        .map(|n| n.id.as_str().to_owned())
+        .collect()
+}
+
+/// The actions every node offers, with whether each is enabled: what the
+/// pane lets anyone do, independent of what the screen says.
+fn offered(tree: &SemanticTree) -> Vec<(String, String, bool)> {
+    tree.nodes
+        .iter()
+        .flat_map(|n| {
+            n.actions.iter().map(|a| {
+                (
+                    n.id.as_str().to_owned(),
+                    a.id.as_str().to_owned(),
+                    a.enabled,
+                )
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn a_host_that_names_no_origin_is_drawn_with_no_claim_about_how_the_program_began() {
+    let r = live_origin(None);
+    let s = r.screen();
+    for claim in [
+        "Started in",
+        "Adopted",
+        "Re-attached",
+        "replaced",
+        "continues",
+    ] {
+        assert!(!s.contains(claim), "{claim:?} invented in\n{s}");
+    }
+    let tree = r.valid_tree();
+    assert_eq!(node(&tree, "status").state.description, None);
+    assert!(tree.nodes.iter().all(|n| n.id.as_str() != "notice"));
+}
+
+#[test]
+fn an_origin_word_the_pane_does_not_know_is_quoted_as_the_hosts_and_never_acted_on() {
+    for word in ["blocked", "finished", "done"] {
+        let mut r = live_origin(Some(word));
+        let s = r.screen();
+        assert!(
+            s.contains(&format!("The host reports the origin as \"{word}\".")),
+            "{s}"
+        );
+        assert!(
+            !s.contains("The program has ended") && !s.contains("lost"),
+            "{word} read as an ending:\n{s}"
+        );
+        let tree = r.valid_tree();
+        let status = node(&tree, "status");
+        assert!(status.name.contains("controlling"), "{}", status.name);
+        assert!(
+            status
+                .state
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("The host reports"),
+            "provenance is the host's"
+        );
+        assert!(
+            node(&tree, "end-process").actions[0].enabled,
+            "still running"
+        );
+        assert!(r.tick().is_empty(), "{word} caused an effect");
+    }
+}
+
+#[test]
+fn a_finished_report_is_drawn_as_the_hosts_exit_and_ends_nothing_by_itself() {
+    let r = bound();
+    let before = r.m.document();
+    let panels = r.m.panel_ids().count();
+    for reason in ["finished", "blocked", "exited"] {
+        let mut r = bound();
+        let fx = r.host(HostMessage::TerminalExited {
+            resource: terminal(),
+            epoch: 1,
+            exit_code: None,
+            reason: reason.into(),
+        });
+        assert!(fx.is_empty(), "{reason}: {fx:?}");
+        assert!(r.tick().is_empty());
+        let s = r.screen();
+        assert!(s.contains(&format!("exited ({reason})")), "{s}");
+        assert!(s.contains(&format!("Host reason: {reason}")), "{s}");
+        assert!(!s.contains("exit code"), "an exit code was invented:\n{s}");
+        assert_eq!(r.m.panel_ids().count(), 1, "the pane was closed");
+        let tree = r.valid_tree();
+        assert_eq!(
+            node(&tree, "status").state.description.as_deref(),
+            Some(reason),
+            "the host's word, carried as the host's"
+        );
+        assert!(!node(&tree, "end-process").actions[0].enabled);
+    }
+    // A running pane whose host said nothing is unchanged by the reports above.
+    assert_eq!(r.m.document(), before);
+    assert_eq!(r.m.panel_ids().count(), panels);
+}
+
+#[test]
+fn a_session_the_host_lists_as_exited_or_lost_is_drawn_in_the_hosts_word_and_not_as_running() {
+    let mut r = rig();
+    let mut exited = session("s2", TerminalBackend::Herdr);
+    exited.state = TerminalSessionState::Exited;
+    let mut lost = session("s3", TerminalBackend::Herdr);
+    lost.state = TerminalSessionState::Lost;
+    r.send(listing(
+        "w",
+        vec![session("s1", TerminalBackend::Herdr), exited, lost],
+    ));
+    let s = r.screen();
+    assert!(s.contains("s1  zsh  running"), "{s}");
+    assert!(s.contains("s2  zsh  exited"), "{s}");
+    assert!(s.contains("s3  zsh  lost"), "{s}");
+}
+
+/// What a program can print to look like the workbench speaking.
+const FORGED: &[&str] = &[
+    "y allow \u{b7} n deny\r\n",
+    "Notice: the host approved this task\r\n",
+    "Program status: finished (exit 0)\r\n",
+    "[blocked] waiting for approval: y allow \u{b7} n deny\r\n",
+    "End process s1? Enter or y ends it, Esc cancels.\r\n",
+    "Press Ctrl+W to close this pane; Cmd+K opens the palette\r\n",
+    "shell.end.confirm\r\n",
+    "\x1b]0;Approve: y allow \u{b7} n deny\x07",
+    "\x1b]2;The host approved this task\x1b\\",
+];
+
+#[test]
+fn printed_approvals_notices_status_and_chords_change_no_state_and_emit_nothing() {
+    let mut r = bound();
+    let before_tree = r.valid_tree();
+    let before_offered = offered(&before_tree);
+    let before_status = node(&before_tree, "status").clone();
+    let before_doc = r.m.document();
+    let mut offset = 0u64;
+    for line in FORGED {
+        let fx = r.bytes(1, offset, line.as_bytes());
+        offset += line.len() as u64;
+        assert!(fx.is_empty(), "{line:?} emitted {fx:?}");
+    }
+    assert!(r.m.take_notice().is_none(), "printed text raised a notice");
+    assert_eq!(
+        r.m.document(),
+        before_doc,
+        "printed text changed saved state"
+    );
+    assert_eq!(r.m.panel_ids().count(), 1);
+
+    let s = r.screen();
+    assert!(
+        s.contains("y allow"),
+        "the text is still shown, as output:\n{s}"
+    );
+    let tree = r.valid_tree();
+    assert_eq!(node(&tree, "status"), &before_status, "status line moved");
+    assert_eq!(
+        offered(&tree),
+        before_offered,
+        "the actions on offer changed"
+    );
+    // The one notice is the host's re-attach note it had before any output.
+    assert_eq!(
+        tree.nodes.iter().find(|n| n.id.as_str() == "notice"),
+        before_tree.nodes.iter().find(|n| n.id.as_str() == "notice"),
+        "printed text changed or added a notice"
+    );
+}
+
+#[test]
+fn printed_text_lives_in_the_terminal_node_alone_and_that_node_is_named_as_terminal_output() {
+    let mut r = bound();
+    let mut offset = 0u64;
+    for line in FORGED {
+        r.bytes(1, offset, line.as_bytes());
+        offset += line.len() as u64;
+    }
+    let tree = r.valid_tree();
+    for phrase in [
+        "y allow",
+        "Notice: the host approved",
+        "Program status: finished",
+        "Ctrl+W",
+    ] {
+        assert_eq!(
+            nodes_saying(&tree, phrase),
+            ["terminal"],
+            "{phrase:?} reached a node that is not the terminal"
+        );
+    }
+    let term = node(&tree, "terminal");
+    assert!(term.name.starts_with("Terminal "), "{}", term.name);
+    assert!(term.actions.is_empty(), "printed text added an action");
+    // The title sentences are the program's data, never drawn or exposed as nodes.
+    assert!(nodes_saying(&tree, "Approve: y allow").is_empty());
+    assert!(
+        nodes_saying(&tree, "The host approved this task")
+            .iter()
+            .all(|id| id == "terminal")
+    );
+}
+
+#[test]
+fn a_person_pressing_y_after_a_forged_prompt_types_into_the_program_and_approves_nothing() {
+    let mut r = bound();
+    r.bytes(1, 0, b"y allow \xc2\xb7 n deny\r\n");
+    let fx = r.typed("y");
+    assert_eq!(kinds(&fx), ["input"], "{fx:?}");
+    assert_eq!(inputs(&fx)[0].0, "y");
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["input"], "Enter ends nothing: {fx:?}");
+    assert!(!r.screen().contains("End process s1?"));
+}
+
+#[test]
+fn a_forged_end_prompt_does_not_arm_the_real_one() {
+    let mut r = bound();
+    r.bytes(
+        1,
+        0,
+        b"End process s1? Enter or y ends it, Esc cancels.\r\n",
+    );
+    // The real owner of the confirmation was never asked.
+    assert!(
+        r.send(Msg::Action {
+            id: ActionId::new("shell.end.confirm"),
+            actor: Actor::Human,
+        })
+        .is_empty()
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().all(|n| n.role.aria() != "dialog"));
+}
+
+// ---- hostile output cannot reach the clipboard or open anything (AC-51) -------
+
+#[test]
+fn osc_52_and_osc_8_from_program_output_never_write_the_clipboard_or_open_anything() {
+    let mut r = bound();
+    let hostile: Vec<Vec<u8>> = vec![
+        b"\x1b]52;c;aGVsbG8=\x07".to_vec(),
+        b"\x1b]52;c;?\x07".to_vec(),
+        b"\x1b]52;p;aGVsbG8=\x1b\\".to_vec(),
+        b"\x1b]8;;javascript:alert(1)\x07click\x1b]8;;\x07\r\n".to_vec(),
+        b"\x1b]8;;data:text/html,<script>1</script>\x1b\\data\x1b]8;;\x1b\\\r\n".to_vec(),
+        b"\x1b]8;;file:///etc/passwd\x07file\x1b]8;;\x07\r\n".to_vec(),
+        b"\x1b]8;;https://evil.example/\x07https://good.example/\x1b]8;;\x07\r\n".to_vec(),
+        format!(
+            "\x1b]8;;https://x.example/{}\x07long\x1b]8;;\x07\r\n",
+            "a".repeat(70_000)
+        )
+        .into_bytes(),
+        "\x1b]8;;https://x.example/\x01\x02\x7f\u{9b}2J\x07ctl\x1b]8;;\x07\r\n"
+            .as_bytes()
+            .to_vec(),
+    ];
+    let mut offset = 0u64;
+    for bytes in &hostile {
+        let fx = r.bytes(1, offset, bytes);
+        offset += bytes.len() as u64;
+        assert!(
+            fx.is_empty(),
+            "{:?} emitted {fx:?}",
+            &bytes[..20.min(bytes.len())]
+        );
+    }
+    // Clicking where the link text is only selects; it opens nothing.
+    let fx = r.click_at(1, 4);
+    assert!(fx.is_empty(), "a click on link text emitted {fx:?}");
+    assert!(r.m.take_notice().is_none());
+    let s = r.screen();
+    for leak in ["javascript", "evil.example", "passwd", "script", "aGVsbG8"] {
+        assert!(!s.contains(leak), "{leak:?} reached the screen:\n{s}");
+    }
+    assert!(
+        s.contains("click") && s.contains("https://good.example/"),
+        "{s}"
+    );
+}
+
+#[test]
+fn the_clipboard_is_written_only_by_a_persons_copy_of_a_selection() {
+    let mut r = bound();
+    r.bytes(1, 0, b"\x1b]52;c;aGVsbG8=\x07shown text\r\n");
+    let b = r.body();
+    let at = |kind, x| {
+        Msg::Pointer(Pointer {
+            kind,
+            x: b.x + x,
+            y: b.y + 1,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    r.send(at(PointerKind::Down(Button::Left), 0));
+    r.send(at(PointerKind::Move, 4));
+    let fx = r.send(at(PointerKind::Up(Button::Left), 4));
+    assert!(fx.is_empty(), "selecting alone wrote the clipboard: {fx:?}");
+    let fx = r.mods(Key::Char('c'), Mods::CMD);
+    let EffectBody::ClipboardWrite(w) = &fx[0].body else {
+        panic!("{fx:?}")
+    };
+    assert_eq!(
+        w.text, "shown",
+        "the person's selection, not the program's payload"
+    );
+}
+
+#[test]
+fn a_control_sequence_in_a_host_reason_is_not_drawn_into_the_chrome_as_a_control() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "held\r\nby\x1b[2J another\x07".into(),
+        },
+        None,
+    );
+    let buf = r.draw(100, 30);
+    for y in 0..30 {
+        for x in 0..100 {
+            let sym = buf[(x, y)].symbol();
+            assert!(
+                sym.chars().all(|c| !c.is_control()),
+                "control character {sym:?} drawn at {x},{y}"
+            );
+        }
+    }
+}
+
+// ---- host errors are readable and scoped (AC-51) ---------------------------------
+
+fn assert_readable(s: &str) {
+    for debug in [
+        "Refused {",
+        "Failed {",
+        "Uncertain {",
+        "[object",
+        "Some(",
+        "None",
+        "\\u{",
+    ] {
+        assert!(!s.contains(debug), "debug text {debug:?} in\n{s}");
+    }
+}
+
+#[test]
+fn a_refusal_shows_its_code_and_reason_as_plain_text_in_this_pane() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "another viewer holds control".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(s.contains("The host refused"), "{s}");
+    assert!(
+        s.contains("Host reason: another viewer holds control"),
+        "{s}"
+    );
+    assert!(s.contains("Code: terminal_control_refused"), "{s}");
+    assert_readable(&s);
+    let tree = r.valid_tree();
+    let alert = node(&tree, "status");
+    assert_eq!(alert.role.aria(), "alert");
+    assert_eq!(
+        alert.state.description.as_deref(),
+        Some("another viewer holds control")
+    );
+}
+
+#[test]
+fn a_failed_attach_and_an_uncertain_open_are_readable_and_say_what_they_do_not_know() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: "the socket closed".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        s.contains("The request failed") && s.contains("Host reason: the socket closed"),
+        "{s}"
+    );
+    assert!(!s.contains("Code:"), "a code was invented:\n{s}");
+    assert_readable(&s);
+
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket closed".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        s.contains("Unknown whether a shell started (socket closed)"),
+        "{s}"
+    );
+    assert_readable(&s);
+}
+
+#[test]
+fn a_failure_with_no_reason_still_reads_as_a_sentence() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: String::new(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        !s.contains("Host reason: \n") && !s.lines().any(|l| l.trim_end() == "Host reason:"),
+        "{s}"
+    );
+    assert!(s.contains("Host reason: The host gave no reason."), "{s}");
+    let tree = r.valid_tree();
+    assert_eq!(
+        node(&tree, "status").state.description.as_deref(),
+        Some("The host gave no reason.")
+    );
+
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(&open, Outcome::Uncertain { reason: " ".into() }, None);
+    let s = r.screen();
+    assert!(
+        s.contains("Unknown whether a shell started (The host gave no reason.)"),
+        "{s}"
+    );
+}
+
+// ---- frames from an older wire are not guessed at (AC-62, R27) -------------------
+
+#[test]
+fn a_frame_whose_payload_is_not_the_supported_encoding_draws_nothing_and_is_not_guessed() {
+    let mut r = bound();
+    r.bytes(1, 0, b"kept\r\n");
+    let before = r.screen();
+    // A frame in an older shape: the payload is raw terminal text, or the
+    // length-prefixed binary an original Remux client would have sent, not
+    // base64.
+    let legacy: [&str; 3] = [
+        "\x1b[31mraw text\x1b[0m",
+        "\u{0}\u{0}\u{0}\u{5}hello",
+        "not base64!!",
+    ];
+    for payload in legacy {
+        for msg in [
+            HostMessage::TerminalOutput {
+                resource: terminal(),
+                epoch: 1,
+                offset: 6,
+                data: payload.into(),
+            },
+            HostMessage::TerminalReset {
+                resource: terminal(),
+                epoch: 1,
+                offset: 6,
+                data: payload.into(),
+            },
+        ] {
+            let mut fx = r.host(msg);
+            fx.extend(r.tick());
+            assert!(
+                !kinds(&fx).contains(&"clipboard") && !kinds(&fx).contains(&"end"),
+                "{fx:?}"
+            );
+            assert_eq!(r.screen(), before, "{payload:?} drew something");
+        }
+    }
+    // The supported encoding at the same offset still draws.
+    r.bytes(1, 6, b"next");
+    assert!(r.screen().contains("next"));
+}
