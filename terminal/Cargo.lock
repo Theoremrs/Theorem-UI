@@ -2004,6 +2004,7 @@ dependencies = [
  "theorem-workbench-text",
  "tui-input",
  "unicode-segmentation",
+ "unicode-width",
 ]
 
 [[package]]
