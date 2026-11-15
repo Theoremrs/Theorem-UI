@@ -6,9 +6,10 @@ publish = false
 description = "The agent terminal drawer's TUI: Ratatui on Ratzilla's DOM backend, compiled to WebAssembly"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+unicode-width = "0.2"
 ratzilla = "0.3.1"
 ratatui = { version = "0.30.1", default-features = false, features = ["unstable-rendered-line-info"] }
 tui-markdown = { version = "0.3.12", default-features = false }

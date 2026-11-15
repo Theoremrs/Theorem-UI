@@ -1,0 +1,145 @@
+{
+ "name": "terminal-host",
+ "version": "1.0+rows-v2",
+ "note": "Cell-grid profile for the Ratatui right-hand host. Vertical spacing is quantized to rows, so the spacing vocabulary is row multiples; standards (contrast, targets) are unchanged from the Theorem spec.",
+ "checks": [
+  {
+   "id": "TYP-01.host-recipe-consistency",
+   "class": "contract",
+   "predicate": "typography_recipe_equal",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "tab-vs-body",
+   "fields": [
+    "family",
+    "font_size_px",
+    "font_weight"
+   ],
+   "require_actual_face": false,
+   "tolerance_px": 0.1
+  },
+  {
+   "id": "TYP-01.mono-face",
+   "class": "contract",
+   "predicate": "typography_recipe_equal",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "mono-face",
+   "fields": [
+    "actual_face"
+   ],
+   "require_actual_face": true
+  },
+  {
+   "id": "TYP-01.code-size",
+   "class": "target",
+   "predicate": "ratio_range",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "code-size",
+   "minimum": 0.99,
+   "maximum": 1.01
+  },
+  {
+   "id": "TYP-01.line-pitch",
+   "class": "target",
+   "predicate": "ratio_range",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "line-pitch",
+   "minimum": 1.45,
+   "maximum": 1.6
+  },
+  {
+   "id": "COL-01.ink",
+   "class": "standard",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "ink",
+   "minimum": 4.5
+  },
+  {
+   "id": "COL-01.heading",
+   "class": "standard",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "heading",
+   "minimum": 4.5
+  },
+  {
+   "id": "COL-01.muted",
+   "class": "standard",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "muted",
+   "minimum": 4.5
+  },
+  {
+   "id": "COL-01.accent",
+   "class": "standard",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "accent",
+   "minimum": 4.5
+  },
+  {
+   "id": "COL-01.control-on-raised",
+   "class": "standard",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "raised",
+   "minimum": 4.5
+  },
+  {
+   "id": "COL-02.frame-lines",
+   "class": "diagnostic",
+   "predicate": "contrast",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "lines",
+   "minimum": 3
+  },
+  {
+   "id": "SPC-01.header-rhythm",
+   "class": "target",
+   "predicate": "spacing_vocabulary",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "header-rhythm",
+   "allowed_px": [
+    0,
+    18.75,
+    37.5,
+    56.25
+   ],
+   "tolerance_px": 1,
+   "note": "Whole-row vocabulary. v1 listed 17px rows because the measured pitch was 17px; the token set is rows of the grid, so it follows the pitch (18.75px at line-height 1.5)."
+  },
+  {
+   "id": "SPC-03.tab-content-track",
+   "class": "contract",
+   "predicate": "track_alignment",
+   "required_evidence": [
+    "rendered_web"
+   ],
+   "observation": "tab-track",
+   "tolerance_px": 1
+  }
+ ]
+}

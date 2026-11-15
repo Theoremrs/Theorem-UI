@@ -17,8 +17,10 @@ import { modeLabel, navigatorMode, useShellMode } from './modes'
 import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { PANEL_WIDTH, useShell } from './shell-state'
 import { Rail } from './rail'
-import { SideTerminal } from '@/components/terminal/side-terminal'
-import { OutputsDrawer } from './outputs-drawer'
+import {
+  SideTerminal,
+  useCabinetExpanded,
+} from '@/components/terminal/side-terminal'
 import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
@@ -383,6 +385,8 @@ function DesktopShell(route: DockRoute) {
   if (drawerView !== null && drawerView !== view) setDrawerView(null)
   const vault = mode === 'vault'
   const ide = mode === 'ide'
+  // An expanded artifact cabinet covers the workspace: what it dims is inert.
+  const covered = useCabinetExpanded()
   const [vaultLoaded, setVaultLoaded] = useState(vault)
   if (vault && !vaultLoaded) setVaultLoaded(true)
   return (
@@ -394,9 +398,13 @@ function DesktopShell(route: DockRoute) {
       <div className="appearance-docked-rail" data-appearance-width-role="rail">
         <Rail collapsible />
       </div>
+      {/* A docked cabinet reserves its width here (side-terminal sets
+          --cabinet-dock); an overlay or the terminal reserves none. */}
       <div
-        className="relative my-(--sheet-inset) me-(--sheet-inset) min-w-0 flex-1"
+        className="relative my-(--sheet-inset) me-[calc(var(--sheet-inset)+var(--cabinet-dock,0px))] min-w-0 flex-1 transition-[margin] duration-(--duration-glide) ease-glide data-[covered]:opacity-40"
         data-appearance-part="sheet-frame"
+        data-covered={covered || undefined}
+        inert={covered}
       >
         <div aria-hidden="true" className="lift-glow" />
         <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
@@ -453,7 +461,6 @@ export function ChatShell({
       <WorkspaceCommands />
       <TerminalDrawer />
       <SideTerminal />
-      <OutputsDrawer />
     </div>
   )
 }

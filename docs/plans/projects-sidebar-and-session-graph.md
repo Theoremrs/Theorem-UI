@@ -155,6 +155,7 @@ folded into a disclosure above the composer.
 
 - The phone header, the dock tab and the breadcrumb name the project while its
   page is open.
+- *Superseded by the artifact cabinet (#112, `src/components/cabinet/`); the drawer below is #111's record.*
 - **Apps and outputs live in the right-hand drawer**, not on the page
   (`src/components/shell/outputs-drawer.tsx`). It is the same Base UI Drawer
   as the side terminal (coss ui's Drawer wraps it), sharing its one slot, so

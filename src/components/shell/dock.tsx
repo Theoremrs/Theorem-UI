@@ -337,12 +337,12 @@ const tabComponents = {
 }
 
 /** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
-/** Opens and closes the right-hand drawer's apps and outputs for the page that is open. */
+/** Opens and closes the artifact cabinet for the project that is open. */
 function OutputsToggle() {
   const open = useShell((s) => s.sideDrawer === 'outputs')
   return (
     <TooltipIconButton
-      tooltip={open ? 'Hide apps and outputs' : 'Apps and outputs'}
+      tooltip={open ? 'Close gallery' : 'Gallery'}
       aria-pressed={open}
       onClick={() =>
         useShell.getState().setSideDrawer(open ? undefined : 'outputs')
