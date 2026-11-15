@@ -1068,7 +1068,10 @@ mod tests {
             .err();
         assert_eq!(
             refused,
-            Some(Refusal::HumanOnly(ActionId::new("approval.allow")))
+            Some(Refusal::HumanOnly {
+                action: ActionId::new("approval.allow"),
+                actor: agent.clone(),
+            })
         );
         assert!(
             reg.resolve(&ActionId::new("approval.allow"), &Actor::Human, &caps)

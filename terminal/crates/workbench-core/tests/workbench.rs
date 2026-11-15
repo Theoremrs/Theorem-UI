@@ -648,7 +648,7 @@ fn an_unknown_or_refused_action_changes_nothing() {
     assert!(fx.is_empty());
     assert!(matches!(
         m.take_notice(),
-        Some(Notice::Refused(Refusal::HumanOnly(_)))
+        Some(Notice::Refused(Refusal::HumanOnly { .. }))
     ));
     assert_eq!(m.document(), before);
 }
@@ -839,7 +839,7 @@ fn a_human_only_local_action_is_refused_for_an_agent_and_kept_for_a_person() {
     );
     assert!(matches!(
         m.take_notice(),
-        Some(Notice::Refused(Refusal::HumanOnly(_)))
+        Some(Notice::Refused(Refusal::HumanOnly { .. }))
     ));
     assert_eq!(action_msgs(&log, "note", "note.wipe"), 0);
     action(&mut m, "note.wipe");

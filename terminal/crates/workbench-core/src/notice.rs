@@ -16,6 +16,7 @@
 use ratatui::layout::Rect;
 
 use crate::arrangement::ArrangementNotice;
+use crate::ids::Actor;
 use crate::model::{Model, Notice};
 use crate::registry::Refusal;
 use crate::theme::Theme;
@@ -77,8 +78,14 @@ pub(crate) fn describe(notice: &Notice) -> Option<(String, NoticeSeverity)> {
         Notice::Refused(Refusal::UnknownAction(id)) => {
             (format!("There is no action \"{}\".", id.as_str()), Error)
         }
-        Notice::Refused(Refusal::HumanOnly(id)) => (
-            format!("\"{}\" is for a person to do.", id.as_str()),
+        Notice::Refused(Refusal::HumanOnly { action, actor }) => (
+            match actor {
+                Actor::Human => format!("\"{}\" is for a person to do.", action.as_str()),
+                Actor::Agent { run_id } => format!(
+                    "\"{}\" is for a person to do. Agent run {run_id} asked for it.",
+                    action.as_str()
+                ),
+            },
             Warning,
         ),
         Notice::Dock(error) => (error.to_string(), Warning),

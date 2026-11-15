@@ -109,6 +109,8 @@ pub fn judge(binding: &Binding, completion: &Completion) -> Verdict {
 pub struct Pending {
     pub kind: EffectKind,
     pub resource: ResourceRef,
+    /// The binding generation the effect was emitted at.
+    pub generation: Option<Generation>,
 }
 
 /// The tracker is at its bound. The effect was not recorded and must not be
@@ -152,6 +154,7 @@ impl InFlight {
             Pending {
                 kind: effect.kind(),
                 resource: effect.resource.clone(),
+                generation: effect.generation,
             },
         );
         Ok(())
@@ -176,7 +179,17 @@ impl InFlight {
         if pending.resource != completion.resource {
             return Verdict::Drop(Stale::ResourceChanged);
         }
-        judge(binding, completion)
+        // The host is meant to echo the generation. A reply that leaves it out
+        // is the answer to the effect as it was sent, so it is judged at the
+        // generation the effect carried and cannot pass for a newer binding's.
+        match (completion.generation, pending.generation) {
+            (None, Some(sent)) => {
+                let mut stamped = completion.clone();
+                stamped.generation = Some(sent);
+                judge(binding, &stamped)
+            }
+            _ => judge(binding, completion),
+        }
     }
 
     /// Effects still in flight against a resource, for "uncertain on close":

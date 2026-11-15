@@ -118,6 +118,7 @@ impl Model {
             mode,
             workspace: &self.workspace,
             caps: &self.caps,
+            actor: &self.acting,
             effects: vec![],
             opens: vec![],
             close: false,
@@ -621,7 +622,23 @@ impl Model {
         actor: Actor,
         on: Option<PanelInstanceId>,
     ) -> Vec<Effect> {
-        // The picker's own semantic actions: back, and pin or unpin a tool.
+        // Panels called while the action runs are told who it is for.
+        let before = std::mem::replace(&mut self.acting, actor.clone());
+        let effects = self.run_action_for(id, actor, on);
+        self.acting = before;
+        effects
+    }
+
+    fn run_action_for(
+        &mut self,
+        id: ActionId,
+        actor: Actor,
+        on: Option<PanelInstanceId>,
+    ) -> Vec<Effect> {
+        // The tab strip's and the picker's own semantic actions.
+        if let Some(effects) = self.tab_node_action(&id) {
+            return effects;
+        }
         if let Some(effects) = self.picker_node_action(&id) {
             return effects;
         }
@@ -869,6 +886,32 @@ impl Model {
             false,
             dock::Role::Tools,
         )
+    }
+
+    /// `tab.focus.<panel>` and `tab.close.<panel>`: what a tab node of the
+    /// semantic tree offers. Each is the dock operation a click on the tab or
+    /// its close mark does. None when `id` is not one of them.
+    fn tab_node_action(&mut self, id: &ActionId) -> Option<Vec<Effect>> {
+        use crate::panels::{ACTION_TAB_CLOSE, ACTION_TAB_FOCUS};
+        let name = id.as_str();
+        let (panel, close) = match (
+            name.strip_prefix(ACTION_TAB_FOCUS),
+            name.strip_prefix(ACTION_TAB_CLOSE),
+        ) {
+            (Some(panel), _) => (panel, false),
+            (_, Some(panel)) => (panel, true),
+            _ => return None,
+        };
+        let panel = PanelInstanceId::new(panel);
+        if !self.panels.contains_key(&panel) {
+            self.notify(Notice::Refused(Refusal::UnknownAction(id.clone())));
+            return Some(vec![]);
+        }
+        Some(self.on_dock(if close {
+            DockMsg::ClosePanel(panel)
+        } else {
+            DockMsg::FocusPanel(panel)
+        }))
     }
 
     /// `picker.back`, `picker.pin.<kind>` and `picker.unpin.<kind>`: what the

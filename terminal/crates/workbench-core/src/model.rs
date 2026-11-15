@@ -309,6 +309,8 @@ pub struct Model {
     pub(crate) layout_pending: BTreeMap<EffectId, crate::arrangement::LayoutOp>,
     /// The panel holding the pointer between a press in its body and the release.
     pub(crate) capture: Option<PanelInstanceId>,
+    /// Who the action being run is for; a person for everything else.
+    pub(crate) acting: crate::ids::Actor,
 
     pub(crate) counters: Counters,
     /// Notices not yet taken, oldest first, at most [`NOTICE_LIMIT`].
@@ -372,6 +374,7 @@ impl Model {
             arrangements: Default::default(),
             layout_pending: BTreeMap::new(),
             capture: None,
+            acting: crate::ids::Actor::Human,
             counters: Counters::default(),
             notices: std::collections::VecDeque::new(),
             notices_overflowed: 0,

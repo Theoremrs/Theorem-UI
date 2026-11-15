@@ -25,6 +25,11 @@ pub const ACTION_BACK: &str = "picker.back";
 /// Pin or unpin the selected tool. Registered with a default binding, so a
 /// remap changes the key and the hint beside the pin mark.
 pub const ACTION_TOGGLE_PIN: &str = "picker.toggle-pin";
+/// Prefixes of a tab's focus and close semantic actions; the panel instance id
+/// follows (`tab.focus.panel-3`).
+pub const ACTION_TAB_FOCUS: &str = "tab.focus.";
+pub const ACTION_TAB_CLOSE: &str = "tab.close.";
+
 /// Prefixes of a row's pin and unpin semantic actions; the tool's panel kind
 /// follows (`picker.pin.cabinet`).
 pub const ACTION_PIN: &str = "picker.pin.";

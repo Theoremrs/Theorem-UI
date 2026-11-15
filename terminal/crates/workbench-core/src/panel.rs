@@ -20,7 +20,9 @@ use theorem_workbench_dock::CellMetrics;
 use crate::completion::Completion;
 use crate::effect::{Effect, EffectKind};
 use crate::host::HostMessage;
-use crate::ids::{ActionId, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity};
+use crate::ids::{
+    ActionId, Actor, EffectId, EffectIds, PanelInstanceId, ResourceRef, WorkspaceIdentity,
+};
 use crate::queue::SourceQueues;
 use crate::registry::{Capabilities, PickerRow};
 use crate::semantics::Node;
@@ -361,6 +363,7 @@ pub struct Ctx<'a> {
     pub(crate) mode: Mode,
     pub(crate) workspace: &'a WorkspaceIdentity,
     pub(crate) caps: &'a Capabilities,
+    pub(crate) actor: &'a Actor,
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) close: bool,
@@ -387,6 +390,13 @@ impl Ctx<'_> {
             return;
         }
         self.opens.push(target);
+    }
+
+    /// Who the call is for: the person (a key, a click, the person's own
+    /// action) or the agent run that asked for an action. A panel that starts
+    /// work for an action reads it here instead of assuming a person.
+    pub fn actor(&self) -> &Actor {
+        self.actor
     }
 
     /// The workspace and environment now, read-only.

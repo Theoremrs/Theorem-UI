@@ -370,8 +370,12 @@ pub enum Refusal {
     Unavailable {
         reason: String,
     },
-    /// An agent asked for a human-only action.
-    HumanOnly(ActionId),
+    /// An agent asked for a human-only action. The actor is kept so the
+    /// refusal can say who asked.
+    HumanOnly {
+        action: ActionId,
+        actor: Actor,
+    },
 }
 
 /// An action resolved against the registry and the host's capabilities.
@@ -544,7 +548,10 @@ impl Registry {
             .action(id)
             .ok_or_else(|| Refusal::UnknownAction(id.clone()))?;
         if action.human_only && matches!(actor, Actor::Agent { .. }) {
-            return Err(Refusal::HumanOnly(id.clone()));
+            return Err(Refusal::HumanOnly {
+                action: id.clone(),
+                actor: actor.clone(),
+            });
         }
         match self.action_availability(panel, action, caps) {
             Availability::Available => Ok(Resolved { panel, action }),

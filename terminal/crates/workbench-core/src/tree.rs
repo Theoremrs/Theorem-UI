@@ -5,10 +5,11 @@
 use ratatui::layout::Rect;
 use theorem_workbench_dock::{GroupFrame, GroupId, Role as DockRole, SolvedFrame, Suppressed};
 
-use crate::ids::{PanelInstanceId, ResourceRef};
+use crate::ids::{ActionId, PanelInstanceId, ResourceRef};
 use crate::model::Model;
 use crate::panel::ViewCtx;
-use crate::semantics::{Node, NodeId, Role, SemanticTree};
+use crate::panels::{ACTION_TAB_CLOSE, ACTION_TAB_FOCUS};
+use crate::semantics::{Node, NodeAction, NodeId, Role, SemanticTree};
 use crate::theme::Theme;
 
 const ROOT: &str = "workbench";
@@ -147,6 +148,7 @@ fn unshown_group(model: &Model, id: GroupId, reason: &str, out: &mut Vec<Node>) 
         tab_node.state.selected =
             group.is_some_and(|g| g.active().is_some_and(|a| a.panel == tab.panel));
         tab_node.state.disabled = tab.unavailable;
+        tab_node.actions = tab_actions(&pid);
         if let Some(binding) = model.panels.get(&pid).and_then(|e| e.panel.binding()) {
             tab_node.binding = binding.resource;
             tab_node.revision = binding.revision;
@@ -200,6 +202,7 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
         node.state.selected = tab.active;
         node.state.focused = tab.active && group.focused;
         node.state.disabled = tab.unavailable;
+        node.actions = tab_actions(&pid);
         if let Some(binding) = model.panels.get(&pid).and_then(|e| e.panel.binding()) {
             node.binding = binding.resource;
             node.revision = binding.revision;
@@ -256,6 +259,18 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
     let id = group_node.id.clone();
     out.push(group_node);
     id
+}
+
+/// What a tab offers: show its panel, or close the view (never what it shows).
+fn tab_actions(panel: &PanelInstanceId) -> Vec<NodeAction> {
+    [ACTION_TAB_FOCUS, ACTION_TAB_CLOSE]
+        .iter()
+        .map(|prefix| NodeAction {
+            id: ActionId::new(format!("{prefix}{}", panel.as_str())),
+            enabled: true,
+            reason: None,
+        })
+        .collect()
 }
 
 fn scoped(panel: &PanelInstanceId, local: &NodeId) -> NodeId {
