@@ -382,6 +382,10 @@ function DesktopShell(route: DockRoute) {
   if (drawerView !== null && drawerView !== view) setDrawerView(null)
   const vault = mode === 'vault'
   const ide = mode === 'ide'
+  // An expanded artifact cabinet covers the workspace: what it dims is inert.
+  const covered = useShell(
+    (s) => s.cabinetExpanded && s.sideDrawer === 'outputs',
+  )
   const [vaultLoaded, setVaultLoaded] = useState(vault)
   if (vault && !vaultLoaded) setVaultLoaded(true)
   return (
@@ -393,9 +397,13 @@ function DesktopShell(route: DockRoute) {
       <div className="appearance-docked-rail" data-appearance-width-role="rail">
         <Rail collapsible />
       </div>
+      {/* A docked cabinet reserves its width here (side-terminal sets
+          --cabinet-dock); an overlay or the terminal reserves none. */}
       <div
-        className="relative my-(--sheet-inset) me-(--sheet-inset) min-w-0 flex-1"
+        className="relative my-(--sheet-inset) me-[calc(var(--sheet-inset)+var(--cabinet-dock,0px))] min-w-0 flex-1 transition-[margin] duration-(--duration-glide) ease-glide data-[covered]:opacity-40"
         data-appearance-part="sheet-frame"
+        data-covered={covered || undefined}
+        inert={covered}
       >
         <div aria-hidden="true" className="lift-glow" />
         <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">

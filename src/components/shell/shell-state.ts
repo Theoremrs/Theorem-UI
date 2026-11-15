@@ -79,6 +79,13 @@ type ShellState = {
   sideDrawer: SideDrawer | undefined
   /** The right-hand drawer's width in px on desktop, set by dragging its edge. */
   sideWidth: number
+  /**
+   * The docked artifact cabinet's width in px, set by dragging its edge
+   * (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §4.2 targets 466).
+   */
+  cabinetWidth: number
+  /** Whether the cabinet uses the whole workspace (§4.3). Not persisted. */
+  cabinetExpanded: boolean
   /** Each project's right-hand terminal tabs, in order, and the one showing. */
   terminalTabs: Readonly<
     Record<string, { tabs: readonly TerminalTab[]; active: string }>
@@ -104,6 +111,8 @@ type ShellState = {
   setTerminalThread: (projectId: string, threadId: string | undefined) => void
   setSideDrawer: (drawer: SideDrawer | undefined) => void
   setSideWidth: (width: number) => void
+  setCabinetWidth: (width: number) => void
+  setCabinetExpanded: (expanded: boolean) => void
   openTerminalTab: (projectId: string) => void
   closeTerminalTab: (projectId: string, tabId: string) => void
   selectTerminalTab: (projectId: string, tabId: string) => void
@@ -141,6 +150,8 @@ export const useShell = create<ShellState>()(
       terminalThreadIds: [],
       sideDrawer: undefined,
       sideWidth: 620,
+      cabinetWidth: 466,
+      cabinetExpanded: false,
       terminalTabs: {},
       setNoteOrder: (noteOrder) => set({ noteOrder }),
       setProjectId: (projectId) => set({ projectId }),
@@ -182,6 +193,8 @@ export const useShell = create<ShellState>()(
         }),
       setSideDrawer: (sideDrawer) => set({ sideDrawer }),
       setSideWidth: (sideWidth) => set({ sideWidth }),
+      setCabinetWidth: (cabinetWidth) => set({ cabinetWidth }),
+      setCabinetExpanded: (cabinetExpanded) => set({ cabinetExpanded }),
       openTerminalTab: (projectId) =>
         set((s) => {
           const tab = newTab()
@@ -271,6 +284,7 @@ export const useShell = create<ShellState>()(
         projectOrder,
         terminalHeight,
         sideWidth,
+        cabinetWidth,
         terminalThreads,
         terminalThreadIds,
         terminalTabs,
@@ -288,6 +302,7 @@ export const useShell = create<ShellState>()(
         projectOrder,
         terminalHeight,
         sideWidth,
+        cabinetWidth,
         terminalThreads,
         terminalThreadIds,
         terminalTabs,

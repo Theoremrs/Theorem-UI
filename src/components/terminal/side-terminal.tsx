@@ -3,7 +3,7 @@ import { Drawer } from '@base-ui/react/drawer'
 import type { TheoremContextReference } from '@theoremharness/sdk'
 import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { createDraggable } from 'animejs'
-import { useEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import { CabinetView } from '@/components/cabinet/cabinet-view'
 import { useActiveProject } from '@/components/shell/projects'
@@ -20,8 +20,12 @@ import {
 import type { TerminalAction } from './terminal-screen'
 
 const HOST_ID = 'theorem-side-terminal'
-/** The cabinet's docked width (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §4.2). */
-const CABINET_WIDTH = 466
+/** A cabinet narrower than this would be one column of cramped cards. */
+const CABINET_MIN = 340
+/** §4.1: the project track's target minimum beside a docked cabinet. */
+const MIN_PROJECT_TRACK = 480
+/** The sheet's inset from the window edges, as chat-shell draws it. */
+const INSET = 3
 
 /** The drawer's narrowest width; the widest leaves the rail and some sheet showing. */
 const MIN_WIDTH = 380
@@ -33,30 +37,47 @@ const maxWidth = () =>
  * width negated (dragging left widens), kept between the bounds and written to
  * the popup while the pointer moves; the width it settles at is kept.
  */
-function WidthHandle({ popup }: { popup: RefObject<HTMLDivElement | null> }) {
+function WidthHandle({
+  popup,
+  cabinet,
+}: {
+  popup: RefObject<HTMLDivElement | null>
+  /** Sets the docked cabinet's width, which the shell reserves, not the drawer's. */
+  cabinet: boolean
+}) {
   const handle = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const element = handle.current
     if (!element) return
+    const shell = useShell.getState()
+    const min = cabinet ? CABINET_MIN : MIN_WIDTH
     const draggable = createDraggable(element, {
       // The handle itself stays put; only the popup's width follows x.
       x: { mapTo: '--drag-x' },
       y: false,
-      container: () => [0, -MIN_WIDTH, 0, -maxWidth()],
+      container: () => [0, -min, 0, -maxWidth()],
       // No throw on release: the edge stops where it is let go, springing
       // back only from past the range.
       velocityMultiplier: 0,
       cursor: { onHover: 'ew-resize', onGrab: 'ew-resize' },
-      onUpdate: (self) =>
-        popup.current?.style.setProperty('--side-width', `${-self.x}px`),
-      onSettle: (self) => useShell.getState().setSideWidth(Math.round(-self.x)),
+      onUpdate: (self) => {
+        popup.current?.style.setProperty('--side-width', `${-self.x}px`)
+        // A docked cabinet's reserved width follows the edge as it moves.
+        if (cabinet && document.documentElement.dataset.cabinet === 'docked')
+          reserve(-self.x)
+      },
+      onSettle: (self) => {
+        const width = Math.round(-self.x)
+        if (cabinet) useShell.getState().setCabinetWidth(width)
+        else useShell.getState().setSideWidth(width)
+      },
     })
-    draggable.setX(-useShell.getState().sideWidth, true)
+    draggable.setX(-(cabinet ? shell.cabinetWidth : shell.sideWidth), true)
     return () => {
       draggable.revert()
     }
-  }, [popup])
+  }, [popup, cabinet])
 
   return (
     <div
@@ -68,6 +89,50 @@ function WidthHandle({ popup }: { popup: RefObject<HTMLDivElement | null> }) {
       <span className="h-9 w-1 rounded-full bg-term-line transition-[height,background-color] duration-(--duration-snap) ease-snap group-hover:h-14 group-hover:bg-term-muted" />
     </div>
   )
+}
+
+/** Reserves `width` (plus the gap) at the shell's right edge for the dock. */
+function reserve(width: number | undefined) {
+  const root = document.documentElement
+  if (width === undefined) root.style.removeProperty('--cabinet-dock')
+  else
+    root.style.setProperty(
+      '--cabinet-dock',
+      `${Math.min(width, window.innerWidth - 120) + INSET}px`,
+    )
+}
+
+/**
+ * §4.1: whether a cabinet docked at `width` leaves the project track its
+ * minimum, W_project = V − R − N − C − G, measured from the shell's own
+ * rail and navigation boxes. When it does not, the cabinet is an overlay.
+ */
+function useDockFits(width: number, active: boolean) {
+  const [fits, setFits] = useState(false)
+  useLayoutEffect(() => {
+    if (!active) return
+    const nav = () =>
+      document.querySelector('[data-appearance-width-role="navigation"]')
+    const measure = () => {
+      const rail =
+        document
+          .querySelector('[data-appearance-width-role="rail"]')
+          ?.getBoundingClientRect().right ?? 0
+      const navigation = nav()?.getBoundingClientRect().width ?? 0
+      const track = window.innerWidth - rail - navigation - (width + 3 * INSET)
+      setFits(track >= MIN_PROJECT_TRACK)
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    const element = nav()
+    if (element) observer.observe(element)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [width, active])
+  return active && fits
 }
 
 /**
@@ -140,25 +205,41 @@ const HOST_VIEWS = [
 ] as const
 
 /** The host's two views, a pair of tabs above whichever is shown. */
-function HostViews({ view }: { view: 'outputs' | 'terminal' }) {
+function HostViews({
+  view,
+  expandable,
+  expanded,
+}: {
+  view: 'outputs' | 'terminal'
+  expandable: boolean
+  expanded: boolean
+}) {
   return (
-    <div
-      role="tablist"
-      aria-label="Right-hand views"
-      className="flex shrink-0 gap-1 px-3 pb-1 font-mono text-[12px]"
-    >
-      {HOST_VIEWS.map((v) => (
+    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 font-mono text-[12px]">
+      <div role="tablist" aria-label="Right-hand views" className="flex gap-1">
+        {HOST_VIEWS.map((v) => (
+          <button
+            key={v.id}
+            type="button"
+            role="tab"
+            aria-selected={view === v.id}
+            onClick={() => useShell.getState().setSideDrawer(v.id)}
+            className="rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      {expandable && (
         <button
-          key={v.id}
           type="button"
-          role="tab"
-          aria-selected={view === v.id}
-          onClick={() => useShell.getState().setSideDrawer(v.id)}
-          className="rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
+          aria-pressed={expanded}
+          onClick={() => useShell.getState().setCabinetExpanded(!expanded)}
+          className="ms-auto rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage"
         >
-          {v.label}
+          {expanded ? 'Restore' : 'Expand'}
         </button>
-      ))}
+      )}
     </div>
   )
 }
@@ -173,13 +254,60 @@ export function SideTerminal() {
   const open = view === 'terminal' || view === 'outputs'
   const cabinet = view === 'outputs'
   const setSideDrawer = useShell((s) => s.setSideDrawer)
-  const width = useShell((s) => s.sideWidth)
+  const sideWidth = useShell((s) => s.sideWidth)
+  const cabinetWidth = useShell((s) => s.cabinetWidth)
+  const expandedPref = useShell((s) => s.cabinetExpanded)
   const desktop = useMediaQuery('(min-width: 768px)', { noSsr: true })
   const popup = useRef<HTMLDivElement>(null)
   const { project, tabs, active, onAction } = useTerminalTabs(open, () =>
     setSideDrawer(undefined),
   )
-  useCloseOnOutsideDoubleClick(open, () => setSideDrawer(undefined))
+  // §4.1/§4.3: on desktop the cabinet docks, reserving its width, when the
+  // project track keeps its minimum beside it; otherwise it is an overlay.
+  // Expanded, it takes the whole workspace. The terminal is always an overlay.
+  const expanded = cabinet && desktop && expandedPref
+  const docked = useDockFits(cabinetWidth, cabinet && desktop && !expanded)
+  const layout = !cabinet
+    ? undefined
+    : expanded
+      ? 'expanded'
+      : docked
+        ? 'docked'
+        : 'overlay'
+  const width = cabinet ? cabinetWidth : sideWidth
+  useCloseOnOutsideDoubleClick(open && !docked, () => setSideDrawer(undefined))
+
+  useLayoutEffect(() => {
+    const root = document.documentElement
+    if (layout) root.dataset.cabinet = layout
+    else delete root.dataset.cabinet
+    reserve(layout === 'docked' ? width : undefined)
+    // Expanded, the cabinet covers navigation and main and leaves the rail.
+    const rail = document
+      .querySelector('[data-appearance-width-role="rail"]')
+      ?.getBoundingClientRect().right
+    if (layout === 'expanded' && rail !== undefined)
+      root.style.setProperty('--cabinet-left', `${rail}px`)
+    return () => {
+      delete root.dataset.cabinet
+      reserve(undefined)
+      root.style.removeProperty('--cabinet-left')
+    }
+  }, [layout, width])
+
+  // Escape restores an expanded cabinet once nothing above it took the key:
+  // a native listener, so a portaled dialog's Escape never reaches it.
+  useEffect(() => {
+    const element = popup.current
+    if (!expanded || !element) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return
+      event.preventDefault()
+      useShell.getState().setCabinetExpanded(false)
+    }
+    element.addEventListener('keydown', onKey)
+    return () => element.removeEventListener('keydown', onKey)
+  }, [expanded])
 
   return (
     <>
@@ -207,20 +335,28 @@ export function SideTerminal() {
             <Drawer.Popup
               ref={popup}
               data-terminal-drawer=""
+              data-cabinet-layout={layout}
               style={
                 {
-                  // §4.2: the cabinet's docked width target is 466 px.
-                  '--side-width': `${cabinet ? Math.max(width, CABINET_WIDTH) : width}px`,
+                  '--side-width': expanded
+                    ? 'calc(100vw - var(--cabinet-left, 0px) - 6px)'
+                    : `${width}px`,
                 } as CSSProperties
               }
               initialFocus={() => document.getElementById(HOST_ID)}
-              className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))]"
+              className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))] data-[cabinet-layout=docked]:shadow-none data-[cabinet-layout=expanded]:md:w-(--side-width)"
             >
               <Drawer.Title className="sr-only">
                 {cabinet ? 'Artifact cabinet' : 'Agent terminal'}
               </Drawer.Title>
-              {desktop ? (
-                <WidthHandle popup={popup} />
+              {desktop && expanded ? (
+                <div aria-hidden="true" className="w-3 shrink-0" />
+              ) : desktop ? (
+                <WidthHandle
+                  key={String(cabinet)}
+                  popup={popup}
+                  cabinet={cabinet}
+                />
               ) : (
                 <div
                   aria-hidden="true"
@@ -230,7 +366,11 @@ export function SideTerminal() {
                 </div>
               )}
               <div className="flex min-w-0 flex-1 flex-col pt-1.5">
-                <HostViews view={cabinet ? 'outputs' : 'terminal'} />
+                <HostViews
+                  view={cabinet ? 'outputs' : 'terminal'}
+                  expandable={cabinet && desktop}
+                  expanded={expanded}
+                />
                 <div className="relative min-h-0 flex-1">
                   {/* The terminal stays mounted under the cabinet, so its
                       sessions and scrollback outlast a look at the collection. */}
@@ -249,7 +389,7 @@ export function SideTerminal() {
                   </div>
                   {cabinet && (
                     <div className="absolute inset-0 flex flex-col">
-                      <CabinetView />
+                      <CabinetView expanded={expanded} />
                     </div>
                   )}
                 </div>
