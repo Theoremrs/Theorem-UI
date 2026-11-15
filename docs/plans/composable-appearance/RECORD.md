@@ -228,3 +228,13 @@ and cancels editing in all four material/mode cases without changing the main
 draft or editor instance. Sent-message material mapping is left intact. The
 updated checks, 731 composer tests, TypeScript, focused lint and production build
 pass after that repair.
+
+Composer CI run `43773083944` passed types, unit/native composer checks, colors,
+controls, continuity and navigation/export, then sampled 16px prose in the 200%
+root-text reflow assertion after restoring page zoom. Width, text and draft were
+preserved. The same runner passed locally before adjustment; a persistent layout
+defect has not been reproduced. It now waits up to five seconds for the actual
+32px root and prose computed sizes, retaining the original size/content/overflow
+assertions and recording root size in diagnostics. A failure to reach that size
+still fails. All nine reflow checks pass locally with the readiness condition;
+CI on the updated revision is the remaining confirmation.
