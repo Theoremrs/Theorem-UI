@@ -23,10 +23,10 @@ export type SideDrawer = 'terminal' | 'outputs'
  * is the one place a sidebar's width is set: the phone drawer and the settings
  * sidebar take the default from here too.
  */
-export const PANEL_WIDTH = { min: 216, default: 248, max: 420 } as const
+export const PANEL_WIDTH = { min: 184, default: 210, max: 420 } as const
 
-/** Defaults before version 8 (354 before 7, then 280): a panel still at one was never dragged. */
-const OLD_PANEL_WIDTHS: readonly number[] = [354, 280]
+/** Defaults before version 9 (354 before 7, 280 in 7, 248 in 8): a panel still at one was never dragged. */
+const OLD_PANEL_WIDTHS: readonly number[] = [354, 280, 248]
 
 type ShellState = {
   /** Project whose threads the sidebar lists. Falls back to the first project. */
@@ -254,9 +254,10 @@ export const useShell = create<ShellState>()(
       // whichever version 4 a layout was saved under. Version 6 gave the IDE
       // its own panel beside the rail: the IDE's collapsed flag had meant
       // Theia's explorer, so it moves to ideFilesOpen and the panel opens.
-      // Versions 7 and 8 narrowed the default width: a panel left at an old
+      // Versions 7, 8 and 9 narrowed the default width: a panel left at an old
       // default takes the new one, and a width the person dragged to is kept.
-      version: 8,
+      // Version 9 is the cabinet spec's 210px navigation.
+      version: 9,
       partialize: ({
         projectId,
         layouts,
@@ -301,7 +302,7 @@ export const useShell = create<ShellState>()(
           OLD_PANEL_WIDTHS.includes(state.panelWidth)
             ? PANEL_WIDTH.default
             : state?.panelWidth
-        if (version === 6 || version === 7) return { ...state, panelWidth }
+        if (version >= 6 && version <= 8) return { ...state, panelWidth }
         if (version === 5) return { ...state, ...theia, panelWidth }
         if (version >= 2 && version <= 4) {
           const { filesShown: _, ...kept } = (state ?? {}) as ShellState

@@ -122,21 +122,30 @@ Route `/projects/$projectId`, `src/components/projects/project-home.tsx`.
 one page with no tabs (the owner's review on 2026-11-14 removed Overview,
 Sessions, Graph and Context as tabs).
 
+One 680px track, the artifact cabinet spec's (§3.4), so a docked cabinet
+beside it leaves the composer a usable width. The owner chose this on
+2026-11-15, in place of the context column approved the day before.
+
 - **Header:** folder mark, title, session count, last moved, Pin and Edit.
-  Edit sets the title and instructions through `chat.projects.update`.
-- **Left column:**
-  - the real composer near the top, which files the new session in this
-    project through the shell's project;
+  Edit sets the title and instructions through `chat.projects.update`,
+  sending only what changed; instructions that could not be read are locked.
+- **Project context**, a compact disclosure under the header. Its row says
+  in one line whether there are instructions and when "Where it stands" was
+  last written; "Project context" opens:
+  - Instructions and Where it stands, each with Edit;
+  - Knowledge and connections: Documents, Repositories, Links, and
+    Databases and servers, each labelled "Not served yet" (§8: no
+    working-looking placeholders).
+
+  The owner expects the WASM terminal to hold this context eventually.
+- **Below it:**
+  - the real composer, which files the new session in this project through
+    the shell's project;
   - the project's sessions below it (`project-sessions.tsx`), all of them,
     newest first, with their provenance and no heading. A Search button
     opens a fuzzy search, and Filter narrows by type, status (Running, Needs
     you, Idle) and origin (Started here, Forked, Continued), with counts.
     It runs on the app's TanStack Table v9 kit (`useAppTable`).
-- **Right column, the project's context:**
-  - Instructions and Where it stands, each with Edit;
-  - Knowledge and connections: Documents, Repositories, Links, and
-    Databases and servers, each labelled "Not served yet" (§8: no
-    working-looking placeholders).
 - The phone header, the dock tab and the breadcrumb name the project while its
   page is open.
 - **Apps and outputs live in the right-hand drawer**, not on the page
@@ -153,13 +162,11 @@ Sessions, Graph and Context as tabs).
     shows its kind's mark until Theorem serves a poster.
   - The apps button in the dock's header opens and closes it; Escape and its
     close button close it; opening an output closes it.
-- **Widths:** the sidebar's default is 248px (from 280; a panel left at an
-  old default takes the new one, a dragged one keeps its width). The project
-  page lays its context column beside the composer only when the page itself
-  is at least 54rem wide (a container query), so a column open beside the
-  page stacks the context beneath instead of squeezing the composer. A
-  chat's composer is unchanged: the design oracle holds it to the message
-  column's measure.
+- **Widths:** the sidebar's default is 210px, the artifact cabinet spec's
+  navigation width (§3.4; the owner, 2026-11-15), and it can be dragged
+  between 184px and 420px. A panel left at an old default (354, 280 or 248)
+  takes the new one; a dragged one keeps its width. A chat's composer is
+  unchanged: the design oracle holds it to the message column's measure.
 
 ### Session graph (§9)
 

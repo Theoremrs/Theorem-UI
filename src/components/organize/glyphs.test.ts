@@ -1,7 +1,7 @@
 // Which state mark a session row draws, by the precedence the owner approved on 2026-11-14.
 import { expect, test } from 'bun:test'
 import type { ThreadEntry } from '@/lib/theorem/organization'
-import { sessionState } from './glyphs'
+import { sessionState, sessionStates } from './glyphs'
 
 const thread = (over: Partial<ThreadEntry> = {}): ThreadEntry => ({
   threadId: 'thr_a',
@@ -52,4 +52,28 @@ test('a fork itself, and a session under way, show their type instead', () => {
   })
   expect(sessionState(fork, none)).toBeUndefined()
   expect(sessionState(undefined, none)).toBeUndefined()
+})
+
+test('the states for a read are worked out once, however many marks ask', () => {
+  const read = {
+    threads: [
+      thread({ threadId: 'thr_src' }),
+      thread({
+        threadId: 'thr_fork',
+        origin: {
+          kind: 'forked',
+          threadId: 'thr_src',
+          branchId: 'br_a',
+          messageId: 'msg_a',
+        },
+      }),
+      thread({ threadId: 'thr_new', lastMessageAtMs: undefined }),
+    ],
+  }
+  const states = sessionStates(read)
+  expect(states.get('thr_src')).toBe('forked-from')
+  expect(states.get('thr_fork')).toBeUndefined()
+  expect(states.get('thr_new')).toBe('not-started')
+  expect(sessionStates(read)).toBe(states)
+  expect(sessionStates({ threads: [...read.threads] })).not.toBe(states)
 })
