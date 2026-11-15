@@ -7,6 +7,7 @@ use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
+use theorem_workbench_core::Composition;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
     ClipboardText, Completion, CompletionPayload, DocumentConflicted, DocumentCurrent,
@@ -16,10 +17,14 @@ use theorem_workbench_core::completion::{
 use theorem_workbench_core::effect::{
     CoordinateUnit, Effect, EffectBody, EffectKind, TextChange as CoreChange,
 };
-use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::host::{HostMessage, TokenSpan};
 use theorem_workbench_core::ids::{ActionId, Actor, PanelInstanceId, ResourceRef, Revision};
 use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
 use theorem_workbench_core::registry::Capabilities;
+use theorem_workbench_core::results::{
+    CompletionItem, Finding, LanguageCompletions, LanguageDiagnostics, LanguageHover,
+    LanguageLocations, LocationRow, Position, Range, Severity, SpanEncoding,
+};
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
     Button, DockMsg, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, ViewCtx, semantics,
@@ -74,7 +79,9 @@ fn model(caps: &[&'static str], drafts: &Drafts) -> Model {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
     register_with(&mut factories, drafts.clone());
-    let registry = builtin::registry();
+    let mut registry = builtin::registry();
+    theorem_workbench_editor::extend_registry(&mut registry)
+        .expect("the editor's actions register beside the built-in ones");
     let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
     assert!(issues.is_empty(), "{issues:?}");
     let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
@@ -169,6 +176,7 @@ impl Rig {
                 revision: seq(revision),
                 saved_revision: None,
                 dirty: !clean,
+                read_only: None,
             }),
         );
         self.send(Msg::Completion(c))
@@ -1111,12 +1119,11 @@ fn cut_deletes_only_after_the_clipboard_took_the_text() {
         "hello",
         "still there until the write is accepted"
     );
-    // The root hands a host-only answer over as cached, on a context that may
-    // not emit; the delete goes out on the next tick.
+    // A host-only answer reaches the panel in the turn it arrives, so the
+    // delete goes out with it.
     let fx = rig.answer(&write, Outcome::Accepted, None);
-    none_of(&fx, EffectKind::DocumentEdit);
     assert_eq!(rig.text(), "");
-    let cut = the_edit(&rig.tick());
+    let cut = the_edit(&fx);
     assert_eq!(changes(&cut), vec![(0, 6, String::new())]);
     assert_eq!(rig.text(), "");
 }
@@ -1136,9 +1143,12 @@ fn a_refused_cut_leaves_the_text_alone() {
     );
     none_of(&fx, EffectKind::DocumentEdit);
     none_of(&rig.tick(), EffectKind::DocumentEdit);
-    // The root drops a refused answer that is not tied to the document (see
-    // the report); either way nothing was deleted.
     assert_eq!(rig.text(), "hello");
+    let status = rig.status();
+    assert!(
+        status.contains("Not cut") && status.contains("the browser would not allow it"),
+        "{status}"
+    );
 }
 
 #[test]
@@ -1152,8 +1162,7 @@ fn paste_reads_the_clipboard_through_an_effect_and_inserts_the_answer() {
             text: "one\r\ntwo".into(),
         })),
     );
-    none_of(&fx, EffectKind::DocumentEdit);
-    let e = the_edit(&rig.tick());
+    let e = the_edit(&fx);
     assert_eq!(
         changes(&e),
         vec![(0, 0, "one\ntwo".to_owned())],
@@ -1656,4 +1665,492 @@ fn an_eighty_by_twenty_view_wraps_a_long_line_and_marks_the_selection() {
     assert!(rows[6].starts_with("6 last line"), "{picture}");
     assert!(picture.contains("{println}"), "{picture}");
     assert!(rows[19].contains("Ln 2, Col 12"), "{picture}");
+}
+
+// ---- registry --------------------------------------------------------------
+
+#[test]
+fn a_registered_editor_action_reaches_the_editor_and_sends_its_effect() {
+    let mut rig = Rig::opened("hello\n");
+    let e = the_edit(&rig.typed("x"));
+    rig.accept(&e, 2);
+    let fx = rig.send(Msg::Action {
+        id: ActionId::new("document.save"),
+        actor: Actor::Human,
+    });
+    one(&fx, EffectKind::DocumentSave);
+}
+
+#[test]
+fn the_editor_actions_are_listed_for_agents_and_cannot_be_registered_twice() {
+    let mut registry = builtin::registry();
+    theorem_workbench_editor::extend_registry(&mut registry).unwrap();
+    let ids: Vec<_> = registry
+        .agent_catalog(&Capabilities::of(CAPS))
+        .into_iter()
+        .map(|e| e.action.as_str().to_owned())
+        .collect();
+    assert!(ids.iter().any(|i| i == "document.save"), "{ids:?}");
+    assert!(
+        theorem_workbench_editor::extend_registry(&mut registry).is_err(),
+        "a second registration is refused, not merged"
+    );
+}
+
+// ---- language results ------------------------------------------------------
+
+fn pos(line: u32, character: u32) -> Position {
+    Position { line, character }
+}
+
+fn range(l: u32, a: u32, b: u32) -> Range {
+    Range {
+        start: pos(l, a),
+        end: pos(l, b),
+    }
+}
+
+fn ask(rig: &mut Rig, key: Key, mods: Mods, kind: EffectKind) -> Effect {
+    one(&rig.mods(key, mods), kind)
+}
+
+#[test]
+fn a_hover_is_a_popup_at_the_caret_and_escape_closes_it() {
+    let mut rig = Rig::opened("hello world\n");
+    let hover = ask(
+        &mut rig,
+        Key::Char('h'),
+        Mods::ALT,
+        EffectKind::LanguageHover,
+    );
+    assert_eq!(hover.revision, Some(seq(1)));
+    rig.answer(
+        &hover,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageHover(LanguageHover {
+            contents: "**greeting**: a word".into(),
+            range: None,
+            span: None,
+        })),
+    );
+    assert!(rig.screen().contains("greeting"), "{}", rig.screen());
+    rig.key(Key::Esc);
+    assert!(!rig.screen().contains("a word"), "{}", rig.screen());
+}
+
+#[test]
+fn a_hover_for_an_older_revision_is_not_shown_and_the_status_says_so() {
+    let mut rig = Rig::opened("hello\n");
+    let hover = ask(
+        &mut rig,
+        Key::Char('h'),
+        Mods::ALT,
+        EffectKind::LanguageHover,
+    );
+    rig.host(remote_insert(2, 0, "x"));
+    rig.answer(
+        &hover,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageHover(LanguageHover {
+            contents: "stale words".into(),
+            range: None,
+            span: None,
+        })),
+    );
+    assert!(!rig.screen().contains("stale words"), "{}", rig.screen());
+    assert!(rig.status().contains("not shown"), "{}", rig.status());
+}
+
+#[test]
+fn a_completion_is_inserted_through_the_edit_path_and_undoes_in_one_step() {
+    let mut rig = Rig::opened("hel\n");
+    rig.mods(Key::End, Mods::NONE);
+    let ask = ask(
+        &mut rig,
+        Key::Char(' '),
+        Mods::CTRL,
+        EffectKind::LanguageComplete,
+    );
+    rig.answer(
+        &ask,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageCompletions(
+            LanguageCompletions {
+                items: vec![
+                    CompletionItem {
+                        label: "hello".into(),
+                        kind: None,
+                        detail: None,
+                        documentation: None,
+                        insert_text: Some("hello".into()),
+                        range: Some(theorem_workbench_core::results::CompletionRange::One(
+                            range(0, 0, 3),
+                        )),
+                        item_id: None,
+                    },
+                    CompletionItem {
+                        label: "help".into(),
+                        kind: None,
+                        detail: None,
+                        documentation: None,
+                        insert_text: Some("help".into()),
+                        range: None,
+                        item_id: None,
+                    },
+                ],
+            },
+        )),
+    );
+    assert!(rig.screen().contains("help"), "{}", rig.screen());
+    let fx = rig.key(Key::Enter);
+    let e = the_edit(&fx);
+    assert_eq!(changes(&e), vec![(0, 3, "hello".to_owned())]);
+    assert_eq!(rig.text(), "hello");
+    rig.chord('z');
+    assert_eq!(rig.text(), "hel", "one undo takes the whole insertion back");
+}
+
+#[test]
+fn definitions_in_this_file_move_the_caret_and_in_another_open_it_there() {
+    let mut rig = Rig::opened("one\ntwo\nthree\n");
+    let ask1 = ask(&mut rig, Key::F12, Mods::NONE, EffectKind::LanguageNavigate);
+    rig.answer(
+        &ask1,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageLocations(LanguageLocations {
+            locations: vec![LocationRow {
+                resource_id: Some(PATH.into()),
+                uri: None,
+                range: Some(range(2, 1, 1)),
+                span: None,
+                revision: None,
+            }],
+        })),
+    );
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentOpen);
+    assert!(rig.status().contains("Ln 3, Col 2"), "{}", rig.status());
+
+    let ask2 = ask(
+        &mut rig,
+        Key::F12,
+        Mods::SHIFT,
+        EffectKind::LanguageReferences,
+    );
+    rig.answer(
+        &ask2,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageLocations(LanguageLocations {
+            locations: vec![LocationRow {
+                resource_id: Some("src/b.rs".into()),
+                uri: None,
+                range: Some(range(4, 2, 2)),
+                span: None,
+                revision: None,
+            }],
+        })),
+    );
+    assert!(rig.screen().contains("src/b.rs"), "{}", rig.screen());
+    // The file opens in an editor of its own; the root asks the owner for it.
+    let mut fx = rig.key(Key::Enter);
+    fx.extend(rig.tick());
+
+    let open = of_kind(&fx, EffectKind::DocumentOpen);
+    assert!(
+        open.iter().any(|e| matches!(
+            &e.resource,
+            ResourceRef::Document { resource_id, .. } if resource_id == "src/b.rs"
+        )),
+        "{:?}",
+        fx.iter()
+            .map(|e| (e.kind(), e.resource.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+fn finding(start: u64, end: u64, severity: Severity, message: &str) -> Finding {
+    Finding {
+        id: format!("f{start}"),
+        start,
+        end,
+        severity,
+        message: message.into(),
+        provider: None,
+        fix_handle: None,
+    }
+}
+
+fn diagnostics(rig: &mut Rig, revision: u64, findings: Vec<Finding>) {
+    let fx = rig.tick();
+    let check = one(&fx, EffectKind::LanguageDiagnostics);
+    rig.answer(
+        &check,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageDiagnostics(
+            LanguageDiagnostics {
+                revision: Some(revision),
+                session_epoch: None,
+                content_hash: None,
+                full: true,
+                findings,
+            },
+        )),
+    );
+}
+
+#[test]
+fn diagnostics_mark_the_gutter_and_the_caret_lines_message_is_in_the_status() {
+    let mut rig = Rig::opened("ok\nbad \u{1F600}x\n");
+    // The second line starts at byte 3; the finding covers "x" after the emoji.
+    diagnostics(
+        &mut rig,
+        1,
+        vec![finding(
+            3 + 4 + 4,
+            3 + 4 + 5,
+            Severity::Error,
+            "x is undefined",
+        )],
+    );
+    let rows = rig.rows(rig.body().width, rig.body().height);
+    assert!(rows[1].contains('!'), "gutter glyph on line 2: {rows:#?}");
+    assert!(!rows[0].contains('!'), "{rows:#?}");
+    assert!(!rig.status().contains("x is undefined"));
+    rig.key(Key::Down);
+    assert!(
+        rig.status().contains("error: x is undefined"),
+        "{}",
+        rig.status()
+    );
+    let buf = rig.draw(rig.body().width, rig.body().height);
+    let b = rig.body();
+    let underlined = (0..b.width).any(|x| buf[(x, 1)].modifier.contains(Modifier::UNDERLINED));
+    assert!(underlined, "the finding's text is marked");
+}
+
+#[test]
+fn diagnostics_for_another_revision_are_not_applied_and_are_asked_for_again() {
+    let mut rig = Rig::opened("ok\n");
+    let fx = rig.tick();
+    let check = one(&fx, EffectKind::LanguageDiagnostics);
+    rig.host(remote_insert(2, 0, "x"));
+    rig.answer(
+        &check,
+        Outcome::Accepted,
+        Some(CompletionPayload::LanguageDiagnostics(
+            LanguageDiagnostics {
+                revision: Some(1),
+                session_epoch: None,
+                content_hash: None,
+                full: true,
+                findings: vec![finding(0, 1, Severity::Warning, "old")],
+            },
+        )),
+    );
+    let rows = rig.rows(rig.body().width, rig.body().height);
+    assert!(!rows[0].contains('?'), "{rows:#?}");
+    assert!(rig.status().contains("no findings"), "{}", rig.status());
+    one(&rig.tick(), EffectKind::LanguageDiagnostics);
+}
+
+// ---- page.create -----------------------------------------------------------
+
+fn new_page(rig: &mut Rig) -> PanelInstanceId {
+    let fx = rig.send(Msg::Action {
+        id: ActionId::new("page.new"),
+        actor: Actor::Human,
+    });
+    let _ = fx;
+    rig.m
+        .panel_ids()
+        .find(|(id, k)| k.as_str() == "document" && **id != rig.id)
+        .map(|(id, _)| id.clone())
+        .expect("an editor with no file opened")
+}
+
+#[test]
+fn a_new_page_asks_for_a_name_and_creates_it_through_the_owner() {
+    let mut rig = Rig::opened("hello\n");
+    let fresh = new_page(&mut rig);
+    rig.id = fresh;
+    assert!(rig.screen().contains("Name"), "{}", rig.screen());
+    rig.typed("notes/new.md");
+    let fx = rig.key(Key::Enter);
+    let create = one(&fx, EffectKind::DocumentCreate);
+    let EffectBody::DocumentCreate(c) = &create.body else {
+        unreachable!()
+    };
+    assert_eq!(c.path, "notes/new.md");
+    rig.answer(
+        &create,
+        Outcome::Accepted,
+        Some(CompletionPayload::DocumentOpened(DocumentOpened {
+            text: String::new(),
+            revision: seq(1),
+            saved_revision: None,
+            dirty: false,
+            read_only: None,
+        })),
+    );
+    assert!(rig.state()["path"] == "notes/new.md", "{}", rig.state());
+    assert!(!rig.screen().contains("Name the page"), "{}", rig.screen());
+}
+
+#[test]
+fn a_refused_create_shows_the_reason_and_the_name_can_be_changed() {
+    let mut rig = Rig::opened("hello\n");
+    rig.id = new_page(&mut rig);
+    rig.typed("a.txt");
+    let create = one(&rig.key(Key::Enter), EffectKind::DocumentCreate);
+    rig.answer(
+        &create,
+        Outcome::Refused {
+            code: "exists".into(),
+            reason: "that page already exists".into(),
+        },
+        None,
+    );
+    let screen = rig.screen();
+    assert!(
+        screen.contains("that page already exists") && screen.contains("exists"),
+        "{screen}"
+    );
+    rig.key(Key::Backspace);
+    let again = one(&rig.key(Key::Enter), EffectKind::DocumentCreate);
+    let EffectBody::DocumentCreate(c) = &again.body else {
+        unreachable!()
+    };
+    assert_eq!(c.path, "a.tx");
+}
+
+// ---- replace ---------------------------------------------------------------
+
+#[test]
+fn replace_one_and_replace_all_are_ordinary_edits_each_undone_in_one_step() {
+    let mut rig = Rig::opened("cat cat cat\n");
+    rig.chord('h');
+    rig.typed("cat");
+    rig.key(Key::Tab);
+    rig.typed("dog");
+    let first = the_edit(&rig.key(Key::Enter));
+    assert_eq!(changes(&first).len(), 1);
+    rig.accept(&first, 2);
+    let all = the_edit(&rig.mods(Key::Enter, Mods::ALT));
+    assert_eq!(changes(&all).len(), 1, "one edit spanning the matches");
+    rig.key(Key::Esc);
+    assert_eq!(rig.text(), "dog dog dog");
+    rig.chord('z');
+    assert_eq!(rig.text(), "dog cat cat", "replace all is one undo step");
+    rig.chord('z');
+    assert_eq!(rig.text(), "cat cat cat");
+}
+
+// ---- batch four ------------------------------------------------------------
+
+#[test]
+fn the_tab_names_the_file_and_marks_unsaved_changes() {
+    let mut rig = Rig::opened("hello\n");
+    let label = rig.m.panel(&rig.id).unwrap().tab_label().unwrap();
+    assert_eq!((label.title.as_str(), label.modified), ("a.txt", false));
+    rig.typed("x");
+    assert!(rig.m.panel(&rig.id).unwrap().tab_label().unwrap().modified);
+}
+
+#[test]
+fn a_document_the_owner_opened_read_only_takes_no_edits_and_says_why() {
+    let mut rig = Rig::start();
+    let open = rig.open.take().unwrap();
+    rig.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::DocumentOpened(DocumentOpened {
+            text: "hello\n".into(),
+            revision: seq(1),
+            saved_revision: None,
+            dirty: false,
+            read_only: Some(theorem_workbench_core::completion::ReadOnly {
+                reason: "a generated file".into(),
+            }),
+        })),
+    );
+    let fx = rig.typed("x");
+    none_of(&fx, EffectKind::DocumentEdit);
+    assert_eq!(rig.text(), "hello");
+    assert!(
+        rig.screen().contains("a generated file"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
+fn a_save_of_an_older_revision_keeps_the_modified_mark_when_the_text_moved_on() {
+    let mut rig = Rig::opened("hello\n");
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.accept(&e, 2);
+    rig.host(HostMessage::DocumentSaved {
+        resource: doc(),
+        revision: seq(1),
+    });
+    assert!(rig.m.panel(&rig.id).unwrap().tab_label().unwrap().modified);
+    rig.host(HostMessage::DocumentSaved {
+        resource: doc(),
+        revision: seq(2),
+    });
+    assert!(!rig.m.panel(&rig.id).unwrap().tab_label().unwrap().modified);
+}
+
+#[test]
+fn a_composition_is_drawn_underlined_at_the_caret_and_enters_the_text_once_committed() {
+    let mut rig = Rig::opened("ab\n");
+    rig.send(Msg::Composition(Composition::Start));
+    rig.send(Msg::Composition(Composition::Update { text: "ni".into() }));
+    assert!(rig.screen().contains("ni"), "{}", rig.screen());
+    none_of(&rig.tick(), EffectKind::DocumentEdit);
+    let b = rig.body();
+    let buf = rig.draw(b.width, b.height);
+    let underlined = (0..b.width).any(|x| buf[(x, 0)].modifier.contains(Modifier::UNDERLINED));
+    assert!(underlined);
+    let fx = rig.send(Msg::Composition(Composition::End {
+        text: "\u{4f60}".into(),
+    }));
+    let e = the_edit(&fx);
+    assert_eq!(changes(&e), vec![(0, 0, "\u{4f60}".to_owned())]);
+    assert_eq!(rig.text(), "\u{4f60}ab");
+}
+
+#[test]
+fn token_spans_colour_the_text_for_their_revision_and_not_for_another() {
+    let mut rig = Rig::opened("let x\n");
+    let spans = |rev: u64, start, end| HostMessage::DocumentTokens {
+        resource: doc(),
+        revision: seq(rev),
+        encoding: SpanEncoding::Utf8Bytes,
+        spans: vec![TokenSpan {
+            start,
+            end,
+            class: "keyword".into(),
+        }],
+    };
+    let bold_cols = |rig: &Rig| -> Vec<u16> {
+        let b = rig.body();
+        let buf = rig.draw(b.width, b.height);
+        (0..b.width)
+            .filter(|x| buf[(*x, 0)].modifier.contains(Modifier::BOLD))
+            .collect()
+    };
+    let before = bold_cols(&rig);
+    rig.host(spans(1, 0, 3));
+    let after = bold_cols(&rig);
+    assert!(
+        after.contains(&3) && after.contains(&4),
+        "{before:?} {after:?}"
+    );
+    assert!(!before.contains(&3) && !before.contains(&4), "{before:?}");
+    // A second line typed below keeps the first line's colour until new
+    // spans arrive.
+    rig.mods(Key::End, Mods::CTRL);
+    rig.typed("more");
+    let kept = bold_cols(&rig);
+    assert!(kept.contains(&3) && kept.contains(&4), "{kept:?}");
 }

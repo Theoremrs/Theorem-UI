@@ -6,6 +6,7 @@ use theorem_workbench_core::effect::ReconcileKeep;
 use theorem_workbench_core::{Button, Ctx, PanelPointer, PointerKind};
 use theorem_workbench_text::{EditError, EditSession, LocalEdit, Resolution};
 
+use super::language::LIST_ROWS;
 use super::{Clip, EditorPanel, Phase, Tone};
 use crate::actions::Choice;
 use crate::field::{Event, Field};
@@ -26,14 +27,20 @@ fn chord(key: &KeyInput) -> Option<Choice> {
         Key::Char(c) if command => match c.to_ascii_lowercase() {
             's' => Some(Choice::Save),
             'f' => Some(Choice::Find),
+            'h' => Some(Choice::FindReplace),
+            ' ' => Some(Choice::Complete),
             _ => None,
         },
         Key::F3 if mods.contains(Mods::SHIFT) => Some(Choice::FindPrevious),
+        Key::F12 if mods.contains(Mods::SHIFT) => Some(Choice::References),
+        Key::F12 => Some(Choice::Definition),
         Key::F3 => Some(Choice::FindNext),
         Key::F2 => Some(Choice::Rename),
         Key::Char(c) if alt && c.is_ascii_alphabetic() => match c.to_ascii_lowercase() {
             'f' if c == 'F' || mods.contains(Mods::SHIFT) => Some(Choice::Format),
             'a' => Some(Choice::ApplyPlan),
+            'h' => Some(Choice::Hover),
+            'x' => Some(Choice::Check),
             'm' => Some(Choice::KeepMine),
             't' => Some(Choice::TakeTheirs),
             'b' => Some(Choice::KeepBoth),
@@ -50,11 +57,24 @@ fn chord(key: &KeyInput) -> Option<Choice> {
 impl EditorPanel {
     pub(super) fn on_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         if !matches!(self.phase, Phase::Ready(_)) {
+            if self.naming_idle() {
+                self.naming_key(&key, cx);
+                return;
+            }
             match key.key() {
                 Key::Enter => self.choose(Choice::Retry, cx),
                 Key::Esc => self.choose(Choice::Close, cx),
                 _ => {}
             }
+            return;
+        }
+
+        // The name of a new page is modal like the rename name.
+        if self.naming.is_some() && self.naming_key(&key, cx) {
+            return;
+        }
+
+        if self.popup_key(&key, cx) {
             return;
         }
 
@@ -89,6 +109,29 @@ impl EditorPanel {
             return;
         }
 
+        if d.in_find && d.find.is_replacing() {
+            if mods.contains(Mods::ALT) && key.key() == Key::Enter {
+                self.choose(Choice::ReplaceAll, cx);
+                return;
+            }
+            if key.key() == Key::Tab {
+                d.in_replace = !d.in_replace;
+                return;
+            }
+            if d.in_replace {
+                match d.find.replacement.key(&key) {
+                    Event::Enter => self.choose(Choice::Replace, cx),
+                    Event::Escape => {
+                        d.find.close();
+                        d.in_find = false;
+                        d.in_replace = false;
+                    }
+                    Event::Edited | Event::Ignored => {}
+                }
+                return;
+            }
+        }
+
         if d.in_find {
             match d.find.field.key(&key) {
                 Event::Enter => {
@@ -106,6 +149,7 @@ impl EditorPanel {
                 Event::Escape => {
                     d.find.close();
                     d.in_find = false;
+                    d.in_replace = false;
                     return;
                 }
                 Event::Edited => {
@@ -129,7 +173,15 @@ impl EditorPanel {
     }
 
     pub(super) fn on_text(&mut self, text: &str) {
+        if self.naming_text(text) {
+            return;
+        }
         let Some(d) = self.doc_mut() else { return };
+        d.popup = None;
+        if d.in_find && d.in_replace {
+            d.find.replacement.text(text);
+            return;
+        }
         if let Some(field) = d.rename.as_mut() {
             field.text(text);
             return;
@@ -144,7 +196,15 @@ impl EditorPanel {
     }
 
     pub(super) fn on_paste(&mut self, text: &str) {
+        if self.naming_text(text) {
+            return;
+        }
         let Some(d) = self.doc_mut() else { return };
+        d.popup = None;
+        if d.in_find && d.in_replace {
+            d.find.replacement.text(text.lines().next().unwrap_or(""));
+            return;
+        }
         if let Some(field) = d.rename.as_mut() {
             field.text(text.lines().next().unwrap_or(""));
             return;
@@ -234,6 +294,8 @@ impl EditorPanel {
             PointerKind::Down(Button::Left) => {
                 if frame.find.is_some_and(inside) {
                     d.in_find = true;
+                    d.in_replace =
+                        d.find.is_replacing() && frame.find.is_some_and(|r| p.y > i32::from(r.y));
                 } else if frame.strip.is_some_and(inside) {
                     if let Some(choice) = self.strip_button_at(&frame, p.x, p.y) {
                         self.choose(choice, cx);
@@ -269,6 +331,12 @@ impl EditorPanel {
                     self.phase = Phase::Waiting;
                     self.tick(cx);
                 }
+                Choice::Create => {
+                    if self.naming.is_none() {
+                        self.begin_naming();
+                    }
+                    self.submit_naming(cx);
+                }
                 Choice::Close => cx.close_self(),
                 _ => {}
             }
@@ -276,6 +344,14 @@ impl EditorPanel {
         }
         if choice == Choice::Close {
             cx.close_self();
+            return;
+        }
+        if choice == Choice::Create {
+            if self.naming.is_none() {
+                self.begin_naming();
+            } else {
+                self.submit_naming(cx);
+            }
             return;
         }
         if let Some(reason) = self.unavailable(choice) {
@@ -299,6 +375,22 @@ impl EditorPanel {
                     d.find.refresh(&d.session, version);
                 }
             }
+            Choice::FindReplace => {
+                if let Some(d) = self.doc_mut() {
+                    let seed = d.session.selected_text();
+                    d.find.open_replacing(seed);
+                    d.in_find = true;
+                    d.in_replace = false;
+                    let version = d.version;
+                    d.find.refresh(&d.session, version);
+                }
+            }
+            Choice::Replace => self.replace(false),
+            Choice::ReplaceAll => self.replace(true),
+            Choice::Hover | Choice::Complete | Choice::Definition | Choice::References => {
+                self.ask(choice, cx);
+            }
+            Choice::Check => self.check(cx, true),
             Choice::FindNext => self.step(true),
             Choice::FindPrevious => self.step(false),
             Choice::Rename => {
@@ -330,9 +422,12 @@ impl EditorPanel {
             Choice::KeepAuthority => self.reconcile(ReconcileKeep::Authority, cx),
             Choice::Dismiss => {
                 if let Some(d) = self.doc_mut() {
-                    if d.find.is_open() {
+                    if d.popup.is_some() {
+                        d.popup = None;
+                    } else if d.find.is_open() {
                         d.find.close();
                         d.in_find = false;
+                        d.in_replace = false;
                     } else {
                         d.notice = None;
                         d.recoverable = None;
@@ -340,7 +435,7 @@ impl EditorPanel {
                     }
                 }
             }
-            Choice::Retry | Choice::Close => {}
+            Choice::Retry | Choice::Close | Choice::Create => {}
         }
     }
 
@@ -377,6 +472,95 @@ impl EditorPanel {
                 self.say(note, Tone::Warn);
             }
         }
+    }
+
+    /// Replace the match the caret is on, or the next one, and land on the
+    /// match after it; or every match at once. Either is one ordinary edit, so
+    /// one undo takes it back.
+    fn replace(&mut self, all: bool) {
+        let Some(d) = self.doc_mut() else { return };
+        let version = d.version;
+        d.find.refresh(&d.session, version);
+        let with = d.find.replacement.value().to_owned();
+        let ranges = d.find.ranges().to_vec();
+        let target = if all {
+            ranges.first().zip(ranges.last()).map(|(f, l)| (f.0, l.1))
+        } else {
+            d.find
+                .current(&d.session)
+                .map(|i| ranges[i])
+                .or_else(|| d.find.first_from(d.session.cursor()))
+        };
+        let Some((start, end)) = target else {
+            d.notice("There are no matches.", Tone::Info);
+            return;
+        };
+        let text = if all {
+            let rope = d.session.rope();
+            let mut out = String::new();
+            let mut at = start;
+            for &(a, b) in &ranges {
+                out.push_str(&rope.slice(at..a).to_string());
+                out.push_str(&with);
+                at = b;
+            }
+            out
+        } else {
+            with
+        };
+        d.session.break_undo_group();
+        d.session.set_selection(start, end);
+        let result = d.session.insert_text(&text);
+        d.session.break_undo_group();
+        match result {
+            Ok(_) => {
+                d.touch();
+                let version = d.version;
+                d.find.refresh(&d.session, version);
+                if all {
+                    d.notice(
+                        format!(
+                            "Replaced {} match{}.",
+                            ranges.len(),
+                            if ranges.len() == 1 { "" } else { "es" }
+                        ),
+                        Tone::Info,
+                    );
+                } else if let Some((a, b)) = d.find.first_from(d.session.cursor()) {
+                    d.session.set_selection(a, b);
+                }
+                d.view.reveal(&mut d.session);
+            }
+            Err(e) => {
+                let note = self.edit_error(&e);
+                self.say(note, Tone::Warn);
+            }
+        }
+    }
+
+    /// A key while a popup is over the text. True when the popup took it; any
+    /// other key closes the popup and goes on to do what it does.
+    fn popup_key(&mut self, key: &KeyInput, cx: &mut Ctx) -> bool {
+        let Some(d) = self.doc_mut() else {
+            return false;
+        };
+        let Some(popup) = d.popup.as_mut() else {
+            return false;
+        };
+        let list = popup.selected().is_some();
+        match key.key() {
+            Key::Esc => d.popup = None,
+            Key::Down if list => popup.step(1),
+            Key::Up if list => popup.step(-1),
+            Key::PageDown if list => popup.step(LIST_ROWS as isize),
+            Key::PageUp if list => popup.step(-(LIST_ROWS as isize)),
+            Key::Enter | Key::Tab if list => self.accept_popup(cx),
+            _ => {
+                d.popup = None;
+                return false;
+            }
+        }
+        true
     }
 
     fn step(&mut self, forward: bool) {

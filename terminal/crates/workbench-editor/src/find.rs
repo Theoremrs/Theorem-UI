@@ -30,6 +30,10 @@ struct Stamp {
 pub struct Find {
     open: bool,
     pub field: Field,
+    /// What a replace puts where the match was. Taken literally.
+    pub replacement: Field,
+    /// The replace row is shown.
+    replacing: bool,
     case_sensitive: bool,
     stamp: Option<Stamp>,
     ranges: Vec<(usize, usize)>,
@@ -60,6 +64,28 @@ impl Find {
 
     pub fn close(&mut self) {
         self.open = false;
+        self.replacing = false;
+    }
+
+    /// Open with the replace row, which is the find bar's second row.
+    pub fn open_replacing(&mut self, seed: Option<String>) {
+        self.open(seed);
+        self.replacing = true;
+    }
+
+    pub fn is_replacing(&self) -> bool {
+        self.open && self.replacing
+    }
+
+    /// The rows the bar takes.
+    pub fn rows(&self) -> u16 {
+        if !self.open {
+            0
+        } else if self.replacing {
+            2
+        } else {
+            1
+        }
     }
 
     pub fn case_sensitive(&self) -> bool {

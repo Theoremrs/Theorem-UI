@@ -14,7 +14,8 @@ use theorem_workbench_text::{
 };
 
 use super::{
-    Clip, Disk, Doc, EditorPanel, Held, Notice, Phase, Plan, Problem, Task, Tone, Unknown, seq,
+    Clip, Disk, Doc, EditorPanel, Held, Notice, Phase, Plan, Problem, Task, Tone, Unknown,
+    language, seq,
 };
 use crate::find::Find;
 use crate::sync::{apply_owner_change, resync, step_before};
@@ -51,11 +52,31 @@ impl EditorPanel {
         if let Some(d) = self.doc_mut() {
             let version = d.version;
             d.find.refresh(&d.session, version);
+            d.refresh_tokens();
             // A save of an older revision is judged stale once edits are
             // accepted past it, so its answer will not come: stop showing it.
             let accepted = d.session.accepted_revision();
             if d.save.inflight.is_some_and(|r| r < accepted) {
                 d.save.inflight = None;
+            }
+            // A hover or a completion list belongs to the text it was asked
+            // about; a place list does not move with the caret.
+            let version = d.version;
+            if let Some(
+                language::Popup::Hover {
+                    revision,
+                    version: v,
+                    ..
+                }
+                | language::Popup::Completions {
+                    revision,
+                    version: v,
+                    ..
+                },
+            ) = &d.popup
+                && (*v != version || *revision != accepted)
+            {
+                d.popup = None;
             }
         }
     }
@@ -147,6 +168,9 @@ impl EditorPanel {
             // Host-only: the root cannot tie them to the document, so the
             // answer may arrive as the cached kind. It is still the answer.
             Task::Clip(clip) => self.on_clip(clip, c),
+            // A create for a name is the answer to a name, whichever editor is
+            // bound to what: the one that asked takes it.
+            Task::Create { path, adopt } => self.on_create(path, adopt, c, cx),
             // For a resource the panel is no longer bound to: not the current
             // state, so not shown.
             _ if cached => {}
@@ -157,11 +181,18 @@ impl EditorPanel {
             Task::Rename(revision) => self.on_rename(revision, c),
             Task::Apply => self.on_apply(c),
             Task::Format => self.on_format(c),
+            Task::Hover { revision, version } => self.on_hover(revision, version, c),
+            Task::Complete { revision, version } => self.on_completions(revision, version, c),
+            Task::Navigate {
+                revision,
+                references,
+            } => self.on_places(revision, references, c),
+            Task::Check(revision) => self.on_check(revision, c),
             Task::Release => {}
         }
     }
 
-    fn on_open(&mut self, c: Completion, cx: &mut Ctx) {
+    pub(super) fn on_open(&mut self, c: Completion, cx: &mut Ctx) {
         let opened = match (&c.outcome, c.payload) {
             (Outcome::Accepted, Some(CompletionPayload::DocumentOpened(o))) => o,
             (outcome, _) => {
@@ -243,9 +274,19 @@ impl EditorPanel {
             in_find: false,
             rename: None,
             plan: None,
+            in_replace: false,
+            popup: None,
+            findings: Default::default(),
+            tokens: None,
+            waiting: None,
+            preedit: None,
             recoverable: None,
             busy: None,
         };
+        if let Some(r) = &opened.read_only {
+            d.read_only = Some(r.reason.clone());
+            d.session.set_read_only(true);
+        }
         let (w, h) = self.body;
         d.view.resize(&mut d.session, w, h);
         self.phase = Phase::Ready(Box::new(d));
@@ -627,8 +668,35 @@ impl EditorPanel {
             }
             HostMessage::DocumentSaved { revision, .. } => {
                 if let (Some(revision), Some(d)) = (seq(&revision), self.doc_mut()) {
-                    d.saved = Some(revision);
+                    // A save of an older revision says that revision is on
+                    // disk; the mark stays if the text has moved past it.
+                    if d.saved.is_none_or(|s| s < revision) {
+                        d.saved = Some(revision);
+                    }
                     d.save.unknown = None;
+                }
+            }
+            HostMessage::DocumentTokens {
+                resource,
+                revision,
+                encoding,
+                spans,
+            } => {
+                let (Some(revision), true) = (seq(&revision), resource == self.resource()) else {
+                    return;
+                };
+                if let Some(d) = self.doc_mut() {
+                    let accepted = d.session.accepted_revision();
+                    if revision == accepted {
+                        d.take_tokens(revision, encoding, &spans);
+                        d.waiting = None;
+                    } else if revision > accepted {
+                        d.waiting = Some(language::Waiting {
+                            revision,
+                            encoding,
+                            spans,
+                        });
+                    }
                 }
             }
             HostMessage::DocumentMoved { from, to } => {

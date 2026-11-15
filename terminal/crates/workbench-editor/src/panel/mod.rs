@@ -10,10 +10,14 @@
 //! * `input`: keys, text, pointer, and the editing actions they start.
 //! * `flow`: completions and host messages, and the sending of edits.
 //! * `chrome`: the cells, the strip under the text, and the semantic nodes.
+//! * `language`: hover, completions, places and findings from the language owner.
+//! * `create`: naming a new page and creating it through the owner.
 
 mod chrome;
+mod create;
 mod flow;
 mod input;
+mod language;
 
 use std::cell::RefCell;
 use std::collections::BTreeMap;
@@ -31,7 +35,7 @@ use theorem_workbench_core::ids::{
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
-    Ctx, EmitError, OpenTarget, Panel, PanelFactories, PanelMsg, ViewCtx,
+    Composition, Ctx, EmitError, OpenTarget, Panel, PanelFactories, PanelMsg, TabLabel, ViewCtx,
 };
 use theorem_workbench_text::{EditSession, OpId, Scroll, ViewSnapshot};
 
@@ -41,6 +45,8 @@ use crate::find::Find;
 use crate::styles::EditorStyles;
 use crate::sync::Changed;
 use crate::widget::SourceView;
+use create::Naming;
+use language::{Findings, Popup, Tokens};
 
 /// The panel kind the registry already lists for documents.
 pub const KIND: &str = "document";
@@ -89,7 +95,10 @@ pub fn register_with(factories: &mut PanelFactories, drafts: Drafts) {
     factories.register(KIND, move |state, _version| {
         Box::new(EditorPanel::restore(state, drafts.clone()))
     });
-    factories.register_opener(KIND, |target| matches!(target, OpenTarget::File { .. }));
+    // A file at a place is a file: the root opens it, then sends the reveal.
+    factories.register_opener(KIND, |target| {
+        matches!(target, OpenTarget::File { .. } | OpenTarget::FileAt { .. })
+    });
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -228,6 +237,18 @@ pub(crate) struct Doc {
     pub in_find: bool,
     pub rename: Option<Field>,
     pub plan: Option<Plan>,
+    /// The replace field of the find bar has the keyboard.
+    pub in_replace: bool,
+    /// A hover, a completion list or a list of places over the text.
+    pub popup: Option<Popup>,
+    /// What the language owner found, for the revision it was asked about.
+    pub findings: Findings,
+    /// Syntax colour, for the revision the host computed it at.
+    pub tokens: Option<Tokens>,
+    /// Spans for a revision not reached yet.
+    pub waiting: Option<language::Waiting>,
+    /// Text an input method is composing at the caret.
+    pub preedit: Option<String>,
     /// The whole text from before "take theirs", kept so it can be copied.
     pub recoverable: Option<String>,
     pub busy: Option<&'static str>,
@@ -270,6 +291,11 @@ pub(crate) enum Task {
     Apply,
     Format,
     Release,
+    Hover { revision: u64, version: u64 },
+    Complete { revision: u64, version: u64 },
+    Navigate { revision: u64, references: bool },
+    Check(u64),
+    Create { path: String, adopt: bool },
 }
 
 #[derive(Clone, Debug)]
@@ -300,6 +326,8 @@ pub struct EditorPanel {
     /// Caret, selection and scroll to put back once the text arrives.
     restore: Option<ViewSnapshot>,
     need_pump: bool,
+    /// The name of a page being typed, when there is none yet.
+    naming: Option<Naming>,
     /// A place to put the caret (`PanelMsg::Reveal`), kept until the text is here.
     reveal: Option<(u32, u32)>,
 }
@@ -366,6 +394,13 @@ impl EditorPanel {
             restore,
             reveal: None,
             need_pump: false,
+            naming: state["path"]
+                .as_str()
+                .is_none_or(str::is_empty)
+                .then(|| Naming {
+                    adopt: true,
+                    ..Naming::default()
+                }),
         }
     }
 
@@ -502,7 +537,50 @@ impl EditorPanel {
                 self.phase = Phase::Opening;
             }
         }
+        self.check_due(cx);
         self.need_pump = false;
+    }
+
+    /// The input method's events: the preedit is shown at the caret and the
+    /// text enters the document only when the composition ends.
+    fn on_composition(&mut self, event: Composition) {
+        match event {
+            Composition::Start => self.compose(None),
+            Composition::Update { text } => self.compose(Some(&text)),
+            Composition::End { text } => self.commit_composition(&text),
+        }
+    }
+
+    /// An input method is composing `preedit` at the caret (`None`: it
+    /// stopped). The text is drawn underlined where it will go and is not in
+    /// the session until [`commit_composition`](Self::commit_composition), so
+    /// it is never sent, undone or found by a search while it is only a guess.
+    pub fn compose(&mut self, preedit: Option<&str>) {
+        let Some(d) = self.doc_mut() else { return };
+        d.preedit = preedit
+            .filter(|p| !p.is_empty() && !d.session.config().read_only)
+            .map(str::to_owned);
+    }
+
+    /// The input method committed `text`: it enters the document as one edit
+    /// at the caret.
+    pub fn commit_composition(&mut self, text: &str) {
+        let Some(d) = self.doc_mut() else { return };
+        d.preedit = None;
+        if text.is_empty() {
+            return;
+        }
+        match d.session.insert_text(text) {
+            Ok(Some(_)) => {
+                d.touch();
+                d.view.reveal(&mut d.session);
+            }
+            Ok(None) => {}
+            Err(e) => {
+                let note = self.edit_error(&e);
+                self.say(note, Tone::Warn);
+            }
+        }
     }
 }
 
@@ -528,6 +606,7 @@ impl Panel for EditorPanel {
                 self.reveal = Some((line, column));
                 self.place_reveal();
             }
+            PanelMsg::Composition(event) => self.on_composition(event),
             // Focus and the terminal's messages mean nothing to a document; the
             // core adds messages over time, so the rest are ignored the same way.
             _ => {}
@@ -563,6 +642,14 @@ impl Panel for EditorPanel {
             out["revision"] = json!(revision);
         }
         out
+    }
+
+    fn tab_label(&self) -> Option<TabLabel> {
+        let title = self.path.rsplit('/').next().filter(|n| !n.is_empty())?;
+        Some(TabLabel {
+            title: title.to_owned(),
+            modified: self.doc().is_some_and(Doc::dirty),
+        })
     }
 
     fn binding(&self) -> Option<Binding> {

@@ -17,7 +17,7 @@
 use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::{PanelPointer, PointerKind};
 use theorem_workbench_text::coords::grapheme_cells;
 use theorem_workbench_text::layout::{Row, line_rows, row_index};
@@ -76,6 +76,28 @@ pub struct Paint<'a> {
     pub matches: &'a [(usize, usize)],
     /// The index in `matches` the caret is on.
     pub current: Option<usize>,
+    /// Syntax colour: ranges in order and apart, each with the style it is
+    /// drawn in, at the session's current text. The host that has spans for a
+    /// revision other than the text's passes none.
+    pub tokens: &'a [Mark],
+    /// Findings: ranges that may overlap each other and the tokens, each
+    /// patched over whatever else the text there is drawn in.
+    pub marks: &'a [Mark],
+    /// A mark in the line-number column: the line (from 0), the glyph and its
+    /// style. Lines that are not listed show only their number.
+    pub gutter: &'a [(usize, char, Style)],
+    /// Text an input method is composing at the caret. It is drawn underlined
+    /// over what follows the caret and is not in the session until committed.
+    pub preedit: Option<&'a str>,
+}
+
+/// A stretch of the text and how it is drawn, in Unicode scalars of the text
+/// the paint is for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Mark {
+    pub start: usize,
+    pub end: usize,
+    pub style: Style,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -580,6 +602,19 @@ impl SourceView {
                             (" ".repeat(usize::from(gutter)), styles.gutter)
                         };
                         buf.set_string(area.x, py, label, styles.gutter.patch(style));
+                        // The last cell of the column is blank; a finding on
+                        // the line takes it.
+                        if row.index == 0
+                            && let Some(&(_, glyph, mark)) =
+                                paint.gutter.iter().find(|g| g.0 == line)
+                        {
+                            buf.set_string(
+                                area.x + gutter - 1,
+                                py,
+                                glyph.to_string(),
+                                styles.gutter.patch(mark),
+                            );
+                        }
                     }
                     if line == caret_line && selection.is_none() {
                         buf.set_style(
@@ -633,10 +668,27 @@ impl SourceView {
                         let x = content.x + at_cell as u16;
                         let width = (width as u16).min(content.width - at_cell as u16).max(1);
                         *caret_out = Some(Caret { x, y: py, width });
-                        if paint.focused
-                            && let Some(buf) = buf.as_deref_mut()
-                        {
-                            buf.set_style(Rect::new(x, py, width, 1), styles.caret);
+                        if let Some(buf) = buf.as_deref_mut() {
+                            match paint.preedit.filter(|p| !p.is_empty()) {
+                                Some(pre) => {
+                                    let room = usize::from(content.width) - at_cell;
+                                    let (end, _) = buf.set_stringn(
+                                        x,
+                                        py,
+                                        pre,
+                                        room,
+                                        styles.text.add_modifier(Modifier::UNDERLINED),
+                                    );
+                                    // The caret follows the composed text.
+                                    if paint.focused && end < content.x + content.width {
+                                        buf.set_style(Rect::new(end, py, 1, 1), styles.caret);
+                                    }
+                                }
+                                None if paint.focused => {
+                                    buf.set_style(Rect::new(x, py, width, 1), styles.caret);
+                                }
+                                None => {}
+                            }
                         }
                     }
                 }
@@ -649,15 +701,24 @@ impl SourceView {
 }
 
 impl<'a> Paint<'a> {
-    /// A paint that draws nothing visible, to find the caret.
-    fn none() -> Paint<'static> {
-        static PLAIN: std::sync::OnceLock<EditorStyles> = std::sync::OnceLock::new();
-        Paint {
-            styles: PLAIN.get_or_init(EditorStyles::plain),
+    /// Text only: not focused, with nothing marked.
+    pub fn new(styles: &'a EditorStyles) -> Self {
+        Self {
+            styles,
             focused: false,
             matches: &[],
             current: None,
+            tokens: &[],
+            marks: &[],
+            gutter: &[],
+            preedit: None,
         }
+    }
+
+    /// A paint that draws nothing visible, to find the caret.
+    fn none() -> Paint<'static> {
+        static PLAIN: std::sync::OnceLock<EditorStyles> = std::sync::OnceLock::new();
+        Paint::new(PLAIN.get_or_init(EditorStyles::plain))
     }
 }
 
@@ -670,6 +731,12 @@ fn style_at(
 ) -> Style {
     let s = paint.styles;
     let mut style = s.text;
+    let t = paint.tokens.partition_point(|m| m.end <= at);
+    if let Some(m) = paint.tokens.get(t)
+        && m.start <= at
+    {
+        style = style.patch(m.style);
+    }
     let found = paint.matches.partition_point(|&(_, end)| end <= at);
     if let Some(&(start, _)) = paint.matches.get(found)
         && start <= at
@@ -679,6 +746,11 @@ fn style_at(
         } else {
             s.search_match
         });
+    }
+    for m in paint.marks {
+        if at >= m.start && at < m.end {
+            style = style.patch(m.style);
+        }
     }
     if atomics.iter().any(|&(a, b)| at >= a && at < b) {
         style = style.patch(s.atomic);
@@ -831,12 +903,7 @@ mod tests {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
         let styles = EditorStyles::plain();
-        let paint = Paint {
-            styles: &styles,
-            focused: false,
-            matches: &[],
-            current: None,
-        };
+        let paint = Paint::new(&styles);
         v.draw(s, area, &mut buf, &paint);
         (0..height)
             .map(|y| {
@@ -953,12 +1020,7 @@ mod tests {
         let area = Rect::new(0, 0, 20, 3);
         let mut buf = Buffer::empty(area);
         let styles = EditorStyles::plain();
-        let paint = Paint {
-            styles: &styles,
-            focused: false,
-            matches: &[],
-            current: None,
-        };
+        let paint = Paint::new(&styles);
         v.draw(&s, area, &mut buf, &paint);
         let reversed: Vec<bool> = (2..7)
             .map(|x| buf[(x, 0)].modifier.contains(Modifier::REVERSED))

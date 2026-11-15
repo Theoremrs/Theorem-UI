@@ -10,9 +10,12 @@ use ratatui::widgets::{Paragraph, Widget, Wrap};
 use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::host::ConnectionState;
 use theorem_workbench_core::ids::Revision as CoreRevision;
+use theorem_workbench_core::results::Severity;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role};
+use theorem_workbench_text::Caret;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use super::language::{LIST_ROWS, Popup, word};
 use super::{Doc, EditorPanel, Phase, Tone};
 use crate::actions::Choice;
 use crate::styles::EditorStyles;
@@ -29,6 +32,8 @@ pub(super) struct Frame {
 enum Prompt {
     Text(String, Tone),
     Rename,
+    /// The name of a new page, and the owner's word on the last one.
+    Name(Option<String>),
 }
 
 struct Strip {
@@ -41,6 +46,7 @@ impl Strip {
     fn rows(&self, width: u16) -> u16 {
         let text = match &self.prompt {
             Prompt::Rename => 1,
+            Prompt::Name(error) => 1 + u16::from(error.is_some()),
             Prompt::Text(t, _) => {
                 let cells = t.width();
                 let w = usize::from(width.max(1));
@@ -88,6 +94,10 @@ impl EditorPanel {
 
     /// Why `choice` cannot be done now, in words a person can act on.
     pub(super) fn unavailable(&self, choice: Choice) -> Option<String> {
+        if choice == Choice::Create {
+            return (!self.documents)
+                .then(|| "The document service is not available in this workspace.".to_owned());
+        }
         let Some(d) = self.doc() else {
             return match choice {
                 Choice::Close => None,
@@ -151,6 +161,30 @@ impl EditorPanel {
                 || d.find.ranges().is_empty())
             .then(|| "There are no matches.".to_owned()),
             Choice::Rename | Choice::Format => language(),
+            Choice::Hover | Choice::Complete | Choice::Definition | Choice::References => {
+                language()
+            }
+            Choice::Check => {
+                if !self.language {
+                    Some("No language service in this workspace.".to_owned())
+                } else if d.findings.inflight {
+                    Some("A check is already in flight.".to_owned())
+                } else if d.session.has_pending() {
+                    Some("Wait until the owner has accepted the edits.".to_owned())
+                } else if d.session.has_conflict() {
+                    Some("Settle the held text first.".to_owned())
+                } else if d.desync.is_some() {
+                    Some("Waiting for the owner's text.".to_owned())
+                } else {
+                    None
+                }
+            }
+            Choice::FindReplace => read_only(),
+            Choice::Replace | Choice::ReplaceAll => read_only().or_else(|| {
+                (!d.find.is_open() || d.find.ranges().is_empty())
+                    .then(|| "There are no matches.".to_owned())
+            }),
+            Choice::Create => None,
             Choice::ApplyPlan => {
                 if !self.language {
                     Some("No language service in this workspace.".to_owned())
@@ -179,6 +213,7 @@ impl EditorPanel {
                 .is_none()
                 .then(|| "The file on disk has not changed under the editor.".to_owned()),
             Choice::Dismiss => (!(d.find.is_open()
+                || d.popup.is_some()
                 || d.notice.is_some()
                 || d.recoverable.is_some()
                 || d.plan.is_some()))
@@ -201,6 +236,12 @@ impl EditorPanel {
         if d.rename.is_some() {
             return Some(Strip {
                 prompt: Prompt::Rename,
+                buttons: vec![],
+            });
+        }
+        if let Some(n) = &self.naming {
+            return Some(Strip {
+                prompt: Prompt::Name(n.error.clone()),
                 buttons: vec![],
             });
         }
@@ -307,8 +348,9 @@ impl EditorPanel {
             Rect::new(area.x, bottom, area.width, 1)
         });
         let find = (d.find.is_open() && bottom - top >= 2).then(|| {
-            let r = Rect::new(area.x, top, area.width, 1);
-            top += 1;
+            let rows = d.find.rows().min(bottom - top - 1).max(1);
+            let r = Rect::new(area.x, top, area.width, rows);
+            top += rows;
             r
         });
         let strip = self.strip().and_then(|s| {
@@ -367,6 +409,7 @@ impl EditorPanel {
     fn message_buttons(&self) -> Vec<Choice> {
         match &self.phase {
             Phase::Failed(p) if p.can_retry => vec![Choice::Retry, Choice::Close],
+            _ if self.naming_idle() => vec![Choice::Create, Choice::Close],
             _ => vec![Choice::Close],
         }
     }
@@ -426,6 +469,9 @@ impl EditorPanel {
         if let Some(b) = d.busy {
             flag(b.to_owned(), false);
         }
+        if let Some(p) = &d.findings.problem {
+            flag(format!("no findings: {p}"), false);
+        }
         match self.connection {
             None | Some(ConnectionState::Open) => {}
             Some(state) => flag(format!("{state:?}").to_lowercase(), true),
@@ -480,21 +526,32 @@ impl EditorPanel {
         };
 
         // The text.
+        let marks = d.marks(&styles);
+        let gutter = d.gutter(&styles);
+        let tokens = d.tokens(&styles);
         let paint = Paint {
-            styles: &styles,
-            focused: cx.focused && !d.in_find && d.rename.is_none(),
+            focused: cx.focused && !d.in_find && d.rename.is_none() && self.naming.is_none(),
             matches: if d.find.is_open() {
                 d.find.ranges()
             } else {
                 &[]
             },
             current: d.find.current(&d.session),
+            tokens: &tokens,
+            marks: &marks,
+            gutter: &gutter,
+            preedit: d.preedit.as_deref(),
+            ..Paint::new(&styles)
         };
-        d.view.draw(&d.session, frame.text, buf, &paint);
+        let caret = d.view.draw(&d.session, frame.text, buf, &paint);
+        if let Some(popup) = &d.popup {
+            draw_popup(popup, caret, frame.text, buf, &styles);
+        }
 
         // The find bar.
-        if let Some(row) = frame.find {
-            buf.set_style(row, cx.theme.line);
+        if let Some(rect) = frame.find {
+            buf.set_style(rect, cx.theme.line);
+            let row = Rect::new(rect.x, rect.y, rect.width, 1);
             let prefix = if d.find.case_sensitive() {
                 "Find (case) "
             } else {
@@ -511,7 +568,7 @@ impl EditorPanel {
             let scroll = d.find.field.scroll(usize::from(room.max(1)));
             let shown = skip_cells(value, scroll);
             buf.set_stringn(x0, row.y, &shown, usize::from(room), cx.theme.text);
-            if d.in_find && cx.focused {
+            if d.in_find && !d.in_replace && cx.focused {
                 let at = d
                     .find
                     .field
@@ -528,6 +585,36 @@ impl EditorPanel {
                     cx.theme.muted,
                 );
             }
+            if d.find.is_replacing() && rect.height >= 2 {
+                let row = Rect::new(rect.x, rect.y + 1, rect.width, 1);
+                let prefix = "Replace ";
+                buf.set_stringn(row.x, row.y, prefix, usize::from(row.width), cx.theme.muted);
+                let tail = format!("{}  {}", label(Choice::Replace), label(Choice::ReplaceAll));
+                let tail_w = tail.width() as u16;
+                let x0 = row.x + prefix.width() as u16;
+                let room = row.width.saturating_sub(prefix.width() as u16 + tail_w + 1);
+                let field = &d.find.replacement;
+                let shown = skip_cells(field.value(), field.scroll(usize::from(room.max(1))));
+                buf.set_stringn(x0, row.y, &shown, usize::from(room), cx.theme.text);
+                if d.in_find && d.in_replace && cx.focused {
+                    let at = field.cursor().min(usize::from(room.saturating_sub(1)));
+                    buf.set_style(Rect::new(x0 + at as u16, row.y, 1, 1), styles.caret);
+                }
+                if row.width > tail_w {
+                    let style = if self.unavailable(Choice::Replace).is_none() {
+                        cx.theme.selected
+                    } else {
+                        cx.theme.muted
+                    };
+                    buf.set_stringn(
+                        row.x + row.width - tail_w,
+                        row.y,
+                        &tail,
+                        usize::from(tail_w),
+                        style,
+                    );
+                }
+            }
         }
 
         // The strip.
@@ -542,6 +629,11 @@ impl EditorPanel {
                             .wrap(Wrap { trim: true })
                             .style(tone(*t_tone))
                             .render(text_rect, buf);
+                    }
+                }
+                Prompt::Name(error) => {
+                    if let Some(n) = &self.naming {
+                        draw_name(n, error.as_deref(), rect, buf, cx, &styles);
                     }
                 }
                 Prompt::Rename => {
@@ -594,15 +686,27 @@ impl EditorPanel {
             let right_w = right.width() as u16;
             let left_room = row.width.saturating_sub(right_w + 1);
             let (x, _) = buf.set_stringn(row.x, row.y, &left, usize::from(left_room), base);
-            if let Some(n) = &d.notice {
+            let finding = d.finding_here().map(|f| {
+                let style = match f.severity {
+                    Severity::Error => cx.theme.error,
+                    Severity::Warning => cx.theme.warning,
+                    Severity::Info | Severity::Hint => cx.theme.text,
+                };
+                (format!("{}: {}", word(f.severity), f.message), style)
+            });
+            let shown = match (&d.notice, finding) {
+                (Some(n), _) => Some((n.text.clone(), tone(n.tone))),
+                (None, finding) => finding,
+            };
+            if let Some((text, style)) = shown {
                 let used = x - row.x;
                 if left_room > used + 2 {
                     buf.set_stringn(
                         x + 2,
                         row.y,
-                        &n.text,
+                        &text,
                         usize::from(left_room - used - 2),
-                        tone(n.tone),
+                        style,
                     );
                 }
             }
@@ -618,8 +722,71 @@ impl EditorPanel {
         }
     }
 
+    /// The prompt of an editor with no file: the name, the owner's word on the
+    /// last one, and the choices.
+    fn draw_naming_screen(&self, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
+        let Some(n) = &self.naming else { return };
+        let styles = self.styles(cx);
+        buf.set_stringn(
+            area.x,
+            area.y,
+            "New page",
+            usize::from(area.width),
+            cx.theme.muted,
+        );
+        if area.height > 1 {
+            buf.set_stringn(
+                area.x,
+                area.y + 1,
+                "Name the file to create in this workspace.",
+                usize::from(area.width),
+                cx.theme.text,
+            );
+        }
+        if area.height > 3 {
+            draw_name(
+                n,
+                None,
+                Rect::new(area.x, area.y + 3, area.width, 1),
+                buf,
+                cx,
+                &styles,
+            );
+        }
+        if let Some(error) = &n.error
+            && area.height > 5
+        {
+            let rect = Rect::new(area.x, area.y + 4, area.width, 1.min(area.height - 4));
+            Paragraph::new(Line::from(error.as_str()))
+                .wrap(Wrap { trim: true })
+                .style(cx.theme.error)
+                .render(rect, buf);
+        }
+        for (choice, r, why) in self.buttons_on(self.message_row(area), &self.message_buttons()) {
+            let style = if why.is_none() {
+                cx.theme.selected
+            } else {
+                cx.theme.muted
+            };
+            buf.set_stringn(r.x, r.y, label(choice), usize::from(r.width), style);
+        }
+    }
+
     fn message_lines(&self) -> Vec<(String, Tone)> {
         let path = (self.path.clone(), Tone::Info);
+        if self.naming_idle() {
+            let mut lines = vec![
+                ("New page".to_owned(), Tone::Info),
+                (
+                    "Name the file to create in this workspace.".to_owned(),
+                    Tone::Info,
+                ),
+            ];
+            if let Some(e) = self.naming.as_ref().and_then(|n| n.error.clone()) {
+                lines.push((e, Tone::Error));
+            }
+            return lines;
+        }
         match &self.phase {
             Phase::Waiting if self.path.is_empty() => vec![
                 ("No file".to_owned(), Tone::Info),
@@ -664,6 +831,10 @@ impl EditorPanel {
             Tone::Warn => cx.theme.warning,
             Tone::Error => cx.theme.error,
         };
+        if self.naming_idle() {
+            self.draw_naming_screen(area, buf, cx);
+            return;
+        }
         let lines = self.message_lines();
         for (i, (text, t)) in lines.iter().enumerate() {
             let y = area.y + i as u16;
@@ -748,6 +919,19 @@ impl EditorPanel {
         if d.find.is_open() {
             words.push(format!("find: {}", d.find.summary(&d.session)));
         }
+        let found = d.findings();
+        if !found.is_empty() {
+            let count = |s: Severity| found.iter().filter(|f| f.severity == s).count();
+            words.push(format!(
+                "{} findings ({} errors, {} warnings)",
+                found.len(),
+                count(Severity::Error),
+                count(Severity::Warning)
+            ));
+        }
+        if let Some(f) = d.finding_here() {
+            words.push(format!("{} on this line: {}", word(f.severity), f.message));
+        }
         root.state.description = Some(words.join("; "));
         root.actions = [
             Choice::Save,
@@ -756,9 +940,15 @@ impl EditorPanel {
             Choice::Find,
             Choice::FindNext,
             Choice::FindPrevious,
+            Choice::FindReplace,
             Choice::Rename,
             Choice::Format,
             Choice::ApplyPlan,
+            Choice::Hover,
+            Choice::Complete,
+            Choice::Definition,
+            Choice::References,
+            Choice::Check,
         ]
         .into_iter()
         .map(|c| self.action(c))
@@ -801,20 +991,47 @@ impl EditorPanel {
                     "; ignoring case"
                 }
             ));
-            group.actions = [Choice::FindNext, Choice::FindPrevious]
-                .into_iter()
-                .map(|c| self.action(c))
-                .collect();
+            group.actions = [
+                Choice::FindNext,
+                Choice::FindPrevious,
+                Choice::Replace,
+                Choice::ReplaceAll,
+            ]
+            .into_iter()
+            .map(|c| self.action(c))
+            .collect();
+            let row = Rect::new(row.x, row.y, row.width, 1);
             let mut field = Node::new("find-query", Role::TextBox, "Find", row);
-            field.state.focused = d.in_find && cx.focused;
+            field.state.focused = d.in_find && !d.in_replace && cx.focused;
             field.state.description = Some(d.find.field.value().to_owned());
             group.children = vec![field.id.clone()];
+            if d.find.is_replacing() {
+                let below = Rect::new(row.x, row.y + 1, row.width, 1);
+                let mut with = Node::new("find-replacement", Role::TextBox, "Replace with", below);
+                with.state.focused = d.in_find && d.in_replace && cx.focused;
+                with.state.description = Some(d.find.replacement.value().to_owned());
+                group.children.push(with.id.clone());
+                out.push(with);
+            }
             children.push(group.id.clone());
             out.push(group);
             out.push(field);
         }
         if let (Some(rect), Some(strip)) = (frame.strip, self.strip()) {
             match &strip.prompt {
+                Prompt::Name(error) => {
+                    let mut n = Node::new("naming", Role::TextBox, "Name of the new page", rect);
+                    n.state.focused = cx.focused;
+                    let value = self.naming.as_ref().map(|n| n.field.value().to_owned());
+                    n.state.description = match (value, error) {
+                        (Some(v), Some(e)) => Some(format!("{v}; {e}")),
+                        (Some(v), None) => Some(v),
+                        (None, e) => e.clone(),
+                    };
+                    n.actions = vec![self.action(Choice::Create)];
+                    children.push(n.id.clone());
+                    out.push(n);
+                }
                 Prompt::Rename => {
                     let mut n = Node::new("rename", Role::TextBox, "Rename symbol", rect);
                     n.state.focused = cx.focused;
@@ -856,6 +1073,30 @@ impl EditorPanel {
                 }
             }
         }
+        if let Some(popup) = &d.popup {
+            let rows = popup.rows();
+            let mut list = Node::new("popup", Role::Menu, popup.title(), frame.text);
+            list.binding = self.resource();
+            let mut kids = vec![];
+            for (i, text) in rows.iter().enumerate().take(100) {
+                let mut item = Node::new(
+                    &format!("popup:{i}"),
+                    if popup.selected().is_some() {
+                        Role::MenuItem
+                    } else {
+                        Role::Document
+                    },
+                    text,
+                    frame.text,
+                );
+                item.state.selected = popup.selected() == Some(i);
+                kids.push(item);
+            }
+            list.children = kids.iter().map(|k| k.id.clone()).collect();
+            children.push(list.id.clone());
+            out.push(list);
+            out.extend(kids);
+        }
         root.children = children;
         let mut all = vec![root];
         all.extend(out);
@@ -879,6 +1120,15 @@ impl EditorPanel {
         root.state.busy = matches!(self.phase, Phase::Opening);
         root.state.focused = cx.focused;
         let mut kids = vec![];
+        if self.naming_idle()
+            && let Some(n) = &self.naming
+        {
+            let mut name = Node::new("name", Role::TextBox, "Name of the new page", area);
+            name.state.focused = cx.focused;
+            name.state.description = Some(n.field.value().to_owned());
+            name.actions = vec![self.action(Choice::Create)];
+            kids.push(name);
+        }
         for choice in self.message_buttons() {
             let a = self.action(choice);
             let shown = self
@@ -917,4 +1167,100 @@ fn skip_cells(text: &str, skip: usize) -> String {
         cells += c.width().unwrap_or(0);
     }
     out
+}
+
+/// The name prompt of a new page on one row, and the owner's word on the last
+/// name under it when there is a row for it.
+fn draw_name(
+    n: &super::create::Naming,
+    error: Option<&str>,
+    rect: Rect,
+    buf: &mut Buffer,
+    cx: &ViewCtx,
+    styles: &EditorStyles,
+) {
+    let prefix = "New page name ";
+    buf.set_stringn(
+        rect.x,
+        rect.y,
+        prefix,
+        usize::from(rect.width),
+        cx.theme.muted,
+    );
+    let x0 = rect.x + prefix.width() as u16;
+    let room = rect.width.saturating_sub(prefix.width() as u16);
+    let shown = skip_cells(n.field.value(), n.field.scroll(usize::from(room.max(1))));
+    buf.set_stringn(x0, rect.y, &shown, usize::from(room), cx.theme.text);
+    if cx.focused && room > 0 && !n.busy {
+        let at = n.field.cursor().min(usize::from(room - 1));
+        buf.set_style(Rect::new(x0 + at as u16, rect.y, 1, 1), styles.caret);
+    }
+    if let Some(error) = error
+        && rect.height > 1
+    {
+        buf.set_stringn(
+            rect.x,
+            rect.y + 1,
+            error,
+            usize::from(rect.width),
+            cx.theme.error,
+        );
+    }
+}
+
+/// A popup next to the caret: below it when there is room, above it when not.
+/// A list shows the rows around the one the Enter key takes.
+fn draw_popup(
+    popup: &Popup,
+    caret: Option<Caret>,
+    area: Rect,
+    buf: &mut Buffer,
+    styles: &EditorStyles,
+) {
+    let rows = popup.rows();
+    if rows.is_empty() || area.width == 0 || area.height == 0 {
+        return;
+    }
+    let cap = if popup.selected().is_some() {
+        LIST_ROWS
+    } else {
+        10
+    };
+    let shown = rows.len().min(cap).min(usize::from(area.height));
+    let first = popup
+        .selected()
+        .map_or(0, |s| (s + 1).saturating_sub(shown));
+    let window = &rows[first..first + shown];
+    let widest = window.iter().map(|r| r.width()).max().unwrap_or(0) + 2;
+    let width = widest.min(70).min(usize::from(area.width)) as u16;
+    let height = shown as u16;
+    let anchor = caret.unwrap_or(Caret {
+        x: area.x,
+        y: area.y,
+        width: 1,
+    });
+    let below = anchor.y + 1;
+    let y = if below + height <= area.y + area.height {
+        below
+    } else {
+        anchor.y.saturating_sub(height).max(area.y)
+    };
+    let x = anchor.x.min(area.x + area.width - width);
+    for (i, text) in window.iter().enumerate() {
+        let selected = popup.selected() == Some(first + i);
+        let style = if selected {
+            styles.popup_selected
+        } else {
+            styles.popup
+        };
+        let row = Rect::new(x, y + i as u16, width, 1);
+        buf.set_style(row, style);
+        buf.set_stringn(
+            row.x + 1,
+            row.y,
+            text,
+            usize::from(width.saturating_sub(2)),
+            style,
+        );
+    }
 }

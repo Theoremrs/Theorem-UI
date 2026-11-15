@@ -15,10 +15,10 @@ mod styles;
 mod sync;
 mod widget;
 
-pub use actions::{Choice, Descriptor, descriptors};
+pub use actions::{Choice, Descriptor, actions, descriptors, extend_registry};
 pub use field::Field;
 pub use find::Find;
 pub use panel::{Drafts, EditorPanel, KIND, register, register_with};
 pub use styles::EditorStyles;
 pub use sync::{Changed, apply_owner_change, resync, step_before};
-pub use widget::{Clipboard, PASTE_LIMIT, Paint, Position, Reaction, SourceView};
+pub use widget::{Clipboard, Mark, PASTE_LIMIT, Paint, Position, Reaction, SourceView};

@@ -30,6 +30,24 @@ pub struct EditorStyles {
     pub atomic: Style,
     /// The cell under the caret while the panel has focus.
     pub caret: Style,
+    /// A hover, a completion list or a list of places, behind its text.
+    pub popup: Style,
+    /// The row of such a list the Enter key takes.
+    pub popup_selected: Style,
+    /// The language owner's findings, by severity: drawn under the text they
+    /// cover and as the mark in the line-number column.
+    pub error: Style,
+    pub warning: Style,
+    pub info: Style,
+    pub hint: Style,
+    /// Syntax colour, by the class the host's tokenizer names: keywords,
+    /// strings, numbers, comments, functions, and types and tags.
+    pub keyword: Style,
+    pub string: Style,
+    pub number: Style,
+    pub comment: Style,
+    pub function: Style,
+    pub name: Style,
 }
 
 impl EditorStyles {
@@ -46,6 +64,18 @@ impl EditorStyles {
             conflict: Style::default().add_modifier(Modifier::ITALIC | Modifier::UNDERLINED),
             atomic: Style::default().add_modifier(Modifier::BOLD),
             caret: Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD),
+            popup: Style::default().add_modifier(Modifier::REVERSED),
+            popup_selected: Style::default().add_modifier(Modifier::REVERSED | Modifier::BOLD),
+            error: Style::default().add_modifier(Modifier::UNDERLINED | Modifier::BOLD),
+            warning: Style::default().add_modifier(Modifier::UNDERLINED),
+            info: Style::default().add_modifier(Modifier::DIM | Modifier::UNDERLINED),
+            hint: Style::default().add_modifier(Modifier::DIM),
+            keyword: Style::default().add_modifier(Modifier::BOLD),
+            string: Style::default().add_modifier(Modifier::ITALIC),
+            number: Style::default(),
+            comment: Style::default().add_modifier(Modifier::DIM | Modifier::ITALIC),
+            function: Style::default().add_modifier(Modifier::BOLD | Modifier::ITALIC),
+            name: Style::default(),
         }
     }
 
@@ -64,6 +94,44 @@ impl EditorStyles {
             conflict: theme.error,
             atomic: theme.muted,
             caret: theme.focus,
+            popup: theme.line,
+            popup_selected: theme.selected,
+            error: theme.error.add_modifier(Modifier::UNDERLINED),
+            warning: theme.warning.add_modifier(Modifier::UNDERLINED),
+            info: theme.text.add_modifier(Modifier::UNDERLINED),
+            hint: theme.muted,
+            // The core theme has no syntax roles; a foreground each from the
+            // nearest role keeps the editor readable until a host defines them.
+            keyword: foreground(theme.focus).add_modifier(Modifier::BOLD),
+            string: foreground(theme.success),
+            number: foreground(theme.warning),
+            comment: theme.muted.add_modifier(Modifier::ITALIC),
+            function: foreground(theme.text).add_modifier(Modifier::BOLD),
+            name: foreground(theme.text),
+        }
+    }
+}
+
+/// The colour of a role without its background or reverse video, so it can
+/// lie over text that has its own.
+fn foreground(role: Style) -> Style {
+    role.fg
+        .map_or_else(Style::default, |c| Style::default().fg(c))
+}
+
+impl EditorStyles {
+    /// The style of a highlight class, in the classes the TypeScript
+    /// tokenizer emits. A class with no role of its own is plain text.
+    pub fn class(&self, class: &str) -> Style {
+        match class {
+            "keyword" | "deleted" => self.keyword,
+            "function" | "command" | "operator" => self.function,
+            "number" | "literal" | "attr" | "property" => self.number,
+            "string" | "inserted" => self.string,
+            "type" | "variable" | "code-inline" | "tag" | "selector" => self.name,
+            "comment" | "meta" => self.comment,
+            "heading" => self.keyword,
+            _ => Style::default(),
         }
     }
 }
