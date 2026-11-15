@@ -205,8 +205,7 @@ dedicated settings route. The glass check now compares screenshot pixels over
 red and blue backdrops: the interior transmits both, rather than merely asserting
 a canvas exists. It retains the mounted editor and draft checks. Screenshots and
 measurements: [glass follow-up evidence](evidence/glass-followup/theme-glass.json).
-Custom palettes retain their existing validated opaque reading planes; a user
-clarification about the active palette is pending.
+Custom palettes retain their existing validated opaque reading planes.
 
 Production diagnosis: the UI Worker deploy `16f4d66f-d1d6-473c-a911-c08c58e059fe`
 is dated 2026-11-15T20:54:40Z, and the served CSS includes #104's built-in glass
@@ -214,6 +213,11 @@ transparency rule. Its API authority is `travis-theorem-personal.fly.dev`. Both
 Fly machines still run revision `2421231c8fd7c73041fcfe5b92bfcfcc625337c6`, image
 `sha256:f1cf90aa009c82bcd4fbed66dfb83524b0e204e1f4111517c8a0df6ea6e6bd78`,
 updated November 13. This predates the merged catalog repair in #1076. No live
-backend rollout was performed. An unauthenticated live list request returns 401;
-there is no signed-in browser tab available in this session. The earlier 384-row
-UI fixture remains consumer evidence, not proof of a repaired deployed catalog.
+backend rollout was performed. After the user signed in, the real AI settings
+page confirmed **8 of 8 models**. That browser uses Stone / Expressive / Dark
+with Paper selected for the composer. A temporary Liquid selection mounted the
+live renderer, used `blur(6px)`, and had transparent shell and all five interior
+planes. Paper was restored afterward. Preferences are per device, so this does
+not establish the state of the browser used for the earlier screenshot. The
+earlier 384-row UI fixture remains consumer evidence, not proof of a repaired
+deployed catalog.
