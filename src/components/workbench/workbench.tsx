@@ -12,6 +12,7 @@ import type { ReactNode } from 'react'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { bootstrap } from '@/lib/theorem/client'
 import { createAdapter } from '@/lib/workbench/adapter'
+import { setWorkbenchHandle } from '@/lib/workbench/agent/store'
 import { useAppearance } from '@/lib/appearance'
 import {
   createAppearancePort,
@@ -182,6 +183,7 @@ export function WorkbenchSurface({
       if (disposed) return
       handle.current = mounted
       setMountedHandle(mounted)
+      setWorkbenchHandle(mounted)
       stopMotion = deliverReducedMotion(mounted)
       adapter = latest.current(
         (message) => {
@@ -234,6 +236,7 @@ export function WorkbenchSurface({
       adapter?.dispose()
       handle.current = undefined
       setMountedHandle(undefined)
+      setWorkbenchHandle(undefined)
     }
   }, [feed])
 
