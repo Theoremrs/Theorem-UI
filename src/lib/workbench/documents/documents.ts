@@ -16,7 +16,8 @@ import type {
 } from '../environment/environment'
 import { createRun } from '../environment/run'
 import { accepted, failure, refused } from '../environment/result'
-import type { Answers, Completion } from '../environment/result'
+import type { Answers, Completion, Outcome } from '../environment/result'
+import type { DraftStore, LocalProblem, LocalState } from './local'
 import type { ReconcileKeep } from '../wire/ReconcileKeep'
 import type { ResourceRef } from '../wire/ResourceRef'
 import type { Revision } from '../wire/Revision'
@@ -35,6 +36,12 @@ export type PendingState =
   | 'refused'
   /** The answer was lost: it may or may not be applied. Never resent here. */
   | 'uncertain'
+  /**
+   * Read back from this device after a reload. It was never confirmed by the authority and is never sent
+   * on its own: `settle` drops it, and
+   * no new edit is sent while one is held (refused `unreconciled_local_draft`): `settle` each, then edit again.
+   */
+  | 'restored'
 
 export interface PendingEdit {
   operationId: string
@@ -58,6 +65,11 @@ export interface DocumentState {
   pending: PendingEdit[]
   /** The host retired this document (deleted or replaced); edits are refused. */
   retired: boolean
+  /**
+   * Draft, locally checkpointed or accepted for the work in `pending` (spec section 11). Never `checkpointed`
+   * unless the local database committed exactly what `pending` holds now.
+   */
+  local: LocalState
   /** Why the document cannot be edited now: the host retired it, or says it does not take edits. Absent while it can be. */
   readOnly?: { reason: string }
 }
@@ -96,6 +108,8 @@ export type DocumentEvent =
     }
   | { kind: 'moved'; from: ResourceRef; to: ResourceRef }
   | { kind: 'retired'; resource: ResourceRef }
+  /** `state.local` changed: a checkpoint was committed, failed, or the work it covers changed. */
+  | { kind: 'local'; resource: ResourceRef; local: LocalState }
 
 /** An edit refused because its base revision was not the document's. The caller's edit is in `pending`. */
 export type ConflictCompletion = Answers & {
@@ -143,9 +157,16 @@ export interface DocumentHandle {
   ) => Promise<Completion<{ revision: Revision; text: string }>>
   /** The caller has dealt with a pending edit (rebased and resent it, or chose to drop it). */
   settle: (operationId: string) => void
+  /** Resolves when every checkpoint write asked for so far has finished, with where the work stands. */
+  flushLocal: () => Promise<LocalState>
   on: (listener: (event: DocumentEvent) => void) => () => void
   /** Releases this holder; the host session closes once, when the last holder releases. */
   close: (request: Request) => Promise<Completion<{ path: string }>>
+}
+
+export interface DocumentsOptions {
+  /** Where unaccepted work is kept on this device. Absent: it is held in memory and `local` says so. */
+  drafts?: DraftStore
 }
 
 export interface Documents {
@@ -177,6 +198,11 @@ interface Session {
   saveUncertain: boolean
   retired: boolean
   pending: Map<string, PendingEdit>
+  local: LocalState
+  /** What the device holds (or was last asked to hold) for `pending`: operation ids, bases and edits. */
+  signature: string
+  queued: boolean
+  localQueue: Promise<unknown>
   holders: number
   listeners: Set<(event: DocumentEvent) => void>
   lease: LiveLease
@@ -238,8 +264,12 @@ function checkRanges(
   return { edits: sorted }
 }
 
-export function createDocuments(env: Environment<DocumentsClient>): Documents {
+export function createDocuments(
+  env: Environment<DocumentsClient>,
+  options: DocumentsOptions = {},
+): Documents {
   const { workspaceId } = env
+  const { drafts } = options
   const sessions = new Map<string, Session>()
   const opening = new Map<string, Promise<Completion<Session>>>()
   const closing = new Map<string, Promise<unknown>>()
@@ -281,6 +311,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
         session.savedRevision !== session.revision,
       saveUncertain: session.saveUncertain,
       pending,
+      local: session.local,
       retired: session.retired,
       ...readOnlyOf(session),
     }
@@ -298,6 +329,122 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
           },
         }
       : {}
+  }
+
+  const signatureOf = (session: Session) =>
+    JSON.stringify(
+      [...session.pending.values()].map(
+        ({ operationId, baseRevision, edits }) => [
+          operationId,
+          baseRevision,
+          edits,
+        ],
+      ),
+    )
+
+  function setLocal(session: Session, next: LocalState) {
+    if (JSON.stringify(next) === JSON.stringify(session.local)) return
+    session.local = next
+    emit(session, { kind: 'local', resource: resourceOf(session), local: next })
+  }
+
+  const problemOf = (done: Outcome<unknown>): LocalProblem | undefined =>
+    done.outcome === 'refused'
+      ? { code: done.code, reason: done.reason }
+      : done.outcome === 'uncertain'
+        ? { code: 'checkpoint_uncertain', reason: done.reason }
+        : done.outcome === 'failed'
+          ? { code: 'checkpoint_failed', reason: done.reason }
+          : undefined
+
+  /**
+   * Called wherever `pending` changes. The state drops to `draft` at once, and becomes `checkpointed`
+   * only when the database says it committed what `pending` holds then; the write is not waited for, so
+   * typing is never blocked by storage.
+   */
+  function remember(session: Session) {
+    const signature = signatureOf(session)
+    if (signature === session.signature) return
+    session.signature = signature
+    const needed = session.pending.size > 0
+    if (!drafts) {
+      setLocal(
+        session,
+        needed
+          ? {
+              state: 'draft',
+              problem: {
+                code: 'no_local_store',
+                reason:
+                  'No local store is open, so this draft is held in memory only',
+              },
+            }
+          : { state: 'accepted' },
+      )
+      return
+    }
+    setLocal(session, needed ? { state: 'draft' } : { state: 'accepted' })
+    if (session.queued) return
+    session.queued = true
+    session.localQueue = session.localQueue.then(() => persist(session))
+  }
+
+  async function persist(session: Session) {
+    if (!drafts) return
+    session.queued = false
+    const { signature, path } = session
+    const kept = [...session.pending.values()]
+    if (kept.length === 0) {
+      const done = await drafts.clear(path)
+      if (session.signature !== signature) return
+      setLocal(session, {
+        state: 'accepted',
+        ...(problemOf(done) ? { problem: problemOf(done) } : {}),
+      })
+      return
+    }
+    const done = await drafts.write(path, {
+      revision: session.revision,
+      pending: kept,
+    })
+    if (session.signature !== signature) return
+    setLocal(
+      session,
+      done.outcome === 'accepted'
+        ? {
+            state: 'checkpointed',
+            savedAtMs: done.value.savedAtMs,
+            recovered: false,
+          }
+        : { state: 'draft', problem: problemOf(done) },
+    )
+  }
+
+  /** Reads what the device kept for `session.path` and holds it as `restored`, never applying or sending it. */
+  async function restore(session: Session) {
+    if (!drafts) return
+    const done = await drafts.read(session.path)
+    if (done.outcome !== 'accepted') {
+      // Whether a draft exists is not known: say so instead of reporting a clean document.
+      session.local = { state: 'accepted', problem: problemOf(done) }
+      return
+    }
+    if (!done.value) return
+    for (const edit of done.value.pending) {
+      session.pending.set(edit.operationId, {
+        ...edit,
+        reason: `Kept on this device before a reload, against revision ${edit.baseRevision.value}; the document is at revision ${session.revision}`,
+      })
+    }
+    session.signature = signatureOf(session)
+    session.local =
+      done.value.pending.length > 0
+        ? {
+            state: 'checkpointed',
+            savedAtMs: done.value.savedAtMs,
+            recovered: true,
+          }
+        : { state: 'accepted' }
   }
 
   function serial<T>(session: Session, task: () => Promise<T>): Promise<T> {
@@ -395,6 +542,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
     const own = session.pending.get(record.operation_id)
     if (own && (own.state === 'inflight' || own.state === 'uncertain')) {
       session.pending.delete(record.operation_id)
+      remember(session)
       emit(session, {
         kind: 'acknowledged',
         resource: resourceOf(session),
@@ -499,6 +647,10 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
       saveUncertain: false,
       retired: false,
       pending: new Map(),
+      local: { state: 'accepted' },
+      signature: '[]',
+      queued: false,
+      localQueue: Promise.resolve(),
       holders: 0,
       listeners: new Set(),
       lease: env.acquireLive(),
@@ -507,6 +659,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
     if (raw.disk_hash !== undefined && raw.disk_hash === raw.content_hash) {
       session.savedRevision = raw.revision
     }
+    await restore(session)
     watch(session)
     sessions.set(path, session)
     return accepted(answers, session)
@@ -546,7 +699,17 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
         if (edits.length === 0) {
           return accepted(answers, { revision: seq(session.revision) })
         }
-        const hold = (state: PendingState, reason?: string) =>
+        const restored = [...session.pending.values()].filter(
+          (entry) => entry.state === 'restored',
+        )
+        if (restored.length > 0) {
+          return refused(
+            answers,
+            'unreconciled_local_draft',
+            `${restored.length} edit${restored.length === 1 ? '' : 's'} kept on this device ${restored.length === 1 ? 'has' : 'have'} not been reconciled with revision ${session.revision}; settle ${restored.length === 1 ? 'it' : 'them'} first`,
+          )
+        }
+        const hold = (state: PendingState, reason?: string) => {
           session.pending.set(operationId, {
             operationId,
             baseRevision,
@@ -554,6 +717,8 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
             state,
             reason,
           })
+          remember(session)
+        }
         if (base !== session.revision) {
           const reason = `The document is at revision ${session.revision}, not ${base}`
           hold('conflicted', reason)
@@ -625,6 +790,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
             }
           }
           session.pending.delete(operationId)
+          remember(session)
           return accepted(answers, { revision: seq(session.revision) })
         }
         if (done.outcome === 'refused' && STALE.has(done.code)) {
@@ -683,6 +849,7 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
           return failure({ workspaceId, requestId }, error, false)
         }
         if (discard) session.pending.clear()
+        remember(session)
         session.saveUncertain = false
         return accepted(
           { workspaceId, requestId },
@@ -734,7 +901,14 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
       },
       reconcile: ({ requestId, keep }) => resolveWith(requestId, keep, false),
       revert: ({ requestId }) => resolveWith(requestId, 'disk', true),
-      settle: (operationId) => void session.pending.delete(operationId),
+      settle: (operationId) => {
+        session.pending.delete(operationId)
+        remember(session)
+      },
+      flushLocal: async () => {
+        await session.localQueue
+        return session.local
+      },
       on(listener) {
         own.add(listener)
         session.listeners.add(listener)

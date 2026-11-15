@@ -9,7 +9,7 @@ import type { Language } from './language'
 
 export interface LanguagePortOptions {
   /** The documents open here. With it the port sends diagnostics for each one; without it, none. */
-  documents?: DocumentsView
+  documents?: Pick<DocumentsView, 'list' | 'on'>
   feed?: Pick<
     DiagnosticsFeedOptions,
     'debounceMs' | 'partialMs' | 'partialRetries' | 'timer'

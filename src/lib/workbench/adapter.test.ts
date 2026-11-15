@@ -1,6 +1,7 @@
 // SOURCING: none — bun:test over ./adapter with stub owners and the environment's stub host
 import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
+import type { AccountChange } from './account'
 import { createAdapter } from './adapter'
 import type {
   AdapterOptions,
@@ -1453,5 +1454,203 @@ describe('dispose', () => {
     expect(t.live.closed).toBeGreaterThan(0)
     // Dispose twice is harmless.
     t.adapter.dispose()
+  })
+})
+
+// ---- AC-50: account change and revoked access --------------------------------------------------
+
+describe('account change and revoked access', () => {
+  /** An owner whose answers the test releases by hand, so an effect is in flight when the account changes. */
+  function held() {
+    const releases: ((reply: OwnerReply) => void)[] = []
+    const port: OwnerPort<never> = {
+      perform: () =>
+        new Promise<OwnerReply>((resolve) => void releases.push(resolve)),
+      subscribe: () => () => {},
+    }
+    return { port, releases }
+  }
+  const watchOf = () => {
+    const listeners = new Set<(change: AccountChange) => void>()
+    const watch = {
+      current: 't1:p1' as string | undefined,
+      refresh: async () => ({ state: 'unknown', reason: 'test' }) as const,
+      onChange: (listener: (change: AccountChange) => void) => {
+        listeners.add(listener)
+        return () => void listeners.delete(listener)
+      },
+      dispose: () => {},
+    }
+    return {
+      watch,
+      change: (change: AccountChange) => {
+        for (const listener of [...listeners]) listener(change)
+      },
+    }
+  }
+  const SWITCHED: AccountChange = {
+    account: 't2:p2',
+    previous: 't1:p1',
+    reason: 'Another account is signed in on this device',
+  }
+
+  test('a switch answers what is in flight uncertain, drops its late result, and tells the core the account', async () => {
+    const { port, releases } = held()
+    const { watch, change } = watchOf()
+    const t = await setup({ documents: port as never, account: watch })
+    const retired: unknown[] = []
+    t.adapter.onRetired((why) => retired.push(why))
+    t.adapter.perform(effectOf(1, 'documentSave'))
+    await t.settle()
+    expect(t.completions()).toHaveLength(0)
+
+    change(SWITCHED)
+    expect(retired).toEqual([
+      {
+        code: 'account_changed',
+        reason: SWITCHED.reason,
+        account: 't2:p2',
+      },
+    ])
+    expect(t.hostMessages()).toContainEqual({
+      type: 'accountChanged',
+      account: 't2:p2',
+    })
+    expect(t.hostMessages()).toContainEqual({
+      type: 'capabilitiesChanged',
+      capabilities: { granted: [] },
+    })
+    const [answer] = t.completions()
+    expect(answer).toMatchObject({
+      effect: 1,
+      outcome: { status: 'uncertain' },
+    })
+    expect(JSON.stringify(answer)).toContain('not applied')
+
+    // The old account's owner answers late: nothing reaches the core, and there is no second completion.
+    releases[0]!({ outcome: 'accepted' })
+    await t.settle()
+    expect(t.completions()).toHaveLength(1)
+  })
+
+  test('after a switch every effect is refused account_changed and no owner is reached', async () => {
+    const { watch, change } = watchOf()
+    const t = await setup({ account: watch })
+    change(SWITCHED)
+    const before = t.calls.length
+    t.adapter.perform(effectOf(7, 'filesList'))
+    t.adapter.perform(effectOf(8, 'layoutLoad'))
+    await t.settle()
+    expect(t.completions().map((c) => c.outcome)).toEqual([
+      expect.objectContaining({ status: 'refused', code: 'account_changed' }),
+      expect.objectContaining({ status: 'refused', code: 'account_changed' }),
+    ])
+    expect(t.calls.length).toBe(before)
+  })
+
+  test("an owner's pushed messages stop with the account", async () => {
+    const { watch, change } = watchOf()
+    const t = await setup({ account: watch })
+    const push = t.pushed.get('documents')!
+    change(SWITCHED)
+    expect(t.pushed.has('documents')).toBe(false)
+    const seen = t.messages.length
+    push({ type: 'documentRetired', resource: WS })
+    expect(t.messages.length).toBe(seen)
+  })
+
+  test('a sign-out is a stated state: signed_out, capabilities cleared, the holders let go', async () => {
+    const { watch, change } = watchOf()
+    const retiring: string[] = []
+    const t = await setup({
+      account: watch,
+      retiring: [{ retire: (reason: string) => void retiring.push(reason) }],
+    })
+    const retired: unknown[] = []
+    t.adapter.onRetired((why) => retired.push(why))
+    change({
+      account: undefined,
+      previous: 't1:p1',
+      reason: 'The session ended',
+    })
+    expect(retired).toEqual([
+      { code: 'signed_out', reason: 'The session ended' },
+    ])
+    expect(retiring).toEqual(['The session ended'])
+    expect(t.hostMessages()).toContainEqual({
+      type: 'connectionChanged',
+      workspace: 'w1',
+      state: 'closed',
+    })
+    // No accountChanged is sent for a sign-out: there is no account to name.
+    expect(t.hostMessages().some((m) => m.type === 'accountChanged')).toBe(
+      false,
+    )
+  })
+
+  test('a 401 from an owner asks the session who is signed in; with no watch it retires as signed_out', async () => {
+    const answer401: OwnerPort<never> = {
+      perform: async () => ({
+        outcome: 'refused',
+        code: 'signed_out',
+        reason: 'Sign in again',
+      }),
+    }
+    const asked: string[] = []
+    const { watch } = watchOf()
+    watch.refresh = async () => {
+      asked.push('refresh')
+      return { state: 'signed_out', reason: 'Sign in again' } as never
+    }
+    const withWatch = await setup({
+      documents: answer401 as never,
+      account: watch,
+    })
+    withWatch.adapter.perform(effectOf(1, 'documentSave'))
+    await withWatch.settle()
+    expect(asked).toEqual(['refresh'])
+    expect(withWatch.completions()[0]!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'signed_out',
+    })
+
+    const alone = await setup({ documents: answer401 as never })
+    const retired: unknown[] = []
+    alone.adapter.onRetired((why) => retired.push(why))
+    alone.adapter.perform(effectOf(1, 'documentSave'))
+    await alone.settle()
+    expect(retired).toEqual([{ code: 'signed_out', reason: 'Sign in again' }])
+    alone.adapter.perform(effectOf(2, 'filesList'))
+    await alone.settle()
+    expect(alone.completions()[1]!.outcome).toMatchObject({
+      status: 'refused',
+      code: 'signed_out',
+    })
+  })
+
+  test('a workspace the host forbids retires the adapter as forbidden and clears its capabilities', async () => {
+    const t = await setup()
+    const retired: unknown[] = []
+    t.adapter.onRetired((why) => retired.push(why))
+    t.host.on('capabilities', () => {
+      throw new HttpError(403, {
+        detail: 'Access to this workspace was revoked',
+      })
+    })
+    t.host.on('open', () => {
+      throw new HttpError(403, {
+        detail: 'Access to this workspace was revoked',
+      })
+    })
+    await t.environment.reopen().catch(() => undefined)
+    await t.settle()
+    expect(retired).toEqual([
+      { code: 'forbidden', reason: 'Access to this workspace was revoked' },
+    ])
+    expect(t.hostMessages().at(-1)).toEqual({
+      type: 'connectionChanged',
+      workspace: 'w1',
+      state: 'closed',
+    })
   })
 })

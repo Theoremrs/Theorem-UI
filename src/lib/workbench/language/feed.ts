@@ -7,7 +7,7 @@ import type { Language } from './language'
 
 export interface DiagnosticsFeedOptions {
   language: Pick<Language, 'diagnostics'>
-  documents: DocumentsView
+  documents: Pick<DocumentsView, 'list' | 'on'>
   emit: (message: HostMessage) => void
   /** Quiet time after a document's revision moves before it is asked about. */
   debounceMs?: number

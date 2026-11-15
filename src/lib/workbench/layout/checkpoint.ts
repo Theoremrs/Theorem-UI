@@ -70,17 +70,30 @@ export const openInBrowser: OpenCheckpointDatabase = async (directory) => {
 }
 
 interface Tagged {
+  name?: unknown
   code?: unknown
   message?: unknown
 }
 
+/** A record that was read but is not what this version writes. Refused, never papered over. */
+export class CorruptRecord extends Error {
+  constructor(what: string) {
+    super(what)
+    this.name = 'CorruptRecord'
+  }
+}
+
 /**
- * Names from the package's errors and the wasm's strings (gate-0 owners-documents-and-persistence 9).
- * A refusal changed nothing; an unknown commit state is uncertain; anything else failed.
+ * Names from the package's errors, the wasm's strings (gate-0 owners-documents-and-persistence 9) and
+ * the browser's own DOMException names. A refusal changed nothing; an unknown commit state is
+ * uncertain; anything else failed. The codes are what a panel can show:
+ * `storage_quota_exceeded`, `storage_denied`, `storage_blocked`, `storage_unavailable`,
+ * `checkpoint_too_large`, `checkpoint_corrupt`, `account_changed`.
  */
 export function storageOutcome(error: unknown): Outcome<never> {
   const tagged: Tagged = error && typeof error === 'object' ? error : {}
-  const text = `${String(tagged.code ?? '')} ${String(tagged.message ?? error)}`
+  const name = String(tagged.name ?? '')
+  const text = `${name} ${String(tagged.code ?? '')} ${String(tagged.message ?? error)}`
   const why = readableReason(error)
   if (/quota/i.test(text)) {
     return { outcome: 'refused', code: 'storage_quota_exceeded', reason: why }
@@ -92,23 +105,75 @@ export function storageOutcome(error: unknown): Outcome<never> {
     return { outcome: 'uncertain', reason: why }
   }
   if (
+    name === 'CorruptRecord' ||
+    /corrupt|checksum|malformed/i.test(String(tagged.message ?? ''))
+  ) {
+    return { outcome: 'refused', code: 'checkpoint_corrupt', reason: why }
+  }
+  if (
+    /^(SecurityError|NotAllowedError)\b/.test(name) ||
+    /permission denied|not allowed/i.test(text)
+  ) {
+    return { outcome: 'refused', code: 'storage_denied', reason: why }
+  }
+  if (name === 'NoModificationAllowedError' || /\bblocked\b/i.test(text)) {
+    return { outcome: 'refused', code: 'storage_blocked', reason: why }
+  }
+  if (
+    /^(NotSupportedError|InvalidStateError|NotFoundError)\b/.test(name) ||
     text.includes('chunk_store_browser_storage') ||
-    text.includes('database_closed')
+    text.includes('database_closed') ||
+    /getDirectory|not supported|unsupported/i.test(text)
   ) {
     return { outcome: 'refused', code: 'storage_unavailable', reason: why }
   }
   return { outcome: 'failed', reason: why }
 }
 
-export function createCheckpoints(options: {
+/** One record in the account's local database. `properties` are what the node carries beside the account. */
+export type StoredRecord = Record<string, string | number | boolean>
+
+/**
+ * The account's database, opened once and shared (see `openInBrowser`): reads, writes and clears of
+ * one node each, every one answered with an `Outcome`, so no caller can mistake a thrown error for a save.
+ */
+export interface LocalStore {
+  read: (id: string) => Promise<Outcome<StoredRecord | undefined>>
+  /** `accepted` means the database committed it: durable on this device, and nothing about any shared record. */
+  write: (
+    label: string,
+    id: string,
+    properties: StoredRecord,
+  ) => Promise<Outcome<undefined>>
+  clear: (id: string) => Promise<Outcome<undefined>>
+  /**
+   * The account that owned this store is gone: close the database and refuse every later call as
+   * `account_changed`. What was kept stays on disk under that account's directory, unread.
+   */
+  retire: (reason: string) => Promise<void>
+  /** Closes the database if this store opened it. Later calls open it again. */
+  dispose: () => Promise<void>
+}
+
+export function createLocalStore(options: {
   /** From `checkpointDirectory`. */
   directory: string
+  /**
+   * The account this store belongs to. It is written into every record and checked on every read, so a
+   * record that reached this directory from another account is refused as `wrong_account`, not shown.
+   */
+  account?: string
   open?: OpenCheckpointDatabase
-  now?: () => number
-}): Checkpoints {
+}): LocalStore {
   const open = options.open ?? openInBrowser
-  const now = options.now ?? Date.now
+  const { account } = options
   let database: Promise<CheckpointDatabase> | undefined
+  let retired: string | undefined
+
+  const gone = (): Outcome<never> | undefined =>
+    retired === undefined
+      ? undefined
+      : { outcome: 'refused', code: 'account_changed', reason: retired }
 
   /** A failed open is not kept: the next call tries again. */
   function opened(): Promise<CheckpointDatabase> {
@@ -122,23 +187,113 @@ export function createCheckpoints(options: {
     return database
   }
 
+  async function dispose() {
+    const held = database
+    database = undefined
+    if (!held) return
+    try {
+      await (await held).close()
+    } catch {
+      // The database was never open, or is already closed.
+    }
+  }
+
   return {
-    async read(workspaceId) {
+    async read(id) {
+      const stopped = gone()
+      if (stopped) return stopped
       try {
-        const node = await (await opened()).getNode(nodeId(workspaceId))
+        const node = await (await opened()).getNode(id)
         if (!node) return { outcome: 'accepted', value: undefined }
-        const { baseRevision, document, savedAtMs } = node.properties
-        if (
-          typeof baseRevision !== 'number' ||
-          typeof document !== 'string' ||
-          typeof savedAtMs !== 'number'
-        ) {
+        const { accountId, ...rest } = node.properties
+        if (account !== undefined && accountId !== account) {
           return {
-            outcome: 'failed',
-            reason:
-              'The local checkpoint is not in the shape this version writes',
+            outcome: 'refused',
+            code: 'wrong_account',
+            reason: 'This record belongs to another account',
           }
         }
+        return { outcome: 'accepted', value: rest as StoredRecord }
+      } catch (error) {
+        return storageOutcome(error)
+      }
+    },
+
+    async write(label, id, properties) {
+      const stopped = gone()
+      if (stopped) return stopped
+      try {
+        const db = await opened()
+        await db.mutate({
+          upsertNodes: [
+            {
+              id,
+              labels: [label],
+              properties: {
+                ...properties,
+                ...(account !== undefined ? { accountId: account } : {}),
+              },
+            },
+          ],
+        })
+        return { outcome: 'accepted', value: undefined }
+      } catch (error) {
+        return storageOutcome(error)
+      }
+    },
+
+    async clear(id) {
+      const stopped = gone()
+      if (stopped) return stopped
+      try {
+        await (await opened()).mutate({ deleteNodes: [id] })
+        return { outcome: 'accepted', value: undefined }
+      } catch (error) {
+        return storageOutcome(error)
+      }
+    },
+
+    async retire(reason) {
+      retired = reason
+      await dispose()
+    },
+
+    dispose,
+  }
+}
+
+export function createCheckpoints(options: {
+  /** From `checkpointDirectory`. */
+  directory: string
+  /** The signed-in account: see `createLocalStore`. Absent, records are not account-checked. */
+  account?: string
+  open?: OpenCheckpointDatabase
+  now?: () => number
+  /** Share one store with other owners of the same account (the document drafts). */
+  store?: LocalStore
+}): Checkpoints {
+  const now = options.now ?? Date.now
+  const store = options.store ?? createLocalStore(options)
+
+  return {
+    async read(workspaceId) {
+      const done = await store.read(nodeId(workspaceId))
+      if (done.outcome !== 'accepted' || !done.value) {
+        return done as Outcome<undefined>
+      }
+      const { baseRevision, document, savedAtMs } = done.value
+      if (
+        typeof baseRevision !== 'number' ||
+        typeof document !== 'string' ||
+        typeof savedAtMs !== 'number'
+      ) {
+        return storageOutcome(
+          new CorruptRecord(
+            'The local checkpoint is not in the shape this version writes',
+          ),
+        )
+      }
+      try {
         return {
           outcome: 'accepted',
           value: {
@@ -147,53 +302,28 @@ export function createCheckpoints(options: {
             savedAtMs,
           },
         }
-      } catch (error) {
-        return storageOutcome(error)
+      } catch {
+        return storageOutcome(
+          new CorruptRecord('The local checkpoint is not readable JSON'),
+        )
       }
     },
 
     async write(workspaceId, checkpoint) {
       const savedAtMs = now()
-      try {
-        const db = await opened()
-        await db.mutate({
-          upsertNodes: [
-            {
-              id: nodeId(workspaceId),
-              labels: [LABEL],
-              properties: {
-                workspaceId,
-                baseRevision: checkpoint.baseRevision,
-                document: JSON.stringify(checkpoint.document),
-                savedAtMs,
-              },
-            },
-          ],
-        })
-        return { outcome: 'accepted', value: { savedAtMs } }
-      } catch (error) {
-        return storageOutcome(error)
-      }
+      const done = await store.write(LABEL, nodeId(workspaceId), {
+        workspaceId,
+        baseRevision: checkpoint.baseRevision,
+        document: JSON.stringify(checkpoint.document),
+        savedAtMs,
+      })
+      return done.outcome === 'accepted'
+        ? { outcome: 'accepted', value: { savedAtMs } }
+        : done
     },
 
-    async clear(workspaceId) {
-      try {
-        await (await opened()).mutate({ deleteNodes: [nodeId(workspaceId)] })
-        return { outcome: 'accepted', value: undefined }
-      } catch (error) {
-        return storageOutcome(error)
-      }
-    },
+    clear: (workspaceId) => store.clear(nodeId(workspaceId)),
 
-    async dispose() {
-      const held = database
-      database = undefined
-      if (!held) return
-      try {
-        await (await held).close()
-      } catch {
-        // The database was never open, or is already closed.
-      }
-    },
+    dispose: () => store.dispose(),
   }
 }

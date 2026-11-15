@@ -13,6 +13,7 @@ import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
 import { profileById, TERMINAL_PROFILES } from './terminal'
 import type { Layout } from './layout'
+import type { AccountChange, AccountWatch } from './account'
 import { grantedCapabilities } from './capabilities'
 import { refusal, reply } from './port'
 import type { Of, OwnerPort, OwnerReply } from './port'
@@ -107,13 +108,43 @@ export interface AdapterOptions {
   clipboard?: ClipboardPort
   /** The workbench handle's `dispatch`: every message is an `Inbound`, tagged by its channel. */
   dispatch: (message: Inbound) => void
+  /**
+   * Who is signed in. When another account becomes the signed-in one, or the session ends, this adapter
+   * is retired (see `Adapter.onRetired`). Absent, a 401 from an owner or a workspace the host will no
+   * longer serve still retires it, but an account switch is not noticed.
+   */
+  account?: AccountWatch
+  /**
+   * Things that hold this account's data (the local store, the documents owner). Each is told to let go
+   * when the adapter retires, so nothing of the old account is read through them afterwards.
+   */
+  retiring?: Retirable[]
 }
+
+/** Something that belongs to one account and must let go of it. `LocalStore` satisfies it. */
+export interface Retirable {
+  retire: (reason: string) => Promise<void> | void
+}
+
+/**
+ * Why an adapter stopped serving. The mount builds new owners and a new adapter for what comes next
+ * (the account named, if any), and sends the core its arrangement load then.
+ */
+export type Retirement =
+  | { code: 'account_changed'; reason: string; account: string }
+  | { code: 'signed_out' | 'forbidden'; reason: string }
 
 export interface Adapter {
   /** Starts the effect and returns at once. Exactly one completion follows through `dispatch`. */
   perform: (effect: Effect) => void
   /** Stops every subscription. Results that arrive later are dropped. */
   dispose: () => void
+}
+
+/** What `createAdapter` returns: the `Adapter` the core drives, and the account side the mount watches. */
+export interface AccountAdapter extends Adapter {
+  /** Why this adapter no longer serves effects, once. Not called after `dispose`. */
+  onRetired: (listener: (retirement: Retirement) => void) => () => void
 }
 
 const unavailable = (owner: string, why?: string): OwnerReply => ({
@@ -132,13 +163,18 @@ function base64(bytes: Uint8Array): string {
 const plainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-export function createAdapter(options: AdapterOptions): Adapter {
+export function createAdapter(options: AdapterOptions): AccountAdapter {
   const { environment: env, files, layout, dispatch } = options
   const workspace = env.workspaceId
   /** Makes request ids unique across page loads: effect ids restart, and a host may remember a key. */
   const nonce = crypto.randomUUID()
   const stops: (() => void)[] = []
   let disposed = false
+  /** Set once: from then on every effect is refused with this, and nothing of the old account is delivered. */
+  let retired: Retirement | undefined
+  const retirementListeners = new Set<(retirement: Retirement) => void>()
+  /** Effects performed and not yet answered: what a retirement answers `uncertain`. */
+  const inflight = new Map<Effect['id'], Effect>()
 
   function deliver(message: Inbound) {
     if (disposed) return
@@ -148,8 +184,11 @@ export function createAdapter(options: AdapterOptions): Adapter {
       console.warn('The workbench rejected a message', error)
     }
   }
-  const send = (message: HostMessage) =>
-    deliver({ channel: 'host', ...message })
+  /** After a retirement the old account's owners may still push: none of it reaches the core. */
+  let muted = false
+  const send = (message: HostMessage) => {
+    if (!muted) deliver({ channel: 'host', ...message })
+  }
   const complete = (message: Completion) =>
     deliver({ channel: 'completion', ...message })
 
@@ -912,6 +951,11 @@ export function createAdapter(options: AdapterOptions): Adapter {
   }
 
   async function run(effect: Effect) {
+    if (retired) {
+      complete(completion(effect, refusal(retired.code, retired.reason)))
+      return
+    }
+    inflight.set(effect.id, effect)
     let answer: OwnerReply
     try {
       const raw = (await handle(effect, `${nonce}:${effect.id}`)) as
@@ -923,7 +967,56 @@ export function createAdapter(options: AdapterOptions): Adapter {
       // Nothing is retried here: a write may have been applied, and the owner says so itself.
       answer = { outcome: 'failed', reason: readableReason(error) }
     }
+    // Retired while it ran: the retirement already answered it `uncertain`, and this result is not applied.
+    if (!inflight.delete(effect.id)) return
     complete(completion(effect, answer))
+    if (answer.outcome === 'refused' && answer.code === 'signed_out') {
+      if (options.account) void options.account.refresh()
+      else retire({ code: 'signed_out', reason: answer.reason })
+    }
+  }
+
+  /**
+   * The account that this adapter's owners were built for is no longer the one in use, or its access
+   * ended. Everything in flight is answered `uncertain` (it may have happened; it is not applied), the
+   * owners' subscriptions stop, what the account holds on this device is let go, and the core is told.
+   */
+  function retire(next: Retirement) {
+    if (retired || disposed) return
+    retired = next
+    const answering = [...inflight.values()]
+    inflight.clear()
+    for (const stop of stops.splice(0)) stop()
+    for (const stop of watched.values()) stop()
+    watched.clear()
+    for (const { stop } of terminals.values()) stop()
+    terminals.clear()
+    if (next.code === 'account_changed') {
+      send({ type: 'accountChanged', account: next.account })
+    }
+    send({ type: 'capabilitiesChanged', capabilities: { granted: [] } })
+    send({ type: 'connectionChanged', workspace, state: 'closed' })
+    for (const effect of answering) {
+      complete(
+        completion(effect, {
+          outcome: 'uncertain',
+          reason: `${next.reason}; this request was not completed for the new session and its result was not applied`,
+        }),
+      )
+    }
+    muted = true
+    for (const holder of options.retiring ?? []) {
+      void Promise.resolve(holder.retire(next.reason)).catch((error: unknown) =>
+        console.warn('An account holder could not let go', error),
+      )
+    }
+    for (const listener of [...retirementListeners]) {
+      try {
+        listener(next)
+      } catch (error) {
+        console.warn('A retirement listener failed', error)
+      }
+    }
   }
 
   // ---- host events -----------------------------------------------------------------------
@@ -958,6 +1051,18 @@ export function createAdapter(options: AdapterOptions): Adapter {
       switch (event.type) {
         case 'availability':
         case 'capabilities':
+          if (
+            event.type === 'availability' &&
+            event.availability.status === 'unavailable' &&
+            (event.availability.cause === 'signed_out' ||
+              event.availability.cause === 'forbidden')
+          ) {
+            retire({
+              code: event.availability.cause,
+              reason: event.availability.reason,
+            })
+            return
+          }
           reportCapabilities()
           publishSessions()
           return
@@ -999,14 +1104,32 @@ export function createAdapter(options: AdapterOptions): Adapter {
     if (stop) stops.push(stop)
   }
 
+  if (options.account) {
+    const { account } = options
+    stops.push(
+      account.onChange(({ account: next, reason }: AccountChange) =>
+        retire(
+          next === undefined
+            ? { code: 'signed_out', reason }
+            : { code: 'account_changed', reason, account: next },
+        ),
+      ),
+    )
+  }
+
   return {
     perform(effect) {
       if (disposed) return
       void run(effect)
     },
+    onRetired(listener) {
+      retirementListeners.add(listener)
+      return () => void retirementListeners.delete(listener)
+    },
     dispose() {
       if (disposed) return
       disposed = true
+      inflight.clear()
       for (const stop of stops.splice(0)) stop()
       for (const stop of watched.values()) stop()
       watched.clear()
