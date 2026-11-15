@@ -1,4 +1,4 @@
-// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls with a ControlButton to lay the graph out again, dotted Background, fitView), laid out by elkjs through lib/theorem/session-graph-layout, which also decides what may move so that what is on screen stays put; a re-formed tree moves there on lib/motion's shift spring (anime.js, 220ms, critically damped), immediately under reduced motion; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
+// SOURCING: @xyflow/react 12 (custom session, output and tools nodes; BaseEdge and getSmoothStepPath for the fork tree's edges, a floating quadratic arc over useInternalNode for session messages (React Flow's floating-edge pattern) with EdgeLabelRenderer for its count; Controls with a ControlButton to lay the graph out again, dotted Background, fitView), laid out by elkjs through lib/graph-layout on lib/theorem/session-graph-layout's policy, whose `arrange` decides what may move so that what is on screen stays put, and whose routes the fork tree's edges follow while both ends are where they were laid out (routePath, rounded as getSmoothStepPath rounds); a re-formed tree moves there on lib/motion's shift spring (anime.js, 220ms, critically damped), immediately under reduced motion; Base UI ContextMenu with coss menu parts for a session's right-click; coss Menu checkbox items for Show; ui/dialog and coss input for naming a view; date-fns for how long ago. The read is Theorem's session graph (lib/theorem/sessions), the projection lib/theorem/session-graph, and a saved view lib/program/api's session graph actions beside the programs. docs/plans/projects-sidebar-and-session-graph.md §9.
 import {
   Background,
   BackgroundVariant,
@@ -83,11 +83,18 @@ import type {
 } from '@/lib/theorem/session-graph'
 import {
   arrange,
-  layoutGraph,
+  heldRoutes,
+  layout,
+  routeHolds,
+  routePath,
+} from '@/lib/graph-layout'
+import type { Layout, Point, Route } from '@/lib/graph-layout'
+import {
   layoutShape,
   rerooted,
+  sessionLayout,
 } from '@/lib/theorem/session-graph-layout'
-import type { LayoutShape, Point } from '@/lib/theorem/session-graph-layout'
+import type { LayoutShape } from '@/lib/theorem/session-graph-layout'
 import { sessionGraphQuery, useMakeMain } from '@/lib/theorem/sessions'
 import type { GraphScope, SessionGraphRead } from '@/lib/theorem/sessions'
 import { prefersReducedMotion, springs } from '@/lib/motion'
@@ -112,7 +119,10 @@ function sizeOf(node: GraphNode) {
 }
 
 type FlowNode = Node<{ record: GraphNode }, GraphNode['kind']>
-type FlowEdge = Edge<{ edge: GraphEdge }, 'relation' | 'message'>
+type FlowEdge = Edge<
+  { edge: GraphEdge; route?: Route | undefined },
+  'relation' | 'message'
+>
 
 /** Each relation by line, not by colour alone: solid, dashed, dotted, or fine. */
 const LINE: Readonly<
@@ -309,8 +319,11 @@ function ToolsCard({
   )
 }
 
+/** The edge on the track ELK routed it along, while both its ends are where they were laid out; otherwise a step path between the handles. */
 function RelationEdge({
   id,
+  source,
+  target,
   sourceX,
   sourceY,
   targetX,
@@ -322,15 +335,19 @@ function RelationEdge({
 }: EdgeProps<FlowEdge>) {
   const edge = data!.edge
   const line = LINE[edge.relation]
-  const [path] = getSmoothStepPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-    borderRadius: 8,
-  })
+  const from = useInternalNode(source)?.internals.positionAbsolute
+  const to = useInternalNode(target)?.internals.positionAbsolute
+  const path = routeHolds(data!.route, from, to)
+    ? routePath(data!.route.points, 8)
+    : getSmoothStepPath({
+        sourceX,
+        sourceY,
+        targetX,
+        targetY,
+        sourcePosition,
+        targetPosition,
+        borderRadius: 8,
+      })[0]
   const fine = edge.relation === 'made' || edge.relation === 'used'
   return (
     <BaseEdge
@@ -608,6 +625,8 @@ type LaidOut = {
   way?: Direction
   /** Every node's last place, including nodes hidden since. */
   seen: Record<string, Point>
+  /** Every edge's last route, with where its ends were when it was routed. */
+  routes: Record<string, Route>
 }
 
 /** Part way from where each node is drawn to where it is going. */
@@ -652,6 +671,7 @@ function Flow({
   memory: { read: () => LaidOut; write: (laidOut: LaidOut) => void }
 }) {
   const [shown, setShown] = useState<Record<string, Point>>()
+  const [routes, setRoutes] = useState<Record<string, Route>>({})
   const [selected, setSelected] = useState<string>()
   const [dragging, setDragging] = useState<Record<string, Point>>({})
   // Each press of "Lay the graph out again", and each layout that landed.
@@ -721,9 +741,21 @@ function Flow({
     const relayout = anew
       ? new Set(shape.nodes.map((n) => n.id))
       : rerooted(before.shape!, shape)
-    const commit = (next: Record<string, Point>, chosen: Direction) => {
-      memory.write({ shape, way: chosen, seen: { ...before.seen, ...next } })
+    const commit = (
+      next: Record<string, Point>,
+      chosen: Direction,
+      held: Record<string, Route> = {},
+    ) => {
+      // A route kept from before still holds while its ends have not moved.
+      const kept = { ...before.routes, ...held }
+      memory.write({
+        shape,
+        way: chosen,
+        seen: { ...before.seen, ...next },
+        routes: kept,
+      })
       ran.current = arranged
+      setRoutes(kept)
       land(next, relayout.size > 0)
     }
 
@@ -742,27 +774,31 @@ function Flow({
 
     // A layout finishing after the graph changed is dropped.
     const run = { live: true }
-    const sizes = Object.fromEntries(
-      shape.nodes.map(({ id, width, height }) => [id, { width, height }]),
-    )
-    const lay = (to: Direction) =>
-      layoutGraph(shape.nodes, shape.edges, sizes, {
-        algorithm: 'layered',
-        direction: to,
-      })
-    const place = (fresh: Record<string, Point>, chosen: Direction) =>
-      arrange({
-        shape,
-        fresh,
+    const lay = (to: Direction) => layout(shape, sessionLayout(to))
+    const settle = (laid: Layout, chosen: Direction) => {
+      const next = arrange({
+        graph: shape,
+        fresh: laid.positions,
         previous: before.seen,
         pinned: pins.current,
         relayout,
         across: chosen === 'RIGHT',
       })
+      commit(
+        next,
+        chosen,
+        heldRoutes({
+          edges: shape.edges,
+          routes: laid.routes,
+          fresh: laid.positions,
+          placed: next,
+        }),
+      )
+    }
     void (async () => {
       if (way) {
         const next = await lay(way)
-        if (run.live) commit(place(next.positions, way), way)
+        if (run.live) settle(next, way)
         return
       }
       // A tree wider than its panel reads larger running down it; the choice
@@ -775,10 +811,7 @@ function Flow({
       }
       const chosen =
         fitZoom(down, panel) > fitZoom(across, panel) * 1.15 ? 'DOWN' : 'RIGHT'
-      commit(
-        place((chosen === 'DOWN' ? down : across).positions, chosen),
-        chosen,
-      )
+      settle(chosen === 'DOWN' ? down : across, chosen)
       onDirection(chosen)
     })()
     return () => {
@@ -877,7 +910,7 @@ function Flow({
         type: edge.relation === 'message' ? 'message' : 'relation',
         selectable: false,
         focusable: false,
-        data: { edge },
+        data: { edge, route: routes[edge.id] },
         markerEnd: LINE[edge.relation].arrow
           ? {
               type: MarkerType.ArrowClosed,
@@ -887,7 +920,7 @@ function Flow({
             }
           : undefined,
       })),
-    [graph.edges],
+    [graph.edges, routes],
   )
   const node = graph.nodes.find((n) => n.id === selected)
 
@@ -1133,7 +1166,7 @@ function SessionGraph({
     saved?.layout.nodes ?? {},
   )
   const [direction, setDirection] = useState(saved?.layout.direction)
-  const laidOut = useRef<LaidOut>({ seen: {} })
+  const laidOut = useRef<LaidOut>({ seen: {}, routes: {} })
   const memory = useMemo(
     () => ({
       read: () => laidOut.current,
