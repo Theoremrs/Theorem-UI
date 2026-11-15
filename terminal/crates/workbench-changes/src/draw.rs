@@ -21,7 +21,7 @@ use theorem_workbench_core::completion::LogEntry;
 
 use crate::diff::{DiffLine, LineKind};
 use crate::layout::{
-    LIMITS, Row, Tone, banners, branch_controls, control_label, regions, rows, verbs,
+    LIMITS, Row, Tone, banner_rows, branch_controls, control_label, regions, rows, verbs,
 };
 use crate::model::{Changes, DiffLayout, Field, Focus, LogState, Mode, Prompt};
 use crate::status::{Section, letter, shown};
@@ -93,7 +93,7 @@ impl Changes {
         paint(buf, area, styles.text);
         let regions = regions(self, area);
         self.draw_branch(regions.branch, buf, styles);
-        self.draw_banners(regions.banners, buf, styles);
+        self.draw_banners(regions.banners, area.height, buf, styles);
         self.draw_list(regions.list, buf, styles);
         self.draw_commit(regions.commit, buf, styles);
         self.draw_log(regions.log, buf, styles);
@@ -193,20 +193,16 @@ impl Changes {
         }
     }
 
-    fn draw_banners(&self, rect: Rect, buf: &mut Buffer, styles: &ChangesStyles) {
-        for (at, (t, line)) in banners(self)
-            .into_iter()
-            .take(rect.height as usize)
-            .enumerate()
-        {
-            let line = fit(&printable(&line), rect.width as usize);
+    fn draw_banners(&self, rect: Rect, pane: u16, buf: &mut Buffer, styles: &ChangesStyles) {
+        let laid = banner_rows(self, rect.width, pane);
+        for (at, (t, line)) in laid.rows.iter().take(rect.height as usize).enumerate() {
             put(
                 buf,
                 rect.x,
                 rect.y + at as u16,
                 rect.width as usize,
-                &line,
-                tone(styles, t),
+                &printable(line),
+                tone(styles, *t),
             );
         }
     }
@@ -215,7 +211,7 @@ impl Changes {
         if rect.height == 0 || rect.width == 0 {
             return;
         }
-        let rows = rows(self, self.split_at(rect.width));
+        let rows = rows(self, self.split_at(rect.width), rect.width);
         let first = self
             .scroll()
             .min(rows.len().saturating_sub(rect.height as usize));
@@ -398,6 +394,7 @@ impl Changes {
                 text,
                 tone: t,
                 indent,
+                ..
             } => {
                 let pad = *indent as usize;
                 let room = w.saturating_sub(pad + 1);

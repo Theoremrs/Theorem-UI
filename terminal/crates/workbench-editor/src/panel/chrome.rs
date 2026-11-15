@@ -53,6 +53,32 @@ struct FindPlan {
 /// The least a find or replace field is given before the rest gives way.
 const FIELD_ROOM: usize = 8;
 
+/// How much a status flag matters, lowest first: the order in which flags give way
+/// when the line is too narrow. The flags that warn of unsaved or recovered work are
+/// the last to go and are never cut; the others drop whole.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Rank {
+    /// Something in progress or a missing extra: saving, sending, findings.
+    Progress,
+    /// A standing condition: the connection.
+    State,
+    /// Unsaved, unconfirmed or recovered work, or edits that cannot be taken: modified,
+    /// kept or not kept, save and edit unknown, out of sync, recovered edits waiting,
+    /// read-only.
+    Work,
+}
+
+struct Flag {
+    long: String,
+    short: String,
+    rank: Rank,
+}
+
+/// The flags of at least `floor`, in the order they are shown.
+fn rank_at_least(flags: &[Flag], floor: Rank) -> Vec<&Flag> {
+    flags.iter().filter(|f| f.rank >= floor).collect()
+}
+
 /// How the status line and the notice share the width.
 struct StatusPlan {
     left: String,
@@ -76,7 +102,7 @@ impl Strip {
         let text = match &self.prompt {
             Prompt::Rename => 1,
             Prompt::Name(error) => 1 + u16::from(error.is_some()),
-            Prompt::Text(t, _) => wrap(t, width).len().clamp(1, 6) as u16,
+            Prompt::Text(t, _) => wrap(t, width).len().max(1) as u16,
         };
         text + layout_buttons(&self.buttons, width).len() as u16
     }
@@ -747,57 +773,72 @@ impl EditorPanel {
 
     /// What is true of the document, as flags: the long form and the short
     /// one a narrow line falls back to, and whether any asks for attention.
-    fn status_flags(&self, d: &Doc) -> (Vec<(String, String)>, bool) {
-        let mut flags: Vec<(String, String)> = vec![];
+    fn status_flags(&self, d: &Doc) -> (Vec<Flag>, bool) {
+        let mut flags: Vec<Flag> = vec![];
         let mut attention = false;
-        let mut flag = |long: String, short: &str, warn: bool| {
-            flags.push((long, short.to_owned()));
+        let mut flag = |long: String, short: &str, warn: bool, rank: Rank| {
+            flags.push(Flag {
+                long,
+                short: short.to_owned(),
+                rank,
+            });
             attention |= warn;
         };
         if d.dirty() {
-            flag("modified".to_owned(), "modified", false);
+            flag("modified".to_owned(), "modified", false, Rank::Work);
         }
         if let Some(l) = self.local_flag() {
-            flag(l.long, l.short, l.attention);
+            flag(l.long, l.short, l.attention, Rank::Work);
         }
         if let Some(r) = &d.sync.read_only {
-            flag(format!("read-only: {r}"), "read-only", true);
+            flag(format!("read-only: {r}"), "read-only", true, Rank::Work);
         }
         if d.sync.save.inflight.is_some() {
-            flag("saving".to_owned(), "saving", false);
+            flag("saving".to_owned(), "saving", false, Rank::Progress);
         }
         if d.sync.save.unknown.is_some() {
-            flag("save unknown".to_owned(), "save unknown", true);
+            flag("save unknown".to_owned(), "save unknown", true, Rank::Work);
         }
         if d.sync.unknown.is_some() {
-            flag("edit unknown".to_owned(), "edit unknown", true);
+            flag("edit unknown".to_owned(), "edit unknown", true, Rank::Work);
         } else if d.sync.inflight.is_some() {
-            flag("sending".to_owned(), "sending", false);
+            flag("sending".to_owned(), "sending", false, Rank::Progress);
         }
         if d.sync.desync.is_some() {
-            flag("out of sync".to_owned(), "out of sync", true);
+            flag("out of sync".to_owned(), "out of sync", true, Rank::Work);
         }
         if d.sync.save.wanted {
-            flag("save waits for edits".to_owned(), "save waits", false);
+            flag(
+                "save waits for edits".to_owned(),
+                "save waits",
+                false,
+                Rank::Progress,
+            );
         }
         if let Some(b) = d.busy {
-            flag(b.to_owned(), b, false);
+            flag(b.to_owned(), b, false, Rank::Progress);
         }
         if d.sync.restored.is_some() {
             flag(
                 recovery::WAITS_FLAG.0.to_owned(),
                 recovery::WAITS_FLAG.1,
                 true,
+                Rank::Work,
             );
         }
         if let Some(p) = &d.findings.problem {
-            flag(format!("no findings: {p}"), "no findings", false);
+            flag(
+                format!("no findings: {p}"),
+                "no findings",
+                false,
+                Rank::Progress,
+            );
         }
         match self.connection {
             None | Some(ConnectionState::Open) => {}
             Some(state) => {
                 let word = format!("{state:?}").to_lowercase();
-                flag(word.clone(), &word, true);
+                flag(word.clone(), &word, true, Rank::State);
             }
         }
         (flags, attention)
@@ -807,8 +848,8 @@ impl EditorPanel {
     fn status_left(&self, d: &Doc) -> (String, bool) {
         let (flags, attention) = self.status_flags(d);
         let mut s = self.path.clone();
-        for (long, _) in &flags {
-            s.push_str(&format!(" [{long}]"));
+        for f in &flags {
+            s.push_str(&format!(" [{}]", f.long));
         }
         (s, attention)
     }
@@ -825,10 +866,9 @@ impl EditorPanel {
     fn status_plan(&self, d: &Doc, width: u16) -> StatusPlan {
         let w = usize::from(width);
         let (flags, attention) = self.status_flags(d);
-        let join = |short: bool| -> String {
-            flags
-                .iter()
-                .map(|(l, s)| format!(" [{}]", if short { s } else { l }))
+        let join = |kept: &[&Flag], short: bool| -> String {
+            kept.iter()
+                .map(|f| format!(" [{}]", if short { &f.short } else { &f.long }))
                 .collect()
         };
         let name_w = self
@@ -837,25 +877,56 @@ impl EditorPanel {
             .next()
             .map_or(0, UnicodeWidthStr::width);
         let rights = self.status_right(d);
-        let last = rights.len() - 1;
-        let mut chosen = (rights[last].clone(), join(true));
-        'pick: for short_flags in [false, true] {
-            let f = join(short_flags);
+        let fits = |r: &str, f: &str, path: usize| {
+            r.width() + usize::from(!r.is_empty()) + f.width() + path <= w
+        };
+        // Flags in the order they give way: the long forms, the short forms, then
+        // the lower ranks one rank at a time, the file name kept whole.
+        let mut chosen = None;
+        'pick: for (kept, short) in [
+            (rank_at_least(&flags, Rank::Progress), false),
+            (rank_at_least(&flags, Rank::Progress), true),
+            (rank_at_least(&flags, Rank::State), true),
+            (rank_at_least(&flags, Rank::Work), true),
+        ] {
+            let f = join(&kept, short);
             for r in &rights {
-                let gap = usize::from(!r.is_empty());
-                if r.width() + gap + f.width() + name_w <= w {
-                    chosen = (r.clone(), f.clone());
+                if fits(r, &f, name_w) {
+                    chosen = Some((r.clone(), f.clone(), String::new()));
                     break 'pick;
                 }
             }
         }
-        let (right, flag_text) = chosen;
+        // Nothing fits beside the whole name: the path gives way, and only the
+        // flags that warn of unsaved or recovered work are left. Those that do
+        // not fit even then, whole, move to the rows above the line; none is cut.
+        let (right, flag_text, overflow) = chosen.unwrap_or_else(|| {
+            let work = rank_at_least(&flags, Rank::Work);
+            let short = join(&work, true);
+            for r in &rights {
+                if fits(r, &short, 1) {
+                    return (r.clone(), short, String::new());
+                }
+            }
+            let right = rights[rights.len() - 1].clone();
+            let room = w.saturating_sub(right.width() + usize::from(!right.is_empty()) + 1);
+            let (mut line, mut rest) = (String::new(), String::new());
+            for f in &work {
+                let word = format!(" [{}]", f.short);
+                if rest.is_empty() && line.width() + word.width() <= room {
+                    line.push_str(&word);
+                } else {
+                    // A flag is one word to the wrap: it never breaks inside the brackets.
+                    let whole = f.short.replace(' ', "\u{a0}");
+                    rest.push_str(&format!(
+                        "{}[{whole}]",
+                        if rest.is_empty() { "" } else { " " }
+                    ));
+                }
+            }
+            (right, line, rest)
+        });
         let gap = usize::from(!right.is_empty());
-        let flag_text = if right.width() + gap + flag_text.width() > w {
-            take_cells(&flag_text, w.saturating_sub(right.width() + gap))
-        } else {
-            flag_text
-        };
         let path_room = w.saturating_sub(right.width() + gap + flag_text.width());
         let path = shorten_path(&self.path, path_room);
         let left = format!("{path}{flag_text}");
@@ -878,10 +949,19 @@ impl EditorPanel {
             (Some(n), _) => Some((n.text.clone(), n.tone)),
             (None, finding) => finding.or(not_kept),
         };
+        // The flags that did not fit on the line come first among the rows above it.
+        let shown = if overflow.is_empty() {
+            shown
+        } else {
+            Some(match shown {
+                Some((t, tone)) => (format!("{overflow}\n{t}"), tone),
+                None => (overflow.clone(), Tone::Warn),
+            })
+        };
         let inline_room = w.saturating_sub(right.width() + gap + left.width() + 2);
         let (notice_inline, notice_rows) = match &shown {
-            Some((t, _)) if t.width() <= inline_room => (true, 0),
-            Some((t, _)) => (false, wrap(t, width).len().clamp(1, 3) as u16),
+            Some((t, _)) if overflow.is_empty() && t.width() <= inline_room => (true, 0),
+            Some((t, _)) => (false, wrap(t, width).len().max(1) as u16),
             None => (false, 0),
         };
         StatusPlan {

@@ -99,6 +99,21 @@ fn clip_end(text: &str, max: usize) -> &str {
 }
 
 /// `text` in `max` cells, cut at the end with an ellipsis.
+/// `text` broken into rows of at most `max` cells, at spaces where it can; a word wider
+/// than a row is broken inside, the only case in which a word is not whole. Always at
+/// least one row.
+pub(crate) fn wrap(text: &str, max: usize) -> Vec<String> {
+    let rows: Vec<String> = textwrap::wrap(text, max.max(1))
+        .into_iter()
+        .map(std::borrow::Cow::into_owned)
+        .collect();
+    if rows.is_empty() {
+        vec![String::new()]
+    } else {
+        rows
+    }
+}
+
 pub(crate) fn fit(text: &str, max: usize) -> String {
     if width(text) <= max {
         return text.to_owned();

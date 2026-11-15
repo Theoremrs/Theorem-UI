@@ -27,12 +27,14 @@ use theorem_workbench_core::completion::{
     Completion, CompletionPayload, Outcome, PendingEdit as WireEdit, PendingState as WireState,
 };
 use theorem_workbench_core::effect::{
-    CoordinateUnit, DocumentEdit, ReconcileKeep, TextChange as CoreChange,
+    CoordinateUnit, DocumentEdit, DocumentKeep, KeptEdit, ReconcileKeep, TextChange as CoreChange,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::Revision as CoreRevision;
 use theorem_workbench_text::recovery;
-use theorem_workbench_text::{EditSession, LocalEdit, OpId, Resolution, SyncError, TextChange};
+use theorem_workbench_text::{
+    EditSession, LocalEdit, OpId, PendingState as SessionState, Resolution, SyncError, TextChange,
+};
 
 use crate::sync::{Changed, apply_owner_change, resync, step_before};
 
@@ -214,6 +216,52 @@ pub struct OwnerSync {
     /// Settles of recovered operations not yet answered. The owner refuses
     /// edits until each is, so none goes out meanwhile.
     pub settling: usize,
+    /// What this device's copy of the held edits holds, and what is on its way.
+    pub checkpoint: Checkpoint,
+}
+
+/// The most held edits one checkpoint carries. Each keystroke is an edit of
+/// its own, so this is a long run of typing behind an unsettled edit.
+pub const KEPT_EDITS: usize = 256;
+
+/// The most text (the bytes the held edits insert) one checkpoint carries.
+pub const KEPT_BYTES: usize = 32 * 1024;
+
+/// The device copy of the edits held behind an unsettled one (see
+/// [`OwnerSync::keep_owed`]). The edits themselves stay in the session; this
+/// only remembers what was last asked of the owner.
+#[derive(Default)]
+pub struct Checkpoint {
+    /// The list last asked for, which the device copy holds once it is
+    /// answered. Empty until a first edit is held.
+    asked: Vec<KeptEdit>,
+    /// A keep is on its way: no other goes until it is answered.
+    inflight: bool,
+    /// More is held than one checkpoint carries; the pane said so.
+    over: bool,
+    /// The recovered edits placed in the session, until the person chooses.
+    /// The owner holds them already, under their own ids, so they are not
+    /// kept a second time (a reload would give them twice).
+    placed: Vec<OpId>,
+}
+
+impl Checkpoint {
+    /// Whether the held edits are more than one checkpoint carries, so the
+    /// newest are in memory only.
+    pub fn over(&self) -> bool {
+        self.over
+    }
+}
+
+impl std::fmt::Debug for Checkpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Checkpoint")
+            .field("asked", &self.asked.len())
+            .field("inflight", &self.inflight)
+            .field("over", &self.over)
+            .field("placed", &self.placed.len())
+            .finish()
+    }
 }
 
 impl std::fmt::Debug for OwnerSync {
@@ -233,6 +281,7 @@ impl std::fmt::Debug for OwnerSync {
             )
             .field("restored", &self.restored)
             .field("settling", &self.settling)
+            .field("checkpoint", &self.checkpoint)
             .finish()
     }
 }
@@ -341,6 +390,98 @@ impl OwnerSync {
         }
     }
 
+    // ---- the device copy of the held edits ----------------------------------
+
+    /// The edits the session holds that the owner does not: every pending edit
+    /// but the one sent, in order. They are held behind it (in flight, of
+    /// unknown outcome, or recovered), behind a resync, or refused, and until
+    /// they are sent they exist in memory only.
+    fn held_edits(&self, session: &EditSession) -> Vec<KeptEdit> {
+        let base = CoreRevision::Seq(session.accepted_revision());
+        session
+            .pending()
+            .into_iter()
+            .filter(|p| p.state != SessionState::Sent && !self.checkpoint.placed.contains(&p.op_id))
+            .map(|p| KeptEdit {
+                operation_id: p.op_id.0,
+                base_revision: base.clone(),
+                edits: p
+                    .changes
+                    .iter()
+                    .map(|c| CoreChange {
+                        start: c.start as u32,
+                        end: c.end as u32,
+                        insert: c.insert.clone(),
+                    })
+                    .collect(),
+            })
+            .collect()
+    }
+
+    /// The checkpoint to ask the owner for now, and what to say about it. Call
+    /// it on a tick: a run of typing between two ticks is one checkpoint, and
+    /// none goes while one is unanswered, so the latest list goes once.
+    ///
+    /// The checkpoint is the whole held list, in order, each edit over the text
+    /// the one before it left. The body is `None` when the list is the one
+    /// last asked for (nothing changed), and an empty list once nothing is held
+    /// after something was, so the device copy is cleared. When more is held
+    /// than [`KEPT_EDITS`] or [`KEPT_BYTES`] the oldest go, as a prefix, so
+    /// what is kept still applies in order; the rest stay in the text, and the
+    /// note says so once.
+    pub fn keep_owed(&mut self, session: &EditSession) -> (Option<DocumentKeep>, Option<Note>) {
+        let held = self.held_edits(session);
+        let mut bytes = 0usize;
+        let fit = held
+            .iter()
+            .take(KEPT_EDITS)
+            .take_while(|e| {
+                bytes += e.edits.iter().map(|c| c.insert.len()).sum::<usize>();
+                bytes <= KEPT_BYTES
+            })
+            .count();
+        let over = fit < held.len();
+        let note = (over && !self.checkpoint.over).then(|| Note {
+            text: format!(
+                "{fit} of {} held edits are checkpointed; a reload may lose the rest.",
+                held.len()
+            ),
+            level: Level::Warn,
+        });
+        self.checkpoint.over = over;
+        let list: Vec<KeptEdit> = held.into_iter().take(fit).collect();
+        if self.checkpoint.inflight || list == self.checkpoint.asked {
+            return (None, note);
+        }
+        (Some(DocumentKeep { edits: list }), note)
+    }
+
+    /// The keep named by [`keep_owed`](Self::keep_owed) was emitted.
+    pub fn keep_asked(&mut self, keep: &DocumentKeep) {
+        self.checkpoint.asked = keep.edits.clone();
+        self.checkpoint.inflight = true;
+    }
+
+    /// The owner's answer to a keep. A refusal, a failure or an unknown
+    /// outcome says the edits are not checkpointed; the same list is not asked
+    /// again, the next change to it is.
+    pub fn keep_answered(&mut self, c: &Completion) -> Step {
+        let mut step = Step::default();
+        self.checkpoint.inflight = false;
+        match &c.outcome {
+            Outcome::Accepted => {}
+            Outcome::Refused { .. } | Outcome::Failed { .. } => step.say(
+                Level::Warn,
+                "Held edits are not checkpointed: a reload may lose them.",
+            ),
+            Outcome::Uncertain { .. } => step.say(
+                Level::Warn,
+                "Unknown if held edits are checkpointed: a reload may lose them.",
+            ),
+        }
+        step
+    }
+
     // ---- edits recovered from this device -----------------------------------
 
     /// Take the owner's restored edits (`pending` of the open) over the text
@@ -387,11 +528,21 @@ impl OwnerSync {
             // Tried on a copy of the text first: every set fits, or none goes in.
             if let Err(e) = recovery::fits(&session.text(), &sets) {
                 moved_from = Some(format!("text these ranges do not fit ({e})"));
-            } else if let Some(op) = recovery::place(session, &sets) {
-                let why = reason
-                    .clone()
-                    .unwrap_or_else(|| "recovered from this device".to_owned());
-                let _ = session.refuse(&op, why);
+            } else {
+                let before: Vec<OpId> = session.pending().into_iter().map(|p| p.op_id).collect();
+                let first = recovery::place(session, &sets);
+                self.checkpoint.placed = session
+                    .pending()
+                    .into_iter()
+                    .map(|p| p.op_id)
+                    .filter(|id| !before.contains(id))
+                    .collect();
+                if let Some(op) = first {
+                    let why = reason
+                        .clone()
+                        .unwrap_or_else(|| "recovered from this device".to_owned());
+                    let _ = session.refuse(&op, why);
+                }
             }
         }
         let placed = moved_from.is_none();
@@ -420,6 +571,7 @@ impl OwnerSync {
         let Some(r) = self.restored.take() else {
             return step;
         };
+        self.checkpoint.placed.clear();
         if r.moved_from.is_some() {
             let end = session.len();
             let added = recovery::after_file_text(&session.text(), &r.text);
@@ -447,6 +599,7 @@ impl OwnerSync {
         let Some(r) = self.restored.take() else {
             return step;
         };
+        self.checkpoint.placed.clear();
         if r.moved_from.is_none() && session.has_conflict() {
             let _ = session.resolve_conflict(Resolution::TakeTheirs);
         }

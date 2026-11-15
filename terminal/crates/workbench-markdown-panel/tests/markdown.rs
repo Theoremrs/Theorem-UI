@@ -139,6 +139,28 @@ fn one(fx: &[Effect], kind: EffectKind) -> Effect {
     all[0].clone()
 }
 
+/// The checkpoints among `fx`, and everything else.
+fn split_keeps(fx: Vec<Effect>) -> (Vec<Effect>, Vec<Effect>) {
+    fx.into_iter()
+        .partition(|e| e.kind() == EffectKind::DocumentKeep)
+}
+
+/// What each checkpoint holds: the text each of its edits inserts, in order.
+fn kept_inserts(keeps: &[Effect]) -> Vec<Vec<String>> {
+    keeps
+        .iter()
+        .map(|e| {
+            let EffectBody::DocumentKeep(k) = &e.body else {
+                panic!("not a keep: {e:?}");
+            };
+            k.edits
+                .iter()
+                .flat_map(|k| k.edits.iter().map(|c| c.insert.clone()))
+                .collect()
+        })
+        .collect()
+}
+
 fn none_of(fx: &[Effect], kind: EffectKind) {
     assert!(
         of_kind(fx, kind).is_empty(),
@@ -2064,7 +2086,14 @@ fn recovered_edits_are_shown_and_nothing_is_sent_before_the_person_chooses() {
         rig.text()
     );
     fx.extend(rig.act("markdown.save"));
-    assert!(fx.is_empty(), "nothing is sent before a choice: {fx:#?}");
+    // Only the checkpoint of what was typed behind the recovered edits goes
+    // out: the recovered ones are the owner's already, under their own ids.
+    let (keeps, rest) = split_keeps(fx);
+    assert!(
+        rest.is_empty(),
+        "nothing is sent before a choice: {rest:#?}"
+    );
+    assert_eq!(kept_inserts(&keeps), [vec!["Q".to_owned()]], "{keeps:#?}");
 }
 
 #[test]
@@ -2386,7 +2415,8 @@ fn recovered_edits_are_shown_held_and_chosen_about_in_visual_split_and_preview()
         let mut fx = rig.typed("Q");
         fx.extend(rig.tick());
         fx.extend(rig.act("markdown.save"));
-        assert!(fx.is_empty(), "{name}: {fx:#?}");
+        let (_, rest) = split_keeps(fx);
+        assert!(rest.is_empty(), "{name}: {rest:#?}");
         // Switching modes loses neither the held text nor the bar.
         for other in ['2', '1', '3', '4', mode] {
             rig.alt(other);
@@ -2459,7 +2489,16 @@ fn recovered_edits_are_shown_held_and_chosen_about_in_visual_split_and_preview()
         );
         let mut fx = rig.typed("Q");
         fx.extend(rig.tick());
-        assert!(fx.is_empty(), "{name}: {fx:#?}");
+        // Only the typed text is checkpointed (where the mode takes typing):
+        // nothing is sent.
+        let (keeps, rest) = split_keeps(fx);
+        assert!(rest.is_empty(), "{name}: {rest:#?}");
+        let typed: Vec<Vec<String>> = if mode == '3' {
+            vec![vec!["Q".to_owned()]]
+        } else {
+            vec![]
+        };
+        assert_eq!(kept_inserts(&keeps), typed, "{name}");
         for other in ['2', '1', '3', '4', mode] {
             rig.alt(other);
             assert!(rig.has_node("strip"), "{name} via {other}");
@@ -2833,4 +2872,218 @@ fn an_unavailable_document_is_told_apart_from_an_empty_one_in_the_text_and_the_n
     assert_eq!(format!("{:?}", node.role), "Alert");
     assert!(node.name.contains("the disk went away"), "{}", node.name);
     assert!(gone.screen().contains("the disk went away"));
+}
+
+// ---- the edits held behind an unsettled one are checkpointed ----------------
+
+/// The text each held edit of a keep inserts, in order, with its changes.
+/// Each held edit of a keep: its operation and its changes.
+type Held = Vec<(String, Vec<(u32, u32, String)>)>;
+
+fn kept_changes(e: &Effect) -> Held {
+    let EffectBody::DocumentKeep(keep) = &e.body else {
+        panic!("not a keep: {e:?}");
+    };
+    keep.edits
+        .iter()
+        .map(|k| {
+            (
+                k.operation_id.clone(),
+                k.edits
+                    .iter()
+                    .map(|c| (c.start, c.end, c.insert.clone()))
+                    .collect(),
+            )
+        })
+        .collect()
+}
+
+fn kept_text(e: &Effect) -> Vec<String> {
+    kept_changes(e)
+        .into_iter()
+        .map(|(_, c)| c[0].2.clone())
+        .collect()
+}
+
+fn unknown_first(rig: &mut Rig, ch: char) -> Effect {
+    let e = the_edit(&rig.key(Key::Char(ch)));
+    rig.answer(
+        &e,
+        Outcome::Uncertain {
+            reason: "no answer in time".into(),
+        },
+        None,
+    );
+    e
+}
+
+#[test]
+fn three_edits_typed_behind_an_uncertain_first_are_kept_once_in_order_and_the_list_shrinks_as_they_go()
+ {
+    let mut rig = Rig::source("hello\n");
+    let first = unknown_first(&mut rig, 'a');
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    let mut typed = rig.typed("bcd");
+    none_of(&typed, EffectKind::DocumentKeep);
+    typed.extend(rig.tick());
+    let keep = one(&typed, EffectKind::DocumentKeep);
+    assert_eq!(keep.revision, None);
+    let list = kept_changes(&keep);
+    assert_eq!(
+        list.iter().map(|(_, c)| c.clone()).collect::<Vec<_>>(),
+        [
+            vec![(1, 1, "b".to_owned())],
+            vec![(2, 2, "c".to_owned())],
+            vec![(3, 3, "d".to_owned())],
+        ]
+    );
+    assert_eq!(
+        serde_json::to_value(&keep.body).unwrap()["payload"]["edits"][0]["baseRevision"],
+        serde_json::json!({"scheme": "seq", "value": 1})
+    );
+    // Typing between ticks and an unanswered keep: one more, once answered.
+    rig.typed("e");
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    let answered = rig.answer(&keep, Outcome::Accepted, None);
+    none_of(&answered, EffectKind::DocumentKeep);
+    let whole = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert_eq!(kept_text(&whole), ["b", "c", "d", "e"]);
+    rig.answer(&whole, Outcome::Accepted, None);
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    // The owner had the first: each one goes out, the keep follows the rest.
+    let resend = the_edit(&rig.alt('r'));
+    assert_eq!(op_id(&resend), op_id(&first));
+    let b = the_edit(&rig.accept(&resend, 2));
+    let rest = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert_eq!(kept_text(&rest), ["c", "d", "e"]);
+    rig.answer(&rest, Outcome::Accepted, None);
+    let c = the_edit(&rig.accept(&b, 3));
+    let d = the_edit(&rig.accept(&c, 4));
+    let e = the_edit(&rig.accept(&d, 5));
+    rig.accept(&e, 6);
+    let cleared = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert!(kept_changes(&cleared).is_empty());
+    assert_eq!(
+        serde_json::to_value(&cleared.body).unwrap(),
+        serde_json::json!({"kind": "documentKeep", "payload": {"edits": []}})
+    );
+    rig.answer(&cleared, Outcome::Accepted, None);
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+}
+
+#[test]
+fn a_refused_first_gives_a_keep_of_what_the_pane_now_holds() {
+    let mut rig = Rig::source("hello\n");
+    let a = the_edit(&rig.key(Key::Char('a')));
+    rig.typed("bc");
+    let before = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert_eq!(kept_text(&before), ["b", "c"]);
+    rig.answer(&before, Outcome::Accepted, None);
+    rig.answer(
+        &a,
+        Outcome::Refused {
+            code: "invalid".into(),
+            reason: "the file is locked".into(),
+        },
+        None,
+    );
+    let after = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert_eq!(kept_text(&after), ["a", "b", "c"]);
+    assert_eq!(kept_changes(&after)[0].0, op_id(&a));
+}
+
+#[test]
+fn a_keep_that_is_refused_failed_or_unknown_says_the_edits_are_not_checkpointed_without_their_content()
+ {
+    const SECRET: &str = "sk-live-4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8";
+    for (name, outcome) in [
+        (
+            "refused",
+            Outcome::Refused {
+                code: "quota".into(),
+                reason: "the device store is full".into(),
+            },
+        ),
+        (
+            "failed",
+            Outcome::Failed {
+                reason: "the device store is full".into(),
+            },
+        ),
+        (
+            "unknown",
+            Outcome::Uncertain {
+                reason: "the device store is full".into(),
+            },
+        ),
+    ] {
+        let mut rig = Rig::source("hello\n");
+        unknown_first(&mut rig, 'a');
+        rig.typed(SECRET);
+        let keep = one(&rig.tick(), EffectKind::DocumentKeep);
+        rig.answer(&keep, outcome, None);
+        let screen = rig
+            .screen()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(
+            screen.contains("not checkpointed")
+                || screen.contains("if held edits are checkpointed"),
+            "{name}: {screen}"
+        );
+        // The same list is not asked again; the next change asks.
+        none_of(&rig.tick(), EffectKind::DocumentKeep);
+        rig.typed("z");
+        one(&rig.tick(), EffectKind::DocumentKeep);
+        rig.tree_ok();
+    }
+}
+
+#[test]
+fn nothing_is_kept_before_an_edit_is_held_or_for_a_list_that_did_not_change() {
+    let mut rig = Rig::source("hello\n");
+    let e = the_edit(&rig.key(Key::Char('a')));
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    rig.accept(&e, 2);
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    unknown_first(&mut rig, 'b');
+    rig.typed("c");
+    let keep = one(&rig.tick(), EffectKind::DocumentKeep);
+    rig.answer(&keep, Outcome::Accepted, None);
+    for _ in 0..3 {
+        none_of(&rig.tick(), EffectKind::DocumentKeep);
+    }
+}
+
+#[test]
+fn recovered_edits_are_placed_in_order_before_the_choice_and_kept_edits_are_not_kept_again() {
+    let mut rig = Rig::start();
+    // The first edit and the two held behind it, as the owner got them back.
+    rig.answer_open_with(
+        "hello\n",
+        1,
+        vec![
+            restored("r1", 1, 0, 0, "X"),
+            restored("r2", 1, 1, 1, "Y"),
+            restored("r3", 1, 2, 2, "Z"),
+        ],
+    );
+    rig.alt('2');
+    assert!(
+        rig.text().starts_with("XYZhello"),
+        "everything typed is in the text before the choice: {}",
+        rig.text()
+    );
+    assert!(rig.screen().contains("Keep recovered"), "{}", rig.screen());
+    none_of(&rig.tick(), EffectKind::DocumentKeep);
+    rig.typed("Q");
+    let keep = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert_eq!(kept_changes(&keep)[0].1, vec![(3, 3, "Q".to_owned())]);
+    assert_eq!(kept_text(&keep), ["Q"]);
+    rig.answer(&keep, Outcome::Accepted, None);
+    let fx = rig.alt('g');
+    assert_eq!(settles(&fx), ["r1", "r2", "r3"]);
+    let cleared = one(&rig.tick(), EffectKind::DocumentKeep);
+    assert!(kept_changes(&cleared).is_empty());
 }

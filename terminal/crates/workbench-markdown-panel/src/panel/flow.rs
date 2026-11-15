@@ -104,6 +104,30 @@ impl MarkdownPanel {
         }
     }
 
+    /// Ask the owner to keep, on this device, the edits held behind an
+    /// unsettled one, so a reload does not lose them. On a tick, so a run of
+    /// typing is one request, and with no revision, so a late answer is not
+    /// judged stale because an edit was accepted meanwhile.
+    pub(super) fn checkpoint(&mut self, cx: &mut Ctx) {
+        let Some(d) = self.doc_mut() else { return };
+        let (keep, note) = d.sync.keep_owed(d.md.get_mut().session());
+        if let Some(n) = note {
+            d.notice(n.text, Tone::Warn);
+        }
+        let Some(keep) = keep else { return };
+        if let Ok(id) = self.emit(
+            cx,
+            self.resource(),
+            EffectBody::DocumentKeep(keep.clone()),
+            None,
+        ) {
+            self.outstanding.insert(id, Task::Keep);
+            if let Some(d) = self.doc_mut() {
+                d.sync.keep_asked(&keep);
+            }
+        }
+    }
+
     /// Show what a step says and let the owner go of what it settled.
     fn show(&mut self, step: Step, cx: &mut Ctx) {
         if let Some(d) = self.doc_mut() {
@@ -187,6 +211,11 @@ impl MarkdownPanel {
                 let step =
                     d.md.get_mut()
                         .apply_local(|s| d.sync.reconcile_answered(s, keep, c));
+                self.show(step, cx);
+            }
+            Task::Keep => {
+                let Some(d) = self.doc_mut() else { return };
+                let step = d.sync.keep_answered(&c);
                 self.show(step, cx);
             }
             Task::Release => {}

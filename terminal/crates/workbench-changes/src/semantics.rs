@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use theorem_workbench_core::ActionId;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role, SemanticTree};
 
-use crate::layout::{Row, banners, regions, rows};
+use crate::layout::{Row, banner_rows, banners, regions, rows};
 use crate::model::{Changes, Confirm, Focus, LogState, Mode, PanelState, ReadBody};
 use crate::status::{LISTED, RowKey, Section, letter, shown};
 use crate::text::visible;
@@ -128,17 +128,17 @@ impl Changes {
         root.children.push(branch.id.clone());
         nodes.push(branch);
 
-        for (at, (_, line)) in banners(self).into_iter().enumerate() {
-            if at >= regions.banners.height as usize {
-                break;
-            }
+        let said = banners(self);
+        let laid = banner_rows(self, regions.banners.width, area.height);
+        for (at, first, rows) in laid.spans {
+            let line = &said[at].1;
             let rect = Rect::new(
                 regions.banners.x,
-                regions.banners.y + at as u16,
+                regions.banners.y + first as u16,
                 regions.banners.width,
-                1,
+                rows as u16,
             );
-            let mut node = Node::new(&format!("{id}/banner/{at}"), Role::Alert, &line, rect);
+            let mut node = Node::new(&format!("{id}/banner/{at}"), Role::Alert, line, rect);
             if at == 0
                 && let Some(confirm) = &self.confirm
             {
@@ -228,7 +228,7 @@ impl Changes {
         } else if self.state() == PanelState::Loading {
             list.state.busy = true;
         }
-        let all = rows(self, self.split_at(regions.list.width));
+        let all = rows(self, self.split_at(regions.list.width), regions.list.width);
         let height = regions.list.height as usize;
         let first = self.scroll().min(all.len().saturating_sub(height));
         let mut section: Option<(Node, Vec<Node>)> = None;

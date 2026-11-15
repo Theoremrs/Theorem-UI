@@ -271,6 +271,8 @@ pub(crate) enum Task {
     Release,
     /// The settle of a recovered operation: edits wait for its answer.
     Restore,
+    /// The checkpoint of the edits held behind an unsettled one.
+    Keep,
     Hover {
         revision: u64,
         version: u64,
@@ -553,6 +555,7 @@ impl EditorPanel {
             }
         }
         self.check_due(cx);
+        self.checkpoint(cx);
         self.need_pump = false;
     }
 

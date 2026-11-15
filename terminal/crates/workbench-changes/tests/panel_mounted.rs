@@ -79,11 +79,34 @@ impl Panel for Probe {
     }
 }
 
-/// A stand-in for the document panel the real workbench registers.
+thread_local! {
+    /// The paths whose stand-in document panel has an unsaved draft.
+    static DRAFTS: RefCell<std::collections::BTreeSet<String>> = const { RefCell::new(std::collections::BTreeSet::new()) };
+}
+
+/// A stand-in for the document panel the real workbench registers. It is bound
+/// to its document as the editor is, and its tab says modified while the test
+/// holds a draft for its path.
 struct Doc(String);
 
 impl Panel for Doc {
     fn update(&mut self, _msg: PanelMsg, _cx: &mut Ctx) {}
+    fn binding(&self) -> Option<theorem_workbench_core::stale::Binding> {
+        Some(theorem_workbench_core::stale::Binding {
+            resource: ResourceRef::Document {
+                workspace: "w".into(),
+                resource_id: self.0.clone(),
+            },
+            revision: Some(theorem_workbench_core::ids::Revision::Seq(7)),
+            generation: None,
+        })
+    }
+    fn tab_label(&self) -> Option<theorem_workbench_core::TabLabel> {
+        Some(theorem_workbench_core::TabLabel {
+            title: self.0.clone(),
+            modified: DRAFTS.with(|d| d.borrow().contains(&self.0)),
+        })
+    }
     fn view(&self, _area: Rect, _buf: &mut Buffer, _cx: &ViewCtx) {}
     fn semantics(&self, area: Rect, _cx: &ViewCtx) -> Vec<Node> {
         vec![Node::new(
@@ -3095,4 +3118,294 @@ fn an_unavailable_repository_is_told_apart_from_no_changes_in_the_text_and_the_n
         }
         assert_valid(&rig);
     }
+}
+
+// ---- R39: text a person must read is not cut at the pane edge ---------------
+
+/// The panel's body at the width the preset gives it in the rig's window, a narrow 24
+/// columns and a wide 120.
+const PANE_WIDTHS: [Option<u16>; 3] = [None, Some(24), Some(120)];
+
+impl Rig {
+    /// The window widened or narrowed until the dock gives the panel `want` columns.
+    fn sized(mut self, width: Option<u16>) -> Self {
+        let Some(want) = width else { return self };
+        for area in want..=900 {
+            self.send(Msg::Resize {
+                area: Rect::new(0, 0, area, 50),
+                metrics: CellMetrics::new(8.0, 16.0),
+            });
+            if self.body().width == want {
+                return self;
+            }
+        }
+        panic!("no window gives the panel {want} columns");
+    }
+
+    /// The panel drawn in its own body.
+    fn pane(&self) -> Vec<String> {
+        let b = self.body();
+        self.text(b.width, b.height)
+    }
+}
+
+/// Every word of `want` is in the rows, whole and in order, whatever row it wrapped onto.
+fn assert_words(rows: &[String], want: &str, what: &str) {
+    let shown: Vec<&str> = rows.iter().flat_map(|r| r.split_whitespace()).collect();
+    let mut at = 0;
+    for word in want.split_whitespace() {
+        match shown[at..].iter().position(|w| *w == word) {
+            Some(i) => at += i + 1,
+            None => panic!(
+                "{what}: `{word}` of `{want}` is not drawn:\n{}",
+                rows.join("\n")
+            ),
+        }
+    }
+}
+
+fn assert_keys(rows: &[String], what: &str) {
+    let screen = rows.join("\n");
+    assert!(
+        screen.contains("[ Confirm (y) ]") && screen.contains("[ Cancel (n) ]"),
+        "{what}: the answers are not on screen:\n{screen}"
+    );
+}
+
+const TAKE_TEXT_COST: &str =
+    "The file becomes our side whole. The lines only the other side has are lost.";
+const TAKE_BINARY_COST: &str =
+    "The file becomes our side whole. The other side's version of this binary file is lost.";
+
+#[test]
+fn the_take_question_and_its_loss_warning_wrap_whole_and_keep_their_keys_at_every_width() {
+    for (sides, cost, what) in [
+        (sides(true), TAKE_TEXT_COST, "a text file"),
+        (binary_sides(), TAKE_BINARY_COST, "a binary file"),
+    ] {
+        for width in PANE_WIDTHS {
+            let mut rig = conflicted().sized(width);
+            open_sides(&mut rig, sides.clone());
+            rig.ch('o');
+            let rows = rig.pane();
+            assert_words(&rows, "Take ours for both.rs?", what);
+            assert_words(&rows, cost, what);
+            assert_keys(&rows, what);
+            assert!(
+                !rows.iter().any(|r| r.contains('\u{2026}')),
+                "{what}: a row is cut with an ellipsis:\n{}",
+                rows.join("\n")
+            );
+            assert_valid(&rig);
+        }
+    }
+}
+
+#[test]
+fn a_binary_side_taken_whole_says_what_is_lost_without_talking_of_lines() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, binary_sides());
+    rig.ch('o');
+    let said = rig.banners().join(" ");
+    assert!(
+        said.contains("version of this binary file is lost"),
+        "{said}"
+    );
+    assert!(
+        !said.contains("lines"),
+        "a binary file has no lines: {said}"
+    );
+}
+
+#[test]
+fn when_the_dialog_is_taller_than_the_pane_the_answers_and_the_warning_stay() {
+    for height in [7, 9, 12] {
+        let mut rig = conflicted();
+        open_sides(&mut rig, binary_sides());
+        rig.ch('o');
+        let rows = rig.text(24, height);
+        assert_keys(&rows, "a short pane");
+        let screen = rows.join("\n");
+        assert!(
+            screen.contains("is lost."),
+            "height {height}: the end of the warning is cut:\n{screen}"
+        );
+    }
+}
+
+#[test]
+fn the_answers_still_answer_when_they_wrap_onto_two_rows() {
+    for width in PANE_WIDTHS {
+        let mut rig = loaded().sized(width);
+        rig.key(Key::Down);
+        rig.ch('d');
+        let (x, y) = rig.find("Cancel");
+        assert!(rig.press(x + 1, y, 1).is_empty());
+        assert!(rig.model().confirm_pending().is_none(), "{width:?}");
+        rig.ch('d');
+        let (x, y) = rig.find("Confirm");
+        once(&rig.press(x + 1, y, 1), "discard");
+    }
+}
+
+#[test]
+fn a_discard_question_and_its_cost_wrap_whole_at_every_width() {
+    for width in PANE_WIDTHS {
+        let mut rig = loaded().sized(width);
+        rig.key(Key::Down);
+        rig.ch('d');
+        let (title, cost) = rig.model().confirm_pending().unwrap().text();
+        let rows = rig.pane();
+        assert_words(&rows, &title, "discard");
+        assert_words(&rows, &cost, "discard");
+        assert_keys(&rows, "discard");
+    }
+}
+
+#[test]
+fn notices_receipts_and_drafts_wrap_whole_at_every_width() {
+    let reason = "the repository is locked by another process that has not finished its work yet";
+    for width in PANE_WIDTHS {
+        let mut rig = loaded().sized(width);
+        rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+        let effect = stage_readme(&mut rig);
+        rig.answer(
+            &effect,
+            Outcome::Refused {
+                code: "locked".into(),
+                reason: reason.into(),
+            },
+            None,
+        );
+        let said = rig.banners();
+        assert!(!said.is_empty());
+        let rows = rig.pane();
+        for line in &said {
+            assert_words(&rows, line, "a notice");
+        }
+        let tree = theorem_workbench_core::tree::semantics(&rig.m);
+        let top = rig.body().y;
+        for n in tree
+            .nodes
+            .iter()
+            .filter(|n| n.id.as_str().contains("/banner/"))
+        {
+            for y in n.rect.y..n.rect.y + n.rect.height {
+                let row = &rows[usize::from(y - top)];
+                assert!(
+                    !row.contains('\u{2026}'),
+                    "a banner row is cut with an ellipsis: {row:?}\n{}",
+                    rows.join("\n")
+                );
+            }
+        }
+    }
+    for width in PANE_WIDTHS {
+        let mut rig = loaded().sized(width);
+        rig.set_documents(vec![open_doc("README.md", Some(7), true)]);
+        let effect = stage_readme(&mut rig);
+        rig.accept(&effect, CompletionPayload::ScmState(common::repo(2)));
+        let said = rig.banners();
+        assert!(said.iter().any(|l| l.contains("Staged")), "{said:?}");
+        assert!(said.iter().any(|l| l.contains("Not included")), "{said:?}");
+        let rows = rig.pane();
+        for line in &said {
+            assert_words(&rows, line, "a receipt");
+        }
+    }
+}
+
+#[test]
+fn the_problem_rows_of_the_list_wrap_whole() {
+    let reason = "the owner of the repository did not answer in the time that it was given";
+    for width in PANE_WIDTHS {
+        let (rig, fx) = opened_with(&CAPS, "w");
+        let mut rig = rig.sized(width);
+        rig.answer(
+            &fx[0],
+            Outcome::Refused {
+                code: "unreadable".into(),
+                reason: reason.into(),
+            },
+            None,
+        );
+        let rows = rig.pane();
+        assert_words(
+            &rows,
+            "Source control is unavailable (unreadable)",
+            "headline",
+        );
+        assert_words(&rows, reason, "reason");
+    }
+}
+
+// ---- the core tells the mounted panel what the document panels hold ---------------
+
+#[test]
+fn a_document_panel_with_an_unsaved_draft_tags_its_path_in_the_mounted_changes_panel_until_it_is_saved_or_closed()
+ {
+    let mut rig = loaded();
+    // The person opens README.md from the list: a document panel, bound to it.
+    let (x, y) = rig.find("README.md");
+    rig.press(x + 2, y, 2);
+    let doc = rig
+        .m
+        .panel_ids()
+        .find(|(_, k)| k.as_str() == "document")
+        .map(|(id, _)| id.clone())
+        .expect("the file opened as a document");
+    rig.tick();
+    // Open and clean: the core tells the panel of it, and nothing is tagged.
+    assert!(
+        !rig.row_of("README.md").contains("draft"),
+        "{}",
+        rig.screen()
+    );
+    // The document has an unsaved draft: the tag is on its row, with no
+    // message sent to the Changes panel but the core's own.
+    DRAFTS.with(|d| d.borrow_mut().insert("README.md".into()));
+    rig.tick();
+    let marked = rig.row_of("README.md");
+    assert!(marked.contains("[unsaved draft]"), "{marked}");
+    // The document took the focus; the node tree has the focused panel's.
+    let changes = rig.id.clone();
+    rig.send(Msg::Dock(theorem_workbench_core::DockMsg::FocusPanel(
+        changes,
+    )));
+    let said = rig
+        .file_node("Unstaged", "README.md")
+        .state
+        .description
+        .expect("the node says it");
+    assert!(
+        said.contains("Unsaved draft") && said.contains("revision 7"),
+        "{said}"
+    );
+    for other in ["notes.txt", "main.rs"] {
+        assert!(!rig.row_of(other).contains("draft"), "{}", rig.screen());
+    }
+    // Saved: the tag goes.
+    DRAFTS.with(|d| d.borrow_mut().clear());
+    rig.tick();
+    assert!(
+        !rig.row_of("README.md").contains("draft"),
+        "{}",
+        rig.screen()
+    );
+    assert_eq!(
+        rig.file_node("Unstaged", "README.md").state.description,
+        None
+    );
+    // A draft again, then the document is closed: the tag goes with it.
+    DRAFTS.with(|d| d.borrow_mut().insert("README.md".into()));
+    rig.tick();
+    assert!(rig.row_of("README.md").contains("[unsaved draft]"));
+    rig.send(Msg::Dock(theorem_workbench_core::DockMsg::ClosePanel(doc)));
+    rig.tick();
+    assert!(
+        !rig.row_of("README.md").contains("draft"),
+        "{}",
+        rig.screen()
+    );
+    assert_valid(&rig);
 }

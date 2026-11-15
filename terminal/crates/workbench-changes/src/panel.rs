@@ -1214,6 +1214,7 @@ impl Panel for ChangesPanel {
                 | PanelMsg::Focus(_)
                 | PanelMsg::Cached(_)
                 | PanelMsg::Workspace(_)
+                | PanelMsg::Documents(_)
         );
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
@@ -1227,6 +1228,14 @@ impl Panel for ChangesPanel {
             PanelMsg::Completion(completion) => self.on_completion(completion, cx),
             PanelMsg::Host(message) => self.on_host(message),
             PanelMsg::Workspace(identity) => self.adopt(&identity),
+            // The root tells which documents are open and which hold a draft.
+            PanelMsg::Documents(documents) => {
+                self.set_documents(documents.into_iter().map(|d| crate::OpenDocument {
+                    path: d.path,
+                    saved_revision: d.saved_revision,
+                    unsaved: d.unsaved,
+                }))
+            }
             PanelMsg::Action(id) => self.on_action(&id, cx),
             // Focus changes the drawing (the root passes it in `ViewCtx`), not the state.
             // An answer for a workspace this panel left is not shown as the current one.

@@ -19,7 +19,7 @@ use crate::model::{
     ReadKind, SUBJECT,
 };
 use crate::status::{Change, LISTED, RowKey, Section};
-use crate::text::{visible, width};
+use crate::text::{visible, width, wrap};
 
 /// How a line of text is toned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -61,11 +61,14 @@ pub(crate) enum Row<'a> {
         right: Option<&'a DiffLine>,
         digits: usize,
     },
-    /// A line of words: a state, a note under a diff, a count.
+    /// A line of words: a state, a note under a diff, a count. `wrap` says whether the
+    /// words may need more than one row; [`rows`] has broken those already, so by the
+    /// time a row is drawn it fits the pane.
     Text {
         text: String,
         tone: Tone,
         indent: u16,
+        wrap: bool,
     },
     Branch {
         info: &'a BranchInfo,
@@ -79,11 +82,23 @@ impl Row<'_> {
     }
 }
 
+/// Words for the person: wrapped to the pane on spaces.
 fn text(text: impl Into<String>, tone: Tone) -> Row<'static> {
     Row::Text {
         text: text.into(),
         tone,
         indent: 0,
+        wrap: true,
+    }
+}
+
+/// A line of a file, a diff, a blame or a history: one row, cut at the pane edge.
+fn content(text: impl Into<String>, tone: Tone) -> Row<'static> {
+    Row::Text {
+        text: text.into(),
+        tone,
+        indent: 0,
+        wrap: false,
     }
 }
 
@@ -114,6 +129,7 @@ fn diff_rows<'a>(model: &'a Changes, key: &RowKey, split: bool, out: &mut Vec<Ro
         text: words.to_owned(),
         tone,
         indent: 2,
+        wrap: true,
     };
     if view.stale {
         out.push(note(
@@ -137,6 +153,7 @@ fn diff_rows<'a>(model: &'a Changes, key: &RowKey, split: bool, out: &mut Vec<Ro
             text: problem.text(),
             tone: problem_tone(problem),
             indent: 2,
+            wrap: true,
         }),
         DiffState::Unreadable(why) => {
             out.push(note(&format!("The diff could not be read: {why}"), Tone::Error))
@@ -178,9 +195,37 @@ fn diff_rows<'a>(model: &'a Changes, key: &RowKey, split: bool, out: &mut Vec<Ro
     }
 }
 
-/// The rows of the scrolling list. `split` is whether the diffs are drawn side by
-/// side at this width.
-pub(crate) fn rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
+/// The rows of the scrolling list, in a pane `width` cells wide. `split` is whether the
+/// diffs are drawn side by side at this width. Words that do not fit a row are broken
+/// onto more rows here, on spaces, so no row is cut when it is drawn.
+pub(crate) fn rows(model: &Changes, split: bool, width: u16) -> Vec<Row<'_>> {
+    let mut out = Vec::new();
+    for row in unwrapped_rows(model, split) {
+        match row {
+            Row::Text {
+                text,
+                tone,
+                indent,
+                wrap: true,
+            } => {
+                // Drawn one cell in, then the indent.
+                let room = usize::from(width).saturating_sub(usize::from(indent) + 1);
+                for line in crate::text::wrap(&text, room) {
+                    out.push(Row::Text {
+                        text: line,
+                        tone,
+                        indent,
+                        wrap: false,
+                    });
+                }
+            }
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+fn unwrapped_rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
     match model.mode {
         Mode::Branches => return branch_rows(model),
         Mode::Read if model.read.is_some() => return read_rows(model),
@@ -281,7 +326,7 @@ fn conflict_rows(sides: &ConflictSides, out: &mut Vec<Row<'_>>) {
             Some(body) => {
                 let digits = body.lines().count().to_string().len();
                 for (at, line) in body.lines().enumerate() {
-                    out.push(text(format!("{:>digits$} {line}", at + 1), Tone::Plain));
+                    out.push(content(format!("{:>digits$} {line}", at + 1), Tone::Plain));
                 }
             }
         }
@@ -328,7 +373,7 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
                     format!("{:>5}-{:<5}", hunk.start_line, last)
                 };
                 let commit: String = hunk.commit.chars().take(7).collect();
-                out.push(text(
+                out.push(content(
                     format!("{lines} {commit} {}  {}", hunk.author, hunk.summary),
                     Tone::Plain,
                 ));
@@ -364,13 +409,13 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
                 } else {
                     Tone::Plain
                 };
-                out.push(text(line, tone));
+                out.push(content(line, tone));
             }
         }
         ReadBody::Text { text: body, .. } => {
             let digits = body.lines().count().to_string().len();
             for (at, line) in body.lines().enumerate() {
-                out.push(text(format!("{:>digits$} {line}", at + 1), Tone::Plain));
+                out.push(content(format!("{:>digits$} {line}", at + 1), Tone::Plain));
             }
         }
         ReadBody::Conflict(sides) => conflict_rows(sides, &mut out),
@@ -381,7 +426,7 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
             for (at, entry) in commits.iter().enumerate() {
                 let commit: String = entry.commit.chars().take(7).collect();
                 let mark = if at == read.cursor { ">" } else { " " };
-                out.push(text(
+                out.push(content(
                     format!("{mark} {commit} {}  {}", entry.subject, entry.author),
                     if at == read.cursor { Tone::Cursor } else { Tone::Plain },
                 ));
@@ -476,9 +521,111 @@ pub(crate) fn banners(model: &Changes) -> Vec<(Tone, String)> {
 /// The confirmation's third line: the two answers, as they are clicked and as the keys
 /// name them.
 pub(crate) const CONFIRM_LINE: &str = "[ Confirm (y) ]  [ Cancel (n) ]";
-/// Where the two answers start in [`CONFIRM_LINE`], and how wide the first is.
+/// Where the two answers start in [`CONFIRM_LINE`], and how wide each is.
 const CONFIRM_AT: (u16, u16) = (0, 15);
 const CANCEL_AT: (u16, u16) = (17, 14);
+/// The answers one to a row, when [`CONFIRM_LINE`] does not fit the pane.
+const CONFIRM_ROW: &str = "[ Confirm (y) ]";
+const CANCEL_ROW: &str = "[ Cancel (n) ]";
+
+/// The banners laid out in a pane `width` by `height`: each wrapped on spaces to the
+/// width, whole banners dropped from the end when they do not all fit.
+pub(crate) struct BannerRows {
+    pub rows: Vec<(Tone, String)>,
+    /// Each banner that is shown: its index in [`banners`], its first row and its rows.
+    pub spans: Vec<(usize, usize, usize)>,
+    /// The two answers of a confirmation: what a click there means, the row, the column
+    /// and the width.
+    pub answers: Vec<(Hit, usize, u16, u16)>,
+}
+
+pub(crate) fn banner_rows(model: &Changes, width: u16, height: u16) -> BannerRows {
+    let all = banners(model);
+    let w = usize::from(width).max(1);
+    let confirming = model.confirm.is_some();
+    let one_row = w >= width_of(CONFIRM_LINE);
+    let mut blocks: Vec<(Tone, Vec<String>)> = all
+        .iter()
+        .enumerate()
+        .map(|(i, (tone, line))| {
+            let lines = if confirming && i == 2 {
+                if one_row {
+                    vec![CONFIRM_LINE.to_owned()]
+                } else {
+                    vec![CONFIRM_ROW.to_owned(), CANCEL_ROW.to_owned()]
+                }
+            } else {
+                wrap(line, w)
+            };
+            (*tone, lines)
+        })
+        .collect();
+    let third = usize::from(height / 3);
+    let mut keep: Vec<usize> = blocks.iter().map(|_| 0).collect();
+    if confirming {
+        // The dialog gets the pane but for the branch row. When it is taller than that,
+        // the answers stay, then the consequence, then the question's first rows.
+        let mut room = usize::from(height.saturating_sub(1));
+        for i in [2, 1, 0] {
+            let len = blocks.get(i).map_or(0, |b| b.1.len());
+            keep[i] = len.min(room);
+            room -= keep[i];
+        }
+        let used: usize = keep.iter().take(3).sum();
+        for i in 3..blocks.len() {
+            let len = blocks[i].1.len();
+            if used + keep[3..i].iter().sum::<usize>() + len <= third {
+                keep[i] = len;
+            }
+        }
+    } else {
+        let mut used = 0;
+        for (i, block) in blocks.iter().enumerate() {
+            let len = block.1.len();
+            if used + len <= third {
+                keep[i] = len;
+            } else if i == 0 {
+                // The first banner is shown in full unless the pane has no room.
+                keep[i] = len.min(usize::from(height.saturating_sub(2)));
+            } else {
+                break;
+            }
+            used += keep[i];
+        }
+    }
+    let mut out = BannerRows {
+        rows: vec![],
+        spans: vec![],
+        answers: vec![],
+    };
+    for (i, (tone, lines)) in blocks.iter_mut().enumerate() {
+        if keep[i] == 0 {
+            continue;
+        }
+        let first = out.rows.len();
+        if confirming && i == 2 {
+            if one_row {
+                out.answers
+                    .push((Hit::Confirm, first, CONFIRM_AT.0, CONFIRM_AT.1));
+                out.answers
+                    .push((Hit::Cancel, first, CANCEL_AT.0, CANCEL_AT.1));
+            } else {
+                out.answers.push((Hit::Confirm, first, 0, CONFIRM_AT.1));
+                if keep[i] > 1 {
+                    out.answers.push((Hit::Cancel, first + 1, 0, CANCEL_AT.1));
+                }
+            }
+        }
+        lines.truncate(keep[i]);
+        out.spans.push((i, first, lines.len()));
+        out.rows.extend(lines.drain(..).map(|l| (*tone, l)));
+    }
+    out
+}
+
+fn width_of(text: &str) -> usize {
+    width(text)
+}
 
 /// Where each fixed part of the panel sits in `area`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -504,7 +651,7 @@ pub(crate) fn regions(model: &Changes, area: Rect) -> Regions {
     let height = area.height;
     let branch_h = 1.min(height);
     // A banner never takes more than a third of the panel.
-    let banner_h = (banners(model).len() as u16).min(height / 3);
+    let banner_h = banner_rows(model, area.width, height).rows.len() as u16;
     let mut commit_h = if model.mode == Mode::Changes {
         commit_rows(height)
     } else {
@@ -670,17 +817,21 @@ impl Changes {
         }
         if inside(regions.banners) {
             let line = (y - regions.banners.y) as usize;
-            if line == 2 && self.confirm.is_some() {
-                let col = x - regions.banners.x;
-                let within = |(at, w): (u16, u16)| col >= at && col < at + w;
-                if within(CONFIRM_AT) {
-                    return Hit::Confirm;
-                }
-                if within(CANCEL_AT) {
-                    return Hit::Cancel;
-                }
+            let laid = banner_rows(self, regions.banners.width, area.height);
+            let col = x - regions.banners.x;
+            if let Some((hit, ..)) = laid
+                .answers
+                .iter()
+                .find(|(_, row, at, w)| *row == line && col >= *at && col < at + w)
+            {
+                return hit.clone();
             }
-            return Hit::Banner(line);
+            let banner = laid
+                .spans
+                .iter()
+                .find(|(_, first, rows)| line >= *first && line < first + rows)
+                .map_or(0, |(i, ..)| *i);
+            return Hit::Banner(banner);
         }
         if inside(regions.list) {
             return self.hit_list(
@@ -722,7 +873,7 @@ impl Changes {
     }
 
     fn hit_list(&self, list: Rect, x: u16, row: usize) -> Hit {
-        let all = rows(self, self.split_at(list.width));
+        let all = rows(self, self.split_at(list.width), list.width);
         let first = self
             .scroll()
             .min(all.len().saturating_sub(list.height as usize));
@@ -809,9 +960,12 @@ impl Changes {
                     .filter(|r| matches!(r, Row::Branch { .. }))
                     .count(),
             ),
-            Row::Text { .. } if self.mode == Mode::Read && index >= 2 => {
+            // The commits are the last rows of a history; the heading above them wraps.
+            Row::Text { .. } if self.mode == Mode::Read => {
                 match self.read.as_ref().map(|r| &r.body) {
-                    Some(ReadBody::History(c)) if index - 2 < c.len() => Hit::Commit(index - 2),
+                    Some(ReadBody::History(c)) if index + c.len() >= all.len() => {
+                        Hit::Commit(index + c.len() - all.len())
+                    }
                     _ => Hit::Nothing,
                 }
             }

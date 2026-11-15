@@ -21,7 +21,8 @@ pub use actions::{Choice, Descriptor, actions, descriptors, extend_registry};
 pub use field::Field;
 pub use find::Find;
 pub use owner::{
-    Disk, Held, Level, Note, Owed, OwnerSync, Restored, Saving, Step, Unknown, revision_number,
+    Checkpoint, Disk, Held, KEPT_BYTES, KEPT_EDITS, Level, Note, Owed, OwnerSync, Restored, Saving,
+    Step, Unknown, revision_number,
 };
 pub use panel::{Drafts, EditorPanel, KIND, register, register_with};
 pub use styles::EditorStyles;

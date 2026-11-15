@@ -261,7 +261,12 @@ pub enum Confirm {
     /// Bring a discarded change back over edits made since.
     Restore { path: String, restore_id: String },
     /// Take one side of a conflicted file whole, losing the other side's lines.
-    Take { path: String, side: Side },
+    Take {
+        path: String,
+        side: Side,
+        /// The file is binary: its sides are not lines.
+        binary: bool,
+    },
 }
 
 impl Confirm {
@@ -282,12 +287,19 @@ impl Confirm {
                     .join(" ");
                 (title, cost)
             }
-            Self::Take { path, side } => (
+            Self::Take { path, side, binary } => (
                 format!("Take {} for {}?", side.label(), shown(path)),
-                format!(
-                    "The file becomes {} side whole. The lines only the other side has are lost.",
-                    side.owner()
-                ),
+                if *binary {
+                    format!(
+                        "The file becomes {} side whole. The other side's version of this binary file is lost.",
+                        side.owner()
+                    )
+                } else {
+                    format!(
+                        "The file becomes {} side whole. The lines only the other side has are lost.",
+                        side.owner()
+                    )
+                },
             ),
             Self::Restore { path, .. } => (
                 format!("Restore {}?", shown(path)),
@@ -1233,7 +1245,7 @@ impl Changes {
             Confirm::Restore { path, restore_id } => {
                 Ok(vec![self.restore_intent(path, restore_id)])
             }
-            Confirm::Take { path, side } => {
+            Confirm::Take { path, side, .. } => {
                 let pending = Pending {
                     action: ActionKind::Resolve,
                     generation: 0,
@@ -1867,7 +1879,7 @@ impl Changes {
             return;
         };
         let at = {
-            let rows = crate::layout::rows(self, false);
+            let rows = crate::layout::rows(self, false, self.width);
             rows.iter().position(|row| row.is_file(&cursor))
         };
         if let Some(at) = at {
@@ -1894,7 +1906,7 @@ impl Changes {
     }
 
     pub(crate) fn row_count(&self) -> usize {
-        crate::layout::rows(self, false).len()
+        crate::layout::rows(self, false, self.width).len()
     }
 }
 

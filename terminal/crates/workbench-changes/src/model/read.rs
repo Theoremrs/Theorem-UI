@@ -250,7 +250,8 @@ impl Changes {
             return self.refuse(ActionKind::Resolve, Refusal::NotInConflict);
         };
         let path = path.to_owned();
-        self.confirm = Some(Confirm::Take { path, side });
+        let binary = self.conflict_binary();
+        self.confirm = Some(Confirm::Take { path, side, binary });
         Ok(())
     }
 

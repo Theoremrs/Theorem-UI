@@ -116,6 +116,31 @@ impl EditorPanel {
         }
     }
 
+    /// Ask the owner to keep, on this device, the edits held behind an
+    /// unsettled one, so a reload does not lose them. On a tick, so a run of
+    /// typing is one request, and with no revision, so a late answer is not
+    /// judged stale (and never answered for nobody) because an edit was
+    /// accepted meanwhile.
+    pub(super) fn checkpoint(&mut self, cx: &mut Ctx) {
+        let Some(d) = self.doc_mut() else { return };
+        let (keep, note) = d.sync.keep_owed(&d.session);
+        if let Some(n) = note {
+            d.notice(n.text, Tone::Warn);
+        }
+        let Some(keep) = keep else { return };
+        if let Ok(id) = self.emit(
+            cx,
+            self.resource(),
+            EffectBody::DocumentKeep(keep.clone()),
+            None,
+        ) {
+            self.outstanding.insert(id, Task::Keep);
+            if let Some(d) = self.doc_mut() {
+                d.sync.keep_asked(&keep);
+            }
+        }
+    }
+
     /// What a transition of the owner's state asks of the panel.
     pub(super) fn apply_step(&mut self, step: Step, cx: &mut Ctx) {
         if let Some(d) = self.doc_mut() {
@@ -191,6 +216,11 @@ impl EditorPanel {
             Task::Restore => {
                 let Some(d) = self.doc_mut() else { return };
                 let step = d.sync.restored_settled(&c);
+                self.apply_step(step, cx);
+            }
+            Task::Keep => {
+                let Some(d) = self.doc_mut() else { return };
+                let step = d.sync.keep_answered(&c);
                 self.apply_step(step, cx);
             }
         }
