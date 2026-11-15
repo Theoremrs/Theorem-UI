@@ -85,11 +85,16 @@ const mounts = new WeakMap<HTMLElement, Promise<CabinetHandle | undefined>>()
 /** An object URL for `blob` that lives exactly as long as its user. */
 function useObjectUrl(blob: Blob | undefined) {
   const [url, setUrl] = useState<string>()
+  // The URL is an external resource whose life is this effect's: it is made
+  // and revoked here, so state follows it rather than render creating it
+  // (which StrictMode's re-run would revoke under the image).
   useEffect(() => {
-    if (!blob) return setUrl(undefined)
-    const u = URL.createObjectURL(blob)
+    const u = blob && URL.createObjectURL(blob)
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUrl(u)
-    return () => URL.revokeObjectURL(u)
+    return () => {
+      if (u) URL.revokeObjectURL(u)
+    }
   }, [blob])
   return url
 }
