@@ -10,11 +10,11 @@
 //! `send` while a run works is refused with `run_active`; `input` is what a
 //! working run takes).
 //!
-//! Snapshots reach the panel two ways. Bound to a conversation, the core routes
-//! the ones for it as `PanelMsg::Host`. Before it is bound, and after the owner
-//! switches the main conversation under it, the core has no panel to route to
-//! and drops them, so [`Directory`] keeps the latest one the mount saw and the
-//! panel takes it on its next tick. Both go through one revision gate.
+//! Snapshots reach the panel through the core: bound to a conversation, the
+//! ones for it arrive as `PanelMsg::Host`, and the core replays the latest one
+//! it kept when the panel binds. A panel with no conversation yet learns which
+//! one the owner opened from the mount's [`Directory`]. One revision gate
+//! judges every snapshot.
 
 use std::{
     cell::{Cell, RefCell},
@@ -34,20 +34,20 @@ use ratzilla::event::{KeyCode, KeyEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    ActionId, Completion, Ctx, Effect, EffectBody, EffectId, HostMessage, Msg, OpenTarget, Outcome,
-    Panel, PanelMsg, PointerKind, ResourceRef, Revision, ViewCtx,
-    completion::CompletionPayload,
+    ActionId, Completion, Composition, Ctx, Effect, EffectBody, EffectId, HostMessage, Msg,
+    OpenTarget, Outcome, Panel, PanelMsg, PointerKind, ResourceRef, Revision, ViewCtx,
+    completion::{CompletionPayload, SideChatInfo},
     effect::{
         ApprovalDecision, ConversationApproval, ConversationCancel, ConversationEdit,
-        ConversationInput, ConversationRetry, ConversationSend,
+        ConversationInput, ConversationRetry, ConversationSend, SideChatOpen, SideChatScope,
     },
     semantics::{Node, NodeAction, Role},
     stale::Binding,
 };
 
 use crate::{
-    Action, Approval, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot, Token, now,
-    palette,
+    Action, Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot,
+    Token, now, palette,
 };
 
 // ---- the owner's snapshot ---------------------------------------------------------------
@@ -64,6 +64,41 @@ struct Owner {
     run: OwnerRun,
     approval: Option<OwnerApproval>,
     queued: Vec<OwnerQueued>,
+    history: Option<OwnerHistory>,
+}
+
+/// The thread's branches as the owner sends them: the root, then each fork oldest first.
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct OwnerHistory {
+    root_branch_id: String,
+    selected_branch_id: String,
+    forks: Vec<OwnerFork>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct OwnerFork {
+    branch_id: String,
+}
+
+impl OwnerHistory {
+    /// The selected branch's place, root first, when the thread has more than one branch.
+    fn position(&self) -> Option<(usize, usize)> {
+        if self.forks.is_empty() {
+            return None;
+        }
+        let total = self.forks.len() + 1;
+        let at = if self.selected_branch_id == self.root_branch_id {
+            0
+        } else {
+            self.forks
+                .iter()
+                .position(|f| f.branch_id == self.selected_branch_id)
+                .map_or(0, |i| i + 1)
+        };
+        Some((at + 1, total))
+    }
 }
 
 #[derive(Deserialize, Default)]
@@ -244,6 +279,11 @@ fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
         messages,
         outgoing,
         references: Vec::new(),
+        branches: owner
+            .history
+            .as_ref()
+            .and_then(OwnerHistory::position)
+            .map(|(position, total)| Branches { position, total }),
     }
 }
 
@@ -326,12 +366,12 @@ fn part_of(part: &OwnerPart) -> Part {
     }
 }
 
-// ---- the latest snapshot the mount saw ----------------------------------------------------
+// ---- the conversation the owner is showing ------------------------------------------------
 
-/// The newest conversation snapshot a host message carried, kept by the mount
-/// because the core only routes a snapshot to a panel already bound to its
-/// conversation. A panel not yet bound, or left behind by a switch, takes it
-/// from here on its tick.
+/// Which conversation the first snapshot named. The core retains the latest
+/// snapshot of each conversation and replays it to a panel when it binds, but
+/// a panel with no conversation yet has no resource to be replayed against:
+/// this tells it which one the owner opened, and the core does the rest.
 #[derive(Clone, Default)]
 pub(crate) struct Directory(Rc<RefCell<Option<Latest>>>);
 
@@ -339,34 +379,27 @@ pub(crate) struct Directory(Rc<RefCell<Option<Latest>>>);
 struct Latest {
     project: String,
     thread: String,
-    revision: u64,
-    json: String,
 }
 
 impl Directory {
-    /// Note a message on its way into the model.
+    /// Note a message on its way into the model. The first conversation named
+    /// is the owner's main one; side chats name their own and never replace it.
     pub(crate) fn observe(&self, msg: &Msg) {
         let Msg::Host(HostMessage::ConversationSnapshot {
             resource: ResourceRef::Conversation { project, thread },
-            revision: Revision::Seq(revision),
             conversation_id,
-            snapshot,
+            ..
         }) = msg
         else {
             return;
         };
-        if thread != conversation_id {
-            return;
-        }
         let mut held = self.0.borrow_mut();
-        if held.as_ref().is_some_and(|l| l.revision >= *revision) {
+        if thread != conversation_id || held.is_some() {
             return;
         }
         *held = Some(Latest {
             project: project.clone(),
             thread: thread.clone(),
-            revision: *revision,
-            json: snapshot.clone(),
         });
     }
 
@@ -417,9 +450,16 @@ enum Tracked {
     Retry,
     NewConversation,
     NewSideChat,
+    ListSideChats,
 }
 
 pub(crate) struct TheoPanel {
+    /// A side chat that has no conversation yet offers these rows.
+    choice: usize,
+    /// The side chats the owner said exist, once it has said.
+    existing: Vec<SideChatInfo>,
+    /// The owner has been asked which side chats exist.
+    listed: bool,
     kind: Kind,
     directory: Directory,
     session: RefCell<Session>,
@@ -468,6 +508,9 @@ impl TheoPanel {
         }
         let text = |key: &str| state[key].as_str().unwrap_or_default().to_owned();
         Self {
+            choice: 0,
+            existing: Vec::new(),
+            listed: false,
             kind,
             directory,
             session: RefCell::new(session),
@@ -557,22 +600,18 @@ impl TheoPanel {
         self.session.borrow_mut().set_snapshot(snapshot);
     }
 
+    /// A main panel with no conversation yet takes the one the owner is
+    /// showing; the core then replays its latest snapshot to the new binding.
     fn follow_directory(&mut self) -> bool {
-        if self.kind != Kind::Main {
+        if self.kind != Kind::Main || !self.thread.is_empty() {
             return false;
         }
         let Some(latest) = self.directory.latest() else {
             return false;
         };
-        if self.revision.is_some_and(|held| latest.revision <= held) {
-            return false;
-        }
-        self.adopt(
-            &latest.project,
-            &latest.thread,
-            latest.revision,
-            &latest.json,
-        );
+        self.project = latest.project;
+        self.thread = latest.thread;
+        self.revision = None;
         true
     }
 
@@ -744,27 +783,82 @@ impl TheoPanel {
         self.emit(cx, EffectBody::ConversationCreate, Tracked::NewConversation);
     }
 
-    /// A side chat starts fresh: a new thread in this project with nothing from
-    /// the main conversation, which is what the owner makes when no scope is named.
-    fn new_side_chat(&mut self, cx: &mut Ctx) {
-        let Some(project) = self
+    /// The project this side chat belongs to, once the owner has named one.
+    fn side_project(&mut self) -> Option<String> {
+        let project = self
             .directory
             .project()
-            .or_else(|| (!self.project.is_empty()).then(|| self.project.clone()))
-        else {
-            self.session
-                .borrow_mut()
-                .notify("the project is not known yet");
+            .or_else(|| (!self.project.is_empty()).then(|| self.project.clone()));
+        match project {
+            Some(project) => {
+                self.project.clone_from(&project);
+                Some(project)
+            }
+            None => {
+                self.session
+                    .borrow_mut()
+                    .notify("the project is not known yet");
+                None
+            }
+        }
+    }
+
+    /// Ask the owner for a side chat of the scope the person chose. The effect
+    /// names the project and no thread: the owner makes the id.
+    fn new_side_chat(&mut self, scope: SideChatScope, cx: &mut Ctx) {
+        if self.side_project().is_none() {
             return;
-        };
-        // The effect names the project and no thread: the owner makes the id.
-        self.project = project;
+        }
         let resource = self.resource();
-        match cx.emit(|id| Effect::new(id, resource, EffectBody::ConversationSideChat)) {
+        let open = SideChatOpen { scope: Some(scope) };
+        match cx.emit(|id| Effect::new(id, resource, EffectBody::ConversationSideChat(open))) {
             Ok(id) => {
                 self.tracked.insert(id, Tracked::NewSideChat);
             }
             Err(error) => self.session.borrow_mut().notify(error.to_string()),
+        }
+    }
+
+    /// Ask which side chats exist, once, when the chooser first shows.
+    fn list_side_chats(&mut self, cx: &mut Ctx) {
+        self.listed = true;
+        if self.side_project().is_none() {
+            self.listed = false;
+            return;
+        }
+        let resource = self.resource();
+        match cx.emit(|id| Effect::new(id, resource, EffectBody::ConversationSideList)) {
+            Ok(id) => {
+                self.tracked.insert(id, Tracked::ListSideChats);
+            }
+            Err(error) => self.session.borrow_mut().notify(error.to_string()),
+        }
+    }
+
+    /// What the chooser offers: a new side chat of each scope, then the ones
+    /// that exist.
+    fn rows(&self) -> Vec<ChooserRow> {
+        let mut rows: Vec<ChooserRow> = SCOPES.iter().map(|s| ChooserRow::New(*s)).collect();
+        rows.extend((0..self.existing.len()).map(ChooserRow::Existing));
+        rows
+    }
+
+    /// Do what the chosen row says: ask for a new chat, or join one that exists.
+    fn choose_row(&mut self, row: usize, cx: &mut Ctx) {
+        match self.rows().get(row).copied() {
+            Some(ChooserRow::New(scope)) => self.new_side_chat(scope, cx),
+            Some(ChooserRow::Existing(at)) => {
+                let Some(chat) = self.existing.get(at).cloned() else {
+                    return;
+                };
+                if self.side_project().is_none() {
+                    return;
+                }
+                self.thread = chat.conversation_id;
+                self.revision = None;
+                self.owner = Owner::default();
+            }
+            None => {}
         }
     }
 
@@ -823,7 +917,11 @@ impl TheoPanel {
                         .notify(format!("the answer was not taken: {reason}"));
                 }
             }
-            Tracked::Stop | Tracked::Retry | Tracked::NewConversation | Tracked::NewSideChat => {
+            Tracked::Stop
+            | Tracked::Retry
+            | Tracked::NewConversation
+            | Tracked::NewSideChat
+            | Tracked::ListSideChats => {
                 if let Some(reason) = said(&c.outcome) {
                     self.session.borrow_mut().notify(reason);
                 } else if let Outcome::Uncertain { reason } = &c.outcome {
@@ -847,6 +945,12 @@ impl TheoPanel {
                         self.revision = None;
                         self.owner = Owner::default();
                     }
+                    Some(CompletionPayload::ConversationSideList(list))
+                        if self.kind == Kind::Side =>
+                    {
+                        self.existing = list.chats;
+                        self.choice = self.choice.min(self.rows().len().saturating_sub(1));
+                    }
                     _ => {}
                 }
             }
@@ -861,8 +965,12 @@ impl TheoPanel {
             return;
         };
         if self.kind == Kind::Side && !self.bound() {
-            if event.code == KeyCode::Enter {
-                self.new_side_chat(cx);
+            let last = self.rows().len().saturating_sub(1);
+            match event.code {
+                KeyCode::Up => self.choice = self.choice.saturating_sub(1),
+                KeyCode::Down => self.choice = (self.choice + 1).min(last),
+                KeyCode::Enter => self.choose_row(self.choice, cx),
+                _ => {}
             }
             return;
         }
@@ -873,6 +981,17 @@ impl TheoPanel {
     }
 
     fn on_pointer(&mut self, x: i32, y: i32, kind: PointerKind, clicks: u8, cx: &mut Ctx) {
+        if self.kind == Kind::Side && !self.bound() {
+            if let PointerKind::Down(theorem_workbench_core::Button::Left) = kind
+                && x >= 0
+                && let Some(row) = usize::try_from(y - CHOOSER_TOP).ok()
+                && row < self.rows().len()
+            {
+                self.choice = row;
+                self.choose_row(row, cx);
+            }
+            return;
+        }
         match kind {
             PointerKind::Wheel { dy, .. } => {
                 let mut session = self.session.borrow_mut();
@@ -905,10 +1024,21 @@ impl TheoPanel {
                     (Some(id), Some(_)) if clicks >= 2 => {
                         self.session.borrow_mut().toggle(&id);
                     }
-                    (_, Some(open)) => cx.open(OpenTarget::File {
-                        workspace: cx.workspace().workspace.clone(),
-                        path: open.path,
-                    }),
+                    (_, Some(open)) => {
+                        let workspace = cx.workspace().workspace.clone();
+                        cx.open(match open.start {
+                            Some(line) => OpenTarget::FileAt {
+                                workspace,
+                                path: open.path,
+                                line,
+                                column: 1,
+                            },
+                            None => OpenTarget::File {
+                                workspace,
+                                path: open.path,
+                            },
+                        })
+                    }
                     (None, None) => {}
                 }
             }
@@ -970,6 +1100,13 @@ impl Panel for TheoPanel {
                     self.session.borrow_mut().paste(&text);
                 }
             }
+            // A finished composition is typed text; the preedit is not drawn.
+            PanelMsg::Composition(Composition::End { text }) if !text.is_empty() => {
+                if self.kind == Kind::Main || self.bound() {
+                    self.session.borrow_mut().paste(&text);
+                }
+            }
+            PanelMsg::Composition(_) => {}
             PanelMsg::Pointer(p) => self.on_pointer(p.x, p.y, p.kind, p.clicks, cx),
             PanelMsg::Completion(c) => self.completed(c),
             PanelMsg::Host(HostMessage::ConversationSnapshot {
@@ -992,14 +1129,25 @@ impl Panel for TheoPanel {
                         self.submit(text, cx);
                     }
                 }
-                "theo.switch" => self
-                    .session
-                    .borrow_mut()
-                    .notify("no other conversation is offered to switch to yet"),
-                "side-chat.create" => self.new_side_chat(cx),
+                // Switching a branch has no effect in the core yet: the owner's `switchTo` takes a
+                // thread, and a branch is a selection inside one.
+                "theo.switch" => self.session.borrow_mut().notify(
+                    "branches are shown here; switching one needs the owner's branch switch",
+                ),
+                "side-chat.create" if self.kind == Kind::Side && !self.bound() => {
+                    self.choose_row(self.choice, cx);
+                }
+                "side-chat.create" => {}
                 _ => {}
             },
             PanelMsg::Tick => {
+                if self.kind == Kind::Side
+                    && !self.bound()
+                    && !self.listed
+                    && self.directory.project().is_some()
+                {
+                    self.list_side_chats(cx);
+                }
                 let moved = self.follow_directory();
                 let live = {
                     let session = self.session.borrow();
@@ -1039,7 +1187,14 @@ impl Panel for TheoPanel {
             .style(Style::new().bg(p.bg).fg(p.ink))
             .render(area, buf);
         if self.kind == Kind::Side && !self.bound() {
-            draw_chooser(area, buf, cx.focused);
+            draw_chooser(
+                area,
+                buf,
+                cx.focused,
+                &self.rows(),
+                &self.existing,
+                self.choice,
+            );
             return;
         }
         if area.height < 6 {
@@ -1099,33 +1254,46 @@ impl Panel for TheoPanel {
         let mut children = Vec::new();
 
         if self.kind == Kind::Side && !self.bound() {
+            let rows = self.rows();
             let mut chooser = Node::new(
                 "chooser",
                 Role::Group,
                 "Choose a side chat",
-                Rect::new(area.x, area.y, area.width, area.height.min(6)),
-            );
-            let mut fresh = Node::new(
-                "chooser:fresh",
-                Role::Button,
-                "New side chat: a fresh thread in this project, nothing carried over",
                 Rect::new(
                     area.x,
-                    area.y + 2.min(area.height.saturating_sub(1)),
+                    area.y,
                     area.width,
-                    1,
+                    area.height.min(CHOOSER_TOP as u16 + rows.len() as u16),
                 ),
             );
-            fresh.state.focused = cx.focused;
-            fresh.actions = vec![NodeAction {
-                id: ActionId::new("side-chat.create"),
-                enabled: true,
-                reason: None,
-            }];
-            chooser.children = vec![fresh.id.clone()];
+            for (at, row) in rows.iter().enumerate() {
+                let (title, detail) = row.words(&self.existing);
+                let mut item = Node::new(
+                    &format!("chooser:{at}"),
+                    Role::MenuItem,
+                    &format!("{title}: {detail}"),
+                    Rect::new(
+                        area.x,
+                        area.y
+                            + (CHOOSER_TOP as u16 + at as u16).min(area.height.saturating_sub(1)),
+                        area.width,
+                        1,
+                    ),
+                );
+                item.state.selected = at == self.choice;
+                item.state.focused = cx.focused && at == self.choice;
+                if at == self.choice {
+                    item.actions = vec![NodeAction {
+                        id: ActionId::new("side-chat.create"),
+                        enabled: true,
+                        reason: None,
+                    }];
+                }
+                chooser.children.push(item.id.clone());
+                nodes.push(item);
+            }
             children.push(chooser.id.clone());
-            nodes.push(chooser);
-            nodes.push(fresh);
+            nodes.insert(0, chooser);
             root.children = children;
             let mut out = vec![root];
             out.extend(nodes);
@@ -1405,32 +1573,43 @@ impl Panel for TheoPanel {
 
 /// The empty Side chat: what choosing it offers, drawn instead of a composer
 /// that could send nowhere.
-fn draw_chooser(area: Rect, buf: &mut Buffer, focused: bool) {
+fn draw_chooser(
+    area: Rect,
+    buf: &mut Buffer,
+    focused: bool,
+    rows: &[ChooserRow],
+    existing: &[SideChatInfo],
+    choice: usize,
+) {
     let p = palette();
-    let lines = [
+    let mut lines = vec![
         Line::from(Span::styled(
             " Side chat",
             Style::new().fg(p.bright).add_modifier(Modifier::BOLD),
         )),
-        Line::default(),
-        Line::from(vec![
-            Span::styled(
-                " enter ",
-                Style::new()
-                    .fg(if focused { p.sage } else { p.muted })
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled("starts a new side chat", Style::new().fg(p.ink)),
-        ]),
         Line::from(Span::styled(
-            "   a fresh thread in this project; nothing from the main conversation carries over",
-            Style::new().fg(p.muted),
-        )),
-        Line::from(Span::styled(
-            "   nothing you type here reaches the main conversation",
+            " up and down choose, enter starts or joins; nothing typed here reaches the main conversation",
             Style::new().fg(p.muted),
         )),
     ];
+    for (at, row) in rows.iter().enumerate() {
+        let selected = at == choice;
+        let mark = if selected { "\u{25b8}" } else { " " };
+        let (title, detail) = row.words(existing);
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {mark} {title}"),
+                if selected {
+                    Style::new()
+                        .fg(if focused { p.sage } else { p.bright })
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::new().fg(p.ink)
+                },
+            ),
+            Span::styled(format!("  {detail}"), Style::new().fg(p.muted)),
+        ]));
+    }
     for (row, line) in lines.into_iter().enumerate() {
         let Some(y) = area.y.checked_add(row as u16) else {
             break;
@@ -1439,6 +1618,55 @@ fn draw_chooser(area: Rect, buf: &mut Buffer, focused: bool) {
             break;
         }
         line.render(Rect::new(area.x, y, area.width, 1), buf);
+    }
+}
+
+/// The row the chooser's first choice is drawn on, below its two heading lines.
+const CHOOSER_TOP: i32 = 2;
+
+const SCOPES: [SideChatScope; 3] = [
+    SideChatScope::Fresh,
+    SideChatScope::Continued,
+    SideChatScope::Forked,
+];
+
+/// One thing the Side chat chooser offers.
+#[derive(Clone, Copy)]
+enum ChooserRow {
+    /// A new side chat of this scope.
+    New(SideChatScope),
+    /// A side chat that exists: its place in the owner's list.
+    Existing(usize),
+}
+
+impl ChooserRow {
+    fn words(self, existing: &[SideChatInfo]) -> (String, String) {
+        match self {
+            Self::New(SideChatScope::Fresh) => (
+                "New side chat".into(),
+                "a fresh thread; nothing from the main conversation".into(),
+            ),
+            Self::New(SideChatScope::Continued) => (
+                "New side chat that continues this conversation".into(),
+                "starts from the main conversation's history".into(),
+            ),
+            Self::New(SideChatScope::Forked) => (
+                "New side chat forked from this conversation".into(),
+                "a copy of the main conversation as it is now, then its own".into(),
+            ),
+            Self::Existing(at) => match existing.get(at) {
+                Some(chat) => (
+                    format!("Join {}", chat.conversation_id),
+                    match chat.scope {
+                        SideChatScope::Fresh => "a fresh side chat",
+                        SideChatScope::Continued => "continues the main conversation",
+                        SideChatScope::Forked => "forked from the main conversation",
+                    }
+                    .into(),
+                ),
+                None => (String::new(), String::new()),
+            },
+        }
     }
 }
 
@@ -1486,7 +1714,7 @@ mod tests {
             registry,
             factories,
             keys,
-            Capabilities::of(["files", "conversation"]),
+            Capabilities::of(["files", "conversation", "conversation.side"]),
             dock,
         );
         update(
@@ -1698,11 +1926,21 @@ mod tests {
     }
 
     #[test]
-    fn a_snapshot_for_another_conversation_is_followed_after_a_switch() {
+    fn a_new_conversation_the_owner_opens_replaces_the_one_shown_and_takes_its_snapshots() {
         let mut r = rig();
         r.show(1, "t1", json!({"messages": [user("m1", "first thread")]}));
+        r.typed("/new");
+        let fx = r.enter();
+        let create = conversation_effects(&fx)[0];
+        let mut done = Completion::new(create.id, create.resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::ConversationOpened(
+            theorem_workbench_core::completion::ConversationOpened {
+                conversation_id: "t2".into(),
+            },
+        ));
+        r.send(Msg::Completion(done));
         r.show(9, "t2", json!({"messages": [user("m9", "second thread")]}));
-        assert!(r.drawn().contains("second thread"));
+        assert!(r.drawn().contains("second thread"), "{}", r.drawn());
         assert!(!r.drawn().contains("first thread"));
     }
 
@@ -1997,6 +2235,30 @@ mod tests {
     }
 
     #[test]
+    fn a_thread_with_forks_says_which_branch_is_selected() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({
+                "messages": [user("m1", "hi"), assistant("m2", json!([{"type": "text", "text": "hello"}]), "complete")],
+                "history": {
+                    "rootBranchId": "root",
+                    "selectedBranchId": "b2",
+                    "forks": [{"branchId": "b1"}, {"branchId": "b2"}]
+                }
+            }),
+        );
+        assert!(r.drawn().contains("branch 3 of 3"), "{}", r.drawn());
+        r.show(
+            2,
+            "t1",
+            json!({"messages": [user("m1", "hi")], "history": {"rootBranchId": "root", "selectedBranchId": "root", "forks": []}}),
+        );
+        assert!(!r.drawn().contains("branch 1 of"), "{}", r.drawn());
+    }
+
+    #[test]
     fn tool_results_diffs_attachments_and_run_states_are_drawn_from_the_snapshot() {
         let mut r = rig();
         let mut asked = user("m1", "fix the build");
@@ -2232,13 +2494,99 @@ mod tests {
         // Enter asks the owner for a new side chat, and only that.
         let effects = conversation_effects(&fx);
         assert_eq!(effects.len(), 1, "{fx:?}");
-        assert!(matches!(effects[0].body, EffectBody::ConversationSideChat));
+        assert!(matches!(
+            effects[0].body,
+            EffectBody::ConversationSideChat(_)
+        ));
         assert!(r.seen[before..].iter().all(|e| !matches!(
             e.kind(),
             EffectKind::ConversationSend | EffectKind::ConversationInput
         )));
         let drawn = r.drawn();
-        assert!(drawn.contains("starts a new side chat"), "{drawn}");
+        assert!(drawn.contains("New side chat"), "{drawn}");
+    }
+
+    #[test]
+    fn the_side_chat_chooser_asks_for_the_scope_the_person_chose() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(Msg::Action {
+            id: ActionId::new("side-chat.choose"),
+            actor: Actor::Human,
+        });
+        r.key(Key::Down, Mods::NONE);
+        let fx = r.enter();
+        let effects = conversation_effects(&fx);
+        let EffectBody::ConversationSideChat(open) = &effects[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(
+            open.scope,
+            Some(theorem_workbench_core::effect::SideChatScope::Continued)
+        );
+    }
+
+    #[test]
+    fn existing_side_chats_are_listed_by_the_owner_and_joined_by_choosing_one() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(Msg::Action {
+            id: ActionId::new("side-chat.choose"),
+            actor: Actor::Human,
+        });
+        r.send(Msg::Tick);
+        let list = r
+            .seen
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::ConversationSideList))
+            .cloned()
+            .expect("the chooser asks which side chats exist");
+        let mut done = Completion::new(list.id, list.resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::ConversationSideList(
+            theorem_workbench_core::completion::ConversationSideList {
+                chats: vec![theorem_workbench_core::completion::SideChatInfo {
+                    conversation_id: "side-9".into(),
+                    scope: theorem_workbench_core::effect::SideChatScope::Forked,
+                    from: Some("t1".into()),
+                    thread_id: None,
+                }],
+            },
+        ));
+        r.send(Msg::Completion(done));
+        assert!(r.drawn().contains("Join side-9"), "{}", r.drawn());
+        for _ in 0..3 {
+            r.key(Key::Down, Mods::NONE);
+        }
+        r.enter();
+        r.show(4, "side-9", json!({"messages": [user("s1", "side words")]}));
+        assert!(r.drawn().contains("side words"), "{}", r.drawn());
+    }
+
+    #[test]
+    fn a_host_without_side_chats_leaves_the_picker_row_unavailable_with_its_reason() {
+        let directory = Directory::default();
+        let mut m = model(&directory);
+        update(
+            &mut m,
+            Msg::Host(HostMessage::CapabilitiesChanged {
+                capabilities: Capabilities::of(["files", "conversation"]),
+            }),
+        );
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("side-chat.choose"),
+                actor: Actor::Human,
+            },
+        );
+        assert!(
+            !m.panel_ids().any(|(_, k)| k.as_str() == "side-chat"),
+            "no Side chat panel is opened for a host that cannot serve one"
+        );
+        assert!(
+            m.take_notice().is_some(),
+            "the refusal is told to the person"
+        );
     }
 
     #[test]

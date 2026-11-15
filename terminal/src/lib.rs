@@ -300,6 +300,15 @@ struct Snapshot {
     outgoing: Vec<Sent>,
     /// What the next turn carries, added from the IDE, shown over the prompt.
     references: Vec<String>,
+    /// Where this reply's thread stands among its branches, when it has more than one.
+    branches: Option<Branches>,
+}
+
+/// The selected branch's place among the thread's branches, the root first, both counted from 1.
+#[derive(Deserialize, Clone, Copy)]
+struct Branches {
+    position: usize,
+    total: usize,
 }
 
 /// Words the person sent to a working run, and how far they got.
@@ -1241,6 +1250,8 @@ impl Session {
             format!("↓ {} more · pgdn ", self.scroll_back)
         } else if self.snapshot.running {
             "enter sends · ctrl+c stop ".to_owned()
+        } else if let Some(branches) = self.snapshot.branches {
+            format!("branch {} of {} ", branches.position, branches.total)
         } else if self.has_output {
             let what = if self.expanded { "hide" } else { "show" };
             format!("ctrl+o {what} output ")

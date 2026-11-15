@@ -21,6 +21,12 @@ import { conversationServices } from '@/lib/workbench/conversation/runtime'
 import { createSideChatModel } from '@/lib/workbench/conversation/side-chat-model'
 import { createSideChats } from '@/lib/workbench/conversation/side-chats'
 import { useConversationRuntime } from '@/lib/workbench/conversation/use-conversation-runtime'
+import { createLanguage } from '@/lib/workbench/language/language'
+import { createLanguagePort } from '@/lib/workbench/language/port'
+import { createRunner } from '@/lib/workbench/run/run'
+import { createRunPort } from '@/lib/workbench/run/port'
+import { createSearch } from '@/lib/workbench/search/search'
+import { createSearchPort } from '@/lib/workbench/search/port'
 import { createDocuments } from '@/lib/workbench/documents/documents'
 import { createDocumentsPort } from '@/lib/workbench/documents/port'
 import { createFiles } from '@/lib/workbench/files/files'
@@ -182,7 +188,10 @@ export function WorkbenchSurface({
       <div
         className="relative flex h-full min-h-0 w-full flex-1 flex-col font-mono text-[12.5px]"
         onKeyDown={(event) => {
-          if (event.nativeEvent.isComposing) return
+          // Keys pressed during an IME composition belong to the composition, never to the
+          // workbench; some browsers report them only as keyCode 229.
+          if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229)
+            return
           if (handle.current?.key(event.nativeEvent)) {
             event.preventDefault()
             event.stopPropagation()
@@ -238,9 +247,20 @@ export function WorkbenchSurface({
               handle.current?.text_input(JSON.stringify({ text: field.value }))
             field.value = ''
           }}
+          onCompositionStart={() =>
+            handle.current?.composition(JSON.stringify({ type: 'start' }))
+          }
+          onCompositionUpdate={(event) =>
+            handle.current?.composition(
+              JSON.stringify({ type: 'update', text: event.data }),
+            )
+          }
           onCompositionEnd={(event) => {
-            if (event.data)
-              handle.current?.text_input(JSON.stringify({ text: event.data }))
+            // The committed text goes in as the end of the composition, once; the input event
+            // that follows it in some browsers finds the field already cleared.
+            handle.current?.composition(
+              JSON.stringify({ type: 'end', text: event.data }),
+            )
             event.currentTarget.value = ''
           }}
           onPaste={(event) => {
@@ -256,10 +276,9 @@ export function WorkbenchSurface({
 
 /**
  * The workbench of a project: the environment, then every owner that has a module (files, documents,
- * scm, the conversation and its side chats, the layout, the terminal, and the clipboard and artifact
- * cabinet of this app) under the adapter. The language, run and search owners have no module yet, so
- * their ports are left unset and the adapter reports those capabilities absent. Capabilities come from
- * the adapter, which derives them from the host's operations.
+ * scm, language, run and search, the conversation and its side chats, the layout, the terminal, and the
+ * clipboard and artifact cabinet of this app) under the adapter. Capabilities come from the adapter,
+ * which derives them from the host's operations.
  */
 export function Workbench({
   projectId,
@@ -270,7 +289,7 @@ export function Workbench({
 }) {
   const runtime = useConversationRuntime()
   const [sideChats] = useState(() =>
-    createSideChats(() => createSideChatModel(projectId)),
+    createSideChats((request) => createSideChatModel(projectId, request)),
   )
   const connect = useCallback(
     (dispatch: Dispatch): Adapter => {
@@ -310,6 +329,9 @@ export function Workbench({
         csrfToken: async () => (await bootstrap()).csrfToken,
       })
       const files = createFiles(environment)
+      const language = createLanguage(environment)
+      const runner = createRunner(environment)
+      const search = createSearch(environment)
       const conversation = createConversation({
         runtime,
         sideChats: sideChats.sideChats,
@@ -326,6 +348,9 @@ export function Workbench({
           files,
         }),
         scm: createScmPort(createScm(environment)),
+        language: createLanguagePort(language),
+        run: createRunPort(runner),
+        search: createSearchPort(search),
         conversation: createConversationPort({
           conversation,
           project: projectId,
@@ -339,6 +364,9 @@ export function Workbench({
         dispose() {
           unsubscribe()
           adapter.dispose()
+          language.dispose()
+          runner.dispose()
+          search.dispose()
           conversation.dispose()
           live.close()
           void checkpoints.dispose()

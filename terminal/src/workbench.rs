@@ -24,8 +24,8 @@ use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    ActionId, Actor, Button, Capability, Effect, Inbound, Model, Msg, PanelFactories, Pointer,
-    PointerKind, Theme, builtin,
+    ActionId, Actor, Button, Capability, Composition, Effect, Inbound, Model, Msg, PanelFactories,
+    Pointer, PointerKind, Theme, builtin,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
@@ -48,7 +48,64 @@ fn factories(conversations: &Directory) -> PanelFactories {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
     theo::register(&mut factories, conversations);
+    theorem_workbench_process::register(&mut factories, process_styles(), load_nonce());
+    theorem_workbench_changes::register(&mut factories);
+    theorem_workbench_editor::register(&mut factories);
     factories
+}
+
+/// The registry the model starts from: the core's own, with the workflow
+/// actions the process pane, Changes and the editor add to their kinds.
+fn registry() -> theorem_workbench_core::registry::Registry {
+    let mut registry = builtin::registry();
+    theorem_workbench_process::extend_registry(&mut registry)
+        .expect("the process actions extend the shell kind once");
+    theorem_workbench_changes::extend_registry(&mut registry)
+        .expect("the Changes actions extend the changes kind once");
+    theorem_workbench_editor::extend_registry(&mut registry)
+        .expect("the editor actions extend the document kind once");
+    registry
+}
+
+/// The process pane's colours from the page's palette: the sixteen ANSI colours
+/// take the palette's roles (black the deep surface, red the error colour, and
+/// so on), the default pair is ink on the surface, and the overlays are the
+/// selection and a search tint.
+fn process_styles() -> theorem_workbench_process::ProcessStyles {
+    use theorem_workbench_vt::Palette as Vt;
+    let p = palette();
+    let ansi = [
+        p.deep,
+        p.error,
+        p.success,
+        p.warning,
+        p.link,
+        p.syntax_keyword,
+        p.accent,
+        p.ink,
+        p.muted,
+        p.error,
+        p.success,
+        p.warning,
+        p.link,
+        p.syntax_keyword,
+        p.accent,
+        p.bright,
+    ];
+    theorem_workbench_process::ProcessStyles::new(Vt {
+        fg: p.ink,
+        bg: p.bg,
+        ansi,
+        selection: Style::new().bg(p.selection),
+        search_match: Style::new().bg(p.disabled),
+        search_current: Style::new().bg(p.warning).fg(p.bg),
+    })
+}
+
+/// Different on every page load, so input ids and attachment names never repeat
+/// across reloads.
+fn load_nonce() -> String {
+    format!("{:x}", crate::now() as u64)
 }
 
 /// The core's style roles from the terminal's palette roles, so the workbench
@@ -278,6 +335,26 @@ struct TextInput {
     text: String,
 }
 
+/// One step of an input-method composition from the page's input surface
+/// (`compositionstart`, `compositionupdate`, `compositionend`).
+#[derive(Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+enum CompositionInput {
+    Start,
+    Update { text: String },
+    End { text: String },
+}
+
+impl From<CompositionInput> for Composition {
+    fn from(input: CompositionInput) -> Self {
+        match input {
+            CompositionInput::Start => Composition::Start,
+            CompositionInput::Update { text } => Composition::Update { text },
+            CompositionInput::End { text } => Composition::End { text },
+        }
+    }
+}
+
 // --- first frame -------------------------------------------------------------------------
 
 /// Something that happens once, when a frame has first been drawn, for a
@@ -359,7 +436,7 @@ impl Core {
     }
 
     fn new(platform: Platform) -> Self {
-        let registry = builtin::registry();
+        let registry = registry();
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
         let (dock, _regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
         let conversations = Directory::default();
@@ -661,6 +738,15 @@ impl WorkbenchHandle {
         Ok(())
     }
 
+    /// A composition step (JSON `{type: "start"}`, `{type: "update", text}` or
+    /// `{type: "end", text}`). The committed text of an `end` arrives here and
+    /// never also through `text_input`.
+    pub fn composition(&self, json: &str) -> Result<(), JsValue> {
+        let input: CompositionInput = serde_json::from_str(json).map_err(js_error)?;
+        self.send(Msg::Composition(input.into()));
+        Ok(())
+    }
+
     pub fn paste(&self, text: &str) {
         self.send(Msg::Paste(text.to_owned()));
     }
@@ -802,6 +888,26 @@ mod tests {
             key_input("ContextMenu", none).map(|k| k.key()),
             Some(Key::Menu)
         );
+    }
+
+    #[test]
+    fn composition_steps_from_the_page_become_core_composition_messages() {
+        let step =
+            |json: &str| Composition::from(serde_json::from_str::<CompositionInput>(json).unwrap());
+        assert_eq!(step(r#"{"type":"start"}"#), Composition::Start);
+        assert_eq!(
+            step(r#"{"type":"update","text":"にほ"}"#),
+            Composition::Update {
+                text: "にほ".into()
+            }
+        );
+        assert_eq!(
+            step(r#"{"type":"end","text":"日本"}"#),
+            Composition::End {
+                text: "日本".into()
+            }
+        );
+        assert!(serde_json::from_str::<CompositionInput>(r#"{"type":"middle"}"#).is_err());
     }
 
     #[test]
@@ -1036,6 +1142,132 @@ mod tests {
                 project: "p".into(),
                 thread: "t1".into()
             }
+        );
+    }
+
+    /// The model's drawing as text, one row per line.
+    fn drawn(core: &Core) -> String {
+        let mut buf = ratatui::buffer::Buffer::empty(AREA);
+        view(&core.model, AREA, &mut buf, &core.theme);
+        (0..AREA.height)
+            .map(|y| {
+                (0..AREA.width)
+                    .map(|x| buf[(x, y)].symbol().to_owned())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn granted(core: &mut Core, words: &[&'static str]) {
+        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(words.iter().copied()),
+        }));
+    }
+
+    fn kinds(core: &Core) -> Vec<String> {
+        core.model
+            .panel_ids()
+            .map(|(_, k)| k.as_str().to_owned())
+            .collect()
+    }
+
+    #[test]
+    fn text_typed_into_a_fresh_workbench_lands_in_the_composer() {
+        let mut core = core();
+        granted(&mut core, &["files", "conversation"]);
+        core.step(AREA, CELL, Theme::plain());
+        assert!(!core.model.focus().modal, "no picker is open");
+        let (consumed, _) = core.key(press("h"));
+        assert!(
+            !consumed,
+            "a printable key is left to the host-input textarea"
+        );
+        core.update(Msg::Text("hello composer".into()));
+        core.step(AREA, CELL, Theme::plain());
+        let text = drawn(&core);
+        assert!(text.contains("hello composer"), "{text}");
+        assert!(!core.model.picker().is_open());
+    }
+
+    #[test]
+    fn the_process_pane_changes_and_the_editor_are_registered_and_open_from_their_actions() {
+        let mut core = core();
+        granted(
+            &mut core,
+            &["files", "environment", "terminal", "scm", "documents"],
+        );
+        core.step(AREA, CELL, Theme::plain());
+        for (action, kind) in [("shell.choose", "shell"), ("changes.open", "changes")] {
+            core.focus(action);
+            assert!(
+                kinds(&core).contains(&kind.to_owned()),
+                "{action} opens a {kind} panel: {:?}",
+                kinds(&core)
+            );
+        }
+        // Not a placeholder: the registered panels serve their kinds.
+        assert!(
+            core.model
+                .panel_ids()
+                .all(|(id, _)| !core.model.is_unavailable(id))
+        );
+        // The workflow actions the crates add to their kinds resolve.
+        for id in ["shell.attach", "shell.end.confirm", "changes.stage"] {
+            assert!(
+                core.model.registry().action(&ActionId::new(id)).is_some(),
+                "{id} is in the registry"
+            );
+        }
+    }
+
+    #[test]
+    fn opening_a_file_from_files_opens_the_editor_for_it() {
+        use theorem_workbench_core::{
+            completion::{
+                Completion, CompletionPayload, FileEntry, FileKind, FileListing, Outcome,
+            },
+            effect::EffectBody,
+        };
+        let mut core = core();
+        granted(&mut core, &["files", "documents"]);
+        core.update(Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: Some("e".into()),
+        }));
+        let mut effects = core.step(AREA, CELL, Theme::plain()).effects;
+        effects.extend(core.step(AREA, CELL, Theme::plain()).effects);
+        let list = effects
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::FilesList(_)))
+            .expect("Files asks the host for the root listing");
+        let mut done = Completion::new(list.id, list.resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::Files(FileListing {
+            entries: vec![FileEntry::new("README.md", FileKind::File)],
+            partial: false,
+        }));
+        core.update(Msg::Completion(done));
+        core.step(AREA, CELL, Theme::plain());
+        core.focus("files.focus");
+        core.update(Msg::Key(press("Down")));
+        let mut effects = core.update(Msg::Key(press("Enter")));
+        effects.extend(core.step(AREA, CELL, Theme::plain()).effects);
+        assert!(
+            kinds(&core).contains(&"document".to_owned()),
+            "the file opens in the editor: {:?}\n{}",
+            kinds(&core),
+            drawn(&core)
+        );
+        effects.extend(core.step(AREA, CELL, Theme::plain()).effects);
+        let opens = |e: &theorem_workbench_core::Effect| {
+            matches!(&e.body, EffectBody::DocumentOpen(_))
+                && matches!(&e.resource, theorem_workbench_core::ResourceRef::Document { resource_id, .. } if resource_id == "README.md")
+        };
+        assert!(
+            effects.iter().any(opens),
+            "the editor reads README.md through the core: {effects:?}"
         );
     }
 

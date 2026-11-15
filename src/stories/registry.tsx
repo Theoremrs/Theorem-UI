@@ -49,8 +49,13 @@ import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
 import {
+  WorkbenchChangesStory,
   WorkbenchDefaultStory,
+  WorkbenchEditorConflictStory,
+  WorkbenchEditorStory,
+  WorkbenchFilesStory,
   WorkbenchPickerStory,
+  WorkbenchTerminalStory,
 } from '@/components/workbench/workbench-story'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
@@ -776,6 +781,11 @@ const ORACLE_RTL_CONTENT = [
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-default': WorkbenchDefaultStory,
   'workbench-picker': WorkbenchPickerStory,
+  'workbench-files': WorkbenchFilesStory,
+  'workbench-terminal': WorkbenchTerminalStory,
+  'workbench-editor': WorkbenchEditorStory,
+  'workbench-editor-conflict': WorkbenchEditorConflictStory,
+  'workbench-changes': WorkbenchChangesStory,
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,

@@ -53,6 +53,11 @@ export const STORIES: readonly StoryMeta[] = [
     lane: 'original',
     viewport: { width: 1280, height: 640 },
   },
+  { id: 'workbench-files', title: 'Workbench: Files with a symlink, ignored, hidden and partial listing', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-editor', title: 'Workbench: the editor with tabs, CJK, ZWJ emoji, a wrapped line and a selection', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-editor-conflict', title: 'Workbench: the editor with a disk conflict', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',
     title: 'Workbench: the tool picker in two columns',

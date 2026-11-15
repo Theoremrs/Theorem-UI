@@ -1,210 +1,164 @@
-// SOURCING: none — the story's fixture owner: an Adapter whose answers are committed constants, so the real wasm workbench draws with no network and no clock. It uses WorkbenchSurface; nothing else applies.
+// SOURCING: none — the stories' scripted fixture workbench: the real wasm workbench over createFixtureHost, driven by real key events and typed text on its own input surface. It uses WorkbenchSurface; nothing else applies.
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { Adapter } from '@/lib/workbench/adapter'
-import { snapshotMessage } from '@/lib/workbench/conversation/conversation'
-import type { Completion, Effect, FileListing } from '@/lib/workbench/wire'
-import { STORY_CONVERSATION } from './conversation-fixture'
+import { createFixtureHost } from './fixture-host'
+import type { FixtureHost, FixtureOptions } from './fixture-host'
+import { FILES_TREE } from './fixtures'
 import { WorkbenchSurface } from './workbench'
 import type { Dispatch, SemanticsFeed } from './workbench'
 
-/** What the fixture host reports it can do: the files owner only, so the picker lists the rest as unavailable. */
+/** What the picker lists as live: every tool the fixture host can serve. */
+const EVERY_TOOL = [
+  'files',
+  'environment',
+  'documents',
+  'scm',
+  'terminal',
+  'terminal.native',
+  'conversation',
+  'conversation.side',
+  'scm.commit.amend',
+  'language',
+]
+
+/** What the first stories' host can do: the files owner only, so the picker lists the rest as unavailable. */
 const FILES_ONLY = ['files']
 
-/** The picker story's host can serve every tool the picker lists, so its rows are all live, as in the reference. */
-const EVERY_TOOL = ['files', 'scm', 'terminal', 'documents', 'conversation']
-
-type Entries = FileListing['entries']
-
-/** The fixture workspace's tree, by directory path: folders, files, one ignored, one hidden, one symlink. */
-const TREE: Record<string, Entries> = {
-  '': [
-    { name: 'src', kind: 'directory' },
-    { name: 'docs', kind: 'directory' },
-    { name: 'node_modules', kind: 'directory', ignored: true },
-    { name: '.github', kind: 'directory', hidden: true },
-    { name: 'latest', kind: 'symlink' },
-    { name: 'Cargo.toml', kind: 'file' },
-    { name: 'README.md', kind: 'file' },
-    { name: 'package.json', kind: 'file' },
-  ],
-  src: [
-    { name: 'components', kind: 'directory' },
-    { name: 'lib.rs', kind: 'file' },
-    { name: 'main.rs', kind: 'file' },
-  ],
-  'src/components': [
-    { name: 'button.rs', kind: 'file' },
-    { name: 'panel.rs', kind: 'file' },
-  ],
-  docs: [
-    { name: 'architecture.md', kind: 'file' },
-    { name: 'notes.md', kind: 'file' },
-  ],
-  node_modules: [{ name: 'left-pad', kind: 'directory', ignored: true }],
-  '.github': [{ name: 'workflows', kind: 'directory', hidden: true }],
-}
-
-/** A path as the tree keys it: no leading `./` or `/`, no trailing `/`. */
-const treeKey = (path: string) =>
-  path.replace(/^\.?\/*/, '').replace(/\/+$/, '')
-
 /**
- * An adapter with one owner behind it: the fixed file tree above, answering `filesList`. Every
- * other effect is refused with `owner_unavailable`, as the real adapter answers an owner that
- * does not exist. The workspace and the capability set are announced once.
+ * One scripted step, performed as a person would: a chord or key on the host, text into the input
+ * surface, a wait for the semantic tree to name something, or a call on the fixture host.
  */
-function fixtureAdapter(
-  dispatch: Dispatch,
-  granted: string[],
-  performed: (kind: string) => void,
-  transcript: boolean,
-): Adapter {
-  let live = true
-  queueMicrotask(() => {
-    if (!live) return
-    dispatch({
-      channel: 'host',
-      type: 'workspaceChanged',
-      workspace: 'story-workspace',
-      environment: 'story',
-    })
-    dispatch({
-      channel: 'host',
-      type: 'capabilitiesChanged',
-      capabilities: { granted },
-    })
-    // The conversation owner's first snapshot, as its port sends one at connect.
-    if (transcript)
-      dispatch({
-        channel: 'host',
-        ...snapshotMessage('story-project', STORY_CONVERSATION),
-      })
-  })
-  return {
-    perform(effect: Effect) {
-      performed(effect.kind)
-      const listing =
-        effect.kind === 'filesList'
-          ? TREE[treeKey(effect.payload.path)]
-          : undefined
-      const completion: Completion = listing
-        ? {
-            effect: effect.id,
-            resource: effect.resource,
-            outcome: { status: 'accepted' },
-            payload: { type: 'files', entries: listing, partial: false },
-          }
-        : {
-            effect: effect.id,
-            resource: effect.resource,
-            outcome: {
-              status: 'refused',
-              code: 'owner_unavailable',
-              reason: 'This story has no owners',
-            },
-          }
-      queueMicrotask(
-        () => live && dispatch({ channel: 'completion', ...completion }),
-      )
-    },
-    dispose() {
-      live = false
-    },
-  }
-}
+export type Step =
+  | { chord: 'e' | 't' | 'g' | 's' }
+  | { key: string; shift?: boolean; ctrl?: boolean }
+  | { text: string }
+  | { see: string }
+  | { host: (host: FixtureHost) => void }
 
-/** The tool picker's chord, `Mod+Alt+T`: Cmd on a Mac, Ctrl elsewhere (the core's own table). */
-function openPicker(host: HTMLElement) {
-  const mac = /Mac/.test(navigator.platform)
-  host.dispatchEvent(
-    new KeyboardEvent('keydown', {
-      key: 't',
-      altKey: true,
-      metaKey: mac,
-      ctrlKey: !mac,
-      bubbles: true,
-    }),
+const mac = () => /Mac/.test(navigator.platform)
+
+function press(
+  target: HTMLElement,
+  init: KeyboardEventInit & { key: string },
+) {
+  target.dispatchEvent(
+    new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
   )
 }
 
-/** What every story waits to see: the fixture tree's last file, and the picker's last row. */
-const SHOWN = ['README.md', 'More tools']
+function type(input: HTMLTextAreaElement, text: string) {
+  input.focus()
+  input.value = text
+  input.dispatchEvent(
+    new InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }),
+  )
+}
 
-/** What a story with a transcript also waits for: the pending approval's control. */
-const SHOWN_TRANSCRIPT = [...SHOWN, 'Allow']
+const frames = (count: number) =>
+  new Promise<void>((resolve) => {
+    const next = (left: number) =>
+      requestAnimationFrame(() => (left <= 1 ? resolve() : next(left - 1)))
+    next(count)
+  })
 
-/** Calls `onShown` two frames after the semantic tree has named everything the story waits to see. */
-function ReadyWhenShown({
-  feed,
-  onShown,
-  wait,
-}: {
-  feed: SemanticsFeed
-  onShown: () => void
-  wait: string[]
-}) {
-  useEffect(() => {
-    let seen = feed.latest ?? ''
-    let frames: number[] = []
-    let done = false
-    const check = () => {
-      if (done || !wait.every((text) => seen.includes(text))) return
-      done = true
-      frames = [
-        requestAnimationFrame(() => {
-          frames = [requestAnimationFrame(onShown)]
-        }),
-      ]
-    }
-    check()
+/** Resolves once the semantic tree has named `text`, or after a generous bound so a story never hangs. */
+function seen(feed: SemanticsFeed, text: string) {
+  return new Promise<void>((resolve) => {
+    let all = feed.latest ?? ''
+    if (all.includes(text)) return resolve()
     const stop = feed.subscribe((update) => {
-      seen += update
-      check()
+      all += update
+      if (all.includes(text)) {
+        stop()
+        resolve()
+      }
     })
-    return () => {
+    setTimeout(() => {
       stop()
-      frames.forEach(cancelAnimationFrame)
-    }
-  }, [feed, onShown, wait])
-  return null
+      resolve()
+    }, 8000)
+  })
 }
 
 /**
- * The real wasm workbench over the fixture host at a fixed size: no network, no clock. The picker is
- * opened with its chord once the first frame is on the page. `data-last-effect` names the kind of the
- * last effect the core asked the host for, which is how a story shows a pointer or key reached it.
+ * The real wasm workbench over the fixture host at a fixed size: no network, no clock. After the
+ * first frame the script runs, one step at a time, with two frames of rest after each; the story is
+ * pending until the script is done and the semantic tree names every text in `wait`.
+ * `data-last-effect` names the kind of the last effect the core asked the host for.
  */
 function FixtureStory({
   id,
   width,
   height,
-  granted,
-  transcript = false,
+  options,
+  script,
+  wait,
 }: {
   id: string
   width: number
   height: number
-  granted: string[]
-  /** Whether the conversation owner has a transcript to show. */
-  transcript?: boolean
+  options: Omit<FixtureOptions, 'performed'>
+  script: Step[]
+  /** What the semantic tree must name before the story is ready. */
+  wait: string[]
 }) {
   const box = useRef<HTMLDivElement>(null)
+  const feedRef = useRef<SemanticsFeed>(undefined)
+  const hostRef = useRef<FixtureHost>(undefined)
   const [lastEffect, setLastEffect] = useState<string>()
-  const connect = useCallback(
-    (dispatch: Dispatch) =>
-      fixtureAdapter(dispatch, granted, setLastEffect, transcript),
-    [granted, transcript],
-  )
-  // Pending until the first frame is on the page, the picker's chord has been sent, and the semantic
-  // tree (published with each frame) has carried both the first listing's row and the picker's last
-  // row; then two more frames, so what the tree named is on the page.
   const [drawn, setDrawn] = useState(false)
   const [ready, setReady] = useState(false)
-  const markReady = useCallback(() => setReady(true), [])
+  const connect = useCallback(
+    (dispatch: Dispatch) => {
+      const host = createFixtureHost(dispatch, {
+        ...options,
+        performed: setLastEffect,
+      })
+      hostRef.current = host
+      return host
+    },
+    // The options of a story are constants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
   useEffect(() => {
     if (!drawn) return
-    const element = box.current?.querySelector<HTMLElement>('[id^=workbench-]')
-    if (element) openPicker(element.parentElement ?? element)
+    const root = box.current
+    const feed = feedRef.current
+    const fixture = hostRef.current
+    const element = root?.querySelector<HTMLElement>('[id^=workbench-]')
+    const input = root?.querySelector('textarea')
+    if (!root || !feed || !fixture || !element || !input) return
+    const stop = new AbortController()
+    void (async () => {
+      for (const step of script) {
+        if (stop.signal.aborted) return
+        if ('chord' in step)
+          press(element, {
+            key: step.chord,
+            altKey: true,
+            metaKey: mac(),
+            ctrlKey: !mac(),
+          })
+        else if ('key' in step)
+          press(element, {
+            key: step.key,
+            shiftKey: step.shift,
+            ctrlKey: step.ctrl,
+          })
+        else if ('text' in step) type(input, step.text)
+        else if ('see' in step) await seen(feed, step.see)
+        else step.host(fixture)
+        await frames(3)
+      }
+      for (const text of wait) await seen(feed, text)
+      await frames(2)
+      if (!stop.signal.aborted) setReady(true)
+    })()
+    return () => {
+      stop.abort()
+    }
+    // The script runs once, after the first frame.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drawn])
   return (
     <div
@@ -216,27 +170,28 @@ function FixtureStory({
       className="flex flex-col overflow-hidden"
     >
       <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)}>
-        {(feed) => (
-          <ReadyWhenShown
-            feed={feed}
-            onShown={markReady}
-            wait={transcript ? SHOWN_TRANSCRIPT : SHOWN}
-          />
-        )}
+        {(feed) => {
+          feedRef.current = feed
+          return null
+        }}
       </WorkbenchSurface>
     </div>
   )
 }
 
-/** `workbench-default`: Files, main and tools at 1280x640, the picker open in the tools region. */
+/** The picker's chord, then the story waits for the picker's last row. */
+const OPEN_PICKER: Step[] = [{ chord: 't' }, { see: 'More tools' }]
+
+/** `workbench-default`: Files, the conversation and tools at 1280x640, the picker open in the tools region. */
 export function WorkbenchDefaultStory() {
   return (
     <FixtureStory
       id="workbench-default"
       width={1280}
       height={640}
-      granted={FILES_ONLY}
-      transcript
+      options={{ granted: FILES_ONLY, transcript: true }}
+      script={OPEN_PICKER}
+      wait={['README.md', 'More tools', 'Allow']}
     />
   )
 }
@@ -251,7 +206,128 @@ export function WorkbenchPickerStory() {
       id="workbench-picker"
       width={PICKER_WIDTH}
       height={PICKER_HEIGHT}
-      granted={EVERY_TOOL}
+      options={{ granted: EVERY_TOOL }}
+      script={OPEN_PICKER}
+      wait={['README.md', 'More tools']}
+    />
+  )
+}
+
+/** `workbench-files`: the tree with a symlink, an ignored and a hidden entry and a partial listing, opened a level down. */
+export function WorkbenchFilesStory() {
+  return (
+    <FixtureStory
+      id="workbench-files"
+      width={1280}
+      height={640}
+      options={{ granted: ['files'], tree: FILES_TREE }}
+      script={[
+        { chord: 'e' },
+        { see: 'README.md' },
+        { key: 'ArrowDown' },
+        { key: 'Enter' },
+        { key: 'ArrowDown' },
+        { key: 'ArrowDown' },
+        { key: 'Enter' },
+        { see: 'architecture.md' },
+      ]}
+      wait={['latest', 'target', 'architecture.md']}
+    />
+  )
+}
+
+/**
+ * `workbench-terminal`: a recorded byte stream replayed through the process pane: a prompt, `ls`
+ * in colour, a pager that takes the alternate screen and gives it back, a full-screen program, and a
+ * resize the script sends once the program is up.
+ */
+export function WorkbenchTerminalStory() {
+  return (
+    <FixtureStory
+      id="workbench-terminal"
+      width={1280}
+      height={640}
+      options={{
+        granted: EVERY_TOOL,
+        terminal: true,
+      }}
+      script={[
+        { chord: 's' },
+        { see: 'Existing sessions' },
+        { key: 'Enter' },
+        { see: 'PID' },
+        { host: (host) => host.resizeTerminal() },
+        { see: 'resized to fit' },
+      ]}
+      wait={['resized to fit']}
+    />
+  )
+}
+
+/** `workbench-editor`: a file with tabs, CJK, a ZWJ emoji and a long wrapped line, a selection, and some typing. */
+export function WorkbenchEditorStory() {
+  return (
+    <FixtureStory
+      id="workbench-editor"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL }}
+      script={EDITOR_SCRIPT}
+      wait={['Notes']}
+    />
+  )
+}
+
+/** `workbench-editor-conflict`: the same file with the disk changed under it, the conflict the editor names. */
+export function WorkbenchEditorConflictStory() {
+  return (
+    <FixtureStory
+      id="workbench-editor-conflict"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, conflict: 'docs/notes.md' }}
+      script={EDITOR_SCRIPT.slice(0, EDITOR_OPEN)}
+      wait={['Notes']}
+    />
+  )
+}
+
+/** The Files steps that open `docs/notes.md` into the editor. */
+const EDITOR_OPEN = 9
+const EDITOR_SCRIPT: Step[] = [
+  { chord: 'e' },
+  { see: 'README.md' },
+  { key: 'ArrowDown' },
+  { key: 'ArrowDown' },
+  { key: 'Enter' },
+  { see: 'architecture.md' },
+  { key: 'ArrowDown' },
+  { key: 'ArrowDown' },
+  { key: 'Enter' },
+  { see: 'Notes' },
+  { key: 'ArrowRight', shift: true },
+  { key: 'ArrowRight', shift: true },
+  { key: 'ArrowRight', shift: true },
+]
+
+/** `workbench-changes`: staged, unstaged, untracked and conflicted groups, a diff open, and a commit draft. */
+export function WorkbenchChangesStory() {
+  return (
+    <FixtureStory
+      id="workbench-changes"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL }}
+      script={[
+        { chord: 'g' },
+        { see: 'Cargo.toml' },
+        { key: 'ArrowDown' },
+        { key: 'Enter' },
+        { see: '@@' },
+        { key: 'c' },
+        { text: 'fix(files): list a partial directory' },
+      ]}
+      wait={['Cargo.toml', '@@']}
     />
   )
 }
