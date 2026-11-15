@@ -1,0 +1,19 @@
+{
+  "scope": "standalone mockup only; sample data; no Rust/WASM or backend integration",
+  "checks": [
+    "Six sample artifacts render",
+    "Expressive defaults to pixel previews",
+    "Calm defaults to original; draft survives",
+    "Explicit preview preference survives preset changes",
+    "Palette change preserves draft and preview setting",
+    "Search and empty state work",
+    "Type filter works",
+    "Pixel card opens original and Escape restores gallery",
+    "Arrow navigation and Enter opening work",
+    "Cabinet expands and returns without losing state",
+    "Game opens and accepts keyboard input",
+    "Narrow layout has no horizontal page overflow",
+    "No JavaScript page errors"
+  ],
+  "count": 13
+}
