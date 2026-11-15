@@ -58,7 +58,6 @@ import {
   SidebarGroupLabel,
   SidebarMenu,
   SidebarMenuAction,
-  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarMenuSkeleton,
@@ -208,7 +207,7 @@ function StartingRow() {
         className="relative z-[1] w-full translate-x-0"
         render={<button type="button" onClick={() => void focusComposer()} />}
       >
-        <Icon.SessionDraft aria-hidden />
+        <Icon.NewChat aria-hidden />
         <span className="min-w-0 flex-1 truncate text-start">New thread</span>
       </SidebarMenuSubButton>
     </SidebarMenuSubItem>
@@ -274,7 +273,7 @@ function ProjectNode({
 }: {
   project: ProjectEntry
   threads: readonly ThreadEntry[]
-  /** A new chat is being started here. */
+  /** A new chat is being started here, so its sessions are shown. */
   starting: boolean
   onNewThread: (projectId: string) => void
   /** Moves the project one place up or down the list, where there is one. */
@@ -332,7 +331,7 @@ function ProjectNode({
               data-appearance-recipe="ui.label"
               data-organize-row={current ? 'primary' : undefined}
               aria-current={current ? 'page' : undefined}
-              title={project.state?.text ?? project.title}
+              title={`${project.state?.text ?? project.title}\n${sessions}`}
               className="relative z-[1] ps-8 pe-8 hover:bg-hover"
               render={
                 <Link
@@ -352,7 +351,7 @@ function ProjectNode({
         <MenuPopup anchor={undefined} className="min-w-48">
           <MenuItem onClick={() => onNewThread(project.projectId)}>
             <Icon.NewChat className="size-4" />
-            New session here
+            New thread here
           </MenuItem>
           <MenuItem onClick={() => togglePin(pin)}>
             {pinned ? (
@@ -398,33 +397,21 @@ function ProjectNode({
         open={editingState}
         onOpenChange={setEditingState}
       />
-      {threads.length > 0 && (
-        <SidebarMenuBadge
-          title={sessions}
-          className="text-ink-muted tabular-nums group-hover/menu-item:opacity-0 max-md:hidden"
-        >
-          {threads.length}
-          <span className="sr-only">
-            {' '}
-            {threads.length === 1 ? 'session' : 'sessions'}
-          </span>
-        </SidebarMenuBadge>
-      )}
+      {/* The project's new thread sits where a count would: the count is in the row's tooltip. */}
       <SidebarMenuAction
-        showOnHover
-        aria-label={`New session in ${project.title}`}
-        title={`New session in ${project.title}`}
+        aria-label={`New thread in ${project.title}`}
+        title={`New thread in ${project.title}`}
+        className="top-0.5 text-ink-muted hover:bg-selected hover:text-ink"
         onClick={() => onNewThread(project.projectId)}
       >
-        <Icon.Add />
+        <Icon.NewChat className="size-3.5" />
       </SidebarMenuAction>
       <CollapsiblePanel className={panelMotion}>
         <SidebarMenuSub className="me-0 gap-px pe-0">
-          {starting && <StartingRow />}
           <ThreadRows threads={threads} place={project.projectId} />
-          {threads.length === 0 && !starting && (
+          {threads.length === 0 && (
             <li className="px-2 py-1 text-xs text-ink-muted">
-              No sessions yet. Drag one here, or start one with +.
+              No sessions yet. Drag one here, or start a new thread.
             </li>
           )}
         </SidebarMenuSub>
@@ -891,7 +878,7 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
             className="text-ink-muted hover:bg-hover hover:text-ink"
             onClick={() => newThread()}
           >
-            <Icon.SessionDraft aria-hidden />
+            <Icon.NewChat aria-hidden />
             <span className="min-w-0 flex-1 truncate">New thread</span>
           </SidebarMenuButton>
         </SidebarMenuItem>

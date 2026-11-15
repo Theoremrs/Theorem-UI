@@ -66,7 +66,7 @@ const [one, two] = PROJECTS
 const from = (await place(two).locator(ROW).count()) ? two : one
 const to = from === one ? two : one
 if (!(await place(from).locator(ROW).count())) {
-  await list.getByRole('button', { name: `New session in ${from}` }).click()
+  await list.getByRole('button', { name: `New thread in ${from}` }).click()
   const box = page.getByRole('textbox').first()
   await box.click()
   await box.pressSequentially('Reply with the single word ok.')

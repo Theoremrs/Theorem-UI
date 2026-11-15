@@ -68,6 +68,9 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
   palette; its tooltip shows the shortcut), a lighter New thread, Pinned,
   Projects, Chats, and the Librarian at the foot. Attention Worthy, Running,
   Needs You and Later are gone.
+- **The rail's tab** is painted with whatever it joins: the panel's fill
+  while the panel is open, otherwise the sheet. The appearance work had
+  given the panel its own fill, so the tab had turned white against it.
 - **Rhythm** follows the ChatGPT and Codex sidebars. The rules are in
   `src/components/shell/chat-shell.css` and are scoped to the panel.
 
@@ -104,8 +107,12 @@ This plan is the Theorem UI half, delivered "UI first, backend next":
   2. the doubled page for a continuation;
   3. the empty page for a session with no message yet.
 
-  New thread rows use the edit mark. The add and second double marks are
-  traced but not yet used. `src/components/organize/glyphs.tsx` holds the
+  Every new thread uses the owner's file-with-a-plus mark (2026-11-15): the
+  top row, the command palette, the phone header, and each project's row.
+  On a project row it stands where the session count was; the count moved
+  to the row's tooltip. A project no longer lists a "New thread" row while
+  one is being started in it, though it still opens. The edit and second
+  double marks are traced but not used. `src/components/organize/glyphs.tsx` holds the
   logic; `glyphs.test.ts` covers the order.
 
 ### Project page (§7, §8)
