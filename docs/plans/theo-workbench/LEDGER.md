@@ -9,7 +9,7 @@ Lanes:
 - **library**: a published crate or package used as a dependency. No reference capture; the pin is the lockfile.
 - **original**: nothing upstream models it. The row says why.
 
-Reference artifacts live under `evidence/refs/` and are named `<component>@<pin>.png`. "pending" means the capture is the first step of that component's work order.
+Reference artifacts live under `docs/plans/evidence/refs/` and are named `<component>@<pin>.png`. "pending" means the capture is the first step of that component's work order.
 
 ## Donor and original components
 
@@ -17,7 +17,7 @@ Reference artifacts live under `evidence/refs/` and are named `<component>@<pin>
 |---|---|---|---|---|---|---|
 | L01 | Split tree (`workbench-layout`) | verbatim | `herdrdev/herdr` `src/layout.rs` at `ee5bfb5041bb3e4a49d591c72308aae3c81ecdde`, blob `aaa207ae38119e03fb20412759f8b38a6708038e` | Herdr contributors; license text in `terminal/crates/workbench-layout/LICENSE-HERDR` | none: no rendered output (geometry only, covered by the 27 upstream tests) | Extraction commit `287997fc` is byte-identical. Planned in Gate 1: caller-supplied leaf ids replace the process-global counter; serde on the tree; validated restore |
 | L02 | Dock (`workbench-dock`) | original | | | none | Tab groups, minimum sizes, px-to-cell quantization, collapse, presets and persistence are not in the donor (`gate-0/herdr-layout-donor.md`, adaptation gaps) |
-| L03 | Tool picker | translation | Translated from the supplied Codex desktop picker capture; no extractable source exists (spec 7.1) | Reference image supplied with the spec | `visual-reference/codex-tool-picker.png`, `e205692bd3f3904ec9aca60a6c314899b866dc861b8400e61b038749ec7e4a53` | Row hierarchy and labels only |
+| L03 | Tool picker | translation | Translated from the supplied Codex desktop picker capture; no extractable source exists (spec 7.1) | Reference image supplied with the spec | `docs/plans/evidence/refs/workbench-picker@spec-1.0.png` (copy of `visual-reference/codex-tool-picker.png`), `e205692bd3f3904ec9aca60a6c314899b866dc861b8400e61b038749ec7e4a53` | Row hierarchy and labels only |
 | L04 | Markdown parse and block ranges | verbatim | `ELY-Open-Source/Ely-GPUI-Components` at `078bf26f2d039b3877aef577e37bbd0a1de182bf`: `crates/ely-documents/src/markdown/{mdast,build,build/node,build/text,flow,front,shape,autolink}.rs`, `markdown.rs` (`block_ranges`, `marks`, `link_at`), `tree/*` | Ely GPUI Component contributors, MIT | none: no rendered output | Imports rewritten off `ely_core`; `markdown_highlights` and GPUI imports removed |
 | L05 | Markdown edit commands | verbatim | same repo and pin: `document/{block,block/*,format,format/*,cells,parse}.rs` | same, MIT | none | `TargetBlock` extracted from `document/mod.rs`; each returned change carries the document revision |
 | L06 | Markdown modes (Visual, Source, Split, Preview) | translation | Translated from `crates/ely-documents/src/modes.rs`, blob `2e6bca2e7c297372c7c7374c0d0df313fcb26f86`, same pin | same, MIT | `evidence/refs/markdown-{visual,source,split,preview}@078bf26.png`, pending | `MarkdownMode`, `shifted`, `joint` carried; `commit` rewritten: a pending block edit is never dropped when the document changed under it (donor lines 104-109 and 350-355). The two donor tests that assert the drop (`modes/tests.rs:6`, `:62`) are inverted |
