@@ -41,6 +41,9 @@ pub mod actions {
     pub const SWITCH_BRANCH: &str = "changes.switchBranch";
     pub const CREATE_BRANCH: &str = "changes.createBranch";
     pub const MERGE: &str = "changes.merge";
+    pub const AMEND: &str = "changes.amend";
+    pub const OPEN_COMMIT: &str = "changes.openCommit";
+    pub const SHOW_AT_COMMIT: &str = "changes.showAtCommit";
 }
 
 fn act(id: &str, reason: Option<String>) -> NodeAction {
@@ -143,6 +146,12 @@ impl Changes {
         let mut list = Node::new(&format!("{id}/list"), list_role, &list_name, regions.list);
         if let (Mode::Read, Some(read)) = (&self.mode, &self.read) {
             list.state.busy = read.body == ReadBody::Loading;
+            if matches!(read.body, ReadBody::History(_)) {
+                list.actions = vec![
+                    act(actions::OPEN_COMMIT, None),
+                    act(actions::SHOW_AT_COMMIT, None),
+                ];
+            }
             list.state.description = Some(match &read.body {
                 ReadBody::Loading => "Reading".to_owned(),
                 ReadBody::Blame(h) => format!("{} blame hunks", h.len()),
@@ -308,6 +317,27 @@ impl Changes {
                 nodes.push(body);
             }
             let y = r.y + r.height - 1;
+            let amend_w = crate::text::width(&self.amend_text()) as u16;
+            let mut amend = Node::new(
+                &format!("{id}/commit/amend"),
+                Role::Button,
+                "Amend",
+                Rect::new(r.x + 1, y, amend_w.min(r.width.saturating_sub(1)), 1),
+            );
+            amend.state.selected = self.amend;
+            let amend_why = (!self.amend_available())
+                .then(|| "This host does not offer amend (scm.commit.amend)".to_owned())
+                .or_else(|| block.clone());
+            amend.state.disabled = amend_why.is_some();
+            amend.state.busy = self.amend_waiting();
+            amend.state.description = Some(match &amend_why {
+                Some(why) => why.clone(),
+                None if self.amend => "Amending the last commit".to_owned(),
+                None => "Amend the last commit instead of making a new one".to_owned(),
+            });
+            amend.actions = vec![act(actions::AMEND, amend_why)];
+            root.children.push(amend.id.clone());
+            nodes.push(amend);
             let (label, ready) = self.commit_button();
             let mut button = Node::new(
                 &format!("{id}/commit/button"),
@@ -360,6 +390,7 @@ impl Changes {
                     node.set_size = Some(size as u16);
                     node.state.selected = self.focus == Focus::Log && at == self.log_cursor;
                     node.state.description = Some(format!("by {}", entry.author));
+                    node.actions = vec![act(actions::OPEN_COMMIT, None)];
                     log.children.push(node.id.clone());
                     nodes.push(node);
                 }

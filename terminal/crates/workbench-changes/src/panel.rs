@@ -30,6 +30,7 @@ use theorem_workbench_core::{
 };
 use tui_input::{Input, InputRequest};
 
+use crate::descriptors::AMEND_CAPABILITY;
 use crate::intent::{ActionKind, Intent, IntentId, Refusal};
 use crate::layout::{Control, Hit, Verb};
 use crate::model::{Caret, Changes, Field, Focus, Mode, PromptKind};
@@ -74,6 +75,10 @@ pub struct ChangesPanel {
     row: usize,
     in_body: bool,
     prompt: Option<Input>,
+    /// An amend was asked for by action and waits for the log to name the last message.
+    amend_send: bool,
+    /// The host offers `scm.commit.amend`. True until a capability list says otherwise.
+    amend_ok: bool,
 }
 
 /// A page of lines for the page keys.
@@ -114,6 +119,8 @@ fn at_column(input: &Input, column: usize) -> Input {
 impl ChangesPanel {
     pub fn restore(state: &Value) -> Self {
         let mut model = Changes::new();
+        // Until the host says otherwise the owner is asked, and refuses what it cannot do.
+        model.set_amend_available(true);
         if let Ok(saved) = serde_json::from_value::<ViewState>(state.clone()) {
             model.restore(&saved);
         }
@@ -131,6 +138,8 @@ impl ChangesPanel {
             row: 0,
             in_body: false,
             prompt: None,
+            amend_send: false,
+            amend_ok: true,
         };
         panel.load_inputs();
         panel
@@ -249,6 +258,8 @@ impl ChangesPanel {
                 || self.identity.environment != identity.environment);
         if moved {
             self.model = Changes::new();
+            self.model.set_amend_available(self.amend_ok);
+            self.amend_send = false;
             self.sent.clear();
             self.prompt = None;
             self.row = 0;
@@ -275,14 +286,7 @@ impl ChangesPanel {
     }
 
     fn send(&mut self, cx: &mut Ctx, intent: Intent) -> bool {
-        let body = match intent.kind.effect_body() {
-            Ok(body) => body,
-            Err(unsupported) => {
-                let reason = format!("the wire cannot carry this request yet ({unsupported:?})");
-                self.not_sent(&intent, "unsupported", reason);
-                return false;
-            }
-        };
+        let body = intent.kind.effect_body();
         let resource = self.resource();
         let generation = intent.generation;
         match cx.emit(|id| Effect::new(id, resource, body).with_generation(Generation(generation)))
@@ -344,6 +348,14 @@ impl ChangesPanel {
             self.model.move_cursor(0, false);
         }
         self.send_all(cx, next);
+        // An amend asked for by action goes once the log has named the last message.
+        if self.amend_send && !self.model.amend_waiting() {
+            self.amend_send = false;
+            if self.model.amend() {
+                let d = self.model.commit();
+                self.go(cx, d);
+            }
+        }
     }
 
     fn on_host(&mut self, message: HostMessage) {
@@ -370,6 +382,9 @@ impl ChangesPanel {
                     self.read_due = true;
                 }
                 self.scm_ok = ok;
+                let amend = capabilities.has(&Capability::new(AMEND_CAPABILITY));
+                self.amend_ok = amend;
+                self.model.set_amend_available(amend);
             }
             // Another workspace's, the root's own (it tells the panel of a new workspace
             // as `PanelMsg::Workspace`), or another kind of panel's.
@@ -389,6 +404,7 @@ impl ChangesPanel {
             | HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
             | HostMessage::TerminalControl { .. }
+            | HostMessage::TerminalSessions { .. }
             | HostMessage::ConversationSnapshot { .. }
             | HostMessage::ThemeChanged { .. }
             | HostMessage::WorkspaceChanged { .. } => {}
@@ -456,11 +472,61 @@ impl ChangesPanel {
         }
     }
 
-    fn open_prompt(&mut self, kind: PromptKind) {
-        if self.model.open_prompt(kind).is_ok() {
+    /// Opens the prompt. A switch and a merge also ask for the branch list.
+    fn open_prompt(&mut self, kind: PromptKind, cx: &mut Ctx) {
+        if let Ok(list) = self.model.open_prompt(kind) {
             self.prompt = Some(Input::default());
             self.mark_caret();
+            if let Some(intent) = list {
+                self.send(cx, intent);
+            }
         }
+    }
+
+    fn close_prompt(&mut self) {
+        self.prompt = None;
+        self.model.cancel_prompt();
+        self.mark_caret();
+    }
+
+    /// Turns the amend box on (reading the log first if the last message is not known) or
+    /// off.
+    fn toggle_amend(&mut self, cx: &mut Ctx) {
+        if self.model.amend() {
+            self.model.end_amend();
+        } else if let Ok(Some(log)) = self.model.begin_amend() {
+            self.send(cx, log);
+        }
+        self.sync_inputs();
+    }
+
+    /// The registered amend: amends the last commit with the draft, or with the last
+    /// commit's own message when there is no draft.
+    fn amend_action(&mut self, cx: &mut Ctx) {
+        let ask = match self.model.begin_amend() {
+            Ok(ask) => ask,
+            Err(_) => return,
+        };
+        self.sync_inputs();
+        if let Some(log) = ask {
+            self.send(cx, log);
+        }
+        if self.model.amend_waiting() {
+            self.amend_send = true;
+            return;
+        }
+        let d = self.model.commit();
+        self.go(cx, d);
+    }
+
+    fn open_commit(&mut self, cx: &mut Ctx) {
+        let d = self.model.open_commit();
+        self.go(cx, d);
+    }
+
+    fn show_at_commit(&mut self, cx: &mut Ctx) {
+        let d = self.model.show_at_commit();
+        self.go(cx, d);
     }
 
     fn open_file(&mut self, cx: &mut Ctx) {
@@ -535,9 +601,12 @@ impl ChangesPanel {
                 let d = self.model.push();
                 self.go(cx, d)
             }
-            actions::SWITCH_BRANCH => self.open_prompt(PromptKind::Switch),
-            actions::CREATE_BRANCH => self.open_prompt(PromptKind::Create),
-            actions::MERGE => self.open_prompt(PromptKind::Merge),
+            actions::SWITCH_BRANCH => self.open_prompt(PromptKind::Switch, cx),
+            actions::CREATE_BRANCH => self.open_prompt(PromptKind::Create, cx),
+            actions::MERGE => self.open_prompt(PromptKind::Merge, cx),
+            actions::AMEND => self.amend_action(cx),
+            actions::OPEN_COMMIT => self.open_commit(cx),
+            actions::SHOW_AT_COMMIT => self.show_at_commit(cx),
             _ => {}
         }
     }
@@ -552,7 +621,7 @@ impl ChangesPanel {
             return self.confirm_key(key, cx);
         }
         if self.model.mode() == Mode::Read {
-            return self.read_key(key);
+            return self.read_key(key, cx);
         }
         match self.model.focus() {
             Focus::Files => self.files_key(key, cx),
@@ -563,17 +632,22 @@ impl ChangesPanel {
 
     fn prompt_key(&mut self, key: KeyInput, cx: &mut Ctx) {
         match key.key() {
-            Key::Esc => {
-                self.prompt = None;
-                self.model.cancel_prompt();
-                self.mark_caret();
-            }
+            Key::Esc => self.close_prompt(),
             // A refusal leaves the prompt open for another try: the model said why in a notice.
             Key::Enter => {
                 if let Ok(intent) = self.model.submit_prompt() {
                     self.prompt = None;
                     self.mark_caret();
                     self.send(cx, intent);
+                }
+            }
+            // The offered branches are chosen with the arrows; Tab writes the choice out.
+            Key::Up => self.model.prompt_move(-1),
+            Key::Down => self.model.prompt_move(1),
+            Key::Tab => {
+                if let Some(name) = self.model.prompt_complete() {
+                    self.prompt = Some(Input::new(name));
+                    self.mark_caret();
                 }
             }
             _ => {
@@ -594,9 +668,14 @@ impl ChangesPanel {
         }
     }
 
-    fn read_key(&mut self, key: KeyInput) {
+    fn read_key(&mut self, key: KeyInput, cx: &mut Ctx) {
+        let history = self.model.commit_row_open();
         match key.key() {
             Key::Esc | Key::Char('q') => self.model.close_read(),
+            Key::Up if history => self.model.move_read_cursor(-1),
+            Key::Down if history => self.model.move_read_cursor(1),
+            Key::Enter if history => self.open_commit(cx),
+            Key::Char('v') if history => self.show_at_commit(cx),
             Key::Up => self.model.scroll_by(-1),
             Key::Down => self.model.scroll_by(1),
             Key::PageUp => self.model.scroll_by(-PAGE),
@@ -686,6 +765,7 @@ impl ChangesPanel {
             'z' => self.restore_last(cx),
             'o' => self.open_file(cx),
             'c' => self.focus_message(false, 0),
+            'a' => self.toggle_amend(cx),
             'C' => self.commit(cx),
             'r' => self.refresh(cx),
             'l' => {
@@ -700,9 +780,9 @@ impl ChangesPanel {
                 let d = self.model.push();
                 self.go(cx, d);
             }
-            'b' => self.open_prompt(PromptKind::Switch),
-            'n' => self.open_prompt(PromptKind::Create),
-            'm' => self.open_prompt(PromptKind::Merge),
+            'b' => self.open_prompt(PromptKind::Switch, cx),
+            'n' => self.open_prompt(PromptKind::Create, cx),
+            'm' => self.open_prompt(PromptKind::Merge, cx),
             'B' => {
                 let d = self.model.blame();
                 self.go(cx, d);
@@ -731,6 +811,7 @@ impl ChangesPanel {
         match key.key() {
             Key::Up => self.model.move_cursor(-1, false),
             Key::Down => self.model.move_cursor(1, false),
+            Key::Enter => self.open_commit(cx),
             Key::Tab => {
                 self.model.focus_next();
                 self.mark_caret();
@@ -903,17 +984,23 @@ impl ChangesPanel {
     }
 
     fn press(&mut self, hit: Hit, p: PanelPointer, cx: &mut Ctx) {
-        // A press anywhere else answers a prompt by leaving it.
         if self.prompt.is_some() {
-            self.prompt = None;
-            self.model.cancel_prompt();
-            self.mark_caret();
+            // A press on an offered branch takes it; anywhere else leaves the prompt.
+            if let Hit::Branch(index) = hit {
+                if let Ok(intent) = self.model.prompt_pick(index) {
+                    self.prompt = None;
+                    self.mark_caret();
+                    self.send(cx, intent);
+                }
+                return;
+            }
+            self.close_prompt();
         }
         let command = p.mods.intersects(Mods::CTRL | Mods::CMD);
         let extend = p.mods.contains(Mods::SHIFT);
         match hit {
             Hit::Nothing => {}
-            Hit::Control(Control::Branch) => self.open_prompt(PromptKind::Switch),
+            Hit::Control(Control::Branch) => self.open_prompt(PromptKind::Switch, cx),
             Hit::Control(Control::Fetch) => {
                 let d = self.model.fetch();
                 self.go(cx, d);
@@ -967,7 +1054,20 @@ impl ChangesPanel {
             Hit::Subject => self.focus_message(false, 0),
             Hit::Body(row) => self.focus_message(true, row.saturating_sub(1)),
             Hit::Button => self.commit(cx),
-            Hit::Log(at) => self.model.select_log(at),
+            Hit::Amend => self.toggle_amend(cx),
+            Hit::Branch(_) => {}
+            Hit::Commit(at) => {
+                self.model.select_commit(at);
+                if p.clicks >= 2 {
+                    self.open_commit(cx);
+                }
+            }
+            Hit::Log(at) => {
+                self.model.select_log(at);
+                if p.clicks >= 2 {
+                    self.open_commit(cx);
+                }
+            }
         }
     }
 

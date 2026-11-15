@@ -13,7 +13,8 @@ use std::rc::Rc;
 use theorem_workbench_changes::{ChangesPanel, actions, descriptors, with_actions};
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
-    BlameHunk, Completion, CompletionPayload, Outcome, ScmBlameResult, ScmMerged, ScmShowResult,
+    BlameHunk, BranchInfo, Completion, CompletionPayload, Outcome, ScmBlameResult, ScmBranches,
+    ScmMerged, ScmShowResult,
 };
 use theorem_workbench_core::effect::{Effect, EffectBody, ScmRef};
 use theorem_workbench_core::host::HostMessage;
@@ -28,6 +29,14 @@ use theorem_workbench_core::{
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 
 const CAPS: [&str; 5] = ["files", "documents", "scm", "environment", "search"];
+const CAPS_AMEND: [&str; 6] = [
+    "files",
+    "documents",
+    "scm",
+    "environment",
+    "search",
+    "scm.commit.amend",
+];
 
 fn agent() -> Actor {
     Actor::Agent {
@@ -172,6 +181,10 @@ fn names(effects: &[Effect]) -> Vec<&'static str> {
             EffectBody::ScmMerge(_) => "merge",
             EffectBody::ScmBlame(_) => "blame",
             EffectBody::ScmLog(_) => "log",
+            EffectBody::ScmAmend(_) => "amend",
+            EffectBody::ScmBranches => "branch list",
+            EffectBody::ScmDiffCommit(_) => "commit diff",
+            EffectBody::ScmShowRevision(_) => "show at revision",
             _ => "other",
         })
         .collect()
@@ -195,6 +208,10 @@ impl Rig {
 
     fn mods(&mut self, key: Key, mods: Mods) -> Vec<Effect> {
         self.send(Msg::Key(KeyInput::new(key, mods)))
+    }
+
+    fn key_with(&mut self, key: Key, mods: Mods) -> Vec<Effect> {
+        self.mods(key, mods)
     }
 
     fn ch(&mut self, c: char) -> Vec<Effect> {
@@ -306,7 +323,11 @@ fn mixed() -> Vec<theorem_workbench_core::completion::ScmChange> {
 }
 
 fn loaded() -> Rig {
-    let (mut rig, fx) = opened_with(&CAPS, "w");
+    loaded_with(&CAPS)
+}
+
+fn loaded_with(caps: &[&'static str]) -> Rig {
+    let (mut rig, fx) = opened_with(caps, "w");
     assert_eq!(names(&fx), vec!["status"]);
     let next = rig.accept(&fx[0], common::status(1, mixed()));
     rig.accept(&next[0], log_answer(&["first", "second"]));
@@ -494,7 +515,14 @@ fn the_prompt_actions_open_the_prompt_and_send_nothing_until_it_is_answered() {
         actions::MERGE,
     ] {
         let mut rig = loaded();
-        assert!(rig.action(id, Actor::Human).is_empty(), "{id}");
+        // Opening a switch or merge prompt reads the branch list; creating one reads nothing.
+        let opened = rig.action(id, Actor::Human);
+        let read = if id == actions::CREATE_BRANCH {
+            vec![]
+        } else {
+            vec!["branch list"]
+        };
+        assert_eq!(names(&opened), read, "{id}");
         rig.typed("topic");
         let fx = rig.key(Key::Enter);
         let expected = if id == actions::MERGE {
@@ -1016,8 +1044,8 @@ fn the_actions_are_in_the_catalog_with_a_reason_when_unavailable() {
         .iter()
         .map(|d| d.id.as_str().to_owned())
         .collect();
-    assert_eq!(ids.len(), 21);
-    let with = registry.agent_catalog(&Capabilities::of(CAPS));
+    assert_eq!(ids.len(), 24);
+    let with = registry.agent_catalog(&Capabilities::of(CAPS_AMEND));
     let without = registry.agent_catalog(&Capabilities::of(["files"]));
     for id in &ids {
         // `changes.confirm` is human-only: an agent's catalog does not list it.
@@ -1099,4 +1127,558 @@ fn the_panel_draws_a_staged_file_an_expanded_diff_and_a_draft() {
     assert!(screen.contains("The greeting was too short."));
     assert!(screen.contains("[ Commit to main ]"));
     assert!(lines.iter().all(|l| l.chars().count() <= 100));
+}
+
+// ---- amend, the branch list and commit rows -----------------------------------------
+
+fn caps_without_amend() -> Msg {
+    Msg::Host(HostMessage::CapabilitiesChanged {
+        capabilities: Capabilities::of(CAPS),
+    })
+}
+
+fn caps_with_amend() -> Msg {
+    Msg::Host(HostMessage::CapabilitiesChanged {
+        capabilities: Capabilities::of(["files", "documents", "scm", "scm.commit.amend"]),
+    })
+}
+
+fn branch_node(tree: &theorem_workbench_core::semantics::SemanticTree) -> &Node {
+    tree.nodes
+        .iter()
+        .find(|n| n.id.as_str().ends_with("/commit/amend"))
+        .expect("the amend node")
+}
+
+fn branches(list: &[(&str, bool, bool)]) -> CompletionPayload {
+    CompletionPayload::ScmBranches(ScmBranches {
+        branches: list
+            .iter()
+            .map(|(name, remote, current)| BranchInfo {
+                name: (*name).into(),
+                remote: *remote,
+                current: *current,
+                upstream: None,
+            })
+            .collect(),
+    })
+}
+
+fn branch_list() -> CompletionPayload {
+    branches(&[
+        ("main", false, true),
+        ("feature/login", false, false),
+        ("feature/search", false, false),
+        ("origin/main", true, false),
+    ])
+}
+
+fn opened_switch() -> (Rig, Effect) {
+    let mut rig = loaded();
+    let fx = rig.ch('b');
+    once(&fx, "branch list");
+    let read = fx[0].clone();
+    (rig, read)
+}
+
+#[test]
+fn amend_is_disabled_with_its_reason_when_the_host_does_not_offer_it() {
+    let mut rig = loaded();
+    rig.send(caps_without_amend());
+    assert!(!rig.model().amend_available());
+    assert!(rig.screen().contains("Amend"), "{}", rig.screen());
+    // The key and the click both do nothing, and nothing is sent.
+    assert!(rig.ch('a').is_empty());
+    assert!(!rig.model().amend());
+    let (x, y) = rig.find("[ ] Amend");
+    assert!(rig.press(x, y, 1).is_empty());
+    assert!(!rig.model().amend());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    tree.validate().expect("valid");
+    let node = branch_node(&tree);
+    assert!(node.state.disabled);
+    assert!(
+        node.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("scm.commit.amend"),
+        "{node:?}"
+    );
+}
+
+#[test]
+fn amend_is_enabled_when_the_host_offers_it_and_a_click_toggles_it() {
+    let mut rig = loaded();
+    rig.send(caps_with_amend());
+    assert!(rig.model().amend_available());
+    let tree = theorem_workbench_core::tree::semantics(&rig.m);
+    assert!(!branch_node(&tree).state.disabled);
+    let (x, y) = rig.find("[ ] Amend");
+    assert!(rig.press(x, y, 1).is_empty());
+    assert!(rig.model().amend());
+    assert!(rig.screen().contains("[x] Amend"), "{}", rig.screen());
+    assert_valid(&rig);
+}
+
+#[test]
+fn amend_loads_the_last_commits_message_from_the_log_the_panel_already_read() {
+    let mut rig = loaded();
+    rig.send(caps_with_amend());
+    rig.ch('a');
+    assert!(rig.model().amend());
+    assert!(rig.screen().contains("first"), "{}", rig.screen());
+}
+
+#[test]
+fn an_amend_commit_is_its_own_wire_kind_carrying_the_message() {
+    let mut rig = loaded();
+    rig.send(caps_with_amend());
+    rig.ch('a');
+    let fx = rig.key_with(Key::Enter, Mods::CTRL);
+    once(&fx, "amend");
+    match &fx[0].body {
+        EffectBody::ScmAmend(a) => assert_eq!(a.message, "first"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_amend_action_reads_the_log_first_when_it_is_not_loaded_and_amends_when_it_arrives() {
+    let (mut rig, fx) = opened_with(&CAPS_AMEND, "w");
+    let next = rig.accept(&fx[0], common::status(1, mixed()));
+    // The log read is in flight; the action is asked for before it is answered.
+    once(&next, "log");
+    let log = next[0].clone();
+    let sent = rig.action(actions::AMEND, Actor::Human);
+    assert!(names(&sent).iter().all(|n| *n != "amend"), "{sent:?}");
+    let after = rig.accept(&log, log_answer(&["only commit"]));
+    let amend: Vec<_> = after
+        .iter()
+        .filter(|e| matches!(e.body, EffectBody::ScmAmend(_)))
+        .collect();
+    assert_eq!(amend.len(), 1, "{after:?}");
+    match &amend[0].body {
+        EffectBody::ScmAmend(a) => assert_eq!(a.message, "only commit"),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn the_amend_action_sends_the_last_commits_message_when_the_log_is_loaded() {
+    let mut rig = loaded_with(&CAPS_AMEND);
+    let fx = rig.action(actions::AMEND, Actor::Human);
+    once(&fx, "amend");
+    match &fx[0].body {
+        EffectBody::ScmAmend(a) => assert_eq!(a.message, "first"),
+        other => panic!("{other:?}"),
+    }
+    assert_valid(&rig);
+}
+
+#[test]
+fn the_amend_action_is_unavailable_in_the_catalog_without_the_capability() {
+    let registry = with_actions(builtin::registry()).unwrap();
+    let without = registry.agent_catalog(&Capabilities::of(CAPS));
+    let entry = without
+        .iter()
+        .find(|e| e.action.as_str() == actions::AMEND)
+        .expect("listed");
+    assert!(
+        matches!(entry.availability, Availability::Unavailable { .. }),
+        "{entry:?}"
+    );
+    let with = registry.agent_catalog(&Capabilities::of(CAPS_AMEND));
+    let entry = with
+        .iter()
+        .find(|e| e.action.as_str() == actions::AMEND)
+        .expect("listed");
+    assert!(
+        matches!(entry.availability, Availability::Available),
+        "{entry:?}"
+    );
+}
+
+#[test]
+fn a_late_log_answer_after_the_host_withdrew_amend_does_not_send_an_amend() {
+    let (mut rig, fx) = opened_with(&CAPS_AMEND, "w");
+    let next = rig.accept(&fx[0], common::status(1, mixed()));
+    let log = next[0].clone();
+    rig.send(caps_without_amend());
+    rig.action(actions::AMEND, Actor::Human);
+    let after = rig.accept(&log, log_answer(&["x"]));
+    assert!(names(&after).iter().all(|n| *n != "amend"), "{after:?}");
+}
+
+#[test]
+fn the_switch_prompt_offers_the_branches_and_marks_the_current_and_remote_ones() {
+    let (mut rig, read) = opened_switch();
+    assert!(
+        rig.screen().contains("Reading branches"),
+        "{}",
+        rig.screen()
+    );
+    rig.accept(&read, branch_list());
+    let screen = rig.screen();
+    assert!(screen.contains("feature/login"), "{screen}");
+    assert!(screen.contains("* main"), "{screen}");
+    assert!(screen.contains("origin/main  (remote)"), "{screen}");
+    assert_valid(&rig);
+}
+
+#[test]
+fn typing_in_the_prompt_filters_the_branches() {
+    let (mut rig, read) = opened_switch();
+    rig.accept(&read, branch_list());
+    rig.typed("sea");
+    let screen = rig.screen();
+    assert!(screen.contains("feature/search"), "{screen}");
+    assert!(!screen.contains("feature/login"), "{screen}");
+    rig.typed("zzz");
+    assert!(
+        rig.screen().contains("No branch matches"),
+        "{}",
+        rig.screen()
+    );
+    assert_valid(&rig);
+}
+
+#[test]
+fn arrows_and_enter_switch_to_an_offered_branch() {
+    let (mut rig, read) = opened_switch();
+    rig.accept(&read, branch_list());
+    rig.key(Key::Down);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "branch");
+    match &fx[0].body {
+        EffectBody::ScmBranch(b) => assert!(!b.create && b.name == "feature/login"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn tab_completes_the_typed_name_to_the_first_branch() {
+    let (mut rig, read) = opened_switch();
+    rig.accept(&read, branch_list());
+    rig.typed("feature/se");
+    rig.key(Key::Tab);
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmBranch(b) => assert_eq!(b.name, "feature/search"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_typed_name_is_still_accepted_when_the_list_has_no_match() {
+    let (mut rig, read) = opened_switch();
+    rig.accept(&read, branch_list());
+    rig.typed("brand-new");
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmBranch(b) => assert_eq!(b.name, "brand-new"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn the_merge_prompt_leaves_the_current_branch_out() {
+    let mut rig = loaded();
+    let fx = rig.ch('m');
+    once(&fx, "branch list");
+    rig.accept(&fx[0], branch_list());
+    let screen = rig.screen();
+    assert!(screen.contains("feature/login"), "{screen}");
+    assert!(!screen.contains("* main"), "{screen}");
+}
+
+#[test]
+fn a_refused_branch_list_says_why_and_typing_still_works() {
+    let (mut rig, read) = opened_switch();
+    rig.answer(
+        &read,
+        Outcome::Refused {
+            code: "unreadable".into(),
+            reason: "the repository could not list its branches".into(),
+        },
+        None,
+    );
+    let screen = rig.screen();
+    assert!(screen.contains("could not list its branches"), "{screen}");
+    assert!(
+        screen.contains("Type the name and press Enter."),
+        "{screen}"
+    );
+    rig.typed("dev");
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::ScmBranch(b) => assert_eq!(b.name, "dev"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn an_uncertain_branch_list_read_says_so_and_typing_still_works() {
+    let (mut rig, read) = opened_switch();
+    rig.answer(
+        &read,
+        Outcome::Uncertain {
+            reason: "timed out".into(),
+        },
+        None,
+    );
+    let screen = rig.screen();
+    assert!(
+        screen.contains("Type the name and press Enter."),
+        "{screen}"
+    );
+    assert_valid(&rig);
+    rig.typed("dev");
+    once(&rig.key(Key::Enter), "branch");
+}
+
+#[test]
+fn a_branch_list_answered_after_the_prompt_closed_is_dropped() {
+    let (mut rig, read) = opened_switch();
+    rig.key(Key::Esc);
+    rig.accept(&read, branch_list());
+    assert!(!rig.screen().contains("feature/login"), "{}", rig.screen());
+    assert!(rig.model().prompt().is_none());
+    assert_valid(&rig);
+}
+
+#[test]
+fn a_branch_list_for_an_older_generation_is_dropped() {
+    let (mut rig, read) = opened_switch();
+    rig.send(Msg::Host(HostMessage::Resync {
+        workspace: "w".into(),
+        reason: "epoch_changed".into(),
+    }));
+    let mut stale = Completion::new(read.id, read.resource.clone(), Outcome::Accepted);
+    stale.generation = Some(theorem_workbench_core::ids::Generation(0));
+    stale.payload = Some(branch_list());
+    rig.send(Msg::Completion(stale));
+    assert!(!rig.screen().contains("feature/login"), "{}", rig.screen());
+}
+
+#[test]
+fn a_branch_list_from_an_earlier_prompt_does_not_fill_the_next_one() {
+    let (mut rig, first) = opened_switch();
+    rig.key(Key::Esc);
+    let fx = rig.ch('b');
+    let second = fx[0].clone();
+    rig.accept(&first, branches(&[("old-list", false, false)]));
+    assert!(!rig.screen().contains("old-list"), "{}", rig.screen());
+    rig.accept(&second, branch_list());
+    assert!(rig.screen().contains("feature/login"), "{}", rig.screen());
+}
+
+fn focus_log(rig: &mut Rig) {
+    for _ in 0..3 {
+        if rig.model().focus() == theorem_workbench_changes::Focus::Log {
+            break;
+        }
+        rig.key(Key::Tab);
+    }
+}
+
+#[test]
+fn enter_on_a_log_row_shows_that_commits_diff_and_escape_returns_to_the_log_row() {
+    let mut rig = loaded();
+    focus_log(&mut rig);
+    rig.key(Key::Down);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "commit diff");
+    match &fx[0].body {
+        EffectBody::ScmDiffCommit(d) => {
+            assert!(d.commit.starts_with("a1b2c31"), "{d:?}");
+            assert!(d.path.is_none());
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut c = common::diff_answer("", false, "@@ -1 +1 @@\n-old\n+new\n", 1);
+    if let CompletionPayload::ScmDiff(d) = &mut c {
+        d.path = None;
+        d.commit = Some("a1b2c310".into());
+    }
+    rig.accept(&fx[0], c);
+    let screen = rig.screen();
+    assert!(screen.contains("+new"), "{screen}");
+    assert!(
+        screen.contains("Esc goes back") || screen.contains("Esc"),
+        "{screen}"
+    );
+    assert_valid(&rig);
+    rig.key(Key::Esc);
+    assert_eq!(rig.model().focus(), theorem_workbench_changes::Focus::Log);
+    assert!(rig.model().read_view().is_none());
+}
+
+#[test]
+fn a_double_click_on_a_log_row_shows_that_commits_diff() {
+    let mut rig = loaded();
+    let (x, y) = rig.find("second");
+    let fx = rig.press(x, y, 2);
+    assert!(names(&fx).contains(&"commit diff"), "{fx:?}");
+}
+
+#[test]
+fn a_commit_diff_answered_for_a_view_that_was_left_is_dropped() {
+    let mut rig = loaded();
+    focus_log(&mut rig);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "commit diff");
+    rig.key(Key::Esc);
+    let mut c = common::diff_answer("", false, "@@\n+late\n", 1);
+    if let CompletionPayload::ScmDiff(d) = &mut c {
+        d.path = None;
+    }
+    rig.accept(&fx[0], c);
+    assert!(rig.model().read_view().is_none());
+    assert!(!rig.screen().contains("+late"), "{}", rig.screen());
+}
+
+#[test]
+fn a_commit_diff_for_an_older_generation_is_dropped() {
+    let mut rig = loaded();
+    focus_log(&mut rig);
+    let fx = rig.key(Key::Enter);
+    rig.send(Msg::Host(HostMessage::Resync {
+        workspace: "w".into(),
+        reason: "epoch_changed".into(),
+    }));
+    let mut stale = Completion::new(fx[0].id, fx[0].resource.clone(), Outcome::Accepted);
+    stale.generation = Some(theorem_workbench_core::ids::Generation(0));
+    stale.payload = Some(common::diff_answer("", false, "+late", 1));
+    rig.send(Msg::Completion(stale));
+    assert!(!rig.screen().contains("+late"), "{}", rig.screen());
+}
+
+fn history(rig: &mut Rig) {
+    let fx = rig.ch('h');
+    rig.accept(&fx[0], log_answer(&["touched it", "made it"]));
+}
+
+#[test]
+fn enter_on_a_history_row_shows_that_commits_diff_for_the_file_and_escape_keeps_the_cursor() {
+    let mut rig = loaded();
+    history(&mut rig);
+    rig.key(Key::Down);
+    let fx = rig.key(Key::Enter);
+    once(&fx, "commit diff");
+    match &fx[0].body {
+        EffectBody::ScmDiffCommit(d) => {
+            assert!(d.commit.starts_with("a1b2c31"), "{d:?}");
+            assert_eq!(d.path.as_deref(), Some("src/main.rs"));
+        }
+        other => panic!("{other:?}"),
+    }
+    let mut c = common::diff_answer("src/main.rs", false, "@@ -1 +1 @@\n-a\n+b\n", 1);
+    if let CompletionPayload::ScmDiff(d) = &mut c {
+        d.commit = Some("a1b2c310".into());
+    }
+    rig.accept(&fx[0], c);
+    assert!(rig.screen().contains("+b"), "{}", rig.screen());
+    rig.key(Key::Esc);
+    let screen = rig.screen();
+    assert!(screen.contains("made it"), "{screen}");
+    // Back in the history, the cursor is where it was: Enter opens the same commit again.
+    let again = rig.key(Key::Enter);
+    match &again[0].body {
+        EffectBody::ScmDiffCommit(d) => assert!(d.commit.starts_with("a1b2c31"), "{d:?}"),
+        other => panic!("{other:?}"),
+    }
+    assert_valid(&rig);
+}
+
+#[test]
+fn v_on_a_history_row_shows_the_file_at_that_revision() {
+    let mut rig = loaded();
+    history(&mut rig);
+    let fx = rig.ch('v');
+    once(&fx, "show at revision");
+    let revision = match &fx[0].body {
+        EffectBody::ScmShowRevision(s) => {
+            assert_eq!(s.path, "src/main.rs");
+            s.revision.clone()
+        }
+        other => panic!("{other:?}"),
+    };
+    rig.accept(
+        &fx[0],
+        CompletionPayload::ScmShow(ScmShowResult {
+            path: "src/main.rs".into(),
+            reference: revision,
+            exists: true,
+            text: "fn old() {}\n".into(),
+            state: None,
+        }),
+    );
+    assert!(rig.screen().contains("fn old() {}"), "{}", rig.screen());
+    assert_valid(&rig);
+    rig.key(Key::Esc);
+    assert!(rig.screen().contains("touched it"), "{}", rig.screen());
+}
+
+#[test]
+fn a_file_that_did_not_exist_at_that_revision_says_so() {
+    let mut rig = loaded();
+    history(&mut rig);
+    let fx = rig.ch('v');
+    rig.accept(
+        &fx[0],
+        CompletionPayload::ScmShow(ScmShowResult {
+            path: "src/main.rs".into(),
+            reference: "a1b2c30".into(),
+            exists: false,
+            text: String::new(),
+            state: None,
+        }),
+    );
+    assert!(
+        rig.screen().contains("did not exist in that commit"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
+fn a_file_at_a_revision_answered_after_leaving_is_dropped() {
+    let mut rig = loaded();
+    history(&mut rig);
+    let fx = rig.ch('v');
+    rig.key(Key::Esc);
+    rig.accept(
+        &fx[0],
+        CompletionPayload::ScmShow(ScmShowResult {
+            path: "src/main.rs".into(),
+            reference: "a1b2c30".into(),
+            exists: true,
+            text: "late text\n".into(),
+            state: None,
+        }),
+    );
+    assert!(!rig.screen().contains("late text"), "{}", rig.screen());
+}
+
+#[test]
+fn a_file_at_a_revision_for_an_older_generation_is_dropped() {
+    let mut rig = loaded();
+    history(&mut rig);
+    let fx = rig.ch('v');
+    rig.send(Msg::Host(HostMessage::Resync {
+        workspace: "w".into(),
+        reason: "epoch_changed".into(),
+    }));
+    let mut stale = Completion::new(fx[0].id, fx[0].resource.clone(), Outcome::Accepted);
+    stale.generation = Some(theorem_workbench_core::ids::Generation(0));
+    stale.payload = Some(CompletionPayload::ScmShow(ScmShowResult {
+        path: "src/main.rs".into(),
+        reference: "x".into(),
+        exists: true,
+        text: "late text\n".into(),
+        state: None,
+    }));
+    rig.send(Msg::Completion(stale));
+    assert!(!rig.screen().contains("late text"), "{}", rig.screen());
 }

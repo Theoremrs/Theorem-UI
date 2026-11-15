@@ -28,6 +28,11 @@ pub(crate) enum Tone {
     Muted,
     Warning,
     Error,
+    /// A diff line a commit added or removed, in a read view.
+    Added,
+    Removed,
+    /// The row the cursor is on in a read view's list.
+    Cursor,
 }
 
 /// One line of the scrolling list.
@@ -251,7 +256,14 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
     };
     let mut out = vec![
         text(read.kind.title(&read.path), Tone::Muted),
-        text("Esc goes back to the changes.", Tone::Muted),
+        text(
+            if model.read_has_back() {
+                "Esc goes back."
+            } else {
+                "Esc goes back to the changes."
+            },
+            Tone::Muted,
+        ),
     ];
     match &read.body {
         ReadBody::Loading => out.push(text("Reading...", Tone::Muted)),
@@ -279,16 +291,37 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
             }
         }
         ReadBody::Text { exists: false, .. } => out.push(text(
-            match read.kind {
+            match &read.kind {
                 ReadKind::Show(theorem_workbench_core::effect::ScmRef::Index) => {
                     "The index has no such file."
                 }
+                ReadKind::Revision { .. } => "The file did not exist in that commit.",
                 _ => "HEAD has no such file.",
             },
             Tone::Muted,
         )),
-        ReadBody::Text { text: body, .. } if body.is_empty() => {
-            out.push(text("The file is empty.", Tone::Muted))
+        ReadBody::Text { text: body, .. } if body.is_empty() => out.push(text(
+            match &read.kind {
+                ReadKind::Commit { .. } => "This commit has no line changes.",
+                _ => "The file is empty.",
+            },
+            Tone::Muted,
+        )),
+        ReadBody::Text { text: body, .. } if matches!(read.kind, ReadKind::Commit { .. }) => {
+            for line in body.lines() {
+                let tone = if line.starts_with("+++") || line.starts_with("---") {
+                    Tone::Muted
+                } else if line.starts_with('+') {
+                    Tone::Added
+                } else if line.starts_with('-') {
+                    Tone::Removed
+                } else if line.starts_with("@@") || line.starts_with("diff ") {
+                    Tone::Muted
+                } else {
+                    Tone::Plain
+                };
+                out.push(text(line, tone));
+            }
         }
         ReadBody::Text { text: body, .. } => {
             let digits = body.lines().count().to_string().len();
@@ -300,11 +333,12 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
             out.push(text("No commit changed this file.", Tone::Muted))
         }
         ReadBody::History(commits) => {
-            for entry in commits {
+            for (at, entry) in commits.iter().enumerate() {
                 let commit: String = entry.commit.chars().take(7).collect();
+                let mark = if at == read.cursor { ">" } else { " " };
                 out.push(text(
-                    format!("{commit} {}  {}", entry.subject, entry.author),
-                    Tone::Plain,
+                    format!("{mark} {commit} {}  {}", entry.subject, entry.author),
+                    if at == read.cursor { Tone::Cursor } else { Tone::Plain },
                 ));
             }
         }
@@ -313,7 +347,12 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
 }
 
 fn branch_rows(model: &Changes) -> Vec<Row<'_>> {
-    let mut out = vec![text("Switch branch", Tone::Muted)];
+    let title = model
+        .prompt
+        .as_ref()
+        .map_or("Switch branch", |p| p.kind.label());
+    let mut out = vec![text(title, Tone::Muted)];
+    let typing = model.prompt.is_some();
     match &model.branches {
         BranchList::Idle | BranchList::Loading => {
             out.push(text("Reading branches...", Tone::Muted))
@@ -322,13 +361,25 @@ fn branch_rows(model: &Changes) -> Vec<Row<'_>> {
             "The branch list was for an earlier state of the repository and was dropped.",
             Tone::Warning,
         )),
-        BranchList::Problem(problem) => out.push(text(problem.text(), problem_tone(problem))),
+        BranchList::Problem(problem) => {
+            out.push(text(problem.text(), problem_tone(problem)));
+            if typing {
+                out.push(text("Type the name and press Enter.", Tone::Muted));
+            }
+        }
         BranchList::Ready(list) if list.is_empty() => out.push(text("No branches", Tone::Muted)),
-        BranchList::Ready(list) => {
-            for (at, info) in list.iter().enumerate() {
+        BranchList::Ready(_) => {
+            let shown = model.candidates();
+            if shown.is_empty() {
+                out.push(text(
+                    "No branch matches. Enter takes the name as typed.",
+                    Tone::Muted,
+                ));
+            }
+            for (at, info) in shown.into_iter().enumerate() {
                 out.push(Row::Branch {
                     info,
-                    cursor: at == model.branch_cursor,
+                    cursor: at == model.branch_cursor && (!typing || model.prompt_picked()),
                 });
             }
         }
@@ -541,7 +592,13 @@ pub(crate) enum Hit {
     Subject,
     Body(usize),
     Button,
+    /// The amend box beside the commit button.
+    Amend,
     Log(usize),
+    /// A commit of an open history.
+    Commit(usize),
+    /// A branch the prompt offers.
+    Branch(usize),
 }
 
 impl Changes {
@@ -588,11 +645,14 @@ impl Changes {
             if at == r.height - 1 {
                 let (label, _) = self.commit_button();
                 let label_w = width(&format!("[ {label} ]")) as u16;
-                let room = r.width.saturating_sub(width(&self.amend_text()) as u16 + 3);
+                let amend_w = width(&self.amend_text()) as u16;
+                let room = r.width.saturating_sub(amend_w + 3);
                 let shown = label_w.min(room);
                 let start = r.width.saturating_sub(shown);
                 return if shown > 0 && x - r.x >= start {
                     Hit::Button
+                } else if (1..1 + amend_w).contains(&(x - r.x)) {
+                    Hit::Amend
                 } else {
                     Hit::Nothing
                 };
@@ -690,6 +750,18 @@ impl Changes {
                 },
                 None => Hit::Nothing,
             },
+            Row::Branch { .. } => Hit::Branch(
+                all.iter()
+                    .take(index)
+                    .filter(|r| matches!(r, Row::Branch { .. }))
+                    .count(),
+            ),
+            Row::Text { .. } if self.mode == Mode::Read && index >= 2 => {
+                match self.read.as_ref().map(|r| &r.body) {
+                    Some(ReadBody::History(c)) if index - 2 < c.len() => Hit::Commit(index - 2),
+                    _ => Hit::Nothing,
+                }
+            }
             _ => Hit::Nothing,
         }
     }

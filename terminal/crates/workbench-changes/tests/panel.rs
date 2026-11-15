@@ -636,26 +636,26 @@ fn no_status_means_no_mutation() {
 fn fetch_push_and_branch_requests_are_effects_the_wire_has() {
     let mut model = mixed();
     let fetch = model.fetch().unwrap();
-    assert!(format!("{:?}", fetch.kind.effect_body().unwrap()).contains("ScmFetch"));
+    assert!(format!("{:?}", fetch.kind.effect_body()).contains("ScmFetch"));
     accept_bare(&mut model, &fetch);
     let push = model.push().unwrap();
-    assert!(format!("{:?}", push.kind.effect_body().unwrap()).contains("ScmPush"));
+    assert!(format!("{:?}", push.kind.effect_body()).contains("ScmPush"));
 }
 
 #[test]
-fn amend_has_no_effect_and_is_refused_when_the_host_does_not_offer_it() {
+fn amend_is_its_own_wire_kind_and_is_refused_when_the_host_does_not_offer_it() {
+    use theorem_workbench_core::effect::{EffectBody, ScmAmend};
     assert_eq!(
         IntentKind::Commit {
             message: "m".into(),
             amend: true
         }
         .effect_body(),
-        Err(Unsupported::Amend)
+        EffectBody::ScmAmend(ScmAmend {
+            message: "m".into()
+        })
     );
-    assert_eq!(
-        IntentKind::Branches.effect_body(),
-        Err(Unsupported::BranchList)
-    );
+    assert_eq!(IntentKind::Branches.effect_body(), EffectBody::ScmBranches);
     let mut model = mixed();
     assert!(!model.amend_available());
     assert_eq!(
@@ -1401,7 +1401,7 @@ fn semantics_offer_a_disabled_action_with_its_reason_while_busy() {
 }
 
 #[test]
-fn semantics_show_the_confirm_as_a_dialog_and_offer_no_amend() {
+fn semantics_show_the_confirm_as_a_dialog_and_amend_as_unavailable() {
     let mut model = mixed();
     model.select(&key(Section::Unstaged, "README.md"), false);
     model.request_discard().unwrap();
@@ -1419,11 +1419,20 @@ fn semantics_show_the_confirm_as_a_dialog_and_offer_no_amend() {
             .iter()
             .any(|a| a.id.as_str() == actions::CONFIRM)
     );
-    // The wire cannot amend, so no amend control is offered.
+    // Without the host's `scm.commit.amend` the amend control is disabled, with the reason.
+    let amend = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "changes/commit/amend")
+        .unwrap();
+    assert!(amend.state.disabled);
     assert!(
-        tree.nodes
-            .iter()
-            .all(|n| n.id.as_str() != "changes/commit/amend")
+        amend
+            .state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("scm.commit.amend")
     );
 }
 

@@ -29,7 +29,7 @@ pub use diff::{
     side_numbers,
 };
 pub use draw::SPLIT_MIN;
-pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Unsupported};
+pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal};
 pub use model::{
     BranchList, Caret, Changes, Confirm, Counters, DiffLayout, DiffState, DiffView, Field, Focus,
     LogState, Mode, Notice, PanelState, Problem, Prompt, PromptKind, RECENT, ReadBody, ReadKind,

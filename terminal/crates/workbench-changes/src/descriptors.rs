@@ -20,6 +20,8 @@ use theorem_workbench_core::registry::{
 use crate::semantics::actions as id;
 
 const CAPABILITY: &str = "scm";
+/// What the host advertises when its owner can amend.
+pub const AMEND_CAPABILITY: &str = "scm.commit.amend";
 
 fn start(id: &str, title: &str, emits: EffectKind) -> ActionDescriptor {
     ActionDescriptor::new(id, title, Start)
@@ -52,8 +54,20 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
         ),
         start(id::COMMIT, "Commit what is staged", ScmCommit),
         start(id::COMMIT_ALL, "Stage all changes and commit", ScmStage),
+        // The host must offer `scm.commit.amend`; the registry says so when it does not.
+        start(id::AMEND, "Amend the last commit", ScmAmend).requires(AMEND_CAPABILITY),
         start(id::LOG, "Read the recent commits", ScmLog),
         start(id::HISTORY, "Show the history of the selected file", ScmLog),
+        start(
+            id::OPEN_COMMIT,
+            "Show the diff of the commit under the cursor",
+            ScmDiffCommit,
+        ),
+        start(
+            id::SHOW_AT_COMMIT,
+            "Show the file as the commit in its history had it",
+            ScmShowRevision,
+        ),
         start(
             id::BLAME,
             "Show who changed each line of the selected file",
@@ -71,7 +85,8 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
         ),
         start(id::FETCH, "Fetch from the remote", ScmFetch),
         start(id::PUSH, "Push to the remote", ScmPush),
-        // These two ask for the branch name in a prompt.
+        // These three ask for the branch name in a prompt, which lists the branches the
+        // owner reports (`scmBranches`) as the name is typed.
         start(id::SWITCH_BRANCH, "Switch branch", ScmBranch),
         ActionDescriptor::new(id::CREATE_BRANCH, "Create a branch", Create)
             .requires(CAPABILITY)

@@ -7,8 +7,8 @@
 
 use serde::{Deserialize, Serialize};
 use theorem_workbench_core::effect::{
-    EffectBody, FilesPath, ScmBranch, ScmCommit, ScmDiff, ScmLog, ScmMerge, ScmPaths, ScmPush,
-    ScmRef, ScmRemote, ScmRestore, ScmShow,
+    EffectBody, FilesPath, ScmAmend, ScmBranch, ScmCommit, ScmDiff, ScmDiffCommit, ScmLog,
+    ScmMerge, ScmPaths, ScmPush, ScmRef, ScmRemote, ScmRestore, ScmShow, ScmShowRevision,
 };
 
 use crate::model::RECENT;
@@ -82,6 +82,16 @@ pub enum IntentKind {
     History {
         path: String,
     },
+    /// One commit's diff, narrowed to a file when `path` is given.
+    CommitDiff {
+        commit: String,
+        path: Option<String>,
+    },
+    /// A file as one commit holds it.
+    ShowRevision {
+        path: String,
+        revision: String,
+    },
 }
 
 /// An action as the panel tells it apart: the key of in-flight state and of a notice.
@@ -105,6 +115,8 @@ pub enum ActionKind {
     Blame,
     Show,
     History,
+    CommitDiff,
+    ShowRevision,
 }
 
 impl ActionKind {
@@ -127,6 +139,8 @@ impl ActionKind {
             Self::Blame => "blame",
             Self::Show => "show",
             Self::History => "history",
+            Self::CommitDiff => "commit diff",
+            Self::ShowRevision => "file at commit",
         }
     }
 
@@ -142,18 +156,10 @@ impl ActionKind {
                 | Self::Blame
                 | Self::Show
                 | Self::History
+                | Self::CommitDiff
+                | Self::ShowRevision
         )
     }
-}
-
-/// A request the effect bodies of the wire cannot carry today.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Unsupported {
-    /// `ScmCommit` has only `message`; the owner's `scm.commit` takes `amend`.
-    Amend,
-    /// The wire has no effect that asks for the branch list, though it has the answer's
-    /// payload (`ScmBranches`).
-    BranchList,
 }
 
 impl IntentKind {
@@ -176,14 +182,15 @@ impl IntentKind {
             Self::Blame { .. } => ActionKind::Blame,
             Self::Show { .. } => ActionKind::Show,
             Self::History { .. } => ActionKind::History,
+            Self::CommitDiff { .. } => ActionKind::CommitDiff,
+            Self::ShowRevision { .. } => ActionKind::ShowRevision,
         }
     }
 
-    /// The effect body that carries this request. A commit that amends has none: the
-    /// wire's `ScmCommit` has no `amend` field yet, and an amend sent as a plain commit
-    /// would make a second commit.
-    pub fn effect_body(&self) -> Result<EffectBody, Unsupported> {
-        Ok(match self {
+    /// The effect body that carries this request. An amend is its own wire kind, never a
+    /// plain commit: sent as one it would make a second commit.
+    pub fn effect_body(&self) -> EffectBody {
+        match self {
             Self::Status => EffectBody::ScmStatus,
             Self::Diff { path, staged } => EffectBody::ScmDiff(ScmDiff {
                 path: Some(path.clone()),
@@ -193,7 +200,7 @@ impl IntentKind {
                 path: None,
                 max_count: *max_count,
             }),
-            Self::Branches => return Err(Unsupported::BranchList),
+            Self::Branches => EffectBody::ScmBranches,
             Self::Stage { paths } => EffectBody::ScmStage(ScmPaths {
                 paths: paths.clone(),
             }),
@@ -204,7 +211,12 @@ impl IntentKind {
             Self::Restore { restore_id } => EffectBody::ScmRestore(ScmRestore {
                 restore_id: restore_id.clone(),
             }),
-            Self::Commit { amend: true, .. } => return Err(Unsupported::Amend),
+            Self::Commit {
+                message,
+                amend: true,
+            } => EffectBody::ScmAmend(ScmAmend {
+                message: message.clone(),
+            }),
             Self::Commit { message, .. } => EffectBody::ScmCommit(ScmCommit {
                 message: message.clone(),
             }),
@@ -233,7 +245,15 @@ impl IntentKind {
                 path: Some(path.clone()),
                 max_count: RECENT,
             }),
-        })
+            Self::CommitDiff { commit, path } => EffectBody::ScmDiffCommit(ScmDiffCommit {
+                commit: commit.clone(),
+                path: path.clone(),
+            }),
+            Self::ShowRevision { path, revision } => EffectBody::ScmShowRevision(ScmShowRevision {
+                path: path.clone(),
+                revision: revision.clone(),
+            }),
+        }
     }
 }
 
@@ -255,6 +275,8 @@ pub enum Refusal {
     /// The host does not offer `scm.commit.amend`.
     AmendUnavailable,
     EmptyBranchName,
+    /// The repository has no commit to amend or show.
+    NoCommits,
     NoRestorePoint,
     /// `confirm` with nothing waiting to be confirmed.
     NothingToConfirm,
@@ -271,6 +293,7 @@ impl Refusal {
             Self::NothingStaged => "nothing_staged",
             Self::AmendUnavailable => "missing_capability",
             Self::EmptyBranchName => "empty_branch",
+            Self::NoCommits => "no_commits",
             Self::NoRestorePoint => "no_restore_id",
             Self::NothingToConfirm => "nothing_to_confirm",
         }
@@ -289,6 +312,7 @@ impl Refusal {
             Self::NothingStaged => "There are no changes to commit".into(),
             Self::AmendUnavailable => "This host does not offer amend".into(),
             Self::EmptyBranchName => "A branch needs a name".into(),
+            Self::NoCommits => "There is no commit to use yet".into(),
             Self::NoRestorePoint => "There is no discarded change to restore".into(),
             Self::NothingToConfirm => "There is nothing waiting to be confirmed".into(),
         }

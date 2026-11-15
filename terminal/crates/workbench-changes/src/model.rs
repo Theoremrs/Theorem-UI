@@ -25,6 +25,7 @@ use theorem_workbench_core::completion::{
     BranchInfo, CompletionPayload, LogEntry, Outcome, RepoState, ScmDiffResult, ScmStatus,
 };
 
+mod amend;
 mod read;
 
 pub use read::{Caret, Field, Prompt, PromptKind, ReadBody, ReadKind, ReadView};
@@ -347,6 +348,14 @@ pub struct Changes {
     want_log: bool,
     pub(crate) branches: BranchList,
     pub(crate) branch_cursor: usize,
+    /// The branch read whose answer is the one still wanted.
+    pub(crate) branches_request: Option<IntentId>,
+    /// The log was asked for so the last commit's message can fill an amend.
+    pub(crate) amend_wanted: bool,
+    /// The message an amend loaded, so turning amend off can take it back out.
+    pub(crate) amend_loaded: Option<String>,
+    /// Earlier read views, for Escape: a commit opened from a history goes back to it.
+    pub(crate) read_back: Vec<ReadView>,
     pub(crate) confirm: Option<Confirm>,
     pub(crate) undo: Vec<Undo>,
     pub(crate) scroll: usize,
@@ -394,6 +403,10 @@ impl Changes {
             want_log: true,
             branches: BranchList::Idle,
             branch_cursor: 0,
+            branches_request: None,
+            amend_wanted: false,
+            amend_loaded: None,
+            read_back: Vec::new(),
             confirm: None,
             undo: Vec::new(),
             scroll: 0,
@@ -568,6 +581,7 @@ impl Changes {
         self.amend_available = available;
         if !available {
             self.amend = false;
+            self.amend_wanted = false;
         }
     }
 
@@ -618,9 +632,8 @@ impl Changes {
     pub fn move_cursor(&mut self, delta: isize, extend: bool) {
         match (self.mode, self.focus) {
             (Mode::Branches, _) => {
-                if let BranchList::Ready(list) = &self.branches {
-                    self.branch_cursor = step(self.branch_cursor, delta, list.len());
-                }
+                let shown = self.candidates().len();
+                self.branch_cursor = step(self.branch_cursor, delta, shown);
             }
             (_, Focus::Log) => {
                 if let LogState::Ready(entries) = &self.log {
@@ -772,11 +785,14 @@ impl Changes {
         self.mode = Mode::Branches;
         self.branches = BranchList::Loading;
         self.branch_cursor = 0;
-        self.plain(IntentKind::Branches)
+        let intent = self.plain(IntentKind::Branches);
+        self.branches_request = Some(intent.id);
+        intent
     }
 
     pub fn close_branches(&mut self) {
         self.mode = Mode::Changes;
+        self.branches_request = None;
     }
 
     fn loaded(&mut self, action: ActionKind) -> Result<(), Refusal> {
@@ -1165,10 +1181,10 @@ impl Changes {
 
     /// Switches to the branch under the branch list's cursor.
     pub fn pick_branch(&mut self) -> Result<Intent, Refusal> {
-        let name = match &self.branches {
-            BranchList::Ready(list) => list.get(self.branch_cursor).map(|b| b.name.clone()),
-            _ => None,
-        };
+        let name = self
+            .candidates()
+            .get(self.branch_cursor)
+            .map(|b| b.name.clone());
         match name {
             Some(name) => self.switch_branch(&name),
             None => self.refuse(ActionKind::SwitchBranch, Refusal::EmptyBranchName),
@@ -1253,10 +1269,14 @@ impl Changes {
                 vec![]
             }
             ActionKind::Branches => {
-                self.branches_done(&pending, outcome, payload);
+                self.branches_done(id, &pending, outcome, payload);
                 vec![]
             }
-            ActionKind::Blame | ActionKind::Show | ActionKind::History => {
+            ActionKind::Blame
+            | ActionKind::Show
+            | ActionKind::History
+            | ActionKind::CommitDiff
+            | ActionKind::ShowRevision => {
                 self.read_done(id, &pending, outcome, payload);
                 vec![]
             }
@@ -1473,21 +1493,32 @@ impl Changes {
             }),
             (other, _) => LogState::Problem(Problem::of(other).expect("not accepted")),
         };
+        self.log_read_for_amend();
     }
 
     fn branches_done(
         &mut self,
+        id: IntentId,
         pending: &Pending,
         outcome: &Outcome,
         payload: Option<&CompletionPayload>,
     ) {
+        if self.branches_request != Some(id) {
+            // The list was closed or asked for again since: this answer no longer applies.
+            self.counters.stale_dropped += 1;
+            return;
+        }
         if self.older(pending) {
             self.branches = BranchList::Outdated;
             return;
         }
         self.branches = match (outcome, payload) {
             (Outcome::Accepted, Some(CompletionPayload::ScmBranches(result))) => {
-                self.branch_cursor = result.branches.iter().position(|b| b.current).unwrap_or(0);
+                self.branch_cursor = if self.prompt.is_some() {
+                    0
+                } else {
+                    result.branches.iter().position(|b| b.current).unwrap_or(0)
+                };
                 BranchList::Ready(result.branches.clone())
             }
             (Outcome::Accepted, _) => BranchList::Problem(Problem::Failed {
@@ -1598,6 +1629,7 @@ impl Changes {
         }
         if self.amend == sent.amend {
             self.amend = false;
+            self.amend_loaded = None;
         }
     }
 

@@ -37,6 +37,9 @@ fn tone(styles: &ChangesStyles, tone: Tone) -> Style {
         Tone::Muted => styles.muted,
         Tone::Warning => styles.warning,
         Tone::Error => styles.error,
+        Tone::Added => styles.added_line,
+        Tone::Removed => styles.removed_line,
+        Tone::Cursor => styles.cursor,
     }
 }
 
@@ -80,13 +83,10 @@ impl Changes {
         self.draw_log(regions.log, buf, styles);
     }
 
-    /// The amend box's words; none when the host cannot amend, so no control is drawn.
+    /// The amend box's words. Always drawn: without `scm.commit.amend` it is muted and the
+    /// semantic node says why it cannot be used.
     pub(crate) fn amend_text(&self) -> String {
-        if self.amend_available() {
-            format!("[{}] Amend", if self.amend { "x" } else { " " })
-        } else {
-            String::new()
-        }
+        format!("[{}] Amend", if self.amend { "x" } else { " " })
     }
 
     /// Shows the caret as a reversed cell, the way a terminal draws a block cursor.
@@ -569,7 +569,12 @@ impl Changes {
         // The amend box and the button.
         let y = rect.y + rect.height - 1;
         let amend = self.amend_text();
-        put(buf, rect.x + 1, y, w.saturating_sub(1), &amend, styles.text);
+        let amend_style = if self.amend_available() {
+            styles.text
+        } else {
+            styles.muted
+        };
+        put(buf, rect.x + 1, y, w.saturating_sub(1), &amend, amend_style);
         let (label, ready) = self.commit_button();
         let label = format!("[ {label} ]");
         let room = w.saturating_sub(width(&amend) + 3);

@@ -40,7 +40,7 @@ fn snapshot_of_a_small_status() {
             "  Commit message                        0/50",
             "  Description",
             "",
-            "                          [ Commit to main ]",
+            " [ ] Amend                [ Commit to main ]",
         ]
     );
 }
@@ -80,7 +80,7 @@ fn snapshot_of_a_small_unified_diff() {
             "  Commit message                        0/50",
             "  Description",
             "",
-            "                          [ Commit to main ]",
+            " [ ] Amend                [ Commit to main ]",
         ]
     );
 }
@@ -107,7 +107,7 @@ fn snapshot_of_a_small_split_diff() {
             "  Commit message                                                                0/50",
             "  Description",
             "",
-            "                                                                  [ Commit to main ]",
+            " [ ] Amend                                                        [ Commit to main ]",
         ]
     );
 }
