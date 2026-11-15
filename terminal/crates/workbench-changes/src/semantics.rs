@@ -12,32 +12,35 @@ use theorem_workbench_core::ActionId;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role, SemanticTree};
 
 use crate::layout::{Row, banners, regions, rows};
-use crate::model::{Changes, Confirm, Focus, LogState, Mode, PanelState};
+use crate::model::{Changes, Confirm, Focus, LogState, Mode, PanelState, ReadBody};
 use crate::status::{LISTED, RowKey, Section, letter, shown};
 
-/// The actions this panel's rows offer, by the id a registry would hold them under.
+/// The actions the panel registers, by id. Each is a registry action the core resolves
+/// for a person or the agent and delivers to the panel as `PanelMsg::Action`; see
+/// [`crate::actions`] for their descriptors. Moving the cursor, folding a hunk and the
+/// layout toggle start no work, so they are keys only and have no action.
 pub mod actions {
-    pub const TOGGLE_DIFF: &str = "changes.toggleDiff";
-    pub const RELOAD_DIFF: &str = "changes.reloadDiff";
-    pub const NEXT_HUNK: &str = "changes.nextHunk";
-    pub const PREVIOUS_HUNK: &str = "changes.previousHunk";
-    pub const FOLD_HUNK: &str = "changes.foldHunk";
-    pub const TOGGLE_LAYOUT: &str = "changes.toggleLayout";
+    pub const REFRESH: &str = "changes.refresh";
+    pub const DIFF: &str = "changes.diff";
     pub const STAGE: &str = "changes.stage";
     pub const UNSTAGE: &str = "changes.unstage";
     pub const STAGE_ALL: &str = "changes.stageAll";
     pub const UNSTAGE_ALL: &str = "changes.unstageAll";
     pub const DISCARD: &str = "changes.discard";
-    pub const RESTORE: &str = "changes.restore";
     pub const CONFIRM: &str = "changes.confirm";
-    pub const CANCEL: &str = "changes.cancel";
+    pub const RESTORE: &str = "changes.restore";
     pub const COMMIT: &str = "changes.commit";
-    pub const AMEND: &str = "changes.amend";
-    pub const REFRESH: &str = "changes.refresh";
+    pub const COMMIT_ALL: &str = "changes.commitAll";
+    pub const LOG: &str = "changes.log";
+    pub const HISTORY: &str = "changes.history";
+    pub const BLAME: &str = "changes.blame";
+    pub const SHOW_HEAD: &str = "changes.showHead";
+    pub const SHOW_INDEX: &str = "changes.showIndex";
     pub const FETCH: &str = "changes.fetch";
     pub const PUSH: &str = "changes.push";
-    pub const BRANCHES: &str = "changes.branches";
     pub const SWITCH_BRANCH: &str = "changes.switchBranch";
+    pub const CREATE_BRANCH: &str = "changes.createBranch";
+    pub const MERGE: &str = "changes.merge";
 }
 
 fn act(id: &str, reason: Option<String>) -> NodeAction {
@@ -70,6 +73,27 @@ impl Changes {
             regions.branch,
         );
         branch.state.busy = !self.in_flight().is_empty();
+        let loaded = self.snapshot.is_some();
+        let not_read = (!loaded).then(|| "The repository has not been read yet".to_owned());
+        branch.actions = vec![
+            act(actions::FETCH, block.clone()),
+            act(actions::PUSH, block.clone()),
+            act(actions::SWITCH_BRANCH, block.clone()),
+            act(actions::CREATE_BRANCH, block.clone()),
+            act(actions::MERGE, block.clone()),
+            act(actions::REFRESH, None),
+        ];
+        if let Some(prompt) = &self.prompt {
+            branch.role = Role::TextBox;
+            branch.name = prompt.kind.label().to_owned();
+            branch.state.focused = true;
+            branch.state.description = Some(if prompt.text.is_empty() {
+                "Type a branch name and press Enter".to_owned()
+            } else {
+                prompt.text.clone()
+            });
+            branch.actions.clear();
+        }
         if let Some(open) = self.unreconciled().first() {
             branch.state.description = Some(format!(
                 "The result of the earlier {} is unknown",
@@ -96,7 +120,7 @@ impl Changes {
                 node.role = Role::Dialog;
                 node.name = confirm.text().0;
                 node.state.description = Some(confirm.text().1);
-                node.actions = vec![act(actions::CONFIRM, None), act(actions::CANCEL, None)];
+                node.actions = vec![act(actions::CONFIRM, None)];
                 if matches!(confirm, Confirm::Restore { .. }) {
                     node.state.description = Some(confirm.text().1);
                 }
@@ -106,18 +130,31 @@ impl Changes {
         }
 
         // The list.
-        let list_role = if self.mode == Mode::Branches {
-            Role::Menu
-        } else {
-            Role::Tree
+        let list_role = match self.mode {
+            Mode::Branches => Role::Menu,
+            Mode::Read => Role::Document,
+            Mode::Changes => Role::Tree,
         };
-        let list_name = if self.mode == Mode::Branches {
-            "Branches"
-        } else {
-            "Changes list"
+        let list_name = match (&self.mode, &self.read) {
+            (Mode::Branches, _) => "Branches".to_owned(),
+            (Mode::Read, Some(read)) => read.kind.title(&read.path),
+            _ => "Changes list".to_owned(),
         };
-        let mut list = Node::new(&format!("{id}/list"), list_role, list_name, regions.list);
-        if let PanelState::Refused { code, reason } = self.state() {
+        let mut list = Node::new(&format!("{id}/list"), list_role, &list_name, regions.list);
+        if let (Mode::Read, Some(read)) = (&self.mode, &self.read) {
+            list.state.busy = read.body == ReadBody::Loading;
+            list.state.description = Some(match &read.body {
+                ReadBody::Loading => "Reading".to_owned(),
+                ReadBody::Blame(h) => format!("{} blame hunks", h.len()),
+                ReadBody::Text { exists: false, .. } => "The file has no such version".to_owned(),
+                ReadBody::Text { text, .. } => format!("{} lines", text.lines().count()),
+                ReadBody::History(c) => format!("{} commits", c.len()),
+                ReadBody::Problem(p) => p.text(),
+                ReadBody::Outdated => {
+                    "Dropped: it was for an earlier state of the repository".to_owned()
+                }
+            });
+        } else if let PanelState::Refused { code, reason } = self.state() {
             list.state.description = Some(format!("{code}: {reason}"));
         } else if let PanelState::Failed { reason } | PanelState::Uncertain { reason } =
             self.state()
@@ -130,7 +167,7 @@ impl Changes {
         }
         let all = rows(self, self.split_at(regions.list.width));
         let height = regions.list.height as usize;
-        let first = self.scroll.min(all.len().saturating_sub(height));
+        let first = self.scroll().min(all.len().saturating_sub(height));
         let mut section: Option<(Node, Vec<Node>)> = None;
         let flush =
             |section: &mut Option<(Node, Vec<Node>)>, list: &mut Node, nodes: &mut Vec<Node>| {
@@ -207,7 +244,7 @@ impl Changes {
                         );
                         diff.state.busy = view.state == crate::model::DiffState::Loading;
                         diff.state.description = Some(self.diff_description(view));
-                        diff.actions = vec![act(actions::RELOAD_DIFF, None)];
+                        diff.actions = vec![act(actions::DIFF, None)];
                         node.children.push(diff.id.clone());
                         if let Some((_, kids)) = section.as_mut() {
                             kids.push(node);
@@ -233,7 +270,6 @@ impl Changes {
                     );
                     node.state.selected = *cursor;
                     node.state.description = info.upstream.as_ref().map(|u| format!("tracks {u}"));
-                    node.actions = vec![act(actions::SWITCH_BRANCH, block.clone())];
                     list.children.push(node.id.clone());
                     nodes.push(node);
                 }
@@ -272,29 +308,12 @@ impl Changes {
                 nodes.push(body);
             }
             let y = r.y + r.height - 1;
-            let mut amend = Node::new(
-                &format!("{id}/commit/amend"),
-                Role::Button,
-                "Amend",
-                Rect::new(r.x, y, r.width / 2, 1),
-            );
-            amend.state.selected = self.amend;
-            amend.state.disabled = !self.amend_available();
-            if !self.amend_available() {
-                amend.state.description = Some("This host does not offer amend".into());
-            }
-            amend.actions = vec![act(
-                actions::AMEND,
-                (!self.amend_available()).then(|| "This host does not offer amend".to_owned()),
-            )];
-            root.children.push(amend.id.clone());
-            nodes.push(amend);
             let (label, ready) = self.commit_button();
             let mut button = Node::new(
                 &format!("{id}/commit/button"),
                 Role::Button,
                 &label,
-                Rect::new(r.x + r.width / 2, y, r.width - r.width / 2, 1),
+                Rect::new(r.x, y, r.width, 1),
             );
             let why = if self.subject.trim().is_empty() {
                 Some("Write a commit message first".to_owned())
@@ -308,7 +327,12 @@ impl Changes {
             button.state.disabled = why.is_some();
             button.state.busy = self.is_busy(crate::intent::ActionKind::Commit);
             button.state.description = why.clone();
-            button.actions = vec![act(actions::COMMIT, why)];
+            let nothing_staged = self.groups().is_some_and(|g| g.staged.is_empty());
+            button.actions = vec![if nothing_staged {
+                act(actions::COMMIT_ALL, why)
+            } else {
+                act(actions::COMMIT, why)
+            }];
             root.children.push(button.id.clone());
             nodes.push(button);
         }
@@ -317,6 +341,7 @@ impl Changes {
         if regions.log.height > 0 {
             let r = regions.log;
             let mut log = Node::new(&format!("{id}/log"), Role::Log, "Recent commits", r);
+            log.actions = vec![act(actions::LOG, not_read.clone())];
             if let LogState::Ready(entries) = &self.log {
                 let size = entries.len();
                 for (at, entry) in entries.iter().take(r.height as usize - 1).enumerate() {
@@ -375,7 +400,7 @@ impl Changes {
 
     fn file_actions(&self, key: &RowKey, block: Option<String>) -> Vec<NodeAction> {
         let mut out = vec![act(
-            actions::TOGGLE_DIFF,
+            actions::DIFF,
             (!key.section.can_diff())
                 .then(|| "The host did not report this file's status".to_owned()),
         )];
@@ -388,13 +413,12 @@ impl Changes {
         if key.section.can_discard() {
             out.push(act(actions::DISCARD, block));
         }
-        if self
-            .diffs
-            .get(key)
-            .is_some_and(|v| v.stale || v.state == crate::model::DiffState::Outdated)
-        {
-            out.push(act(actions::RELOAD_DIFF, None));
-        }
+        let untracked = (key.section == Section::Untracked)
+            .then(|| "The file is not tracked yet, so it has no history".to_owned());
+        out.push(act(actions::BLAME, untracked.clone()));
+        out.push(act(actions::HISTORY, untracked.clone()));
+        out.push(act(actions::SHOW_HEAD, untracked.clone()));
+        out.push(act(actions::SHOW_INDEX, untracked));
         out
     }
 }

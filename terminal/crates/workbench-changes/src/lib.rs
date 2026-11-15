@@ -10,17 +10,20 @@
 //! and ELY-Open-Source/Ely-GPUI-Components at 294a8323c08a06bd8e7782d16acee43b6bb0c5eb
 //! (both MIT; see `LICENSE-ELY` and the header of each file).
 
+mod descriptors;
 mod diff;
 mod draw;
 mod intent;
 mod layout;
 mod model;
+mod panel;
 mod semantics;
 mod status;
 mod styles;
 mod text;
 mod view_state;
 
+pub use descriptors::{descriptors, with_actions};
 pub use diff::{
     DiffLine, Hunk, LineKind, ParseError, Parsed, mark_words, pair_places, pairs, parse,
     side_numbers,
@@ -28,12 +31,14 @@ pub use diff::{
 pub use draw::SPLIT_MIN;
 pub use intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Unsupported};
 pub use model::{
-    BranchList, Changes, Confirm, Counters, DiffLayout, DiffState, DiffView, Focus, LogState, Mode,
-    Notice, PanelState, Problem, RECENT, SUBJECT,
+    BranchList, Caret, Changes, Confirm, Counters, DiffLayout, DiffState, DiffView, Field, Focus,
+    LogState, Mode, Notice, PanelState, Problem, Prompt, PromptKind, RECENT, ReadBody, ReadKind,
+    ReadView, SUBJECT,
 };
+pub use panel::{ChangesPanel, KIND, REPOSITORY, register};
 pub use semantics::actions;
 pub use status::{
     Basis, Change, Groups, Head, LISTED, Loss, RowKey, Section, is_folder, letter, loss, shown,
 };
-pub use styles::ChangesStyles;
+pub use styles::{CHANGED_ROLE, ChangesStyles, ThemeRole};
 pub use view_state::{VERSION, ViewState};

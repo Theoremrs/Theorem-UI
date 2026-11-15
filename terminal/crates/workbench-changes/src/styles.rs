@@ -8,6 +8,32 @@
 use ratatui::style::Style;
 use theorem_workbench_core::Theme;
 
+/// A role of the workbench theme.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThemeRole {
+    Text,
+    Muted,
+    Warning,
+    Success,
+    Error,
+}
+
+impl ThemeRole {
+    pub fn of(self, theme: &Theme) -> Style {
+        match self {
+            Self::Text => theme.text,
+            Self::Muted => theme.muted,
+            Self::Warning => theme.warning,
+            Self::Success => theme.success,
+            Self::Error => theme.error,
+        }
+    }
+}
+
+/// The role a changed file's letter wears. The theme has no role of its own for "changed"
+/// yet, so it borrows the warning role; this is the one place that choice is made.
+pub const CHANGED_ROLE: ThemeRole = ThemeRole::Warning;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChangesStyles {
     /// Text with no role of its own.
@@ -59,7 +85,7 @@ impl ChangesStyles {
             selected: theme.selected,
             heading: theme.muted,
             letter_added: theme.success,
-            letter_changed: theme.warning,
+            letter_changed: CHANGED_ROLE.of(theme),
             letter_deleted: theme.error,
             letter_conflict: theme.error,
             letter_untracked: theme.muted,

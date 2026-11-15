@@ -7,9 +7,11 @@
 
 use serde::{Deserialize, Serialize};
 use theorem_workbench_core::effect::{
-    EffectBody, FilesPath, ScmBranch, ScmCommit, ScmDiff, ScmLog, ScmPaths, ScmPush, ScmRemote,
-    ScmRestore,
+    EffectBody, FilesPath, ScmBranch, ScmCommit, ScmDiff, ScmLog, ScmMerge, ScmPaths, ScmPush,
+    ScmRef, ScmRemote, ScmRestore, ScmShow,
 };
+
+use crate::model::RECENT;
 
 /// Names one request from the user's action to its result.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -63,6 +65,23 @@ pub enum IntentKind {
     },
     Fetch,
     Push,
+    /// Merges the named branch into the current one. A conflict is an accepted answer.
+    Merge {
+        branch: String,
+    },
+    /// Who last changed each line of a file.
+    Blame {
+        path: String,
+    },
+    /// A file as HEAD or the index holds it.
+    Show {
+        path: String,
+        reference: ScmRef,
+    },
+    /// The commits that changed one file.
+    History {
+        path: String,
+    },
 }
 
 /// An action as the panel tells it apart: the key of in-flight state and of a notice.
@@ -82,6 +101,10 @@ pub enum ActionKind {
     CreateBranch,
     Fetch,
     Push,
+    Merge,
+    Blame,
+    Show,
+    History,
 }
 
 impl ActionKind {
@@ -100,13 +123,26 @@ impl ActionKind {
             Self::CreateBranch => "branch create",
             Self::Fetch => "fetch",
             Self::Push => "push",
+            Self::Merge => "merge",
+            Self::Blame => "blame",
+            Self::Show => "show",
+            Self::History => "history",
         }
     }
 
     /// Whether the action changes the repository. A mutation is never retried by the
     /// model, and one that ends `uncertain` blocks the next until the state is read.
     pub fn mutates(self) -> bool {
-        !matches!(self, Self::Status | Self::Diff | Self::Log | Self::Branches)
+        !matches!(
+            self,
+            Self::Status
+                | Self::Diff
+                | Self::Log
+                | Self::Branches
+                | Self::Blame
+                | Self::Show
+                | Self::History
+        )
     }
 }
 
@@ -136,6 +172,10 @@ impl IntentKind {
             Self::CreateBranch { .. } => ActionKind::CreateBranch,
             Self::Fetch => ActionKind::Fetch,
             Self::Push => ActionKind::Push,
+            Self::Merge { .. } => ActionKind::Merge,
+            Self::Blame { .. } => ActionKind::Blame,
+            Self::Show { .. } => ActionKind::Show,
+            Self::History { .. } => ActionKind::History,
         }
     }
 
@@ -180,6 +220,18 @@ impl IntentKind {
             Self::Push => EffectBody::ScmPush(ScmPush {
                 remote: None,
                 reference: None,
+            }),
+            Self::Merge { branch } => EffectBody::ScmMerge(ScmMerge {
+                branch: branch.clone(),
+            }),
+            Self::Blame { path } => EffectBody::ScmBlame(FilesPath { path: path.clone() }),
+            Self::Show { path, reference } => EffectBody::ScmShow(ScmShow {
+                path: path.clone(),
+                reference: *reference,
+            }),
+            Self::History { path } => EffectBody::ScmLog(ScmLog {
+                path: Some(path.clone()),
+                max_count: RECENT,
             }),
         })
     }

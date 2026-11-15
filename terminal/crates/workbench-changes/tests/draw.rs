@@ -25,7 +25,7 @@ fn snapshot_of_a_small_status() {
     assert_eq!(
         render(&model, 44, 16),
         [
-            "main",
+            "main                          [fetch] [push]",
             " Staged 1                        unstage all",
             " > M main.rs  src",
             " Unstaged 1                        stage all",
@@ -40,7 +40,7 @@ fn snapshot_of_a_small_status() {
             "  Commit message                        0/50",
             "  Description",
             "",
-            " [ ] Amend                [ Commit to main ]",
+            "                          [ Commit to main ]",
         ]
     );
 }
@@ -65,7 +65,7 @@ fn snapshot_of_a_small_unified_diff() {
     assert_eq!(
         render(&model, 44, 16),
         [
-            "main",
+            "main                          [fetch] [push]",
             " Staged 1                        unstage all",
             " v M main.rs  src",
             "  v @@ -1,4 +1,4 @@",
@@ -80,7 +80,7 @@ fn snapshot_of_a_small_unified_diff() {
             "  Commit message                        0/50",
             "  Description",
             "",
-            " [ ] Amend                [ Commit to main ]",
+            "                          [ Commit to main ]",
         ]
     );
 }
@@ -92,7 +92,7 @@ fn snapshot_of_a_small_split_diff() {
     assert_eq!(
         render(&model, 84, 16),
         [
-            "main",
+            "main                                                                  [fetch] [push]",
             " Staged 1                                                                unstage all",
             " v M main.rs  src",
             "  v @@ -1,4 +1,4 @@",
@@ -107,7 +107,7 @@ fn snapshot_of_a_small_split_diff() {
             "  Commit message                                                                0/50",
             "  Description",
             "",
-            " [ ] Amend                                                        [ Commit to main ]",
+            "                                                                  [ Commit to main ]",
         ]
     );
 }

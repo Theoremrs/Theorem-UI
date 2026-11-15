@@ -16,12 +16,14 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::completion::LogEntry;
 
 use crate::diff::{DiffLine, LineKind};
-use crate::layout::{LIMITS, Row, Tone, banners, regions, rows};
-use crate::model::{Changes, DiffLayout, Focus, LogState, Mode};
+use crate::layout::{
+    LIMITS, Row, Tone, banners, branch_controls, control_label, regions, rows, verbs,
+};
+use crate::model::{Changes, DiffLayout, Field, Focus, LogState, Mode, Prompt};
 use crate::status::{Section, letter, shown};
 use crate::styles::ChangesStyles;
 use crate::text::{elide_middle, fit, paint, printable, put, put_marked, width};
@@ -31,6 +33,7 @@ pub const SPLIT_MIN: u16 = 50;
 
 fn tone(styles: &ChangesStyles, tone: Tone) -> Style {
     match tone {
+        Tone::Plain => styles.text,
         Tone::Muted => styles.muted,
         Tone::Warning => styles.warning,
         Tone::Error => styles.error,
@@ -49,13 +52,12 @@ pub(crate) fn letter_style(styles: &ChangesStyles, section: Section, c: char) ->
 }
 
 /// The verbs a row offers, as the cursor row's hint shows them.
-pub(crate) fn offered(section: Section) -> &'static str {
-    match section {
-        Section::Staged => "diff  unstage",
-        Section::Unstaged | Section::Untracked => "diff  stage  discard",
-        Section::Conflicted => "diff",
-        Section::Unclassified => "",
-    }
+pub(crate) fn offered(section: Section) -> String {
+    verbs(section)
+        .iter()
+        .map(|(word, _)| *word)
+        .collect::<Vec<_>>()
+        .join("  ")
 }
 
 impl Changes {
@@ -78,9 +80,54 @@ impl Changes {
         self.draw_log(regions.log, buf, styles);
     }
 
+    /// The amend box's words; none when the host cannot amend, so no control is drawn.
+    pub(crate) fn amend_text(&self) -> String {
+        if self.amend_available() {
+            format!("[{}] Amend", if self.amend { "x" } else { " " })
+        } else {
+            String::new()
+        }
+    }
+
+    /// Shows the caret as a reversed cell, the way a terminal draws a block cursor.
+    fn draw_caret(&self, field: Field, row: usize, x: u16, y: u16, room: usize, buf: &mut Buffer) {
+        let Some(caret) = self.caret else { return };
+        if caret.field != field || caret.row != row {
+            return;
+        }
+        let col = caret.col.min(room.saturating_sub(1));
+        let at = x + col as u16;
+        if let Some(cell) = buf.cell_mut((at, y)) {
+            cell.modifier.insert(Modifier::REVERSED);
+        }
+    }
+
+    fn draw_prompt(&self, prompt: &Prompt, rect: Rect, buf: &mut Buffer, styles: &ChangesStyles) {
+        let label = format!("{}: ", prompt.kind.label());
+        let lw = width(&label);
+        put(
+            buf,
+            rect.x,
+            rect.y,
+            rect.width as usize,
+            &label,
+            styles.heading,
+        );
+        let room = (rect.width as usize).saturating_sub(lw);
+        let text = printable(&prompt.text);
+        // A long name shows its end, where the caret is.
+        let skip = width(&text).saturating_sub(room.saturating_sub(1));
+        let shown: String = text.chars().skip(skip).collect();
+        put(buf, rect.x + lw as u16, rect.y, room, &shown, styles.text);
+        self.draw_caret(Field::Prompt, 0, rect.x + lw as u16, rect.y, room, buf);
+    }
+
     fn draw_branch(&self, rect: Rect, buf: &mut Buffer, styles: &ChangesStyles) {
         if rect.height == 0 {
             return;
+        }
+        if let Some(prompt) = &self.prompt {
+            return self.draw_prompt(prompt, rect, buf, styles);
         }
         let label = match self.head() {
             Some(head) => head.label(),
@@ -97,6 +144,7 @@ impl Changes {
             format!("working: {}", busy.join(", "))
         };
         let room = rect.width as usize;
+        let controls = branch_controls(self, rect.width);
         let tail_w = width(&tail);
         let label_room = if tail_w > 0 && room > tail_w + 6 {
             room - tail_w - 2
@@ -120,6 +168,12 @@ impl Changes {
                 &tail,
                 styles.muted,
             );
+        }
+        for (control, at, w) in controls {
+            let label = control_label(control);
+            if !label.is_empty() {
+                put(buf, rect.x + at, rect.y, w as usize, label, styles.button);
+            }
         }
     }
 
@@ -147,7 +201,7 @@ impl Changes {
         }
         let rows = rows(self, self.split_at(rect.width));
         let first = self
-            .scroll
+            .scroll()
             .min(rows.len().saturating_sub(rect.height as usize));
         for (at, row) in rows
             .iter()
@@ -217,7 +271,12 @@ impl Changes {
                 );
                 let letter_style = row_style.patch(letter_style(styles, key.section, c));
                 put(buf, rect.x + 3, rect.y, 1, &c.to_string(), letter_style);
-                let hint = if cursor { offered(key.section) } else { "" };
+                let hint = if cursor {
+                    offered(key.section)
+                } else {
+                    String::new()
+                };
+                let hint = hint.as_str();
                 let hint_w = width(hint);
                 let body_x = 5usize;
                 let mut room = w.saturating_sub(body_x);
@@ -462,6 +521,9 @@ impl Changes {
             )
         };
         put(buf, rect.x + 2, rect.y, subject_room, &subject, style);
+        if focused {
+            self.draw_caret(Field::Subject, 0, rect.x + 2, rect.y, subject_room, buf);
+        }
         put(
             buf,
             rect.x + (w - counter.len()) as u16,
@@ -471,13 +533,16 @@ impl Changes {
             counter_style,
         );
         if rect.height >= 4 {
-            let mut lines = self.body.lines();
+            // Two body lines show: the caret's line and the one above it.
+            let first = self
+                .caret
+                .filter(|c| c.field == Field::Body)
+                .map_or(0, |c| c.row.saturating_sub(1));
+            let mut lines = self.body.split('\n').skip(first);
             for row in 1..=2u16 {
                 let (line, style) = match lines.next() {
+                    Some(_) if self.body.is_empty() => ("Description".to_owned(), styles.muted),
                     Some(line) => (line.to_owned(), styles.text),
-                    None if row == 1 && self.body.is_empty() => {
-                        ("Description".to_owned(), styles.muted)
-                    }
                     None => (String::new(), styles.text),
                 };
                 put(
@@ -488,17 +553,23 @@ impl Changes {
                     &fit(&printable(&line), w.saturating_sub(3)),
                     style,
                 );
+                if self.focus == Focus::Message {
+                    let shown_row = first + usize::from(row) - 1;
+                    self.draw_caret(
+                        Field::Body,
+                        shown_row,
+                        rect.x + 2,
+                        rect.y + row,
+                        w.saturating_sub(3),
+                        buf,
+                    );
+                }
             }
         }
         // The amend box and the button.
         let y = rect.y + rect.height - 1;
-        let amend_style = if self.amend_available() {
-            styles.text
-        } else {
-            styles.muted
-        };
-        let amend = format!("[{}] Amend", if self.amend { "x" } else { " " });
-        put(buf, rect.x + 1, y, w.saturating_sub(1), &amend, amend_style);
+        let amend = self.amend_text();
+        put(buf, rect.x + 1, y, w.saturating_sub(1), &amend, styles.text);
         let (label, ready) = self.commit_button();
         let label = format!("[ {label} ]");
         let room = w.saturating_sub(width(&amend) + 3);

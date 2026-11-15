@@ -1347,7 +1347,7 @@ fn semantics_describe_rows_with_level_position_state_and_actions() {
     assert!(
         ids.contains(&actions::STAGE)
             && ids.contains(&actions::DISCARD)
-            && ids.contains(&actions::TOGGLE_DIFF)
+            && ids.contains(&actions::DIFF)
     );
     assert!(!ids.contains(&actions::UNSTAGE));
     assert!(
@@ -1401,7 +1401,7 @@ fn semantics_offer_a_disabled_action_with_its_reason_while_busy() {
 }
 
 #[test]
-fn semantics_show_the_confirm_as_a_dialog_and_amend_as_unavailable() {
+fn semantics_show_the_confirm_as_a_dialog_and_offer_no_amend() {
     let mut model = mixed();
     model.select(&key(Section::Unstaged, "README.md"), false);
     model.request_discard().unwrap();
@@ -1419,12 +1419,12 @@ fn semantics_show_the_confirm_as_a_dialog_and_amend_as_unavailable() {
             .iter()
             .any(|a| a.id.as_str() == actions::CONFIRM)
     );
-    let amend = tree
-        .nodes
-        .iter()
-        .find(|n| n.id.as_str() == "changes/commit/amend")
-        .unwrap();
-    assert!(amend.state.disabled);
+    // The wire cannot amend, so no amend control is offered.
+    assert!(
+        tree.nodes
+            .iter()
+            .all(|n| n.id.as_str() != "changes/commit/amend")
+    );
 }
 
 #[test]

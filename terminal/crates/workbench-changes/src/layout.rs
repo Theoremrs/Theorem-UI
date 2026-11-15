@@ -15,13 +15,16 @@ use theorem_workbench_core::completion::BranchInfo;
 
 use crate::diff::{DiffLine, Hunk, pair_places};
 use crate::model::{
-    BranchList, Changes, DiffLayout, DiffState, LogState, Mode, PanelState, Problem, SUBJECT,
+    BranchList, Changes, DiffLayout, DiffState, LogState, Mode, PanelState, Problem, ReadBody,
+    ReadKind, SUBJECT,
 };
 use crate::status::{Change, LISTED, RowKey, Section};
+use crate::text::width;
 
 /// How a line of text is toned.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Tone {
+    Plain,
     Muted,
     Warning,
     Error,
@@ -82,7 +85,7 @@ fn text(text: impl Into<String>, tone: Tone) -> Row<'static> {
 pub(crate) fn problem_tone(problem: &Problem) -> Tone {
     match problem {
         Problem::Refused { .. } | Problem::Failed { .. } => Tone::Error,
-        Problem::Uncertain { .. } => Tone::Warning,
+        Problem::Uncertain { .. } | Problem::Stopped { .. } => Tone::Warning,
     }
 }
 
@@ -173,8 +176,10 @@ fn diff_rows<'a>(model: &'a Changes, key: &RowKey, split: bool, out: &mut Vec<Ro
 /// The rows of the scrolling list. `split` is whether the diffs are drawn side by
 /// side at this width.
 pub(crate) fn rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
-    if model.mode == Mode::Branches {
-        return branch_rows(model);
+    match model.mode {
+        Mode::Branches => return branch_rows(model),
+        Mode::Read if model.read.is_some() => return read_rows(model),
+        _ => {}
     }
     let mut out = Vec::new();
     let split = split && model.layout == DiffLayout::Split;
@@ -239,6 +244,74 @@ pub(crate) fn rows(model: &Changes, split: bool) -> Vec<Row<'_>> {
     out
 }
 
+/// What a file's read view lists: its heading, a way back, and the answer.
+fn read_rows(model: &Changes) -> Vec<Row<'_>> {
+    let Some(read) = &model.read else {
+        return vec![];
+    };
+    let mut out = vec![
+        text(read.kind.title(&read.path), Tone::Muted),
+        text("Esc goes back to the changes.", Tone::Muted),
+    ];
+    match &read.body {
+        ReadBody::Loading => out.push(text("Reading...", Tone::Muted)),
+        ReadBody::Outdated => out.push(text(
+            "The answer was for an earlier state of the repository and was dropped. Ask again to read it.",
+            Tone::Warning,
+        )),
+        ReadBody::Problem(problem) => out.push(text(problem.text(), problem_tone(problem))),
+        ReadBody::Blame(hunks) if hunks.is_empty() => {
+            out.push(text("No lines are attributed.", Tone::Muted))
+        }
+        ReadBody::Blame(hunks) => {
+            for hunk in hunks {
+                let last = hunk.start_line + hunk.line_count.saturating_sub(1);
+                let lines = if hunk.line_count <= 1 {
+                    format!("{:>5}      ", hunk.start_line)
+                } else {
+                    format!("{:>5}-{:<5}", hunk.start_line, last)
+                };
+                let commit: String = hunk.commit.chars().take(7).collect();
+                out.push(text(
+                    format!("{lines} {commit} {}  {}", hunk.author, hunk.summary),
+                    Tone::Plain,
+                ));
+            }
+        }
+        ReadBody::Text { exists: false, .. } => out.push(text(
+            match read.kind {
+                ReadKind::Show(theorem_workbench_core::effect::ScmRef::Index) => {
+                    "The index has no such file."
+                }
+                _ => "HEAD has no such file.",
+            },
+            Tone::Muted,
+        )),
+        ReadBody::Text { text: body, .. } if body.is_empty() => {
+            out.push(text("The file is empty.", Tone::Muted))
+        }
+        ReadBody::Text { text: body, .. } => {
+            let digits = body.lines().count().to_string().len();
+            for (at, line) in body.lines().enumerate() {
+                out.push(text(format!("{:>digits$} {line}", at + 1), Tone::Plain));
+            }
+        }
+        ReadBody::History(commits) if commits.is_empty() => {
+            out.push(text("No commit changed this file.", Tone::Muted))
+        }
+        ReadBody::History(commits) => {
+            for entry in commits {
+                let commit: String = entry.commit.chars().take(7).collect();
+                out.push(text(
+                    format!("{commit} {}  {}", entry.subject, entry.author),
+                    Tone::Plain,
+                ));
+            }
+        }
+    }
+    out
+}
+
 fn branch_rows(model: &Changes) -> Vec<Row<'_>> {
     let mut out = vec![text("Switch branch", Tone::Muted)];
     match &model.branches {
@@ -270,10 +343,7 @@ pub(crate) fn banners(model: &Changes) -> Vec<(Tone, String)> {
         let (title, cost) = confirm.text();
         out.push((Tone::Warning, title));
         out.push((Tone::Muted, cost));
-        out.push((
-            Tone::Muted,
-            "Confirm to go ahead, cancel to leave it.".to_owned(),
-        ));
+        out.push((Tone::Muted, CONFIRM_LINE.to_owned()));
     }
     if model.snapshot.is_some()
         && let Some(problem) = &model.status_problem
@@ -298,6 +368,13 @@ pub(crate) fn banners(model: &Changes) -> Vec<(Tone, String)> {
     out.truncate(5);
     out
 }
+
+/// The confirmation's third line: the two answers, as they are clicked and as the keys
+/// name them.
+pub(crate) const CONFIRM_LINE: &str = "[ Confirm (y) ]  [ Cancel (n) ]";
+/// Where the two answers start in [`CONFIRM_LINE`], and how wide the first is.
+const CONFIRM_AT: (u16, u16) = (0, 15);
+const CANCEL_AT: (u16, u16) = (17, 14);
 
 /// Where each fixed part of the panel sits in `area`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -368,3 +445,252 @@ pub(crate) fn regions(model: &Changes, area: Rect) -> Regions {
 
 /// The commit box's subject and counter limits, for drawing.
 pub(crate) const LIMITS: (usize, usize) = SUBJECT;
+
+/// A control on the branch line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Control {
+    /// The branch's name: opens the prompt that switches.
+    Branch,
+    Fetch,
+    Push,
+}
+
+const FETCH_LABEL: &str = "[fetch]";
+const PUSH_LABEL: &str = "[push]";
+
+/// The controls on the branch line and where each starts (a column within the line) and
+/// its width. Fetch and push show only when the repository has been read, nothing is
+/// running and the prompt is closed; a narrow panel shows neither.
+pub(crate) fn branch_controls(model: &Changes, line_width: u16) -> Vec<(Control, u16, u16)> {
+    let mut out = Vec::new();
+    if model.prompt.is_some() || model.snapshot.is_none() {
+        return out;
+    }
+    let label = model.head().map(|h| h.label()).map_or(0, |l| width(&l)) as u16;
+    out.push((Control::Branch, 0, label.min(line_width)));
+    if !model.in_flight().is_empty() {
+        return out;
+    }
+    let (fetch, push) = (width(FETCH_LABEL) as u16, width(PUSH_LABEL) as u16);
+    let total = fetch + 1 + push;
+    if line_width > total + label.min(line_width) + 3 {
+        let at = line_width - total;
+        out.push((Control::Fetch, at, fetch));
+        out.push((Control::Push, at + fetch + 1, push));
+    }
+    out
+}
+
+pub(crate) fn control_label(control: Control) -> &'static str {
+    match control {
+        Control::Branch => "",
+        Control::Fetch => FETCH_LABEL,
+        Control::Push => PUSH_LABEL,
+    }
+}
+
+/// What a click on a word of a row's hint asks for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Verb {
+    Diff,
+    Stage,
+    Unstage,
+    Discard,
+}
+
+/// The words a cursor row offers, in order (the hint drawn at its right).
+pub(crate) fn verbs(section: Section) -> &'static [(&'static str, Verb)] {
+    match section {
+        Section::Staged => &[("diff", Verb::Diff), ("unstage", Verb::Unstage)],
+        Section::Unstaged | Section::Untracked => &[
+            ("diff", Verb::Diff),
+            ("stage", Verb::Stage),
+            ("discard", Verb::Discard),
+        ],
+        Section::Conflicted => &[("diff", Verb::Diff)],
+        Section::Unclassified => &[],
+    }
+}
+
+/// What lies under a cell of the panel.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum Hit {
+    Nothing,
+    Control(Control),
+    Banner(usize),
+    /// The confirmation's two answers.
+    Confirm,
+    Cancel,
+    /// A section heading; `all` is on its "stage all" or "unstage all".
+    Header {
+        section: Section,
+        all: bool,
+    },
+    /// A file row; `caret` is on its expand mark, `verb` on a word of its hint.
+    File {
+        key: RowKey,
+        caret: bool,
+        verb: Option<Verb>,
+    },
+    /// A hunk's header or one of its lines.
+    Hunk {
+        key: RowKey,
+        index: usize,
+        header: bool,
+    },
+    Subject,
+    Body(usize),
+    Button,
+    Log(usize),
+}
+
+impl Changes {
+    /// What is under column `x`, row `y` of the panel drawn into `area` (the point is
+    /// relative to the area's corner).
+    pub(crate) fn hit(&self, area: Rect, x: u16, y: u16) -> Hit {
+        let regions = regions(self, area);
+        let (x, y) = (x + area.x, y + area.y);
+        let inside = |r: Rect| x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+        if inside(regions.branch) {
+            let col = x - regions.branch.x;
+            return branch_controls(self, regions.branch.width)
+                .into_iter()
+                .find(|(_, at, w)| col >= *at && col < at + w)
+                .map_or(Hit::Nothing, |(control, ..)| Hit::Control(control));
+        }
+        if inside(regions.banners) {
+            let line = (y - regions.banners.y) as usize;
+            if line == 2 && self.confirm.is_some() {
+                let col = x - regions.banners.x;
+                let within = |(at, w): (u16, u16)| col >= at && col < at + w;
+                if within(CONFIRM_AT) {
+                    return Hit::Confirm;
+                }
+                if within(CANCEL_AT) {
+                    return Hit::Cancel;
+                }
+            }
+            return Hit::Banner(line);
+        }
+        if inside(regions.list) {
+            return self.hit_list(
+                regions.list,
+                x - regions.list.x,
+                (y - regions.list.y) as usize,
+            );
+        }
+        if inside(regions.commit) {
+            let r = regions.commit;
+            let at = y - r.y;
+            if at == 0 {
+                return Hit::Subject;
+            }
+            if at == r.height - 1 {
+                let (label, _) = self.commit_button();
+                let label_w = width(&format!("[ {label} ]")) as u16;
+                let room = r.width.saturating_sub(width(&self.amend_text()) as u16 + 3);
+                let shown = label_w.min(room);
+                let start = r.width.saturating_sub(shown);
+                return if shown > 0 && x - r.x >= start {
+                    Hit::Button
+                } else {
+                    Hit::Nothing
+                };
+            }
+            return Hit::Body(at as usize - 1);
+        }
+        if inside(regions.log) {
+            let at = (y - regions.log.y) as usize;
+            if at >= 1 {
+                return Hit::Log(at - 1);
+            }
+        }
+        Hit::Nothing
+    }
+
+    fn hit_list(&self, list: Rect, x: u16, row: usize) -> Hit {
+        let all = rows(self, self.split_at(list.width));
+        let first = self
+            .scroll()
+            .min(all.len().saturating_sub(list.height as usize));
+        let index = first + row;
+        let Some(found) = all.get(index) else {
+            return Hit::Nothing;
+        };
+        // The file and hunk a row belongs to are the last ones above it.
+        let mut file: Option<&RowKey> = None;
+        let mut hunk = 0usize;
+        let mut seen_hunk = false;
+        for above in all.iter().take(index + 1) {
+            match above {
+                Row::File { key, .. } => {
+                    file = Some(key);
+                    hunk = 0;
+                    seen_hunk = false;
+                }
+                Row::Hunk { .. } => {
+                    if seen_hunk {
+                        hunk += 1;
+                    }
+                    seen_hunk = true;
+                }
+                _ => {}
+            }
+        }
+        let w = list.width as usize;
+        match found {
+            Row::Header { section, count } => {
+                let title = format!("{} {count}", section.title());
+                let hint = match section {
+                    Section::Staged => "unstage all",
+                    Section::Unstaged => "stage all",
+                    _ => "",
+                };
+                let hw = width(hint);
+                Hit::Header {
+                    section: *section,
+                    all: hw > 0 && w > width(&title) + hw + 4 && x as usize >= w - hw,
+                }
+            }
+            Row::File { key, .. } => {
+                let cursor = self.cursor.as_ref() == Some(key);
+                let hint = verbs(key.section)
+                    .iter()
+                    .map(|(w, _)| *w)
+                    .collect::<Vec<_>>()
+                    .join("  ");
+                let hint_w = width(&hint);
+                let room = w.saturating_sub(5);
+                let verb = if cursor && hint_w > 0 && room > hint_w + 12 {
+                    let start = w - hint_w;
+                    let mut at = start;
+                    let mut found = None;
+                    for (word, verb) in verbs(key.section) {
+                        let end = at + width(word);
+                        if (x as usize) >= at && (x as usize) < end {
+                            found = Some(*verb);
+                        }
+                        at = end + 2;
+                    }
+                    found
+                } else {
+                    None
+                };
+                Hit::File {
+                    key: key.clone(),
+                    caret: (1..=2).contains(&x),
+                    verb,
+                }
+            }
+            Row::Hunk { .. } | Row::Line { .. } | Row::Pair { .. } => match file {
+                Some(key) => Hit::Hunk {
+                    key: key.clone(),
+                    index: hunk,
+                    header: matches!(found, Row::Hunk { .. }),
+                },
+                None => Hit::Nothing,
+            },
+            _ => Hit::Nothing,
+        }
+    }
+}

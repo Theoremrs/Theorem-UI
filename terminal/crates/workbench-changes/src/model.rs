@@ -25,6 +25,10 @@ use theorem_workbench_core::completion::{
     BranchInfo, CompletionPayload, LogEntry, Outcome, RepoState, ScmDiffResult, ScmStatus,
 };
 
+mod read;
+
+pub use read::{Caret, Field, Prompt, PromptKind, ReadBody, ReadKind, ReadView};
+
 use crate::diff::{Hunk, Parsed, parse};
 use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal};
 use crate::status::{Basis, Change, Groups, Head, RowKey, Section, is_folder, loss, shown};
@@ -58,11 +62,17 @@ pub enum Problem {
     Failed {
         reason: String,
     },
+    /// The owner accepted the request and the work stopped half way: a merge that met
+    /// conflicts. Not a refusal and not a failure; the files in conflict are listed.
+    Stopped {
+        reason: String,
+    },
 }
 
 impl Problem {
     pub fn text(&self) -> String {
         match self {
+            Self::Stopped { reason } => format!("stopped: {reason}"),
             Self::Refused { code, reason } => format!("refused ({code}): {reason}"),
             Self::Uncertain { reason } => format!("unknown result: {reason}"),
             Self::Failed { reason } => format!("failed: {reason}"),
@@ -220,6 +230,8 @@ pub enum Mode {
     #[default]
     Changes,
     Branches,
+    /// One file's blame, a version of it, or its history.
+    Read,
 }
 
 /// What a confirmation is about.
@@ -343,6 +355,9 @@ pub struct Changes {
     pub(crate) counters: Counters,
     /// Diffs a restored view had open, asked for when the first status arrives.
     pub(crate) restored_open: BTreeSet<RowKey>,
+    pub(crate) read: Option<ReadView>,
+    pub(crate) prompt: Option<Prompt>,
+    pub(crate) caret: Option<Caret>,
 }
 
 impl Default for Changes {
@@ -386,6 +401,9 @@ impl Changes {
             height: 24,
             counters: Counters::default(),
             restored_open: BTreeSet::new(),
+            read: None,
+            prompt: None,
+            caret: None,
         }
     }
 
@@ -416,9 +434,11 @@ impl Changes {
             (None, Some(Problem::Uncertain { reason })) => PanelState::Uncertain {
                 reason: reason.clone(),
             },
-            (None, Some(Problem::Failed { reason })) => PanelState::Failed {
-                reason: reason.clone(),
-            },
+            (None, Some(Problem::Failed { reason } | Problem::Stopped { reason })) => {
+                PanelState::Failed {
+                    reason: reason.clone(),
+                }
+            }
             (None, None) => PanelState::Loading,
             (Some(snapshot), _) if snapshot.groups.is_empty() => PanelState::Empty,
             (Some(_), _) => PanelState::Ready,
@@ -877,6 +897,30 @@ impl Changes {
         }
     }
 
+    /// Puts the cursor on a file and its open diff's current hunk on `index` (a click on
+    /// a hunk), with no request.
+    pub fn select_hunk(&mut self, key: &RowKey, index: usize) {
+        self.select(key, false);
+        if let Some(view) = self.diffs.get_mut(key)
+            && index < view.hunks().len()
+        {
+            view.hunk = index;
+        }
+    }
+
+    /// Puts the log's cursor on a commit (a click), with no request.
+    pub fn select_log(&mut self, index: usize) {
+        if index < self.log_len() {
+            self.focus = Focus::Log;
+            self.log_cursor = index;
+        }
+    }
+
+    /// The commit under the log's cursor.
+    pub fn log_cursor(&self) -> usize {
+        self.log_cursor
+    }
+
     /// Folds or unfolds the current hunk of the cursor file's open diff.
     pub fn toggle_fold(&mut self) {
         let Some(key) = self.cursor.clone() else {
@@ -1212,6 +1256,10 @@ impl Changes {
                 self.branches_done(&pending, outcome, payload);
                 vec![]
             }
+            ActionKind::Blame | ActionKind::Show | ActionKind::History => {
+                self.read_done(id, &pending, outcome, payload);
+                vec![]
+            }
             _ => self.mutation_done(&pending, outcome, payload),
         }
     }
@@ -1494,10 +1542,24 @@ impl Changes {
                 }
                 if matches!(
                     pending.action,
-                    ActionKind::SwitchBranch | ActionKind::CreateBranch
+                    ActionKind::SwitchBranch | ActionKind::CreateBranch | ActionKind::Merge
                 ) {
-                    self.mode = Mode::Changes;
+                    if self.mode == Mode::Branches {
+                        self.mode = Mode::Changes;
+                    }
                     self.want_log = true;
+                }
+                if let Some(CompletionPayload::ScmMerged(merged)) = payload
+                    && !merged.merged
+                {
+                    self.push_notice(Notice {
+                        action: pending.action,
+                        subject: pending.subject.clone(),
+                        problem: Problem::Stopped {
+                            reason: "the merge stopped on conflicts; the files are listed under Conflicted"
+                                .into(),
+                        },
+                    });
                 }
                 self.status_problem = None;
                 vec![self.plain(IntentKind::Status)]
@@ -1545,12 +1607,18 @@ impl Changes {
         let rows = self.row_count();
         let page = self.page();
         let max = rows.saturating_sub(page);
-        self.scroll = step_clamped(self.scroll, delta, max);
+        match (&mut self.read, self.mode) {
+            (Some(read), Mode::Read) => read.scroll = step_clamped(read.scroll, delta, max),
+            _ => self.scroll = step_clamped(self.scroll, delta, max),
+        }
     }
 
     /// The first row the list shows.
     pub fn scroll(&self) -> usize {
-        self.scroll
+        match (&self.read, self.mode) {
+            (Some(read), Mode::Read) => read.scroll,
+            _ => self.scroll,
+        }
     }
 
     fn reveal_cursor(&mut self) {
