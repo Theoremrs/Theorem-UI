@@ -119,6 +119,8 @@ function mount(node: React.ReactNode) {
     [`GET ${root}/github`]: () => (github ? github : json(404, { title: 'Not connected' })),
     [`POST ${root}/github/connect`]: async (_p, request) => {
       seen.push(await note(request))
+      const refusal = refuse['POST github/connect']
+      if (refusal) return json(refusal.status, { detail: refusal.detail })
       return { authorizationUrl: 'about:blank#github' }
     },
     [`DELETE ${root}/github`]: async (_p, request) => {
@@ -282,24 +284,38 @@ async function type(input: HTMLInputElement | HTMLTextAreaElement, value: string
 
 // ---- GitHub, not connected
 
-test('before GitHub is connected the card says what connecting gives and offers one button', async () => {
+test('before GitHub is connected the section shows a heading and one provider button', async () => {
   github = undefined
   await mount(<GithubSection />)
-  await waitFor(() => buttonNamed('Connect GitHub'))
-  expect(text()).toContain('Your agent can search code')
-  expect(named('Agent can use GitHub')).toBeNull()
+  await waitFor(() => buttonNamed('GitHub'))
+  expect(document.querySelector('h2')?.textContent).toBe('Connect git provider')
+  expect(document.querySelectorAll('button')).toHaveLength(1)
+  expect(text()).toBe('Connect git providerGitHub')
 })
 
-test('Connect GitHub asks Theorem to start the sign-in and says where to come back to', async () => {
+test('the GitHub button starts sign-in and says where to come back to', async () => {
   github = undefined
   await mount(<GithubSection />)
-  await press(await waitFor(() => buttonNamed('Connect GitHub')))
+  await press(await waitFor(() => buttonNamed('GitHub')))
   await waitFor(() => seen.length === 1)
   expect(seen[0]).toMatchObject({
     method: 'POST',
     path: `${root}/github/connect`,
     body: { returnTo: '/settings/connections' },
   })
+})
+
+test('a GitHub sign-in error appears below the provider button', async () => {
+  github = undefined
+  const detail = `GitHub is not configured. Reference: chatreq_${'A'.repeat(80)}`
+  refuse['POST github/connect'] = { status: 503, detail }
+  await mount(<GithubSection />)
+  const button = await waitFor(() => buttonNamed('GitHub'))
+  await press(button)
+  const alert = await waitFor(() => document.querySelector('[role="alert"]'))
+  expect(alert.textContent).toBe(detail)
+  expect(alert.previousElementSibling).toBe(button)
+  expect(alert.classList.contains('wrap-anywhere')).toBe(true)
 })
 
 test('a connections list that cannot be read says why and offers another try', async () => {
@@ -528,6 +544,33 @@ test('a server that is added shows the tools it was found to have', async () => 
   })
   expect(text()).toContain('Search the docs')
   expect(buttonNamed('Review tools')).toBeDefined()
+})
+
+test('the GitHub MCP option fills the hosted address and requires a bearer token', async () => {
+  await mount(<McpServers />)
+  await press(await waitFor(() => buttonNamed('Add server')))
+  await press(await waitFor(() => buttonNamed('Use GitHub MCP')))
+  const token = await waitFor(() =>
+    document.querySelector<HTMLInputElement>('input[type="password"]'),
+  )
+  const form = token.closest('form')!
+  const submit = form.querySelector('button[type="submit"]')!
+  await press(submit)
+  await waitFor(() => text().includes('Enter the token the server expects.'))
+  expect(seen).toEqual([])
+
+  await type(token, 'fixture-token')
+  await press(submit)
+  await waitFor(() => text().includes('Found 2 tools'))
+  expect(seen.find((request) => request.method === 'POST')).toMatchObject({
+    path: `${root}/mcp`,
+    body: {
+      label: 'GitHub MCP',
+      transport: 'http',
+      url: 'https://api.githubcopilot.com/mcp/',
+      auth: { type: 'bearer', token: 'fixture-token' },
+    },
+  })
 })
 
 test('a server Theorem refuses keeps the form open and shows the refusal in its words', async () => {
