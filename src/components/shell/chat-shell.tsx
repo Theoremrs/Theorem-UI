@@ -17,7 +17,10 @@ import { modeLabel, navigatorMode, useShellMode } from './modes'
 import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { PANEL_WIDTH, useShell } from './shell-state'
 import { Rail } from './rail'
-import { SideTerminal } from '@/components/terminal/side-terminal'
+import {
+  SideTerminal,
+  useCabinetExpanded,
+} from '@/components/terminal/side-terminal'
 import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
@@ -383,9 +386,7 @@ function DesktopShell(route: DockRoute) {
   const vault = mode === 'vault'
   const ide = mode === 'ide'
   // An expanded artifact cabinet covers the workspace: what it dims is inert.
-  const covered = useShell(
-    (s) => s.cabinetExpanded && s.sideDrawer === 'outputs',
-  )
+  const covered = useCabinetExpanded()
   const [vaultLoaded, setVaultLoaded] = useState(vault)
   if (vault && !vaultLoaded) setVaultLoaded(true)
   return (

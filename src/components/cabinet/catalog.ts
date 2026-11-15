@@ -57,11 +57,13 @@ export function toEntry(
     projectId,
     source: output.uploadId
       ? { type: 'upload', uploadId: output.uploadId, revision }
-      : {
-          type: 'artifact',
-          artifactId: output.artifactId ?? output.outputId,
-          revision,
-        },
+      : output.reviewId
+        ? { type: 'review', reviewId: output.reviewId, revision }
+        : {
+            type: 'artifact',
+            artifactId: output.artifactId ?? output.outputId,
+            revision,
+          },
     threadId: output.threadId,
     kind,
     mediaType,
@@ -132,6 +134,9 @@ export async function readSource(entry: CatalogEntry): Promise<PreviewSource> {
     }
     return { source: { kind: entry.kind, mediaType } }
   }
+  // A review has no source a recipe reads: its type illustration stands in.
+  if (entry.source.type === 'review')
+    return { source: { kind: 'review', mediaType: entry.mediaType } }
   const artifact = await readArtifactRevision(
     entry.threadId,
     entry.source.artifactId,
@@ -164,4 +169,19 @@ export async function readArtifactRevision(
         return artifact
     }
   return undefined
+}
+
+/** The newest revision of an artifact its session holds, read in place. */
+export async function readLatestArtifact(
+  threadId: string,
+  artifactId: string,
+): Promise<TheoremArtifact | undefined> {
+  const { messages } = await theorem().chat.threads.get({ threadId })
+  let latest: TheoremArtifact | undefined
+  for (const message of messages)
+    for (const part of (message as { parts?: unknown[] }).parts ?? []) {
+      const artifact = readArtifact(part)
+      if (artifact?.artifactId === artifactId) latest = artifact
+    }
+  return latest
 }

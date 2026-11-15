@@ -199,6 +199,17 @@ export function attachToSideTerminal(
   shell.setSideDrawer('terminal')
 }
 
+/**
+ * Whether the cabinet is expanded as drawn: asked for, showing, and on a
+ * desktop width. The workspace it covers reads the same answer, so a window
+ * narrowed under an expanded cabinet is never left dimmed and inert.
+ */
+export function useCabinetExpanded() {
+  const desktop = useMediaQuery('(min-width: 768px)', { noSsr: true })
+  const asked = useShell((s) => s.cabinetExpanded && s.sideDrawer === 'outputs')
+  return desktop && asked
+}
+
 const HOST_VIEWS = [
   { id: 'outputs', label: 'Cabinet' },
   { id: 'terminal', label: 'Terminal' },
@@ -256,7 +267,6 @@ export function SideTerminal() {
   const setSideDrawer = useShell((s) => s.setSideDrawer)
   const sideWidth = useShell((s) => s.sideWidth)
   const cabinetWidth = useShell((s) => s.cabinetWidth)
-  const expandedPref = useShell((s) => s.cabinetExpanded)
   const desktop = useMediaQuery('(min-width: 768px)', { noSsr: true })
   const popup = useRef<HTMLDivElement>(null)
   const { project, tabs, active, onAction } = useTerminalTabs(open, () =>
@@ -265,7 +275,7 @@ export function SideTerminal() {
   // §4.1/§4.3: on desktop the cabinet docks, reserving its width, when the
   // project track keeps its minimum beside it; otherwise it is an overlay.
   // Expanded, it takes the whole workspace. The terminal is always an overlay.
-  const expanded = cabinet && desktop && expandedPref
+  const expanded = useCabinetExpanded()
   const docked = useDockFits(cabinetWidth, cabinet && desktop && !expanded)
   const layout = !cabinet
     ? undefined

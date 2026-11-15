@@ -3,9 +3,7 @@
 // OffscreenCanvas for decoding in a dedicated worker. No network, no
 // credentials: the page hands over an already authorized, bounded source.
 import init, { render_preview } from '@/terminal-wasm/theorem_terminal'
-
-/** The source image is reduced to at most this edge before conversion. */
-const DECODE_EDGE = 512
+import { boundedBitmap } from './image-bounds'
 
 export type PreviewRequest = {
   id: number
@@ -33,14 +31,13 @@ export type PreviewMeta = {
 const ready = init()
 
 async function pixels(blob: Blob) {
-  const bitmap = await createImageBitmap(blob)
-  const scale = Math.min(1, DECODE_EDGE / Math.max(bitmap.width, bitmap.height))
-  const w = Math.max(1, Math.round(bitmap.width * scale))
-  const h = Math.max(1, Math.round(bitmap.height * scale))
+  // Checked against its declared size, then decoded already reduced.
+  const bitmap = await boundedBitmap(blob)
+  const w = bitmap.width
+  const h = bitmap.height
   const canvas = new OffscreenCanvas(w, h)
   const ctx = canvas.getContext('2d')!
-  ctx.imageSmoothingQuality = 'high'
-  ctx.drawImage(bitmap, 0, 0, w, h)
+  ctx.drawImage(bitmap, 0, 0)
   bitmap.close()
   return {
     rgba: new Uint8Array(ctx.getImageData(0, 0, w, h).data.buffer),

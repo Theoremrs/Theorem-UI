@@ -15,6 +15,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { TheoremArtifact } from '@/components/artifacts/artifact-model'
+import { OpenLatestContext } from '@/components/artifacts/app-history'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { useShell } from '@/components/shell/shell-state'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
@@ -31,10 +32,21 @@ import { useCabinetOutputs, useOrganization } from '@/lib/theorem/organization'
 import type { OutputCategory, ProjectOutput } from '@/lib/theorem/organization'
 import { readUpload, uploadContentPath } from '@/lib/theorem/uploads'
 import type { CabinetHandle } from '@/terminal-wasm/theorem_terminal'
-import { metaLine, readArtifactRevision, toEntry } from './catalog'
+import {
+  metaLine,
+  readArtifactRevision,
+  readLatestArtifact,
+  toEntry,
+} from './catalog'
 import { byRecent, effectivePreviewMode } from './contract'
 import type { CatalogEntry, PreviewMode } from './contract'
-import { presentationKey, requestPreviews, usePreviews } from './previews'
+import { openReview } from '@/lib/theorem/reviews'
+import {
+  presentationKey,
+  previewNote,
+  requestPreviews,
+  usePreviews,
+} from './previews'
 import type { PreviewState } from './previews'
 
 const HOST_ID = 'theorem-artifact-cabinet'
@@ -169,12 +181,16 @@ function OriginalView({
   entry: CatalogEntry | undefined
   onClose: () => void
 }) {
+  // "Open latest" inside a saved App revision switches this view to the
+  // newest revision its session holds; a new card starts at its own revision.
+  const [latest, setLatest] = useState<string>()
+  const showLatest = latest !== undefined && latest === entry?.key
   const original = useQuery({
     queryKey: [
       'cabinet',
       'original',
       entry?.key,
-      entry?.source.revision,
+      showLatest ? 'latest' : entry?.source.revision,
     ] as const,
     enabled: entry !== undefined,
     staleTime: Infinity,
@@ -186,15 +202,19 @@ function OriginalView({
     > => {
       const e = entry!
       if (e.source.type === 'artifact') {
-        const artifact = await readArtifactRevision(
-          e.threadId,
-          e.source.artifactId,
-          e.source.revision,
-        )
+        const artifact = showLatest
+          ? await readLatestArtifact(e.threadId, e.source.artifactId)
+          : await readArtifactRevision(
+              e.threadId,
+              e.source.artifactId,
+              e.source.revision,
+            )
         if (!artifact)
           throw new Error('That revision is no longer in its session.')
         return { type: 'artifact', artifact }
       }
+      if (e.source.type === 'review')
+        throw new Error('A review opens in its own pane.')
       const blob = await readUpload(uploadContentPath(e.source.uploadId))
       const media = e.mediaType || blob.type
       if (media.startsWith('image/'))
@@ -218,7 +238,9 @@ function OriginalView({
         <DialogTitle>{entry?.title}</DialogTitle>
         <DialogDescription>
           {entry &&
-            `Revision ${entry.source.revision.slice(0, 12)} · opened from the artifact cabinet`}
+            (showLatest && data?.type === 'artifact'
+              ? `Latest revision ${String(data.artifact.revision).slice(0, 12)} · the card shows ${entry.source.revision.slice(0, 12)}`
+              : `Revision ${entry.source.revision.slice(0, 12)} · opened from the artifact cabinet`)}
         </DialogDescription>
         <div className="min-h-0 flex-1 overflow-auto">
           {original.error ? (
@@ -228,11 +250,15 @@ function OriginalView({
           ) : !data ? (
             <p className="text-sm text-ink-muted">Opening…</p>
           ) : data.type === 'artifact' ? (
-            <ArtifactView
-              artifact={data.artifact}
-              distance="interactive"
-              latest={false}
-            />
+            <OpenLatestContext.Provider
+              value={showLatest ? undefined : () => setLatest(entry?.key)}
+            >
+              <ArtifactView
+                artifact={data.artifact}
+                distance="interactive"
+                latest={showLatest}
+              />
+            </OpenLatestContext.Provider>
           ) : data.type === 'image' ? (
             <img
               src={data.url}
@@ -332,6 +358,13 @@ export function Cabinet({
   }, [pages, projectId])
   const total = pages?.[0]?.total
 
+  // Every open goes through here: a review opens where reviews are read,
+  // anything else in the original view at the card's revision.
+  const open = (entry: CatalogEntry) => {
+    if (entry.source.type === 'review') openReview(entry.source.reviewId)
+    else setOpened(entry)
+  }
+
   const actions = useRef<(a: CabinetAction) => void>(() => {})
   useLayoutEffect(() => {
     actions.current = (action) => {
@@ -339,7 +372,7 @@ export function Cabinet({
       else {
         const entry = byKey.get(action.key)
         // The revision the card showed, not whatever is newest now.
-        if (entry && entry.source.revision === action.revision) setOpened(entry)
+        if (entry && entry.source.revision === action.revision) open(entry)
       }
     }
   })
@@ -469,6 +502,28 @@ export function Cabinet({
   const control = (id: string) =>
     geometry?.controls.find((c) => c.id === id)?.area
   const cell = geometry?.cell ?? [8, 16]
+  // One card is in the Tab order: the selected one while it is mounted,
+  // otherwise the first visible card, so scrolling never empties the order.
+  const mounted = geometry?.slots ?? []
+  const tabStop =
+    mounted.find((s) => s.selected)?.key ??
+    [...mounted].sort((a, b) => a.index - b.index)[0]?.key
+
+  // A vertical swipe scrolls the drawn gallery a row at a time.
+  const touchY = useRef<number | undefined>(undefined)
+  const onTouchStart = (event: React.TouchEvent) => {
+    touchY.current = event.touches[0]?.clientY
+  }
+  const onTouchMove = (event: React.TouchEvent) => {
+    const y = event.touches[0]?.clientY
+    if (y === undefined || touchY.current === undefined || !handle) return
+    const rows = Math.trunc((touchY.current - y) / cell[1])
+    if (rows) {
+      handle.scroll(rows)
+      touchY.current -= rows * cell[1]
+    }
+  }
+
   const searchArea = control('search')
   const prefArea = control('preference')
 
@@ -477,6 +532,10 @@ export function Cabinet({
       data-artifact-cabinet=""
       className="relative min-h-0 flex-1 overflow-hidden bg-term font-mono text-[12.5px] text-term-ink"
       onWheel={(event) => handle?.scroll(Math.sign(event.deltaY) * 3)}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={() => (touchY.current = undefined)}
+      style={{ touchAction: 'pinch-zoom' }}
     >
       <div
         id={HOST_ID}
@@ -495,8 +554,7 @@ export function Cabinet({
             if (e.key === 'Escape') setQuery('')
             if (e.key === 'ArrowDown') {
               e.preventDefault()
-              const first = geometry?.selected ?? entries[0]?.key
-              if (first) buttons.current.get(first)?.focus()
+              if (tabStop) buttons.current.get(tabStop)?.focus()
             }
           }}
           data-cabinet-search=""
@@ -586,17 +644,14 @@ export function Cabinet({
                     data-cabinet-card={slot.key}
                     data-revision={slot.revision}
                     aria-current={slot.selected || undefined}
-                    tabIndex={
-                      slot.selected || (!geometry.selected && slot.index === 0)
-                        ? 0
-                        : -1
-                    }
+                    tabIndex={slot.key === tabStop ? 0 : -1}
                     aria-label={`${entry.title}. ${metaLine(items.get(entry.key)!, entry)}. ${entry.description.text}`}
+                    aria-description={previewNote(state)}
                     onFocus={() => handle?.select(slot.key)}
                     onKeyDown={onCardKey}
                     onClick={() => {
                       handle?.select(slot.key)
-                      setOpened(entry)
+                      open(entry)
                     }}
                     style={px(slot.card, cell)}
                     className="absolute cursor-pointer rounded-none bg-transparent outline-none focus-visible:outline-1 focus-visible:outline-offset-0 focus-visible:outline-term-sage"

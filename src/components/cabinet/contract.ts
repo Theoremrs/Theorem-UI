@@ -45,6 +45,8 @@ export type CatalogEntry = {
   source:
     | { type: 'artifact'; artifactId: string; revision: string }
     | { type: 'upload'; uploadId: string; revision: string }
+    /** A review opens through the review dock, its own owner. */
+    | { type: 'review'; reviewId: string; revision: string }
   /** The session it came from: a reference, never a navigation. */
   threadId: string
   kind: CatalogKind
