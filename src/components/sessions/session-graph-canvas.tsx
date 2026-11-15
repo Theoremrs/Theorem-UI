@@ -1143,7 +1143,15 @@ function SessionGraph({
     }),
     [],
   )
-  const [dirty, setDirty] = useState(false)
+  // Every edit counts; the view is unsaved while an edit is newer than the
+  // last save, including an edit made while that save was on its way.
+  const [edits, setEdits] = useState(0)
+  const [savedAt, setSavedAt] = useState(0)
+  const dirty = edits !== savedAt
+  const edited = () => setEdits((n) => n + 1)
+  // The revision these edits build on. A reload that brings a newer one,
+  // saved elsewhere, does not change it, so saving over that is refused.
+  const [base, setBase] = useState(saved?.revision)
   const [asList, setAsList] = useState(false)
   const [naming, setNaming] = useState<'save' | 'rename'>()
 
@@ -1192,20 +1200,19 @@ function SessionGraph({
   )
 
   const save = useMutation({
-    mutationFn: (as: { name: string }) =>
+    mutationFn: (as: { name: string; at: number }) =>
       saveSessionGraph({
         name: as.name,
         scope: toViewScope(scope),
         layout: { nodes: placed, direction } satisfies SessionGraphLayout,
         show,
-        ...(saved
-          ? { node_id: saved.node_id, expected_revision: saved.revision }
-          : {}),
+        ...(saved ? { node_id: saved.node_id, expected_revision: base } : {}),
       }),
-    onSuccess: (view) => {
+    onSuccess: (view, as) => {
       client.setQueryData(programKeys.sessionGraph(view.node_id), view)
       void client.invalidateQueries({ queryKey: programKeys.sessionGraphs() })
-      setDirty(false)
+      setSavedAt(as.at)
+      setBase(view.revision)
       setNaming(undefined)
       if (!saved)
         void navigate({
@@ -1226,7 +1233,7 @@ function SessionGraph({
 
   const toggle = (facet: keyof SessionGraphShow, on: boolean) => {
     setShow((held) => ({ ...held, [facet]: on }))
-    setDirty(true)
+    edited()
   }
   const notServed = new Map(
     (read.data?.notServed ?? []).map((n) => [n.facet, n.reason]),
@@ -1307,7 +1314,9 @@ function SessionGraph({
             variant={saved && !dirty ? 'ghost' : 'outline'}
             size="sm"
             disabled={save.isPending || (saved !== undefined && !dirty)}
-            onClick={() => (saved ? save.mutate({ name }) : setNaming('save'))}
+            onClick={() =>
+              saved ? save.mutate({ name, at: edits }) : setNaming('save')
+            }
           >
             {saved && !dirty ? 'Saved' : 'Save'}
           </Button>
@@ -1386,12 +1395,12 @@ function SessionGraph({
               placed={placed}
               onPlace={(id, at) => {
                 setPlaced((held) => ({ ...held, [id]: at }))
-                setDirty(true)
+                edited()
               }}
               onArrange={() => {
                 if (Object.keys(placed).length === 0) return
                 setPlaced({})
-                setDirty(true)
+                edited()
               }}
               direction={direction}
               onDirection={setDirection}
@@ -1410,7 +1419,7 @@ function SessionGraph({
         action={naming === 'rename' ? 'Rename' : 'Save'}
         pending={save.isPending}
         error={save.error}
-        onSubmit={(next) => save.mutate({ name: next })}
+        onSubmit={(next) => save.mutate({ name: next, at: edits })}
       />
     </Actions>
   )

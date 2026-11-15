@@ -220,6 +220,15 @@ chat header and the sessions panel when that session was.
   opened at. The sessions are read fresh each time. Saved views are listed in
   the Canvas sidebar under "Session graphs", with Rename and Delete in the
   view's menu.
+  - A save sends the revision this canvas's edits build on: the one the view
+    was opened at, or the one its last save here returned. A reload that
+    brings a revision saved elsewhere does not change it, so saving over
+    that revision is refused rather than overwriting it.
+  - Each edit counts, and the view reads unsaved while an edit is newer than
+    the last save, including an edit made while that save was on its way.
+- **Refresh:** the graph is read again every 15 seconds, and every 4 while a
+  session is running, so runs, outputs and messages that land on the server
+  appear. Layout stability below keeps a refresh from moving anything.
 - **Layout:** `src/lib/theorem/session-graph-layout.ts`, ELK layered, from
   the fork, continuation, made and called edges, so each runs one column out.
   Messages are drawn over the layout as arcs (a floating edge between the two

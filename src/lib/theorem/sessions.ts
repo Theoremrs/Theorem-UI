@@ -113,6 +113,15 @@ export const sessionGraphQuery = (scope: GraphScope) =>
             : `treeId=${encodeURIComponent(scope.treeId)}`
         }`,
       ),
+    // A run ends, an output lands, or a session messages another on the
+    // server without telling this tab. The canvas lays out only a change of
+    // shape, so a refetch moves nothing on screen.
+    refetchInterval: (query) =>
+      query.state.data?.trees.some((tree) =>
+        tree.nodes.some((node) => node.activeRunId),
+      )
+        ? 4_000
+        : 15_000,
   })
 
 /**
