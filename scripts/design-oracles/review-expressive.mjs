@@ -1,7 +1,7 @@
 // Live-report regressions: shared gradient, preset round trips and real settings.
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { chromium } from 'playwright-core'
+import { launchReviewBrowser } from './review-browser.mjs'
 import { wcagContrast } from 'culori'
 import { chooseOption } from './browser-controls.mjs'
 
@@ -10,7 +10,7 @@ const out =
   process.env.ORACLE_REVIEW_OUT ??
   'docs/plans/composable-appearance/evidence/live-repairs'
 await mkdir(out, { recursive: true })
-const browser = await chromium.launch()
+const browser = await launchReviewBrowser()
 const page = await browser.newPage({
   viewport: { width: 1440, height: 1000 },
   reducedMotion: 'reduce',

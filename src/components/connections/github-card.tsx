@@ -42,10 +42,7 @@ export function GithubSection() {
   const linked = Boolean(entry && entry.status !== 'disconnected')
 
   return (
-    <SettingsSection
-      title="GitHub"
-      description="Connect your GitHub account so Theorem follows your repositories and your agent can work with them."
-    >
+    <SettingsSection title={linked ? 'GitHub' : 'Connect git provider'}>
       {list.error ? (
         <Empty className="rounded-lg border border-separator">
           <EmptyTitle>
@@ -90,35 +87,15 @@ function useConnectGithub() {
 function GithubConnect() {
   const { connect, start } = useConnectGithub()
   return (
-    <div className="flex flex-col gap-4 rounded-lg border border-separator px-4 py-4">
-      <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-medium">Connect GitHub</h3>
-        <p className="text-sm text-ink-muted">
-          Theorem links to your account through its GitHub app, so you choose
-          which repositories it can see.
+    <div className="flex min-w-0 flex-col items-start gap-2">
+      <Button size="sm" disabled={connect.isPending} onClick={start}>
+        {connect.isPending ? 'Opening GitHub...' : 'GitHub'}
+      </Button>
+      {connect.error && (
+        <p role="alert" className="max-w-full wrap-anywhere text-sm text-error-ink">
+          {describeError(connect.error)}
         </p>
-      </div>
-      <ul className="flex list-disc flex-col gap-1 ps-5 text-sm text-ink-muted">
-        <li>
-          Pushes, review requests, failed workflows and comments reach Theorem
-          as they happen.
-        </li>
-        <li>
-          Your agent can search code and read issues and pull requests. Anything
-          that changes GitHub asks you first.
-        </li>
-        <li>You can turn it off, or disconnect, at any time.</li>
-      </ul>
-      <div className="flex items-center gap-3">
-        <Button size="sm" disabled={connect.isPending} onClick={start}>
-          {connect.isPending ? 'Opening GitHub...' : 'Connect GitHub'}
-        </Button>
-        {connect.error && (
-          <p role="alert" className="text-sm text-error-ink">
-            {describeError(connect.error)}
-          </p>
-        )}
-      </div>
+      )}
     </div>
   )
 }
@@ -220,12 +197,12 @@ function GithubDetails({ github }: { github: GithubConnection }) {
                 : 'Theorem could not use GitHub.'}
               {health.detail ? ` ${health.detail}` : ''}
             </p>
-            <div className="flex items-center gap-3">
+            <div className="flex min-w-0 flex-col items-start gap-2">
               <Button variant="outline" size="sm" disabled={connect.isPending} onClick={start}>
                 {connect.isPending ? 'Opening GitHub...' : 'Sign in again'}
               </Button>
               {connect.error && (
-                <p role="alert" className="text-sm text-error-ink">
+                <p role="alert" className="max-w-full wrap-anywhere text-sm text-error-ink">
                   {describeError(connect.error)}
                 </p>
               )}

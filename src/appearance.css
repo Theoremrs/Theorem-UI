@@ -108,8 +108,7 @@
   letter-spacing: normal;
 }
 
-/* A role can decorate its perimeter. Every reading plane has opaque paint,
-   including over live refraction and across all animation frames. */
+/* Surface roles provide the solid fallback paint for their reading planes. */
 [data-surface-role='canvas'],
 [data-surface-role='assistant-reading'] {
   --appearance-surface-fill: var(--surface-neutral);
@@ -146,6 +145,25 @@
   --foreground: var(--appearance-ink);
   --muted-foreground: var(--appearance-ink-muted);
   color: var(--appearance-ink);
+}
+
+/* Let the established glass renderer paint the whole composer. Interior paint
+   hid the refraction and replaced the renderer's stronger ink. Custom palettes
+   retain their validated solid reading planes; forced colors below still wins. */
+:where(
+    :root:not([data-palette='custom'])
+      .appearance-composer-box:is(
+        [data-material='glass'],
+        [data-material='liquid']
+      )
+  )
+  .appearance-reading-plane {
+  background: transparent;
+  --ink: inherit;
+  --ink-muted: inherit;
+  --foreground: inherit;
+  --muted-foreground: inherit;
+  color: inherit;
 }
 
 /* The transcript shares the canvas paint. A separate solid reading rectangle

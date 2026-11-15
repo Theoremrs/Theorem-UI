@@ -61,10 +61,7 @@ function ConnectionsSettings() {
   )
 
   return (
-    <SettingsPage
-      title="Connections"
-      description="The accounts and tool servers your agent can reach. Theorem holds their credentials and makes the requests; you choose what each conversation may use from the composer."
-    >
+    <SettingsPage title="Connections">
       {pending && <FinishingSignIn pending={pending} onDone={finished} />}
       {outcome && (
         <ConnectionReturn

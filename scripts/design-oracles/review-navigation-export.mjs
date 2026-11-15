@@ -3,13 +3,11 @@ import { chooseOption } from './browser-controls.mjs'
 // The development story supplies deterministic SDK responses, not a live server.
 import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
-import { chromium } from 'playwright-core'
+import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
 
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
-const output =
-  process.env.ORACLE_REVIEW_OUT ??
-  'docs/plans/composable-appearance/evidence/review'
-const browser = await chromium.launch()
+const output = reviewOutput
+const browser = await launchReviewBrowser()
 const checks = []
 const errors = []
 await mkdir(output, { recursive: true })
@@ -161,7 +159,7 @@ try {
           .context()
           .grantPermissions(['clipboard-read', 'clipboard-write'])
         await page
-          .locator('.appearance-vault-header')
+          .locator('[data-story-appearance-controls]')
           .getByRole('button', { name: 'Appearance', exact: true })
           .click()
         const dialog = page.getByRole('dialog', { name: 'Appearance settings' })

@@ -130,3 +130,43 @@ Verified origin `Travis-Gilbert/Theorem-UI`, branch `Travis-Gilbert/composable-a
 Validation: 21 shell/appearance unit tests and four story transport tests passed; TypeScript, focused ESLint and formatting checks passed. `PLAYWRIGHT_BROWSERS_PATH=/tmp/theorem-appearance-browsers bun run oracle:navigation-export` passed all seven Chromium checks with no uncaught browser errors. It checks Vault close/reopen, keyboard activation, Escape, Notes/Home navigation at 320px and 390px; note A → B → A selection and visible editors; desktop rail/header behavior; pristine JSON Apply, live export after import/control changes, draft-preserving clipboard export, and invalid JSON retention. The regression command is included in the existing browser CI step.
 
 Evidence: [browser results](evidence/review/navigation-export.json) and [390px Vault navigation screenshot](evidence/review/vault-phone-navigation.png). The fixture uses the real components, router, editors and SDK with deterministic story transport; it does not establish live backend acceptance. Earlier full-matrix evidence and its native input verification limits remain unchanged. The existing worktree is retained for this PR and the remaining acceptance checks; no new worktree was created.
+
+
+### PR #104 follow-up: settings location, glass and main integration (2026-11-15)
+
+Verified the existing Theorem-UI origin and `Travis-Gilbert/appearance-live-repairs`
+branch at `9db8dbc5` before merging `origin/main` (`4e7dc0f2`). Resolved the
+browser-runner conflicts by keeping main's shared full-Chromium launcher and
+temporary evidence directory, the existing coss control helpers, and both log
+and artifact diagnostics. No new PR or branch was created.
+
+The rail and phone header now reuse a next-themes light/dark toggle. Full
+appearance controls remain on the real Settings → Appearance route; duplicate
+Theme/Colors groups were removed from the account menu. The old dialog is now
+only a development story harness for exercising the real form while verifying
+mounted-editor and streaming continuity. It is absent from the product shell.
+A separate browser check follows Account → Settings → Appearance and operates
+the actual page; the story-only harness is hidden during that product check.
+
+History confirms that `361d7191` introduced CSS Frosted glass; the later Liquid
+glass renderer adapts `ybouane/liquidglass`. Both still exist. The redesign's
+opaque composer reading planes hid their interior and replaced Liquid glass's
+stronger ink. Built-in glass composers now let the existing renderer paint the
+whole surface and inherit its foreground. Validated custom palettes retain
+solid reading planes; forced colors and reduced transparency retain their
+solid fallback. No glass renderer, gradient, or material preference was replaced.
+
+Validation: 703 composer/runtime tests and 28 appearance tests passed; TypeScript
+and focused production lint passed. Browser runs passed 56 real-form interaction
+checks, 15 upload/stream/runtime checks, nine reflow/forced-color checks, and
+seven new theme/glass/settings checks. The latter covers desktop and phone
+mode toggles, draft/DOM continuity, both glass materials in light/dark mode,
+active Liquid glass canvas dimensions, transparent interiors, and the dedicated
+settings route. These use local real components with fixture data, not a live
+production backend. One evidence write hit transient local disk exhaustion;
+follow-up evidence uses the external SSD. See [glass evidence](evidence/theme-glass/theme-glass.json)
+and [Liquid glass light](evidence/theme-glass/composer-liquid-light.png).
+
+The remaining browser reruns passed: seven navigation/export checks, 11
+Expressive/settings checks and three reversed custom-palette checks. The
+production Vite build and all 10 built composer interaction checks passed.
