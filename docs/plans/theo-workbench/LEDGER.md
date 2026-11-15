@@ -67,4 +67,4 @@ Not adopted, and why: `edtui` (modal editor, hard `crossterm` and clipboard depe
 
 | Row | Collage (sha256) | Sealed | By | Note |
 |---|---|---|---|---|
-| L03 Tool picker | `docs/plans/evidence/workbench-picker/collage.png` (`f8b0af24fabc53452448a21ff6a53f4188173b9ff15233f6f918cd8bc484ce3e`) | 2026-11-15 | The owner, by instruction in chat | Sealed without the collage being opened: the owner could not view it at the time and said not to let that hold the work up. A later look may reopen this row. |
+| L03 Tool picker | `docs/plans/evidence/workbench-picker/collage.png` (`f8b0af24fabc53452448a21ff6a53f4188173b9ff15233f6f918cd8bc484ce3e`) | 2026-11-15 | The owner, by instruction in chat | Sealed without the collage being opened: the owner could not view it at the time and said not to let that hold the work up. A later look may reopen this row. A render at `8b31f327` differs from the sealed one in 7,602 pixels, all in grid rows 26 to 28: the Theo composer under the picker, whose status line has since moved inside its box. The picker's own cells are unchanged, so the collage and the committed render are kept as sealed. |

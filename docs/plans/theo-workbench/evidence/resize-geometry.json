@@ -6,7 +6,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 192,
       "rows": 52,
       "host": {
@@ -100,7 +100,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 136,
       "rows": 45,
       "host": {
@@ -186,7 +186,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 52,
       "rows": 49,
       "host": {
@@ -266,7 +266,7 @@
     },
     "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
     "filesChordAlone": {
-      "filesTreeOnScreen": false,
+      "filesTreeOnScreen": true,
       "theoOnScreen": true
     },
     "textSize": {
@@ -274,7 +274,7 @@
         "fontSizePx": 12.5,
         "cellWidthPx": 7.484375,
         "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
+        "cellBoxHeightPx": 17,
         "columns": 192,
         "rows": 52,
         "host": {
@@ -360,12 +360,12 @@
         ]
       },
       "after": {
-        "fontSizePx": 12.5,
-        "cellWidthPx": 7.484375,
-        "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
-        "columns": 192,
-        "rows": 52,
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.234375,
+        "rowPitchPx": 25,
+        "cellBoxHeightPx": 25,
+        "columns": 128,
+        "rows": 36,
         "host": {
           "width": 1440,
           "height": 900,
@@ -374,54 +374,54 @@
           "scrollWidth": 1440,
           "scrollHeight": 900
         },
-        "leftoverWidthPx": 3,
-        "leftoverHeightPx": 16,
+        "leftoverWidthPx": 2,
+        "leftoverHeightPx": 0,
         "dockCells": {
           "x": 0,
           "y": 0,
-          "width": 192,
-          "height": 52
+          "width": 128,
+          "height": 36
         },
         "paneRects": [
           {
             "name": "Files",
             "x": 0,
             "y": 0,
-            "width": 30,
-            "height": 52,
+            "width": 20,
+            "height": 36,
             "visible": true
           },
           {
             "name": "Main",
-            "x": 31,
+            "x": 21,
             "y": 0,
-            "width": 107,
-            "height": 52,
+            "width": 71,
+            "height": 36,
             "visible": true
           },
           {
             "name": "Tools",
-            "x": 139,
+            "x": 93,
             "y": 0,
-            "width": 53,
-            "height": 52,
+            "width": 35,
+            "height": 36,
             "visible": true
           }
         ],
         "separatorRects": [
           {
             "name": "Resize",
-            "x": 30,
+            "x": 20,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 36
           },
           {
             "name": "Resize",
-            "x": 138,
+            "x": 92,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 36
           }
         ],
         "visiblePanes": [
@@ -458,7 +458,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.5,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 192,
       "rows": 52,
       "host": {
@@ -552,7 +552,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.5,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 136,
       "rows": 45,
       "host": {
@@ -638,7 +638,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.5,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 52,
       "rows": 49,
       "host": {
@@ -718,7 +718,7 @@
     },
     "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
     "filesChordAlone": {
-      "filesTreeOnScreen": false,
+      "filesTreeOnScreen": true,
       "theoOnScreen": true
     },
     "textSize": {
@@ -726,7 +726,7 @@
         "fontSizePx": 12.5,
         "cellWidthPx": 7.5,
         "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
+        "cellBoxHeightPx": 17,
         "columns": 192,
         "rows": 52,
         "host": {
@@ -812,12 +812,12 @@
         ]
       },
       "after": {
-        "fontSizePx": 12.5,
-        "cellWidthPx": 7.5,
-        "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
-        "columns": 192,
-        "rows": 52,
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.25,
+        "rowPitchPx": 26,
+        "cellBoxHeightPx": 26,
+        "columns": 128,
+        "rows": 34,
         "host": {
           "width": 1440,
           "height": 900,
@@ -831,49 +831,49 @@
         "dockCells": {
           "x": 0,
           "y": 0,
-          "width": 192,
-          "height": 52
+          "width": 128,
+          "height": 34
         },
         "paneRects": [
           {
             "name": "Files",
             "x": 0,
             "y": 0,
-            "width": 30,
-            "height": 52,
+            "width": 20,
+            "height": 34,
             "visible": true
           },
           {
             "name": "Main",
-            "x": 31,
+            "x": 21,
             "y": 0,
-            "width": 107,
-            "height": 52,
+            "width": 71,
+            "height": 34,
             "visible": true
           },
           {
             "name": "Tools",
-            "x": 139,
+            "x": 93,
             "y": 0,
-            "width": 53,
-            "height": 52,
+            "width": 35,
+            "height": 34,
             "visible": true
           }
         ],
         "separatorRects": [
           {
             "name": "Resize",
-            "x": 30,
+            "x": 20,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 34
           },
           {
             "name": "Resize",
-            "x": 138,
+            "x": 92,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 34
           }
         ],
         "visiblePanes": [
@@ -910,7 +910,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 192,
       "rows": 52,
       "host": {
@@ -1004,7 +1004,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 136,
       "rows": 45,
       "host": {
@@ -1090,7 +1090,7 @@
       "fontSizePx": 12.5,
       "cellWidthPx": 7.484375,
       "rowPitchPx": 17,
-      "cellBoxHeightPx": 18.75,
+      "cellBoxHeightPx": 17,
       "columns": 52,
       "rows": 49,
       "host": {
@@ -1170,7 +1170,7 @@
     },
     "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
     "filesChordAlone": {
-      "filesTreeOnScreen": false,
+      "filesTreeOnScreen": true,
       "theoOnScreen": true
     },
     "textSize": {
@@ -1178,7 +1178,7 @@
         "fontSizePx": 12.5,
         "cellWidthPx": 7.484375,
         "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
+        "cellBoxHeightPx": 17,
         "columns": 192,
         "rows": 52,
         "host": {
@@ -1264,12 +1264,12 @@
         ]
       },
       "after": {
-        "fontSizePx": 12.5,
-        "cellWidthPx": 7.484375,
-        "rowPitchPx": 17,
-        "cellBoxHeightPx": 18.75,
-        "columns": 192,
-        "rows": 52,
+        "fontSizePx": 18.75,
+        "cellWidthPx": 11.234375,
+        "rowPitchPx": 25,
+        "cellBoxHeightPx": 25,
+        "columns": 128,
+        "rows": 36,
         "host": {
           "width": 1440,
           "height": 900,
@@ -1278,54 +1278,54 @@
           "scrollWidth": 1440,
           "scrollHeight": 900
         },
-        "leftoverWidthPx": 3,
-        "leftoverHeightPx": 16,
+        "leftoverWidthPx": 2,
+        "leftoverHeightPx": 0,
         "dockCells": {
           "x": 0,
           "y": 0,
-          "width": 192,
-          "height": 52
+          "width": 128,
+          "height": 36
         },
         "paneRects": [
           {
             "name": "Files",
             "x": 0,
             "y": 0,
-            "width": 30,
-            "height": 52,
+            "width": 20,
+            "height": 36,
             "visible": true
           },
           {
             "name": "Main",
-            "x": 31,
+            "x": 21,
             "y": 0,
-            "width": 107,
-            "height": 52,
+            "width": 71,
+            "height": 36,
             "visible": true
           },
           {
             "name": "Tools",
-            "x": 139,
+            "x": 93,
             "y": 0,
-            "width": 53,
-            "height": 52,
+            "width": 35,
+            "height": 36,
             "visible": true
           }
         ],
         "separatorRects": [
           {
             "name": "Resize",
-            "x": 30,
+            "x": 20,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 36
           },
           {
             "name": "Resize",
-            "x": 138,
+            "x": 92,
             "y": 0,
             "width": 1,
-            "height": 52
+            "height": 36
           }
         ],
         "visiblePanes": [
