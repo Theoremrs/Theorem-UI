@@ -1,0 +1,21 @@
+[package]
+name = "theorem-workbench-composer"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "The Theo message composer of the Web terminal workbench: a multiline draft over the shared text session with attachments, references, and a policy footer"
+
+[dependencies]
+theorem-workbench-core = { path = "../workbench-core" }
+theorem-workbench-text = { path = "../workbench-text" }
+theorem-workbench-editor = { path = "../workbench-editor" }
+ratatui = { version = "0.30.1", default-features = false }
+# KeyInput, Key and Mods in Input::Key.
+keybinds = "0.2"
+unicode-width = "0.2"
+unicode-segmentation = "1.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+unicode-width = "0.2"
