@@ -1,0 +1,40 @@
+A33 w1536 {"viewport":1536,"layout":"docked","rail":44,"nav":210,"main":810,"dock":"469px","cardFont":"12.5px","cabinet":454,"columns":2,"rootFont":"16px","hScroll":false}
+A33 w1280 {"viewport":1280,"layout":"docked","rail":44,"nav":0,"main":764,"dock":"469px","cardFont":"12.5px","cabinet":454,"columns":2,"rootFont":"16px","hScroll":false}
+A33 w390 {"viewport":390,"layout":"overlay","rail":0,"nav":0,"main":390,"dock":"","cardFont":"12.5px","cabinet":372,"columns":1,"rootFont":"16px","hScroll":false}
+A33 w320 {"viewport":320,"layout":"overlay","rail":0,"nav":0,"main":320,"dock":"","cardFont":"12.5px","cabinet":302,"columns":1,"rootFont":"16px","hScroll":false}
+A28 dpr1 [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr1 resized [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr1 expanded [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr1.5 [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr1.5 resized [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr1.5 expanded [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr2 [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr2 resized [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A28 dpr2 expanded [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true},{"card":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A29 keyboard {"first":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","afterArrow":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","ariaCurrent":"upload:chatupload_sha256:51ef152398ad3c7c34931485c","focusAfterEscape":"upload:chatupload_sha256:51ef152398ad3c7c34931485c"}
+A29 touch opened 1 target sizes [["Cabinet width",12,894],["Cabinet",66,44],["Terminal",74,44],["Expand",59,44],["Search the artifact ",345,44],["Preview style",128,44],["All",44,44],["Docs",44,44],["Images",45,44],["Apps",44,44],["headland-at-dusk.png",195,238],["field-notes.md. Docu",195,238]]
+A30 aria snapshot lines 16 
+- searchbox "Search the artifact cabinet"
+- combobox "Preview style":
+  - option "Theme default (original)" [selected]
+  - option "Pixel"
+  - option "Original"
+- group "Filter artifacts":
+  - button "All" [pressed]
+  - button "Docs"
+  - button "Images"
+  - button "Apps"
+- list "Artifacts, most recent first":
+  - listitem:
+    - button "headland-at-dusk.png. Image · PNG · 10 KB. Image attachment headland-at-dusk.png. Media type image/png. Dimensions 1000 by 625 pixels. Content is available by its cited source hash."
+  - listitem:
+    - 'button "field-notes.md. Document · MARKDOWN · 713 B. # Field notes: the north headland survey Three walks along the headland between October and November, recording where the path has eroded and which markers survive. ## Findings - The cliff edge moved inland by roughly two metres at the second stile. - Marker posts 4 and 7 are go…"'
+- paragraph: 2 artifacts
+A31 {"searchValue":"café 日本語 Headland","matchesForGibberish":0,"composerText":"a/b","focusStayedInComposer":true}
+A10 {"before":{"value":"theme","stored":null},"afterReload":"pixel","afterPreset":"pixel","reset":{"value":"theme","label":"Theme default (pixel)","stored":{"state":{"preset":"expressive","overrides":{}},"version":1}}}
+A29 keyboard resize {"w0":"466","afterLeftAndShiftLeft":"546","dock1":"549px","cabinetBox":534,"end":"340","restored":"468"}
+A34 {"viewport":1536,"layout":"docked","rail":44,"nav":0,"main":1018,"dock":"471px","cardFont":"25px","cabinet":444,"columns":1,"rootFont":"32px","hScroll":false} [{"card":"upload:chatupload_sha256:8fb305a61effa05fe2a241011","canvasVsSlot":[0,0,0,0],"slotInsideCard":true}]
+A29 coarse pointer true [["Cabinet",66,44],["Terminal",74,44],["Expand",59,44],["Search the artifact cabinet",345,44],["Preview style",128,44],["All",44,44],["Docs",44,44],["Images",45,44],["Apps",44,44]]
+A08 non-GET requests while browsing 2 ["PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts","PUT http://localhost:3000/api/artifacts/v1/libraries/theorem-artifacts"]
+iframes in cabinet 0
+console errors ["Failed to load resource: the server responded with a status of 404 (Not Found)","Failed to load resource: the server responded with a status of 404 (Not Found)","Failed to load resource: the server responded with a status of 401 (Unauthorized)","Failed to load resource: the server responded with a status of 503 (Service Unavailable)","Failed to load resource: the server responded with a status of 503 (Service Unavailable)","Failed to load resource: the server responded with a status of 404 (Not Found)","Failed to load resource: the server responded with a status of 401 (Unauthorized)","Failed to load resource: the server responded with a status of 404 (Not Found)","Failed to load resource: the server responded with a status of 404 (Not Found)","Failed to load resource: the server responded with a status of 401 (Unauthorized)"]
