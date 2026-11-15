@@ -1,7 +1,12 @@
-// SOURCING: elkjs (elk.bundled, as lib/theorem/plans and lib/program/flow load it): layered for lineage and membership, mrtree for a team's one-way tree, stress for related sessions, each keeping the projection's node order so a refresh does not reshuffle the graph. ELK is the one layout engine here; the node renderer does not depend on it.
+// SOURCING: elkjs (elk.bundled, as lib/theorem/plans and lib/program/flow load it): layered for the session graph (the main at the left, forks running right), with mrtree and stress kept for tree and related layouts, each keeping the projection's node order so a refresh does not reshuffle the graph. ELK is the one layout engine here; the node renderer does not depend on it.
 import ELK from 'elkjs/lib/elk.bundled.js'
 import type { ElkNode } from 'elkjs/lib/elk-api'
-import type { LensLayout } from './session-graph'
+
+/** How a graph is laid out: by ELK algorithm and direction. */
+export type LensLayout = {
+  algorithm: 'layered' | 'mrtree' | 'stress'
+  direction?: 'RIGHT' | 'DOWN'
+}
 
 type Point = { x: number; y: number }
 type Size = { width: number; height: number }

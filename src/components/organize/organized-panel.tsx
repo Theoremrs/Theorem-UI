@@ -30,7 +30,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode } from 'react'
 import { ThreadFromFailure } from '@/components/assistant-ui/elements/thread-list.aui'
@@ -87,17 +87,23 @@ import {
   nestByOrigin,
   rootOf,
   organizationKey,
+  organizationQuery,
   useLibrarianControl,
   useMoveThread,
   useOrganization,
   useOrganizedViews,
 } from '@/lib/theorem/organization'
+import { projectHasSessionGraph, scopeParam } from '@/lib/theorem/sessions'
 import type {
   OrganizationRead,
   ProjectEntry,
   ThreadEntry,
 } from '@/lib/theorem/organization'
-import { isPinned, livePins, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
+import {
+  isPinned,
+  livePins,
+  useSidebarPrefs,
+} from '@/lib/theorem/sidebar-prefs'
 import type { Pin } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
 import { LibrarianFooter } from './librarian-footer'
@@ -291,6 +297,11 @@ function ProjectNode({
   const togglePin = useSidebarPrefs((s) => s.togglePin)
   const { projectId: openProjectId } = useParams({ strict: false })
   const current = openProjectId === project.projectId
+  // A graph is offered only where there is something to draw: a fork, a continuation or a message.
+  const { data: hasGraph } = useQuery({
+    ...organizationQuery(),
+    select: (read) => projectHasSessionGraph(read, project.projectId),
+  })
   // One node does both: a dragged thread drops on it, and it is dragged among the projects.
   const {
     setNodeRef,
@@ -366,6 +377,24 @@ function ProjectNode({
               <Icon.Notes className="size-4" />
               Where it stands
             </MenuItem>
+          )}
+          {hasGraph && (
+            <MenuLinkItem
+              render={
+                <Link
+                  to="/canvas"
+                  search={{
+                    sessions: scopeParam({
+                      kind: 'project',
+                      projectId: project.projectId,
+                    }),
+                  }}
+                />
+              }
+            >
+              <Icon.Graph className="size-4" />
+              Open graph
+            </MenuLinkItem>
           )}
           <MenuSeparator />
           <MenuItem disabled={!onMove.up} onClick={onMove.up}>
@@ -647,7 +676,10 @@ function ChatsGroup({
   const accepting = isOver && takes(active, null)
   return (
     <SidebarGroup ref={setNodeRef} className={cn(GROUP, accepting && dropRing)}>
-      <SidebarGroupLabel data-appearance-recipe="ui.section" className={HEADING}>
+      <SidebarGroupLabel
+        data-appearance-recipe="ui.section"
+        className={HEADING}
+      >
         Chats
       </SidebarGroupLabel>
       {/* The rows a project nests, here at the top level: no guide line, no ticks. */}

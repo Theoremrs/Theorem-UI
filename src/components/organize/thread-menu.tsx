@@ -1,8 +1,11 @@
-// SOURCING: coss ui menu over Base UI Menu (the same parts serve the More button and the right-click ContextMenu), coss ui toast (a refused change, said after the menu has closed), date-fns for the Later presets, lib/theorem/organization for placement and Later, thread-tree for forks. Placement rules are Theorem's; this only asks.
+// SOURCING: coss ui menu over Base UI Menu (the same parts serve the More button and the right-click ContextMenu), coss ui toast (a refused change, said after the menu has closed), date-fns for the Later presets, lib/theorem/organization for placement and Later, thread-tree for forks, lib/theorem/sessions for whether a session's graph is worth opening on the canvas. Placement rules are Theorem's; this only asks.
+import { useQuery } from '@tanstack/react-query'
+import { Link } from '@tanstack/react-router'
 import { addDays, addHours, nextMonday, setHours, startOfHour } from 'date-fns'
 import {
   MenuCheckboxItem,
   MenuItem,
+  MenuLinkItem,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
@@ -15,6 +18,7 @@ import { Icon } from '@/components/icons'
 import { toastManager } from '@/components/coss/toast'
 import { describeError } from '@/lib/theorem/client'
 import {
+  organizationQuery,
   primaryProjectId,
   useLater,
   useMoveThread,
@@ -26,6 +30,7 @@ import {
   useSessionType,
   useSidebarPrefs,
 } from '@/lib/theorem/sidebar-prefs'
+import { inSessionGraph, scopeParam } from '@/lib/theorem/sessions'
 import { TypeMarkIcon } from './glyphs'
 import { useNewTypeDialog } from './session-type-dialog'
 import type {
@@ -88,6 +93,11 @@ export function ThreadMenuItems({
   )
   const primaryTitle = projects.find((p) => p.projectId === primary)?.title
   const waitable = running.filter((t) => t.threadId !== thread.threadId)
+  // Its graph is offered once it was forked or continued, or another was from it.
+  const { data: hasGraph } = useQuery({
+    ...organizationQuery(),
+    select: (read) => inSessionGraph(read, thread.threadId),
+  })
   const place = (condition: LaterCondition | null) =>
     later.mutate({ threadId: thread.threadId, condition })
 
@@ -104,6 +114,21 @@ export function ThreadMenuItems({
         <Icon.Continue className="size-4" />
         Continue in new thread
       </MenuItem>
+      {hasGraph && (
+        <MenuLinkItem
+          render={
+            <Link
+              to="/canvas"
+              search={{
+                sessions: scopeParam({ kind: 'tree', treeId: thread.threadId }),
+              }}
+            />
+          }
+        >
+          <Icon.Graph className="size-4" />
+          Open graph
+        </MenuLinkItem>
+      )}
       <MenuSeparator />
       {served ? (
         <MenuSub>

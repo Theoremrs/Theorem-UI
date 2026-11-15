@@ -1,143 +1,333 @@
-// SOURCING: bun:test over the pure projection in ./session-graph
+// SOURCING: bun:test over the pure projection in ./session-graph and the scope helpers in ./sessions
 import { describe, expect, test } from 'bun:test'
-import { describeEdges, projectGraph } from './session-graph'
-import type { Membership, ProjectEntry, ThreadEntry } from './organization'
+import {
+  SHOW_ALL,
+  describeEdges,
+  projectSessionGraph,
+  sessionNodeId,
+} from './session-graph'
+import type { SessionGraphRead, SessionTreeNode } from './sessions'
+import {
+  inSessionGraph,
+  parseScope,
+  projectHasSessionGraph,
+  scopeParam,
+} from './sessions'
+import type { ThreadEntry } from './organization'
 
-const project = (projectId: string, over: Partial<ProjectEntry> = {}) =>
-  ({
-    projectId,
-    title: projectId.toUpperCase(),
-    isInbox: false,
-    createdBy: 'user',
-    threadCount: 0,
-    outputCount: 0,
-    brief: false,
-    ...over,
-  }) satisfies ProjectEntry
-
-const member = (projectId: string, pinned = false): Membership => ({
-  projectId,
-  by: 'librarian',
-  pinned,
-  why: 'about this',
-  atMs: 1,
-})
-
-const thread = (
+const chat = (
   threadId: string,
   createdAtMs: number,
-  over: Partial<ThreadEntry> = {},
-): ThreadEntry => ({
+  over: Partial<SessionTreeNode> = {},
+): SessionTreeNode => ({
   threadId,
   title: threadId,
-  homeProjectId: 'inbox',
-  revision: 1,
+  projectId: 'p',
+  status: 'regular',
   createdAtMs,
-  memberships: [member('p')],
-  attention: { reasons: [], running: false },
+  depth: 0,
+  isMain: false,
+  isOrigin: false,
+  inScope: true,
   ...over,
 })
 
-const projects = [
-  project('inbox', { isInbox: true }),
-  project('p'),
-  project('q'),
-]
-
-const root = thread('root', 1)
-const fork = thread('fork', 2, {
-  origin: { kind: 'forked', threadId: 'root', branchId: 'b', messageId: 'm' },
-})
-const next = thread('next', 3, {
-  origin: { kind: 'continued', threadId: 'root' },
-})
-// Forked from a session filed only in q.
-const elsewhere = thread('elsewhere', 0, { memberships: [member('q')] })
-const visitor = thread('visitor', 4, {
-  origin: {
-    kind: 'forked',
-    threadId: 'elsewhere',
-    branchId: 'b',
-    messageId: 'm',
+// root ── a ── b, rooted at the origin.
+const atOrigin: SessionGraphRead = {
+  schema: 'theorem-session-graph/1',
+  scope: { kind: 'project', projectId: 'p' },
+  trees: [
+    {
+      schema: 'theorem-session-tree/1',
+      treeId: 'root',
+      originThreadId: 'root',
+      mainThreadId: 'root',
+      mainResolution: 'origin',
+      revision: 0,
+      nodes: [
+        chat('b', 3, {
+          forkedFromThreadId: 'a',
+          authorityParentThreadId: 'a',
+          depth: 2,
+        }),
+        chat('root', 1, { isMain: true, isOrigin: true }),
+        chat('a', 2, {
+          forkedFromThreadId: 'root',
+          authorityParentThreadId: 'root',
+          depth: 1,
+        }),
+      ],
+    },
+  ],
+  connections: [
+    {
+      kind: 'continued',
+      fromThreadId: 'root',
+      toThreadId: 'later',
+      count: 1,
+      lastAtMs: 9,
+    },
+    {
+      kind: 'message',
+      fromThreadId: 'root',
+      toThreadId: 'b',
+      voice: 'user',
+      count: 3,
+      lastAtMs: 8,
+    },
+  ],
+  artifacts: {
+    a: [
+      {
+        outputId: 'art1',
+        kind: 'artifact',
+        title: 'Chart',
+        threadId: 'a',
+        updatedAtMs: 5,
+      },
+    ],
   },
-})
-// Its source is gone from Theorem.
-const orphan = thread('orphan', 5, {
-  origin: { kind: 'continued', threadId: 'gone' },
-})
+  documents: {
+    b: [
+      {
+        outputId: 'doc1',
+        kind: 'document',
+        title: 'Notes',
+        threadId: 'b',
+        updatedAtMs: 6,
+      },
+    ],
+  },
+  tools: {
+    root: [
+      { name: 'search', calls: 2, failed: 0 },
+      { name: 'run', calls: 5, failed: 1 },
+    ],
+  },
+  notServed: [],
+}
 
-const records = [orphan, next, visitor, fork, root, elsewhere]
+const ids = (graph: ReturnType<typeof projectSessionGraph>) =>
+  graph.nodes.map((n) => n.id)
+const edgeIds = (graph: ReturnType<typeof projectSessionGraph>) =>
+  graph.edges.map((e) => e.id)
 
-describe('lineage', () => {
-  const graph = projectGraph('lineage', records, projects, 'p')
-  if (!graph.served) throw new Error('lineage is served')
-
-  test('forks and continuations are distinct relations from their source', () => {
-    const relations = Object.fromEntries(
-      graph.edges.map((e) => [e.target, `${e.relation} ${e.source}`]),
-    )
-    expect(relations['session:fork']).toBe('forked session:root')
-    expect(relations['session:next']).toBe('continued session:root')
-  })
-
-  test('a source outside the scope is drawn and marked, a missing one is not invented', () => {
-    const outside = graph.nodes.filter((n) => n.kind === 'session' && n.outside)
-    expect(outside.map((n) => n.id)).toEqual(['session:elsewhere'])
-    expect(graph.edges.some((e) => e.target === 'session:orphan')).toBe(false)
-    expect(graph.nodes.some((n) => n.id === 'session:orphan')).toBe(true)
-  })
-
-  test('nodes keep a stable order: outside sources, then oldest first', () => {
-    expect(graph.nodes.map((n) => n.id)).toEqual([
-      'session:elsewhere',
+describe('projectSessionGraph', () => {
+  test('forks join each chat to its authority parent, the main first', () => {
+    const graph = projectSessionGraph(atOrigin, SHOW_ALL)
+    expect(ids(graph).slice(0, 3)).toEqual([
       'session:root',
-      'session:fork',
-      'session:next',
-      'session:visitor',
-      'session:orphan',
+      'session:a',
+      'session:b',
     ])
+    expect(edgeIds(graph)).toContain('fork:root->a')
+    expect(edgeIds(graph)).toContain('fork:a->b')
   })
 
-  test('each edge reads as a sentence', () => {
-    expect(describeEdges(graph)).toContain('fork forked from root')
-    expect(describeEdges(graph)).toContain('next continues root')
-  })
-})
-
-describe('membership', () => {
-  test('sessions link to every project they are filed in; a kept placement says so', () => {
-    const both = thread('both', 1, {
-      memberships: [member('p', true), member('q')],
-    })
-    const graph = projectGraph('membership', [both], projects, 'p')
-    if (!graph.served) throw new Error('membership is served')
-    expect(graph.nodes[0]).toMatchObject({
-      kind: 'project',
-      projectId: 'p',
-      scope: true,
-    })
-    expect(graph.edges.map((e) => `${e.relation} ${e.source}`)).toEqual([
-      'kept project:p',
-      'member project:q',
-    ])
-  })
-})
-
-describe('viewing', () => {
-  test('lenses without served records say why and draw nothing', () => {
-    for (const lens of ['delegation', 'team', 'related'] as const) {
-      const graph = projectGraph(lens, records, projects, 'p')
-      expect(graph.served).toBe(false)
-      if (!graph.served) expect(graph.reason.length).toBeGreaterThan(0)
+  test('a branch made main turns the path to the old main around and nothing else', () => {
+    const flipped: SessionGraphRead = {
+      ...atOrigin,
+      trees: [
+        {
+          ...atOrigin.trees[0]!,
+          mainThreadId: 'b',
+          chosenMainThreadId: 'b',
+          mainResolution: 'chosen',
+          revision: 1,
+          nodes: [
+            chat('root', 1, {
+              isOrigin: true,
+              authorityParentThreadId: 'a',
+              depth: 2,
+            }),
+            chat('a', 2, {
+              forkedFromThreadId: 'root',
+              authorityParentThreadId: 'b',
+              depth: 1,
+            }),
+            chat('b', 3, { forkedFromThreadId: 'a', isMain: true }),
+          ],
+        },
+      ],
     }
+    const graph = projectSessionGraph(flipped, SHOW_ALL)
+    expect(graph.nodes[0]).toMatchObject({
+      threadId: 'b',
+      isMain: true,
+      revision: 1,
+    })
+    expect(graph.nodes.find((n) => n.id === 'session:root')).toMatchObject({
+      isOrigin: true,
+      isMain: false,
+    })
+    expect(edgeIds(graph).filter((id) => id.startsWith('fork:'))).toEqual([
+      'fork:b->a',
+      'fork:a->root',
+    ])
   })
 
-  test('projecting changes no record and gives the same graph again', () => {
-    const frozen = records.map((r) => Object.freeze(structuredClone(r)))
-    const before = JSON.stringify(frozen)
-    const first = projectGraph('lineage', frozen, projects, 'p')
-    projectGraph('membership', frozen, projects, 'p')
-    expect(JSON.stringify(frozen)).toBe(before)
-    expect(projectGraph('lineage', frozen, projects, 'p')).toEqual(first)
+  test('a connection to a chat outside every tree draws it, named from the titles given', () => {
+    const graph = projectSessionGraph(
+      atOrigin,
+      SHOW_ALL,
+      new Map([['later', 'Follow-up']]),
+    )
+    expect(graph.nodes.find((n) => n.id === 'session:later')).toMatchObject({
+      title: 'Follow-up',
+      outside: true,
+    })
+    expect(graph.edges.find((e) => e.relation === 'message')).toMatchObject({
+      source: sessionNodeId('root'),
+      target: sessionNodeId('b'),
+      count: 3,
+      forPerson: true,
+    })
+  })
+
+  test('outputs and tools hang from the chat that made and called them', () => {
+    const graph = projectSessionGraph(atOrigin, SHOW_ALL)
+    expect(edgeIds(graph)).toEqual(
+      expect.arrayContaining([
+        'made:artifact:art1',
+        'made:document:doc1',
+        'used:tools:root',
+      ]),
+    )
+    const tools = graph.nodes.find((n) => n.kind === 'tools')
+    expect(tools?.kind === 'tools' && tools.tools.map((t) => t.name)).toEqual([
+      'run',
+      'search',
+    ])
+  })
+
+  test('a hidden facet is left out, with the edges it carried', () => {
+    const noForks = projectSessionGraph(atOrigin, { ...SHOW_ALL, forks: false })
+    expect(noForks.edges.some((e) => e.relation === 'fork')).toBe(false)
+    expect(ids(noForks)).toContain('session:b')
+
+    const noConnections = projectSessionGraph(atOrigin, {
+      ...SHOW_ALL,
+      connections: false,
+    })
+    expect(ids(noConnections)).not.toContain('session:later')
+    expect(
+      noConnections.edges.some(
+        (e) => e.relation === 'message' || e.relation === 'continued',
+      ),
+    ).toBe(false)
+
+    const outputsOnly = projectSessionGraph(atOrigin, {
+      ...SHOW_ALL,
+      sessions: false,
+      tools: false,
+    })
+    expect(ids(outputsOnly)).toEqual(['artifact:art1', 'document:doc1'])
+    expect(outputsOnly.edges).toEqual([])
+  })
+
+  test('a project graph counts a session nothing joins instead of drawing it', () => {
+    const withLone: SessionGraphRead = {
+      ...atOrigin,
+      trees: [
+        ...atOrigin.trees,
+        {
+          ...atOrigin.trees[0]!,
+          treeId: 'solo',
+          originThreadId: 'solo',
+          nodes: [chat('solo', 4, { isMain: true, isOrigin: true })],
+        },
+      ],
+    }
+    const graph = projectSessionGraph(withLone, SHOW_ALL)
+    expect(ids(graph)).not.toContain('session:solo')
+    expect(graph.lone).toBe(1)
+    expect(graph.nodes.find((n) => n.id === 'session:root')).toMatchObject({
+      solo: false,
+    })
+    // Read as its own tree, the same session is the graph.
+    const asTree = projectSessionGraph(
+      { ...withLone, scope: { kind: 'tree', treeId: 'solo' } },
+      SHOW_ALL,
+    )
+    expect(ids(asTree)).toContain('session:solo')
+    expect(asTree.lone).toBe(0)
+    // Alone in its tree, it is main and origin by definition, so it is not marked.
+    expect(asTree.nodes.find((n) => n.id === 'session:solo')).toMatchObject({
+      solo: true,
+    })
+  })
+
+  test('the same read and facets give the same graph', () => {
+    expect(projectSessionGraph(atOrigin, SHOW_ALL)).toEqual(
+      projectSessionGraph(atOrigin, SHOW_ALL),
+    )
+  })
+
+  test('every edge reads as a sentence', () => {
+    const sentences = describeEdges(projectSessionGraph(atOrigin, SHOW_ALL))
+    expect(sentences).toContain('a branches from root')
+    expect(sentences).toContain('root sent b 3 messages, some on your behalf')
+    expect(sentences).toContain('Chart was made in a')
+    expect(sentences).toContain('root called run, search')
+  })
+})
+
+describe('scope', () => {
+  test('a scope round-trips through the search param', () => {
+    for (const scope of [
+      { kind: 'project', projectId: 'proj:a' },
+      { kind: 'tree', treeId: 't1' },
+    ] as const)
+      expect(parseScope(scopeParam(scope))).toEqual(scope)
+    expect(parseScope('nonsense')).toBeUndefined()
+    expect(parseScope('tree:')).toBeUndefined()
+    expect(parseScope(3)).toBeUndefined()
+  })
+})
+
+describe('which sessions have a graph', () => {
+  const thread = (
+    threadId: string,
+    over: Partial<ThreadEntry> = {},
+  ): ThreadEntry => ({
+    threadId,
+    title: threadId,
+    homeProjectId: 'inbox',
+    revision: 1,
+    createdAtMs: 1,
+    memberships: [],
+    attention: { reasons: [], running: false },
+    ...over,
+  })
+  const read = {
+    threads: [
+      thread('root', {
+        memberships: [
+          { projectId: 'p', by: 'user', pinned: true, why: '', atMs: 1 },
+        ],
+      }),
+      thread('fork', {
+        origin: {
+          kind: 'forked',
+          threadId: 'root',
+          branchId: 'b',
+          messageId: 'm',
+        },
+      }),
+      thread('alone', {
+        memberships: [
+          { projectId: 'q', by: 'user', pinned: true, why: '', atMs: 1 },
+        ],
+      }),
+    ],
+  }
+  test('a session forked from or into another has one; a lone session does not', () => {
+    expect(inSessionGraph(read, 'root')).toBe(true)
+    expect(inSessionGraph(read, 'fork')).toBe(true)
+    expect(inSessionGraph(read, 'alone')).toBe(false)
+  })
+  test('a project has one when a member session does', () => {
+    expect(projectHasSessionGraph(read, 'p')).toBe(true)
+    expect(projectHasSessionGraph(read, 'q')).toBe(false)
   })
 })
