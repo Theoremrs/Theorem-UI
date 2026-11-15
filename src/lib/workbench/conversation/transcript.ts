@@ -5,6 +5,8 @@ import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
 import type { TheoremApproval } from '@/lib/theorem/approval'
 import { describeError } from '@/lib/theorem/client'
 import { inputReceipt } from '@/lib/theorem/run-input'
+import { openOf, pathOf, toolOutput } from '@/components/terminal/terminal-code'
+import type { DiffLine, Open } from '@/components/terminal/terminal-code'
 
 /** A tool result is cut at this many characters so one huge output cannot stall a frame (R41). */
 export const RESULT_LIMIT = 64 * 1024
@@ -23,6 +25,10 @@ export type TranscriptPart =
       result?: string
       resultTruncated?: boolean
       approvalId?: string
+      /** An edit's result read as a diff, highlighted line by line; absent when the result is not a diff. */
+      diff?: DiffLine[]
+      /** The file the call worked on and the one-based lines it touched. */
+      open?: Open
     }
   | { type: 'program'; source: string; language?: string; streaming: boolean }
   | {
@@ -181,6 +187,9 @@ export function transcriptOf(
         }
       const shown =
         part.result === undefined ? undefined : resultText(part.result)
+      const path = pathOf(part.args)
+      const diff = toolOutput(part.result, path)?.diff
+      const open = openOf(path, part.args, part.result)
       return [
         {
           type: 'tool',
@@ -201,6 +210,8 @@ export function transcriptOf(
             resultTruncated: shown.truncated,
           }),
           ...(asked && { approvalId: asked.approvalId }),
+          ...(diff && diff.length > 0 && { diff }),
+          ...(open && { open }),
         },
       ]
     })

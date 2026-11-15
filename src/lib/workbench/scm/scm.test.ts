@@ -25,6 +25,8 @@ const METHODS = [
   'push',
   'log',
   'blame',
+  'conflict',
+  'resolve',
 ] as const
 
 const ALL = [
@@ -43,6 +45,8 @@ const ALL = [
   'scm.push',
   'scm.log',
   'scm.blame',
+  'scm.conflict',
+  'scm.resolve',
 ].map((name) => op(name))
 
 async function setup(operations = ALL) {
@@ -370,8 +374,72 @@ describe('writes', () => {
     on('merge', () => ({ state: 'conflict', conflicts: ['a.rs'] }))
     expect(await scm.merge({ requestId: 'r', branch: 'dev' })).toMatchObject({
       outcome: 'accepted',
-      value: { merged: false, conflicts: ['a.rs'] },
+      value: { merged: false, conflicts: [{ path: 'a.rs', conflict: true }] },
     })
+  })
+
+  test('merge keeps the sides of a conflict the host described', async () => {
+    const { scm, on } = await setup()
+    on('merge', () => ({
+      state: 'conflict',
+      conflicts: [{ path: 'a.rs', conflict: true, ours: 'o', theirs: 't' }],
+    }))
+    expect(await scm.merge({ requestId: 'r', branch: 'dev' })).toMatchObject({
+      value: {
+        conflicts: [{ path: 'a.rs', conflict: true, ours: 'o', theirs: 't' }],
+      },
+    })
+  })
+
+  test('conflict reads the sides of one path and leaves out a side the host lacks', async () => {
+    const { scm, on, calls } = await setup()
+    on('conflict', () => ({
+      path: 'a.rs',
+      conflict: true,
+      ours: 'o',
+      theirs: 't',
+    }))
+    const done = await scm.conflict({ requestId: 'r', path: 'a.rs' })
+    expect(done).toMatchObject({
+      outcome: 'accepted',
+      value: { path: 'a.rs', conflict: true, ours: 'o', theirs: 't' },
+    })
+    expect(done.outcome === 'accepted' && 'base' in done.value).toBe(false)
+    expect(calls[0]?.request.body).toEqual({ path: 'a.rs' })
+  })
+
+  test('resolve sends the side taken, and the merged text only for merged', async () => {
+    const { scm, calls } = await setup()
+    await scm.resolve({ requestId: 'r1', path: 'a.rs', take: 'ours' })
+    await scm.resolve({
+      requestId: 'r2',
+      path: 'a.rs',
+      take: 'merged',
+      text: 'x',
+    })
+    expect(calls.map((call) => call.request.body)).toEqual([
+      { path: 'a.rs', take: 'ours' },
+      { path: 'a.rs', take: 'merged', text: 'x' },
+    ])
+    expect(
+      await scm.resolve({ requestId: 'r3', path: 'a.rs', take: 'merged' }),
+    ).toMatchObject({ outcome: 'refused', code: 'missing_text' })
+    expect(calls).toHaveLength(2)
+  })
+
+  test('log carries a commit body when the host sends one and omits it otherwise', async () => {
+    const { scm, on } = await setup()
+    on('log', () => ({
+      commits: [
+        { commit: 'a', subject: 's', body: 'more' },
+        { commit: 'b', subject: 't' },
+      ],
+    }))
+    const done = await scm.log({ requestId: 'r', maxCount: 2 })
+    expect(done.outcome === 'accepted' && done.value.commits).toEqual([
+      { commit: 'a', author: '', timestamp: '', subject: 's', body: 'more' },
+      { commit: 'b', author: '', timestamp: '', subject: 't' },
+    ])
   })
 
   test('fetch and push send the remote and ref the caller named, nothing else', async () => {

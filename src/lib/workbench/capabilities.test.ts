@@ -46,6 +46,11 @@ describe('grantedCapabilities', () => {
       'documents',
       'scm',
       'terminal',
+      'workspace.files.list',
+      'documents.open',
+      'scm.status',
+      'terminal.open',
+      'terminal.native',
       'layout',
     ])
   })
@@ -60,7 +65,37 @@ describe('grantedCapabilities', () => {
         ]),
         [],
       ),
-    ).toEqual(['environment', 'run'])
+    ).toEqual(['environment', 'run', 'run.start'])
+  })
+
+  test('the operation words panels and actions are gated on are granted as the host names them', () => {
+    const granted = grantedCapabilities(
+      env([
+        ['diagnostics.subscribe', 'available'],
+        ['run.start', 'available'],
+        ['run.subscribe', 'available'],
+        ['search.query', 'available'],
+        ['scm.commit.amend', 'available'],
+        ['scm.status', 'available'],
+      ]),
+      [],
+    )
+    for (const word of [
+      'diagnostics.subscribe',
+      'run.start',
+      'run.subscribe',
+      'search.query',
+      'scm.commit.amend',
+      'search',
+      'run',
+      'scm',
+    ])
+      expect(granted).toContain(word)
+    const without = grantedCapabilities(
+      env([['scm.commit.amend', 'unavailable']]),
+      [],
+    )
+    expect(without).not.toContain('scm.commit.amend')
   })
 
   test('herdr needs the terminal and the host reporting the backend ready', () => {

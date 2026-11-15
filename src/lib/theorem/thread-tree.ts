@@ -10,20 +10,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
 import { describeError, mutate, mutateThread, theorem } from './client'
 import { organizationKey } from './organization'
-import { threadOriginFor } from './thread-origin'
-import type { ThreadFrom } from './thread-origin'
+import { loadThreadTree, threadOriginFor } from './thread-origin'
+import type { ThreadFrom, ThreadTree } from './thread-origin'
 import type { Theorem } from './client'
 
-export type ThreadTree = {
-  rootBranchId: string
-  /** Every branch but the root, oldest first. */
-  forks: Theorem.Branch[]
-  selectedBranchId: string
-  /** A run in progress on the authority, which may belong to another tab or device. */
-  activeRunId: string | null
-  lastRunOutcome: Theorem.RunEnding | undefined
-  lastReplyAtMs: number | undefined
-}
+export type { ThreadTree } from './thread-origin'
 
 export const threadTreeKey = (threadId: string) =>
   ['theorem', 'thread-tree', threadId] as const
@@ -32,25 +23,7 @@ export function useThreadTree(threadId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: threadTreeKey(threadId ?? ''),
     enabled: enabled && threadId !== undefined,
-    queryFn: async (): Promise<ThreadTree | null> => {
-      const { thread, branches, messages } = await theorem().chat.threads.get({
-        threadId: threadId!,
-      })
-      const root = branches.find((branch) => !branch.parentBranchId)
-      if (!root) return null
-      return {
-        rootBranchId: root.branchId,
-        forks: branches
-          .filter((branch) => branch !== root)
-          .sort((a, b) => a.createdAtMs - b.createdAtMs),
-        selectedBranchId: thread.selectedBranchId,
-        activeRunId: thread.activeRunId,
-        lastRunOutcome: thread.lastRun?.outcome,
-        lastReplyAtMs: messages.findLast(
-          (message) => message.role === 'assistant',
-        )?.createdAtMs,
-      }
-    },
+    queryFn: () => loadThreadTree(threadId!),
     staleTime: 5 * 60_000,
     // A run this tab is not streaming ends without telling it; poll until it does.
     refetchInterval: (query) => (query.state.data?.activeRunId ? 5_000 : false),

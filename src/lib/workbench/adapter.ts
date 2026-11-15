@@ -11,6 +11,7 @@ import type { Files } from './files/files'
 import type { Environment } from './environment/environment'
 import { reason as readableReason } from './environment/workspace-recovery'
 import type { TerminalHost, TerminalSession, TerminalEvent } from './terminal'
+import { profileById, TERMINAL_PROFILES } from './terminal'
 import type { Layout } from './layout'
 import { grantedCapabilities } from './capabilities'
 import { refusal, reply } from './port'
@@ -26,6 +27,8 @@ import type {
   ResourceRef,
   Revision,
   TerminalBackend,
+  TerminalProfileInfo,
+  TerminalSessionInfo,
 } from './wire'
 
 export type { OwnerPort, OwnerReply }
@@ -35,7 +38,10 @@ export type ScmPort = OwnerPort<Of<'scm'>>
 export type LanguagePort = OwnerPort<Of<'language'>>
 export type RunPort = OwnerPort<Of<'run'>>
 export type SearchPort = OwnerPort<Of<'search'>>
-export type ConversationPort = OwnerPort<Of<'conversation'>>
+export type ConversationPort = OwnerPort<Of<'conversation'>> & {
+  /** Side chats can be created here. */
+  canSideChat?: boolean
+}
 export type ArtifactsPort = OwnerPort<Of<'artifact'>>
 export type ClipboardPort = OwnerPort<Of<'clipboard'>>
 
@@ -169,6 +175,11 @@ export function createAdapter(options: AdapterOptions): Adapter {
       port.state.terminalId ? terminalRef(port.state.terminalId) : undefined
     const epoch = () => port.state.bindingEpoch ?? 0
     return port.subscribe((event: TerminalEvent) => {
+      forward(event)
+      track(port)
+    })
+
+    function forward(event: TerminalEvent) {
       const target = resource()
       if (!target) return
       switch (event.type) {
@@ -250,7 +261,74 @@ export function createAdapter(options: AdapterOptions): Adapter {
         case 'reconnected':
           return
       }
+    }
+  }
+
+  // ---- the terminal session list ---------------------------------------------------------
+  // The host has no list operation, so the list is what this workbench knows: the bindings it
+  // holds and the programs the host announced. It is sent whole whenever it changes.
+
+  const sessions = new Map<string, TerminalSessionInfo>()
+  let lastSessions = ''
+
+  const profileLabel = (backend: TerminalBackend) =>
+    TERMINAL_PROFILES.find((profile) => profile.backend === backend)?.id ??
+    backend
+
+  function profiles(): TerminalProfileInfo[] {
+    const herdr = env.backends().includes('herdr')
+    return TERMINAL_PROFILES.map((profile) => ({
+      id: profile.id,
+      label: profile.id,
+      backend: profile.backend,
+      ...(profile.argv ? { argv: [...profile.argv] } : {}),
+      available: profile.backend === 'native' || herdr,
+      ...(profile.backend === 'herdr' && !herdr
+        ? { unavailableReason: 'The host reports Herdr terminals not ready' }
+        : {}),
+    }))
+  }
+
+  function publishSessions() {
+    if (disposed) return
+    const message: HostMessage = {
+      type: 'terminalSessions',
+      workspace,
+      profiles: profiles(),
+      sessions: [...sessions.values()],
+    }
+    const key = JSON.stringify(message)
+    if (key === lastSessions) return
+    lastSessions = key
+    send(message)
+  }
+
+  /** Reads one binding into the list: its profile, program, liveness and whether another viewer holds control. */
+  function track(port: TerminalPort) {
+    const { state } = port
+    const session = state.terminalId
+    if (!session) return
+    const backend = backendOf(port)
+    const profile =
+      state.profile && profileById(state.profile.id)
+        ? state.profile.id
+        : (sessions.get(session)?.profile ?? profileLabel(backend))
+    sessions.set(session, {
+      session,
+      profile,
+      backend,
+      workspace,
+      ...(state.processOwnedBy ? { host: state.processOwnedBy } : {}),
+      ...(state.program !== undefined ? { program: state.program } : {}),
+      state:
+        state.phase === 'exited'
+          ? 'exited'
+          : state.phase === 'lost'
+            ? 'lost'
+            : 'running',
+      controlledElsewhere: state.lease.role === 'observer' && !state.lease.held,
     })
+    publishSessions()
   }
 
   stops.push(
@@ -261,6 +339,20 @@ export function createAdapter(options: AdapterOptions): Adapter {
       const key = bindingKey(session, epoch, program)
       if (reported.has(key)) return
       reported.add(key)
+      if (!sessions.has(session)) {
+        const announced: TerminalBackend =
+          backend === 'herdr' ? 'herdr' : 'native'
+        sessions.set(session, {
+          session,
+          profile: profileLabel(announced),
+          backend: announced,
+          workspace,
+          ...(program !== undefined ? { program } : {}),
+          state: 'running',
+          controlledElsewhere: false,
+        })
+        publishSessions()
+      }
       send({
         type: 'terminalOpened',
         resource: terminalRef(session),
@@ -392,6 +484,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
     })
     if (done.outcome === 'accepted' && !disposed) {
       terminals.set(done.value.terminalId, { port, stop })
+      track(port)
     } else {
       stop()
     }
@@ -419,6 +512,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
       })
       if (done.outcome === 'accepted' && !disposed) {
         terminals.set(session, { port, stop })
+        track(port)
       } else if (!known) {
         stop()
       }
@@ -708,6 +802,8 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'scmMerge':
       case 'scmBlame':
       case 'scmLog':
+      case 'scmConflict':
+      case 'scmResolve':
         return route('scm', options.scm, effect, requestId)
 
       case 'languageHover':
@@ -749,6 +845,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
       case 'conversationSwitch':
       case 'conversationApproval':
       case 'conversationSideChat':
+      case 'conversationSideList':
       case 'conversationSideClose':
         return route('conversation', options.conversation, effect, requestId)
 
@@ -822,6 +919,7 @@ export function createAdapter(options: AdapterOptions): Adapter {
   function granted(): Capability[] {
     const local: Capability[] = ['layout']
     if (options.conversation) local.push('conversation')
+    if (options.conversation?.canSideChat) local.push('conversation.side')
     if (options.artifacts) local.push('artifacts')
     if (options.clipboard) local.push('clipboard')
     return grantedCapabilities(env, local)
@@ -845,9 +943,11 @@ export function createAdapter(options: AdapterOptions): Adapter {
         case 'availability':
         case 'capabilities':
           reportCapabilities()
+          publishSessions()
           return
         case 'reopened':
           reportCapabilities()
+          publishSessions()
           send({ type: 'resync', workspace, reason: 'reopened' })
           return
         case 'live':
@@ -864,7 +964,10 @@ export function createAdapter(options: AdapterOptions): Adapter {
   )
   stops.push(() => lease.release())
   send({ type: 'connectionChanged', workspace, state: env.liveState })
-  void env.settled().then(reportCapabilities)
+  void env.settled().then(() => {
+    reportCapabilities()
+    publishSessions()
+  })
 
   for (const port of [
     options.documents,

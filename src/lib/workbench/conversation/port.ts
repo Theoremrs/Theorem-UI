@@ -37,6 +37,8 @@ export function createConversationPort({
 }: ConversationPortOptions): OwnerPort<Of<'conversation'>> & {
   /** The side chats open now: a side chat's id is the one `conversationSideOpened` gave. */
   sideChats: Conversation['sideChats']
+  /** Whether side chats can be created here; the adapter grants `conversation.side` on it. */
+  canSideChat: boolean
 } {
   /** Side chats by the id announced when they opened; that id never changes, whatever the thread behind it is called. */
   const sides = new Map<string, { chat: SideChat; stop: () => void }>()
@@ -52,6 +54,7 @@ export function createConversationPort({
 
   return {
     sideChats: () => conversation.sideChats(),
+    canSideChat: conversation.canSideChat,
 
     async perform(effect, requestId) {
       const thread = threadOf(effect.resource)
@@ -81,7 +84,10 @@ export function createConversationPort({
 
       switch (effect.kind) {
         case 'conversationSideChat': {
-          const done = await conversation.sideChat({ requestId })
+          const done = await conversation.sideChat({
+            requestId,
+            ...(effect.payload.scope ? { scope: effect.payload.scope } : {}),
+          })
           if (done.outcome !== 'accepted') return reply(done)
           const chat = done.value
           const id = chat.conversationId
@@ -95,6 +101,14 @@ export function createConversationPort({
             value: { type: 'conversationSideOpened', conversationId: id },
           }
         }
+        case 'conversationSideList':
+          return {
+            outcome: 'accepted',
+            value: {
+              type: 'conversationSideList',
+              chats: conversation.sideChats(),
+            },
+          }
         case 'conversationSideClose': {
           if (!side)
             return refusal(

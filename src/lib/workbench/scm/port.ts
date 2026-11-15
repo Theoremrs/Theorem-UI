@@ -149,10 +149,11 @@ export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
         case 'scmMerge':
           return reply(
             await scm.merge({ requestId, branch: effect.payload.branch }),
-            ({ merged, state }) => ({
+            ({ merged, conflicts, state }) => ({
               value: {
                 type: 'scmMerged',
                 merged,
+                ...(conflicts.length > 0 ? { conflicts } : {}),
                 ...(state ? { state } : {}),
               },
             }),
@@ -175,6 +176,19 @@ export function createScmPort(scm: Scm): OwnerPort<Of<'scm'>> {
                 ...(state ? { state } : {}),
               },
             }),
+          )
+        case 'scmConflict':
+          return reply(
+            await scm.conflict({ requestId, path: effect.payload.path }),
+            ({ state, ...sides }) => {
+              void state
+              return { value: { type: 'scmConflict', ...sides } as const }
+            },
+          )
+        case 'scmResolve':
+          return reply(
+            await scm.resolve({ requestId, ...effect.payload }),
+            stateOnly,
           )
         case 'scmLog':
           return reply(

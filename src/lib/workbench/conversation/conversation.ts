@@ -5,6 +5,7 @@ import type { Actor } from '../wire/Actor'
 import type { ApprovalDecision } from '../wire/ApprovalDecision'
 import type { HostMessage } from '../wire/HostMessage'
 import { approvalChoice } from '@/lib/theorem/approval'
+import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
 import { runIdOf, transcriptOf } from './transcript'
@@ -51,6 +52,27 @@ export interface ConversationServices {
     inputId: string
     text: string
   }) => Promise<void>
+  /** The thread's branches and standing, read when it opens and when a run ends. Absent: snapshots carry no history. */
+  history?: (threadId: string) => Promise<ThreadTree | null>
+}
+
+/** What a thread's history needs of its tree: the branches, which one is selected, and where the thread came from. */
+export interface ConversationHistory {
+  rootBranchId: string
+  selectedBranchId: string
+  /** Every branch but the root, oldest first. */
+  forks: {
+    branchId: string
+    parentBranchId?: string
+    forkedAfterMessageId?: string
+    createdAtMs: number
+  }[]
+  /** A run in progress on the authority, which may be another tab's. */
+  activeRunId: string | null
+  lastRunOutcome?: string
+  lastReplyAtMs?: number
+  /** The thread this one was forked or continued from. */
+  origin?: ThreadTree['origin']
 }
 
 export interface QueuedInput {
@@ -68,6 +90,8 @@ export interface ConversationSnapshot extends Transcript {
   loading: boolean
   /** Input sent while a run worked and not yet shown in the transcript. */
   queued: QueuedInput[]
+  /** The thread's versions and branches; absent until Theorem has answered, or for a thread it does not hold yet. */
+  history?: ConversationHistory
 }
 
 interface Request {
@@ -144,6 +168,8 @@ export interface Conversation {
    * own list: after a reload it is empty, and a side chat's durable thread remains in the thread list.
    */
   sideChats: () => SideChatInfo[]
+  /** Whether this host can make the second runtime a side chat needs. */
+  canSideChat: boolean
   dispose: () => void
 }
 
@@ -263,7 +289,54 @@ export function createConversation({
     runtime.threads.mainItem.getState().remoteId ??
     runtime.threads.getState().mainThreadId
 
+  /** The tree of the thread `history.thread`, read for the state `history.key` named. */
+  let history:
+    { thread: string; key: string; tree: ThreadTree | null } | undefined
+  let historyKey = ''
+
+  /** Reads the tree again when the thread changes or a run starts or ends. A thread with no durable id has none. */
+  function refreshHistory() {
+    const load = services.history
+    const thread = runtime.threads.mainItem.getState().remoteId
+    if (!load || !thread) return
+    const state = `${thread}|${runtime.thread.getState().isRunning}`
+    if (state === historyKey) return
+    historyKey = state
+    load(thread).then(
+      (tree) => {
+        if (disposed || historyKey !== state) return
+        history = { thread, key: state, tree }
+        changed()
+      },
+      () => {},
+    )
+  }
+
+  const historyOf = (): ConversationHistory | undefined => {
+    const tree = history?.tree
+    if (!tree || history?.thread !== conversationId()) return undefined
+    return {
+      rootBranchId: tree.rootBranchId,
+      selectedBranchId: tree.selectedBranchId,
+      forks: tree.forks.map((fork) => ({
+        branchId: fork.branchId,
+        ...(fork.parentBranchId && { parentBranchId: fork.parentBranchId }),
+        ...(fork.forkedAfterMessageId && {
+          forkedAfterMessageId: fork.forkedAfterMessageId,
+        }),
+        createdAtMs: fork.createdAtMs,
+      })),
+      activeRunId: tree.activeRunId,
+      ...(tree.lastRunOutcome && { lastRunOutcome: tree.lastRunOutcome }),
+      ...(tree.lastReplyAtMs !== undefined && {
+        lastReplyAtMs: tree.lastReplyAtMs,
+      }),
+      ...(tree.origin && { origin: tree.origin }),
+    }
+  }
+
   function build(): ConversationSnapshot {
+    refreshHistory()
     const state = runtime.thread.getState()
     const transcript = transcriptOf(state.messages, state.isRunning)
     const shown = new Set(
@@ -278,6 +351,7 @@ export function createConversation({
       loading: state.isLoading,
       ...transcript,
       queued: [...outbox.values()].filter((q) => !shown.has(q.clientMessageId)),
+      ...(historyOf() && { history: historyOf() }),
     }
     const text = JSON.stringify(body)
     if (text !== lastBody || !last) {
@@ -720,6 +794,8 @@ export function createConversation({
       })
       return accepted(answers, chat)
     },
+
+    canSideChat: sideChats !== undefined,
 
     sideChats: () =>
       [...sides].map((chat) => {

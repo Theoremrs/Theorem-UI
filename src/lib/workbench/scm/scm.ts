@@ -101,6 +101,21 @@ export interface LogEntry {
   /** Seconds since the epoch, as the host sends it. */
   timestamp: string
   subject: string
+  /** The message after the subject line; absent until the host sends it. */
+  body?: string
+}
+
+/**
+ * One conflicted path: whether it is still in conflict and the text of each
+ * side. A side the host does not have (a file added on one branch has no
+ * `base`) is absent, not empty. Same shape as the wire's `ConflictSides`.
+ */
+export interface ConflictSides {
+  path: string
+  conflict: boolean
+  base?: string
+  ours?: string
+  theirs?: string
 }
 
 interface Request {
@@ -152,7 +167,21 @@ export interface Scm {
   /** Merges `branch` into the current branch; a conflict is an accepted answer with `merged: false`. */
   merge: (
     request: Request & { branch: string },
-  ) => Promise<Completion<Stated & { merged: boolean; conflicts: unknown[] }>>
+  ) => Promise<
+    Completion<Stated & { merged: boolean; conflicts: ConflictSides[] }>
+  >
+  /** The three sides of one conflicted path (`scm.conflict`). */
+  conflict: (
+    request: Request & { path: string },
+  ) => Promise<Completion<Stated & ConflictSides>>
+  /** Settles a conflicted path: a side, or the text the person merged (`merged` needs `text`). */
+  resolve: (
+    request: Request & {
+      path: string
+      take: 'ours' | 'theirs' | 'merged'
+      text?: string
+    },
+  ) => Promise<Completion<Stated & { path: string }>>
   fetch: (
     request: Request & { remote?: string },
   ) => Promise<Completion<Stated & { remote?: string }>>
@@ -168,6 +197,26 @@ export interface Scm {
 }
 
 type Raw = Record<string, unknown>
+
+/**
+ * A conflict as the host names it: an object with the sides, or a bare path
+ * (what a merge lists). `fallback` is the path asked for when the answer names none.
+ */
+function sidesOf(
+  value: unknown,
+  fallback: string | undefined,
+): ConflictSides | undefined {
+  if (typeof value === 'string') return { path: value, conflict: true }
+  const body = raw(value)
+  const path = str(body.path) ?? fallback
+  if (path === undefined) return undefined
+  const sides: ConflictSides = { path, conflict: body.conflict !== false }
+  for (const side of ['base', 'ours', 'theirs'] as const) {
+    const text = body[side]
+    if (typeof text === 'string') sides[side] = text
+  }
+  return sides
+}
 
 const raw = (value: unknown): Raw =>
   value && typeof value === 'object' && !Array.isArray(value)
@@ -596,11 +645,56 @@ export function createScm(env: Environment<ScmClient>): Scm {
               const body = raw(answer)
               return stated(body, {
                 merged: body.state === 'merged',
-                conflicts: Array.isArray(body.conflicts) ? body.conflicts : [],
+                conflicts: (Array.isArray(body.conflicts)
+                  ? body.conflicts
+                  : []
+                ).flatMap((item) => {
+                  const sides = sidesOf(item, undefined)
+                  return sides ? [sides] : []
+                }),
               })
             },
             true,
           ),
+
+    async conflict({ requestId, path }) {
+      if (outsideWorkspace(path)) return outside(requestId, path)
+      return ask(
+        requestId,
+        'scm.conflict',
+        false,
+        (headers) => scm().conflict({ ...headers, body: { path } }),
+        (answer) =>
+          stated(answer, sidesOf(answer, path) ?? { path, conflict: false }),
+        true,
+      )
+    },
+
+    async resolve({ requestId, path, take, text }) {
+      if (outsideWorkspace(path)) return outside(requestId, path)
+      if (take === 'merged' && text === undefined) {
+        return refused(
+          { workspaceId, requestId },
+          'missing_text',
+          'Taking the merged result needs its text',
+        )
+      }
+      return ask(
+        requestId,
+        'scm.resolve',
+        true,
+        (headers) =>
+          scm().resolve(
+            {
+              ...headers,
+              body: take === 'merged' ? { path, take, text } : { path, take },
+            },
+            once,
+          ),
+        (answer) => stated(answer, { path }),
+        true,
+      )
+    },
 
     fetch: ({ requestId, remote }) =>
       ask(
@@ -670,6 +764,8 @@ export function createScm(env: Environment<ScmClient>): Scm {
               }
               const email = str(entry.email)
               if (email) row.email = email
+              const body = str(entry.body)
+              if (body) row.body = body
               return [row]
             }),
           })

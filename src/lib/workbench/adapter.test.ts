@@ -69,6 +69,8 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   scmMerge: { branch: 'b' },
   scmBlame: { path: 'a' },
   scmLog: { maxCount: 10 },
+  scmConflict: { path: 'a' },
+  scmResolve: { path: 'a', take: 'ours' },
   languageHover: at,
   languageComplete: at,
   languageNavigate: { kind: 'definition', position: at },
@@ -119,7 +121,8 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   conversationEdit: { messageId: 'm', clientMessageId: 'c3', text: 't' },
   conversationSwitch: { threadId: 'th' },
   conversationApproval: { runId: 'r', approvalId: 'a', decision: 'allow' },
-  conversationSideChat: undefined,
+  conversationSideChat: {},
+  conversationSideList: undefined,
   conversationSideClose: undefined,
   layoutLoad: undefined,
   layoutSave: { current: '{"dock":1}', namedLayouts: '{"A":{"dock":2}}' },
@@ -1146,7 +1149,9 @@ describe('terminals', () => {
         .hostMessages()
         .filter(
           (m) =>
-            m.type !== 'connectionChanged' && m.type !== 'capabilitiesChanged',
+            m.type !== 'connectionChanged' &&
+            m.type !== 'capabilitiesChanged' &&
+            m.type !== 'terminalSessions',
         ),
     ).toEqual([
       {
@@ -1268,9 +1273,77 @@ describe('host events', () => {
           'documents',
           'scm',
           'terminal',
+          'workspace.files.list',
+          'documents.open',
+          'scm.status',
+          'terminal.open',
+          'terminal.native',
           'layout',
         ],
       },
+    })
+  })
+
+  test('the terminal session list is sent when the environment is ready, when a shell opens, and on each change', async () => {
+    const t = await setup()
+    await t.settle()
+    const lists = () =>
+      t
+        .hostMessages()
+        .flatMap((m) => (m.type === 'terminalSessions' ? [m] : []))
+    expect(lists()).toHaveLength(1)
+    expect(lists()[0]).toMatchObject({
+      workspace: 'w1',
+      sessions: [],
+      profiles: [
+        { id: 'Shell', backend: 'native', available: true },
+        {
+          id: 'Herdr shell',
+          backend: 'herdr',
+          available: false,
+          unavailableReason: expect.any(String),
+        },
+        { id: 'Claude Code (Herdr)', argv: ['claude'], available: false },
+        { id: 'Codex (Herdr)', argv: ['codex'], available: false },
+      ],
+    })
+
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    expect(lists()).toHaveLength(2)
+    expect(lists()[1]!.sessions).toEqual([
+      {
+        session: 't1',
+        profile: 'Shell',
+        backend: 'native',
+        workspace: 'w1',
+        host: 'herdr-core',
+        program: 1,
+        state: 'running',
+        controlledElsewhere: false,
+      },
+    ])
+
+    // A program the host announces joins the list; the same announcement twice does not repeat it.
+    const announced = {
+      kind: 'terminal.opened',
+      data: { session: 't9', epoch: 1, program: 1, backend: 'herdr' },
+    }
+    t.announce(announced)
+    t.announce(announced)
+    expect(lists()).toHaveLength(3)
+    expect(lists()[2]!.sessions.map((row) => row.session)).toEqual(['t1', 't9'])
+
+    t.port.emit({ type: 'exited', reason: 'exited', code: 0, signal: null })
+    t.port.state.lease = {
+      generation: 4,
+      role: 'observer',
+      held: false,
+    } as never
+    t.port.emit({ type: 'lease', lease: { generation: 4, held: false } })
+    expect(lists().at(-1)!.sessions[0]).toMatchObject({
+      session: 't1',
+      controlledElsewhere: true,
     })
   })
 
@@ -1292,6 +1365,23 @@ describe('host events', () => {
     )
     // Search, run and language are the host's to advertise, and this host lists none of them.
     expect(granted).not.toContain('search')
+  })
+
+  test('conversation.side is granted only with a conversation owner that can make side chats', async () => {
+    const granted = async (conversation: unknown) => {
+      const t = await setup({ conversation: conversation as never }, [])
+      await t.settle()
+      return t
+        .hostMessages()
+        .flatMap((m) =>
+          m.type === 'capabilitiesChanged' ? m.capabilities.granted : [],
+        )
+    }
+    const owner = { perform: async () => ({ outcome: 'accepted' as const }) }
+    expect(await granted({ ...owner, canSideChat: true })).toContain(
+      'conversation.side',
+    )
+    expect(await granted(owner)).not.toContain('conversation.side')
   })
 
   test('a pushed message from an owner is forwarded', async () => {

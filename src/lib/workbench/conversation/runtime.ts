@@ -2,6 +2,7 @@
 import type { AssistantClient } from '@assistant-ui/react'
 import { sendApprovalDecision } from '@/lib/theorem/approval'
 import { sendRunInput } from '@/lib/theorem/run-input-runtime'
+import { loadThreadTree } from '@/lib/theorem/thread-origin'
 import type { ConversationRuntime, ConversationServices } from './conversation'
 
 /**
@@ -43,4 +44,5 @@ export const conversationServices: ConversationServices = {
   sendInput: async ({ runId, inputId, text }) => {
     await sendRunInput(runId, text, inputId)
   },
+  history: loadThreadTree,
 }

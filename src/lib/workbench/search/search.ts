@@ -51,9 +51,9 @@ export interface SearchRequest {
   regex: boolean
   caseSensitive: boolean
   wholeWord: boolean
-  /** Comma-separated globs. */
-  include?: string
-  exclude?: string
+  /** Globs a path must match one of, and globs that leave one out. */
+  include?: string[]
+  exclude?: string[]
   /** Files the host scans per call. */
   limit: number
 }
@@ -77,12 +77,6 @@ export interface SearchOptions {
   /** Runs `task` after the current answer has been delivered; the default is a zero-delay timer. */
   schedule?: (task: () => void) => void
 }
-
-const globs = (value: string | undefined): string[] =>
-  (value ?? '')
-    .split(',')
-    .map((glob) => glob.trim())
-    .filter(Boolean)
 
 function rowOf(value: unknown): SearchRow | undefined {
   const body = raw(value)
@@ -223,8 +217,8 @@ export function createSearch(
               regex: request.regex,
               case_sensitive: request.caseSensitive,
               whole_word: request.wholeWord,
-              include: globs(request.include),
-              exclude: globs(request.exclude),
+              include: request.include ?? [],
+              exclude: request.exclude ?? [],
               limit,
             },
           }),

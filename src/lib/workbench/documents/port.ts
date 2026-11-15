@@ -3,6 +3,7 @@ import type { Files } from '../files/files'
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
 import type { HostMessage, ResourceRef } from '../wire'
+import { tokenSpans } from './tokens'
 import type {
   DocumentEvent,
   DocumentHandle,
@@ -74,6 +75,34 @@ export function createDocumentsPort({
   const held = new Map<string, { handle: DocumentHandle; stop: () => void }>()
   const listeners = new Set<(message: HostMessage) => void>()
 
+  /** The revision whose tokens each path was last sent, so one revision is tokenized once. */
+  const tokened = new Map<string, number>()
+
+  /**
+   * Sends the highlight spans of a document's text at its current revision. A file with no grammar sends
+   * none. It goes after the answer that announced the revision, so the panel knows the document first.
+   */
+  function sendTokens(path: string) {
+    setTimeout(() => {
+      const handle = held.get(path)?.handle
+      if (!handle) return
+      const { text, revision } = handle.state
+      if (revision.scheme !== 'seq' || tokened.get(path) === revision.value)
+        return
+      const spans = tokenSpans(path, text)
+      if (!spans) return
+      tokened.set(path, revision.value)
+      const message: HostMessage = {
+        type: 'documentTokens',
+        resource: handle.resource,
+        revision,
+        encoding: 'utf16_code_units',
+        spans,
+      }
+      for (const listener of [...listeners]) listener(message)
+    }, 0)
+  }
+
   const forward = (event: DocumentEvent) => {
     if (event.kind === 'moved') {
       const from = pathOf(event.from)
@@ -81,11 +110,20 @@ export function createDocumentsPort({
       const entry = from === undefined ? undefined : held.get(from)
       if (entry && from !== undefined && to !== undefined) {
         held.delete(from)
+        tokened.delete(from)
         held.set(to, entry)
       }
     }
     const message = hostMessage(event)
     for (const listener of [...listeners]) listener(message)
+    if (
+      event.kind === 'changed' ||
+      event.kind === 'acknowledged' ||
+      event.kind === 'resync'
+    ) {
+      const path = pathOf(event.resource)
+      if (path !== undefined) sendTokens(path)
+    }
   }
 
   const noDocument = (path: string): OwnerReply =>
@@ -101,6 +139,9 @@ export function createDocumentsPort({
       held.set(path, { handle, stop: handle.on(forward) })
     }
     const { state } = handle
+    // An open is a panel that has no spans yet, so this revision's are sent again.
+    tokened.delete(path)
+    sendTokens(path)
     return {
       outcome: 'accepted',
       value: {
@@ -109,6 +150,7 @@ export function createDocumentsPort({
         revision: state.revision,
         ...(state.savedRevision ? { savedRevision: state.savedRevision } : {}),
         dirty: state.dirty,
+        ...(state.readOnly ? { readOnly: state.readOnly } : {}),
       },
       revision: state.revision,
     }
@@ -241,6 +283,7 @@ export function createDocumentsPort({
           if (done.outcome === 'accepted') {
             entry.stop()
             held.delete(path)
+            tokened.delete(path)
           }
           return reply(done)
         }

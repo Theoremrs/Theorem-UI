@@ -26,8 +26,8 @@ const resource = (path = 'a.txt') => ({
   resourceId: path,
 })
 
-async function setup() {
-  const host = stubHost(ALL)
+async function setup(operations = ALL) {
+  const host = stubHost(operations)
   const calls: { name: string; request: Record<string, unknown> }[] = []
   const state: {
     revision: number
@@ -128,6 +128,54 @@ async function setup() {
     state,
   }
 }
+
+describe('document tokens', () => {
+  const later = () => new Promise((resolve) => setTimeout(resolve, 5))
+
+  test('an open sends the spans of its revision after the answer, once per revision, in UTF-16 units', async () => {
+    const { perform, heard, state } = await setup()
+    state.text = 'const a = 1\n'
+    await perform('documentOpen', { payload: {} }, 'a.ts')
+    expect(heard.filter((m) => m.type === 'documentTokens')).toEqual([])
+    await later()
+    const sent = heard.filter((m) => m.type === 'documentTokens')
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toMatchObject({
+      type: 'documentTokens',
+      resource: resource('a.ts'),
+      revision: seq(1),
+      encoding: 'utf16_code_units',
+    })
+    expect((sent[0] as { spans: unknown[] }).spans.length).toBeGreaterThan(0)
+  })
+
+  test('a file with no grammar sends no tokens', async () => {
+    const { perform, heard } = await setup()
+    await perform('documentOpen', { payload: {} }, 'notes.xyz')
+    await later()
+    expect(heard.filter((m) => m.type === 'documentTokens')).toEqual([])
+  })
+})
+
+describe('read only', () => {
+  test('an open says why when the host lists documents.edit as unavailable, and says nothing otherwise', async () => {
+    const plain = await setup()
+    expect(
+      await plain.perform('documentOpen', { payload: {} }),
+    ).not.toHaveProperty('value.readOnly')
+    const locked = await setup([
+      ...ALL.filter((entry) => entry.operation !== 'documents.edit'),
+      op('documents.edit', { granted: false, reason: 'no write access' }),
+    ])
+    expect(await locked.perform('documentOpen', { payload: {} })).toMatchObject(
+      {
+        value: {
+          readOnly: { reason: expect.stringContaining('no write access') },
+        },
+      },
+    )
+  })
+})
 
 describe('open', () => {
   test('answers documentOpened with the owner text and revision, and a second open does not call the host', async () => {

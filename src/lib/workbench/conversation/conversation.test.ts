@@ -48,6 +48,106 @@ function setup() {
 
 const base = (requestId: string) => ({ requestId })
 
+describe('tool diff and open', () => {
+  test('an edit tool part carries its result as a diff and the file and line it touched', () => {
+    const { stub, conversation } = setup()
+    const patch =
+      '--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1,2 +1,2 @@\n keep\n-old\n+new\n'
+    stub.messages.push(
+      assistant('a1', 'done', {
+        status: { type: 'complete', reason: 'stop' },
+        parts: [
+          {
+            type: 'tool-call',
+            toolCallId: 'c1',
+            toolName: 'edit',
+            args: { path: 'src/a.ts' },
+            argsText: '{"path":"src/a.ts"}',
+            result: patch,
+          },
+          {
+            type: 'tool-call',
+            toolCallId: 'c2',
+            toolName: 'read',
+            args: { path: 'src/b.ts', start_line: 3, end_line: 9 },
+            argsText: '{}',
+            result: 'plain text',
+          },
+        ],
+      }),
+    )
+    const tools = conversation
+      .snapshot()
+      .messages[0]!.parts.filter((part) => part.type === 'tool')
+    expect(tools[0]).toMatchObject({
+      id: 'c1',
+      open: { path: 'src/a.ts', start: 1 },
+    })
+    const diff = (tools[0] as { diff?: { k: string }[] }).diff!
+    expect(diff.map((line) => line.k)).toEqual(['hunk', 'ctx', 'del', 'add'])
+    expect(tools[1]).toMatchObject({
+      open: { path: 'src/b.ts', start: 3, end: 9 },
+    })
+    expect(tools[1]).not.toHaveProperty('diff')
+  })
+})
+
+describe('history', () => {
+  test('the snapshot carries the thread tree once Theorem answers, and not before', async () => {
+    const stub = new StubRuntime()
+    const reads: string[] = []
+    const conversation = createConversation({
+      runtime: stub.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+        history: async (threadId) => {
+          reads.push(threadId)
+          return {
+            rootBranchId: 'b0',
+            selectedBranchId: 'b1',
+            forks: [
+              {
+                schema: 's',
+                branchId: 'b1',
+                tenantId: 't',
+                threadId,
+                createdAtMs: 5,
+                parentBranchId: 'b0',
+                forkedAfterMessageId: 'm1',
+              },
+            ],
+            activeRunId: null,
+            lastRunOutcome: undefined,
+            lastReplyAtMs: 9,
+            origin: { kind: 'continued', threadId: 'src' },
+          } as never
+        },
+      },
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
+    expect(conversation.snapshot().history).toBeUndefined()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(reads).toEqual(['remote-1'])
+    expect(conversation.snapshot().history).toEqual({
+      rootBranchId: 'b0',
+      selectedBranchId: 'b1',
+      forks: [
+        {
+          branchId: 'b1',
+          parentBranchId: 'b0',
+          forkedAfterMessageId: 'm1',
+          createdAtMs: 5,
+        },
+      ],
+      activeRunId: null,
+      lastReplyAtMs: 9,
+      origin: { kind: 'continued', threadId: 'src' },
+    })
+  })
+})
+
 describe('snapshots and revisions', () => {
   test('the revision goes up only when the content changes, and across a switch', async () => {
     const { stub, conversation } = setup()

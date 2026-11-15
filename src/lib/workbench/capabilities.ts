@@ -22,8 +22,8 @@ const HOST: readonly (readonly [Capability, string])[] = [
 ]
 
 /**
- * What the host can serve right now: the environment itself, then each capability one of whose
- * operations the host lists as available, and `terminal.herdr` when it reports that backend ready.
+ * What the host can serve right now: the environment itself, each capability one of whose
+ * operations the host lists as available, each such operation by its own name, and `terminal.herdr` when it reports that backend ready.
  * `local` are the capabilities that are not host operations (the saved layout, the conversation,
  * artifacts, the clipboard); their owners are the workbench's own.
  */
@@ -44,6 +44,11 @@ export function grantedCapabilities(
         : available.includes(operation)
       if (served) granted.push(capability)
     }
+    // Panels and actions are also gated on operation words themselves (`diagnostics.subscribe`,
+    // `run.start`, `scm.commit.amend`): an operation the host lists as available is granted as it is named.
+    for (const name of available)
+      if (!granted.includes(name)) granted.push(name)
+    if (granted.includes('terminal')) granted.push('terminal.native')
     if (granted.includes('terminal') && env.backends().includes('herdr'))
       granted.push('terminal.herdr')
   }

@@ -58,6 +58,8 @@ export interface DocumentState {
   pending: PendingEdit[]
   /** The host retired this document (deleted or replaced); edits are refused. */
   retired: boolean
+  /** Why the document cannot be edited now: the host retired it, or says it does not take edits. Absent while it can be. */
+  readOnly?: { reason: string }
 }
 
 export type DocumentEvent =
@@ -280,7 +282,22 @@ export function createDocuments(env: Environment<DocumentsClient>): Documents {
       saveUncertain: session.saveUncertain,
       pending,
       retired: session.retired,
+      ...readOnlyOf(session),
     }
+  }
+
+  /** Only a reason the host or the document gave: an edit operation the host lists as unavailable, or a retired document. */
+  function readOnlyOf(session: Session): Pick<DocumentState, 'readOnly'> {
+    if (session.retired)
+      return { readOnly: { reason: `${session.path} was retired by the host` } }
+    const edit = env.operations().find(({ name }) => name === 'documents.edit')
+    return edit?.state.state === 'unavailable'
+      ? {
+          readOnly: {
+            reason: `The host does not take edits: ${edit.state.reason}`,
+          },
+        }
+      : {}
   }
 
   function serial<T>(session: Session, task: () => Promise<T>): Promise<T> {

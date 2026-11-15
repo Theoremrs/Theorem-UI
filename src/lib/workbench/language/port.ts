@@ -1,36 +1,8 @@
 // SOURCING: none — thin mapping from the wire's language effects to ./language (the owner): one owner call per effect, the effect's resource and revision handed over as the document the answer is bound to
 import { reply, refusal } from '../port'
 import type { Of, OwnerPort, OwnerReply } from '../port'
-import type { CompletionPayload, Revision } from '../wire'
-import type {
-  CompletionItem,
-  DiagnosticsResult,
-  HoverResult,
-  Language,
-  LocationRow,
-} from './language'
-
-/**
- * Result payloads the wire does not carry yet (`languagePlan` is the only language variant it
- * has). They follow the wire's convention, a `type` tag beside the struct's own fields, so the
- * Rust side can add structs of exactly these shapes; until it does the tag is not one of
- * `CompletionPayload`'s, which is why the cast sits in one place.
- */
-export type LanguageHoverPayload = { type: 'languageHover' } & HoverResult
-export type LanguageCompletionsPayload = {
-  type: 'languageCompletions'
-  items: CompletionItem[]
-}
-export type LanguageLocationsPayload = {
-  type: 'languageLocations'
-  locations: LocationRow[]
-}
-export type LanguageDiagnosticsPayload = {
-  type: 'languageDiagnostics'
-} & DiagnosticsResult
-
-const proposed = <T extends { type: string }>(payload: T) =>
-  payload as unknown as CompletionPayload
+import type { Revision } from '../wire'
+import type { Language } from './language'
 
 export function createLanguagePort(
   language: Language,
@@ -69,14 +41,14 @@ export function createLanguagePort(
           return reply(
             await language.hover({ ...document, ...effect.payload }),
             (hover) => ({
-              value: proposed({ type: 'languageHover', ...hover }),
+              value: { type: 'languageHover', ...hover } as const,
             }),
           )
         case 'languageComplete':
           return reply(
             await language.complete({ ...document, ...effect.payload }),
             (items) => ({
-              value: proposed({ type: 'languageCompletions', items }),
+              value: { type: 'languageCompletions', items } as const,
             }),
           )
         case 'languageNavigate':
@@ -87,19 +59,19 @@ export function createLanguagePort(
               kind: effect.payload.kind,
             }),
             (locations) => ({
-              value: proposed({ type: 'languageLocations', locations }),
+              value: { type: 'languageLocations', locations } as const,
             }),
           )
         case 'languageReferences':
           return reply(
             await language.references({ ...document, ...effect.payload }),
             (locations) => ({
-              value: proposed({ type: 'languageLocations', locations }),
+              value: { type: 'languageLocations', locations } as const,
             }),
           )
         case 'languageDiagnostics':
           return reply(await language.diagnostics(document), (snapshot) => ({
-            value: proposed({ type: 'languageDiagnostics', ...snapshot }),
+            value: { type: 'languageDiagnostics', ...snapshot } as const,
             ...(snapshot.revision !== undefined
               ? {
                   revision: {

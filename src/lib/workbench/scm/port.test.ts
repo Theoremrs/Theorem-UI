@@ -26,6 +26,8 @@ const METHODS = [
   'push',
   'log',
   'blame',
+  'conflict',
+  'resolve',
 ] as const
 
 async function setup(extra: string[] = []) {
@@ -293,7 +295,42 @@ describe('writes', () => {
     on('merge', () => ({ state: 'conflict', conflicts: ['a.rs'] }))
     expect(await perform('scmMerge', { branch: 'dev' })).toEqual({
       outcome: 'accepted',
-      value: { type: 'scmMerged', merged: false },
+      value: {
+        type: 'scmMerged',
+        merged: false,
+        conflicts: [{ path: 'a.rs', conflict: true }],
+      },
+    })
+  })
+
+  test('a conflicted path answers its sides, and resolving answers the state it left', async () => {
+    const { perform, on, calls } = await setup()
+    on('conflict', () => ({
+      path: 'a.rs',
+      conflict: true,
+      base: 'b',
+      ours: 'o',
+      theirs: 't',
+    }))
+    on('resolve', () => ({ head: 'abc', branch: 'main' }))
+    expect(await perform('scmConflict', { path: 'a.rs' })).toEqual({
+      outcome: 'accepted',
+      value: {
+        type: 'scmConflict',
+        path: 'a.rs',
+        conflict: true,
+        base: 'b',
+        ours: 'o',
+        theirs: 't',
+      },
+    })
+    expect(
+      await perform('scmResolve', { path: 'a.rs', take: 'merged', text: 'x' }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(calls.at(-1)?.request.body).toEqual({
+      path: 'a.rs',
+      take: 'merged',
+      text: 'x',
     })
   })
 })

@@ -90,8 +90,8 @@ describe('query', () => {
     on('query', () => ({ id: 's1', complete: true, results: [row('a.ts')] }))
     const done = await owner.query({
       ...request,
-      include: 'src/**, lib/**',
-      exclude: 'dist/**',
+      include: ['src/**', 'lib/**'],
+      exclude: ['dist/**'],
     })
     expect(done).toMatchObject({ outcome: 'accepted', value: { id: 's1' } })
     expect(pages).toHaveLength(0)
@@ -357,7 +357,12 @@ describe('the search port', () => {
     })
     await drain()
     expect(messages).toMatchObject([
-      { type: 'searchPage', id: 's9', state: 'complete' },
+      {
+        type: 'searchPage',
+        id: 's9',
+        state: 'complete',
+        readAt: { workspaceId: expect.any(String) },
+      },
     ])
     stop()
   })

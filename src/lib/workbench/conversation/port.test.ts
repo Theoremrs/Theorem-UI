@@ -322,7 +322,7 @@ describe('side chats', () => {
         `req-${id}`,
       )
     const open = async () => {
-      const done = await perform('conversationSideChat')
+      const done = await perform('conversationSideChat', {})
       if (
         done.outcome !== 'accepted' ||
         done.value?.type !== 'conversationSideOpened'
@@ -353,6 +353,25 @@ describe('side chats', () => {
       snapshotsOf,
     }
   }
+
+  test('the scope reaches the owner, and the list answers the side chats open with their scope', async () => {
+    const { perform, opened, port } = withSides()
+    expect(port.canSideChat).toBe(true)
+    await perform('conversationSideChat', {})
+    await perform('conversationSideChat', { scope: 'forked' })
+    expect(opened).toEqual([
+      { scope: 'fresh', from: 'remote-1' },
+      { scope: 'forked', from: 'remote-1' },
+    ])
+    const listed = await perform('conversationSideList')
+    expect(listed).toMatchObject({
+      outcome: 'accepted',
+      value: {
+        type: 'conversationSideList',
+        chats: [{ scope: 'fresh' }, { scope: 'forked', from: 'remote-1' }],
+      },
+    })
+  })
 
   const send = (clientMessageId: string, text: string) => ({
     clientMessageId,

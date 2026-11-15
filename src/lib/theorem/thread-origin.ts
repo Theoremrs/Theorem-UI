@@ -67,3 +67,40 @@ export async function threadOriginFor(from: ThreadFrom) {
       from.kind === 'forked' ? source.thread.title || undefined : undefined,
   }
 }
+
+/** A thread's branches and where it stands, as the thread list's tree and the workbench's history draw them. */
+export type ThreadTree = {
+  rootBranchId: string
+  /** Every branch but the root, oldest first. */
+  forks: Theorem.Branch[]
+  selectedBranchId: string
+  /** A run in progress on the authority, which may belong to another tab or device. */
+  activeRunId: string | null
+  lastRunOutcome: Theorem.RunEnding | undefined
+  lastReplyAtMs: number | undefined
+  /** The thread this one was forked or continued from. */
+  origin: Theorem.ThreadOrigin | undefined
+}
+
+/** Reads a thread's tree; a thread with no root branch has none. */
+export async function loadThreadTree(
+  threadId: string,
+): Promise<ThreadTree | null> {
+  const { thread, branches, messages } = await theorem().chat.threads.get({
+    threadId,
+  })
+  const root = branches.find((branch) => !branch.parentBranchId)
+  if (!root) return null
+  return {
+    rootBranchId: root.branchId,
+    forks: branches
+      .filter((branch) => branch !== root)
+      .sort((a, b) => a.createdAtMs - b.createdAtMs),
+    selectedBranchId: thread.selectedBranchId,
+    activeRunId: thread.activeRunId,
+    lastRunOutcome: thread.lastRun?.outcome,
+    lastReplyAtMs: messages.findLast((message) => message.role === 'assistant')
+      ?.createdAtMs,
+    origin: thread.origin,
+  }
+}
