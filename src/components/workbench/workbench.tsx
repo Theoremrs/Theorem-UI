@@ -176,6 +176,9 @@ export function WorkbenchSurface({
 }) {
   const hostId = `workbench-${useId().replace(/[^A-Za-z0-9_-]/g, '')}`
   const host = useRef<HTMLDivElement>(null)
+  // One cell wide and one line tall in the grid's own font: it changes size when the person's text
+  // size changes, which the host's box does not.
+  const probe = useRef<HTMLSpanElement>(null)
   const input = useRef<HTMLTextAreaElement>(null)
   const [inputElement, setInputElement] = useState<HTMLTextAreaElement | null>(
     null,
@@ -250,6 +253,18 @@ export function WorkbenchSurface({
     })
     const observer = new ResizeObserver(() => handle.current?.resize())
     observer.observe(element)
+    // Ratzilla's DOM backend measures a cell and rebuilds the grid only on a window `resize` event,
+    // so a change of the grid's font size (the probe's box) is announced the way it expects; the
+    // frame loop then follows the grid it built. The first report is the starting size.
+    let probed: string | undefined
+    const textSize = new ResizeObserver(([entry]) => {
+      if (!entry) return
+      const size = `${entry.contentRect.width}x${entry.contentRect.height}`
+      if (probed !== undefined && probed !== size)
+        window.dispatchEvent(new Event('resize'))
+      probed = size
+    })
+    if (probe.current) textSize.observe(probe.current)
     // The wheel needs preventDefault, which React's passive listener cannot do.
     const wheel = (event: WheelEvent) => {
       event.preventDefault()
@@ -261,6 +276,7 @@ export function WorkbenchSurface({
       sink.effect = () => {}
       stopMotion()
       observer.disconnect()
+      textSize.disconnect()
       element.removeEventListener('wheel', wheel)
       adapter?.dispose()
       handle.current = undefined
@@ -273,7 +289,7 @@ export function WorkbenchSurface({
     <FeedContext.Provider value={feed}>
       <div
         ref={setRoot}
-        className="relative flex h-full min-h-0 w-full flex-1 flex-col font-mono text-[12.5px]"
+        className="relative flex h-full min-h-0 w-full flex-1 flex-col font-mono text-[length:calc(12.5px*var(--appearance-scale-code,1))]"
         onKeyDown={(event) => {
           // Keys pressed during an IME composition belong to the composition, never to the
           // workbench; some browsers report them only as keyCode 229.
@@ -291,6 +307,11 @@ export function WorkbenchSurface({
           }
         }}
       >
+        <span
+          ref={probe}
+          aria-hidden="true"
+          className="pointer-events-none invisible absolute top-0 left-0 h-[1lh] w-[1ch]"
+        />
         <div
           ref={host}
           id={hostId}
@@ -313,7 +334,10 @@ export function WorkbenchSurface({
             handle.current?.pointer(pointerJson('move', event))
           }
           onContextMenu={(event) => event.preventDefault()}
-          className="relative min-h-0 flex-1 cursor-default touch-none overflow-hidden bg-term whitespace-pre text-term-ink outline-none"
+          // `normal` is the leading Ratzilla measures a cell with and pitches rows by. Under the
+          // page's inherited 1.5 a line box is taller than its row: it overlaps the next row, runs
+          // past the host's last row and sets every row's background low.
+          className="relative min-h-0 flex-1 cursor-default touch-none overflow-hidden bg-term leading-[normal] whitespace-pre text-term-ink outline-none"
         />
         {/* The host-input service (ARCHITECTURE section 8): the one real text control. It takes
             IME composition, typed text and paste, and forwards what was committed. It sits
