@@ -33,6 +33,8 @@ Project and conversation navigation, which the sidebar carried, moves to the wor
 | `workbench-vt` | VT byte-to-screen interpreter and input encoder for process panes | `vt100`, `tui-term` |
 | `workbench-markdown` | ELY-derived parse/block/edit logic and the four modes | `workbench-text`, `pulldown-cmark` |
 | `workbench-changes` | Changes panel model and view over Theorem SCM | `workbench-core` |
+| `workbench-process` | Process pane: chooser, attach, control lease, epochs and resets, drawn through `workbench-vt` | `workbench-core`, `workbench-vt` |
+| `workbench-editor` | Source editor panel and the editing widget Markdown Source mode shares | `workbench-core`, `workbench-text` |
 | `theorem-terminal` (root) | wasm-bindgen exports, `DomBackend` screen, frame loop, the Theo transcript session (existing `Session`), cabinet | all of the above, `ratzilla` |
 
 No crate other than the root depends on `ratzilla`, `wasm-bindgen` or `web-sys`. Every crate below the root runs its tests with plain `cargo test`.
