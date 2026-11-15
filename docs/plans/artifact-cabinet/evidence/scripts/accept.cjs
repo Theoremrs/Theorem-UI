@@ -11,7 +11,7 @@ const log = (...a) => console.log(...a)
 async function openCabinet(page) {
   await page.goto(`${BASE}/projects/${projectId}`, { waitUntil: 'networkidle' })
   if (!(await page.locator('[data-artifact-cabinet]').count())) {
-    await page.getByRole('button', { name: /^Cabinet$/ }).first().click()
+    await page.getByRole('button', { name: /^Gallery$/ }).first().click()
   }
   await page.waitForSelector('[data-artifact-cabinet]')
   await page.waitForFunction(
@@ -199,7 +199,7 @@ const alignment = (page) =>
   // A29: resize by keyboard.
   await page.reload({ waitUntil: 'networkidle' })
   await openCabinet(page)
-  const sep = page.getByRole('separator', { name: 'Cabinet width' })
+  const sep = page.getByRole('separator', { name: 'Gallery width' })
   const w0 = await sep.getAttribute('aria-valuenow')
   await sep.focus()
   await page.keyboard.press('ArrowLeft')

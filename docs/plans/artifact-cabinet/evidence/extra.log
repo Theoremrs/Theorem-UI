@@ -1,7 +1,7 @@
-A38 cold open→previews ms 1981 long tasks after open [[5063,77],[5354,143],[5498,445],[5958,307],[6281,55]] workers []
-A38 warm reopen ms 1052
+A38 cold open→previews ms 3826 long tasks after open [[3971,513],[4569,848],[5849,50],[5932,87],[6119,164],[6284,390],[6726,281],[7070,52]] workers []
+A38 warm reopen ms 938
 A38 JS heap MB 364
 A06 {"searchField":1,"first":"4931485c","images":1,"apps":0,"appsPressed":true,"allOrder":["241011","31485c"]}
-A11 {"sameScreen":true,"sample":"Agent terminal\nCabinet\nTerminal\n agent × │ +                                                                     \n──────"}
+A11 {"sameScreen":true,"sample":"Agent terminal\nGallery\nTerminal\n agent × │ +                                                                     \n──────"}
 A27 dialog image {"w":1000,"h":625,"hash":973908616,"filter":"none","mix":"normal","opacity":"1"}
-A24 roles calm/expressive/dark [["","","",""],["","","",""],["","","",""]]
+A24 roles calm/expressive/dark [["#202733","#c8d0d8","#8aa8a0","#8f98a0"],["#202733","#c8d0d8","#8aa8a0","#8f98a0"],["#22272e","#cad0d4","#8aa8a0","#92989c"]]

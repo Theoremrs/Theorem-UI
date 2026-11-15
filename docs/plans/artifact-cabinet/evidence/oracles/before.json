@@ -1,0 +1,121 @@
+{
+ "source_revision": "ff2f1cd",
+ "environment": {
+  "viewport_css_px": 1536,
+  "viewport_height_css_px": 1000,
+  "device_pixel_ratio": 1,
+  "zoom": 1,
+  "browser": "Playwright Chromium (preinstalled)",
+  "route": "/projects/<seeded Headland survey>",
+  "preset": "default appearance; the terminal host uses its dark terminal palette (bg #202733)",
+  "weights_by_chars": {
+   "400": 738,
+   "700": 15
+  },
+  "sizes_by_chars": {
+   "12.5px": 753
+  }
+ },
+ "observations": {
+  "tab-vs-body": {
+   "kind": "rendered_web",
+   "first": {
+    "family": "\"JetBrains Mono Variable\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, monospace",
+    "font_size_px": 12.0,
+    "font_weight": 400
+   },
+   "second": {
+    "family": "\"JetBrains Mono Variable\", \"JetBrains Mono\", ui-monospace, SFMono-Regular, monospace",
+    "font_size_px": 12.5,
+    "font_weight": 400
+   }
+  },
+  "mono-face": {
+   "kind": "rendered_web",
+   "first": {
+    "actual_face": "JetBrainsMono",
+    "face_evidence": "CDP CSS.getPlatformFontsForNode glyph counts: {'JetBrainsMono-Regular': 808, 'DejaVuSansMono': 2}"
+   },
+   "second": {
+    "actual_face": "JetBrainsMono",
+    "face_evidence": "policy: JetBrains Mono"
+   }
+  },
+  "code-size": {
+   "kind": "rendered_web",
+   "numerator": 12.5,
+   "denominator": 13,
+   "note": "spec code recipe is JetBrains Mono 13px/20px"
+  },
+  "line-pitch": {
+   "kind": "rendered_web",
+   "numerator": 17,
+   "denominator": 12.5,
+   "note": "measured row-to-row distance of the drawn grid, not CSS line-height (18.75px)"
+  },
+  "ink": {
+   "kind": "rendered_web",
+   "foreground": "#C8D0D8",
+   "background": "#202733",
+   "chars": 182
+  },
+  "heading": {
+   "kind": "rendered_web",
+   "foreground": "#E4EAEE",
+   "background": "#202733",
+   "chars": 49
+  },
+  "muted": {
+   "kind": "rendered_web",
+   "foreground": "#8F98A0",
+   "background": "#202733",
+   "chars": 206
+  },
+  "accent": {
+   "kind": "rendered_web",
+   "foreground": "#8AA8A0",
+   "background": "#202733",
+   "chars": 7
+  },
+  "raised": {
+   "kind": "rendered_web",
+   "foreground": "#C8D0D8",
+   "background": "#273042",
+   "chars": 13
+  },
+  "lines": {
+   "kind": "rendered_web",
+   "foreground": "#3A4458",
+   "background": "#202733",
+   "chars": 296
+  },
+  "header-rhythm": {
+   "kind": "rendered_web",
+   "values_px": [
+    0,
+    17,
+    0,
+    17,
+    17
+   ],
+   "hierarchy_px": [
+    0,
+    0,
+    17
+   ],
+   "note": "blank px between title\u2192scope, scope\u2192preference, preference\u2192search, search\u2192filters, filters\u2192gallery; hierarchy = [within title group, between related controls (preference/search), between groups]"
+  },
+  "tab-track": {
+   "kind": "rendered_web",
+   "first": {
+    "inline_start_px": 1099,
+    "inline_size_px": 0
+   },
+   "second": {
+    "inline_start_px": 1102,
+    "inline_size_px": 0
+   },
+   "note": "tab label text start vs cabinet content text start"
+  }
+ }
+}

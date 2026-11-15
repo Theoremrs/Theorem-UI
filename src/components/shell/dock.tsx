@@ -342,7 +342,7 @@ function OutputsToggle() {
   const open = useShell((s) => s.sideDrawer === 'outputs')
   return (
     <TooltipIconButton
-      tooltip={open ? 'Close cabinet' : 'Cabinet'}
+      tooltip={open ? 'Close gallery' : 'Gallery'}
       aria-pressed={open}
       onClick={() =>
         useShell.getState().setSideDrawer(open ? undefined : 'outputs')

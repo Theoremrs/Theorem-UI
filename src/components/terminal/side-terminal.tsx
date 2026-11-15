@@ -117,7 +117,7 @@ function WidthHandle({
       ref={handle}
       role="separator"
       aria-orientation="vertical"
-      aria-label={cabinet ? 'Cabinet width' : 'Terminal width'}
+      aria-label={cabinet ? 'Gallery width' : 'Terminal width'}
       aria-valuemin={min}
       aria-valuemax={typeof window === 'undefined' ? undefined : maxWidth()}
       aria-valuenow={current}
@@ -251,7 +251,7 @@ export function useCabinetExpanded() {
 }
 
 const HOST_VIEWS = [
-  { id: 'outputs', label: 'Cabinet' },
+  { id: 'outputs', label: 'Gallery' },
   { id: 'terminal', label: 'Terminal' },
 ] as const
 
@@ -266,7 +266,10 @@ function HostViews({
   expanded: boolean
 }) {
   return (
-    <div className="flex shrink-0 items-center gap-1 px-3 pb-1 font-mono text-[0.75rem]">
+    // The first label starts on the gallery's content inset (set by the
+    // gallery from its cell size) less the tab's own padding, and the strip
+    // uses the grid's text size, so tabs and grid read as one recipe.
+    <div className="flex shrink-0 items-center gap-1 ps-[max(0px,calc(var(--gallery-inset,20px)-0.5rem))] pe-3 pb-1 font-mono text-[0.78125rem]">
       <div role="tablist" aria-label="Right-hand views" className="flex gap-1">
         {HOST_VIEWS.map((v) => (
           <button
@@ -397,7 +400,7 @@ export function SideTerminal() {
               className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))] data-[cabinet-layout=docked]:shadow-none data-[cabinet-layout=expanded]:md:w-(--side-width)"
             >
               <Drawer.Title className="sr-only">
-                {cabinet ? 'Artifact cabinet' : 'Agent terminal'}
+                {cabinet ? 'Gallery' : 'Agent terminal'}
               </Drawer.Title>
               {desktop && expanded ? (
                 <div aria-hidden="true" className="w-3 shrink-0" />

@@ -4,7 +4,7 @@ const out = __dirname + '/evidence/'
   const b = await chromium.launch()
   const text = (p) => p.evaluate(() => document.querySelector('[data-artifact-cabinet]')?.innerText.replace(/\s+/g, ' ').slice(0, 400))
   const live = (p) => p.evaluate(() => document.querySelector('[data-artifact-cabinet] [aria-live]')?.textContent)
-  const open = async (p) => { await p.goto('http://localhost:3000/projects/' + process.argv[2], { waitUntil: 'networkidle' }); if (!(await p.locator('[data-artifact-cabinet]').count())) await p.getByRole('button', { name: /^Cabinet$/ }).first().click(); await p.waitForSelector('[data-artifact-cabinet]'); await p.waitForTimeout(3000) }
+  const open = async (p) => { await p.goto('http://localhost:3000/projects/' + process.argv[2], { waitUntil: 'networkidle' }); if (!(await p.locator('[data-artifact-cabinet]').count())) await p.getByRole('button', { name: /^Gallery$/ }).first().click(); await p.waitForSelector('[data-artifact-cabinet]'); await p.waitForTimeout(3000) }
   // 1. catalog unreachable from the start
   let p = await b.newPage({ viewport: { width: 1536, height: 900 } })
   await p.route('**/outputs*', (r) => r.abort('internetdisconnected'))

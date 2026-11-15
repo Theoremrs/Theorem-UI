@@ -38,6 +38,7 @@ import {
   readArtifactRevision,
   readLatestArtifact,
   toEntry,
+  plainText,
 } from './catalog'
 import { byRecent, effectivePreviewMode } from './contract'
 import type { CatalogEntry, PreviewMode } from './contract'
@@ -49,6 +50,7 @@ import {
   usePreviews,
 } from './previews'
 import type { PreviewState } from './previews'
+import '../terminal/cell-grid.css'
 
 const HOST_ID = 'theorem-artifact-cabinet'
 
@@ -286,7 +288,7 @@ function OriginalView({
           {entry &&
             (showLatest && data?.type === 'artifact'
               ? `Latest revision ${String(data.artifact.revision).slice(0, 12)} · the card shows ${entry.source.revision.slice(0, 12)}`
-              : `Revision ${entry.source.revision.slice(0, 12)} · opened from the artifact cabinet`)}
+              : `Revision ${entry.source.revision.slice(0, 12)} · opened from the gallery`)}
         </DialogDescription>
         <div className="min-h-0 flex-1 overflow-auto">
           {original.error ? (
@@ -354,7 +356,7 @@ function markdownArtifact(entry: CatalogEntry, text: string): TheoremArtifact {
   }
 }
 
-/** The cabinet for one project: catalog, Ratatui view, previews, controls. */
+/** The gallery for one project: catalog, Ratatui view, previews, controls. */
 export function Cabinet({
   projectId,
   projectTitle,
@@ -456,11 +458,9 @@ export function Cabinet({
     }
   }, [])
 
-  const modeLabel =
-    mode === 'pixel' ? 'pixel interpretations' : 'original thumbnails'
   const preferenceLabel =
     preference === undefined
-      ? 'Theme default'
+      ? 'Default'
       : preference === 'pixel'
         ? 'Pixel'
         : 'Original'
@@ -482,15 +482,14 @@ export function Cabinet({
     if (!handle) return
     handle.set_view(
       JSON.stringify({
-        title: 'Artifact cabinet',
-        scope: `${projectTitle} · every session`,
+        title: 'Gallery',
+        scope: `${projectTitle} · every session · newest first`,
         count:
           outputs.error && !entries.length
             ? 'unavailable'
             : total === undefined
               ? `${entries.length} loaded`
               : `${String(total).padStart(2, '0')} objects`,
-        modeLabel,
         preferenceLabel,
         filters: FILTERS,
         filter,
@@ -500,8 +499,8 @@ export function Cabinet({
         targetPx: target,
         footerNote:
           mode === 'pixel'
-            ? 'Pixel previews are representations. Opening reveals the original.'
-            : 'Thumbnails are reduced originals. Opening reveals the original.',
+            ? 'Pixel representations. Open one for the original.'
+            : 'Reduced thumbnails. Open one for the original.',
         entries: entries.map((entry) => {
           const state =
             usePreviews.getState().states[presentationKey(entry, mode)]
@@ -510,7 +509,7 @@ export function Cabinet({
             revision: entry.source.revision,
             title: entry.title,
             meta: metaLine(items.get(entry.key)!, entry),
-            description: entry.description.text,
+            description: plainText(entry.description.text),
             state: state?.status ?? 'loading',
           }
         }),
@@ -568,6 +567,16 @@ export function Cabinet({
   const control = (id: string) =>
     geometry?.controls.find((c) => c.id === id)?.area
   const cell = geometry?.cell ?? [8, 16]
+  // The host's tab strip starts its first label on the gallery's content
+  // inset (the grid's PAD_PX rounded to whole cells), so tab and content
+  // share one start edge at any text size.
+  useEffect(() => {
+    const drawer = host.current?.closest<HTMLElement>('[data-cabinet-layout]')
+    if (!drawer || !geometry) return
+    const cw = geometry.cell[0]
+    const inset = Math.max(1, Math.round(20 / cw)) * cw
+    drawer.style.setProperty('--gallery-inset', `${inset}px`)
+  }, [geometry])
   // One card is in the Tab order: the selected one while it is mounted,
   // otherwise the first visible card, so scrolling never empties the order.
   const mounted = geometry?.slots ?? []
@@ -632,7 +641,7 @@ export function Cabinet({
       {searchArea && (
         <input
           type="search"
-          aria-label="Search the artifact cabinet"
+          aria-label="Search the gallery"
           placeholder="Search artifacts"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
