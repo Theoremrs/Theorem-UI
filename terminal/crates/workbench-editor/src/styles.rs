@@ -1,9 +1,8 @@
 //! The roles the editing widget is drawn with.
 //!
-//! The core `Theme` has no role for a line-number gutter, the current line or
-//! a search match, so the widget takes them as this value. [`EditorStyles::from_theme`]
-//! fills each from the nearest core role, so a host that has not defined the
-//! editor roles still gets a readable editor; a host that has builds its own.
+//! The widget takes its roles as this value. [`EditorStyles::from_theme`]
+//! reads them from the core `Theme`'s editing, finding and syntax roles, so
+//! the mount themes every panel from one palette.
 
 use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::Theme;
@@ -79,44 +78,34 @@ impl EditorStyles {
         }
     }
 
-    /// Each role from the core role that means the nearest thing: the gutter is
-    /// muted, the selection is `selected`, a match is `warning`, the current
-    /// match and the caret are `focus`, held text is `error`.
+    /// Each role straight from the theme's editing, finding and syntax roles,
+    /// so the mount themes every panel from one palette.
     pub fn from_theme(theme: &Theme) -> Self {
         Self {
             text: theme.text,
-            gutter: theme.muted,
-            gutter_current: theme.text,
-            current_line: Style::default(),
-            selection: theme.selected,
-            search_match: theme.warning,
-            current_match: theme.focus,
-            conflict: theme.error,
-            atomic: theme.muted,
-            caret: theme.focus,
-            popup: theme.line,
-            popup_selected: theme.selected,
-            error: theme.error.add_modifier(Modifier::UNDERLINED),
-            warning: theme.warning.add_modifier(Modifier::UNDERLINED),
-            info: theme.text.add_modifier(Modifier::UNDERLINED),
-            hint: theme.muted,
-            // The core theme has no syntax roles; a foreground each from the
-            // nearest role keeps the editor readable until a host defines them.
-            keyword: foreground(theme.focus).add_modifier(Modifier::BOLD),
-            string: foreground(theme.success),
-            number: foreground(theme.warning),
-            comment: theme.muted.add_modifier(Modifier::ITALIC),
-            function: foreground(theme.text).add_modifier(Modifier::BOLD),
-            name: foreground(theme.text),
+            gutter: theme.gutter,
+            gutter_current: theme.gutter_current,
+            current_line: theme.current_line,
+            selection: theme.selection,
+            search_match: theme.search_match,
+            current_match: theme.current_match,
+            conflict: theme.conflict,
+            atomic: theme.atomic,
+            caret: theme.caret,
+            popup: theme.popup,
+            popup_selected: theme.popup_selected,
+            error: theme.diagnostic_error,
+            warning: theme.diagnostic_warning,
+            info: theme.diagnostic_info,
+            hint: theme.diagnostic_hint,
+            keyword: theme.syntax_keyword,
+            string: theme.syntax_string,
+            number: theme.syntax_number,
+            comment: theme.syntax_comment,
+            function: theme.syntax_function,
+            name: theme.syntax_name,
         }
     }
-}
-
-/// The colour of a role without its background or reverse video, so it can
-/// lie over text that has its own.
-fn foreground(role: Style) -> Style {
-    role.fg
-        .map_or_else(Style::default, |c| Style::default().fg(c))
 }
 
 impl EditorStyles {
@@ -139,5 +128,59 @@ impl EditorStyles {
 impl Default for EditorStyles {
     fn default() -> Self {
         Self::plain()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ratatui::style::Color;
+
+    /// The derivation from before the theme carried editor roles.
+    fn old(theme: &Theme) -> EditorStyles {
+        fn foreground(role: Style) -> Style {
+            role.fg
+                .map_or_else(Style::default, |c| Style::default().fg(c))
+        }
+        EditorStyles {
+            text: theme.text,
+            gutter: theme.muted,
+            gutter_current: theme.text,
+            current_line: Style::default(),
+            selection: theme.selected,
+            search_match: theme.warning,
+            current_match: theme.focus,
+            conflict: theme.error,
+            atomic: theme.muted,
+            caret: theme.focus,
+            popup: theme.line,
+            popup_selected: theme.selected,
+            error: theme.error.add_modifier(Modifier::UNDERLINED),
+            warning: theme.warning.add_modifier(Modifier::UNDERLINED),
+            info: theme.text.add_modifier(Modifier::UNDERLINED),
+            hint: theme.muted,
+            keyword: foreground(theme.focus).add_modifier(Modifier::BOLD),
+            string: foreground(theme.success),
+            number: foreground(theme.warning),
+            comment: theme.muted.add_modifier(Modifier::ITALIC),
+            function: foreground(theme.text).add_modifier(Modifier::BOLD),
+            name: foreground(theme.text),
+        }
+    }
+
+    #[test]
+    fn the_roles_read_from_the_theme_equal_the_old_derivation() {
+        let rgb = |r, g, b| Style::default().fg(Color::Rgb(r, g, b));
+        let chrome = Theme::chrome(
+            Style::default().bg(Color::Rgb(9, 9, 9)),
+            rgb(200, 200, 200),
+            rgb(100, 100, 100).add_modifier(Modifier::DIM),
+            rgb(50, 50, 50),
+            rgb(10, 120, 240).add_modifier(Modifier::BOLD),
+            Style::default().bg(Color::Rgb(30, 30, 60)),
+        );
+        for theme in [Theme::plain(), chrome] {
+            assert_eq!(EditorStyles::from_theme(&theme), old(&theme));
+        }
     }
 }

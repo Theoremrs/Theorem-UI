@@ -2417,15 +2417,72 @@ fn the_saved_message_goes_away_with_the_next_edit() {
 fn typing_is_undone_a_run_of_one_kind_of_character_at_a_time() {
     // The rule is workbench-text's: consecutive inserts that touch and are of
     // one class (word characters, white space, anything else) are one step.
-    // A pause does not end a run; a newline always does.
+    // A pause does not end a run; a newline always does. The rendered rows
+    // trim trailing spaces, so the steps are read from the caret's column
+    // on the semantic node, which counts the space.
     let mut rig = Rig::opened("\n");
     rig.typed("ab cd");
-    let mut seen = vec![rig.text()];
-    for _ in 0..4 {
+    let column = |rig: &Rig| -> String {
+        let d = rig.node("caret").state.description.unwrap();
+        d.split("column ")
+            .nth(1)
+            .and_then(|r| r.split(|c: char| !c.is_ascii_digit()).next())
+            .unwrap()
+            .to_owned()
+    };
+    let mut seen = vec![column(&rig)];
+    for _ in 0..3 {
         rig.chord('z');
-        seen.push(rig.text());
+        seen.push(column(&rig));
     }
-    // A burst of "ab cd" is not one undo step: the first undo keeps "ab".
-    assert_eq!(seen[1], "ab", "{seen:?}");
-    assert_eq!(seen[4], "", "{seen:?}");
+    // "ab cd", then "ab " (the word went), then "ab" (the space), then "".
+    assert_eq!(seen, ["6", "4", "3", "1"], "{seen:?}");
+}
+
+#[test]
+fn opening_a_file_from_files_lands_the_editor_in_the_tool_group() {
+    use theorem_workbench_dock::Role;
+    let rig = Rig::start();
+    let dock = rig.m.dock();
+    let role = dock
+        .group_ids()
+        .into_iter()
+        .find(|g| {
+            dock.group(*g)
+                .is_some_and(|g| g.tabs().iter().any(|t| t.panel.0 == rig.id.as_str()))
+        })
+        .and_then(|g| dock.group(g).map(|g| g.role()))
+        .expect("the editor sits in a group");
+    assert_eq!(role, Role::Tools);
+}
+
+#[test]
+fn the_themes_syntax_roles_set_the_colour_the_panel_draws() {
+    use ratatui::style::{Color, Style};
+    let mut rig = Rig::opened("let x\n");
+    rig.host(HostMessage::DocumentTokens {
+        resource: doc(),
+        revision: seq(1),
+        encoding: SpanEncoding::Utf8Bytes,
+        spans: vec![TokenSpan {
+            start: 0,
+            end: 3,
+            class: "keyword".into(),
+        }],
+    });
+    let fg_at = |rig: &Rig, theme: &Theme, x: u16| {
+        let b = rig.body();
+        let area = Rect::new(0, 0, b.width, b.height);
+        let mut buf = Buffer::empty(area);
+        let mut cx = ViewCtx::new(theme, rig.m.workspace());
+        cx.focused = true;
+        rig.m.panel(&rig.id).unwrap().view(area, &mut buf, &cx);
+        buf[(x, 0)].fg
+    };
+    let plain = Theme::plain();
+    let teal = Style::default().fg(Color::Rgb(1, 2, 3));
+    let themed = Theme::plain().with_syntax(teal, teal, teal, teal, teal, teal);
+    // The line number takes two columns; the keyword begins at column 2.
+    assert_eq!(fg_at(&rig, &plain, 3), Color::Reset);
+    assert_eq!(fg_at(&rig, &themed, 3), Color::Rgb(1, 2, 3));
 }

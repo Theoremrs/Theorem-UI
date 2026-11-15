@@ -10,7 +10,6 @@
 use ratatui::style::Style;
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
 use theorem_workbench_core::effect::{EffectBody, LanguageNavigate, LanguagePosition};
-use theorem_workbench_core::host::TokenSpan;
 use theorem_workbench_core::results::{
     CompletionItem, CompletionRange, Finding, LocationRow, Range, Severity, Span, SpanEncoding,
 };
@@ -227,169 +226,10 @@ impl Findings {
     }
 }
 
-/// Syntax colour the host computed, as classes over scalar ranges of `text`,
-/// the owner's text at `revision`.
-#[derive(Debug, Default)]
-pub(crate) struct Tokens {
-    pub revision: u64,
-    pub text: String,
-    pub spans: Vec<(usize, usize, String)>,
-    /// The spans as they lie on the text now, and the version they were laid
-    /// out for.
-    pub shown: Vec<(usize, usize, String)>,
-    pub shown_key: Option<(u64, u64, bool)>,
-}
-
-/// Spans for a revision the panel has not reached yet.
-#[derive(Debug)]
-pub(crate) struct Waiting {
-    pub revision: u64,
-    pub encoding: SpanEncoding,
-    pub spans: Vec<TokenSpan>,
-}
-
-fn line_starts(text: &str) -> Vec<usize> {
-    let mut starts = vec![0];
-    for (i, ch) in text.chars().enumerate() {
-        if ch == '\n' {
-            starts.push(i + 1);
-        }
-    }
-    starts
-}
-
-/// Where the old spans lie in the new text. Lines that are the same at the
-/// start and at the end of both texts keep their colour; the lines between
-/// are plain until the host's next spans arrive. A span that crosses a line
-/// that did not survive is dropped.
-fn carry(old: &str, new: &str, spans: &[(usize, usize, String)]) -> Vec<(usize, usize, String)> {
-    let (ol, nl): (Vec<&str>, Vec<&str>) = (old.split('\n').collect(), new.split('\n').collect());
-    let prefix = ol.iter().zip(&nl).take_while(|(a, b)| a == b).count();
-    let suffix = ol
-        .iter()
-        .rev()
-        .zip(nl.iter().rev())
-        .take(ol.len().min(nl.len()) - prefix)
-        .take_while(|(a, b)| a == b)
-        .count();
-    let (os, ns) = (line_starts(old), line_starts(new));
-    let map = |line: usize| -> Option<usize> {
-        if line < prefix {
-            Some(line)
-        } else if line >= ol.len() - suffix {
-            Some(nl.len() - (ol.len() - line))
-        } else {
-            None
-        }
-    };
-    let line_of = |at: usize| os.partition_point(|s| *s <= at) - 1;
-    let delta = |line: usize| Some(ns[map(line)?] as isize - os[line] as isize);
-    spans
-        .iter()
-        .filter_map(|(start, end, class)| {
-            let (first, last) = (line_of(*start), line_of(end.saturating_sub(1).max(*start)));
-            let d = delta(first)?;
-            // A span over several lines needs every one of them to have moved
-            // by the same distance.
-            if (first + 1..=last).any(|l| delta(l) != Some(d)) {
-                return None;
-            }
-            Some((
-                usize::try_from(*start as isize + d).ok()?,
-                usize::try_from(*end as isize + d).ok()?,
-                class.clone(),
-            ))
-        })
-        .collect()
-}
-
 impl Doc {
     pub fn findings(&self) -> &[Item] {
         self.findings
             .current(self.session.accepted_revision(), self.session.has_pending())
-    }
-
-    /// The colour to draw: the host's spans for the text drawn, or while the
-    /// text has moved on, the spans of the lines that did not change.
-    pub fn tokens(&self, styles: &EditorStyles) -> Vec<Mark> {
-        let Some(t) = &self.tokens else {
-            return Vec::new();
-        };
-        // Colour laid out for other text would be colour on the wrong words.
-        if t.shown_key != Some(self.tokens_key()) {
-            return Vec::new();
-        }
-        t.shown
-            .iter()
-            .map(|(start, end, class)| Mark {
-                start: *start,
-                end: *end,
-                style: styles.class(class),
-            })
-            .collect()
-    }
-
-    fn tokens_key(&self) -> (u64, u64, bool) {
-        (
-            self.version,
-            self.session.accepted_revision(),
-            self.session.has_pending(),
-        )
-    }
-
-    /// Take waiting spans whose revision has arrived and lay the colour out
-    /// for the text as it is now.
-    pub fn refresh_tokens(&mut self) {
-        let accepted = self.session.accepted_revision();
-        if let Some(w) = self.waiting.take() {
-            if w.revision == accepted {
-                self.take_tokens(w.revision, w.encoding, &w.spans);
-            } else if w.revision > accepted {
-                self.waiting = Some(w);
-            }
-        }
-        let key = self.tokens_key();
-        let Some(t) = &mut self.tokens else { return };
-        if t.shown_key == Some(key) {
-            return;
-        }
-        let text = self.session.text();
-        t.shown = if t.revision == accepted && !self.session.has_pending() {
-            t.spans.clone()
-        } else {
-            carry(&t.text, &text, &t.spans)
-        };
-        t.shown_key = Some(key);
-    }
-
-    /// Spans for the accepted revision, converted to scalars of its text.
-    pub fn take_tokens(&mut self, revision: u64, encoding: SpanEncoding, spans: &[TokenSpan]) {
-        let text = self.session.accepted_text();
-        let mut out = Vec::with_capacity(spans.len());
-        let mut last = 0;
-        for s in spans {
-            let span = Span {
-                start: s.start,
-                end: s.end,
-                encoding,
-            };
-            // A span that is not a place in the text, or that overlaps the one
-            // before, is dropped rather than drawn on the wrong words.
-            if let Some((start, end)) = span_offsets(&text, &span)
-                && start >= last
-                && start < end
-            {
-                out.push((start, end, s.class.clone()));
-                last = end;
-            }
-        }
-        self.tokens = Some(Tokens {
-            revision,
-            text,
-            spans: out,
-            shown: Vec::new(),
-            shown_key: None,
-        });
     }
 
     /// Marks to draw under the text, by severity.
@@ -1062,25 +902,5 @@ mod tests {
         assert_eq!(offset, 5);
         let back = lsp_of(text, offset);
         assert_eq!((back.line, back.character), (1, 3));
-    }
-
-    #[test]
-    fn colour_stays_on_lines_that_did_not_change_and_leaves_the_rest_plain() {
-        let old = "let a\nlet b\nlet c";
-        let spans = vec![
-            (0, 3, "keyword".to_owned()),
-            (6, 9, "keyword".to_owned()),
-            (12, 15, "keyword".to_owned()),
-        ];
-        // A line is inserted in the middle and the last one is untouched.
-        let new = "let a\nlet b!\nnew\nlet c";
-        let kept = carry(old, new, &spans);
-        let starts: Vec<usize> = kept.iter().map(|s| s.0).collect();
-        assert_eq!(
-            starts,
-            vec![0, 17],
-            "first and last lines keep their colour"
-        );
-        assert!(carry(old, old, &spans).len() == 3);
     }
 }

@@ -15,6 +15,7 @@ use super::{Clip, Doc, EditorPanel, Notice, Phase, Plan, Problem, Task, Tone, la
 use crate::find::Find;
 use crate::owner::{Level, Owed, OwnerSync, Step};
 use crate::sync::resync;
+use crate::tokens::TokenState;
 use crate::widget::SourceView;
 
 pub(super) fn emit_notice(error: EmitError) -> String {
@@ -37,7 +38,7 @@ impl EditorPanel {
         if let Some(d) = self.doc_mut() {
             let version = d.version;
             d.find.refresh(&d.session, version);
-            d.refresh_tokens();
+            d.tokens.refresh(&d.session, version);
             // A save of an older revision is judged stale once edits are
             // accepted past it, so its answer will not come: stop showing it.
             d.sync.settle_stale_save(&d.session);
@@ -253,8 +254,7 @@ impl EditorPanel {
             in_replace: false,
             popup: None,
             findings: Default::default(),
-            tokens: None,
-            waiting: None,
+            tokens: TokenState::new(),
             preedit: None,
             busy: None,
         };
@@ -438,17 +438,7 @@ impl EditorPanel {
                     return;
                 };
                 if let Some(d) = self.doc_mut() {
-                    let accepted = d.session.accepted_revision();
-                    if revision == accepted {
-                        d.take_tokens(revision, encoding, &spans);
-                        d.waiting = None;
-                    } else if revision > accepted {
-                        d.waiting = Some(language::Waiting {
-                            revision,
-                            encoding,
-                            spans,
-                        });
-                    }
+                    d.tokens.offer(&d.session, revision, encoding, &spans);
                 }
             }
             HostMessage::DocumentMoved { from, to } => {

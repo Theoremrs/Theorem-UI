@@ -44,9 +44,11 @@ use crate::field::Field;
 use crate::find::Find;
 use crate::owner::OwnerSync;
 use crate::styles::EditorStyles;
+use crate::tokens::TokenState;
 use crate::widget::SourceView;
 use create::Naming;
-use language::{Findings, Popup, Tokens};
+pub(crate) use language::span_offsets;
+use language::{Findings, Popup};
 
 /// The panel kind the registry already lists for documents.
 pub const KIND: &str = "document";
@@ -203,9 +205,7 @@ pub(crate) struct Doc {
     /// What the language owner found, for the revision it was asked about.
     pub findings: Findings,
     /// Syntax colour, for the revision the host computed it at.
-    pub tokens: Option<Tokens>,
-    /// Spans for a revision not reached yet.
-    pub waiting: Option<language::Waiting>,
+    pub tokens: TokenState,
     /// Text an input method is composing at the caret.
     pub preedit: Option<String>,
     pub busy: Option<&'static str>,

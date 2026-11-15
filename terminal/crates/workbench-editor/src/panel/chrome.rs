@@ -531,7 +531,7 @@ impl EditorPanel {
         // The text.
         let marks = d.marks(&styles);
         let gutter = d.gutter(&styles);
-        let tokens = d.tokens(&styles);
+        let tokens = d.tokens.marks(&d.session, d.version, &styles);
         let paint = Paint {
             focused: cx.focused && !d.in_find && d.rename.is_none() && self.naming.is_none(),
             matches: if d.find.is_open() {
