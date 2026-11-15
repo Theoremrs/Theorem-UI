@@ -1,10 +1,15 @@
 // SOURCING: none — the stories' fixture host: an Adapter whose answers are committed constants and whose documents, repository and terminal keep a little state, so the real wasm workbench draws and reacts with no network and no clock. It uses the wire types; nothing else applies.
 import type { Adapter } from '@/lib/workbench/adapter'
-import { snapshotMessage } from '@/lib/workbench/conversation/conversation'
+import {
+  attachmentsMessage,
+  modelsMessage,
+  snapshotMessage,
+} from '@/lib/workbench/conversation/conversation'
 import type { ConversationSnapshot } from '@/lib/workbench/conversation/conversation'
 import type {
   Completion,
   CompletionPayload,
+  DraftAttachment,
   Effect,
   HostMessage,
   Outcome,
@@ -17,9 +22,13 @@ import {
   BRANCH,
   CHANGES,
   DOCUMENTS,
+  FINDINGS,
   HEAD,
   LOG,
   NOTES_ON_DISK,
+  RUNS,
+  RUN_ERRORS,
+  RUN_OUTPUT,
   TERMINAL_AFTER_RESIZE,
   TERMINAL_BEFORE_RESIZE,
   TERMINAL_RESIZED,
@@ -39,6 +48,8 @@ export interface FixtureOptions {
   transcript?: boolean
   /** The thread has a second branch of the reply: switching between them re-sends the snapshot. */
   branches?: boolean
+  /** The language owner reports the findings the fixtures hold for each document as it opens. */
+  diagnostics?: boolean
   /** The terminal owner offers a recorded session. */
   terminal?: boolean
   /** The documents owner reports this path's disk as changed under the open document. */
@@ -93,11 +104,31 @@ export function createFixtureHost(
   /** The branch of the thread the transcript shows, and the revision of the last snapshot sent. */
   let branch = 'root'
   let revision = STORY_CONVERSATION.revision
+  const conversationId = STORY_CONVERSATION.conversationId
+  /** The draft's attachments, and the model and effort the next turn runs on. */
+  let attachments: DraftAttachment[] = []
+  let model = 'deepseek-v4-flash'
+  let effort = 'medium'
+  const sendAttachments = () =>
+    send(attachmentsMessage('story-project', conversationId, attachments))
+  const sendModels = () =>
+    send(
+      modelsMessage('story-project', conversationId, {
+        models: [
+          { ref: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', contextTokens: 128_000 },
+          { ref: 'claude-opus', label: 'Claude Opus', contextTokens: 200_000 },
+        ],
+        selected: model,
+        effort,
+        efforts: ['low', 'medium', 'high'],
+      }),
+    )
 
   /** The transcript of the selected branch: the second branch answers with a different first line. */
   const thread = (): ConversationSnapshot => ({
     ...STORY_CONVERSATION,
     revision,
+    context: { usedTokens: 18_400, windowTokens: 128_000 },
     // A thread with branches is shown at rest, so the status row can say which branch it is on.
     ...(options.branches && { run: { state: 'idle' }, approval: undefined }),
     messages: STORY_CONVERSATION.messages.map((message) => ({
@@ -145,6 +176,7 @@ export function createFixtureHost(
   }
   const accept = (effect: Effect, payload?: CompletionPayload) =>
     complete(effect, { status: 'accepted' }, payload)
+  const changes = CHANGES.map((change) => ({ ...change }))
   const refuse = (effect: Effect, reason: string, code = 'owner_unavailable') =>
     complete(effect, { status: 'refused', code, reason })
 
@@ -232,6 +264,15 @@ export function createFixtureHost(
           savedRevision: seq(held.saved),
           dirty: held.revision !== held.saved,
         })
+        // The language owner reports what it found in the document as it opens.
+        if (options.diagnostics && FINDINGS[path])
+          send({
+            type: 'diagnosticsSet',
+            path,
+            revision: seq(held.revision),
+            encoding: 'utf16_code_units',
+            findings: FINDINGS[path],
+          })
         // The disk changed under the open document: the owner says so on its live stream.
         if (options.conflict === path) {
           held.disk = NOTES_ON_DISK
@@ -281,6 +322,9 @@ export function createFixtureHost(
         })
       }
       case 'documentClose':
+        if (options.diagnostics && effect.resource.type === 'document')
+          send({ type: 'diagnosticsCleared', path: effect.resource.resourceId })
+        return accept(effect)
       case 'documentSettle':
       case 'documentRevert':
         return accept(effect)
@@ -289,9 +333,25 @@ export function createFixtureHost(
           type: 'scm',
           branch: BRANCH,
           head: HEAD,
-          changes: CHANGES,
+          changes: changes,
           state: { head: HEAD, branch: BRANCH },
         })
+      case 'scmStage':
+      case 'scmUnstage': {
+        const staging = effect.kind === 'scmStage'
+        for (const change of changes) {
+          if (!effect.payload.paths.includes(change.path) || change.conflict)
+            continue
+          if (staging) {
+            change.index = change.worktree === '?' ? 'A' : change.worktree
+            change.worktree = ' '
+          } else {
+            change.worktree = change.index === 'A' ? '?' : change.index
+            change.index = change.worktree === '?' ? '?' : ' '
+          }
+        }
+        return accept(effect, { type: 'scmState', head: HEAD, branch: BRANCH })
+      }
       case 'scmDiff':
         return accept(effect, {
           type: 'scmDiff',
@@ -400,16 +460,52 @@ export function createFixtureHost(
         return accept(effect)
       case 'runStart':
         return accept(effect, { type: 'runStarted', handle: 'run-1' })
-      case 'runPoll':
+      case 'runList':
+        return accept(effect, { type: 'runList', runs: RUNS })
+      case 'runPoll': {
+        const listed = RUNS.find((run) => run.handle === effect.payload.handle)
+        // A listed run is one the host already finished or still runs; the one this fixture
+        // started ends at once.
         return accept(effect, {
           type: 'runState',
           handle: effect.payload.handle,
-          state: 'exited',
-          exitCode: 0,
-          stdout: 'running 2 tests\ntest add ... ok\ntest sub ... ok\n',
-          stderr: '',
+          state: listed?.state ?? 'exited',
+          exitCode: listed ? (listed.state === 'exited' ? 101 : undefined) : 0,
+          stdout: listed
+            ? RUN_OUTPUT
+            : 'running 2 tests\ntest add ... ok\ntest sub ... ok\n',
+          stderr: listed ? RUN_ERRORS : '',
           readAt: { workspaceId: WORKSPACE, generation: 1 },
         })
+      }
+      case 'conversationAttachPick':
+        accept(effect)
+        attachments = [
+          ...attachments,
+          {
+            id: `att-${attachments.length + 1}`,
+            name: 'build.log',
+            contentType: 'text/plain',
+            size: 2048,
+            state: 'ready',
+          },
+        ]
+        return sendAttachments()
+      case 'conversationAttachRemove':
+        accept(effect)
+        attachments = attachments.filter(({ id }) => id !== effect.payload.id)
+        return sendAttachments()
+      case 'conversationModels':
+        accept(effect)
+        return sendModels()
+      case 'conversationSetModel':
+        accept(effect)
+        model = effect.payload.ref
+        return sendModels()
+      case 'conversationSetEffort':
+        accept(effect)
+        effort = effect.payload.level
+        return sendModels()
       case 'terminalResize':
         return accept(effect)
       case 'terminalInput':

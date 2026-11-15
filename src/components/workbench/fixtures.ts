@@ -142,6 +142,10 @@ export const GUIDE_TEXT = [
   '',
 ].join('\n')
 
+/** The search story's second file: a CJK comment before the first match of `cell`. */
+export const GRID_TEXT =
+  '// 全角の文字 cell width\npub fn cell_width(wide: bool) -> u16 {\n    if wide { 2 } else { 1 }\n}\n'
+
 /** The texts the documents owner holds, by workspace path. */
 export const DOCUMENTS: Record<string, string> = {
   'docs/notes.txt': NOTES_TEXT,
@@ -149,7 +153,75 @@ export const DOCUMENTS: Record<string, string> = {
   'README.md': README_TEXT,
   'src/main.rs': 'fn main() {\n    println!("hello");\n}\n',
   'src/lib.rs': 'pub fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n',
+  'src/grid.rs': GRID_TEXT,
 }
+
+/**
+ * The findings the language owner reports for the open documents, by path: every severity, placed
+ * by zero-based line and UTF-16 column.
+ */
+export const FINDINGS: Record<
+  string,
+  {
+    range: { start: { line: number; character: number }; end: { line: number; character: number } }
+    severity: 'error' | 'warning' | 'info' | 'hint'
+    message: string
+    source?: string
+    code?: string
+  }[]
+> = {
+  'docs/notes.txt': [
+    {
+      range: { start: { line: 3, character: 0 }, end: { line: 3, character: 3 } },
+      severity: 'error',
+      message: 'Unknown name "Ada".',
+      source: 'spell',
+      code: 'S1',
+    },
+    {
+      range: { start: { line: 6, character: 0 }, end: { line: 6, character: 4 } },
+      severity: 'warning',
+      message: 'Mixed scripts on one line.',
+      source: 'prose',
+    },
+  ],
+  'docs/guide.md': [
+    {
+      range: { start: { line: 8, character: 4 }, end: { line: 8, character: 10 } },
+      severity: 'info',
+      message: 'Prefer "cells" to "grid of cells".',
+      source: 'prose',
+    },
+    {
+      range: { start: { line: 14, character: 0 }, end: { line: 14, character: 3 } },
+      severity: 'hint',
+      message: 'Add the date this was drafted.',
+      source: 'prose',
+    },
+  ],
+}
+
+/** The runs the host lists, and the output of the one the run story attaches to: finished, with colour in it. */
+export const RUNS = [
+  {
+    handle: 'h1',
+    name: 'tests',
+    command: ['cargo', 'test', '--workspace'],
+    state: 'exited',
+    startedAtMs: 1_700_000_000_000,
+  },
+  {
+    handle: 'h2',
+    name: 'build',
+    command: ['cargo', 'build', '--release'],
+    state: 'running',
+    startedAtMs: 1_700_000_100_000,
+  },
+]
+export const RUN_OUTPUT =
+  'running 2 tests\ntest add ... \u001b[32mok\u001b[0m\ntest sub ... \u001b[1;31mFAILED\u001b[0m\n\ntest result: \u001b[1;31mFAILED\u001b[0m. 1 passed; 1 failed\n'
+export const RUN_ERRORS =
+  '\u001b[1;33mwarning\u001b[0m: unused variable: `x`\n \u001b[1;34m-->\u001b[0m src/lib.rs:2:9\n'
 
 /** The text the disk holds for the conflict state: the same file, changed by someone else. */
 export const NOTES_ON_DISK = NOTES_TEXT.replace(

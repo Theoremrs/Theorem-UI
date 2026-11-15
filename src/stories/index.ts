@@ -62,6 +62,10 @@ export const STORIES: readonly StoryMeta[] = [
   { id: 'workbench-markdown-split', title: 'Workbench: the Markdown panel in split mode', lane: 'original', viewport: { width: 1280, height: 700 } },
   { id: 'workbench-markdown-preview', title: 'Workbench: the Markdown panel in preview mode', lane: 'original', viewport: { width: 1280, height: 700 } },
   { id: 'workbench-branches', title: 'Workbench: a reply with two branches, switched through the owner', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-search', title: 'Workbench: Search with matches in two files, one after CJK text', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-diagnostics', title: 'Workbench: Diagnostics for two open documents, every severity', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-run', title: 'Workbench: a finished run attached from the host list, with coloured output', lane: 'original', viewport: { width: 1280, height: 640 } },
+  { id: 'workbench-run-list', title: 'Workbench: the list of runs on the host', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-changes', title: 'Workbench: Changes with a diff open and a commit draft', lane: 'original', viewport: { width: 1280, height: 640 } },
   {
     id: 'workbench-picker',
@@ -258,6 +262,18 @@ export const STORIES: readonly StoryMeta[] = [
     title: 'Theo on a page with a reply to read aloud',
     lane: 'original',
     viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'theo-face-inverse',
+    title: 'Theo on the terminal surface: inverse face in dark, light and a custom palette',
+    lane: 'translation',
+    reference: 'theo-face@7fa8fcb3.png',
+    viewport: { width: 1000, height: 600 },
+    tolerance: {
+      threshold: 0.2,
+      note: 'The reference is the chat face (bare light eyes on dark, dark visor on light); the render is its terminal inverse. They are meant to differ: the collage shows the expression and shape are the same, not that the colours match.',
+    },
+    evidenceDir: 'theo-face-inverse',
   },
   {
     id: 'tool-pills',

@@ -36,6 +36,7 @@ import {
 import { Canvas } from '@/components/canvas/canvas'
 import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
+import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { speechAdapter } from '@/lib/speech/adapter'
 import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
@@ -51,6 +52,10 @@ import { GlassCompareStory } from './glass-compare'
 import {
   WorkbenchBranchesStory,
   WorkbenchChangesStory,
+  WorkbenchSearchStory,
+  WorkbenchDiagnosticsStory,
+  WorkbenchRunStory,
+  WorkbenchRunListStory,
   WorkbenchDefaultStory,
   WorkbenchEditorConflictStory,
   WorkbenchEditorStory,
@@ -792,6 +797,10 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-editor-conflict': WorkbenchEditorConflictStory,
   'workbench-changes': WorkbenchChangesStory,
   'workbench-branches': WorkbenchBranchesStory,
+  'workbench-search': WorkbenchSearchStory,
+  'workbench-diagnostics': WorkbenchDiagnosticsStory,
+  'workbench-run': WorkbenchRunStory,
+  'workbench-run-list': WorkbenchRunListStory,
   'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
   'workbench-markdown-source': WorkbenchMarkdownSourceStory,
   'workbench-markdown-split': WorkbenchMarkdownSplitStory,
@@ -831,6 +840,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'face-visit': FaceVisitStory,
   'face-point': FacePointStory,
   'face-sound': FaceSoundStory,
+  'theo-face-inverse': TheoFaceInverse,
   'organized-sidebar': OrganizedSidebarStory,
   'librarian-footer': LibrarianFooterStory,
   'compare-pane': ComparePaneStory,

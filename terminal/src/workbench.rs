@@ -24,8 +24,8 @@ use ratzilla::web_sys::{self, KeyboardEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
-    ActionId, Actor, Button, Capability, Composition, Effect, Inbound, Model, Msg, PanelFactories,
-    Pointer, PointerKind, Theme, builtin,
+    ActionId, Actor, Button, Capability, Caret, CaretPhase, CaretShape, Composition, Effect,
+    Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, builtin,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
     registry::Capabilities,
     semantics,
@@ -36,7 +36,7 @@ use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use wasm_bindgen::prelude::*;
 
 use crate::{
-    Drawn, Palette, Screen, palette, run_frames,
+    BLINK_MS, CaretStyle, Drawn, Palette, Screen, now, palette, run_frames,
     theo::{self, Directory},
 };
 
@@ -53,6 +53,7 @@ fn factories_with(conversations: &Directory, editor_first: bool) -> PanelFactori
     theo::register(&mut factories, conversations);
     theorem_workbench_process::register(&mut factories, process_styles(), load_nonce());
     theorem_workbench_changes::register(&mut factories);
+    theorem_workbench_ide::register(&mut factories);
     if editor_first {
         theorem_workbench_editor::register(&mut factories);
         theorem_workbench_markdown_panel::register(&mut factories);
@@ -71,6 +72,8 @@ fn registry() -> theorem_workbench_core::registry::Registry {
         .expect("the process actions extend the shell kind once");
     theorem_workbench_changes::extend_registry(&mut registry)
         .expect("the Changes actions extend the changes kind once");
+    theorem_workbench_ide::extend_registry(&mut registry)
+        .expect("the IDE actions extend the search, diagnostics and run-output kinds once");
     theorem_workbench_markdown_panel::extend_registry(&mut registry)
         .expect("the Markdown actions extend the markdown kind once");
     theorem_workbench_editor::extend_registry(&mut registry)
@@ -458,6 +461,8 @@ struct Core {
     /// The newest conversation snapshot the model was given, for the panels the
     /// core has not bound to a conversation yet.
     conversations: Directory,
+    /// When the person last typed, so a blinking caret holds solid a beat after each key.
+    typed_at: f64,
 }
 
 impl Core {
@@ -477,18 +482,23 @@ impl Core {
     }
 
     fn with_editor_first(platform: Platform, editor_first: bool) -> Self {
+        Self::build(platform, editor_first, |_| {})
+    }
+
+    /// As `with_editor_first`, letting `tweak` change the factories before the model is built.
+    fn build(
+        platform: Platform,
+        editor_first: bool,
+        tweak: impl FnOnce(&mut PanelFactories),
+    ) -> Self {
         let registry = registry();
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
         let (dock, _regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
         let conversations = Directory::default();
+        let mut factories = factories_with(&conversations, editor_first);
+        tweak(&mut factories);
         Self {
-            model: Model::new(
-                registry,
-                factories_with(&conversations, editor_first),
-                keys,
-                Capabilities::default(),
-                dock,
-            ),
+            model: Model::new(registry, factories, keys, Capabilities::default(), dock),
             publisher: SemanticPublisher::default(),
             theme: Theme::plain(),
             platform,
@@ -498,11 +508,18 @@ impl Core {
             files_opened: false,
             theo_opened: false,
             conversations,
+            typed_at: 0.0,
         }
     }
 
     fn update(&mut self, msg: Msg) -> Vec<Effect> {
         self.touched = true;
+        if matches!(
+            msg,
+            Msg::Key(_) | Msg::Text(_) | Msg::Paste(_) | Msg::Composition(_)
+        ) {
+            self.typed_at = now();
+        }
         self.conversations.observe(&msg);
         update(&mut self.model, msg)
     }
@@ -644,6 +661,46 @@ fn deliver(
     }
 }
 
+/// How the page draws the model's caret: an absolutely positioned element over the grid (never a
+/// character or a cell style in it), blinking only when the panel asked and the person has not
+/// asked for reduced motion (the model answers that as `Steady`), and the hidden input field
+/// moved to the same cell so the IME's candidate window opens there.
+fn caret_style(
+    caret: Option<Caret>,
+    cell: (f32, f32),
+    typed_at: f64,
+    now: f64,
+    color: &str,
+) -> CaretStyle {
+    let (width, height) = cell;
+    let hidden = CaretStyle {
+        overlay: "display:none".to_owned(),
+        field: String::new(),
+    };
+    let Some(caret) = caret else {
+        return hidden;
+    };
+    let lit = match caret.phase {
+        CaretPhase::Hidden => return hidden,
+        CaretPhase::Steady => true,
+        CaretPhase::Blinking => (((now - typed_at) / BLINK_MS) as u64).is_multiple_of(2),
+    };
+    let (left, top) = (f32::from(caret.x) * width, f32::from(caret.y) * height);
+    let ink = if lit { color } else { "transparent" };
+    let look = match caret.shape {
+        CaretShape::HollowBlock => format!("border:1px solid {ink};width:{width}px"),
+        CaretShape::FilledBlock => format!("background:{ink};width:{width}px"),
+        CaretShape::Bar => format!("background:{ink};width:2px"),
+    };
+    CaretStyle {
+        overlay: format!(
+            "position:absolute;pointer-events:none;box-sizing:border-box;{look};\
+             left:{left}px;top:{top}px;height:{height}px"
+        ),
+        field: format!("left:{left}px;top:{top}px;width:{width}px;height:{height}px"),
+    }
+}
+
 /// What the frame loop draws.
 struct Mounted {
     core: Rc<RefCell<Core>>,
@@ -656,6 +713,18 @@ struct Mounted {
 impl Drawn for Mounted {
     fn set_cell(&mut self, cell: (f32, f32)) {
         self.cell = cell;
+    }
+
+    fn text_caret(&self, now: f64) -> Option<CaretStyle> {
+        let core = self.core.borrow();
+        let color = palette().sage.to_string();
+        Some(caret_style(
+            core.model.caret(),
+            self.cell,
+            core.typed_at,
+            now,
+            &color,
+        ))
     }
 
     fn wants_frame(&mut self, area: Rect) -> bool {
@@ -1346,6 +1415,345 @@ mod tests {
             assert!(rs.contains(&"document".to_owned()), "{rs:?}");
             assert!(!rs.contains(&"markdown".to_owned()), "{rs:?}");
         }
+    }
+
+    const IDE_WORDS: [&str; 10] = [
+        "files",
+        "environment",
+        "documents",
+        "search.query",
+        "diagnostics.subscribe",
+        "run.start",
+        "run.subscribe",
+        "run.list",
+        "conversation",
+        "scm",
+    ];
+
+    /// A workbench with the IDE words granted and a workspace named, settled.
+    fn ide_core() -> Core {
+        let mut core = core();
+        granted(&mut core, &IDE_WORDS);
+        core.update(Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: Some("e".into()),
+        }));
+        core.step(AREA, CELL, Theme::plain());
+        core
+    }
+
+    /// Gives focus back to the open panel of `kind`, as a click on it would.
+    fn focus_panel(core: &mut Core, kind: &str) {
+        let id = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == kind)
+            .map(|(id, _)| id.clone())
+            .expect("the panel is open");
+        core.update(Msg::Dock(theorem_workbench_core::msg::DockMsg::FocusPanel(
+            id,
+        )));
+    }
+
+    fn count(core: &Core, kind: &str) -> usize {
+        kinds(core).iter().filter(|k| *k == kind).count()
+    }
+
+    #[test]
+    fn search_diagnostics_and_run_output_open_from_their_actions_and_from_their_picker_rows() {
+        for (action, kind, filter) in [
+            ("search.open", "search", "Search"),
+            ("diagnostics.open", "diagnostics", "Diagnostics"),
+            ("run-output.open", "run-output", "Run output"),
+        ] {
+            let mut core = ide_core();
+            core.focus(action);
+            assert_eq!(count(&core, kind), 1, "{action}: {:?}", kinds(&core));
+            assert!(
+                core.model
+                    .panel_ids()
+                    .all(|(id, _)| !core.model.is_unavailable(id)),
+                "{kind} is served, not a placeholder"
+            );
+            // The picker's row opens the same panel.
+            let mut core = ide_core();
+            core.update(Msg::Picker(theorem_workbench_core::picker::PickerMsg::Open));
+            // These tools are listed under More tools: the row first, then the tool's.
+            for text in ["More tools", filter] {
+                core.update(Msg::Picker(
+                    theorem_workbench_core::picker::PickerMsg::Filter(text.into()),
+                ));
+                core.step(AREA, CELL, Theme::plain());
+                core.update(Msg::Key(press("Enter")));
+            }
+            core.step(AREA, CELL, Theme::plain());
+            assert_eq!(count(&core, kind), 1, "{filter} row: {:?}", kinds(&core));
+        }
+        // The Run list actions are in the registry, gated on their word.
+        let core = ide_core();
+        for id in [
+            "run.list",
+            "run.attach",
+            "search.run",
+            "diagnostics.open-finding",
+        ] {
+            assert!(
+                core.model.registry().action(&ActionId::new(id)).is_some(),
+                "{id} is in the registry"
+            );
+        }
+    }
+
+    /// Delivers search rows for `paths` through the real panel and opens each by Enter.
+    fn open_rows(paths: &[&str], presses: &[&str]) -> Core {
+        use theorem_workbench_core::{
+            completion::{Completion, CompletionPayload, Outcome, SearchStarted},
+            effect::EffectBody,
+            results::{MatchRange, ReadAt, SearchRow, SearchState, SpanEncoding},
+        };
+        let mut core = ide_core();
+        core.focus("search.open");
+        let mut effects = Vec::new();
+        for c in "needle".chars() {
+            effects.extend(core.update(Msg::Text(c.to_string())));
+        }
+        effects.extend(core.update(Msg::Key(press("Enter"))));
+        let query = effects
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::SearchQuery(_)))
+            .expect("the panel sends the query")
+            .clone();
+        let mut started = Completion::new(query.id, query.resource.clone(), Outcome::Accepted);
+        started.payload = Some(CompletionPayload::SearchStarted(SearchStarted {
+            id: "s1".into(),
+        }));
+        core.update(Msg::Completion(started));
+        let generation = core.model.workspace().generation.0;
+        core.update(Msg::Host(HostMessage::SearchPage {
+            id: "s1".into(),
+            rows: paths
+                .iter()
+                .enumerate()
+                .map(|(i, path)| SearchRow {
+                    path: (*path).into(),
+                    line: i as u32 + 1,
+                    text: "a needle here".into(),
+                    matches: vec![MatchRange { start: 2, end: 8 }],
+                    text_offset: None,
+                })
+                .collect(),
+            skipped: 0,
+            state: SearchState::Complete,
+            end: None,
+            read_at: ReadAt {
+                workspace_id: "w".into(),
+                version: None,
+                epoch: None,
+                generation,
+            },
+            encoding: SpanEncoding::Utf16CodeUnits,
+        }));
+        core.step(AREA, CELL, Theme::plain());
+        // Out of the query field and onto the rows, then the given presses.
+        core.update(Msg::Key(press("Down")));
+        for chord in presses {
+            core.update(Msg::Key(press(chord)));
+            core.step(AREA, CELL, Theme::plain());
+        }
+        core
+    }
+
+    #[test]
+    fn a_search_row_opens_its_file_in_the_editor_or_markdown_and_never_a_second_copy() {
+        let core = open_rows(&["a.rs", "b.md"], &["Enter"]);
+        assert_eq!(count(&core, "document"), 1, "{:?}", kinds(&core));
+        assert_eq!(count(&core, "markdown"), 0, "{:?}", kinds(&core));
+        // A Markdown row opens the Markdown panel.
+        let core = open_rows(&["a.rs", "b.md"], &["Down", "Enter"]);
+        assert_eq!(count(&core, "markdown"), 1, "{:?}", kinds(&core));
+        assert_eq!(count(&core, "document"), 0, "{:?}", kinds(&core));
+        // The same row again moves the one open copy.
+        let core = open_rows(&["a.rs", "a.rs"], &["Enter", "Down", "Enter"]);
+        assert_eq!(count(&core, "document"), 1, "{:?}", kinds(&core));
+    }
+
+    #[test]
+    fn a_finding_opens_its_file_in_the_editor_or_markdown_and_never_a_second_copy() {
+        use theorem_workbench_core::{
+            ids::Revision,
+            results::{FindingAt, Position, Range, Severity, SpanEncoding},
+        };
+        let finding = |line| FindingAt {
+            range: Range {
+                start: Position { line, character: 0 },
+                end: Position { line, character: 1 },
+            },
+            severity: Severity::Error,
+            message: "broken".into(),
+            source: None,
+            code: None,
+        };
+        let mut core = ide_core();
+        core.focus("diagnostics.open");
+        for path in ["a.rs", "b.md"] {
+            core.update(Msg::Host(HostMessage::DiagnosticsSet {
+                path: path.into(),
+                revision: Revision::Seq(1),
+                encoding: SpanEncoding::Utf16CodeUnits,
+                findings: vec![finding(0), finding(2)],
+            }));
+        }
+        core.step(AREA, CELL, Theme::plain());
+        core.update(Msg::Key(press("Enter")));
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(count(&core, "document"), 1, "{:?}", kinds(&core));
+        // Back in the panel, the next finding of the same file moves the open copy.
+        focus_panel(&mut core, "diagnostics");
+        core.update(Msg::Key(press("Down")));
+        core.update(Msg::Key(press("Enter")));
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(count(&core, "document"), 1, "{:?}", kinds(&core));
+        // The Markdown file opens in the Markdown panel.
+        focus_panel(&mut core, "diagnostics");
+        core.update(Msg::Key(press("Down")));
+        core.update(Msg::Key(press("Enter")));
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(count(&core, "markdown"), 1, "{:?}", kinds(&core));
+        assert_eq!(count(&core, "document"), 1, "{:?}", kinds(&core));
+    }
+
+    /// A panel that only reports a caret, standing in for the composer.
+    struct StandIn(CaretShape, CaretPhase);
+
+    impl theorem_workbench_core::Panel for StandIn {
+        fn update(
+            &mut self,
+            _: theorem_workbench_core::PanelMsg,
+            _: &mut theorem_workbench_core::Ctx,
+        ) {
+        }
+        fn view(
+            &self,
+            _: Rect,
+            _: &mut ratatui::buffer::Buffer,
+            _: &theorem_workbench_core::ViewCtx,
+        ) {
+        }
+        fn semantics(
+            &self,
+            _: Rect,
+            _: &theorem_workbench_core::ViewCtx,
+        ) -> Vec<theorem_workbench_core::semantics::Node> {
+            vec![]
+        }
+        fn serialize(&self) -> Value {
+            Value::Null
+        }
+        fn caret(&self, area: Rect) -> Option<Caret> {
+            Some(Caret {
+                x: area.x + 3,
+                y: area.y + 1,
+                shape: self.0,
+                phase: self.1,
+            })
+        }
+    }
+
+    fn with_stand_in(shape: CaretShape, phase: CaretPhase) -> Core {
+        let mut core = Core::build(Platform::Other, false, |factories| {
+            factories.register("theo", move |_, _| Box::new(StandIn(shape, phase)));
+        });
+        core.step(AREA, CELL, Theme::plain());
+        granted(&mut core, &["files", "conversation"]);
+        core.step(AREA, CELL, Theme::plain());
+        core.step(AREA, CELL, Theme::plain());
+        core
+    }
+
+    #[test]
+    fn the_page_draws_the_models_caret_as_an_overlay_and_moves_the_input_field_to_it() {
+        let core = with_stand_in(CaretShape::HollowBlock, CaretPhase::Steady);
+        let caret = core
+            .model
+            .caret()
+            .expect("the stand-in's caret is reported");
+        let cell = (8.0, 16.0);
+        let style = caret_style(Some(caret), cell, 0.0, 10_000.0, "#abc");
+        // The cell it names, in pixels: one outline, no character in the grid.
+        let (left, top) = (f32::from(caret.x) * 8.0, f32::from(caret.y) * 16.0);
+        assert!(
+            style
+                .overlay
+                .contains(&format!("left:{left}px;top:{top}px")),
+            "{}",
+            style.overlay
+        );
+        assert!(
+            style.overlay.contains("border:1px solid #abc"),
+            "{}",
+            style.overlay
+        );
+        assert!(style.overlay.contains("pointer-events:none"));
+        // The hidden field is on the same cell, so the candidate window opens there.
+        assert!(
+            style.field.contains(&format!("left:{left}px;top:{top}px")),
+            "{}",
+            style.field
+        );
+        assert!(
+            !drawn(&core).contains('\u{2588}'),
+            "the caret is not a character of the grid"
+        );
+    }
+
+    #[test]
+    fn a_blinking_caret_is_timed_by_the_root_and_a_steady_or_hidden_one_is_not() {
+        let at = |phase| {
+            let core = with_stand_in(CaretShape::Bar, phase);
+            core.model.caret()
+        };
+        let blinking = at(CaretPhase::Blinking);
+        let lit = caret_style(blinking, (8.0, 16.0), 0.0, 100.0, "red");
+        let dark = caret_style(blinking, (8.0, 16.0), 0.0, BLINK_MS + 100.0, "red");
+        assert!(lit.overlay.contains("background:red"), "{}", lit.overlay);
+        assert!(
+            dark.overlay.contains("background:transparent"),
+            "{}",
+            dark.overlay
+        );
+        // A key holds it solid again for a beat.
+        let typed = caret_style(
+            blinking,
+            (8.0, 16.0),
+            BLINK_MS + 50.0,
+            BLINK_MS + 100.0,
+            "red",
+        );
+        assert!(typed.overlay.contains("background:red"));
+        // Steady never goes dark; Hidden and no caret show nothing.
+        let steady = caret_style(
+            at(CaretPhase::Steady),
+            (8.0, 16.0),
+            0.0,
+            BLINK_MS + 100.0,
+            "red",
+        );
+        assert!(steady.overlay.contains("background:red"));
+        for none in [at(CaretPhase::Hidden), None] {
+            assert_eq!(
+                caret_style(none, (8.0, 16.0), 0.0, 0.0, "red").overlay,
+                "display:none"
+            );
+        }
+    }
+
+    #[test]
+    fn reduced_motion_makes_a_blinking_caret_steady() {
+        let mut core = with_stand_in(CaretShape::FilledBlock, CaretPhase::Blinking);
+        assert_eq!(core.model.caret().unwrap().phase, CaretPhase::Blinking);
+        core.update(Msg::ReducedMotion(true));
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(core.model.caret().unwrap().phase, CaretPhase::Steady);
     }
 
     #[test]

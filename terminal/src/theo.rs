@@ -28,27 +28,34 @@ use ratatui::{
     layout::{Constraint, Layout, Position, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Widget},
+    widgets::{Block, BorderType, Borders, Widget},
 };
 use ratzilla::event::{KeyCode, KeyEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use theorem_workbench_composer::{
+    Composer, ComposerStatus, Draft, Event as ComposerEvent, Input as ComposerInput, Policy,
+    Response as ComposerResponse, SubmitMode,
+};
 use theorem_workbench_core::{
-    ActionId, Completion, Composition, Ctx, Effect, EffectBody, EffectId, HostMessage, Msg,
-    OpenTarget, Outcome, Panel, PanelMsg, PointerKind, ResourceRef, Revision, ViewCtx,
-    completion::{CompletionPayload, SideChatInfo},
+    ActionId, Capability, Completion, Ctx, Effect, EffectBody, EffectId, HostMessage, ModelChoice,
+    Msg, OpenTarget, Outcome, Panel, PanelMsg, PanelPointer, PointerKind, ResourceRef, Revision,
+    SourceReference, ViewCtx,
+    completion::{CompletionPayload, FileKind, SideChatInfo},
     effect::{
-        ApprovalDecision, ConversationApproval, ConversationCancel, ConversationEdit,
-        ConversationInput, ConversationRetry, ConversationSend, ConversationSwitchBranch,
-        SideChatOpen, SideChatScope,
+        ApprovalDecision, AttachRemove, AttachmentRef, ClipboardWrite, ConversationApproval,
+        ConversationCancel, ConversationEdit, ConversationInput, ConversationRetry,
+        ConversationSend, ConversationSwitchBranch, FilesSearch, SetEffort, SetModel, SideChatOpen,
+        SideChatScope,
     },
+    panel::{Caret, CaretPhase, CaretShape},
     semantics::{Node, NodeAction, Role},
     stale::Binding,
 };
 
 use crate::{
-    Action, Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot,
-    Token, now, palette,
+    Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot, Token, now,
+    palette,
 };
 
 // ---- the owner's snapshot ---------------------------------------------------------------
@@ -66,6 +73,15 @@ struct Owner {
     approval: Option<OwnerApproval>,
     queued: Vec<OwnerQueued>,
     history: Option<OwnerHistory>,
+    /// How much of the model's window the thread uses, when the owner says.
+    context: Option<OwnerContext>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+struct OwnerContext {
+    used_tokens: u64,
+    window_tokens: u64,
 }
 
 /// The thread's branches as the owner sends them: the root, then each fork oldest first.
@@ -446,6 +462,10 @@ struct Pending {
     client_message_id: String,
     text: String,
     state: PendingState,
+    /// The draft that went, so a refusal can put it back whole.
+    draft: Option<Draft>,
+    /// The message the draft was an edit of.
+    editing: Option<String>,
 }
 
 /// What an effect in flight was for, so its answer lands on the right thing.
@@ -460,7 +480,18 @@ enum Tracked {
     NewSideChat,
     ListSideChats,
     SwitchBranch,
+    /// A control the owner answers by a host message (attach, model, effort).
+    Control,
+    Copy,
+    /// The text left the draft only if the write was accepted.
+    Cut,
+    Paste,
+    /// A file-name search for the `@` popup, by the composer's token.
+    Files(u64),
 }
+
+/// The most text rows the composer takes before its text scrolls.
+const MAX_TEXT_ROWS: u16 = 8;
 
 pub(crate) struct TheoPanel {
     /// A side chat that has no conversation yet offers these rows.
@@ -493,6 +524,13 @@ pub(crate) struct TheoPanel {
     /// The area the panel was last drawn in: pointer cells are relative to it.
     area: Cell<Rect>,
     focused: Cell<bool>,
+    composer: RefCell<Composer>,
+    /// Where the composer was last drawn, in frame cells.
+    composer_area: Cell<Rect>,
+    models: Vec<ModelChoice>,
+    selected_model: Option<String>,
+    effort: Option<String>,
+    efforts: Vec<String>,
 }
 
 impl TheoPanel {
@@ -506,9 +544,17 @@ impl TheoPanel {
             .to_owned(),
             false,
         );
-        if let Some(draft) = state["draft"].as_str() {
-            session.paste(draft);
-        }
+        let mut composer = Composer::new("composer");
+        composer.set_label(match kind {
+            Kind::Main => "Message to Theo",
+            Kind::Side => "Message to the side chat",
+        });
+        composer.set_placeholder(match kind {
+            Kind::Main => "Message Theo",
+            Kind::Side => "Message the side chat",
+        });
+        composer.set_prompt('\u{276F}');
+        composer.restore(&state["draft"]);
         session.expanded = state["allOutput"].as_bool().unwrap_or(false);
         for id in state["expanded"].as_array().into_iter().flatten() {
             if let Some(id) = id.as_str() {
@@ -538,6 +584,12 @@ impl TheoPanel {
             nonce: now() as u64,
             area: Cell::new(Rect::default()),
             focused: Cell::new(false),
+            composer: RefCell::new(composer),
+            composer_area: Cell::new(Rect::default()),
+            models: Vec::new(),
+            selected_model: None,
+            effort: None,
+            efforts: Vec::new(),
         }
     }
 
@@ -607,6 +659,51 @@ impl TheoPanel {
     fn refresh(&self) {
         let snapshot = drawn(&self.project, &self.owner, &self.pending);
         self.session.borrow_mut().set_snapshot(snapshot);
+        self.composer
+            .borrow_mut()
+            .set_status(self.composer_status());
+    }
+
+    /// What the composer is told: whether Enter sends, steers or does nothing,
+    /// and the model, effort and context use the footer shows.
+    fn composer_status(&self) -> ComposerStatus {
+        let policy = if !self.bound() {
+            Policy::Blocked {
+                reason: "connecting to the conversation".to_owned(),
+            }
+        } else if self.unreadable {
+            Policy::Blocked {
+                reason: "a snapshot could not be read".to_owned(),
+            }
+        } else if self.owner.loading {
+            Policy::Blocked {
+                reason: "loading the conversation".to_owned(),
+            }
+        } else if self.owner.working() {
+            Policy::Running {
+                can_steer: self.owner.run.run_id.is_some(),
+            }
+        } else {
+            Policy::Idle
+        };
+        let model = self.selected_model.as_ref().map(|m| {
+            self.models
+                .iter()
+                .find(|c| c.model_ref == *m)
+                .map_or_else(|| m.clone(), |c| c.label.clone())
+        });
+        let context_percent = self
+            .owner
+            .context
+            .as_ref()
+            .filter(|c| c.window_tokens > 0)
+            .map(|c| (c.used_tokens.saturating_mul(100) / c.window_tokens).min(100) as u8);
+        ComposerStatus {
+            policy,
+            model,
+            effort: self.effort.clone(),
+            context_percent,
+        }
     }
 
     /// A main panel with no conversation yet takes the one the owner is
@@ -634,6 +731,18 @@ impl TheoPanel {
             return false;
         }
         let resource = self.resource();
+        self.emit_to(resource, cx, body, tracked)
+    }
+
+    /// An effect of another owner (the clipboard, the files): it needs no
+    /// conversation.
+    fn emit_to(
+        &mut self,
+        resource: ResourceRef,
+        cx: &mut Ctx,
+        body: EffectBody,
+        tracked: Tracked,
+    ) -> bool {
         match cx.emit(|id| Effect::new(id, resource, body)) {
             Ok(id) => {
                 self.tracked.insert(id, tracked);
@@ -646,59 +755,212 @@ impl TheoPanel {
         }
     }
 
-    /// Words the person submitted: an edit if one is being made, input for a
-    /// working run, else a new turn.
-    fn submit(&mut self, text: String, cx: &mut Ctx) {
+    /// The composer's Enter: an edit if one is being made, input for a working
+    /// run, else a new turn. The draft leaves the composer only when the effect
+    /// was emitted; a refusal later puts it back whole.
+    fn submit(
+        &mut self,
+        text: String,
+        attachments: Vec<String>,
+        references: Vec<SourceReference>,
+        mode: SubmitMode,
+        cx: &mut Ctx,
+    ) {
+        if mode != SubmitMode::Edit
+            && attachments.is_empty()
+            && references.is_empty()
+            && self.slash(&text, cx)
+        {
+            self.composer.borrow_mut().take();
+            self.composer.borrow_mut().push_history(&text);
+            self.refresh();
+            return;
+        }
         let id = self.mint();
-        let body = if let Some(message_id) = self.editing.clone() {
-            EffectBody::ConversationEdit(ConversationEdit {
-                message_id,
-                client_message_id: id.clone(),
-                text: text.clone(),
-                references: vec![],
-            })
-        } else if self.owner.working() {
-            let Some(run_id) = self.owner.run.run_id.clone() else {
-                self.keep(&text, "the run has no id to send input to");
-                return;
-            };
-            EffectBody::ConversationInput(ConversationInput {
-                run_id,
-                client_message_id: id.clone(),
-                text: text.clone(),
-            })
-        } else {
-            EffectBody::ConversationSend(ConversationSend {
-                client_message_id: id.clone(),
-                text: text.clone(),
-                attachments: Vec::new(),
-                references: vec![],
-            })
+        let body = match mode {
+            SubmitMode::Edit => {
+                let Some(message_id) = self.editing.clone() else {
+                    self.session
+                        .borrow_mut()
+                        .notify("the message being edited is not known");
+                    return;
+                };
+                EffectBody::ConversationEdit(ConversationEdit {
+                    message_id,
+                    client_message_id: id.clone(),
+                    text: text.clone(),
+                    references,
+                })
+            }
+            SubmitMode::Steer => {
+                if !attachments.is_empty() || !references.is_empty() {
+                    self.session.borrow_mut().notify(
+                        "a working run takes words only; send files and references as a new turn",
+                    );
+                    return;
+                }
+                let Some(run_id) = self.owner.run.run_id.clone() else {
+                    self.session
+                        .borrow_mut()
+                        .notify("the run has no id to send input to");
+                    return;
+                };
+                EffectBody::ConversationInput(ConversationInput {
+                    run_id,
+                    client_message_id: id.clone(),
+                    text: text.clone(),
+                })
+            }
+            SubmitMode::Send => {
+                let held: Vec<AttachmentRef> = self
+                    .composer
+                    .borrow()
+                    .attachments()
+                    .iter()
+                    .filter(|a| attachments.contains(&a.id))
+                    .map(|a| AttachmentRef {
+                        id: a.id.clone(),
+                        name: a.name.clone(),
+                        content_type: a.content_type.clone(),
+                    })
+                    .collect();
+                EffectBody::ConversationSend(ConversationSend {
+                    client_message_id: id.clone(),
+                    text: text.clone(),
+                    attachments: held,
+                    references,
+                })
+            }
         };
         self.pending
             .retain(|p| !matches!(p.state, PendingState::Refused(_)));
         if self.emit(cx, body, Tracked::Turn(id.clone())) {
-            self.editing = None;
+            let editing = self.editing.take();
+            let draft = {
+                let mut composer = self.composer.borrow_mut();
+                composer.push_history(&text);
+                composer.take()
+            };
             self.pending.push(Pending {
                 client_message_id: id,
                 text,
                 state: PendingState::Sending,
+                draft: Some(draft),
+                editing,
             });
-        } else {
-            self.keep(&text, "");
         }
         self.refresh();
     }
 
-    /// Put words back in the composer when they did not go, as a draft.
-    fn keep(&mut self, text: &str, why: &str) {
-        let mut session = self.session.borrow_mut();
-        if session.input.value().is_empty() {
-            session.paste(text);
+    /// `/new` and `/help` are the drawer's words, and an unknown `/word` says
+    /// so; none of them is a message. True when `text` was one.
+    fn slash(&mut self, text: &str, cx: &mut Ctx) -> bool {
+        if !text.starts_with('/') || text.contains(char::is_whitespace) {
+            return false;
         }
-        if !why.is_empty() {
-            session.notify(why.to_owned());
+        match text {
+            "/new" => self.new_conversation(cx),
+            "/help" => {
+                let mut session = self.session.borrow_mut();
+                session.help = !session.help;
+                session.built_for = None;
+            }
+            command => self
+                .session
+                .borrow_mut()
+                .notify(format!("{command} is not a command; /help lists them")),
         }
+        true
+    }
+
+    /// What the composer asked for, as effects.
+    fn run(&mut self, response: ComposerResponse, cx: &mut Ctx) {
+        for event in response.events {
+            match event {
+                ComposerEvent::Submit {
+                    text,
+                    attachments,
+                    references,
+                    mode,
+                } => self.submit(text, attachments, references, mode, cx),
+                ComposerEvent::Copy { text } => {
+                    self.emit_to(
+                        ResourceRef::None,
+                        cx,
+                        EffectBody::ClipboardWrite(ClipboardWrite { text }),
+                        Tracked::Copy,
+                    );
+                }
+                ComposerEvent::Cut { text } => {
+                    if !self.emit_to(
+                        ResourceRef::None,
+                        cx,
+                        EffectBody::ClipboardWrite(ClipboardWrite { text }),
+                        Tracked::Cut,
+                    ) {
+                        self.composer.borrow_mut().cut_finished(false);
+                    }
+                }
+                ComposerEvent::ReadClipboard => {
+                    self.emit_to(
+                        ResourceRef::None,
+                        cx,
+                        EffectBody::ClipboardRead,
+                        Tracked::Paste,
+                    );
+                }
+                ComposerEvent::AttachPick => {
+                    self.emit(cx, EffectBody::ConversationAttachPick, Tracked::Control);
+                }
+                ComposerEvent::AttachRemove { id } => {
+                    self.emit(
+                        cx,
+                        EffectBody::ConversationAttachRemove(AttachRemove { id }),
+                        Tracked::Control,
+                    );
+                }
+                ComposerEvent::ModelChosen { model_ref } => {
+                    self.emit(
+                        cx,
+                        EffectBody::ConversationSetModel(SetModel { model_ref }),
+                        Tracked::Control,
+                    );
+                }
+                ComposerEvent::WantFiles { query, token } => {
+                    let workspace = cx.workspace().workspace.clone();
+                    self.emit_to(
+                        ResourceRef::Workspace { workspace },
+                        cx,
+                        EffectBody::FilesSearch(FilesSearch {
+                            query,
+                            limit: Some(20),
+                            offset: None,
+                        }),
+                        Tracked::Files(token),
+                    );
+                }
+                ComposerEvent::RecallLast => self.begin_edit(),
+            }
+        }
+    }
+
+    /// Give the composer an input and carry out what it asks for.
+    fn compose(&mut self, input: ComposerInput, cx: &mut Ctx) -> bool {
+        let response = self.composer.borrow_mut().handle(input, now());
+        let handled = response.handled;
+        self.run(response, cx);
+        handled
+    }
+
+    /// Whether `c` answers the approval that is waiting: one is, and the person
+    /// has typed nothing. With any text in the draft, or an input method
+    /// composing, `y` and `n` are letters.
+    fn answers_approval(&self, c: char) -> bool {
+        let composer = self.composer.borrow();
+        matches!(c, 'y' | 'n')
+            && self.owner.approval.is_some()
+            && composer.is_empty()
+            && !composer.is_composing()
     }
 
     fn stop(&mut self, cx: &mut Ctx) {
@@ -811,10 +1073,7 @@ impl TheoPanel {
             .collect::<Vec<_>>()
             .join(" ");
         let id = message.id.clone();
-        let mut session = self.session.borrow_mut();
-        session.input.reset();
-        session.paste(&text);
-        drop(session);
+        self.composer.borrow_mut().load_for_edit(&text, Vec::new());
         self.editing = Some(id);
     }
 
@@ -901,24 +1160,23 @@ impl TheoPanel {
         }
     }
 
-    fn act(&mut self, action: Action, cx: &mut Ctx) {
-        match action {
-            Action::Submit(text) | Action::Input(text) => self.submit(text, cx),
-            Action::Cancel => self.stop(cx),
-            Action::New => self.new_conversation(cx),
-            Action::Approve(allow) => self.approve(allow, cx),
-            // Esc leaves an edit; the drawer's close, tabs and references have
-            // no meaning in a panel.
-            Action::Close => {
-                if self.editing.take().is_some() {
-                    self.session.borrow_mut().input.reset();
-                }
-            }
-            Action::Open(_)
-            | Action::NewTab
-            | Action::CloseTab
-            | Action::SelectTab
-            | Action::Unreference => {}
+    /// Esc, which the composer left to the panel: it leaves an edit, else
+    /// stops the run (the composer's footer says so).
+    fn escape(&mut self, cx: &mut Ctx) {
+        if self.editing.take().is_some() {
+            self.composer.borrow_mut().take();
+        } else if self.owner.working() {
+            self.stop(cx);
+        }
+    }
+
+    /// Ctrl+C with nothing selected: stop a working run, else clear the draft.
+    fn interrupt(&mut self, cx: &mut Ctx) {
+        if self.owner.working() {
+            self.stop(cx);
+        } else {
+            self.editing = None;
+            self.composer.borrow_mut().take();
         }
     }
 
@@ -942,10 +1200,66 @@ impl TheoPanel {
                     Outcome::Uncertain { .. } => self.pending[at].state = PendingState::Unknown,
                     other => {
                         let reason = said(other).unwrap_or_default();
-                        let text = self.pending[at].text.clone();
                         self.pending[at].state = PendingState::Refused(reason);
-                        self.keep(&text, "");
+                        // The draft comes back whole, unless the person has
+                        // already begun another.
+                        let editing = self.pending[at].editing.take();
+                        if let Some(draft) = self.pending[at].draft.take()
+                            && self.composer.borrow_mut().put_back(draft)
+                        {
+                            self.editing = editing;
+                        }
                     }
+                }
+                // Whatever the answer, the draft is not needed again.
+                if let Some(p) = self.pending.get_mut(at) {
+                    p.draft = None;
+                }
+            }
+            Tracked::Copy => match said(&c.outcome) {
+                Some(reason) => self
+                    .session
+                    .borrow_mut()
+                    .notify(format!("not copied: {reason}")),
+                None => self.session.borrow_mut().notify("copied"),
+            },
+            Tracked::Cut => {
+                let accepted = matches!(c.outcome, Outcome::Accepted);
+                self.composer.borrow_mut().cut_finished(accepted);
+                if let Some(reason) = said(&c.outcome) {
+                    self.session
+                        .borrow_mut()
+                        .notify(format!("not cut: {reason}"));
+                }
+            }
+            Tracked::Paste => match (&c.outcome, c.payload) {
+                (Outcome::Accepted, Some(CompletionPayload::Clipboard(text))) => {
+                    self.composer
+                        .borrow_mut()
+                        .handle(ComposerInput::Paste(text.text), now());
+                }
+                (outcome, _) => {
+                    let why = said(outcome).unwrap_or_else(|| "the clipboard sent no text".into());
+                    self.session
+                        .borrow_mut()
+                        .notify(format!("not pasted: {why}"));
+                }
+            },
+            Tracked::Files(token) => {
+                if let (Outcome::Accepted, Some(CompletionPayload::FileSearchPage(page))) =
+                    (&c.outcome, c.payload)
+                {
+                    let paths = page
+                        .rows
+                        .into_iter()
+                        .filter(|r| r.kind != FileKind::Directory)
+                        .map(|r| r.path)
+                        .collect();
+                    self.composer.borrow_mut().files_found(token, paths);
+                } else if let Some(reason) = said(&c.outcome) {
+                    self.session
+                        .borrow_mut()
+                        .notify(format!("files not found: {reason}"));
                 }
             }
             Tracked::Approval => {
@@ -956,7 +1270,8 @@ impl TheoPanel {
                         .notify(format!("the answer was not taken: {reason}"));
                 }
             }
-            Tracked::Stop
+            Tracked::Control
+            | Tracked::Stop
             | Tracked::Retry
             | Tracked::NewConversation
             | Tracked::NewSideChat
@@ -1000,11 +1315,28 @@ impl TheoPanel {
 
     // ---- input ----
 
-    fn on_key(&mut self, input: &KeyInput, cx: &mut Ctx) {
-        let Some(event) = event_of(input) else {
+    /// Run a composer control only where the host grants its capability; a
+    /// panel never offers what the host cannot do.
+    fn control(
+        &mut self,
+        capability: &'static str,
+        cx: &mut Ctx,
+        run: impl FnOnce(&mut Self, &mut Ctx),
+    ) {
+        if !self.bound() || !cx.capabilities().has(&Capability::new(capability)) {
+            self.session
+                .borrow_mut()
+                .notify("the host does not offer this here");
             return;
-        };
+        }
+        run(self, cx);
+    }
+
+    fn on_key(&mut self, input: &KeyInput, cx: &mut Ctx) {
         if self.kind == Kind::Side && !self.bound() {
+            let Some(event) = event_of(input) else {
+                return;
+            };
             let last = self.rows().len().saturating_sub(1);
             match event.code {
                 KeyCode::Up => self.choice = self.choice.saturating_sub(1),
@@ -1014,21 +1346,41 @@ impl TheoPanel {
             }
             return;
         }
+        let mods = input.mods();
         // Alt+[ and Alt+] select the previous and the next branch of the thread.
-        if input.mods().contains(Mods::ALT) {
+        if mods.contains(Mods::ALT) {
             match input.key() {
                 Key::Char('[') => return self.branch(-1, cx),
                 Key::Char(']') => return self.branch(1, cx),
                 _ => {}
             }
         }
-        let (_, action) = self.session.borrow_mut().key(event);
-        if let Some(action) = action {
-            self.act(action, cx);
+        // `y` and `n` answer a waiting approval while nothing is typed; they
+        // are checked before the composer so they are never taken as text.
+        if let Key::Char(c) = input.key()
+            && !mods.intersects(Mods::CTRL | Mods::CMD | Mods::ALT)
+            && self.answers_approval(c)
+        {
+            return self.approve(c == 'y', cx);
+        }
+        if self.compose(ComposerInput::Key(*input), cx) {
+            return;
+        }
+        // The keys the composer left: the run's and the transcript's.
+        match (input.key(), mods.contains(Mods::CTRL)) {
+            (Key::Esc, _) => self.escape(cx),
+            (Key::Char('c'), true) => self.interrupt(cx),
+            (Key::Tab, _) => {}
+            _ => {
+                if let Some(event) = event_of(input) {
+                    self.session.borrow_mut().transcript_key(event);
+                }
+            }
         }
     }
 
-    fn on_pointer(&mut self, x: i32, y: i32, kind: PointerKind, clicks: u8, cx: &mut Ctx) {
+    fn on_pointer(&mut self, p: PanelPointer, cx: &mut Ctx) {
+        let (x, y, kind, clicks) = (p.x, p.y, p.kind, p.clicks);
         if self.kind == Kind::Side && !self.bound() {
             if let PointerKind::Down(theorem_workbench_core::Button::Left) = kind
                 && x >= 0
@@ -1039,6 +1391,27 @@ impl TheoPanel {
                 self.choose_row(row, cx);
             }
             return;
+        }
+        // The composer takes a pointer over its cells, and a drag it began
+        // wherever it goes. It works in frame cells.
+        let area = self.area.get();
+        let (fx, fy) = (x + i32::from(area.x), y + i32::from(area.y));
+        let over = {
+            let r = self.composer_area.get();
+            fx >= i32::from(r.x)
+                && fx < i32::from(r.right())
+                && fy >= i32::from(r.y)
+                && fy < i32::from(r.bottom())
+        };
+        let dragging = self.composer.borrow().is_dragging();
+        if over || (dragging && !matches!(kind, PointerKind::Down(_))) {
+            let framed = PanelPointer { x: fx, y: fy, ..p };
+            if self.compose(ComposerInput::Pointer(framed), cx) {
+                return;
+            }
+            if over && !matches!(kind, PointerKind::Wheel { .. }) {
+                return;
+            }
         }
         match kind {
             PointerKind::Wheel { dy, .. } => {
@@ -1133,29 +1506,27 @@ impl Panel for TheoPanel {
                 if self.kind == Kind::Side && !self.bound() {
                     return;
                 }
-                let approval_key = text == "y" || text == "n";
-                let answers = approval_key
-                    && self.owner.approval.is_some()
-                    && self.session.borrow().input.value().is_empty();
-                if answers {
-                    self.approve(text == "y", cx);
-                } else {
-                    self.session.borrow_mut().paste(&text);
+                let mut chars = text.chars();
+                match (chars.next(), chars.next()) {
+                    (Some(c), None) if self.answers_approval(c) => self.approve(c == 'y', cx),
+                    _ => {
+                        self.compose(ComposerInput::Text(text), cx);
+                    }
                 }
             }
             PanelMsg::Paste(text) => {
                 if self.kind == Kind::Main || self.bound() {
-                    self.session.borrow_mut().paste(&text);
+                    self.compose(ComposerInput::Paste(text), cx);
                 }
             }
-            // A finished composition is typed text; the preedit is not drawn.
-            PanelMsg::Composition(Composition::End { text }) if !text.is_empty() => {
+            PanelMsg::Composition(c) => {
                 if self.kind == Kind::Main || self.bound() {
-                    self.session.borrow_mut().paste(&text);
+                    self.compose(ComposerInput::Composition(c), cx);
                 }
             }
-            PanelMsg::Composition(_) => {}
-            PanelMsg::Pointer(p) => self.on_pointer(p.x, p.y, p.kind, p.clicks, cx),
+            PanelMsg::Motion { reduced } => self.composer.borrow_mut().set_reduced_motion(reduced),
+            PanelMsg::Focus(focused) => self.composer.borrow_mut().set_window_focused(focused),
+            PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Completion(c) => self.completed(c),
             PanelMsg::Host(HostMessage::ConversationSnapshot {
                 resource: ResourceRef::Conversation { project, thread },
@@ -1163,6 +1534,26 @@ impl Panel for TheoPanel {
                 snapshot,
                 ..
             }) => self.adopt(&project, &thread, revision, &snapshot),
+            PanelMsg::Host(HostMessage::ConversationAttachments {
+                resource: ResourceRef::Conversation { thread, .. },
+                attachments,
+                ..
+            }) if thread == self.thread => {
+                self.composer.borrow_mut().set_attachments(attachments);
+            }
+            PanelMsg::Host(HostMessage::ConversationModels {
+                resource: ResourceRef::Conversation { thread, .. },
+                models,
+                selected,
+                effort,
+                efforts,
+                ..
+            }) if thread == self.thread => {
+                self.models = models;
+                self.selected_model = selected;
+                self.effort = effort;
+                self.efforts = efforts;
+            }
             PanelMsg::Action(id) => match id.as_str() {
                 "theo.stop" => self.stop(cx),
                 "approval.allow" => self.approve(true, cx),
@@ -1170,13 +1561,50 @@ impl Panel for TheoPanel {
                 "theo.new" => self.new_conversation(cx),
                 "theo.retry" => self.retry(cx),
                 "theo.edit" => self.begin_edit(),
+                // The same Enter the person presses: the composer decides whether
+                // the draft goes, and how.
                 "theo.send" => {
-                    let text = self.session.borrow().input.value().trim().to_owned();
-                    if !text.is_empty() {
-                        self.session.borrow_mut().input.reset();
-                        self.submit(text, cx);
-                    }
+                    self.compose(
+                        ComposerInput::Key(KeyInput::new(Key::Enter, Mods::empty())),
+                        cx,
+                    );
                 }
+                "theo.attach" => self.control("conversation.attach", cx, |me, cx| {
+                    let response = me.composer.borrow_mut().attach();
+                    me.run(response, cx);
+                }),
+                "theo.model" => self.control("conversation.model", cx, |me, cx| {
+                    if me.models.is_empty() {
+                        me.session.borrow_mut().notify("loading the models");
+                        me.emit(cx, EffectBody::ConversationModels, Tracked::Control);
+                    } else {
+                        let at = me
+                            .models
+                            .iter()
+                            .position(|m| Some(&m.model_ref) == me.selected_model.as_ref())
+                            .unwrap_or(0);
+                        me.composer.borrow_mut().open_models(me.models.clone(), at);
+                    }
+                }),
+                "theo.effort" => self.control("conversation.model", cx, |me, cx| {
+                    if me.efforts.is_empty() {
+                        me.session
+                            .borrow_mut()
+                            .notify("this model has no effort levels");
+                        return;
+                    }
+                    let at = me
+                        .efforts
+                        .iter()
+                        .position(|e| Some(e) == me.effort.as_ref())
+                        .map_or(0, |i| i + 1);
+                    let level = me.efforts[at % me.efforts.len()].clone();
+                    me.emit(
+                        cx,
+                        EffectBody::ConversationSetEffort(SetEffort { level }),
+                        Tracked::Control,
+                    );
+                }),
                 "theo.switch" => self
                     .session
                     .borrow_mut()
@@ -1210,9 +1638,15 @@ impl Panel for TheoPanel {
                     cx.invalidate();
                 }
             }
+            // A name search is for the workspace, not for the conversation this
+            // panel is bound to, so the core hands its answer over as cached;
+            // it is the answer to the `@` popup all the same.
+            PanelMsg::Cached(c) => {
+                if matches!(self.tracked.get(&c.effect), Some(Tracked::Files(_))) {
+                    self.completed(c);
+                }
+            }
             PanelMsg::Resize { .. }
-            | PanelMsg::Focus(_)
-            | PanelMsg::Cached(_)
             | PanelMsg::Host(_)
             | PanelMsg::Workspace(_)
             | PanelMsg::TerminalOutput { .. }
@@ -1250,11 +1684,20 @@ impl Panel for TheoPanel {
         }
         let mut session = self.session.borrow_mut();
         let referenced = !session.snapshot.references.is_empty();
+        // The box grows with the draft, to a bounded share of the panel, and
+        // never takes the transcript's last three rows.
+        let room = area.height.saturating_sub(1 + u16::from(referenced) + 3);
+        let wanted = {
+            let composer = self.composer.borrow();
+            // Two borders and a margin each side.
+            composer.desired_height(area.width.saturating_sub(4), MAX_TEXT_ROWS) + 2
+        };
+        let box_height = wanted.min(room).min(area.height / 2).max(4.min(room));
         let [body, status, references, prompt] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(1),
             Constraint::Length(u16::from(referenced)),
-            Constraint::Length(3),
+            Constraint::Length(box_height),
         ])
         .areas(area);
         session.draw_body(buf, body);
@@ -1279,12 +1722,41 @@ impl Panel for TheoPanel {
         if referenced {
             session.draw_references(buf, references);
         }
-        let at = session.draw_prompt(buf, prompt, cx.focused);
-        if cx.focused
-            && let Some(cell) = buf.cell_mut(at)
-        {
-            cell.modifier.insert(Modifier::REVERSED);
+        // The prompt is the composer's, in the drawer's rounded box. The
+        // caret is the root's overlay (`Panel::caret`), never a cell of this grid.
+        let block = Block::new()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Rounded)
+            .border_style(Style::new().fg(if cx.focused { p.sage } else { p.line }));
+        let inner = block.inner(prompt);
+        block.render(prompt, buf);
+        let inner = inner.inner(ratatui::layout::Margin::new(1, 0));
+        self.composer_area.set(inner);
+        let mut composer = self.composer.borrow_mut();
+        composer.set_focused(cx.focused);
+        composer.resize(inner);
+        composer.draw(inner, buf, cx.theme);
+    }
+
+    /// Where the text caret is, for the root's hollow overlay. The root times
+    /// the blink; this says only that it may.
+    fn caret(&self, area: Rect) -> Option<Caret> {
+        if self.kind == Kind::Side && !self.bound() {
+            return None;
         }
+        let at = self.composer.borrow().caret(now());
+        let (x, y) = at.cell?;
+        let phase = match at.phase {
+            theorem_workbench_composer::CaretPhase::Steady => CaretPhase::Steady,
+            theorem_workbench_composer::CaretPhase::Blinking => CaretPhase::Blinking,
+            theorem_workbench_composer::CaretPhase::Hidden => return None,
+        };
+        (area.contains(Position::new(x, y))).then_some(Caret {
+            x,
+            y,
+            shape: CaretShape::HollowBlock,
+            phase,
+        })
     }
 
     fn semantics(&self, area: Rect, cx: &ViewCtx) -> Vec<Node> {
@@ -1552,35 +2024,50 @@ impl Panel for TheoPanel {
         } else {
             let _ = waiting;
         }
+        // The composer's controls exist only where the host grants them.
+        let granted = |word: &'static str| cx.capabilities().has(&Capability::new(word));
+        if granted("conversation.attach") {
+            buttons.push(control(
+                "attach",
+                "Attach files",
+                "theo.attach",
+                self.bound(),
+                "Not connected to a conversation",
+            ));
+        }
+        if granted("conversation.model") {
+            buttons.push(control(
+                "model",
+                "Choose model",
+                "theo.model",
+                self.bound(),
+                "Not connected to a conversation",
+            ));
+            if !self.efforts.is_empty() {
+                buttons.push(control(
+                    "effort",
+                    "Set effort",
+                    "theo.effort",
+                    self.bound(),
+                    "Not connected to a conversation",
+                ));
+            }
+        }
         bar.children = buttons.iter().map(|b| b.id.clone()).collect();
         children.push(bar.id.clone());
         nodes.push(bar);
         nodes.append(&mut buttons);
 
-        // The composer: the field the person types a message in.
-        let prompt = Rect::new(area.x, area.bottom().saturating_sub(3), area.width, 3);
-        let mut composer = Node::new(
-            "composer",
-            Role::TextBox,
-            match self.kind {
-                Kind::Main => "Message to Theo",
-                Kind::Side => "Message to the side chat",
-            },
-            prompt,
-        );
-        composer.state.focused = cx.focused;
-        let draft = session.input.value();
-        composer.state.description = Some(if draft.is_empty() {
-            if working {
-                "Enter sends it to the working run".to_owned()
-            } else {
-                "Enter sends it as a new turn".to_owned()
-            }
-        } else {
-            draft.to_owned()
-        });
-        children.push(composer.id.clone());
-        nodes.push(composer);
+        // The composer: its own nodes (one text field, the chips, the popup,
+        // the footer), joined here. The draft is the field's value and nowhere
+        // else.
+        let mut composer_nodes = self.composer.borrow().semantics(self.composer_area.get());
+        if !composer_nodes.is_empty() {
+            let field = composer_nodes.remove(0);
+            children.push(field.id.clone());
+            nodes.push(field);
+            nodes.append(&mut composer_nodes);
+        }
 
         root.children = children;
         let mut out = vec![root];
@@ -1616,7 +2103,7 @@ impl Panel for TheoPanel {
             "anchor": anchor,
             "expanded": session.disclosed.iter().collect::<Vec<_>>(),
             "allOutput": session.expanded,
-            "draft": session.input.value(),
+            "draft": self.composer.borrow().serialize(),
         })
     }
 
@@ -1751,7 +2238,7 @@ pub(crate) fn register(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use theorem_workbench_core::{Actor, PanelFactories, PanelInstanceId, Theme};
+    use theorem_workbench_core::{Actor, Composition, PanelFactories, PanelInstanceId, Theme};
     use theorem_workbench_core::{
         EffectKind, Model, Owner, builtin,
         keys::{KeyTable, Overrides, Platform},
@@ -1765,6 +2252,19 @@ mod tests {
     const PROJECT: &str = "p1";
 
     fn model(directory: &Directory) -> Model {
+        model_with(
+            directory,
+            &[
+                "files",
+                "conversation",
+                "conversation.side",
+                "conversation.attach",
+                "conversation.model",
+            ],
+        )
+    }
+
+    fn model_with(directory: &Directory, caps: &[&'static str]) -> Model {
         let mut factories = PanelFactories::new();
         register(&mut factories, directory);
         theorem_workbench_panels::register(&mut factories);
@@ -1776,7 +2276,7 @@ mod tests {
             registry,
             factories,
             keys,
-            Capabilities::of(["files", "conversation", "conversation.side"]),
+            Capabilities::of(caps.iter().copied()),
             dock,
         );
         update(
@@ -1868,6 +2368,10 @@ mod tests {
 
         fn typed(&mut self, text: &str) {
             self.send(Msg::Text(text.to_owned()));
+        }
+
+        fn typed_effects(&mut self, text: &str) -> Vec<Effect> {
+            self.send(Msg::Text(text.to_owned()))
         }
 
         fn enter(&mut self) -> Vec<Effect> {
@@ -2078,7 +2582,7 @@ mod tests {
             drawn.contains("not sent: The conversation cannot take a message"),
             "{drawn}"
         );
-        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"].clone();
+        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"]["text"].clone();
         assert_eq!(draft, json!("do the thing"));
     }
 
@@ -2106,7 +2610,7 @@ mod tests {
         let again = conversation_effects(&r.seen[before..]);
         assert!(again.is_empty(), "{again:?}");
         // The draft is not put back either: it may well have gone.
-        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"].clone();
+        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"]["text"].clone();
         assert_eq!(draft, json!(""));
     }
 
@@ -2288,8 +2792,8 @@ mod tests {
         let fx = r.send(Msg::Paste("rm -rf /\nsudo reboot\n".into()));
         // Nothing left the panel: no terminal write, no turn.
         assert!(fx.is_empty(), "{fx:?}");
-        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"].clone();
-        assert_eq!(draft, json!("rm -rf / sudo reboot "));
+        let draft = r.m.panel(&r.id()).unwrap().serialize()["draft"]["text"].clone();
+        assert_eq!(draft, json!("rm -rf /\nsudo reboot\n"));
         // Only the person's Enter sends it, and as a conversation message.
         let fx = r.enter();
         assert_eq!(fx.len(), 1);
@@ -2533,7 +3037,7 @@ mod tests {
         r.typed("half a thought");
         let saved = r.m.document();
         let before = r.m.panel(&r.id()).unwrap().serialize();
-        assert_eq!(before["draft"], json!("half a thought"));
+        assert_eq!(before["draft"]["text"], json!("half a thought"));
         assert!(before["anchor"].is_string(), "{before}");
         assert_eq!(before["conversation"], json!("t1"));
 
@@ -2733,5 +3237,587 @@ mod tests {
         let theo = r.m.panel(&r.id()).unwrap();
         // Its printable keys come to it as typed text for the composer.
         assert!(theo.text_entry());
+    }
+
+    // ---- the composer ----
+
+    fn send_effect(fx: &[Effect]) -> &ConversationSend {
+        match fx.iter().map(|e| &e.body).next() {
+            Some(EffectBody::ConversationSend(send)) => send,
+            other => panic!("expected a send, got {other:?}"),
+        }
+    }
+
+    fn shift_enter(r: &mut Rig) -> Vec<Effect> {
+        r.key(Key::Enter, Mods::SHIFT)
+    }
+
+    fn draft_json(r: &Rig) -> Value {
+        r.m.panel(&r.id()).unwrap().serialize()["draft"].clone()
+    }
+
+    fn attachments_msg(thread: &str, list: Value) -> Msg {
+        Msg::Host(HostMessage::ConversationAttachments {
+            resource: ResourceRef::Conversation {
+                project: PROJECT.into(),
+                thread: thread.into(),
+            },
+            conversation_id: thread.into(),
+            attachments: serde_json::from_value(list).unwrap(),
+        })
+    }
+
+    #[test]
+    fn a_three_line_draft_sends_with_its_newlines_and_shift_enter_does_not_send() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("first");
+        assert!(shift_enter(&mut r).is_empty(), "Shift+Enter is a newline");
+        r.typed("second");
+        assert!(shift_enter(&mut r).is_empty());
+        r.typed("third");
+        assert_eq!(draft_json(&r)["text"], json!("first\nsecond\nthird"));
+        let fx = r.enter();
+        assert_eq!(fx.len(), 1, "{fx:?}");
+        assert_eq!(send_effect(&fx).text, "first\nsecond\nthird");
+        assert_eq!(draft_json(&r)["text"], json!(""), "the draft left with it");
+    }
+
+    #[test]
+    fn the_composer_grows_with_the_draft_and_keeps_the_prompt_glyph_and_box() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let one = r.drawn();
+        assert!(
+            one.contains('\u{256D}') && one.contains('\u{276F}'),
+            "{one}"
+        );
+        r.typed("a");
+        shift_enter(&mut r);
+        r.typed("b");
+        shift_enter(&mut r);
+        r.typed("c");
+        let three = r.drawn();
+        // The box runs from its top border to its bottom one.
+        let height = |s: &str| {
+            let top = s.lines().position(|l| l.contains('\u{256D}')).unwrap();
+            let bottom = s.lines().position(|l| l.contains('\u{2570}')).unwrap();
+            bottom - top
+        };
+        assert_eq!(height(&three), height(&one) + 2, "{three}");
+        // All three lines are on show.
+        assert!(three.contains("\u{276F} a"), "{three}");
+        let has = |word: &str| {
+            three
+                .lines()
+                .any(|l| l.split('\u{2502}').any(|p| p.trim() == word))
+        };
+        assert!(has("b") && has("c"), "{three}");
+    }
+
+    #[test]
+    fn enter_during_a_composition_does_not_send_and_the_commit_arrives_once() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(Msg::Composition(Composition::Start));
+        r.send(Msg::Composition(Composition::Update { text: "ni".into() }));
+        let fx = r.enter();
+        assert!(fx.is_empty(), "{fx:?}");
+        r.send(Msg::Composition(Composition::End {
+            text: "\u{4F60}".into(),
+        }));
+        r.typed("\u{4F60}");
+        assert_eq!(draft_json(&r)["text"], json!("\u{4F60}"));
+        let fx = r.enter();
+        assert_eq!(send_effect(&fx).text, "\u{4F60}");
+    }
+
+    #[test]
+    fn attachment_ids_and_references_go_out_on_the_send() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(attachments_msg(
+            "t1",
+            json!([
+                {"id": "a1", "name": "notes.md", "contentType": "text/markdown", "state": "ready"},
+                {"id": "a2", "name": "bad.exe", "state": "refused", "reason": "not allowed"}
+            ]),
+        ));
+        r.typed("see @src/ma");
+        // The popup asked the files owner by name.
+        let ask = r
+            .seen
+            .iter()
+            .rev()
+            .find(|e| e.kind() == EffectKind::FilesSearch)
+            .cloned()
+            .expect("a name search went out");
+        let EffectBody::FilesSearch(search) = &ask.body else {
+            panic!()
+        };
+        assert_eq!(search.query, "src/ma");
+        r.send(Msg::Completion(
+            Completion::new(ask.id, ask.resource.clone(), Outcome::Accepted).with_payload(
+                CompletionPayload::FileSearchPage(
+                    theorem_workbench_core::completion::FileSearchPage {
+                        rows: vec![theorem_workbench_core::completion::FileSearchRow {
+                            path: "src/main.rs".into(),
+                            name: "main.rs".into(),
+                            kind: FileKind::File,
+                            size: None,
+                            modified: None,
+                            ignored: None,
+                            hidden: None,
+                        }],
+                        partial: false,
+                        next: None,
+                    },
+                ),
+            ),
+        ));
+        let fx = r.enter();
+        assert!(fx.is_empty(), "Enter inserts the chosen file: {fx:?}");
+        assert_eq!(draft_json(&r)["text"], json!("see @src/main.rs "));
+        let fx = r.enter();
+        let send = send_effect(&fx);
+        assert_eq!(send.text, "see @src/main.rs");
+        assert_eq!(
+            send.attachments
+                .iter()
+                .map(|a| a.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["a1"],
+            "only a ready attachment goes"
+        );
+        assert_eq!(send.references.len(), 1);
+        assert_eq!(send.references[0].path, "src/main.rs");
+    }
+
+    #[test]
+    fn a_working_run_takes_steering_and_the_policy_says_so() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"run": {"state": "streaming", "runId": "run-1"}}),
+        );
+        r.typed("also check the tests");
+        assert!(r.drawn().contains("steers"), "{}", r.drawn());
+        let fx = r.enter();
+        assert_eq!(fx[0].kind(), EffectKind::ConversationInput);
+        // Files cannot ride along on input: the draft stays and says why.
+        r.typed("x @a");
+        r.send(attachments_msg(
+            "t1",
+            json!([{"id": "a1", "name": "n.md", "state": "ready"}]),
+        ));
+        r.show(
+            2,
+            "t1",
+            json!({"run": {"state": "streaming", "runId": "run-1"}}),
+        );
+        let fx = r.enter();
+        assert!(fx.is_empty(), "{fx:?}");
+        assert!(!draft_json(&r)["text"].as_str().unwrap().is_empty());
+    }
+
+    #[test]
+    fn an_edit_sends_as_an_edit_and_esc_leaves_it() {
+        let mut r = rig();
+        r.show(1, "t1", json!({"messages": [user("m1", "first draft")]}));
+        r.send(Msg::Action {
+            id: ActionId::new("theo.edit"),
+            actor: Actor::Human,
+        });
+        assert_eq!(draft_json(&r)["text"], json!("first draft"));
+        r.typed("!");
+        let fx = r.enter();
+        let EffectBody::ConversationEdit(edit) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(
+            (edit.message_id.as_str(), edit.text.as_str()),
+            ("m1", "first draft!")
+        );
+        // Esc on an edit leaves it without sending.
+        r.send(Msg::Action {
+            id: ActionId::new("theo.edit"),
+            actor: Actor::Human,
+        });
+        r.typed("changed");
+        let before = r.seen.len();
+        r.key(Key::Esc, Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!(""));
+        assert!(conversation_effects(&r.seen[before..]).is_empty());
+    }
+
+    #[test]
+    fn a_refused_multiline_send_with_files_comes_back_whole() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.send(attachments_msg(
+            "t1",
+            json!([{"id": "a1", "name": "n.md", "state": "ready"}]),
+        ));
+        r.typed("one");
+        shift_enter(&mut r);
+        r.typed("two");
+        let fx = r.enter();
+        r.send(Msg::Completion(Completion::new(
+            fx[0].id,
+            fx[0].resource.clone(),
+            Outcome::Refused {
+                code: "unavailable".into(),
+                reason: "no".into(),
+            },
+        )));
+        let draft = draft_json(&r);
+        assert_eq!(draft["text"], json!("one\ntwo"));
+        // The attachment is back in the draft, so a second Enter sends it again.
+        let fx = r.enter();
+        let send = send_effect(&fx);
+        assert_eq!(send.attachments.len(), 1, "{send:?}");
+    }
+
+    #[test]
+    fn approval_keys_answer_only_while_nothing_is_typed() {
+        let approval = json!({
+            "run": {"state": "waiting_approval", "runId": "run-1"},
+            "approval": {"runId": "run-1", "approvalId": "ap-1", "toolName": "shell", "summary": "ls"}
+        });
+        // Nothing typed: y answers, as a key and as text.
+        let mut r = rig();
+        r.show(1, "t1", approval.clone());
+        let fx = r.key(Key::Char('y'), Mods::NONE);
+        assert_eq!(fx[0].kind(), EffectKind::ConversationApproval);
+        assert_eq!(draft_json(&r)["text"], json!(""), "never taken as text");
+        let mut r = rig();
+        r.show(1, "t1", approval.clone());
+        let fx = r.typed_effects("n");
+        assert_eq!(fx[0].kind(), EffectKind::ConversationApproval);
+        assert_eq!(draft_json(&r)["text"], json!(""));
+        // Typing: the same letters are text.
+        let mut r = rig();
+        r.show(1, "t1", approval.clone());
+        r.typed("ok");
+        let fx = r.key(Key::Char('y'), Mods::NONE);
+        assert!(fx.is_empty(), "{fx:?}");
+        let fx = r.typed_effects("n");
+        assert!(fx.is_empty(), "{fx:?}");
+        assert_eq!(draft_json(&r)["text"], json!("okyn"));
+        // Other letters with nothing typed are text too.
+        let mut r = rig();
+        r.show(1, "t1", approval);
+        r.key(Key::Char('x'), Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!("x"));
+        // No approval waiting: y is text.
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.key(Key::Char('y'), Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!("y"));
+    }
+
+    #[test]
+    fn up_and_down_walk_the_prompts_sent_in_this_session() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("one");
+        r.enter();
+        r.typed("two");
+        r.enter();
+        r.key(Key::Up, Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!("two"));
+        r.key(Key::Up, Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!("one"));
+        r.key(Key::Down, Mods::NONE);
+        r.key(Key::Down, Mods::NONE);
+        assert_eq!(draft_json(&r)["text"], json!(""));
+    }
+
+    #[test]
+    fn the_draft_selection_and_undo_survive_a_theme_change_and_a_layout_move() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("alpha beta");
+        r.key(Key::Char('a'), Mods::CMD);
+        let before = draft_json(&r);
+        assert_eq!(
+            (before["anchor"].as_u64(), before["caret"].as_u64()),
+            (Some(0), Some(10))
+        );
+        // A new theme, a resize, a move of the panel to another group: the panel
+        // is not rebuilt for any of them.
+        let mut other = Theme::plain();
+        other.text = Style::new().fg(ratatui::style::Color::Red);
+        let area = Rect::new(0, 0, 160, 50);
+        let mut buf = Buffer::empty(area);
+        theorem_workbench_core::view(&r.m, area, &mut buf, &other);
+        r.send(Msg::Resize {
+            area: Rect::new(0, 0, 120, 40),
+            metrics: CellMetrics::new(8.0, 16.0),
+        });
+        let panel = r.id();
+        let to =
+            r.m.frame()
+                .unwrap()
+                .groups
+                .iter()
+                .filter(|g| g.role != theorem_workbench_dock::Role::Main)
+                .map(|g| g.id)
+                .next()
+                .expect("another group");
+        r.send(Msg::Dock(theorem_workbench_core::msg::DockMsg::MoveTab {
+            panel: panel.clone(),
+            to,
+            index: None,
+        }));
+        assert_eq!(r.id(), panel, "the same panel instance");
+        assert_eq!(draft_json(&r), before, "the draft and its selection");
+        // Undo history is still there: typing over the selection, then undo.
+        r.typed("Z");
+        assert_eq!(draft_json(&r)["text"], json!("Z"));
+        r.key(Key::Char('z'), Mods::CMD);
+        assert_eq!(draft_json(&r)["text"], json!("alpha beta"));
+    }
+
+    #[test]
+    fn a_saved_draft_comes_back_with_its_caret_and_the_old_plain_string_still_restores() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("one");
+        shift_enter(&mut r);
+        r.typed("two");
+        r.key(Key::Left, Mods::NONE);
+        let saved = r.m.document();
+        let before = draft_json(&r);
+        let directory = Directory::default();
+        let mut again = model(&directory);
+        again.restore(saved).expect("restores");
+        let id = again
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "theo")
+            .map(|(id, _)| id.clone())
+            .unwrap();
+        assert_eq!(again.panel(&id).unwrap().serialize()["draft"], before);
+        let old = TheoPanel::new(
+            Kind::Main,
+            Directory::default(),
+            &json!({"draft": "an old draft", "conversation": "t1", "project": "p1"}),
+        );
+        assert_eq!(old.serialize()["draft"]["text"], json!("an old draft"));
+    }
+
+    #[test]
+    fn the_caret_is_reported_for_the_root_and_never_drawn_as_a_character() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("hi");
+        let drawn = r.drawn();
+        let caret = r.m.caret().expect("the composer owns the caret");
+        assert_eq!(caret.shape, CaretShape::HollowBlock);
+        let line = drawn.lines().nth(usize::from(caret.y)).unwrap();
+        assert!(line.contains("hi"), "{line}");
+        // Two cells after the prompt glyph and the draft: nothing stands in the
+        // caret's cell but the grid's own blank.
+        let cell: String = line.chars().skip(usize::from(caret.x)).take(1).collect();
+        assert!(cell.trim().is_empty(), "{cell:?} in {line:?}");
+        // Another panel owning the keyboard hides it.
+        r.send(Msg::Focus(false));
+        assert!(r.m.caret().is_none());
+    }
+
+    #[test]
+    fn attach_model_and_effort_are_offered_only_where_the_host_grants_them() {
+        let granted = rig();
+        assert!(granted.node("Attach files").is_some());
+        assert!(granted.node("Choose model").is_some());
+        let directory = Directory::default();
+        let mut m = model_with(&directory, &["files", "conversation"]);
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("theo.focus"),
+                actor: Actor::Human,
+            },
+        );
+        let tree = semantics(&m);
+        assert!(!tree.nodes.iter().any(|n| n.name == "Attach files"));
+        assert!(!tree.nodes.iter().any(|n| n.name == "Choose model"));
+    }
+
+    #[test]
+    fn attach_model_and_effort_leave_as_the_owners_effects() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let fx = r.send(Msg::Action {
+            id: ActionId::new("theo.attach"),
+            actor: Actor::Human,
+        });
+        assert!(
+            fx.iter()
+                .any(|e| e.kind() == EffectKind::ConversationAttachPick),
+            "{fx:?}"
+        );
+        // The models arrive; the footer names the selected one and its effort.
+        r.send(Msg::Host(HostMessage::ConversationModels {
+            resource: ResourceRef::Conversation {
+                project: PROJECT.into(),
+                thread: "t1".into(),
+            },
+            conversation_id: "t1".into(),
+            models: vec![
+                serde_json::from_value(json!({"ref": "m-a", "label": "Alpha"})).unwrap(),
+                serde_json::from_value(json!({"ref": "m-b", "label": "Beta"})).unwrap(),
+            ],
+            selected: Some("m-a".into()),
+            effort: Some("low".into()),
+            efforts: vec!["low".into(), "high".into()],
+        }));
+        assert!(r.drawn().contains("Alpha"), "{}", r.drawn());
+        let fx = r.send(Msg::Action {
+            id: ActionId::new("theo.effort"),
+            actor: Actor::Human,
+        });
+        let EffectBody::ConversationSetEffort(e) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(e.level, "high");
+        // theo.model opens the list in the composer; choosing sends the ref.
+        r.send(Msg::Action {
+            id: ActionId::new("theo.model"),
+            actor: Actor::Human,
+        });
+        r.key(Key::Down, Mods::NONE);
+        let fx = r.enter();
+        let EffectBody::ConversationSetModel(m) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(m.model_ref, "m-b");
+    }
+
+    #[test]
+    fn the_context_percentage_comes_from_the_snapshot() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"context": {"usedTokens": 1200, "windowTokens": 8000}}),
+        );
+        assert!(r.drawn().contains("15% context"), "{}", r.drawn());
+    }
+
+    #[test]
+    fn copy_cut_and_paste_leave_as_the_cores_clipboard_effects() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("cut me");
+        r.key(Key::Char('a'), Mods::CMD);
+        let fx = r.key(Key::Char('x'), Mods::CMD);
+        assert_eq!(fx[0].kind(), EffectKind::ClipboardWrite);
+        assert_eq!(
+            draft_json(&r)["text"],
+            json!("cut me"),
+            "not before the write"
+        );
+        r.send(Msg::Completion(Completion::new(
+            fx[0].id,
+            fx[0].resource.clone(),
+            Outcome::Accepted,
+        )));
+        assert_eq!(draft_json(&r)["text"], json!(""));
+        let fx = r.key(Key::Char('v'), Mods::CMD);
+        assert_eq!(fx[0].kind(), EffectKind::ClipboardRead);
+        r.send(Msg::Completion(
+            Completion::new(fx[0].id, fx[0].resource.clone(), Outcome::Accepted).with_payload(
+                CompletionPayload::Clipboard(theorem_workbench_core::completion::ClipboardText {
+                    text: "pasted\nlines".into(),
+                }),
+            ),
+        ));
+        assert_eq!(draft_json(&r)["text"], json!("pasted\nlines"));
+    }
+
+    #[test]
+    fn transcript_keys_and_the_runs_keys_reach_the_panel_not_the_draft() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"run": {"state": "streaming", "runId": "run-1"}}),
+        );
+        r.typed("keep");
+        // Ctrl+C with nothing selected stops the run; the draft is untouched.
+        let fx = r.key(Key::Char('c'), Mods::CTRL);
+        assert_eq!(fx[0].kind(), EffectKind::ConversationCancel);
+        assert_eq!(draft_json(&r)["text"], json!("keep"));
+        // Esc stops it too, as the footer says.
+        let fx = r.key(Key::Esc, Mods::NONE);
+        assert_eq!(fx[0].kind(), EffectKind::ConversationCancel);
+        // Idle: Ctrl+C clears the draft.
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("gone");
+        r.key(Key::Char('c'), Mods::CTRL);
+        assert_eq!(draft_json(&r)["text"], json!(""));
+        // Page keys and Ctrl+O are not text.
+        r.typed("x");
+        r.key(Key::PageUp, Mods::NONE);
+        r.key(Key::Char('o'), Mods::CTRL);
+        assert_eq!(draft_json(&r)["text"], json!("x"));
+    }
+
+    #[test]
+    fn slash_commands_are_the_drawers_words_and_never_sent() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("/new");
+        let fx = r.enter();
+        assert_eq!(fx[0].kind(), EffectKind::ConversationCreate);
+        r.typed("/nope");
+        let fx = r.enter();
+        assert!(fx.is_empty(), "{fx:?}");
+        assert!(
+            r.drawn().contains("/nope is not a command"),
+            "{}",
+            r.drawn()
+        );
+    }
+
+    #[test]
+    fn a_blocked_composer_sends_nothing_and_says_why() {
+        let mut r = rig();
+        // No snapshot yet: the panel is not connected to a conversation.
+        r.typed("hello");
+        let fx = r.enter();
+        assert!(conversation_effects(&fx).is_empty(), "{fx:?}");
+        assert!(r.drawn().contains("connecting"), "{}", r.drawn());
+    }
+
+    #[test]
+    fn the_semantic_tree_has_one_text_field_and_no_plain_copy_of_the_draft() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        r.typed("secret words");
+        let tree = r.tree();
+        let fields: Vec<_> = tree
+            .nodes
+            .iter()
+            .filter(|n| n.role == Role::TextBox)
+            .collect();
+        assert_eq!(fields.len(), 1);
+        let copies = tree
+            .nodes
+            .iter()
+            .filter(|n| {
+                n.role != Role::TextBox
+                    && (n
+                        .state
+                        .description
+                        .as_deref()
+                        .is_some_and(|d| d.contains("secret words"))
+                        || n.name.contains("secret words"))
+            })
+            .count();
+        assert_eq!(copies, 0);
     }
 }

@@ -18,6 +18,11 @@ const EVERY_TOOL = [
   'conversation.side',
   'scm.commit.amend',
   'language',
+  'search.query',
+  'diagnostics.subscribe',
+  'run.start',
+  'run.subscribe',
+  'run.list',
 ]
 
 /** What the first stories' host can do: the files owner only, so the picker lists the rest as unavailable. */
@@ -32,6 +37,8 @@ export type Step =
   | { key: string; shift?: boolean; ctrl?: boolean; alt?: boolean }
   | { text: string }
   | { see: string }
+  /** A person's drag, in pixels of the host: mouse down at `from`, moves, mouse up at `to`. */
+  | { drag: { from: [number, number]; to: [number, number] } }
   | { host: (host: FixtureHost) => void }
 
 const mac = () => /Mac/.test(navigator.platform)
@@ -43,6 +50,31 @@ function press(
   target.dispatchEvent(
     new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
   )
+}
+
+function drag(
+  target: HTMLElement,
+  { from, to }: { from: [number, number]; to: [number, number] },
+) {
+  const rect = target.getBoundingClientRect()
+  const at = ([x, y]: [number, number], buttons: number) => ({
+    bubbles: true,
+    cancelable: true,
+    clientX: rect.left + x,
+    clientY: rect.top + y,
+    button: 0,
+    buttons,
+  })
+  target.dispatchEvent(new MouseEvent('mousedown', { ...at(from, 1), detail: 1 }))
+  const steps = 8
+  for (let i = 1; i <= steps; i++) {
+    const point: [number, number] = [
+      from[0] + ((to[0] - from[0]) * i) / steps,
+      from[1] + ((to[1] - from[1]) * i) / steps,
+    ]
+    target.dispatchEvent(new PointerEvent('pointermove', at(point, 1)))
+  }
+  target.dispatchEvent(new PointerEvent('pointerup', at(to, 0)))
 }
 
 function type(input: HTMLTextAreaElement, text: string) {
@@ -148,6 +180,7 @@ function FixtureStory({
           })
         else if ('text' in step) type(input, step.text)
         else if ('see' in step) await seen(feed, step.see)
+        else if ('drag' in step) drag(element, step.drag)
         else step.host(fixture)
         await frames(3)
       }
@@ -324,12 +357,20 @@ const MARKDOWN_OPEN: Step[] = [
 ]
 
 /** The Markdown panel in one of its four modes (Alt+1 to Alt+4) over the same document. */
+/**
+ * The tool group's splitter, dragged left the way a person would: the group is about 43 columns
+ * by default and Split needs 60, and the main page keeps its own minimum.
+ */
+const WIDEN_TOOLS: Step = { drag: { from: [931, 300], to: [720, 300] } }
+
 function MarkdownStory({
   id,
   mode,
+  wide = false,
 }: {
   id: string
   mode: '1' | '2' | '3' | '4'
+  wide?: boolean
 }) {
   return (
     <FixtureStory
@@ -337,7 +378,7 @@ function MarkdownStory({
       width={1280}
       height={700}
       options={{ granted: EVERY_TOOL }}
-      script={[...MARKDOWN_OPEN, { key: mode, alt: true }]}
+      script={[...MARKDOWN_OPEN, ...(wide ? [WIDEN_TOOLS] : []), { key: mode, alt: true }]}
       wait={['Workbench guide']}
     />
   )
@@ -350,10 +391,10 @@ export const WorkbenchMarkdownSourceStory = () => (
   <MarkdownStory id="workbench-markdown-source" mode="2" />
 )
 export const WorkbenchMarkdownSplitStory = () => (
-  <MarkdownStory id="workbench-markdown-split" mode="3" />
+  <MarkdownStory id="workbench-markdown-split" mode="3" wide />
 )
 export const WorkbenchMarkdownPreviewStory = () => (
-  <MarkdownStory id="workbench-markdown-preview" mode="4" />
+  <MarkdownStory id="workbench-markdown-preview" mode="4" wide />
 )
 
 /** `workbench-branches`: a reply with a second branch, switched to with Alt+] through the conversation owner. */
@@ -370,6 +411,95 @@ export function WorkbenchBranchesStory() {
         { see: 'On the other branch' },
       ]}
       wait={['branch 2 of 2']}
+    />
+  )
+}
+
+/** The picker's route to a tool in More tools: its chord, "More tools" and the tool's name typed into the filter, each with Enter. */
+const open = (name: string): Step[] => [
+  { chord: 't' },
+  { text: 'More tools' },
+  { key: 'Enter' },
+  { text: name },
+  { key: 'Enter' },
+]
+
+/** `workbench-search`: a query with matches in two files, one with CJK before the match. */
+export function WorkbenchSearchStory() {
+  return (
+    <FixtureStory
+      id="workbench-search"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL }}
+      script={[
+        ...open('Search'),
+        { see: 'Search' },
+        { text: 'cell' },
+        { key: 'Enter' },
+        { see: 'grid.rs' },
+      ]}
+      wait={['grid.rs', 'guide.md']}
+    />
+  )
+}
+
+/** The Files steps that open the two documents the diagnostics story reports on. */
+const DIAGNOSTICS_OPEN: Step[] = [
+  ...EDITOR_SCRIPT.slice(0, EDITOR_OPEN),
+  { chord: 'e' },
+  { key: 'ArrowUp' },
+  { key: 'Enter' },
+  { see: 'Workbench guide' },
+]
+
+/** `workbench-diagnostics`: two open documents with a finding of each severity. */
+export function WorkbenchDiagnosticsStory() {
+  return (
+    <FixtureStory
+      id="workbench-diagnostics"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL, diagnostics: true }}
+      script={[...DIAGNOSTICS_OPEN, ...open('Diagnostics')]}
+      wait={['Unknown name', 'Add the date']}
+    />
+  )
+}
+
+/** The Tab presses from a fresh Run panel's name field to its output, and `l` for the list. */
+const RUN_LIST: Step[] = [
+  ...open('Run output'),
+  { see: 'Run' },
+  { key: 'Tab' },
+  { key: 'Tab' },
+  { key: 'l' },
+]
+
+/** `workbench-run`: a finished run listed by the host, attached, with colour in its output. */
+export function WorkbenchRunStory() {
+  return (
+    <FixtureStory
+      id="workbench-run"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL }}
+      script={[...RUN_LIST, { see: 'tests' }, { key: 'ArrowDown' }, { key: 'Enter' }, { see: 'FAILED' }]}
+      wait={['test result']}
+    />
+  )
+}
+
+/** `workbench-run-list`: the list of runs the host gave, before one is attached. */
+export function WorkbenchRunListStory() {
+  return (
+    <FixtureStory
+      id="workbench-run-list"
+      width={1280}
+      height={640}
+      options={{ granted: EVERY_TOOL }}
+      script={RUN_LIST}
+      wait={['tests', 'build']}
     />
   )
 }

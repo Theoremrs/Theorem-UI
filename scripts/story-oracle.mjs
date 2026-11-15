@@ -47,9 +47,25 @@ async function withPage(story, run, { reducedMotion = 'reduce' } = {}) {
     const page = await context.newPage()
     const failures = []
     page.on('pageerror', (error) => failures.push(String(error).slice(0, 400)))
+    if (process.env.PAGELOG) page.on('console', (m) => m.type() === 'error' && console.error('PAGE', m.text().slice(0, 300)))
     await page.goto(`${ORIGIN}/story/${story.id}`, { waitUntil: 'domcontentloaded' })
     await page.waitForSelector('[data-story-ready]', { state: 'attached', timeout: 90_000 })
     await page.addStyleTag({ content: DEV_OVERLAYS })
+    // A scripted workbench story is ready when it has left `data-story-pending`; a blank frame (the
+    // dev server still re-optimising, a wasm that never drew) is an error, never evidence.
+    await page
+      .waitForFunction(
+        () => {
+          const box = document.querySelector('[data-workbench-story]')
+          if (!box) return true
+          return !box.hasAttribute('data-story-pending') && (box.innerText ?? '').trim().length > 0
+        },
+        null,
+        { timeout: 60_000 },
+      )
+      .catch(() => {
+        throw new Error(`${story.id}: still pending or blank after 60s; not shooting it`)
+      })
     // Query data has landed; lazy viewers and media decode on their own time.
     await page
       .waitForFunction(
@@ -160,67 +176,166 @@ async function motion(story) {
 /** The text the story box shows, one string, as the semantic tree would give it. */
 const pageText = (page) => page.evaluate(() => document.querySelector('[data-workbench-story]')?.innerText ?? '')
 
-/** Real key presses per story; each returns named checks, true when the page text agrees. */
+/** The chord that opens the picker (Alt with Cmd on a Mac, Ctrl elsewhere) and one that names a tool. */
+const CHORD = 'Meta+Alt+'
+/** The picker's route to a tool in More tools: its chord, the name typed into the filter, Enter. */
+const openTool = async (page, name) => {
+  await page.keyboard.press(`${CHORD}t`)
+  await page.waitForTimeout(400)
+  for (const text of ['More tools', name]) {
+    await page.keyboard.type(text)
+    await page.waitForTimeout(400)
+    await page.keyboard.press('Enter')
+    await page.waitForTimeout(600)
+  }
+}
+const has = async (page, needle) => (await pageText(page)).includes(needle)
+/** Waits until the page text names `needle`; false after `ms`. */
+const sees = async (page, needle, ms = 4000) => {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await has(page, needle)) return true
+    await page.waitForTimeout(100)
+  }
+  return false
+}
+
+/** Real key presses per story; each scenario returns named checks, true when the page text agrees. */
 const SCENARIOS = {
-  // A fresh workbench rests its picker and focuses the composer: a sentence typed lands in the composer.
-  'workbench-default': async (page) => {
-    const sentence = 'hello there'
-    await page.keyboard.type(sentence, { delay: 30 })
-    await page.waitForTimeout(500)
-    const text = await pageText(page)
-    const lines = text.split('\n')
-    const composer = lines.find((l) => l.includes('\u276f') && l.includes(sentence)) ?? ''
-    const filter = lines.find((l) => l.trim().startsWith('>') && l.includes(sentence))
-    return {
-      'composer shows the sentence': composer.includes(sentence),
-      'picker filter stays empty': !filter && !text.includes('No tools match'),
-    }
-  },
+  'workbench-default': [
+    // A fresh workbench rests its picker and focuses the composer: a sentence typed lands in the composer.
+    async (page) => {
+      const sentence = 'hello there'
+      await page.keyboard.type(sentence, { delay: 30 })
+      await page.waitForTimeout(500)
+      const text = await pageText(page)
+      const lines = text.split('\n')
+      const composer = lines.find((l) => l.includes('\u276f') && l.includes(sentence)) ?? ''
+      const filter = lines.find((l) => l.trim().startsWith('>') && l.includes(sentence))
+      return {
+        'composer shows the sentence': composer.includes(sentence),
+        'picker filter stays empty': !filter && !text.includes('No tools match'),
+      }
+    },
+  ],
+  // Search (the story already ran the query): Down into the rows, Enter opens the file in the editor.
+  'workbench-search': [
+    async (page) => {
+      const listed = (await sees(page, 'grid.rs')) && (await has(page, 'guide.md'))
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+      await page.waitForTimeout(600)
+      const tabs = (await pageText(page)).split(String.fromCharCode(10)).some((l) => /(grid|guide)\.(rs|md) \u00d7/.test(l))
+      return { 'rows from two files': listed, 'Enter opens the file in a tab': tabs }
+    },
+  ],
+  // Run (the story already listed the runs): Down to the finished run, Enter attaches it.
+  'workbench-run-list': [
+    async (page) => {
+      const listed = (await sees(page, 'tests')) && (await has(page, 'build'))
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+      return { 'the host list is shown': listed, 'attaching reads the run': await sees(page, 'FAILED') }
+    },
+  ],
+  // Type in Visual, switch to Source with Alt+2 and see it, undo.
+  'workbench-markdown-visual': [
+    async (page) => {
+      const word = 'zzword'
+      await page.keyboard.type(word)
+      const typed = await sees(page, word)
+      await page.keyboard.press('Alt+2')
+      await page.waitForTimeout(500)
+      const source = (await sees(page, '[source')) && (await has(page, word))
+      await page.keyboard.press('Meta+z')
+      await page.waitForTimeout(400)
+      return { typed, 'visible in Source': source, undone: !(await has(page, word)) }
+    },
+  ],
+  // Move to a file, open its diff, stage it, see it under Staged.
+  'workbench-changes': [
+    async (page) => {
+      await page.keyboard.press('Escape')
+      // The list: Staged first, then Unstaged; step down to the first unstaged file.
+      for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowDown')
+      const before = await pageText(page)
+      await page.keyboard.press('s')
+      await page.waitForTimeout(600)
+      const after = await pageText(page)
+      const stagedAt = (text) => (text.match(/Staged (\d+)/) ?? [])[1]
+      return { 'staged count grew': Number(stagedAt(after)) === Number(stagedAt(before)) + 1 }
+    },
+  ],
+  // Shell on a fresh terminal story: type echo hi, Enter, see the echo.
+  'workbench-terminal': [
+    async (page) => {
+      await page.keyboard.type('echo hi')
+      await page.keyboard.press('Enter')
+      return { 'the shell echoes the line': await sees(page, 'echo hi') }
+    },
+  ],
+  // Arrow to a finding, Enter opens the file at its line.
+  'workbench-diagnostics': [
+    async (page) => {
+      await page.keyboard.press('ArrowDown')
+      await page.keyboard.press('Enter')
+      return { 'the editor opens at the finding': await sees(page, 'Ln 7, Col 1') }
+    },
+  ],
   // Type, undo (Cmd+Z), redo (Cmd+Shift+Z): the text reads back each time.
-  'workbench-editor': async (page) => {
-    const has = async (needle) => (await pageText(page)).includes(needle)
-    const word = 'zzqq'
-    await page.keyboard.type(word)
-    await page.waitForTimeout(300)
-    const typed = await has(word)
-    await page.keyboard.press('Meta+z')
-    await page.waitForTimeout(300)
-    const undone = !(await has(word))
-    await page.keyboard.press('Meta+Shift+z')
-    await page.waitForTimeout(300)
-    const redone = await has(word)
-    return { typed, undone, redone }
-  },
+  'workbench-editor': [
+    async (page) => {
+      const word = 'zzqq'
+      await page.keyboard.type(word)
+      await page.waitForTimeout(300)
+      const typed = await has(page, word)
+      await page.keyboard.press('Meta+z')
+      await page.waitForTimeout(300)
+      const undone = !(await has(page, word))
+      await page.keyboard.press('Meta+Shift+z')
+      await page.waitForTimeout(300)
+      return { typed, undone, redone: await has(page, word) }
+    },
+  ],
   // The story's own script has switched to the second branch; Alt+[ goes back to the first, Alt+] forward again.
-  'workbench-branches': async (page) => {
-    const has = async (needle) => (await pageText(page)).includes(needle)
-    const loaded = (await has('branch 2 of 2')) && (await has('On the other branch'))
-    await page.keyboard.press('Alt+[')
-    await page.waitForTimeout(600)
-    const back = (await has('branch 1 of 2')) && !(await has('On the other branch'))
-    await page.keyboard.press('Alt+]')
-    await page.waitForTimeout(600)
-    const forward = (await has('branch 2 of 2')) && (await has('On the other branch'))
-    return { loaded, back, forward }
-  },
+  'workbench-branches': [
+    async (page) => {
+      const loaded = (await has(page, 'branch 2 of 2')) && (await has(page, 'On the other branch'))
+      await page.keyboard.press('Alt+[')
+      await page.waitForTimeout(600)
+      const back = (await has(page, 'branch 1 of 2')) && !(await has(page, 'On the other branch'))
+      await page.keyboard.press('Alt+]')
+      await page.waitForTimeout(600)
+      const forward = (await has(page, 'branch 2 of 2')) && (await has(page, 'On the other branch'))
+      return { loaded, back, forward }
+    },
+  ],
 }
 
 async function interact(story) {
-  const scenario = SCENARIOS[story.id]
-  if (!scenario) throw new Error(`${story.id}: no interaction scenario`)
-  const checks = await withPage(story, async (page) => {
-    await page.locator('textarea').first().focus()
-    const result = await scenario(page)
-    // The claim is checked against pixels too: a screenshot after the wait.
-    mkdirSync(join(EVIDENCE, 'renders'), { recursive: true })
-    await page.screenshot({
-      path: renderPath(`${story.id}-interact`),
-      clip: { x: 0, y: 0, ...story.viewport },
+  const scenarios = SCENARIOS[story.id]
+  if (!scenarios) throw new Error(`${story.id}: no interaction scenario`)
+  const all = {}
+  let index = 0
+  for (const scenario of scenarios) {
+    index += 1
+    // Each scenario starts on a fresh load of the story.
+    const checks = await withPage(story, async (page) => {
+      await page.locator('textarea').first().focus()
+      const result = await scenario(page)
+      // The claim is checked against pixels too: a screenshot after the wait.
+      mkdirSync(join(EVIDENCE, 'renders'), { recursive: true })
+      await page.screenshot({
+        path: renderPath(`${story.id}-interact${scenarios.length > 1 ? `-${index}` : ''}`),
+        clip: { x: 0, y: 0, ...story.viewport },
+      })
+      return result
     })
-    return result
-  })
-  console.log(JSON.stringify({ id: story.id, checks, screenshot: renderPath(`${story.id}-interact`) }))
-  if (!Object.values(checks).every(Boolean)) process.exitCode = 1
+    Object.assign(all, checks)
+  }
+  console.log(JSON.stringify({ id: story.id, checks: all }))
+  if (!Object.values(all).every(Boolean)) process.exitCode = 1
 }
 
 const [command = 'list', target] = process.argv.slice(2)

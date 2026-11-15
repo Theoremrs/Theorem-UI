@@ -45,6 +45,7 @@ use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
 mod cabinet;
+mod cabinet_panel;
 pub mod preview;
 mod theo;
 mod workbench;
@@ -1365,6 +1366,23 @@ impl Session {
         self.input = Input::new(next.map(|at| self.history[at].clone()).unwrap_or_default());
     }
 
+    /// The keys that act on the transcript alone: paging, back to the tail and
+    /// showing output. A panel that edits its own draft calls this for the keys
+    /// its editor did not take; the plain terminal's `key` is unchanged.
+    fn transcript_key(&mut self, event: KeyEvent) -> bool {
+        match (event.code, event.ctrl) {
+            (KeyCode::PageUp, _) => self.scroll_back += self.page,
+            (KeyCode::PageDown, _) => self.scroll_back = self.scroll_back.saturating_sub(self.page),
+            (KeyCode::Char('l'), true) => self.scroll_back = 0,
+            (KeyCode::Char('o'), true) => {
+                self.expanded = !self.expanded;
+                self.built_for = None;
+            }
+            _ => return false,
+        }
+        true
+    }
+
     /// Returns whether the key was the terminal's, so React can keep it from the page.
     fn key(&mut self, event: KeyEvent) -> (bool, Option<Action>) {
         let KeyEvent {
@@ -1570,10 +1588,10 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
                 },
                 Span::styled((*row).to_owned(), ink),
             ];
-            if index == last {
-                if let Some(tag) = &tag {
-                    spans.push(Span::styled(format!("  · {tag}"), tag_style));
-                }
+            if index == last
+                && let Some(tag) = &tag
+            {
+                spans.push(Span::styled(format!("  · {tag}"), tag_style));
             }
             Line::from(spans)
         })
@@ -1899,6 +1917,13 @@ impl App {
     }
 }
 
+/// How a view's own text caret is drawn: the overlay element's inline style, and where the
+/// hidden input field goes so an IME's candidate window opens at the caret.
+struct CaretStyle {
+    overlay: String,
+    field: String,
+}
+
 /// What a `Screen` draws each frame: the agent terminal or the cabinet.
 trait Drawn {
     /// The backend's cell size in CSS pixels, measured each frame.
@@ -1907,6 +1932,11 @@ trait Drawn {
     /// The hollow cursor: its cell, whether the view is focused, and when it
     /// last took a key. None hides it.
     fn caret(&self) -> Option<(Position, bool, f64)> {
+        None
+    }
+    /// A view that times its own text caret (the workbench) answers here with how to draw it;
+    /// the screen then paints that instead of the hollow prompt cursor.
+    fn text_caret(&self, _now: f64) -> Option<CaretStyle> {
         None
     }
     /// Called after each draw, so a view can report what moved.
@@ -2029,6 +2059,9 @@ struct Screen {
     /// its own on top of the grid.
     cursor: web_sys::Element,
     cursor_style: String,
+    /// The workbench's hidden input field, found once; it follows the caret.
+    field: Option<web_sys::HtmlElement>,
+    field_style: String,
 }
 
 impl Screen {
@@ -2062,6 +2095,8 @@ impl Screen {
             _on_resize: on_resize,
             cursor,
             cursor_style: String::new(),
+            field: None,
+            field_style: String::new(),
         })
     }
 
@@ -2124,9 +2159,17 @@ impl Screen {
         if !self.cursor.is_connected() {
             let _ = self.parent.append_child(&self.cursor);
         }
+        if let Some(caret) = app.text_caret(now()) {
+            if caret.overlay != self.cursor_style {
+                let _ = self.cursor.set_attribute("style", &caret.overlay);
+                self.cursor_style = caret.overlay;
+            }
+            self.place_field(&caret.field);
+            return;
+        }
         let style = match app.caret() {
             Some((at, focused, typed_at)) => {
-                let lit = !focused || ((now() - typed_at) / BLINK_MS) as u64 % 2 == 0;
+                let lit = !focused || (((now() - typed_at) / BLINK_MS) as u64).is_multiple_of(2);
                 let color = match (lit, focused) {
                     (false, _) => "transparent".to_owned(),
                     (true, true) => palette().sage.to_string(),
@@ -2149,6 +2192,31 @@ impl Screen {
     }
 }
 
+impl Screen {
+    /// Moves the hidden input field to the caret's cell.
+    fn place_field(&mut self, style: &str) {
+        if style == self.field_style {
+            return;
+        }
+        if self.field.is_none() {
+            self.field = self
+                .parent
+                .parent_element()
+                .and_then(|wrapper| {
+                    wrapper
+                        .query_selector("textarea[aria-label='Workbench input']")
+                        .ok()
+                        .flatten()
+                })
+                .and_then(|element| element.dyn_into::<web_sys::HtmlElement>().ok());
+        }
+        if let Some(field) = &self.field {
+            let _ = field.set_attribute("style", style);
+            self.field_style = style.to_owned();
+        }
+    }
+}
+
 impl Drop for Screen {
     /// The window outlives the screen; its listener must not call a freed closure.
     fn drop(&mut self) {
@@ -2161,7 +2229,8 @@ impl Drop for Screen {
 
 /// Draws a frame on every animation frame until the element leaves the page.
 fn run_frames<D: Drawn + 'static>(mut screen: Screen, app: Rc<RefCell<D>>) {
-    let next: Rc<RefCell<Option<Closure<dyn FnMut()>>>> = Rc::new(RefCell::new(None));
+    type Frame = Rc<RefCell<Option<Closure<dyn FnMut()>>>>;
+    let next: Frame = Rc::new(RefCell::new(None));
     let scheduled = next.clone();
     *next.borrow_mut() = Some(Closure::new(move || {
         if !screen.parent.is_connected() {

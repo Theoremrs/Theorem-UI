@@ -22,7 +22,7 @@ import { createSideChatModel } from '@/lib/workbench/conversation/side-chat-mode
 import { createSideChats } from '@/lib/workbench/conversation/side-chats'
 import { useConversationRuntime } from '@/lib/workbench/conversation/use-conversation-runtime'
 import { createLanguage } from '@/lib/workbench/language/language'
-import { createLanguagePort } from '@/lib/workbench/language/port'
+import { deliverReducedMotion, languagePortFor } from './mount-wiring'
 import { createRunner } from '@/lib/workbench/run/run'
 import { createRunPort } from '@/lib/workbench/run/port'
 import { createSearch } from '@/lib/workbench/search/search'
@@ -143,11 +143,13 @@ export function WorkbenchSurface({
     if (!element) return
     let disposed = false
     let adapter: Adapter | undefined
+    let stopMotion = () => {}
     const { handle: mounting, sink } = mountWorkbench(element)
     sink.semantics = (json) => feed.push(json)
     void mounting.then((mounted) => {
       if (disposed) return
       handle.current = mounted
+      stopMotion = deliverReducedMotion(mounted)
       adapter = latest.current((message) => {
         if (!disposed) mounted.dispatch(JSON.stringify(message))
       })
@@ -176,6 +178,7 @@ export function WorkbenchSurface({
     return () => {
       disposed = true
       sink.effect = () => {}
+      stopMotion()
       observer.disconnect()
       element.removeEventListener('wheel', wheel)
       adapter?.dispose()
@@ -347,17 +350,18 @@ export function Workbench({
         services: conversationServices,
         workspaceId,
       })
+      const documents = createDocumentsPort({
+        documents: createDocuments(environment),
+        files,
+      })
       const adapter = createAdapter({
         environment,
         files,
         terminal: { create: () => new TerminalSession(host), host },
         layout,
-        documents: createDocumentsPort({
-          documents: createDocuments(environment),
-          files,
-        }),
+        documents,
         scm: createScmPort(createScm(environment)),
-        language: createLanguagePort(language),
+        language: languagePortFor(language, documents),
         run: createRunPort(runner),
         search: createSearchPort(search),
         conversation: createConversationPort({

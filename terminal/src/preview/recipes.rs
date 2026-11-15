@@ -1261,7 +1261,7 @@ mod tests {
         }
         let series = parse_series(&t).unwrap().unwrap();
         let fr: Vec<f64> = series.iter().take(8).map(|_| 1.0 / 9.0).collect();
-        let mut counts = vec![0usize; 9];
+        let mut counts = [0usize; 9];
         for y in 0..84 {
             for x in 0..80 {
                 if let Some(i) = donut_category(x, y, &fr) {
