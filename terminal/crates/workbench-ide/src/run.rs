@@ -1658,6 +1658,14 @@ impl Panel for RunPanel {
         self.can_list = cx.capabilities().has(&Capability::new(LIST_CAPABILITY));
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
+            // The browser sends what was typed or pasted as text, never as keys.
+            PanelMsg::Text(text) | PanelMsg::Paste(text) => {
+                if self.picker.is_none()
+                    && let Some(field) = self.field_mut()
+                {
+                    field.insert(&text);
+                }
+            }
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Resize { area, .. } => {
                 self.area = Rect::new(0, 0, area.width, area.height);

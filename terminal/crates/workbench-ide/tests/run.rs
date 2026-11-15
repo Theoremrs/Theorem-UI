@@ -11,6 +11,7 @@ use theorem_workbench_core::completion::{CompletionPayload, Outcome, RunStarted}
 use theorem_workbench_core::effect::{Effect, EffectBody};
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::Actor;
+use theorem_workbench_core::msg::Msg;
 use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::results::RunList;
 use theorem_workbench_core::results::{ReadAt, RunState, RunSummary};
@@ -949,6 +950,27 @@ fn clipboard_write(fx: &[Effect]) -> (Effect, String) {
         unreachable!()
     };
     (write.clone(), w.text.clone())
+}
+
+#[test]
+fn text_the_browser_types_or_pastes_goes_into_the_focused_run_field() {
+    let mut rig = rig();
+    rig.send(Msg::Text("bui".into()));
+    rig.send(Msg::Text("ld".into()));
+    assert_eq!(rig.node("name").text.as_deref(), Some("build"));
+    // A paste replaces the selection, and a field is one line.
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.mods(Key::Left, Mods::SHIFT);
+    rig.send(Msg::Paste("n\nd".into()));
+    assert_eq!(rig.node("name").text.as_deref(), Some("buind"));
+    rig.key(Key::Tab);
+    rig.send(Msg::Text("cargo build".into()));
+    assert_eq!(rig.node("command").text.as_deref(), Some("cargo build"));
+    assert_eq!(rig.node("name").text.as_deref(), Some("buind"));
+    // The output takes no text.
+    rig.key(Key::Tab);
+    rig.send(Msg::Text("zz".into()));
+    assert_eq!(rig.node("command").text.as_deref(), Some("cargo build"));
 }
 
 #[test]
