@@ -631,6 +631,17 @@
   --sheet-shade: var(--surface-neutral);
   --sheet-field: none;
 }
+/* The rail's tab is part of the surface it opens onto (rail.tsx Junction):
+   the panel's own fill while the panel is open, or the sheet as the canvas
+   material paints it. */
+.rail-junction[data-joins='navigation'] > * {
+  background-color: var(--surface-sidebar);
+  background-image: none;
+}
+:root[data-material-canvas='flat'] .rail-junction[data-joins='sheet'] > * {
+  background-color: var(--surface-neutral);
+  background-image: none;
+}
 :root[data-material-canvas='glass'] .bg-sheet {
   backdrop-filter: blur(var(--glass-blur));
 }

@@ -198,15 +198,17 @@ function TerminalToggle() {
 /**
  * The sheet reaching into the rail behind the active destination: a tab whose
  * right end flows into the sheet's edge through two concave corners. It paints
- * the sheet's gradient at its own height, so the join has no seam, and slides
- * when the mode changes.
+ * what it joins, so the join has no seam: the mode's panel while that is open,
+ * otherwise the sheet's field at the tab's own height (appearance.css). It
+ * slides when the mode changes.
  */
-function Junction({ y, h, t, flush }: Junction) {
+function Junction({ y, h, t, flush, joins }: Junction) {
   return (
     <div
       aria-hidden="true"
       className="rail-junction"
       data-flush={flush || undefined}
+      data-joins={joins}
       style={
         {
           '--rail-y': `${y}px`,
@@ -222,7 +224,14 @@ function Junction({ y, h, t, flush }: Junction) {
   )
 }
 
-type Junction = { y: number; h: number; t: number; flush: boolean }
+type Junction = {
+  y: number
+  h: number
+  t: number
+  flush: boolean
+  /** The surface the tab opens onto: the mode's panel, or the sheet. */
+  joins: 'navigation' | 'sheet'
+}
 
 /**
  * Reveals the files in the navigator beside the rail, over the mode's own
@@ -380,7 +389,8 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
     if (node) destinations.current.set(value, node)
     else destinations.current.delete(value)
   }
-  const [junction, setJunction] = useState<Junction>()
+  const [junction, setJunction] = useState<Omit<Junction, 'joins'>>()
+  const joins = !collapsible || panelOpen ? 'navigation' : 'sheet'
   useLayoutEffect(() => {
     const rail = railRef.current
     const active = destinations.current.get(mode)
@@ -436,7 +446,7 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
       data-appearance-part="rail"
       className="relative z-10 flex h-full w-rail shrink-0 flex-col items-center pt-(--sheet-inset) pb-3"
     >
-      {junction && <Junction {...junction} />}
+      {junction && <Junction {...junction} joins={joins} />}
       <LiveRegion id="rail-modes-moved" announcement={announcement} />
       <TooltipProvider>
         <DndContext
