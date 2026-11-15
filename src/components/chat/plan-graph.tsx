@@ -1,4 +1,4 @@
-// SOURCING: @xyflow/react 12 (custom task nodes sized by their content and measured by React Flow, useNodesInitialized to know when every node has measured, BaseEdge and getSmoothStepPath for edges, useInternalNode to tell whether a dragged task left its routed place, useNodesState for drag and selection, Controls, dotted Background, fitView) laid out by elkjs through lib/theorem/plans over those measured sizes, its orthogonal routes drawn with d3-shape's line; @radix-ui/react-use-size for the card's width (graph or compact summary); ui/dialog (Base UI Dialog) for the expanded workspace; @tanstack/react-query for Theorem's live copy of the plan, polled while framer-motion's useInView sees the card; assistant-ui's ToolCallMessagePartComponent for the draft_plan call, with the installed ToolFallback and ThinkingIndicator for its failed and running states
+// SOURCING: @xyflow/react 12 (custom task nodes sized by their content and measured by React Flow, useNodesInitialized to know when every node has measured, BaseEdge and getSmoothStepPath for edges, useInternalNode to tell whether a dragged task left its routed place, useNodesState for drag and selection, Controls, dotted Background, fitView) laid out by elkjs through lib/theorem/plans (lib/graph-layout's shared layout) over those measured sizes, its orthogonal routes drawn with lib/graph-layout's routePath while both ends stay where they were laid out; @radix-ui/react-use-size for the card's width (graph or compact summary); ui/dialog (Base UI Dialog) for the expanded workspace; @tanstack/react-query for Theorem's live copy of the plan, polled while framer-motion's useInView sees the card; assistant-ui's ToolCallMessagePartComponent for the draft_plan call, with the installed ToolFallback and ThinkingIndicator for its failed and running states
 import {
   Background,
   BackgroundVariant,
@@ -28,7 +28,6 @@ import '@xyflow/react/dist/style.css'
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react'
 import { useSize } from '@radix-ui/react-use-size'
 import { useQuery } from '@tanstack/react-query'
-import { line } from 'd3-shape'
 import { useInView } from 'framer-motion'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { FC } from 'react'
@@ -42,6 +41,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { routeHolds, routePath } from '@/lib/graph-layout'
+import type { Route } from '@/lib/graph-layout'
 import { describeError } from '@/lib/theorem/client'
 import {
   LIVE_PLAN_REFRESH_MS,
@@ -59,7 +60,6 @@ import type {
   PlanLayout,
   PlanTaskView,
   PlanView,
-  Point,
   Size,
   TaskTone,
 } from '@/lib/theorem/plans'
@@ -181,33 +181,30 @@ function TaskNodeView({ data, selected }: NodeProps<TaskNode>) {
   )
 }
 
-type RouteData = {
-  route?: Point[] | undefined
-  from?: Point | undefined
-  to?: Point | undefined
-}
-type RouteEdge = Edge<RouteData, 'route'>
-
-const near = (a: Point | undefined, b: Point | undefined) =>
-  a !== undefined &&
-  b !== undefined &&
-  Math.abs(a.x - b.x) < 0.5 &&
-  Math.abs(a.y - b.y) < 0.5
-const polyline = line<Point>()
-  .x((point) => point.x)
-  .y((point) => point.y)
+type RouteEdge = Edge<{ route?: Route | undefined }, 'route'>
 
 /** The edge as the layout routed it; once a person drags either end away, a step path between the handles. */
 function RouteEdgeView(props: EdgeProps<RouteEdge>) {
   const { id, source, target, data, markerEnd, style } = props
   const from = useInternalNode(source)?.internals.positionAbsolute
   const to = useInternalNode(target)?.internals.positionAbsolute
-  const routed =
-    data?.route && near(from, data.from) && near(to, data.to)
-      ? polyline(data.route)
-      : null
-  const path = routed ?? getSmoothStepPath({ ...props, borderRadius: 6 })[0]
+  const path = routeHolds(data?.route, from, to)
+    ? routePath(data.route.points)
+    : getSmoothStepPath({ ...props, borderRadius: 6 })[0]
   return <BaseEdge id={id} path={path} markerEnd={markerEnd} style={style} />
+}
+
+/** A dependency's route, with where its two tasks were laid out when it was routed. */
+function routeOf(
+  layout: PlanLayout | undefined,
+  id: string,
+  dependency: string,
+  task: string,
+): Route | undefined {
+  const points = layout?.routes[id]
+  const from = layout?.positions[dependency]
+  const to = layout?.positions[task]
+  return points && from && to ? { points, from, to } : undefined
 }
 
 const nodeTypes = { task: TaskNodeView }
@@ -398,11 +395,7 @@ function FlowBody({
             type: 'route',
             selectable: false,
             focusable: false,
-            data: {
-              route: layout?.routes[id],
-              from: layout?.positions[dependency],
-              to: layout?.positions[task.id],
-            },
+            data: { route: routeOf(layout, id, dependency, task.id) },
             markerEnd: {
               type: MarkerType.ArrowClosed,
               width: 14,

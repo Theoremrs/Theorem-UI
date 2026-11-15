@@ -1,7 +1,7 @@
-// SOURCING: lib/theorem/graphql (Theorem's `plan(planId)` query, the plan substrate's own inspect), @tanstack/react-query (the live plan while its card is on screen), elkjs (layered layout of the task dependency graph over the nodes' measured sizes, with its orthogonal edge router giving each edge its own track, as lib/program/flow lays out programs)
-import ELK from 'elkjs/lib/elk.bundled.js'
-import type { ElkNode } from 'elkjs/lib/elk-api'
+// SOURCING: lib/theorem/graphql (Theorem's `plan(planId)` query, the plan substrate's own inspect), @tanstack/react-query (the live plan while its card is on screen), lib/graph-layout (the shared ELK layout: layered over the nodes' measured sizes, with its orthogonal edge router giving each edge its own track; the plan's policy is here)
 import { queryOptions } from '@tanstack/react-query'
+import { layout as layOut } from '@/lib/graph-layout'
+import type { Direction, LayoutPolicy, Point, Size } from '@/lib/graph-layout'
 import { graphql } from './graphql'
 
 /** The native operation a planning turn writes its plan with. */
@@ -231,10 +231,7 @@ export function taskOrder(tasks: readonly PlanTaskView[]): PlanTaskView[] {
     .map(({ task }) => task)
 }
 
-export type Point = { x: number; y: number }
-export type Size = { width: number; height: number }
-/** Which way dependencies run: left to right, or top to bottom. */
-export type Direction = 'RIGHT' | 'DOWN'
+export type { Direction, Point, Size } from '@/lib/graph-layout'
 
 export type PlanLayout = {
   direction: Direction
@@ -249,13 +246,30 @@ export type PlanLayout = {
 /** The id of the edge from a dependency to the task that waits on it. */
 export const edgeId = (dependency: string, task: string) => `${dependency}->${task}`
 
-const elk = new ELK()
+/**
+ * A plan's layout: columns keep room between them for edges, and the
+ * orthogonal router gives edges from different tasks their own tracks rather
+ * than one shared midline. The plan's own order among side-by-side tasks is
+ * kept, so a refresh does not reshuffle them.
+ */
+export const planLayout = (direction: Direction): LayoutPolicy => ({
+  algorithm: 'layered',
+  direction,
+  padding: 8,
+  spacing: {
+    node: 24,
+    layers: 64,
+    edges: 14,
+    edgeNode: 16,
+    edgesBetweenLayers: 14,
+    edgeNodeBetweenLayers: 20,
+  },
+  keepOrder: true,
+})
 
 /**
  * Lays the tasks out at the sizes their nodes measured, in dependency order:
- * a task sits past everything it waits on. Columns keep room between them for
- * edges, and the orthogonal router gives edges from different tasks their own
- * tracks rather than one shared midline. Dependencies on tasks outside the
+ * a task sits past everything it waits on. Dependencies on tasks outside the
  * plan are ignored.
  */
 export async function layoutPlan(
@@ -264,38 +278,25 @@ export async function layoutPlan(
   direction: Direction = 'RIGHT',
 ): Promise<PlanLayout> {
   const ids = new Set(tasks.map((task) => task.id))
-  const input: ElkNode = {
-    id: 'plan',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': direction,
-      'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '64',
-      'elk.layered.spacing.edgeNodeBetweenLayers': '20',
-      'elk.layered.spacing.edgeEdgeBetweenLayers': '14',
-      'elk.spacing.nodeNode': '24',
-      'elk.spacing.edgeEdge': '14',
-      'elk.spacing.edgeNode': '16',
-      // The plan's own order among side-by-side tasks, so a refresh does not reshuffle them.
-      'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
-      'elk.padding': '[top=8,left=8,bottom=8,right=8]',
+  const { positions, routes, width, height } = await layOut(
+    {
+      nodes: tasks.map((task) => ({
+        id: task.id,
+        ...(sizes[task.id] ?? { width: 160, height: 40 }),
+      })),
+      edges: tasks.flatMap((task) =>
+        task.dependencies
+          .filter((dependency) => ids.has(dependency) && dependency !== task.id)
+          .map((dependency) => ({
+            id: edgeId(dependency, task.id),
+            source: dependency,
+            target: task.id,
+          })),
+      ),
     },
-    children: tasks.map((task) => ({ id: task.id, ...(sizes[task.id] ?? { width: 160, height: 40 }) })),
-    edges: tasks.flatMap((task) =>
-      task.dependencies
-        .filter((dependency) => ids.has(dependency) && dependency !== task.id)
-        .map((dependency) => ({ id: edgeId(dependency, task.id), sources: [dependency], targets: [task.id] })),
-    ),
-  }
-  const graph = await elk.layout(input)
-  const positions: Record<string, Point> = {}
-  for (const child of graph.children ?? []) positions[child.id] = { x: child.x ?? 0, y: child.y ?? 0 }
-  const routes: Record<string, Point[]> = {}
-  for (const edge of graph.edges ?? []) {
-    const section = edge.sections?.[0]
-    if (section) routes[edge.id] = [section.startPoint, ...(section.bendPoints ?? []), section.endPoint]
-  }
-  return { direction, positions, routes, width: graph.width ?? 0, height: graph.height ?? 0 }
+    planLayout(direction),
+  )
+  return { direction, positions, routes, width, height }
 }
 
 /** How far a layout must shrink to fit a box; never past its own size. */
