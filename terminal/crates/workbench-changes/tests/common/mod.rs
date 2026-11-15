@@ -140,7 +140,16 @@ pub fn render(model: &Changes, width: u16, height: u16) -> Vec<String> {
     let area = Rect::new(0, 0, width, height);
     let mut buf = Buffer::empty(area);
     model.draw(area, &mut buf, &ChangesStyles::plain());
+    theorem_workbench_core::take_icons(&mut buf);
     lines(&buf)
+}
+
+/// The icons the panel draws at `width` by `height`, with the frame's pass done.
+pub fn icons(model: &Changes, width: u16, height: u16) -> Vec<theorem_workbench_core::PlacedIcon> {
+    let area = Rect::new(0, 0, width, height);
+    let mut buf = Buffer::empty(area);
+    model.draw(area, &mut buf, &ChangesStyles::plain());
+    theorem_workbench_core::take_icons(&mut buf)
 }
 
 /// The next intent of a kind, from a list.

@@ -426,9 +426,9 @@ fn read_rows(model: &Changes) -> Vec<Row<'_>> {
         ReadBody::History(commits) => {
             for (at, entry) in commits.iter().enumerate() {
                 let commit: String = entry.commit.chars().take(7).collect();
-                let mark = if at == read.cursor { ">" } else { " " };
+                // The chosen commit is told by its row's tone, not by a glyph.
                 out.push(content(
-                    format!("{mark} {commit} {}  {}", entry.subject, entry.author),
+                    format!("  {commit} {}  {}", entry.subject, entry.author),
                     if at == read.cursor { Tone::Cursor } else { Tone::Plain },
                 ));
             }
@@ -925,7 +925,7 @@ impl Changes {
                     .collect::<Vec<_>>()
                     .join("  ");
                 let hint_w = width(&hint);
-                let room = w.saturating_sub(5);
+                let room = w.saturating_sub(6);
                 let verb = if cursor && hint_w > 0 && room > hint_w + 12 {
                     let start = w - hint_w;
                     let mut at = start;

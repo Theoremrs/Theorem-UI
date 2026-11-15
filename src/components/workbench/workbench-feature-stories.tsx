@@ -3,7 +3,7 @@ import { useEffect } from 'react'
 import { useWorkbenchAgent } from '@/lib/workbench/agent/store'
 import type { Effect } from '@/lib/workbench/wire'
 import type { FixtureHost } from './fixture-host'
-import { TREE } from './fixtures'
+import { FILES_TREE, TREE } from './fixtures'
 import { EVERY_TOOL, FixtureStory, open } from './workbench-story'
 
 interface StoryNode {
@@ -547,6 +547,27 @@ export function WorkbenchThreadsWithheldStory() {
       }}
       script={[]}
       wait={['Threads']}
+    />
+  )
+}
+
+/** `workbench-files`: the tree with a symlink, an ignored and a hidden entry, a partial listing and an image, opened a level down. It has the oracle's hooks: its scenario reads each row's icon against the semantic tree. */
+export function WorkbenchFilesStory() {
+  return (
+    <FeatureStory
+      id="workbench-files"
+      options={{ granted: ['files'], tree: FILES_TREE }}
+      script={[
+        { chord: 'e' },
+        // Files lands on its first row when it takes focus.
+        { see: 'README.md' },
+        { key: 'Enter' },
+        { key: 'ArrowDown' },
+        { key: 'ArrowDown' },
+        { key: 'Enter' },
+        { see: 'architecture.md' },
+      ]}
+      wait={['latest', 'target', 'architecture.md']}
     />
   )
 }

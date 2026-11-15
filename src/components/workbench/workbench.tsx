@@ -64,6 +64,8 @@ import { pointerJson } from './pointer-json'
 import { isMac, isPasteChord } from './paste-chord'
 import { WorkbenchCabinet } from '@/components/cabinet/workbench-cabinet'
 import { WorkbenchFace } from './workbench-face'
+import { IconLayer } from './icon-layer'
+import { createIconStore } from './icon-layer/store'
 import { SemanticOverlay } from './semantic-overlay'
 import { settle, typedSince } from './semantic-overlay/mirror'
 import type { InputMirror } from './semantic-overlay/mirror'
@@ -133,6 +135,7 @@ function createFeed(): SemanticsFeed & { push: (update: string) => void } {
 type Sink = {
   effect: (json: string) => void
   semantics: (json: string) => void
+  icons: (json: string) => void
 }
 const mounts = new WeakMap<
   HTMLElement,
@@ -142,12 +145,17 @@ const mounts = new WeakMap<
 function mountWorkbench(host: HTMLElement) {
   let mounted = mounts.get(host)
   if (!mounted) {
-    const sink: Sink = { effect: () => {}, semantics: () => {} }
+    const sink: Sink = {
+      effect: () => {},
+      semantics: () => {},
+      icons: () => {},
+    }
     const handle = loadWasm().then((wasm) =>
       wasm.mount_workbench(
         host.id,
         (json: string) => sink.effect(json),
         (json: string) => sink.semantics(json),
+        (json: string) => sink.icons(json),
       ),
     )
     mounted = { handle, sink }
@@ -204,6 +212,7 @@ export function WorkbenchSurface({
   })
 
   const [feed] = useState(createFeed)
+  const [icons] = useState(createIconStore)
 
   useEffect(() => {
     const element = host.current
@@ -213,11 +222,14 @@ export function WorkbenchSurface({
     let stopMotion = () => {}
     const { handle: mounting, sink } = mountWorkbench(element)
     sink.semantics = (json) => feed.push(json)
+    sink.icons = (json) => icons.set(json)
     void mounting.then((mounted) => {
       if (disposed) return
       handle.current = mounted
       setMountedHandle(mounted)
       setWorkbenchHandle(mounted)
+      // The frames drawn before this sink was taken carry icons it has not seen.
+      icons.set(mounted.icons())
       stopMotion = deliverReducedMotion(mounted)
       adapter = latest.current(
         (message) => {
@@ -277,6 +289,7 @@ export function WorkbenchSurface({
     return () => {
       disposed = true
       sink.effect = () => {}
+      sink.icons = () => {}
       stopMotion()
       observer.disconnect()
       textSize.disconnect()
@@ -286,7 +299,7 @@ export function WorkbenchSurface({
       setMountedHandle(undefined)
       setWorkbenchHandle(undefined)
     }
-  }, [feed])
+  }, [feed, icons])
 
   return (
     <FeedContext.Provider value={feed}>
@@ -405,6 +418,8 @@ export function WorkbenchSurface({
             handle.current?.paste(event.clipboardData.getData('text'))
           }}
         />
+        {/* Over the grid, under whatever the page draws over it (the cabinet, the face). */}
+        <IconLayer store={icons} handle={mountedHandle} />
         {mountedHandle && project ? (
           <WorkbenchCabinet
             host={mountedHandle}

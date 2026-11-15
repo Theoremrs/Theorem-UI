@@ -270,15 +270,15 @@ fn choosing(p: &ProcessPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
         let style = match (is_selected, enabled) {
             (true, true) if cx.focused => cx.theme.focus,
             (true, true) => cx.theme.selected,
+            // A row that cannot be chosen is muted; when it holds the cursor it also takes the
+            // selected colours, since no marker says where the cursor is.
+            (true, false) => cx.theme.muted.patch(cx.theme.selected),
             (_, false) if line.row.is_some() => cx.theme.muted,
             _ => base,
         };
         let text = match line.kind {
-            LineKind::Row => format!(
-                "{} {}",
-                if is_selected && !line.cont { ">" } else { " " },
-                line.text
-            ),
+            // The chosen row is told by its colours, not by a marker.
+            LineKind::Row => format!("  {}", line.text),
             LineKind::RowDetail => format!("  {}", line.text),
             _ => line.text.clone(),
         };

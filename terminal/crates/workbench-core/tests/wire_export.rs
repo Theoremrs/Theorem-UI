@@ -12,6 +12,7 @@ use theorem_workbench_core::{
     completion::{Completion, DelegationChangeKind},
     effect::Effect,
     host::HostMessage,
+    icons::PlacedIcon,
     ids::Actor,
     keys::{KeyIssue, Overrides, Shortcut},
     msg::Inbound,
@@ -65,6 +66,7 @@ fn export_wire_types() {
     RefusalCode::export_all(&cfg).unwrap();
     Stale::export_all(&cfg).unwrap();
     Caret::export_all(&cfg).unwrap();
+    PlacedIcon::export_all(&cfg).unwrap();
     ArrangementMsg::export_all(&cfg).unwrap();
 
     let mut names: Vec<String> = std::fs::read_dir(&dir)

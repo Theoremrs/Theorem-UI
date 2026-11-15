@@ -6,6 +6,7 @@ use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::completion::FileKind;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeId, Role};
+use theorem_workbench_core::{Icon, file_icon, put_icon};
 use theorem_workbench_core::{Theme, ViewCtx};
 
 use super::tree::{NoteState, Row, Tone};
@@ -32,17 +33,15 @@ fn put_raw(buf: &mut Buffer, x: u16, y: u16, limit: u16, text: &str, style: Styl
     nx
 }
 
-fn mark(row: &Row) -> &'static str {
-    match row {
-        Row::Entry {
-            expanded: Some(true),
-            ..
-        } => "v ",
-        Row::Entry {
-            expanded: Some(false),
-            ..
-        } => "> ",
-        _ => "  ",
+/// The mark an entry's row starts with, in the two cells a chevron once took: a folder, closed or
+/// open, or a file by what its name says it is. Nothing marks the chosen row; its letters' colour
+/// does.
+fn icon(kind: &FileKind, name: &str, expanded: Option<bool>) -> Icon {
+    match (kind, expanded) {
+        (FileKind::Directory, Some(true)) => Icon::FolderFile,
+        (FileKind::Directory, _) => Icon::FolderEmpty,
+        (FileKind::Symlink, _) => Icon::FileEmpty,
+        (FileKind::File, _) => file_icon(name),
     }
 }
 
@@ -83,11 +82,21 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             theme.text
         };
         buf.set_style(Rect::new(area.x, y, area.width, 1), line);
-        let mut x = put(buf, area.x, y, right, &" ".repeat(row.depth() * 2), line);
+        // One cell of margin, as the tab's title has: an icon in the first column would touch the
+        // panel's edge.
+        let mut x = put(
+            buf,
+            area.x,
+            y,
+            right,
+            &" ".repeat(1 + row.depth() * 2),
+            line,
+        );
         match row {
             Row::Entry {
                 name,
                 kind,
+                expanded,
                 note,
                 mark: clip,
                 muted,
@@ -99,7 +108,7 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
                 } else {
                     line
                 };
-                x = put(buf, x, y, right, mark(row), line);
+                x = put_icon(buf, x, y, right, icon(kind, name, *expanded), line);
                 let shown = match kind {
                     FileKind::Directory => format!("{name}/"),
                     FileKind::Symlink => format!("{name}@"),
@@ -142,8 +151,12 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             }
             Row::Edit { directory, .. } => {
                 if let Mode::Edit(Edit { input, error, .. }) = &p.mode {
-                    let field = if *directory { "> " } else { "  " };
-                    x = put(buf, x, y, right, field, line);
+                    let mark = if *directory {
+                        Icon::FolderEmpty
+                    } else {
+                        Icon::FileEmpty
+                    };
+                    x = put_icon(buf, x, y, right, mark, line);
                     let width = usize::from(right.saturating_sub(x));
                     let styles = FieldStyles {
                         text: theme.field_focus,

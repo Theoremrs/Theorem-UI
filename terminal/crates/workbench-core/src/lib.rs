@@ -16,6 +16,7 @@ pub mod draft;
 pub mod effect;
 pub mod factory;
 pub mod host;
+pub mod icons;
 pub mod ids;
 pub mod keys;
 pub mod model;
@@ -46,6 +47,7 @@ pub use factory::{OPENER_DEFAULT, OPENER_SPECIFIC, Opener, PanelFactories};
 pub use host::{
     HostMessage, LocalProblem, LocalState, LocalStatus, ProgramReport, ProgramState, ProgramStatus,
 };
+pub use icons::{ICON_WIDTH, Icon, PlacedIcon, file_icon, put_icon, take_icons};
 pub(crate) use ids::string_id;
 pub use ids::{
     ActionId, Actor, Capability, EffectId, EffectIds, Generation, PanelInstanceId, PanelKind,

@@ -65,10 +65,37 @@ impl Rig {
     pub fn click(&mut self, x: i32, y: i32, clicks: u8) -> Response {
         self.pointer(PointerKind::Down(Button::Left), x, y, clicks)
     }
+    /// The drawn area with the frame's icon pass done: no icon sentinel is left in it.
     pub fn buffer(&self) -> Buffer {
+        self.drawn().0
+    }
+    /// The icons the composer drew, in reading order.
+    pub fn icons(&self) -> Vec<theorem_workbench_core::PlacedIcon> {
+        self.drawn().1
+    }
+    fn drawn(&self) -> (Buffer, Vec<theorem_workbench_core::PlacedIcon>) {
         let mut buf = Buffer::empty(self.area);
         self.c.draw(self.area, &mut buf, &Theme::plain());
-        buf
+        let icons = theorem_workbench_core::take_icons(&mut buf);
+        (buf, icons)
+    }
+    /// Whether the row that shows `needle` is drawn in the theme's chosen-row colours.
+    pub fn chosen(&self, needle: &str) -> bool {
+        let focus = ratatui::style::Style::new()
+            .fg(ratatui::style::Color::Reset)
+            .bg(ratatui::style::Color::Reset)
+            .patch(Theme::plain().focus);
+        self.style_of(needle) == focus
+    }
+    /// The style of the first cell of `needle` on the row that shows it.
+    pub fn style_of(&self, needle: &str) -> ratatui::style::Style {
+        let buf = self.buffer();
+        for (y, row) in dump(&buf).lines().enumerate() {
+            if let Some(at) = row.find(needle) {
+                return buf[(row[..at].chars().count() as u16, y as u16)].style();
+            }
+        }
+        panic!("{needle:?} is not drawn:\n{}", self.dump());
     }
     /// The rows of the drawn area, trailing spaces trimmed.
     pub fn dump(&self) -> String {

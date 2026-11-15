@@ -66,7 +66,6 @@ import {
   WorkbenchDefaultStory,
   WorkbenchEditorConflictStory,
   WorkbenchEditorStory,
-  WorkbenchFilesStory,
   WorkbenchMarkdownPreviewStory,
   WorkbenchMarkdownSourceStory,
   WorkbenchMarkdownSplitStory,
@@ -96,6 +95,7 @@ import {
   WorkbenchDelegationFromChatStory,
   WorkbenchReplaceStory,
   WorkbenchThreadsStory,
+  WorkbenchFilesStory,
   WorkbenchThreadsWithheldStory,
 } from '@/components/workbench/workbench-feature-stories'
 import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'

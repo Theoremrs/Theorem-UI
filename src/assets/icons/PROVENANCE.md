@@ -697,3 +697,41 @@ detail the 48px source did not. The rail's layers are still PNG alpha.
 
 A failed tool call and one waiting on the user keep the Noun close mark; no
 replacement came with these downloads.
+
+## Row and drop-down icons (Streamline Ultimate, colored style)
+
+The Theo workbench draws a folder for every drop-down (closed or open) and a
+file under it, in place of the arrow marks it had. The five folder sources are
+from the owner's downloads of 2026-11-15, "streamline-ultimate-colors--48x48-PNG (1).zip"
+and "streamline-ultimate-colors--48x48-PNG (2).zip". Each was copied byte for
+byte and renamed in lowercase with a `streamline-` prefix, into
+`streamline/control/source/`. The license is whatever covers the owner's
+Streamline plan (Webalys LLC, Streamline 3.0 licence). The icons remain the
+property of Webalys LLC and are used here only in the context of this
+open-source project. The repository holds fewer than 100 distinct Streamline
+icons (81 distinct names at this date).
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FolderEmpty | A closed drop-down; a project with nothing in it | `streamline/control/source/streamline-folder-empty.png` | Folder Empty | `7dac8ce5d43de0d6ea86808c2c313fc5248c67393a2c8d31c14c0a98dee6d43b` |
+| FolderFile | An open drop-down; a group or thread with rows under it | `streamline/control/source/streamline-folder-file-1.png` | Folder File 1 | `7aa32aecba9012671ab5dfbfa3f87efd81607487f169ef942f73bb841517aff7` |
+| FolderEdit | A changed folder in Changes | `streamline/control/source/streamline-folder-edit.png` | Folder Edit | `78e3a52183dbca54f24647fadbf972929fc4e65531ed90109b50283f9c8bbbe5` |
+| FolderCheck | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-check.png` | Folder Check | `03d157b4ef2b08cd06c40787a13ffe94d2c9fe11a3f5ff35758ced7297e4691e` |
+| FolderHome | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-home-1.png` | Folder Home 1 | `9a4841f9459274c0aeeb20c951c2165316b298d940e870612e8ae240753d09df` |
+
+The file marks under them were already in `streamline/control/source/` since
+2026-11-14 and had no table here. Their hashes, checked on 2026-11-15:
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FileCode | A code file | `streamline/control/source/streamline-file-code.png` | File Code | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
+| ImageFileEdit | An image file | `streamline/control/source/streamline-image-file-edit.png` | Image File Edit | `13a3338053cda92edc847af330d9609b88b200c2b21fd4d6e3b4b820ed0771ac` |
+| FileText | A text file, a thread, a delegation | `streamline/control/source/streamline-common-file-text.png` | Common File Text | `2a1abfc95d2febc1901d970b21d347206bfa795befae941aa90070b0a690d1be` |
+| FileEmpty | Any other file | `streamline/control/source/streamline-common-file-empty.png` | Common File Empty | `137efab4f8e3130b6852103feda8fce5f095df06a35929651d1388e263898821` |
+| FileAdd | An added file; a session not yet in the workspace | `streamline/control/source/streamline-common-file-add.png` | Common File Add | `d59d1dacdf6d35c1df21ed478e139c7ba500cbc88774d84ff14587f024226ff1` |
+| FileEdit | A modified file in Changes | `streamline/control/source/streamline-common-file-edit.png` | Common File Edit | `454ca451830b9e01debe564d77f1aede64f6e745d7dfdee4d991742846de6e9b` |
+
+They are split into layers by `scripts/rail-icons.mjs` and painted by
+`.rail-mark` like the control marks above. The workbench places them from the
+frame (`terminal/crates/workbench-core/src/icons.rs`, laid over the grid by
+`components/workbench/icon-layer.tsx`).

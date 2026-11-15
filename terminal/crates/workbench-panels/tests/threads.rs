@@ -21,7 +21,8 @@ use theorem_workbench_core::registry::{
 use theorem_workbench_core::semantics::{Node, Role, SemanticTree};
 use theorem_workbench_core::threads::{ThreadCreated, ThreadTag};
 use theorem_workbench_core::{
-    Ctx, Model, Msg, OpenTarget, Panel, PanelFactories, PanelMsg, Theme, ViewCtx, update,
+    Ctx, Icon, Model, Msg, OpenTarget, Panel, PanelFactories, PanelMsg, PlacedIcon, Theme, ViewCtx,
+    take_icons, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use theorem_workbench_panels::register;
@@ -356,7 +357,32 @@ impl Rig {
         cx.focused = focused;
         let id = self.id("threads").unwrap();
         self.m.panel(&id).unwrap().view(area, &mut buf, &cx);
+        take_icons(&mut buf);
         buf
+    }
+
+    /// The icons the panel draws, as the frame's pass collects them.
+    fn icons(&self, width: u16, height: u16) -> Vec<PlacedIcon> {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let theme = Theme::plain();
+        let mut cx = ViewCtx::new(&theme, self.m.workspace());
+        cx.focused = true;
+        let id = self.id("threads").unwrap();
+        self.m.panel(&id).unwrap().view(area, &mut buf, &cx);
+        take_icons(&mut buf)
+    }
+
+    /// The icon on the row whose text holds `needle`, and the column its name starts at.
+    fn icon_of(&self, needle: &str) -> Option<(Icon, u16)> {
+        let lines = self.text(60, 40);
+        let icons = self.icons(60, 40);
+        lines.iter().enumerate().find_map(|(y, line)| {
+            let at = line.find(needle)? as u16;
+            let icon = icons.iter().find(|i| usize::from(i.y) == y)?;
+            assert!(icon.x + 2 <= at, "{icon:?} before {needle} at {at}");
+            Some((icon.icon, icon.x))
+        })
     }
 
     fn text(&self, width: u16, height: u16) -> Vec<String> {
@@ -366,6 +392,7 @@ impl Rig {
         let cx = ViewCtx::new(&theme, self.m.workspace());
         let id = self.id("threads").unwrap();
         self.m.panel(&id).unwrap().view(area, &mut buf, &cx);
+        take_icons(&mut buf);
         (0..height)
             .map(|y| {
                 (0..width)
@@ -477,6 +504,69 @@ fn a_thread_with_children_shows_a_chevron_and_opens_to_its_children_and_delegati
     r.select(KID);
     r.key(Key::Left);
     assert_eq!(r.selected().unwrap().id.as_str(), PARENT);
+}
+
+#[test]
+fn a_drop_down_is_a_folder_open_or_closed_and_what_is_under_it_is_a_file() {
+    let mut r = Rig::new(&[]);
+    // Closed: the project is open (its threads show), the parent thread has rows under it and is
+    // closed, a thread with nothing under it is a file; headings that do not collapse have none.
+    assert_eq!(r.icon_of("Atlas").map(|i| i.0), Some(Icon::FolderFile));
+    assert_eq!(
+        r.icon_of("Parent thread").map(|i| i.0),
+        Some(Icon::FolderEmpty)
+    );
+    assert_eq!(
+        r.icon_of("Running thread").map(|i| i.0),
+        Some(Icon::FileText)
+    );
+    assert_eq!(r.icon_of("Pinned one").map(|i| i.0), Some(Icon::FileText));
+    let lines = r.text(60, 40);
+    for heading in ["Pinned", "Projects", "Herdr"] {
+        let y = lines.iter().position(|l| l.trim() == heading).unwrap() as u16;
+        assert!(
+            r.icons(60, 40).iter().all(|i| i.y != y),
+            "{heading} has no icon"
+        );
+    }
+    // Opened: the same row is the open folder, and what is under it is a file under its name.
+    r.select(PARENT);
+    r.key(Key::Right);
+    assert_eq!(
+        r.icon_of("Parent thread").map(|i| i.0),
+        Some(Icon::FolderFile)
+    );
+    let (kid, kid_x) = r.icon_of("Child thread").unwrap();
+    assert_eq!(kid, Icon::FileText);
+    let (delegation, delegation_x) = r.icon_of("Reviewer").unwrap();
+    assert_eq!(delegation, Icon::FileText);
+    let (parent, parent_x) = r.icon_of("Parent thread").unwrap();
+    assert_eq!(parent, Icon::FolderFile);
+    // What is under a folder is drawn one level in from it.
+    assert!(kid_x > parent_x, "{kid_x} under {parent_x}");
+    assert_eq!(delegation_x, kid_x);
+    // Collapsing it is the closed folder again.
+    r.key(Key::Left);
+    assert_eq!(
+        r.icon_of("Parent thread").map(|i| i.0),
+        Some(Icon::FolderEmpty)
+    );
+}
+
+#[test]
+fn herdr_machines_are_folders_and_sessions_are_files_and_no_chevron_is_drawn() {
+    let r = Rig::new(&[]);
+    assert_eq!(r.icon_of("studio").map(|i| i.0), Some(Icon::FolderFile));
+    assert_eq!(r.icon_of("build").map(|i| i.0), Some(Icon::FileText));
+    // A session not yet in the workbench is the file with a plus.
+    assert_eq!(r.icon_of("agent").map(|i| i.0), Some(Icon::FileAdd));
+    for line in r.text(60, 40) {
+        let row = line.trim_start();
+        assert!(
+            !row.starts_with("> ") && !row.starts_with("v ") && !row.starts_with("+ "),
+            "{line:?}"
+        );
+    }
 }
 
 #[test]

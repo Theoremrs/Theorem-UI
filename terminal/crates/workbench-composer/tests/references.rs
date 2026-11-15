@@ -4,7 +4,7 @@ use common::*;
 use keybinds::{Key, Mods};
 use theorem_workbench_composer::{Event, reference_token};
 use theorem_workbench_core::DraftAttachmentState::Refused;
-use theorem_workbench_core::SourceReference;
+use theorem_workbench_core::{Icon, SourceReference};
 
 fn file(path: &str) -> SourceReference {
     SourceReference {
@@ -85,14 +85,24 @@ fn a_stale_answer_is_ignored() {
 fn up_and_down_move_and_enter_chooses() {
     let mut r = rig(60, 10);
     open_files(&mut r, "@m", &["src/main.rs", "src/mod.rs", "README.md"]);
-    assert!(r.dump().contains("\u{25B8} src/main.rs"), "{}", r.dump());
+    // The chosen row is told by its letters' colour; no glyph marks it.
+    assert!(r.chosen("src/main.rs"), "{}", r.dump());
+    assert!(!r.chosen("src/mod.rs"));
+    assert!(!r.dump().contains('\u{25B8}'), "{}", r.dump());
+    // Each suggestion leads with the icon of its kind, in the two cells the marker had.
+    let icons = r.icons();
+    assert_eq!(
+        icons.iter().map(|i| i.icon).collect::<Vec<_>>(),
+        [Icon::FileCode, Icon::FileCode, Icon::FileText]
+    );
+    assert!(icons.iter().all(|i| i.x == 0), "{icons:?}");
     r.press(Key::Down);
-    assert!(r.dump().contains("\u{25B8} src/mod.rs"));
+    assert!(r.chosen("src/mod.rs"));
     r.press(Key::Down);
     r.press(Key::Down);
-    assert!(r.dump().contains("\u{25B8} src/main.rs"), "wraps");
+    assert!(r.chosen("src/main.rs"), "wraps");
     r.press(Key::Up);
-    assert!(r.dump().contains("\u{25B8} README.md"), "wraps up");
+    assert!(r.chosen("README.md"), "wraps up");
     r.press(Key::Up);
     let out = r.enter();
     assert!(

@@ -141,8 +141,6 @@ pub(crate) struct Line {
     pub text: String,
     pub kind: LineKind,
     pub row: Option<usize>,
-    /// A wrapped continuation of the line above it, not a line of its own.
-    pub cont: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -175,13 +173,8 @@ pub(crate) fn lines(
         } else {
             crate::wrap::wrap(&text, room)
         };
-        for (i, text) in wrapped.into_iter().enumerate() {
-            out.push(Line {
-                text,
-                kind,
-                row,
-                cont: i > 0,
-            });
+        for text in wrapped {
+            out.push(Line { text, kind, row });
         }
     };
     let host = host_of(identity, None);

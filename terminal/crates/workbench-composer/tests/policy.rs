@@ -326,7 +326,11 @@ fn the_model_list_returns_model_chosen_and_esc_closes_it() {
     r.c.open_models(models.clone(), 1);
     let h = r.c.desired_height(60, 3);
     r.resize(60, h);
-    assert!(r.dump().contains("\u{25B8} Beta"), "{}", r.dump());
+    // The chosen row is told by its letters' colour; nothing marks it and the models have no icon.
+    assert!(r.chosen("Beta"), "{}", r.dump());
+    assert!(!r.chosen("Alpha"));
+    assert!(!r.dump().contains('\u{25B8}'), "{}", r.dump());
+    assert!(r.icons().is_empty());
     assert!(r.dump().contains("Alpha  (200k context)"), "{}", r.dump());
     r.press(Key::Up);
     // Typing does nothing while the list owns the keys.

@@ -18,8 +18,8 @@ use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::semantics::{Node, NodeId, Role, SemanticTree};
 use theorem_workbench_core::stale::{Binding, Stale};
 use theorem_workbench_core::{
-    Button, Ctx, Model, Msg, OpenTarget, Panel, PanelFactories, PanelMsg, Pointer, PointerKind,
-    Theme, ViewCtx, update,
+    Button, Ctx, Icon, Model, Msg, OpenTarget, Panel, PanelFactories, PanelMsg, PlacedIcon,
+    Pointer, PointerKind, Theme, ViewCtx, take_icons, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use theorem_workbench_panels::register;
@@ -231,7 +231,33 @@ impl Rig {
         let mut cx = ViewCtx::new(theme, self.m.workspace());
         cx.focused = focused;
         self.m.panel(&self.id).unwrap().view(area, &mut buf, &cx);
+        take_icons(&mut buf);
         buf
+    }
+
+    /// The icons the panel draws, as the frame's pass collects them.
+    fn icons(&self, width: u16, height: u16) -> Vec<PlacedIcon> {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let theme = Theme::plain();
+        let mut cx = ViewCtx::new(&theme, self.m.workspace());
+        cx.focused = true;
+        self.m.panel(&self.id).unwrap().view(area, &mut buf, &cx);
+        take_icons(&mut buf)
+    }
+
+    /// The icon on the row that shows `needle`, if any.
+    fn icon_of(&self, needle: &str) -> Option<Icon> {
+        let lines = self.text(90, 20);
+        let y = lines.iter().position(|l| l.contains(needle))? as u16;
+        let at = lines[usize::from(y)].find(needle)? as u16;
+        let icons = self.icons(90, 20);
+        let on: Vec<_> = icons.iter().filter(|i| i.y == y).collect();
+        assert!(on.len() <= 1, "one icon to a row: {on:?}");
+        on.first().map(|i| {
+            assert!(i.x + 2 <= at, "{i:?} sits before the name at {at}");
+            i.icon
+        })
     }
 
     fn text(&self, width: u16, height: u16) -> Vec<String> {
@@ -374,7 +400,7 @@ fn opening_and_focusing_start_nothing_and_the_first_tick_lists_the_root() {
 fn expanding_lists_the_directory_once_and_only_that_directory() {
     let mut r = rig();
     r.open_root();
-    assert!(r.screen().contains("> src/"));
+    assert_eq!(r.icon_of("src/"), Some(Icon::FolderEmpty));
     r.key(Key::Home);
     let fx = r.key(Key::Right);
     assert_eq!(paths(&fx), vec!["docs"], "expanding is the trigger");
@@ -384,9 +410,10 @@ fn expanding_lists_the_directory_once_and_only_that_directory() {
     r.answer_list(&fx[0], &[("main.rs", F), ("lib", D)]);
     let screen = r.screen();
     assert!(
-        screen.contains("v docs/") && screen.contains("main.rs"),
+        screen.contains("docs/") && screen.contains("main.rs"),
         "{screen}"
     );
+    assert_eq!(r.icon_of("docs/"), Some(Icon::FolderFile));
     r.key(Key::Left);
     let again = r.key(Key::Right);
     assert!(
@@ -401,11 +428,15 @@ fn directories_sort_first_and_kinds_are_drawn() {
     let mut r = rig();
     r.open_root();
     let lines = r.text(40, 8);
-    assert_eq!(lines[0], "> docs/");
-    assert_eq!(lines[1], "> src/");
-    assert_eq!(lines[2], "  a.txt");
-    assert_eq!(lines[3], "  link@");
-    assert_eq!(lines[4], "  README.md");
+    assert_eq!(lines[0], "    docs/");
+    assert_eq!(lines[1], "    src/");
+    assert_eq!(lines[2], "    a.txt");
+    assert_eq!(lines[3], "    link@");
+    assert_eq!(lines[4], "    README.md");
+    assert_eq!(r.icon_of("docs/"), Some(Icon::FolderEmpty));
+    assert_eq!(r.icon_of("a.txt"), Some(Icon::FileText));
+    assert_eq!(r.icon_of("link@"), Some(Icon::FileEmpty));
+    assert_eq!(r.icon_of("README.md"), Some(Icon::FileText));
 }
 
 #[test]
@@ -617,12 +648,12 @@ fn a_dropped_connection_is_a_line_above_the_rows() {
     }));
     let lines = r.text(60, 4);
     assert!(lines[0].starts_with("reconnecting"), "{lines:?}");
-    assert_eq!(lines[1], "> docs/");
+    assert_eq!(lines[1], "    docs/");
     r.send(Msg::Host(HostMessage::ConnectionChanged {
         workspace: "w".into(),
         state: ConnectionState::Open,
     }));
-    assert_eq!(r.text(60, 2)[0], "> docs/");
+    assert_eq!(r.text(60, 2)[0], "    docs/");
 }
 
 #[test]
@@ -1088,7 +1119,7 @@ fn click_selects_the_disclosure_toggles_double_click_opens_and_the_wheel_scrolls
     let fx = r.click(0, 0);
     assert_eq!(paths(&fx), vec!["docs"], "the disclosure toggles");
     r.answer_list(&fx[0], &[("a", F)]);
-    assert!(r.screen().contains("v docs/"));
+    assert_eq!(r.icon_of("docs/"), Some(Icon::FolderFile));
 
     // Enough rows to scroll: the host says everything changed and the root
     // comes back long.
@@ -1104,7 +1135,7 @@ fn click_selects_the_disclosure_toggles_double_click_opens_and_the_wheel_scrolls
     let many: Vec<(String, FileKind)> = (0..60).map(|i| (format!("f{i:02}"), F)).collect();
     let entries: Vec<(&str, FileKind)> = many.iter().map(|(n, k)| (n.as_str(), *k)).collect();
     r.answer_list(&root, &entries);
-    assert_eq!(r.text(40, 20)[0], "  f00");
+    assert_eq!(r.text(40, 20)[0], "    f00");
     let b = r.body();
     r.send(Msg::Pointer(Pointer {
         kind: PointerKind::Wheel { dx: 0, dy: 5 },
@@ -1113,7 +1144,7 @@ fn click_selects_the_disclosure_toggles_double_click_opens_and_the_wheel_scrolls
         mods: Mods::NONE,
         clicks: 1,
     }));
-    assert_eq!(r.text(40, 20)[0], "  f05", "scrolled five rows");
+    assert_eq!(r.text(40, 20)[0], "    f05", "scrolled five rows");
 }
 
 #[test]
@@ -1154,10 +1185,11 @@ fn a_double_press_on_the_disclosure_mark_does_not_toggle_twice() {
     let fx = r.press(0, 0, 1);
     assert_eq!(paths(&fx), vec!["docs"], "the first press expands");
     r.answer_list(&fx[0], &[("x", F)]);
-    assert!(r.screen().contains("v docs/"));
+    assert_eq!(r.icon_of("docs/"), Some(Icon::FolderFile));
     r.press(0, 0, 2);
-    assert!(
-        r.screen().contains("v docs/"),
+    assert_eq!(
+        r.icon_of("docs/"),
+        Some(Icon::FolderFile),
         "the second does not undo it"
     );
 }
@@ -1367,19 +1399,32 @@ fn a_small_tree_draws_with_disclosure_marks_indent_and_the_selected_row() {
     assert_eq!(
         lines,
         vec![
-            "v docs/",
-            "  > deep/",
-            "    x.rs",
-            "> src/",
-            "  a.txt",
-            "  link@",
-            "  README.md",
+            "    docs/",
+            "      deep/",
+            "      x.rs",
+            "    src/",
+            "    a.txt",
+            "    link@",
+            "    README.md",
             "",
             ""
         ]
     );
     // The selection is styled through the theme's role, not drawn as text.
-    assert_eq!(r.selected_line().as_deref(), Some("  > deep/"));
+    assert_eq!(r.selected_line().as_deref(), Some("      deep/"));
+    // A drop-down is a folder, open or closed; what is under it is a file, one indent in, so its
+    // icon sits under its parent's name. No chevron is drawn anywhere.
+    let icons = r.icons(30, 9);
+    let at = |y: u16| icons.iter().find(|i| i.y == y).map(|i| (i.x, i.icon));
+    assert_eq!(at(0), Some((1, Icon::FolderFile)));
+    assert_eq!(at(1), Some((3, Icon::FolderEmpty)));
+    assert_eq!(at(2), Some((3, Icon::FileCode)));
+    assert_eq!(at(3), Some((1, Icon::FolderEmpty)));
+    assert_eq!(at(5), Some((1, Icon::FileEmpty)));
+    for line in &lines {
+        let row = line.trim_start();
+        assert!(!row.starts_with("> ") && !row.starts_with("v "), "{line:?}");
+    }
 }
 
 // ---- the workspace the root names ---------------------------------------------

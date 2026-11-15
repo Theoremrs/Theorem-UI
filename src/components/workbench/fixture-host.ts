@@ -625,6 +625,27 @@ export function createFixtureHost(
           partial: listing.partial ?? false,
         })
       }
+      case 'filesSearch': {
+        // Every entry of the story's tree whose path holds the query, as `Files.search` pages them.
+        const query = effect.payload.query.toLowerCase()
+        const rows = Object.entries(tree).flatMap(([dir, listing]) =>
+          listing.entries.map((entry) => ({
+            ...entry,
+            path: dir ? `${dir}/${entry.name}` : entry.name,
+          })),
+        )
+        const found = rows
+          .filter((row) => row.path.toLowerCase().includes(query))
+          .sort((x, y) => x.path.localeCompare(y.path))
+        const from = effect.payload.offset ?? 0
+        const to = from + (effect.payload.limit ?? found.length)
+        return accept(effect, {
+          type: 'fileSearchPage',
+          rows: found.slice(from, to),
+          partial: false,
+          ...(to < found.length ? { next: to } : {}),
+        })
+      }
       case 'documentOpen': {
         if (effect.resource.type !== 'document')
           return refuse(effect, 'Not a document')

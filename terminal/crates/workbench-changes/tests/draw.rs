@@ -9,6 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use theorem_workbench_changes::*;
+use theorem_workbench_core::{Icon, take_icons};
 use unicode_width::UnicodeWidthStr;
 
 fn small() -> Changes {
@@ -27,11 +28,11 @@ fn snapshot_of_a_small_status() {
         [
             "main                          [fetch] [push]",
             " Staged 1                        unstage all",
-            " > M main.rs  src",
+            "    M main.rs  src",
             " Unstaged 1                        stage all",
-            " > M README.md",
+            "    M README.md",
             " Untracked 1",
-            " > U new.txt",
+            "    U new.txt",
             "",
             "",
             "",
@@ -60,6 +61,34 @@ fn with_diff() -> Changes {
 }
 
 #[test]
+fn a_changed_file_is_a_file_icon_by_its_change_and_no_arrow_marks_a_row() {
+    let found: Vec<_> = icons(&small(), 44, 16)
+        .into_iter()
+        .map(|i| (i.y, i.icon))
+        .collect();
+    // Staged modified, unstaged modified, untracked: the file icons, one per row, no arrow.
+    assert_eq!(
+        found,
+        [(2, Icon::FileEdit), (4, Icon::FileEdit), (6, Icon::FileAdd)]
+    );
+    for line in render(&small(), 44, 16) {
+        assert!(
+            !line.contains('\u{25b8}') && !line.contains('\u{25be}'),
+            "{line:?}"
+        );
+    }
+}
+
+#[test]
+fn a_hunk_header_is_the_open_folder_and_a_folded_one_the_closed_folder() {
+    let rows = icons(&with_diff(), 44, 16);
+    assert!(
+        rows.iter().any(|i| i.y == 3 && i.icon == Icon::FolderFile),
+        "{rows:?}"
+    );
+}
+
+#[test]
 fn snapshot_of_a_small_unified_diff() {
     let model = with_diff();
     assert_eq!(
@@ -67,15 +96,15 @@ fn snapshot_of_a_small_unified_diff() {
         [
             "main                          [fetch] [push]",
             " Staged 1                        unstage all",
-            " v M main.rs  src",
-            "  v @@ -1,4 +1,4 @@",
+            "    M main.rs  src",
+            "     @@ -1,4 +1,4 @@",
             "   1  1  fn main() {",
             "   2    -    println!(\"hello\");",
             "      2 +    println!(\"hello, world\");",
             "   3  3      run();",
             "   4  4  }",
             " Unstaged 1                        stage all",
-            " > M README.md",
+            "    M README.md",
             " Untracked 1",
             "  Commit message                        0/50",
             "  Description",
@@ -94,16 +123,16 @@ fn snapshot_of_a_small_split_diff() {
         [
             "main                                                                  [fetch] [push]",
             " Staged 1                                                                unstage all",
-            " v M main.rs  src",
-            "  v @@ -1,4 +1,4 @@",
+            "    M main.rs  src",
+            "     @@ -1,4 +1,4 @@",
             "   1 fn main() {                          │ 1 fn main() {",
             "   2     println!(\"hello\");               │ 2     println!(\"hello, world\");",
             "   3     run();                           │ 3     run();",
             "   4 }                                    │ 4 }",
             " Unstaged 1                                                                stage all",
-            " > M README.md",
+            "    M README.md",
             " Untracked 1",
-            " > U new.txt",
+            "    U new.txt",
             "  Commit message                                                                0/50",
             "  Description",
             "",
@@ -153,6 +182,7 @@ fn wide_characters_are_counted_by_display_width_and_never_overflow() {
         let area = Rect::new(0, 0, width, 12);
         let mut buf = Buffer::empty(area);
         model.draw(area, &mut buf, &ChangesStyles::plain());
+        take_icons(&mut buf);
         for line in lines(&buf) {
             assert!(line.width() <= width as usize, "{width}: {line:?}");
         }
@@ -168,10 +198,12 @@ fn drawing_into_a_tiny_or_empty_area_does_not_panic() {
         let area = Rect::new(0, 0, w, h);
         let mut buf = Buffer::empty(area);
         model.draw(area, &mut buf, &ChangesStyles::plain());
+        take_icons(&mut buf);
     }
     // And the area is clipped to the buffer.
     let mut buf = Buffer::empty(Rect::new(0, 0, 20, 5));
     model.draw(Rect::new(0, 0, 80, 40), &mut buf, &ChangesStyles::plain());
+    take_icons(&mut buf);
 }
 
 #[test]
@@ -180,6 +212,7 @@ fn drawing_in_an_offset_area_stays_inside_it() {
     let mut buf = Buffer::empty(Rect::new(0, 0, 60, 24));
     let area = Rect::new(10, 4, 40, 16);
     model.draw(area, &mut buf, &ChangesStyles::plain());
+    take_icons(&mut buf);
     for y in 0..24u16 {
         for x in 0..60u16 {
             let inside = area.contains((x, y).into());
@@ -196,6 +229,7 @@ fn added_removed_and_context_lines_are_styled_apart() {
     let area = Rect::new(0, 0, 44, 16);
     let mut buf = Buffer::empty(area);
     model.draw(area, &mut buf, &ChangesStyles::plain());
+    take_icons(&mut buf);
     let style_at = |needle: &str| {
         let y = lines(&buf).iter().position(|l| l.contains(needle)).unwrap() as u16;
         let x = lines(&buf)[y as usize].find(needle).unwrap() as u16;
@@ -222,9 +256,11 @@ fn the_cursor_row_is_marked_by_style_and_follows_focus() {
     let styles = ChangesStyles::plain();
     let mut files = Buffer::empty(area);
     model.draw(area, &mut files, &styles);
+    take_icons(&mut files);
     model.set_focus(Focus::Message);
     let mut message = Buffer::empty(area);
     model.draw(area, &mut message, &styles);
+    take_icons(&mut message);
     // The commit box shows which part holds the keys.
     assert_ne!(files, message);
 }
@@ -249,6 +285,7 @@ fn the_focused_cursor_row_is_in_the_cursor_colour_with_no_band_and_its_letter_an
     };
     let mut buf = Buffer::empty(area);
     model.draw(area, &mut buf, &styles);
+    take_icons(&mut buf);
     // The cursor row is the one that names the folder and offers the verbs.
     let rows: Vec<u16> = (0..area.height)
         .filter(|y| {
@@ -264,7 +301,7 @@ fn the_focused_cursor_row_is_in_the_cursor_colour_with_no_band_and_its_letter_an
     assert!(buf[(at("main.rs"), y)].modifier.contains(Modifier::BOLD));
     assert_eq!(buf[(at("src"), y)].fg, Color::DarkGray, "the folder");
     assert_eq!(buf[(at("unstage"), y)].fg, Color::DarkGray, "the hint");
-    assert_eq!(buf[(3, y)].fg, Color::Yellow, "the letter");
+    assert_eq!(buf[(4, y)].fg, Color::Yellow, "the letter");
     for x in 0..area.width {
         assert_eq!(buf[(x, y)].bg, Color::Reset, "no band at column {x}");
     }

@@ -18,7 +18,7 @@ use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome}
 use theorem_workbench_core::effect::{DocumentHistoryPoint, EffectBody};
 use theorem_workbench_core::ids::{Actor, Revision as CoreRevision};
 use theorem_workbench_core::semantics::{Node, Role};
-use theorem_workbench_core::{Ctx, PanelPointer, PointerKind, ViewCtx};
+use theorem_workbench_core::{Ctx, Icon, PanelPointer, PointerKind, ViewCtx, put_icon};
 use theorem_workbench_text::visible::visible;
 use unicode_width::UnicodeWidthStr;
 
@@ -754,11 +754,8 @@ impl EditorPanel {
                 {
                     let y = p.list.y + (row - h.top) as u16;
                     let chosen = row == h.selected;
-                    let mut text = format!(
-                        "{} Revision {}",
-                        if chosen { '>' } else { ' ' },
-                        entry.label
-                    );
+                    // The chosen version is told by its colours; each is a text file, drawn as one.
+                    let mut text = format!("   Revision {}", entry.label);
                     if entry.seq == Some(accepted) {
                         text.push_str(" (this text's revision)");
                     }
@@ -771,6 +768,7 @@ impl EditorPanel {
                     };
                     buf.set_style(Rect::new(p.list.x, y, p.list.width, 1), style);
                     buf.set_stringn(p.list.x, y, &text, width, style);
+                    put_icon(buf, p.list.x, y, p.list.right(), Icon::FileText, style);
                 }
             }
         }

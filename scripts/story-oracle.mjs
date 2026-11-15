@@ -1079,6 +1079,12 @@ const SCENARIOS = {
       const setClipboard = (text) => page.evaluate((t) => navigator.clipboard.writeText(t).then(() => true, () => false), text)
       const readClipboard = () => page.evaluate(() => navigator.clipboard.readText().then((t) => t, () => undefined))
       real = await setClipboard('probe')
+      // Firefox lets a page write the clipboard only within a few seconds of a key press, and the journey's last
+      // press can be older than that by now. F8 is bound to nothing in the composer, where focus is.
+      if (!real && engine === 'firefox') {
+        await page.keyboard.press('F8')
+        real = await setClipboard('probe')
+      }
       // WebKit lets the page write the clipboard but not read it back without a permission it cannot be granted.
       const readable = real && (await readClipboard()) === 'probe'
       const mode = real ? 'real clipboard' : 'synthetic paste event'
@@ -1881,7 +1887,7 @@ const SCENARIOS = {
 }
 
 // The feature stories' scenarios live in their own module (they share this file's helpers).
-Object.assign(SCENARIOS, (await import('./story-oracle-features.mjs')).scenarios({ pageText, has, sees, hasWrapped, wrappedIncludes, recordEffects, effectsSince, snap, layoutOf, CHORD }))
+Object.assign(SCENARIOS, (await import('./story-oracle-features.mjs')).scenarios({ pageText, has, sees, hasWrapped, wrappedIncludes, recordEffects, effectsSince, snap, layoutOf, markedAt, CHORD }))
 
 async function interact(story) {
   const scenarios = SCENARIOS[story.id]

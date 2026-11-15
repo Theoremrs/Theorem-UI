@@ -5,6 +5,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Direction, Rect};
 use theorem_workbench_dock::{GroupFrame, Presentation, SolvedFrame, Suppressed, TabFrame};
 
+use crate::icons::{PlacedIcon, take_icons};
 use crate::ids::PanelInstanceId;
 use crate::model::Model;
 use crate::panel::ViewCtx;
@@ -18,7 +19,15 @@ const MORE_AFTER: &str = "\u{203a}";
 /// The group shown is maximized.
 const MAXIMIZED: &str = "\u{25a3}";
 
-pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
+/// Draws the whole frame and returns the icons it carries: the last thing it
+/// does is the icon pass ([`take_icons`]), once everything that can cover an
+/// icon has been drawn, so no icon sentinel is left in `buf`.
+pub fn view(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) -> Vec<PlacedIcon> {
+    draw_frame(model, area, buf, theme);
+    take_icons(buf)
+}
+
+fn draw_frame(model: &Model, area: Rect, buf: &mut Buffer, theme: &Theme) {
     let area = area.intersection(buf.area);
     buf.set_style(area, theme.bg);
     let Some(vp) = model.viewport() else {

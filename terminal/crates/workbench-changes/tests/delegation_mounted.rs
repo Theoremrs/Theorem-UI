@@ -286,6 +286,7 @@ impl Rig {
             ViewCtx::new(theme, self.m.workspace()).with_capabilities(self.m.capabilities());
         cx.focused = true;
         self.panel().view(area, &mut buf, &cx);
+        theorem_workbench_core::take_icons(&mut buf);
         buf
     }
 

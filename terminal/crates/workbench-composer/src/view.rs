@@ -4,7 +4,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::semantics::{Node, Role};
-use theorem_workbench_core::{DraftAttachmentState, Theme};
+use theorem_workbench_core::{DraftAttachmentState, Theme, file_icon, put_icon};
 use theorem_workbench_editor::{EditorStyles, Paint};
 use theorem_workbench_panels::caret::caret_text;
 use theorem_workbench_text::visible::visible;
@@ -372,19 +372,26 @@ impl Composer {
                 },
                 None => continue,
             };
-            let marker = if chosen { "\u{25B8} " } else { "  " };
-            let room = usize::from(r.width).saturating_sub(2);
-            let shown = match p {
-                Popup::Files { .. } => clip_start(&text, room),
-                Popup::Models { .. } => clip(&text, room),
+            // A file suggestion leads with its icon and a blank cell, anything else with two
+            // blank cells; nothing marks the chosen row but the colour of its letters.
+            let files = matches!(p, Popup::Files { .. });
+            let lead = if files && label.is_some() { 3 } else { 2 };
+            let room = usize::from(r.width).saturating_sub(lead);
+            let shown = if files {
+                clip_start(&text, room)
+            } else {
+                clip(&text, room)
             };
             buf.set_stringn(
                 r.x,
                 y,
-                format!("{marker}{shown}"),
+                format!("{}{shown}", " ".repeat(lead)),
                 usize::from(r.width),
                 style,
             );
+            if files && label.is_some() {
+                put_icon(buf, r.x, y, r.right(), file_icon(&text), style);
+            }
         }
     }
 

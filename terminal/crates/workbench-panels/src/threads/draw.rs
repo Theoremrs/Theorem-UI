@@ -12,7 +12,7 @@ use ratatui::widgets::{Clear, Widget};
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeId, Role};
 use theorem_workbench_core::threads::{ThreadItem, ThreadTag, relative};
-use theorem_workbench_core::{Theme, ViewCtx};
+use theorem_workbench_core::{Icon, Theme, ViewCtx, put_icon};
 use theorem_workbench_text::field::FieldStyles;
 use theorem_workbench_text::visible::visible;
 
@@ -255,7 +255,10 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 put(buf, area.x + 1, y, right, text, line.patch(theme.muted));
             }
             Row::Group { text, .. } => {
-                put(buf, area.x + 1, y, right, text, line.patch(theme.muted));
+                // A machine always shows its sessions, so its folder is always the open one.
+                let muted = line.patch(theme.muted);
+                let x = put_icon(buf, area.x + 1, y, right, Icon::FolderFile, muted);
+                put(buf, x, y, right, text, muted);
             }
             Row::Status { text, .. } => {
                 put(buf, area.x + 2, y, right, text, line.patch(theme.muted));
@@ -264,8 +267,12 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 put(buf, x0, y, right, text, line.patch(theme.warning));
             }
             Row::Project { name, open, .. } => {
-                let mark = if *open { "v " } else { "> " };
-                let x = put(buf, area.x + 1, y, right, mark, line);
+                let mark = if *open {
+                    Icon::FolderFile
+                } else {
+                    Icon::FolderEmpty
+                };
+                let x = put_icon(buf, area.x + 1, y, right, mark, line);
                 put(buf, x, y, right, name, line.add_modifier(Modifier::BOLD));
             }
             Row::Edit { .. } => {
@@ -299,12 +306,15 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 if let Some(s) = stripe(theme, base, t) {
                     put(buf, area.x, y, right, "\u{258e}", s);
                 }
+                // A thread with rows under it is a drop-down; one with nothing under it is a
+                // file, empty until something has been said in it.
                 let mark = match open {
-                    Some(true) => "v ",
-                    Some(false) => "> ",
-                    None => "  ",
+                    Some(true) => Icon::FolderFile,
+                    Some(false) => Icon::FolderEmpty,
+                    None if t.last_message_ms.is_none() => Icon::FileEmpty,
+                    None => Icon::FileText,
                 };
-                let tx = put(buf, x0, y, right, mark, base);
+                let tx = put_icon(buf, x0, y, right, mark, base);
                 // What is at the right: running, needs you, unread, or the time.
                 let (label, style) = if t.running {
                     ("running".to_owned(), base.patch(theme.success))
@@ -357,7 +367,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 }
             }
             Row::Delegation { label, .. } => {
-                let x = put(buf, x0, y, right, "  ", line);
+                let x = put_icon(buf, x0, y, right, Icon::FileText, line);
                 let style = line.patch(theme.muted);
                 put(
                     buf,
@@ -377,8 +387,13 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 } else {
                     line.patch(theme.muted)
                 };
-                let mark = if s.admitted { "  " } else { "+ " };
-                let tx = put(buf, x0, y, right, mark, base);
+                // A session not yet in the workbench is the file with a plus: Enter adds it.
+                let mark = if s.admitted {
+                    Icon::FileText
+                } else {
+                    Icon::FileAdd
+                };
+                let tx = put_icon(buf, x0, y, right, mark, base);
                 let word = session_word(s);
                 let ww = word.as_deref().map_or(0, |w| width(&visible(w))).min(14) as u16;
                 let wx = right.saturating_sub(ww + 1).max(tx);

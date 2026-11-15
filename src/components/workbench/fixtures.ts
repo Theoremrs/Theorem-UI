@@ -29,6 +29,9 @@ export const FILES_TREE: Record<string, Listing> = {
       { name: 'Cargo.toml', kind: 'file' },
       { name: 'README.md', kind: 'file' },
       { name: 'package.json', kind: 'file' },
+      // An image, so the Files story shows every kind of file icon: code (Cargo.toml), text
+      // (README.md), image, and the plain file (.env).
+      { name: 'logo.png', kind: 'file' },
     ],
   },
   src: {
@@ -62,6 +65,9 @@ export const FILES_TREE: Record<string, Listing> = {
 /** The tree the other workbench stories share: the same shape without the partial listing. */
 export const TREE: Record<string, Listing> = {
   ...FILES_TREE,
+  '': {
+    entries: FILES_TREE['']!.entries.filter((entry) => entry.name !== 'logo.png'),
+  },
   docs: {
     entries: [
       { name: 'architecture.md', kind: 'file' },

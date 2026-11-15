@@ -78,6 +78,23 @@ import fileAddPaper from './fileAdd-paper.svg'
 import imageFileEditLine from './imageFileEdit-line.svg'
 import imageFileEditAccent from './imageFileEdit-accent.svg'
 import imageFileEditPaper from './imageFileEdit-paper.svg'
+import folderEmptyLine from './folderEmpty-line.svg'
+import folderEmptyAccent from './folderEmpty-accent.svg'
+import folderEmptyPaper from './folderEmpty-paper.svg'
+import folderFileLine from './folderFile-line.svg'
+import folderFileAccent from './folderFile-accent.svg'
+import folderFileTint from './folderFile-tint.svg'
+import folderFilePaper from './folderFile-paper.svg'
+import folderHomeLine from './folderHome-line.svg'
+import folderHomeAccent from './folderHome-accent.svg'
+import folderHomePaper from './folderHome-paper.svg'
+import folderCheckLine from './folderCheck-line.svg'
+import folderCheckAccent from './folderCheck-accent.svg'
+import folderCheckTint from './folderCheck-tint.svg'
+import folderCheckPaper from './folderCheck-paper.svg'
+import folderEditLine from './folderEdit-line.svg'
+import folderEditAccent from './folderEdit-accent.svg'
+import folderEditPaper from './folderEdit-paper.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -104,6 +121,11 @@ export const CONTROL_LAYERS = {
   fileEdit: { line: fileEditLine, accent: fileEditAccent, tint: fileEditTint, paper: fileEditPaper },
   fileAdd: { line: fileAddLine, accent: fileAddAccent, tint: fileAddTint, paper: fileAddPaper },
   imageFileEdit: { line: imageFileEditLine, accent: imageFileEditAccent, paper: imageFileEditPaper },
+  folderEmpty: { line: folderEmptyLine, accent: folderEmptyAccent, paper: folderEmptyPaper },
+  folderFile: { line: folderFileLine, accent: folderFileAccent, tint: folderFileTint, paper: folderFilePaper },
+  folderHome: { line: folderHomeLine, accent: folderHomeAccent, paper: folderHomePaper },
+  folderCheck: { line: folderCheckLine, accent: folderCheckAccent, tint: folderCheckTint, paper: folderCheckPaper },
+  folderEdit: { line: folderEditLine, accent: folderEditAccent, paper: folderEditPaper },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

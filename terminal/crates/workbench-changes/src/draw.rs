@@ -18,13 +18,14 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::completion::LogEntry;
+use theorem_workbench_core::{Icon, put_icon};
 
 use crate::diff::{DiffLine, LineKind};
 use crate::layout::{
     LIMITS, Row, Tone, banner_rows, branch_controls, control_label, regions, rows, verbs,
 };
 use crate::model::{Changes, DiffLayout, Field, Focus, LogState, Mode, Prompt};
-use crate::status::{Section, letter, shown};
+use crate::status::{Section, is_folder, letter, shown};
 use crate::styles::ChangesStyles;
 use crate::text::{elide_middle, fit, paint, printable, put, put_marked, width};
 
@@ -283,11 +284,7 @@ impl Changes {
                     );
                 }
             }
-            Row::File {
-                key,
-                change,
-                expanded,
-            } => {
+            Row::File { key, change, .. } => {
                 let cursor = self.cursor.as_ref() == Some(key);
                 let selected = self.selected.contains(key);
                 let focused = self.focus == Focus::Files && self.mode == Mode::Changes;
@@ -299,16 +296,21 @@ impl Changes {
                 };
                 paint(buf, rect, row_style);
                 let c = letter(key.section, change);
-                put(
-                    buf,
-                    rect.x + 1,
-                    rect.y,
-                    1,
-                    if *expanded { "v" } else { ">" },
-                    row_style,
-                );
+                // The mark says what changed; its open state is the diff shown beneath the row
+                // (`expanded` in the semantic tree), not a glyph.
+                let icon = if is_folder(&key.path) {
+                    Icon::FolderEdit
+                } else {
+                    match c {
+                        'A' | 'U' | '?' => Icon::FileAdd,
+                        'M' => Icon::FileEdit,
+                        _ => Icon::FileEmpty,
+                    }
+                };
+                put_icon(buf, rect.x + 1, rect.y, rect.right(), icon, row_style);
                 let letter_style = on_row(row_style, letter_style(styles, key.section, c));
-                put(buf, rect.x + 3, rect.y, 1, &c.to_string(), letter_style);
+                // The icon's two cells, a blank one, then the change letter.
+                put(buf, rect.x + 4, rect.y, 1, &c.to_string(), letter_style);
                 let hint = if cursor {
                     offered(key.section)
                 } else {
@@ -316,7 +318,7 @@ impl Changes {
                 };
                 let hint = hint.as_str();
                 let hint_w = width(hint);
-                let body_x = 5usize;
+                let body_x = 6usize;
                 let mut room = w.saturating_sub(body_x);
                 // A file the editor has unsaved changes to says so after its name, in
                 // words; a narrow row keeps the short form.
@@ -400,15 +402,19 @@ impl Changes {
                 } else {
                     styles.hunk_header
                 };
-                let marker = if *folded { ">" } else { "v" };
+                let marker = if *folded {
+                    Icon::FolderEmpty
+                } else {
+                    Icon::FolderFile
+                };
                 paint(buf, rect, style);
-                put(buf, rect.x + 2, rect.y, 1, marker, style);
+                put_icon(buf, rect.x + 2, rect.y, rect.right(), marker, style);
                 let mut header = hunk.header.clone();
                 if *folded {
                     header.push_str(&format!(" ({} lines)", hunk.lines.len()));
                 }
-                let header = fit(&printable(&header), w.saturating_sub(4));
-                put(buf, rect.x + 4, rect.y, w.saturating_sub(4), &header, style);
+                let header = fit(&printable(&header), w.saturating_sub(5));
+                put(buf, rect.x + 5, rect.y, w.saturating_sub(5), &header, style);
             }
             Row::Line { line, digits, .. } => self.draw_unified(line, *digits, rect, buf, styles),
             Row::Pair {

@@ -6,7 +6,6 @@ import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { FaceStage } from '@/components/face/face-stage'
 import { createFixtureHost } from './fixture-host'
 import type { FixtureHost, FixtureOptions } from './fixture-host'
-import { FILES_TREE } from './fixtures'
 import { WorkbenchSurface } from './workbench'
 import type { Effect } from '@/lib/workbench/wire'
 import type { Dispatch, SemanticsFeed, SurfaceHost, SurfaceParts } from './workbench'
@@ -344,29 +343,6 @@ export function WorkbenchPickerStory() {
       options={{ granted: EVERY_TOOL }}
       script={[]}
       wait={['README.md', 'More tools']}
-    />
-  )
-}
-
-/** `workbench-files`: the tree with a symlink, an ignored and a hidden entry and a partial listing, opened a level down. */
-export function WorkbenchFilesStory() {
-  return (
-    <FixtureStory
-      id="workbench-files"
-      width={1280}
-      height={640}
-      options={{ granted: ['files'], tree: FILES_TREE }}
-      script={[
-        { chord: 'e' },
-        // Files lands on its first row when it takes focus.
-        { see: 'README.md' },
-        { key: 'Enter' },
-        { key: 'ArrowDown' },
-        { key: 'ArrowDown' },
-        { key: 'Enter' },
-        { see: 'architecture.md' },
-      ]}
-      wait={['latest', 'target', 'architecture.md']}
     />
   )
 }

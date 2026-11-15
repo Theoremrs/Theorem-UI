@@ -311,6 +311,20 @@ impl Rig {
             .collect()
     }
 
+    /// The rows the focus colours cover: the chosen row, which no marker glyph tells.
+    fn chosen_rows(&self, width: u16, height: u16) -> Vec<String> {
+        let buf = self.draw(width, height);
+        let text = self.text(width, height);
+        (0..height)
+            .filter(|y| {
+                let m = buf[(2, *y)].modifier;
+                m.contains(ratatui::style::Modifier::REVERSED)
+                    || m.contains(ratatui::style::Modifier::UNDERLINED)
+            })
+            .map(|y| text[usize::from(y)].clone())
+            .collect()
+    }
+
     /// The pane drawn at the size the root gave it.
     fn grid(&self) -> Vec<String> {
         let b = self.body();
@@ -2911,30 +2925,34 @@ fn the_selected_row_and_the_keyboards_target_stay_on_screen_when_wrapping_makes_
             r2.key(Key::Home);
             let top = r2.text(w, height);
             assert!(
-                top.iter().any(|row| row.starts_with('>')),
+                !r2.chosen_rows(w, height).is_empty(),
                 "width {w}, height {height}: the first row is selected and not drawn\n{}",
                 top.join("\n")
             );
             r2.key(Key::End);
             let bottom = r2.text(w, height);
             assert!(
-                bottom
+                r2.chosen_rows(w, height)
                     .iter()
-                    .any(|row| row.starts_with('>') && row.contains("native-zsh")),
+                    .any(|row| row.contains("native-zsh")),
                 "width {w}, height {height}: the last row is selected and not drawn\n{}",
+                bottom.join("\n")
+            );
+            assert!(
+                bottom.iter().all(|row| !row.starts_with('>')),
+                "no arrow marks the chosen row\n{}",
                 bottom.join("\n")
             );
         }
     }
-    // Walking down never loses the marker: scrolling, not dropping.
+    // Walking down never loses the chosen row: scrolling, not dropping.
     r.key(Key::Home);
     for _ in 0..3 {
         r.key(Key::Down);
-        let rows = r.text(24, 8);
         assert!(
-            rows.iter().any(|row| row.starts_with('>')),
+            !r.chosen_rows(24, 8).is_empty(),
             "{}",
-            rows.join("\n")
+            r.text(24, 8).join("\n")
         );
     }
 }

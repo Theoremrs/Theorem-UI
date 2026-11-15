@@ -295,6 +295,7 @@ impl Rig {
             ViewCtx::new(theme, self.m.workspace()).with_capabilities(self.m.capabilities());
         cx.focused = true;
         self.panel().view(area, &mut buf, &cx);
+        theorem_workbench_core::take_icons(&mut buf);
         buf
     }
 
@@ -306,6 +307,7 @@ impl Rig {
             ViewCtx::new(&theme, self.m.workspace()).with_capabilities(self.m.capabilities());
         cx.focused = true;
         self.panel().view(area, &mut buf, &cx);
+        theorem_workbench_core::take_icons(&mut buf);
         common::lines(&buf)
     }
 
@@ -2940,7 +2942,7 @@ fn hostile_paths_draw_inside_the_pane_one_row_each_and_fake_no_notice() {
             }
         }
         let rows = rig.text(width, 30);
-        let files = rows.iter().filter(|l| l.starts_with(" > M ")).count();
+        let files = rows.iter().filter(|l| l.starts_with("    M ")).count();
         assert_eq!(files, 7, "one row for each name:\n{}", rows.join("\n"));
         assert!(
             rows.iter().all(|l| l.chars().count() <= usize::from(width)),

@@ -12,7 +12,7 @@
 export const RAW_HOSTILE = /[\u0000-\u0008\u000b-\u001f\u007f‪-‮⁦-⁩]/
 
 export function scenarios(h) {
-  const { pageText, has, sees, hasWrapped, recordEffects, effectsSince, snap, layoutOf, CHORD } = h
+  const { pageText, has, sees, hasWrapped, recordEffects, effectsSince, snap, layoutOf, markedAt, CHORD } = h
 
   /** The core's semantic tree nodes, read off the mounted handle. */
   const nodes = (page) => page.evaluate(() => window.__workbenchTree().nodes)
@@ -157,6 +157,29 @@ export function scenarios(h) {
   const lastOf = async (page, kind) => (await effects(page)).filter((e) => e.kind === kind).at(-1)
   const tabCount = async (page) => (await layoutOf(page)).groups.flatMap((g) => g.tabs).length
   const HOSTILE_TITLE = 'Plan \u202etxt.exe\u202c bell\u0007 team'
+
+  // ---- Icons (the owner's Streamline marks over the cells the core marks, icon-layer.tsx) ----------------
+  /** The grid's rows as text, one string per row of cells, off the Ratzilla DOM. */
+  const gridRows = (page) => page.evaluate(() => [...document.querySelector('[id$=_ratzilla_grid]').querySelectorAll(':scope > pre')].map((pre) => [...pre.children].map((c) => c.textContent || ' ').join('')))
+  /** Every icon element of the layer: its name, its first cell, and what the page says of it. */
+  const iconsOf = (page) => page.evaluate(() => [...document.querySelectorAll('[data-icon]')].map((e) => ({ icon: e.dataset.icon, x: Number(e.dataset.cellX), y: Number(e.dataset.cellY), hidden: e.getAttribute('aria-hidden') === 'true', inert: getComputedStyle(e).pointerEvents === 'none', masks: e.querySelectorAll('.icon-mask').length })))
+  /** What stands before a name: the icon's two cells and the blank after them. A marker glyph would show here. */
+  const LEAD_BLANK = /^[\s\u258e]*$/
+  /**
+   * The tree rows (and groups) of one panel with the icon at their cells: the row's semantic node, its icon, and the cells
+   * from the row's edge to where the name starts (`icon.x + 3`), which must hold nothing but blanks and the state stripe.
+   */
+  const iconRows = async (page, panel) => {
+    const [tree, icons, grid] = [await nodes(page), await iconsOf(page), await gridRows(page)]
+    return tree
+      .filter((n) => n.id.startsWith(`${panel}/`) && (/^treeitem$/i.test(n.role) || n.role === 'group') && n.rect)
+      .map((n) => {
+        const icon = icons.find((i) => i.y === n.rect.y && i.x >= n.rect.x && i.x < n.rect.x + n.rect.width)
+        return { id: n.id.slice(panel.length + 1), name: n.name, role: n.role, expanded: n.state.expanded, y: n.rect.y, icon: icon?.icon ?? null, x: icon?.x ?? null, lead: icon ? (grid[n.rect.y] ?? '').slice(n.rect.x, icon.x + 3) : (grid[n.rect.y] ?? '').slice(n.rect.x, n.rect.x + 6) }
+      })
+  }
+  /** The panel prefix of the node with this suffix, from its id. */
+  const panelOfNode = async (page, suffix) => (await node(page, suffix))?.id.split('/')[0]
 
   // The same texts the story holds (workbench-feature-stories.tsx), to compare an excerpt with the file it came from.
   const LONG = `${Array.from({ length: 3 }, (_, i) => `${i + 1} ${'word '.repeat(400)}`.trimEnd()).join('\n')}\n`
@@ -433,6 +456,11 @@ export function scenarios(h) {
         const opened = await since(from)
         const previewOfLater = (await hasRight(page, 'Past version, revision 2')) && (await hasRight(page, 'A later draft'))
         const text = await pageText(page)
+        // The chosen version: selected in the tree, its letters in the mark colour with no band, a text file's icon before it and no arrow.
+        const chosenRow = (await nodes(page)).find((n) => n.role === 'listItem' && n.name === 'Revision 2')
+        const chosenLook = chosenRow ? await markedAt(page, chosenRow.rect) : { marked: 0, band: 1 }
+        const chosenIcon = chosenRow ? (await iconsOf(page)).some((i) => i.icon === 'fileText' && i.x === chosenRow.rect.x && i.y === chosenRow.rect.y) : false
+        const chosenLead = chosenRow ? (await gridRows(page))[chosenRow.rect.y].slice(chosenRow.rect.x, chosenRow.rect.x + 3) : '?'
         await snap(page, 'workbench-document-history-open')
         from = await mark()
         await keys(page, 'ArrowDown')
@@ -475,7 +503,8 @@ export function scenarios(h) {
         const kinds = (list) => list.map((e) => e.kind).join()
         return {
           'Alt+V opens the drawer and asks the owner for the list and then the newest point: documentHistoryList, documentHistoryPreview h2': kinds(opened) === 'documentHistoryList,documentHistoryPreview' && opened[1].payload.point === 'h2',
-          'the drawer lists "Revision 2" selected and "Revision 1 (this text\'s revision)"': /> Revision 2/.test(text) && text.includes('Revision 1 (this text\'s revision)'),
+          'the drawer lists "Revision 2" selected and "Revision 1 (this text\'s revision)"': chosenRow?.state.selected === true && text.includes('Revision 1 (this text\'s revision)'),
+          'the chosen version is told by its letters (mark colour, bold, no band) with a text file icon and no arrow before it': chosenLook.marked > 0 && chosenLook.band === 0 && chosenIcon && LEAD_BLANK.test(chosenLead),
           'the preview says it is a past version, read-only, and shows "A later draft"': previewOfLater,
           'Down chooses the older point and asks for its preview only: documentHistoryPreview h1': kinds(down) === 'documentHistoryPreview' && down[0].payload.point === 'h1' && older.includes('An earlier draft'),
           'Enter asks first, with the exact question and its two buttons, and sends nothing': question && buttons && asked.length === 0,
@@ -1144,6 +1173,108 @@ export function scenarios(h) {
       },
     ],
 
+    // The Files panel's icons: a folder open or closed for every drop-down, a file icon by kind for the rows under them,
+    // and nothing in front of a name that looks like an arrow. The tree is the story's (partial `docs`, an image, a symlink).
+    'workbench-files': [
+      // Every row's icon, by what the row is.
+      async (page) => {
+        await page.waitForTimeout(700)
+        const panel = await panelOfNode(page, 'tree')
+        const rows = await iconRows(page, panel)
+        const byPath = Object.fromEntries(rows.map((r) => [r.id.replace(/^f:/, ''), r]))
+        const dirs = rows.filter((r) => r.expanded !== null)
+        const files = rows.filter((r) => r.expanded === null)
+        const icons = await iconsOf(page)
+        await snap(page, 'workbench-files-icons')
+        return {
+          'every drop-down row has a folder icon at its cells': dirs.length >= 5 && dirs.every((r) => r.icon === 'folderFile' || r.icon === 'folderEmpty'),
+          'an open drop-down is the open folder (folderFile) and a closed one the closed folder (folderEmpty)': dirs.every((r) => r.icon === (r.expanded ? 'folderFile' : 'folderEmpty')),
+          'the story draws both: .github and docs open, workflows, src and target closed': ['.github', 'docs'].every((k) => byPath[k]?.icon === 'folderFile') && ['.github/workflows', 'src', 'target'].every((k) => byPath[k]?.icon === 'folderEmpty'),
+          'a code file is fileCode': byPath['Cargo.toml']?.icon === 'fileCode' && byPath['package.json']?.icon === 'fileCode',
+          'an image is imageFileEdit': byPath['logo.png']?.icon === 'imageFileEdit',
+          'a text file is fileText': ['README.md', 'docs/notes.txt', 'docs/guide.md', 'docs/architecture.md'].every((k) => byPath[k]?.icon === 'fileText'),
+          'a file with nothing to tell its kind by is fileEmpty': byPath['.env']?.icon === 'fileEmpty' && byPath.latest?.icon === 'fileEmpty',
+          'every row under a folder, and every file, has a file icon': files.length >= 9 && files.every((r) => /^(file|imageFile)/.test(r.icon ?? '')),
+          'no cell before a name shows v, >, ▸ or any other mark: only the icon\'s blanks': rows.length >= 14 && rows.every((r) => LEAD_BLANK.test(r.lead)),
+          'a child folder\'s icon is one level in from its parent\'s': byPath['.github/workflows'].x === byPath['.github'].x + 2 && byPath['docs/notes.txt'].x === byPath.docs.x + 2,
+          'the layer is hidden from assistive technology, inert to the pointer and painted in the rail-mark masks': icons.length >= 14 && icons.every((i) => i.hidden && i.inert && i.masks > 1),
+          'the semantic tree still carries the open state: expanded is true for docs and false for src': byPath.docs?.expanded === true && byPath.src?.expanded === false,
+          'no icon name is in a row\'s accessible name': rows.every((r) => !/folder|file[A-Z]|imageFile/.test(r.name)),
+        }
+      },
+      // Collapsing an open folder turns its folderFile into folderEmpty; opening it turns it back, and its files return.
+      async (page) => {
+        const panel = await panelOfNode(page, 'tree')
+        const at = async (path) => (await iconRows(page, panel)).find((r) => r.id === `f:${path}`)
+        await page.keyboard.press('Home')
+        for (let i = 0; i < 20 && (await nodes(page)).find((n) => n.state?.selected && n.id.startsWith(`${panel}/f:`))?.id !== `${panel}/f:docs`; i++) {
+          await page.keyboard.press('ArrowDown')
+          await page.waitForTimeout(60)
+        }
+        const before = await at('docs')
+        const kidsBefore = (await iconRows(page, panel)).filter((r) => r.id.startsWith('f:docs/')).length
+        await page.keyboard.press('ArrowLeft')
+        await page.waitForTimeout(400)
+        const closed = await at('docs')
+        const kidsClosed = (await iconRows(page, panel)).filter((r) => r.id.startsWith('f:docs/')).length
+        await snap(page, 'workbench-files-collapsed')
+        await page.keyboard.press('ArrowRight')
+        await page.waitForTimeout(600)
+        const reopened = await at('docs')
+        const kidsReopened = (await iconRows(page, panel)).filter((r) => r.id.startsWith('f:docs/')).length
+        // And a closed one opens: src is the open folder while its listing is shown.
+        await page.keyboard.press('ArrowDown')
+        const src = async () => (await iconRows(page, panel)).find((r) => r.id === 'f:src')
+        for (let i = 0; i < 20 && (await nodes(page)).find((n) => n.state?.selected && n.id.startsWith(`${panel}/f:`))?.id !== `${panel}/f:src`; i++) {
+          await page.keyboard.press('ArrowDown')
+          await page.waitForTimeout(60)
+        }
+        const srcClosed = await src()
+        await page.keyboard.press('ArrowRight')
+        await page.waitForTimeout(600)
+        const srcOpen = await src()
+        const srcKids = (await iconRows(page, panel)).filter((r) => r.id.startsWith('f:src/'))
+        await snap(page, 'workbench-files-src-open')
+        return {
+          'docs starts as folderFile with its files under it': before?.icon === 'folderFile' && kidsBefore >= 4,
+          'collapsing it changes folderFile to folderEmpty and takes its rows away': closed?.icon === 'folderEmpty' && kidsClosed === 0,
+          'the semantic tree says so too: expanded false': closed?.expanded === false,
+          'opening it again changes folderEmpty back to folderFile and its rows return': reopened?.icon === 'folderFile' && kidsReopened === kidsBefore && reopened.expanded === true,
+          'src opens from folderEmpty to folderFile': srcClosed?.icon === 'folderEmpty' && srcOpen?.icon === 'folderFile',
+          'the rows that appear under it are a folder (components) and files by kind (lib.rs, main.rs are code)': srcKids.length >= 3 && srcKids.find((r) => r.id === 'f:src/components')?.icon === 'folderEmpty' && ['f:src/lib.rs', 'f:src/main.rs'].every((id) => srcKids.find((r) => r.id === id)?.icon === 'fileCode'),
+        }
+      },
+      // The composer's file list, typed: each suggestion leads with its file icon and a blank cell; the chosen one is told by its letters.
+      async (page) => {
+        await page.waitForTimeout(500)
+        await page.keyboard.press(`${CHORD}ArrowRight`)
+        await page.waitForTimeout(400)
+        const inComposer = (await node(page, 'composer:text'))?.state.focused === true
+        await page.keyboard.type('@s', { delay: 60 })
+        const listed = await sees(page, 'docs/roadmap.md', 6000)
+        await page.keyboard.press('ArrowDown')
+        await page.waitForTimeout(300)
+        const [grid, icons] = [await gridRows(page), await iconsOf(page)]
+        // The Files panel shows some of the same names higher up and further left: the list's row is the last one.
+        const rowOf = (name) => {
+          const y = grid.findLastIndex((r) => r.includes(name))
+          return y < 0 ? null : { y, x: grid[y].lastIndexOf(name), width: name.length, height: 1 }
+        }
+        const want = { 'docs/architecture.md': 'fileText', 'docs/guide.md': 'fileText', 'docs/notes.txt': 'fileText', 'docs/roadmap.md': 'fileText', 'package.json': 'fileCode' }
+        const rows = Object.fromEntries(Object.keys(want).map((name) => [name, rowOf(name)]))
+        const looks = {}
+        for (const [name, rect] of Object.entries(rows)) looks[name] = rect ? await markedAt(page, rect) : null
+        await snap(page, 'workbench-files-composer-list')
+        return {
+          'focus moves to the composer by its chord and typing @s lists files from the workspace': inComposer && listed,
+          'each suggestion has its kind\'s file icon three cells before its path (two for the icon, one blank)': Object.entries(want).every(([name, icon]) => rows[name] && icons.some((i) => i.icon === icon && i.y === rows[name].y && i.x === rows[name].x - 3)),
+          'the cells between an icon and its path are blank: no arrow marks a row': Object.values(rows).every((r) => r && LEAD_BLANK.test(grid[r.y].slice(r.x - 3, r.x))),
+          'Down moves the choice to the second row, drawn in the mark colour, bold, with no band': looks['docs/guide.md']?.marked > 0 && looks['docs/guide.md']?.band === 0,
+          'no other row is in the mark colour or has a band': Object.entries(looks).filter(([name]) => name !== 'docs/guide.md').every(([, l]) => l && l.marked === 0 && l.band === 0),
+        }
+      },
+    ],
+
     // The Threads panel over the fixture account: sections, rows, the keys, the effects each key asks for and the two directions between
     // a Herdr session's terminal tab and Theo. Every step is a fresh load; the effects read are the whole effects the core asked the host for.
     'workbench-threads': [
@@ -1392,6 +1523,98 @@ export function scenarios(h) {
           'Enter opens a tab bound to the delegation and its run, with the keyboard': tab?.binding?.delegationId === 'd-review' && tab?.binding?.runId === 'r-parent' && tab?.state?.focused === true,
           'it read that delegation\'s changes once': reads.length === 1,
           'and switched no conversation': (await count(page, 'conversationSwitch')) === 0,
+        }
+      },
+      // The icons: a folder open or closed for the drop-downs (a project, a Herdr machine, a thread with rows under it), a file
+      // for every other row, none on a section label, none where a menu covers the row, and no arrow before any name.
+      async (page) => {
+        await focusThreads(page)
+        await expandProjects(page)
+        await page.waitForTimeout(300)
+        const panel = await panelOfNode(page, 'tree')
+        const rows = await iconRows(page, panel)
+        const labels = (await nodes(page)).filter((x) => x.id.startsWith(`${panel}/l:`))
+        const icons = await iconsOf(page)
+        const of = (key) => rows.find((r) => r.id === key)
+        const dropDowns = rows.filter((r) => r.expanded !== null && r.role !== 'group')
+        const groups = rows.filter((r) => r.role === 'group')
+        const under = rows.filter((r) => r.expanded === null && r.role !== 'group')
+        await snap(page, 'workbench-threads-icons')
+        return {
+          'every project and every thread with rows under it has a folder icon': dropDowns.length >= 4 && dropDowns.every((r) => r.icon === (r.expanded ? 'folderFile' : 'folderEmpty')),
+          'the project and the thread with rows under it (opened by expandProjects) are the open folder': of('r:p:p-atlas')?.icon === 'folderFile' && of('r:t:p-atlas:t-parent')?.icon === 'folderFile',
+          'a Herdr machine is the open folder, always': groups.length >= 2 && groups.every((r) => r.icon === 'folderFile'),
+          'every other row, thread, delegation and session, has a file icon': under.length >= 12 && under.every((r) => /^file/.test(r.icon ?? '')),
+          'a thread is fileText and a session in the workspace is fileText': of('r:t:p-atlas:t-running')?.icon === 'fileText' && of('r:s:herdr-build')?.icon === 'fileText' && of('r:s:herdr-review')?.icon === 'fileText',
+          'a session outside the workspace is the file with a plus (fileAdd)': of('r:s:herdr-agent')?.icon === 'fileAdd' && of('r:s:herdr-shell')?.icon === 'fileAdd',
+          'a section label has no icon': labels.length === 3 && labels.every((l) => !icons.some((i) => i.y === l.rect.y)),
+          'no cell before a name shows v, >, ▸ or any other mark: only the icon\'s blanks and the state stripe': rows.length >= 18 && rows.every((r) => LEAD_BLANK.test(r.lead)),
+          'the stripe, the state words and the unread dot are still drawn': (await pageText(page)).includes('\u258e') && (await pageText(page)).includes('running') && (await pageText(page)).includes('\u25cf'),
+          'the semantic tree is unchanged: the open state is expanded, and no accessible name carries an icon name': of('r:p:p-atlas')?.expanded === true && of('r:t:p-atlas:t-parent')?.expanded === true && of('r:t:p-atlas:t-running')?.expanded === null && rows.every((r) => !/folder|file[A-Z]|imageFile/.test(r.name)),
+        }
+      },
+      // Collapsing a project or a thread turns its open folder into the closed one and back; its rows go and return.
+      async (page) => {
+        await focusThreads(page)
+        await expandProjects(page)
+        const panel = await panelOfNode(page, 'tree')
+        const at = async (key) => (await iconRows(page, panel)).find((r) => r.id === key)
+        await goTo(page, 'p:p-atlas')
+        const open = await at('r:p:p-atlas')
+        const kidsOpen = (await iconRows(page, panel)).filter((r) => r.id.startsWith('r:t:p-atlas:')).length
+        await page.keyboard.press('ArrowLeft')
+        await page.waitForTimeout(300)
+        const closed = await at('r:p:p-atlas')
+        const kidsClosed = (await iconRows(page, panel)).filter((r) => r.id.startsWith('r:t:p-atlas:')).length
+        await snap(page, 'workbench-threads-project-closed')
+        await page.keyboard.press('ArrowRight')
+        await page.waitForTimeout(300)
+        const reopened = await at('r:p:p-atlas')
+        await goTo(page, 't:p-atlas:t-parent')
+        const threadOpen = await at('r:t:p-atlas:t-parent')
+        const delegation = await at('r:d:p-atlas:t-parent:d-review')
+        const child = await at('r:t:p-atlas:t-child-a')
+        await snap(page, 'workbench-threads-thread-open')
+        await page.keyboard.press('ArrowLeft')
+        await page.waitForTimeout(300)
+        const threadClosed = await at('r:t:p-atlas:t-parent')
+        const gone = !(await at('r:d:p-atlas:t-parent:d-review')) && !(await at('r:t:p-atlas:t-child-a'))
+        await snap(page, 'workbench-threads-thread-closed')
+        await page.keyboard.press('ArrowRight')
+        await page.waitForTimeout(300)
+        const threadAgain = await at('r:t:p-atlas:t-parent')
+        return {
+          'the open project is folderFile with its threads under it': open?.icon === 'folderFile' && kidsOpen >= 2,
+          'collapsing it changes folderFile to folderEmpty and takes its rows away': closed?.icon === 'folderEmpty' && kidsClosed === 0 && closed.expanded === false,
+          'opening it changes folderEmpty back to folderFile': reopened?.icon === 'folderFile' && reopened.expanded === true,
+          'a thread with rows under it is the open folder while they show': threadOpen?.icon === 'folderFile' && threadOpen.expanded === true,
+          'what is under the open thread has file icons: its delegation and its forked thread': delegation?.icon === 'fileText' && /^file/.test(child?.icon ?? ''),
+          'the rows under it are one level in': !!delegation && !!threadOpen && delegation.x === threadOpen.x + 2,
+          'collapsing the thread turns folderFile into folderEmpty and takes its rows away': threadClosed?.icon === 'folderEmpty' && threadClosed.expanded === false && gone,
+          'opening it again turns folderEmpty back into folderFile': threadAgain?.icon === 'folderFile' && threadAgain.expanded === true,
+        }
+      },
+      // An open menu covers the rows under it, and the icons that were under it are not drawn.
+      async (page) => {
+        await focusThreads(page)
+        await expandProjects(page)
+        await goTo(page, 't:p-atlas:t-running')
+        const before = await iconsOf(page)
+        await openMenu(page)
+        const menu = (await nodes(page)).filter((x) => /\/m:\d+$/.test(x.id) && x.rect)
+        const covers = (i) => menu.some((m) => i.y >= m.rect.y && i.y < m.rect.y + m.rect.height && i.x + 2 > m.rect.x && i.x < m.rect.x + m.rect.width)
+        const hiddenBefore = before.filter(covers)
+        const after = await iconsOf(page)
+        await snap(page, 'workbench-threads-menu-covers-icons')
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(300)
+        const closed = await iconsOf(page)
+        return {
+          'the menu is open and has items with places': menu.length >= 5,
+          'there were icons under where the menu is drawn': hiddenBefore.length >= 2,
+          'no icon is drawn under the open menu': after.filter(covers).length === 0,
+          'the icons the menu does not cover are still drawn': after.length >= 8 && after.length < before.length,
+          'closing the menu brings the icons back': closed.length === before.length,
         }
       },
     ],

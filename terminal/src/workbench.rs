@@ -25,7 +25,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use theorem_workbench_core::{
     ActionId, Actor, ArrangementMsg, Button, Capability, Caret, CaretPhase, CaretShape,
-    Composition, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme,
+    Composition, Effect, Inbound, Model, Msg, PanelFactories, PlacedIcon, Pointer, PointerKind,
+    Theme,
     agent::{AgentOutcome, action_msg, agent_outcome, agent_request},
     builtin,
     ids::ResourceKind,
@@ -561,6 +562,8 @@ struct Core {
     theme: Theme,
     platform: Platform,
     cell: Option<CellMetrics>,
+    /// The icons the last frame carried, as the page's image layer draws them.
+    icons: Vec<PlacedIcon>,
     /// A message went through since the last frame: semantics may have moved
     /// even when nothing needs drawing.
     touched: bool,
@@ -623,6 +626,7 @@ impl Core {
         Self {
             model,
             publisher: SemanticPublisher::default(),
+            icons: vec![],
             theme: Theme::plain(),
             platform,
             cell: None,
@@ -829,9 +833,16 @@ impl Core {
         }
     }
 
-    fn draw(&self, frame: &mut Frame) {
+    /// Draws the frame. `view` ends with the icon pass, so no icon sentinel reaches the grid;
+    /// the icons it collected are kept for the page's image layer.
+    fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        view(&self.model, area, frame.buffer_mut(), &self.theme);
+        self.icons = view(&self.model, area, frame.buffer_mut(), &self.theme);
+    }
+
+    /// The icons of the last frame as JSON (`PlacedIcon[]`).
+    fn icons_json(&self) -> String {
+        serde_json::to_string(&self.icons).unwrap_or_else(|_| "[]".to_owned())
     }
 }
 
@@ -911,6 +922,9 @@ struct Mounted {
     core: Rc<RefCell<Core>>,
     on_effect: js_sys::Function,
     on_semantics: js_sys::Function,
+    /// Receives the frame's icons (JSON) when they differ from the last ones sent.
+    on_icons: js_sys::Function,
+    sent_icons: Option<String>,
     cell: (f32, f32),
     first_frame: Rc<RefCell<FirstFrame<js_sys::Function>>>,
 }
@@ -948,7 +962,7 @@ impl Drawn for Mounted {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        let core = self.core.borrow();
+        let mut core = self.core.borrow_mut();
         core.draw(frame);
         // The panels that were not drawn in this frame report gone.
         core.cabinet.frame_end();
@@ -956,6 +970,14 @@ impl Drawn for Mounted {
     }
 
     fn drawn(&mut self) {
+        // Called with no borrow of the core held, as every delivery to the page is.
+        let icons = self.core.borrow().icons_json();
+        if self.sent_icons.as_deref() != Some(&icons) {
+            let _ = self
+                .on_icons
+                .call1(&JsValue::NULL, &JsValue::from_str(&icons));
+            self.sent_icons = Some(icons);
+        }
         let waiting = self.first_frame.borrow_mut().drew();
         if let Some(callback) = waiting {
             let _ = callback.call0(&JsValue::NULL);
@@ -1206,6 +1228,11 @@ impl WorkbenchHandle {
         serde_json::to_string(&semantics(&self.core.borrow().model)).map_err(js_error)
     }
 
+    /// The icons of the last frame (JSON, `PlacedIcon[]`), the same ones `on_icons` delivers.
+    pub fn icons(&self) -> String {
+        self.core.borrow().icons_json()
+    }
+
     /// Replaces the layout with a saved document (JSON). Until the layout
     /// owner's completion is routed to the model by `dispatch`, the page loads
     /// it here.
@@ -1237,13 +1264,15 @@ impl WorkbenchHandle {
 /// Mounts the workbench into the element with `parent_id`, which it fills and
 /// which must be positioned. `on_effect` receives each effect as a JSON string;
 /// `on_semantics` the first semantic tree and then each diff
-/// (`{type: "full", tree}` or `{type: "diff", diff}`). Frames run until the
+/// (`{type: "full", tree}` or `{type: "diff", diff}`), `on_icons` the frame's icons
+/// (`PlacedIcon[]`) each time they change. Frames run until the
 /// element leaves the page; mount once per element.
 #[wasm_bindgen]
 pub fn mount_workbench(
     parent_id: &str,
     on_effect: js_sys::Function,
     on_semantics: js_sys::Function,
+    on_icons: js_sys::Function,
 ) -> Result<WorkbenchHandle, JsValue> {
     let screen = Screen::new(parent_id)?;
     let platform = platform_of(&web_sys::window().ok_or("no window")?);
@@ -1256,6 +1285,8 @@ pub fn mount_workbench(
             core: core.clone(),
             on_effect: on_effect.clone(),
             on_semantics: on_semantics.clone(),
+            on_icons,
+            sent_icons: None,
             cell: (0.0, 0.0),
             first_frame: first_frame.clone(),
         })),
@@ -1689,6 +1720,41 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn a_frame_leaves_no_icon_marker_on_the_grid_and_hands_its_icons_to_the_page() {
+        let core = opened_from_files("a.rs", false);
+        let mut core = core;
+        core.focus("files.focus");
+        core.step(AREA, CELL, Theme::plain());
+        let mut buf = ratatui::buffer::Buffer::empty(AREA);
+        let icons = view(&core.model, AREA, &mut buf, &core.theme);
+        for cell in &buf.content {
+            assert!(
+                !cell
+                    .symbol()
+                    .chars()
+                    .any(|c| ('\u{10f000}'..='\u{10f1ff}').contains(&c)),
+                "an icon marker reached the grid: {:?}",
+                cell.symbol()
+            );
+        }
+        assert!(
+            icons
+                .iter()
+                .any(|i| i.icon == theorem_workbench_core::Icon::FileCode),
+            "the Files panel draws a code file's icon: {icons:?}"
+        );
+        assert!(
+            icons
+                .iter()
+                .all(|i| i.x + 2 <= AREA.width && i.y < AREA.height)
+        );
+        core.icons = icons.clone();
+        let sent: Vec<theorem_workbench_core::PlacedIcon> =
+            serde_json::from_str(&core.icons_json()).unwrap();
+        assert_eq!(sent, icons);
     }
 
     fn granted(core: &mut Core, words: &[&'static str]) {

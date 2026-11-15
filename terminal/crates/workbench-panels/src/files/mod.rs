@@ -716,8 +716,9 @@ impl FilesPanel {
                     return;
                 };
                 let on_mark = kind == FileKind::Directory
+                    // The row's margin cell and the icon's two.
                     && p.x >= (depth * 2) as i32
-                    && p.x < (depth * 2 + 2) as i32;
+                    && p.x < (depth * 2 + 3) as i32;
                 self.selected = Some(path.clone());
                 if on_mark {
                     // The press that begins a double click already toggled it.
