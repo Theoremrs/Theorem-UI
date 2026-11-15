@@ -5,6 +5,7 @@ import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { createDraggable } from 'animejs'
 import { useEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
+import { CabinetView } from '@/components/cabinet/cabinet-view'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
 import {
@@ -19,6 +20,8 @@ import {
 import type { TerminalAction } from './terminal-screen'
 
 const HOST_ID = 'theorem-side-terminal'
+/** The cabinet's docked width (SPEC-THEOREM-ARTIFACT-CABINET-1.0 §4.2). */
+const CABINET_WIDTH = 466
 
 /** The drawer's narrowest width; the widest leaves the rail and some sheet showing. */
 const MIN_WIDTH = 380
@@ -131,12 +134,44 @@ export function attachToSideTerminal(
   shell.setSideDrawer('terminal')
 }
 
+const HOST_VIEWS = [
+  { id: 'outputs', label: 'Cabinet' },
+  { id: 'terminal', label: 'Terminal' },
+] as const
+
+/** The host's two views, a pair of tabs above whichever is shown. */
+function HostViews({ view }: { view: 'outputs' | 'terminal' }) {
+  return (
+    <div
+      role="tablist"
+      aria-label="Right-hand views"
+      className="flex shrink-0 gap-1 px-3 pb-1 font-mono text-[12px]"
+    >
+      {HOST_VIEWS.map((v) => (
+        <button
+          key={v.id}
+          type="button"
+          role="tab"
+          aria-selected={view === v.id}
+          onClick={() => useShell.getState().setSideDrawer(v.id)}
+          className="rounded px-2 py-0.5 text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage aria-selected:bg-term-raised aria-selected:text-term-bright"
+        >
+          {v.label}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 /**
  * The right-hand drawer, a terminal with tabs: each tab its own agent thread,
  * all running while the drawer is closed.
  */
 export function SideTerminal() {
-  const open = useShell((s) => s.sideDrawer === 'terminal')
+  const view = useShell((s) => s.sideDrawer)
+  // One host, two views: the artifact cabinet ('outputs') and the terminal.
+  const open = view === 'terminal' || view === 'outputs'
+  const cabinet = view === 'outputs'
   const setSideDrawer = useShell((s) => s.setSideDrawer)
   const width = useShell((s) => s.sideWidth)
   const desktop = useMediaQuery('(min-width: 768px)', { noSsr: true })
@@ -160,7 +195,9 @@ export function SideTerminal() {
         ))}
       <Drawer.Root
         open={open}
-        onOpenChange={(next) => setSideDrawer(next ? 'terminal' : undefined)}
+        onOpenChange={(next) =>
+          setSideDrawer(next ? (view ?? 'terminal') : undefined)
+        }
         modal={false}
         disablePointerDismissal
         swipeDirection="right"
@@ -170,11 +207,18 @@ export function SideTerminal() {
             <Drawer.Popup
               ref={popup}
               data-terminal-drawer=""
-              style={{ '--side-width': `${width}px` } as CSSProperties}
+              style={
+                {
+                  // §4.2: the cabinet's docked width target is 466 px.
+                  '--side-width': `${cabinet ? Math.max(width, CABINET_WIDTH) : width}px`,
+                } as CSSProperties
+              }
               initialFocus={() => document.getElementById(HOST_ID)}
               className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(var(--side-width),calc(100vw-120px))]"
             >
-              <Drawer.Title className="sr-only">Agent terminal</Drawer.Title>
+              <Drawer.Title className="sr-only">
+                {cabinet ? 'Artifact cabinet' : 'Agent terminal'}
+              </Drawer.Title>
               {desktop ? (
                 <WidthHandle popup={popup} />
               ) : (
@@ -186,13 +230,29 @@ export function SideTerminal() {
                 </div>
               )}
               <div className="flex min-w-0 flex-1 flex-col pt-1.5">
-                <TerminalScreen
-                  hostId={HOST_ID}
-                  tabbed
-                  tabs={tabs}
-                  active={active}
-                  onAction={onAction}
-                />
+                <HostViews view={cabinet ? 'outputs' : 'terminal'} />
+                <div className="relative min-h-0 flex-1">
+                  {/* The terminal stays mounted under the cabinet, so its
+                      sessions and scrollback outlast a look at the collection. */}
+                  <div
+                    className="absolute inset-0 flex flex-col data-[hidden]:invisible"
+                    data-hidden={cabinet || undefined}
+                    inert={cabinet}
+                  >
+                    <TerminalScreen
+                      hostId={HOST_ID}
+                      tabbed
+                      tabs={tabs}
+                      active={active}
+                      onAction={onAction}
+                    />
+                  </div>
+                  {cabinet && (
+                    <div className="absolute inset-0 flex flex-col">
+                      <CabinetView />
+                    </div>
+                  )}
+                </div>
               </div>
             </Drawer.Popup>
           </Drawer.Viewport>

@@ -55,10 +55,15 @@ card needs (§9.1). Added in Travis-Gilbert/Theorem on branch
   and language.
 - `artifactKind`, `digest` (the upload's content address or the artifact
   revision's content digest), `byteLen` where known.
+- `category` (document, image, app, code, diagram, chart, review, other), the
+  browsing filter an output falls under.
 - `description {text, provenance}` — `derived` from an upload's preview text,
-  `metadata` from an artifact's fallback text; omitted when neither exists.
-- Route parameters `limit`, `cursor`, `q` and `kind` with `nextCursor`, so
-  search and counts are not claimed from a partial client cache (§3.3).
+  `metadata` for an image's dimensions, `authored` only from an artifact's own
+  description field; omitted otherwise, and the card then states facts
+  (kind, format, size) rather than inventing a summary.
+- Route parameters `limit` (1–200), `cursor`, `q` and `category` with
+  `nextCursor` and an exact `total` of every match, so search and counts are
+  not claimed from a partial client cache (§3.3).
 
 The represented revision's content is read through the existing thread
 messages and upload content paths, without switching the foreground thread
@@ -76,3 +81,28 @@ messages and upload content paths, without switching the foreground thread
 3. **Docked cabinet.** Per the spec, a persistent dock reserves real width;
    #111's outputs drawer was an overlay. The cabinet replaces that drawer, so
    there is one collection browser.
+
+## Slice B — host and real reads
+
+- `terminal/src/cabinet.rs`: the Ratatui cabinet (header, preference, search,
+  filters, cards, footer). Columns follow §4.2's formula in CSS pixels;
+  selection and scroll live here; a geometry epoch (cell size, gallery clip,
+  slot rectangles keyed by card and revision, control rectangles) is emitted
+  only when it changes.
+- `src/components/cabinet/cabinet-drawer.tsx`: the host. It mounts the cabinet
+  with the terminal's wasm module and palette, paints each preview on a canvas
+  at its slot (pixel art at a whole device-pixel scale on a black matte), and
+  lays real controls over the drawing: one button per card (roving tabindex,
+  arrows forwarded to Ratatui), the search input, filter buttons with
+  `aria-pressed`, and the preview `select`. The drawn grid is `aria-hidden`.
+- `src/components/cabinet/catalog.ts`: Theorem output to card; reads exactly
+  the represented revision (an upload's content, or the artifact part with
+  that `artifactRevision` from its own thread via `threads.get`), never a
+  newer one, and never by switching the foreground thread.
+- `src/components/cabinet/previews.ts` and `preview-worker.ts`: three
+  conversions at a time in a Web Worker through `render_preview`; results are
+  cached under card + revision + mode, so a stale result cannot reach a card
+  that moved on.
+- Opening shows the represented revision in a dialog over the page (artifact
+  through `ArtifactView`, upload image or Markdown in place). The page, its
+  composer and draft are untouched, and closing returns focus to the card.

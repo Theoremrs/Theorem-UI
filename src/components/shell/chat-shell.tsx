@@ -18,7 +18,6 @@ import { useProjectHomeTitle } from '@/components/projects/project-home'
 import { PANEL_WIDTH, useShell } from './shell-state'
 import { Rail } from './rail'
 import { SideTerminal } from '@/components/terminal/side-terminal'
-import { CabinetDrawer } from '@/components/cabinet/cabinet-drawer'
 import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
@@ -453,7 +452,6 @@ export function ChatShell({
       <WorkspaceCommands />
       <TerminalDrawer />
       <SideTerminal />
-      <CabinetDrawer />
     </div>
   )
 }

@@ -1,7 +1,6 @@
-// SOURCING: Base UI Drawer (swipeDirection right, not modal), the same
-// right-hand slot the side terminal and the former outputs drawer use; the
-// terminal crate's mount_cabinet (Ratatui on Ratzilla) draws the cabinet and
-// allocates its rectangles; canvas 2D paints previews on those rectangles;
+// SOURCING: the terminal crate's mount_cabinet (Ratatui on Ratzilla) draws
+// the cabinet and allocates its rectangles inside the right-hand host
+// (terminal/side-terminal); canvas 2D paints previews on those rectangles;
 // real buttons, an input and a select sit over the drawn controls so the
 // gallery is operable and named; ui/dialog (Base UI Dialog) shows an
 // original; components/artifacts' ArtifactView renders an artifact revision.
@@ -11,7 +10,6 @@
 // and scroll, and this host lays inert pictures and semantic controls exactly
 // over what Ratatui drew. It replaces the outputs drawer: one collection
 // browser.
-import { Drawer } from '@base-ui/react/drawer'
 import { useParams } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -39,7 +37,6 @@ import { presentationKey, requestPreviews, usePreviews } from './previews'
 import type { PreviewState } from './previews'
 
 const HOST_ID = 'theorem-artifact-cabinet'
-const close = () => useShell.getState().setSideDrawer(undefined)
 
 const FILTERS: ReadonlyArray<{ id: 'all' | OutputCategory; label: string }> = [
   { id: 'all', label: 'All' },
@@ -629,58 +626,26 @@ export function Cabinet({
 }
 
 /**
- * The right-hand drawer's artifact cabinet: the open project's outputs from
+ * The cabinet view of the right-hand host: the open project's outputs from
  * every session. In a chat it shows the chat's project; outside any project
  * it says so.
  */
-export function CabinetDrawer() {
-  const open = useShell((s) => s.sideDrawer === 'outputs')
-  const width = useShell((s) => s.sideWidth)
+export function CabinetView({ expanded = false }: { expanded?: boolean }) {
   const activeProject = useShell((s) => s.projectId)
   const { projectId: routeProject } = useParams({ strict: false })
   const { data: organization } = useOrganization()
   const projectId = routeProject ?? activeProject
   const project = organization?.projects.find((p) => p.projectId === projectId)
-  return (
-    <Drawer.Root
-      open={open}
-      onOpenChange={(next) =>
-        useShell.getState().setSideDrawer(next ? 'outputs' : undefined)
-      }
-      modal={false}
-      disablePointerDismissal
-      swipeDirection="right"
-    >
-      <Drawer.Portal>
-        <Drawer.Viewport className="pointer-events-none fixed inset-0 z-40">
-          <Drawer.Popup
-            data-cabinet-drawer=""
-            style={{ '--side-width': `${width}px` } as CSSProperties}
-            className="pointer-events-auto absolute top-[3px] right-[3px] bottom-[3px] flex w-[calc(100vw-6px)] flex-col overflow-hidden rounded-xl bg-term shadow-[-8px_0_32px_rgb(0_0_0/0.28)] outline-none [transform:translateX(var(--drawer-swipe-movement-x))] transition-transform duration-[calc(var(--duration-glide)*var(--drawer-swipe-strength))] ease-glide data-ending-style:duration-(--duration-exit) data-ending-style:ease-exit data-ending-style:[transform:translateX(calc(100%+8px))] data-starting-style:[transform:translateX(calc(100%+8px))] data-swiping:duration-0 data-swiping:select-none md:w-[min(max(var(--side-width),466px),calc(100vw-120px))]"
-          >
-            <Drawer.Title className="sr-only">Artifact cabinet</Drawer.Title>
-            <Drawer.Close
-              aria-label="Close artifact cabinet"
-              className="absolute top-2 right-2 z-10 flex size-6 items-center justify-center rounded text-term-muted outline-none hover:text-term-ink focus-visible:outline-1 focus-visible:outline-term-sage"
-            >
-              ×
-            </Drawer.Close>
-            {projectId ? (
-              <Cabinet
-                key={projectId}
-                projectId={projectId}
-                projectTitle={project?.title ?? 'This project'}
-              />
-            ) : (
-              <p className="p-5 font-mono text-[12.5px] text-term-muted">
-                Open a project to browse what its sessions made.
-              </p>
-            )}
-          </Drawer.Popup>
-        </Drawer.Viewport>
-      </Drawer.Portal>
-    </Drawer.Root>
+  return projectId ? (
+    <Cabinet
+      key={projectId}
+      projectId={projectId}
+      projectTitle={project?.title ?? 'This project'}
+      expanded={expanded}
+    />
+  ) : (
+    <p className="p-5 font-mono text-[12.5px] text-term-muted">
+      Open a project to browse what its sessions made.
+    </p>
   )
 }
-
-export { close as closeCabinet }
