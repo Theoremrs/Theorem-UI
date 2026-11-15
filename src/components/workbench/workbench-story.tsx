@@ -1,7 +1,9 @@
 // SOURCING: none — the story's fixture owner: an Adapter whose answers are committed constants, so the real wasm workbench draws with no network and no clock. It uses WorkbenchSurface; nothing else applies.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Adapter } from '@/lib/workbench/adapter'
+import { snapshotMessage } from '@/lib/workbench/conversation/conversation'
 import type { Completion, Effect, FileListing } from '@/lib/workbench/wire'
+import { STORY_CONVERSATION } from './conversation-fixture'
 import { WorkbenchSurface } from './workbench'
 import type { Dispatch, SemanticsFeed } from './workbench'
 
@@ -55,6 +57,7 @@ function fixtureAdapter(
   dispatch: Dispatch,
   granted: string[],
   performed: (kind: string) => void,
+  transcript: boolean,
 ): Adapter {
   let live = true
   queueMicrotask(() => {
@@ -70,6 +73,12 @@ function fixtureAdapter(
       type: 'capabilitiesChanged',
       capabilities: { granted },
     })
+    // The conversation owner's first snapshot, as its port sends one at connect.
+    if (transcript)
+      dispatch({
+        channel: 'host',
+        ...snapshotMessage('story-project', STORY_CONVERSATION),
+      })
   })
   return {
     perform(effect: Effect) {
@@ -118,23 +127,28 @@ function openPicker(host: HTMLElement) {
   )
 }
 
-/** What the story waits to see: the fixture tree's last file, and the picker's last row. */
+/** What every story waits to see: the fixture tree's last file, and the picker's last row. */
 const SHOWN = ['README.md', 'More tools']
+
+/** What a story with a transcript also waits for: the pending approval's control. */
+const SHOWN_TRANSCRIPT = [...SHOWN, 'Allow']
 
 /** Calls `onShown` two frames after the semantic tree has named everything the story waits to see. */
 function ReadyWhenShown({
   feed,
   onShown,
+  wait,
 }: {
   feed: SemanticsFeed
   onShown: () => void
+  wait: string[]
 }) {
   useEffect(() => {
     let seen = feed.latest ?? ''
     let frames: number[] = []
     let done = false
     const check = () => {
-      if (done || !SHOWN.every((text) => seen.includes(text))) return
+      if (done || !wait.every((text) => seen.includes(text))) return
       done = true
       frames = [
         requestAnimationFrame(() => {
@@ -151,7 +165,7 @@ function ReadyWhenShown({
       stop()
       frames.forEach(cancelAnimationFrame)
     }
-  }, [feed, onShown])
+  }, [feed, onShown, wait])
   return null
 }
 
@@ -165,17 +179,21 @@ function FixtureStory({
   width,
   height,
   granted,
+  transcript = false,
 }: {
   id: string
   width: number
   height: number
   granted: string[]
+  /** Whether the conversation owner has a transcript to show. */
+  transcript?: boolean
 }) {
   const box = useRef<HTMLDivElement>(null)
   const [lastEffect, setLastEffect] = useState<string>()
   const connect = useCallback(
-    (dispatch: Dispatch) => fixtureAdapter(dispatch, granted, setLastEffect),
-    [granted],
+    (dispatch: Dispatch) =>
+      fixtureAdapter(dispatch, granted, setLastEffect, transcript),
+    [granted, transcript],
   )
   // Pending until the first frame is on the page, the picker's chord has been sent, and the semantic
   // tree (published with each frame) has carried both the first listing's row and the picker's last
@@ -198,7 +216,13 @@ function FixtureStory({
       className="flex flex-col overflow-hidden"
     >
       <WorkbenchSurface connect={connect} onDrawn={() => setDrawn(true)}>
-        {(feed) => <ReadyWhenShown feed={feed} onShown={markReady} />}
+        {(feed) => (
+          <ReadyWhenShown
+            feed={feed}
+            onShown={markReady}
+            wait={transcript ? SHOWN_TRANSCRIPT : SHOWN}
+          />
+        )}
       </WorkbenchSurface>
     </div>
   )
@@ -212,6 +236,7 @@ export function WorkbenchDefaultStory() {
       width={1280}
       height={640}
       granted={FILES_ONLY}
+      transcript
     />
   )
 }

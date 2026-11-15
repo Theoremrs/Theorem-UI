@@ -19,16 +19,18 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::BTreeSet,
     rc::Rc,
 };
 
 use ratatui::{
     Frame, Terminal, TerminalOptions, Viewport,
     backend::Backend,
+    buffer::Buffer,
     layout::{Constraint, Layout, Position, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Block, BorderType, Borders, Paragraph, Tabs, Wrap},
+    widgets::{Block, BorderType, Borders, Paragraph, Tabs, Widget, Wrap},
 };
 use ratzilla::{
     DomBackend,
@@ -42,8 +44,9 @@ use tui_input::{Input, InputRequest};
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
-pub mod preview;
 mod cabinet;
+pub mod preview;
+mod theo;
 mod workbench;
 
 pub use cabinet::{CabinetHandle, mount_cabinet};
@@ -320,6 +323,10 @@ struct Approval {
 struct Message {
     role: String,
     parts: Vec<Part>,
+    /// The files a user turn carried, by name. The workbench's conversation
+    /// panel fills it; the drawer's pages do not send it.
+    #[serde(default)]
+    attachments: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -344,6 +351,10 @@ enum Part {
         /// The file it worked on, which a click on the row opens.
         #[serde(default)]
         open: Option<Open>,
+        /// The tool call's own id, which lets the person show or hide this
+        /// one result. The drawer's pages send none and keep ctrl+o only.
+        #[serde(default)]
+        id: Option<String>,
     },
     /// The program the native agent writes and runs, streaming as it types.
     Program {
@@ -524,7 +535,10 @@ fn token_line(tokens: &[Token]) -> Vec<Span<'static>> {
         .iter()
         .map(|token| {
             // A tab would leave the cell grid; it takes four columns.
-            Span::styled(token.t.replace('\t', "    "), token_style(token.c.as_deref()))
+            Span::styled(
+                token.t.replace('\t', "    "),
+                token_style(token.c.as_deref()),
+            )
         })
         .collect()
 }
@@ -540,16 +554,25 @@ fn output_lines(output: &Output, shown: usize) -> Vec<(Line<'static>, Option<Col
             spans.extend(token_line(tokens));
             (Line::from(spans), None)
         });
-        (lines.collect::<Vec<_>>(), output.lines.len().saturating_sub(shown))
+        (
+            lines.collect::<Vec<_>>(),
+            output.lines.len().saturating_sub(shown),
+        )
     } else {
         let cut = output.diff.len().saturating_sub(shown);
-        (diff_lines(&output.diff[..output.diff.len() - cut], &lead), cut)
+        (
+            diff_lines(&output.diff[..output.diff.len() - cut], &lead),
+            cut,
+        )
     };
     let more = output.more + cut;
     if more > 0 {
         lines.push((
             Line::styled(
-                format!("{lead}… {more} more line{}", if more == 1 { "" } else { "s" }),
+                format!(
+                    "{lead}… {more} more line{}",
+                    if more == 1 { "" } else { "s" }
+                ),
                 Style::new().fg(palette().muted),
             ),
             None,
@@ -569,7 +592,10 @@ fn indent_of(text: &str) -> usize {
 /// brighter. Hunk headers and file names stay quiet.
 fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color>)> {
     let code = |line: &DiffLine| {
-        line.t.iter().map(|token| token.t.replace('\t', "    ")).collect::<String>()
+        line.t
+            .iter()
+            .map(|token| token.t.replace('\t', "    "))
+            .collect::<String>()
     };
     // Indent guides step by the diff's own smallest indent.
     let unit = diff
@@ -585,8 +611,18 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
     diff.iter()
         .map(|line| {
             let (marker, mark, fill, words) = match line.k.as_str() {
-                "del" => ("-", palette().syntax_keyword, Some(palette().removed_line), palette().removed_words),
-                "add" => ("+", palette().syntax_tag, Some(palette().added_line), palette().added_words),
+                "del" => (
+                    "-",
+                    palette().syntax_keyword,
+                    Some(palette().removed_line),
+                    palette().removed_words,
+                ),
+                "add" => (
+                    "+",
+                    palette().syntax_tag,
+                    Some(palette().added_line),
+                    palette().added_words,
+                ),
                 "ctx" => (" ", palette().muted, None, palette().bg),
                 // A file it changes, then each hunk's header.
                 quiet => {
@@ -599,7 +635,11 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
                 }
             };
             let text = code(line);
-            let indent = if text.trim().is_empty() { 0 } else { indent_of(&text) };
+            let indent = if text.trim().is_empty() {
+                0
+            } else {
+                indent_of(&text)
+            };
             let mut spans = vec![
                 Span::raw(lead.to_owned()),
                 Span::styled(format!("{marker} "), Style::new().fg(mark)),
@@ -621,17 +661,25 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
                 }
                 let style = token_style(token.c.as_deref());
                 let comment = Some(palette().syntax_comment);
-                spans.push(Span::styled(rest, match (token.e, style.fg) {
-                    (true, fg) if fg == comment => style.fg(palette().comment_on_words).bg(words),
-                    (true, _) => style.bg(words),
-                    (false, _) => style,
-                }));
+                spans.push(Span::styled(
+                    rest,
+                    match (token.e, style.fg) {
+                        (true, fg) if fg == comment => {
+                            style.fg(palette().comment_on_words).bg(words)
+                        }
+                        (true, _) => style.bg(words),
+                        (false, _) => style,
+                    },
+                ));
             }
             let row = Line::from(spans);
-            (match fill {
-                Some(fill) => row.style(Style::new().bg(fill)),
-                None => row,
-            }, fill)
+            (
+                match fill {
+                    Some(fill) => row.style(Style::new().bg(fill)),
+                    None => row,
+                },
+                fill,
+            )
         })
         .collect()
 }
@@ -649,10 +697,22 @@ fn group_row(parts: &[Part], width: u16) -> Line<'static> {
     }
     let summary = counts
         .iter()
-        .map(|(name, count)| if *count > 1 { format!("{name} ×{count}") } else { (*name).to_owned() })
+        .map(|(name, count)| {
+            if *count > 1 {
+                format!("{name} ×{count}")
+            } else {
+                (*name).to_owned()
+            }
+        })
         .collect::<Vec<_>>()
         .join(" · ");
-    tool_row(&format!("{} tools", parts.len()), &summary, "complete", false, width)
+    tool_row(
+        &format!("{} tools", parts.len()),
+        &summary,
+        "complete",
+        false,
+        width,
+    )
 }
 
 /// A code block between its fences, the opening one naming the language.
@@ -667,8 +727,17 @@ fn code_lines(lang: &str, code: &[Vec<Token>], closed: bool) -> Vec<Line<'static
     lines
 }
 
+#[cfg(target_arch = "wasm32")]
 fn now() -> f64 {
     js_sys::Date::now()
+}
+
+/// The host's clock, so the transcript's spinner and notices run in tests.
+#[cfg(not(target_arch = "wasm32"))]
+fn now() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0.0, |since| since.as_secs_f64() * 1000.0)
 }
 
 /// The spinner's frame for now. The index is taken in f64: the clock over
@@ -705,6 +774,14 @@ struct Session {
     rows: Vec<usize>,
     /// The tool rows a click opens, by line.
     links: Vec<(usize, Open)>,
+    /// Tool results the person showed one at a time, by tool id.
+    disclosed: BTreeSet<String>,
+    /// The tool rows a click shows or hides, by line.
+    toggles: Vec<(usize, String)>,
+    /// Each message's first line, for the semantic tree.
+    starts: Vec<usize>,
+    /// A message to scroll to at the next draw, by its index: a saved view.
+    pin: Option<usize>,
     /// Lines whose background spans the whole row, as a diff's rows do.
     fills: Vec<(usize, Color)>,
     /// The body's area and its first shown row at the last draw.
@@ -732,6 +809,10 @@ impl Session {
             lines: Vec::new(),
             rows: Vec::new(),
             links: Vec::new(),
+            disclosed: BTreeSet::new(),
+            toggles: Vec::new(),
+            starts: Vec::new(),
+            pin: None,
             fills: Vec::new(),
             body: Rect::default(),
             top: 0,
@@ -745,6 +826,12 @@ impl Session {
         Ok(())
     }
 
+    /// Take a snapshot already read, as the workbench's conversation panel does.
+    fn set_snapshot(&mut self, snapshot: Snapshot) {
+        self.snapshot = snapshot;
+        self.built_for = None;
+    }
+
     fn notify(&mut self, text: impl Into<String>) {
         self.notice = Some((text.into(), now() + NOTICE_MS));
     }
@@ -756,6 +843,8 @@ impl Session {
         let last_message = self.snapshot.messages.len().saturating_sub(1);
         let mut caret = None;
         let mut links = Vec::new();
+        let mut toggles = Vec::new();
+        let mut starts = Vec::new();
         let mut fills = Vec::new();
         // Pushes lines whose rows carry a background, noting which.
         let filled = |lines: &mut Vec<Line<'static>>,
@@ -768,10 +857,25 @@ impl Session {
                 lines.push(line);
             }
         };
-        self.has_output = self.snapshot.messages.iter().flat_map(|m| &m.parts).any(|part| {
-            matches!(part, Part::Tool { output: Some(_), .. } | Part::Program { streaming: false, .. })
-        });
+        self.has_output = self
+            .snapshot
+            .messages
+            .iter()
+            .flat_map(|m| &m.parts)
+            .any(|part| {
+                matches!(
+                    part,
+                    Part::Tool {
+                        output: Some(_),
+                        ..
+                    } | Part::Program {
+                        streaming: false,
+                        ..
+                    }
+                )
+            });
         for (index, message) in self.snapshot.messages.iter().enumerate() {
+            starts.push(lines.len());
             if message.role == "user" {
                 let text: String = message
                     .parts
@@ -793,6 +897,12 @@ impl Session {
                         Span::styled(row.to_owned(), Style::new().fg(palette().bright)),
                     ]));
                 }
+                for name in &message.attachments {
+                    lines.push(Line::from(vec![
+                        Span::raw(INDENT),
+                        Span::styled(format!("@{name}"), Style::new().fg(palette().link)),
+                    ]));
+                }
                 lines.push(Line::default());
                 continue;
             }
@@ -807,8 +917,9 @@ impl Session {
                 let finished = parts[at..]
                     .iter()
                     .take_while(|part| {
-                        matches!(part, Part::Tool { status, output, .. } if status == "complete"
-                            && output.as_ref().is_none_or(|output| output.diff.is_empty()))
+                        matches!(part, Part::Tool { status, output, id, .. } if status == "complete"
+                            && output.as_ref().is_none_or(|output| output.diff.is_empty())
+                            && id.as_ref().is_none_or(|id| !self.disclosed.contains(id)))
                     })
                     .count();
                 if !self.expanded && finished >= GROUP_AT {
@@ -837,7 +948,9 @@ impl Session {
                         lines.extend(own(rendered).into_iter().map(indented));
                     }
                     Part::Reasoning { text } => {
-                        let style = Style::new().fg(palette().muted).add_modifier(Modifier::ITALIC);
+                        let style = Style::new()
+                            .fg(palette().muted)
+                            .add_modifier(Modifier::ITALIC);
                         lines.extend(
                             text.lines()
                                 .map(|row| indented(Line::styled(row.to_owned(), style))),
@@ -849,14 +962,20 @@ impl Session {
                         status,
                         output,
                         open,
+                        id,
                     } => {
                         if let Some(open) = open {
                             links.push((lines.len(), open.clone()));
                         }
+                        let disclosed = id.as_ref().is_some_and(|id| self.disclosed.contains(id));
+                        if let (Some(id), Some(_)) = (id, output) {
+                            toggles.push((lines.len(), id.clone()));
+                        }
                         lines.push(tool_row(name, summary, status, open.is_some(), width));
-                        // What an edit changed shows, folded; other output waits for ctrl+o.
+                        // What an edit changed shows, folded; other output waits for ctrl+o
+                        // or for the person to show that one.
                         let shown = match output {
-                            _ if self.expanded => usize::MAX,
+                            _ if self.expanded || disclosed => usize::MAX,
                             Some(output) if !output.diff.is_empty() => DIFF_FOLD,
                             _ => 0,
                         };
@@ -869,10 +988,15 @@ impl Session {
                         streaming,
                     } => {
                         if open_program {
-                            lines.extend(code_lines("program", code, !streaming).into_iter().map(indented));
+                            lines.extend(
+                                code_lines("program", code, !streaming)
+                                    .into_iter()
+                                    .map(indented),
+                            );
                         } else {
                             let count = code.len();
-                            let summary = format!("{count} line{}", if count == 1 { "" } else { "s" });
+                            let summary =
+                                format!("{count} line{}", if count == 1 { "" } else { "s" });
                             lines.push(tool_row("program", &summary, "complete", false, width));
                         }
                     }
@@ -880,23 +1004,33 @@ impl Session {
                         lines.extend(sent_lines(sent));
                         lines.push(Line::default());
                     }
-                    Part::Code { lang, lines: code, diff } if !diff.is_empty() => {
+                    Part::Code {
+                        lang,
+                        lines: code,
+                        diff,
+                    } if !diff.is_empty() => {
                         let fence = Style::new().fg(palette().muted);
                         lines.push(indented(Line::styled(format!("```{lang}"), fence)));
                         filled(&mut lines, &mut fills, diff_lines(diff, INDENT));
                         lines.push(indented(Line::styled("```", fence)));
                     }
-                    Part::Code { lang, lines: code, .. } => {
+                    Part::Code {
+                        lang, lines: code, ..
+                    } => {
                         lines.extend(code_lines(lang, code, true).into_iter().map(indented));
                     }
                     Part::Other => {}
                 }
                 if writing && last_part {
                     caret = match part {
-                        Part::Text { .. } => (start..lines.len()).rev().find(|&row| !blank(&lines[row])),
+                        Part::Text { .. } => {
+                            (start..lines.len()).rev().find(|&row| !blank(&lines[row]))
+                        }
                         // In a block, the line before its closing fence.
                         Part::Code { .. } => lines.len().checked_sub(2),
-                        Part::Program { streaming: true, .. } => lines.len().checked_sub(1),
+                        Part::Program {
+                            streaming: true, ..
+                        } => lines.len().checked_sub(1),
                         Part::Program { .. } if open_program => lines.len().checked_sub(2),
                         _ => None,
                     };
@@ -907,7 +1041,9 @@ impl Session {
         }
 
         if let Some(row) = caret {
-            lines[row].spans.push(Span::styled(CARET, Style::new().fg(palette().accent)));
+            lines[row]
+                .spans
+                .push(Span::styled(CARET, Style::new().fg(palette().accent)));
         }
 
         for sent in &self.snapshot.outgoing {
@@ -960,11 +1096,15 @@ impl Session {
         let mut row = 0;
         for line in &lines {
             rows.push(row);
-            row += Paragraph::new(line.clone()).wrap(Wrap { trim: false }).line_count(width);
+            row += Paragraph::new(line.clone())
+                .wrap(Wrap { trim: false })
+                .line_count(width);
         }
         rows.push(row);
         self.rows = rows;
         self.links = links;
+        self.toggles = toggles;
+        self.starts = starts;
         self.fills = fills;
         self.lines = lines;
         self.built_for = Some((width, palette()));
@@ -982,9 +1122,32 @@ impl Session {
             .map(|(_, open)| open)
     }
 
+    /// The tool row a cell lands on, if a click shows or hides its result.
+    fn toggle_at(&self, cell: Position) -> Option<&str> {
+        if !self.body.contains(cell) {
+            return None;
+        }
+        let row = self.top + usize::from(cell.y - self.body.y);
+        self.toggles
+            .iter()
+            .find(|(line, _)| self.rows.get(*line) == Some(&row))
+            .map(|(_, id)| id.as_str())
+    }
+
+    /// Show or hide one tool's result.
+    fn toggle(&mut self, id: &str) {
+        if !self.disclosed.remove(id) {
+            self.disclosed.insert(id.to_owned());
+        }
+        self.built_for = None;
+    }
+
     /// The single-session bar: what this is and where.
     fn header(&self) -> Line<'static> {
-        let mut spans = vec![Span::styled(" ◆ agent", Style::new().fg(palette().sage).bold())];
+        let mut spans = vec![Span::styled(
+            " ◆ agent",
+            Style::new().fg(palette().sage).bold(),
+        )];
         if !self.snapshot.project.is_empty() {
             spans.push(Span::styled(
                 format!(" · {}", self.snapshot.project),
@@ -994,7 +1157,7 @@ impl Session {
         Line::from(spans)
     }
 
-    fn draw_body(&mut self, frame: &mut Frame, area: Rect) {
+    fn draw_body(&mut self, buf: &mut Buffer, area: Rect) {
         let inner = area.inner(ratatui::layout::Margin::new(1, 0));
         if self.built_for != Some((inner.width, palette())) {
             self.build(inner.width);
@@ -1004,6 +1167,12 @@ impl Session {
         let height = inner.height as usize;
         self.page = height.saturating_sub(2).max(1);
         let max_back = total.saturating_sub(height);
+        if let Some(index) = self.pin.take() {
+            let row = self.starts.get(index).and_then(|line| self.rows.get(*line));
+            if let Some(&row) = row {
+                self.scroll_back = max_back.saturating_sub(row);
+            }
+        }
         self.scroll_back = self.scroll_back.min(max_back);
         let top = (max_back - self.scroll_back).min(u16::MAX as usize) as u16;
         self.body = inner;
@@ -1018,27 +1187,45 @@ impl Session {
             for row in first.max(shown.start)..end.min(shown.end) {
                 let y = inner.y + (row - shown.start) as u16;
                 let row = Rect::new(inner.x, y, inner.width, 1);
-                frame.buffer_mut().set_style(row, Style::new().bg(fill));
+                buf.set_style(row, Style::new().bg(fill));
             }
         }
-        frame.render_widget(paragraph.scroll((top, 0)), inner);
+        paragraph.scroll((top, 0)).render(inner, buf);
     }
 
-    fn draw_status(&mut self, frame: &mut Frame, area: Rect) {
-        if self.notice.as_ref().is_some_and(|(_, until)| *until < now()) {
+    fn draw_status(&mut self, buf: &mut Buffer, area: Rect) {
+        if self
+            .notice
+            .as_ref()
+            .is_some_and(|(_, until)| *until < now())
+        {
             self.notice = None;
         }
         let left = if let Some(approval) = &self.snapshot.approval {
             Line::from(vec![
-                Span::styled(" ? ", Style::new().fg(palette().approval).add_modifier(Modifier::BOLD)),
-                Span::styled(format!("{} ", approval.tool), Style::new().fg(palette().bright)),
+                Span::styled(
+                    " ? ",
+                    Style::new()
+                        .fg(palette().approval)
+                        .add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("{} ", approval.tool),
+                    Style::new().fg(palette().bright),
+                ),
                 Span::styled(approval.summary.clone(), Style::new().fg(palette().muted)),
             ])
         } else if self.snapshot.running {
             Line::from(vec![
-                Span::styled(format!(" {} ", spinner()), Style::new().fg(palette().accent)),
                 Span::styled(
-                    self.snapshot.activity.clone().unwrap_or_else(|| "working".to_owned()),
+                    format!(" {} ", spinner()),
+                    Style::new().fg(palette().accent),
+                ),
+                Span::styled(
+                    self.snapshot
+                        .activity
+                        .clone()
+                        .unwrap_or_else(|| "working".to_owned()),
                     Style::new().fg(palette().muted),
                 ),
             ])
@@ -1047,7 +1234,7 @@ impl Session {
         } else {
             Line::default()
         };
-        frame.render_widget(left, area);
+        left.render(area, buf);
         let right = if self.snapshot.approval.is_some() {
             "y allow · n deny ".to_owned()
         } else if self.scroll_back > 0 {
@@ -1061,39 +1248,47 @@ impl Session {
             String::new()
         };
         // Span-styled: a styled Line would repaint the status drawn under it.
-        frame.render_widget(
-            Line::from(Span::styled(right, Style::new().fg(palette().muted))).right_aligned(),
-            area,
-        );
+        Line::from(Span::styled(right, Style::new().fg(palette().muted)))
+            .right_aligned()
+            .render(area, buf);
     }
 
     /// What the next turn carries, over the prompt.
-    fn draw_references(&self, frame: &mut Frame, area: Rect) {
+    fn draw_references(&self, buf: &mut Buffer, area: Rect) {
         let mut spans = vec![Span::styled(" with ", Style::new().fg(palette().muted))];
         for (index, label) in self.snapshot.references.iter().enumerate() {
             if index > 0 {
                 spans.push(Span::styled(" · ", Style::new().fg(palette().muted)));
             }
-            spans.push(Span::styled(format!("@{label}"), Style::new().fg(palette().link)));
+            spans.push(Span::styled(
+                format!("@{label}"),
+                Style::new().fg(palette().link),
+            ));
         }
-        frame.render_widget(Line::from(spans), area);
+        Line::from(spans).render(area, buf);
         if self.input.value().is_empty() {
             // Span-styled: a styled Line would repaint the labels drawn under it.
-            frame.render_widget(
-                Line::from(Span::styled("⌫ drops the last ", Style::new().fg(palette().muted))).right_aligned(),
-                area,
-            );
+            Line::from(Span::styled(
+                "⌫ drops the last ",
+                Style::new().fg(palette().muted),
+            ))
+            .right_aligned()
+            .render(area, buf);
         }
     }
 
     /// Draws the prompt line and returns the cell its cursor sits on.
-    fn draw_prompt(&self, frame: &mut Frame, area: Rect, focused: bool) -> Position {
+    fn draw_prompt(&self, buf: &mut Buffer, area: Rect, focused: bool) -> Position {
         let block = Block::new()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(if focused { palette().sage } else { palette().line }));
+            .border_style(Style::new().fg(if focused {
+                palette().sage
+            } else {
+                palette().line
+            }));
         let inner = block.inner(area);
-        frame.render_widget(block, area);
+        block.render(area, buf);
 
         let lead = PROMPT.chars().count() as u16 + 1;
         let width = inner.width.saturating_sub(lead) as usize;
@@ -1102,14 +1297,12 @@ impl Session {
             self.input.value().chars().skip(scroll).collect::<String>(),
             Style::new().fg(palette().bright),
         );
-        frame.render_widget(
-            Line::from(vec![
-                Span::raw(" "),
-                Span::styled(PROMPT, Style::new().fg(palette().accent).bold()),
-                text,
-            ]),
-            inner,
-        );
+        Line::from(vec![
+            Span::raw(" "),
+            Span::styled(PROMPT, Style::new().fg(palette().accent).bold()),
+            text,
+        ])
+        .render(inner, buf);
         let column = (self.input.visual_cursor().saturating_sub(scroll)) as u16;
         Position::new(inner.x + lead + column, inner.y)
     }
@@ -1160,7 +1353,9 @@ impl Session {
 
     /// Returns whether the key was the terminal's, so React can keep it from the page.
     fn key(&mut self, event: KeyEvent) -> (bool, Option<Action>) {
-        let KeyEvent { code, ctrl, alt, .. } = event;
+        let KeyEvent {
+            code, ctrl, alt, ..
+        } = event;
         let edit = |input: &mut Input, request| {
             input.handle(request);
         };
@@ -1277,7 +1472,11 @@ impl Session {
 
     fn paste(&mut self, text: &str) {
         for c in text.chars() {
-            let c = if c == '\n' || c == '\r' || c == '\t' { ' ' } else { c };
+            let c = if c == '\n' || c == '\r' || c == '\t' {
+                ' '
+            } else {
+                c
+            };
             self.input.handle(InputRequest::InsertChar(c));
         }
         self.history_at = None;
@@ -1300,21 +1499,37 @@ fn refusal(reason: Option<&str>) -> Option<&'static str> {
 fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
     let taken = sent.status == "delivered";
     let (glyph, ink) = if taken {
-        (Style::new().fg(palette().accent).bold(), Style::new().fg(palette().bright))
+        (
+            Style::new().fg(palette().accent).bold(),
+            Style::new().fg(palette().bright),
+        )
     } else {
-        (Style::new().fg(palette().muted), Style::new().fg(palette().ink))
+        (
+            Style::new().fg(palette().muted),
+            Style::new().fg(palette().ink),
+        )
     };
     let (tag, tag_style) = match sent.status.as_str() {
         "delivered" => (None, Style::new().fg(palette().muted)),
         "sending" => (Some("sending".to_owned()), Style::new().fg(palette().muted)),
-        "next" => (Some("goes as the next turn".to_owned()), Style::new().fg(palette().warning)),
-        "resent" => (Some("sent as the next turn".to_owned()), Style::new().fg(palette().muted)),
+        "next" => (
+            Some("goes as the next turn".to_owned()),
+            Style::new().fg(palette().warning),
+        ),
+        "resent" => (
+            Some("sent as the next turn".to_owned()),
+            Style::new().fg(palette().muted),
+        ),
         "not_delivered" => (
             Some(match refusal(sent.reason.as_deref()) {
                 Some(why) => format!("not delivered: {why}"),
                 None => "not delivered".to_owned(),
             }),
             Style::new().fg(palette().error),
+        ),
+        "uncertain" => (
+            Some("not known whether it was received; it is not sent again".to_owned()),
+            Style::new().fg(palette().warning),
         ),
         "failed" => (
             Some(match &sent.reason {
@@ -1323,7 +1538,10 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
             }),
             Style::new().fg(palette().error),
         ),
-        _ => (Some("queued for its next step".to_owned()), Style::new().fg(palette().muted)),
+        _ => (
+            Some("queued for its next step".to_owned()),
+            Style::new().fg(palette().muted),
+        ),
     };
     let rows: Vec<&str> = sent.text.lines().collect();
     let last = rows.len().saturating_sub(1);
@@ -1355,6 +1573,7 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
         "complete" => ("✓", palette().success),
         "error" => ("✗", palette().error),
         "approval" => ("?", palette().approval),
+        "interrupted" => ("⊘", palette().warning),
         _ => ("◌", palette().accent),
     };
     let lead = format!("{INDENT}{glyph} ");
@@ -1362,7 +1581,11 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
     let room = (width as usize).saturating_sub(used);
     let mut summary: String = summary.replace('\n', " ");
     if summary.chars().count() > room {
-        summary = summary.chars().take(room.saturating_sub(1)).collect::<String>() + "…";
+        summary = summary
+            .chars()
+            .take(room.saturating_sub(1))
+            .collect::<String>()
+            + "…";
     }
     let fill = (width as usize).saturating_sub(used + summary.chars().count());
     Line::from(vec![
@@ -1372,7 +1595,9 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
         Span::styled(
             summary,
             if link {
-                Style::new().fg(palette().muted).add_modifier(Modifier::UNDERLINED)
+                Style::new()
+                    .fg(palette().muted)
+                    .add_modifier(Modifier::UNDERLINED)
             } else {
                 Style::new().fg(palette().muted)
             },
@@ -1457,7 +1682,10 @@ impl App {
 
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
-        frame.render_widget(Block::new().style(Style::new().bg(palette().bg).fg(palette().ink)), area);
+        frame.render_widget(
+            Block::new().style(Style::new().bg(palette().bg).fg(palette().ink)),
+            area,
+        );
         let referenced = self
             .sessions
             .get(self.active)
@@ -1478,7 +1706,13 @@ impl App {
         frame.render_widget(block, header);
         // The bar's last columns stay clear for the page's close button.
         if self.tabbed {
-            self.draw_tabs(frame, Rect { width: bar.width.saturating_sub(CLOSE_COLUMNS), ..bar });
+            self.draw_tabs(
+                frame,
+                Rect {
+                    width: bar.width.saturating_sub(CLOSE_COLUMNS),
+                    ..bar
+                },
+            );
         } else if let Some(session) = self.sessions.get(self.active) {
             frame.render_widget(session.header(), bar);
         }
@@ -1488,12 +1722,12 @@ impl App {
         let Some(session) = self.sessions.get_mut(self.active) else {
             return;
         };
-        session.draw_body(frame, body);
-        session.draw_status(frame, status);
+        session.draw_body(frame.buffer_mut(), body);
+        session.draw_status(frame.buffer_mut(), status);
         if referenced {
-            session.draw_references(frame, references);
+            session.draw_references(frame.buffer_mut(), references);
         }
-        self.cursor = Some(session.draw_prompt(frame, prompt, self.focused));
+        self.cursor = Some(session.draw_prompt(frame.buffer_mut(), prompt, self.focused));
     }
 
     /// The tab bar: Ratatui's Tabs, with a spinner on running tabs, a close
@@ -1509,7 +1743,10 @@ impl App {
                 if session.snapshot.approval.is_some() {
                     spans.push(Span::styled("? ", Style::new().fg(palette().approval)));
                 } else if session.snapshot.running {
-                    spans.push(Span::styled(format!("{spin} "), Style::new().fg(palette().accent)));
+                    spans.push(Span::styled(
+                        format!("{spin} "),
+                        Style::new().fg(palette().accent),
+                    ));
                 }
                 let mut title: String = session.title.chars().take(18).collect();
                 if session.title.chars().count() > 18 {
@@ -1549,7 +1786,11 @@ impl App {
             Tabs::new(titles)
                 .select(self.active)
                 .style(Style::new().fg(palette().muted))
-                .highlight_style(Style::new().fg(palette().bright).add_modifier(Modifier::BOLD))
+                .highlight_style(
+                    Style::new()
+                        .fg(palette().bright)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .divider(Span::styled("│", Style::new().fg(palette().line)))
                 .padding(" ", " "),
             area,
@@ -1567,8 +1808,12 @@ impl App {
             let action = match event.code {
                 KeyCode::Char('t') => self.tab(self.active, Action::NewTab),
                 KeyCode::Char('w') => self.tab(self.active, Action::CloseTab),
-                KeyCode::Char(c @ '1'..='9') => self.tab(c as usize - '1' as usize, Action::SelectTab),
-                KeyCode::Char('[') => self.tab((self.active + count - 1) % count, Action::SelectTab),
+                KeyCode::Char(c @ '1'..='9') => {
+                    self.tab(c as usize - '1' as usize, Action::SelectTab)
+                }
+                KeyCode::Char('[') => {
+                    self.tab((self.active + count - 1) % count, Action::SelectTab)
+                }
                 KeyCode::Char(']') => self.tab((self.active + 1) % count, Action::SelectTab),
                 _ => None,
             };
@@ -1618,7 +1863,10 @@ impl App {
     fn cursor_at(&self, x: f64, y: f64) -> &'static str {
         if self.hit_at(x, y).is_some() || self.link_at(x, y).is_some() {
             "pointer"
-        } else if self.cell_at(x, y).is_some_and(|cell| self.prompt.contains(cell)) {
+        } else if self
+            .cell_at(x, y)
+            .is_some_and(|cell| self.prompt.contains(cell))
+        {
             "text"
         } else {
             "default"
@@ -1842,7 +2090,8 @@ impl Screen {
             }
             self.terminal.draw(|_| {})?;
             let size = self.terminal.backend_mut().window_size()?.columns_rows;
-            self.terminal.resize(Rect::new(0, 0, size.width, size.height))?;
+            self.terminal
+                .resize(Rect::new(0, 0, size.width, size.height))?;
             app.repaint();
         }
         let area = self.terminal.get_frame().area();
@@ -1942,15 +2191,29 @@ pub fn mount(
 /// otherwise. Returns `{meta, indices}` where `indices` is the 128×84 indexed
 /// raster as a byte array, so presentation is a palette lookup.
 #[wasm_bindgen]
-pub fn render_preview(source_json: &str, rgba: &[u8], width: u32, height: u32) -> Result<JsValue, JsValue> {
+pub fn render_preview(
+    source_json: &str,
+    rgba: &[u8],
+    width: u32,
+    height: u32,
+) -> Result<JsValue, JsValue> {
     let source: preview::Source = serde_json::from_str(source_json)
         .map_err(|e| JsValue::from_str(&format!("malformed preview source: {e}")))?;
-    let pixels = (!rgba.is_empty()).then_some(preview::Pixels { rgba, width, height });
+    let pixels = (!rgba.is_empty()).then_some(preview::Pixels {
+        rgba,
+        width,
+        height,
+    });
     let result = preview::render(&source, pixels.as_ref());
     let out = js_sys::Object::new();
-    let meta = serde_json::to_string(&result.meta()).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let meta =
+        serde_json::to_string(&result.meta()).map_err(|e| JsValue::from_str(&e.to_string()))?;
     js_sys::Reflect::set(&out, &"meta".into(), &JsValue::from_str(&meta))?;
-    js_sys::Reflect::set(&out, &"indices".into(), &js_sys::Uint8Array::from(result.raster.indices.as_slice()))?;
+    js_sys::Reflect::set(
+        &out,
+        &"indices".into(),
+        &js_sys::Uint8Array::from(result.raster.indices.as_slice()),
+    )?;
     Ok(out.into())
 }
 

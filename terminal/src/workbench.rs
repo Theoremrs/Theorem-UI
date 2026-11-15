@@ -35,15 +35,19 @@ use theorem_workbench_core::{
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use wasm_bindgen::prelude::*;
 
-use crate::{Drawn, Palette, Screen, palette, run_frames};
+use crate::{
+    Drawn, Palette, Screen, palette, run_frames,
+    theo::{self, Directory},
+};
 
 /// Where other crates' panels are registered as they land. The picker's panel
 /// and the placeholder for a kind this build cannot serve belong to the core
 /// itself; the panels crate adds Files, whose opening and workspace identity go
 /// through the core.
-fn factories() -> PanelFactories {
+fn factories(conversations: &Directory) -> PanelFactories {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
+    theo::register(&mut factories, conversations);
     factories
 }
 
@@ -334,6 +338,12 @@ struct Core {
     /// The default layout's Files panel has been asked for (or a saved layout
     /// replaced the default), so it is not asked for again.
     files_opened: bool,
+    /// Theo, the main region's principal panel, has been asked for (or a saved
+    /// layout replaced the default).
+    theo_opened: bool,
+    /// The newest conversation snapshot the model was given, for the panels the
+    /// core has not bound to a conversation yet.
+    conversations: Directory,
 }
 
 impl Core {
@@ -352,8 +362,15 @@ impl Core {
         let registry = builtin::registry();
         let (keys, _issues) = KeyTable::build(&registry, platform, &Overrides::default());
         let (dock, _regions) = Dock::from_preset(DockConfig::default(), Preset::Default);
+        let conversations = Directory::default();
         Self {
-            model: Model::new(registry, factories(), keys, Capabilities::default(), dock),
+            model: Model::new(
+                registry,
+                factories(&conversations),
+                keys,
+                Capabilities::default(),
+                dock,
+            ),
             publisher: SemanticPublisher::default(),
             theme: Theme::plain(),
             platform,
@@ -361,12 +378,23 @@ impl Core {
             touched: true,
             repaint: true,
             files_opened: false,
+            theo_opened: false,
+            conversations,
         }
     }
 
     fn update(&mut self, msg: Msg) -> Vec<Effect> {
         self.touched = true;
+        self.conversations.observe(&msg);
         update(&mut self.model, msg)
+    }
+
+    /// Ask for a panel by its own focus action, as a person's key would.
+    fn focus(&mut self, action: &str) -> Vec<Effect> {
+        self.update(Msg::Action {
+            id: ActionId::new(action),
+            actor: Actor::Human,
+        })
     }
 
     /// Apply a measured grid. Nothing happens when it is the grid already held.
@@ -431,12 +459,15 @@ impl Core {
         let mut effects = self.resize(area, cell);
         // Files is open in the default layout as soon as the host can serve it:
         // the action is the core's own and is refused until `files` is granted.
+        if !self.theo_opened {
+            self.theo_opened = true;
+            effects.extend(self.focus("theo.focus"));
+        }
         if !self.files_opened && self.model.capabilities().has(&Capability::new("files")) {
             self.files_opened = true;
-            effects.extend(self.update(Msg::Action {
-                id: ActionId::new("files.focus"),
-                actor: Actor::Human,
-            }));
+            effects.extend(self.focus("files.focus"));
+            // The conversation keeps the focus: it is the principal panel.
+            effects.extend(self.focus("theo.focus"));
         }
         effects.extend(self.update(Msg::Tick));
         if theme != self.theme {
@@ -670,6 +701,7 @@ impl WorkbenchHandle {
         let mut core = self.core.borrow_mut();
         core.touched = true;
         core.files_opened = true;
+        core.theo_opened = true;
         core.model.restore(value).map(|_| ()).map_err(js_error)
     }
 
@@ -947,6 +979,67 @@ mod tests {
     }
 
     #[test]
+    fn the_default_layout_puts_theo_in_main_and_keeps_the_focus_there() {
+        let mut core = core();
+        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
+            capabilities: Capabilities::of(["files"]),
+        }));
+        core.step(AREA, CELL, Theme::plain());
+        let kinds: Vec<String> = core
+            .model
+            .panel_ids()
+            .map(|(_, k)| k.as_str().to_owned())
+            .collect();
+        assert!(kinds.contains(&"theo".to_owned()), "{kinds:?}");
+        assert!(kinds.contains(&"files".to_owned()), "{kinds:?}");
+        let focused = core.model.focus().panel.expect("something has the focus");
+        let kind = core
+            .model
+            .panel_ids()
+            .find(|(id, _)| **id == focused)
+            .map(|(_, k)| k.as_str().to_owned());
+        assert_eq!(kind.as_deref(), Some("theo"));
+    }
+
+    #[test]
+    fn a_conversation_snapshot_reaches_theo_through_the_mount_before_it_is_bound() {
+        let snapshot = serde_json::json!({
+            "conversationId": "t1", "loading": false, "revision": 1,
+            "messages": [{"id": "m1", "role": "user", "status": "complete",
+                          "parts": [{"type": "text", "text": "hello from the owner"}],
+                          "attachments": []}],
+            "run": {"state": "idle"}, "queued": []
+        });
+        let msg = inbound(
+            &serde_json::json!({
+                "channel": "host", "type": "conversationSnapshot",
+                "resource": {"type": "conversation", "project": "p", "thread": "t1"},
+                "revision": {"scheme": "seq", "value": 1},
+                "conversationId": "t1", "snapshot": snapshot.to_string()
+            })
+            .to_string(),
+        )
+        .unwrap();
+        let mut core = core();
+        core.update(msg);
+        core.step(AREA, CELL, Theme::plain());
+        let id = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "theo")
+            .map(|(id, _)| id.clone())
+            .unwrap();
+        let binding = core.model.panel(&id).unwrap().binding().unwrap();
+        assert_eq!(
+            binding.resource,
+            theorem_workbench_core::ResourceRef::Conversation {
+                project: "p".into(),
+                thread: "t1".into()
+            }
+        );
+    }
+
+    #[test]
     fn a_workspace_message_reaches_the_core() {
         let msg = inbound(
             r#"{"channel":"host","type":"workspaceChanged","workspace":"w1","environment":"e1"}"#,
@@ -1070,7 +1163,8 @@ mod tests {
             .expect("the builtin registry has a More tools entry")
             .kind
             .clone();
-        core.model.set_pinned(std::iter::once(more.clone()).collect());
+        core.model
+            .set_pinned(std::iter::once(more.clone()).collect());
         let saved = core.model.document();
         assert_eq!(saved["pinned"], json!([more.as_str()]));
         // A fresh workbench takes the saved document back, pins included.
