@@ -363,16 +363,27 @@ pub struct DocumentPreview {
     pub text: String,
 }
 
-/// One file a delegation changed. `change` is the owner's word for what
-/// happened (added, modified, deleted, renamed); the workbench does not
-/// enumerate them. A side the file has no text for says so in `has_before` /
-/// `has_after`, and a binary file has none to show.
+/// What happened to a file a delegation changed, in the owner's words on the
+/// wire: `add`, `modify`, `delete`. There is no rename.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "lowercase")]
+pub enum DelegationChangeKind {
+    Add,
+    Modify,
+    Delete,
+}
+
+/// One file a delegation changed. `change` is one of the owner's three words.
+/// A side the file has no text for says so in `hasBefore` / `hasAfter` (the
+/// camelCase wire names of `has_before` / `has_after`), and a binary file has
+/// none to show.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct DelegationChange {
     pub path: String,
-    pub change: String,
+    pub change: DelegationChangeKind,
     pub binary: bool,
     pub has_before: bool,
     pub has_after: bool,

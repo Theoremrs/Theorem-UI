@@ -28,8 +28,9 @@ use theorem_workbench_core::{
     Composition, Effect, Inbound, Model, Msg, PanelFactories, Pointer, PointerKind, Theme,
     agent::{AgentOutcome, action_msg, agent_outcome, agent_request},
     builtin,
+    ids::ResourceKind,
     keys::{KeyIssue, KeyTable, Overrides, Platform, active_contexts},
-    registry::Capabilities,
+    registry::{Capabilities, Presentation},
     semantics,
     semantics::{Publish, SemanticPublisher},
     update, view,
@@ -87,6 +88,23 @@ fn registry() -> theorem_workbench_core::registry::Registry {
         .expect("the Markdown actions extend the markdown kind once");
     theorem_workbench_editor::extend_registry(&mut registry)
         .expect("the editor actions extend the document kind once");
+    // Two presentations of a document (R48, AC-59): the editor shows every
+    // text document, the Markdown panel is the alternate for Markdown files.
+    registry
+        .declare_presentation(
+            Presentation::new(theorem_workbench_editor::KIND, ResourceKind::Document)
+                .default_presentation(),
+        )
+        .expect("the editor is declared a presentation of documents once");
+    registry
+        .declare_presentation(
+            Presentation::new(
+                theorem_workbench_markdown_panel::KIND,
+                ResourceKind::Document,
+            )
+            .extensions(["md", "markdown"]),
+        )
+        .expect("the Markdown panel is declared a presentation of Markdown documents once");
     registry
 }
 
@@ -1606,6 +1624,11 @@ mod tests {
 
     /// Opens `name` from the Files panel and returns the kinds of the panels then open.
     fn open_from_files(name: &str, editor_first: bool) -> Vec<String> {
+        kinds(&opened_from_files(name, editor_first))
+    }
+
+    /// The core after `name` was opened from the Files panel.
+    fn opened_from_files(name: &str, editor_first: bool) -> Core {
         use theorem_workbench_core::{
             completion::{
                 Completion, CompletionPayload, FileEntry, FileKind, FileListing, Outcome,
@@ -1644,7 +1667,7 @@ mod tests {
             effects.iter().any(opens),
             "the panel reads {name} through the core: {effects:?}"
         );
-        kinds(&core)
+        core
     }
 
     #[test]
@@ -1658,6 +1681,129 @@ mod tests {
             assert!(rs.contains(&"document".to_owned()), "{rs:?}");
             assert!(!rs.contains(&"markdown".to_owned()), "{rs:?}");
         }
+    }
+
+    /// R48, AC-59: the editor and the Markdown panel are two presentations of
+    /// a Markdown document, swapped in the same tab, and only a Markdown one.
+    #[test]
+    fn a_markdown_document_is_shown_in_the_markdown_panel_or_the_editor_in_one_tab() {
+        let kind_of = |core: &Core, id: &theorem_workbench_core::PanelInstanceId| {
+            core.model
+                .panel_ids()
+                .find(|(p, _)| *p == id)
+                .map(|(_, k)| k.as_str().to_owned())
+        };
+        let mut core = opened_from_files("a.md", false);
+        let id = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "markdown")
+            .map(|(id, _)| id.clone())
+            .expect("a.md opens in the Markdown panel");
+        let listed: Vec<(String, bool, bool)> = core
+            .model
+            .presentations_of(&id)
+            .into_iter()
+            .map(|e| {
+                (
+                    e.kind.as_str().to_owned(),
+                    e.current,
+                    e.availability.is_available(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            [
+                ("document".to_owned(), false, true),
+                ("markdown".to_owned(), true, true)
+            ],
+            "the editor is the default and is listed first"
+        );
+        let resource = core
+            .model
+            .panel(&id)
+            .and_then(|p| p.binding())
+            .unwrap()
+            .resource;
+        let place = core
+            .model
+            .dock()
+            .find_panel(&theorem_workbench_dock::PanelId(id.as_str().to_owned()));
+
+        // The Markdown panel has not settled its read yet: the swap waits for it
+        // rather than lose or double it, and says so.
+        let (first, _) = core.person_act("panel.presentation.next", Some(id.as_str()));
+        assert!(matches!(first, AgentOutcome::Refused { .. }), "{first:?}");
+        assert_eq!(kind_of(&core, &id).as_deref(), Some("markdown"));
+        // Settle it as the host would: answer what the panel asked.
+        let asked: Vec<_> = core
+            .model
+            .in_flight()
+            .pending_for(&resource)
+            .map(|(e, _)| *e)
+            .collect();
+        for effect in asked {
+            core.update(Msg::Completion(
+                theorem_workbench_core::completion::Completion::new(
+                    effect,
+                    resource.clone(),
+                    theorem_workbench_core::completion::Outcome::Accepted,
+                ),
+            ));
+        }
+        let (second, _) = core.person_act("panel.presentation.next", Some(id.as_str()));
+        assert!(
+            matches!(second, AgentOutcome::Accepted { .. }),
+            "{second:?}"
+        );
+        assert_eq!(kind_of(&core, &id).as_deref(), Some("document"));
+        assert_eq!(
+            core.model
+                .panel(&id)
+                .and_then(|p| p.binding())
+                .unwrap()
+                .resource,
+            resource,
+            "the same document"
+        );
+        assert_eq!(
+            core.model
+                .dock()
+                .find_panel(&theorem_workbench_dock::PanelId(id.as_str().to_owned())),
+            place,
+            "the same group"
+        );
+        // A person's choice and an agent's go through the same checks.
+        let (outcome, _) = core.agent_act(
+            "panel.presentation.use:markdown",
+            "run-1",
+            Some(id.as_str()),
+        );
+        let refused = matches!(outcome, AgentOutcome::Refused { .. });
+        assert!(
+            refused || kind_of(&core, &id).as_deref() == Some("markdown"),
+            "{outcome:?}"
+        );
+    }
+
+    /// An editor that opened a source file offers no other way to show it.
+    #[test]
+    fn a_source_file_has_only_the_editor() {
+        let core = opened_from_files("a.rs", false);
+        let id = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "document")
+            .map(|(id, _)| id.clone())
+            .expect("a.rs opens in the editor");
+        let listed: Vec<String> = core
+            .model
+            .presentations_of(&id)
+            .into_iter()
+            .map(|e| e.kind.as_str().to_owned())
+            .collect();
+        assert_eq!(listed, ["document"]);
     }
 
     const IDE_WORDS: [&str; 10] = [

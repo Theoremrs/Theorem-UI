@@ -137,7 +137,12 @@ const RESIZE_ROWS: i32 = 1;
 impl Model {
     // --- calling panels ---
 
-    fn run_ctx(&mut self, id: &PanelInstanceId, mode: Mode, f: impl FnOnce(&mut Ctx)) -> CtxOut {
+    pub(crate) fn run_ctx(
+        &mut self,
+        id: &PanelInstanceId,
+        mode: Mode,
+        f: impl FnOnce(&mut Ctx),
+    ) -> CtxOut {
         let mut cx = Ctx {
             panel: id.clone(),
             ids: &mut self.ids,
@@ -805,6 +810,14 @@ impl Model {
         if let Some(effects) = self.tab_node_action(&id) {
             return effects;
         }
+        // One presentation of the panel's document, by kind. The same checks
+        // run for a person's choice and an agent's.
+        if let Some(kind) = id
+            .as_str()
+            .strip_prefix(crate::presentation::PRESENTATION_USE)
+        {
+            return self.use_presentation(&PanelKind::new(kind), on);
+        }
         if let Some(effects) = self.picker_node_action(&id) {
             return effects;
         }
@@ -831,7 +844,7 @@ impl Model {
             return self.picker_msg(PickerMsg::Open);
         }
         if kind.as_str() == crate::panels::WORKBENCH_KIND {
-            return self.workbench_action(id.as_str());
+            return self.workbench_action(id.as_str(), on);
         }
         match intent {
             ActionIntent::Focus => {
@@ -1158,6 +1171,12 @@ impl Model {
                 vec![]
             }
             PickerOutcome::Layout(choice) => self.on_layout_choice(choice),
+            PickerOutcome::Presentation(kind) => {
+                // The keyboard goes back to the panel before the swap, so the
+                // panel that is swapped is the one that has it.
+                self.leave_picker();
+                self.use_presentation(&kind, None)
+            }
             PickerOutcome::Chosen(action) => {
                 // The chosen tool takes the picker's place.
                 // Whoever chose the row is who it runs for: the person's key
@@ -1366,7 +1385,7 @@ impl Model {
     }
 
     /// One of the workbench's own actions, by its name after `workbench.`.
-    fn workbench_action(&mut self, id: &str) -> Vec<Effect> {
+    fn workbench_action(&mut self, id: &str, on: Option<PanelInstanceId>) -> Vec<Effect> {
         use dock::NavDirection::{Down, Left, Right, Up};
         let direction = |s: &str| match s {
             "left" => Some(Left),
@@ -1400,6 +1419,9 @@ impl Model {
                     let r = self.dock.maximize(self.dock.focused());
                     self.dock_result(r);
                 }
+            }
+            ("panel", "presentation" | "presentation.next") => {
+                return self.presentation_action(id, on);
             }
             ("follow", "pause") => self.set_following(false),
             ("follow", "resume") => self.set_following(true),

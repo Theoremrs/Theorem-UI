@@ -11,7 +11,9 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 
 use crate::effect::EffectKind;
-use crate::ids::{ActionId, Actor, Capability, PanelInstanceId, PanelKind, ResourceKind};
+use crate::ids::{
+    ActionId, Actor, Capability, PanelInstanceId, PanelKind, ResourceKind, ResourceRef,
+};
 use crate::keys::{KeyContext, Shortcut};
 use crate::semantics::Role;
 
@@ -339,6 +341,81 @@ pub struct PanelDescriptor {
     pub semantic_role: Role,
 }
 
+/// A registered panel kind declared as one way to show a kind of resource
+/// (R48, AC-59). It is data: the kind it names was registered the ordinary way
+/// (descriptor, version, capabilities, factory), and what the declaration adds
+/// is which resources the kind can show. Nothing here names code or a location
+/// to load it from.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Presentation {
+    pub kind: PanelKind,
+    /// The kind of resource it shows; the panel's own `binding`.
+    pub shows: ResourceKind,
+    /// For documents: the file extensions it shows, lowercase without the dot.
+    /// Empty means every resource of the kind.
+    #[serde(default)]
+    pub extensions: Vec<String>,
+    /// The presentation a resource opens in, listed first.
+    #[serde(default)]
+    pub default: bool,
+}
+
+impl Presentation {
+    pub fn new(kind: &str, shows: ResourceKind) -> Self {
+        Self {
+            kind: PanelKind::new(kind),
+            shows,
+            extensions: Vec::new(),
+            default: false,
+        }
+    }
+
+    /// Show only documents with one of these extensions.
+    pub fn extensions<'a>(mut self, extensions: impl IntoIterator<Item = &'a str>) -> Self {
+        self.extensions = extensions.into_iter().map(str::to_owned).collect();
+        self
+    }
+
+    /// The presentation resources open in.
+    pub fn default_presentation(mut self) -> Self {
+        self.default = true;
+        self
+    }
+
+    fn matches(&self, resource: &ResourceRef) -> bool {
+        if resource.kind() != self.shows {
+            return false;
+        }
+        if self.extensions.is_empty() {
+            return true;
+        }
+        let ResourceRef::Document { resource_id, .. } = resource else {
+            return false;
+        };
+        let name = resource_id.rsplit('/').next().unwrap_or(resource_id);
+        name.rsplit_once('.')
+            .is_some_and(|(_, ext)| self.extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)))
+    }
+}
+
+/// One way to show a resource, as the registry lists it for the host's
+/// capabilities. An unavailable one stays listed with the reason.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct PresentationEntry {
+    pub kind: PanelKind,
+    /// The descriptor version this build serves it at.
+    pub version: u32,
+    pub title: String,
+    pub default: bool,
+    pub availability: Availability,
+    /// The panel asked about shows the resource this way now.
+    pub current: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RegistryError {
     DuplicateKind(PanelKind),
@@ -349,8 +426,19 @@ pub enum RegistryError {
     ActiveActionWithoutEffect(ActionId),
     ZeroSize(PanelKind),
     ZeroVersion(PanelKind),
-    /// `extend_actions` named a kind nobody registered.
+    /// `extend_actions` or `declare_presentation` named a kind nobody
+    /// registered.
     UnknownKind(PanelKind),
+    /// The kind is already declared as a presentation.
+    DuplicatePresentation(PanelKind),
+    /// A presentation shows a different kind of resource than its panel is
+    /// bound to.
+    PresentationBindingMismatch(PanelKind),
+    /// A declared extension is empty, has a dot or is not lowercase.
+    BadExtension {
+        kind: PanelKind,
+        extension: String,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -440,6 +528,7 @@ pub struct CatalogEntry {
 #[derive(Clone, Debug, Default)]
 pub struct Registry {
     panels: Vec<PanelDescriptor>,
+    presentations: Vec<Presentation>,
 }
 
 impl Registry {
@@ -480,6 +569,65 @@ impl Registry {
             panel.actions.extend(actions);
         }
         Ok(())
+    }
+
+    /// Declare a registered kind as a presentation of a kind of resource.
+    /// Nothing is added when the kind is unknown, already declared, bound to
+    /// another kind of resource, or names a malformed extension.
+    pub fn declare_presentation(&mut self, p: Presentation) -> Result<(), RegistryError> {
+        let Some(panel) = self.get(&p.kind) else {
+            return Err(RegistryError::UnknownKind(p.kind));
+        };
+        if panel.binding != p.shows {
+            return Err(RegistryError::PresentationBindingMismatch(p.kind));
+        }
+        if self.presentations.iter().any(|q| q.kind == p.kind) {
+            return Err(RegistryError::DuplicatePresentation(p.kind));
+        }
+        if let Some(bad) = p
+            .extensions
+            .iter()
+            .find(|e| e.is_empty() || e.contains('.') || **e != e.to_lowercase())
+        {
+            return Err(RegistryError::BadExtension {
+                kind: p.kind,
+                extension: bad.clone(),
+            });
+        }
+        self.presentations.push(p);
+        Ok(())
+    }
+
+    pub fn presentations(&self) -> &[Presentation] {
+        &self.presentations
+    }
+
+    /// The presentations that can show `resource`: the default first, then in
+    /// the order they were declared. One whose capabilities the host has not
+    /// granted is listed unavailable, with the reason.
+    pub fn presentations_for(
+        &self,
+        resource: &ResourceRef,
+        caps: &Capabilities,
+    ) -> Vec<PresentationEntry> {
+        let mut entries: Vec<PresentationEntry> = self
+            .presentations
+            .iter()
+            .filter(|p| p.matches(resource))
+            .filter_map(|p| {
+                let panel = self.get(&p.kind)?;
+                Some(PresentationEntry {
+                    kind: p.kind.clone(),
+                    version: panel.version,
+                    title: panel.title.clone(),
+                    default: p.default,
+                    availability: availability_of(&panel.requires, caps),
+                    current: false,
+                })
+            })
+            .collect();
+        entries.sort_by_key(|e| !e.default);
+        entries
     }
 
     fn check_actions(&self, actions: &[ActionDescriptor]) -> Result<(), RegistryError> {

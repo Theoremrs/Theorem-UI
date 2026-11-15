@@ -331,6 +331,8 @@ pub struct Model {
     /// The last panel other than the picker that owned the keyboard: where
     /// focus goes back to when the picker closes.
     pub(crate) before_picker: Option<PanelInstanceId>,
+    /// The panel the presentation chooser was opened for.
+    pub(crate) presentation_target: Option<PanelInstanceId>,
     pub(crate) drag: Option<Drag>,
     /// The panel that had the keyboard when the drawer opened: where Esc
     /// returns it.
@@ -405,6 +407,7 @@ impl Model {
             diagnostics_told: std::collections::BTreeSet::new(),
             announced_focus: None,
             before_picker: None,
+            presentation_target: None,
             drag: None,
             before_drawer: None,
             arrangements: Default::default(),
@@ -703,19 +706,28 @@ impl Model {
                 Some(panel) => (panel, true),
                 None => unreachable!("unserved() checks for a constructor"),
             },
-            Some(reason) => (
-                Box::new(Unavailable::new(kind.as_str(), reason, state.clone())),
-                false,
-            ),
+            Some(mut reason) => {
+                // A document the placeholder kept can still be shown: say so.
+                if crate::presentation::document_of_state(state).is_some() {
+                    reason.push_str(
+                        " The document is kept. Choose \"panel.presentation\" to show it another way.",
+                    );
+                }
+                (
+                    Box::new(Unavailable::new(kind.as_str(), reason, state.clone())),
+                    false,
+                )
+            }
         }
     }
 
     /// Why this build cannot serve `kind` at `version`, or `None` when it can.
     pub(crate) fn unserved(&self, kind: &PanelKind, version: u32) -> Option<String> {
         match self.registry.check_version(kind, version) {
-            VersionCheck::UnknownKind => {
-                Some(format!("This build has no panel \"{}\".", kind.as_str()))
-            }
+            VersionCheck::UnknownKind => Some(format!(
+                "This build has no panel \"{}\" (saved at version {version}).",
+                kind.as_str()
+            )),
             VersionCheck::Newer => Some(format!(
                 "Saved by a newer version ({version}) of \"{}\".",
                 kind.as_str()

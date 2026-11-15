@@ -9,14 +9,14 @@ use std::path::PathBuf;
 use theorem_workbench_core::{
     agent::{AgentOutcome, RefusalCode},
     arrangement::ArrangementMsg,
-    completion::Completion,
+    completion::{Completion, DelegationChangeKind},
     effect::Effect,
     host::HostMessage,
     ids::Actor,
     keys::{KeyIssue, Overrides, Shortcut},
     msg::Inbound,
     panel::Caret,
-    registry::{CatalogEntry, PanelDescriptor, PickerRow},
+    registry::{CatalogEntry, PanelDescriptor, PickerRow, Presentation, PresentationEntry},
     semantics::{SemanticDiff, SemanticTree},
     stale::Stale,
 };
@@ -47,11 +47,14 @@ fn export_wire_types() {
     let cfg = Config::new().with_out_dir(&dir);
     Effect::export_all(&cfg).unwrap();
     Completion::export_all(&cfg).unwrap();
+    DelegationChangeKind::export_all(&cfg).unwrap();
     HostMessage::export_all(&cfg).unwrap();
     Inbound::export_all(&cfg).unwrap();
     PanelDescriptor::export_all(&cfg).unwrap();
     PickerRow::export_all(&cfg).unwrap();
     CatalogEntry::export_all(&cfg).unwrap();
+    Presentation::export_all(&cfg).unwrap();
+    PresentationEntry::export_all(&cfg).unwrap();
     Overrides::export_all(&cfg).unwrap();
     KeyIssue::export_all(&cfg).unwrap();
     Shortcut::export_all(&cfg).unwrap();

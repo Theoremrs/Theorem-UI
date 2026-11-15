@@ -232,6 +232,7 @@ impl fmt::Debug for PickerMsg {
             Self::ChooseAt(n) => f.debug_tuple("ChooseAt").field(n).finish(),
             Self::ChooseRow(id) => f.debug_tuple("ChooseRow").field(id).finish(),
             Self::Layouts => f.write_str("Layouts"),
+            Self::Presentations => f.write_str("Presentations"),
             Self::SaveAs => f.write_str("SaveAs"),
             Self::RenameSelected => f.write_str("RenameSelected"),
             Self::DeleteSelected => f.write_str("DeleteSelected"),

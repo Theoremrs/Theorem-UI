@@ -9,6 +9,7 @@ use crate::ids::{ActionId, PanelInstanceId, ResourceRef};
 use crate::model::Model;
 use crate::panel::ViewCtx;
 use crate::panels::{ACTION_TAB_CLOSE, ACTION_TAB_FOCUS};
+use crate::registry::Availability;
 use crate::semantics::{Node, NodeAction, NodeId, Role, SemanticTree};
 use crate::theme::Theme;
 
@@ -174,6 +175,7 @@ fn unshown_group(model: &Model, id: GroupId, reason: &str, out: &mut Vec<Node>) 
             group.is_some_and(|g| g.active().is_some_and(|a| a.panel == tab.panel));
         tab_node.state.disabled = tab.unavailable;
         tab_node.actions = tab_actions(&pid);
+        describe_presentation(model, &pid, &mut tab_node);
         if let Some(binding) = model.panels.get(&pid).and_then(|e| e.panel.binding()) {
             tab_node.binding = binding.resource;
             tab_node.revision = binding.revision;
@@ -228,6 +230,7 @@ fn group_nodes(model: &Model, group: &GroupFrame, cx: &ViewCtx, out: &mut Vec<No
         node.state.focused = tab.active && group.focused;
         node.state.disabled = tab.unavailable;
         node.actions = tab_actions(&pid);
+        describe_presentation(model, &pid, &mut node);
         if let Some(binding) = model.panels.get(&pid).and_then(|e| e.panel.binding()) {
             node.binding = binding.resource;
             node.revision = binding.revision;
@@ -296,6 +299,48 @@ fn tab_actions(panel: &PanelInstanceId) -> Vec<NodeAction> {
             reason: None,
         })
         .collect()
+}
+
+/// How a document panel is shown now and the other ways it can be: the
+/// description names the current presentation and its version, and the
+/// actions swap it. They are the ones the keyboard and the chooser run, and an
+/// agent may run them (a presentation change is not a mutation). Nothing for a
+/// panel no presentation is declared for.
+fn describe_presentation(model: &Model, panel: &PanelInstanceId, node: &mut Node) {
+    use crate::presentation::{ACTION_PRESENTATION, ACTION_PRESENTATION_NEXT, PRESENTATION_USE};
+    let entries = model.presentations_of(panel);
+    if entries.is_empty() {
+        return;
+    }
+    node.state.description = Some(match entries.iter().find(|e| e.current) {
+        Some(e) => format!("Shown as {} (version {})", e.title, e.version),
+        None => "Shown as a presentation this build cannot serve. Choose another.".to_owned(),
+    });
+    let another = entries
+        .iter()
+        .any(|e| !e.current && e.availability.is_available());
+    node.actions.push(NodeAction {
+        id: ActionId::new(ACTION_PRESENTATION),
+        enabled: another,
+        reason: (!another).then(|| "No other presentation can show this document.".to_owned()),
+    });
+    node.actions.push(NodeAction {
+        id: ActionId::new(ACTION_PRESENTATION_NEXT),
+        enabled: another,
+        reason: (!another).then(|| "No other presentation can show this document.".to_owned()),
+    });
+    for e in &entries {
+        let (enabled, reason) = match (&e.availability, e.current) {
+            (_, true) => (false, Some("Already shown this way.".to_owned())),
+            (Availability::Unavailable { reason }, _) => (false, Some(reason.clone())),
+            (Availability::Available, false) => (true, None),
+        };
+        node.actions.push(NodeAction {
+            id: ActionId::new(format!("{PRESENTATION_USE}{}", e.kind.as_str())),
+            enabled,
+            reason,
+        });
+    }
 }
 
 fn scoped(panel: &PanelInstanceId, local: &NodeId) -> NodeId {

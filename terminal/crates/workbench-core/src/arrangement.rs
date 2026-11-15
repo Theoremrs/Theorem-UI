@@ -737,13 +737,15 @@ impl Model {
                 };
                 // A kind this build has no registration for is left out, and
                 // named. (One it registers but cannot serve stays as a
-                // placeholder that keeps its state.)
+                // placeholder that keeps its state, and so does one that kept
+                // a document: the person can show it another way, R48.)
                 for group in doc.groups.values_mut() {
                     group.tabs.retain(|tab| {
                         let known = self
                             .registry
                             .get(&PanelKind::new(tab.kind.name.as_str()))
-                            .is_some();
+                            .is_some()
+                            || crate::presentation::document_of_state(&tab.view_state).is_some();
                         if !known && !dropped.contains(&tab.kind.name) {
                             dropped.push(tab.kind.name.clone());
                         }

@@ -6888,7 +6888,7 @@ fn the_delegation_effects_belong_to_their_own_owner_and_answer_with_their_payloa
     let answer = CompletionPayload::DelegationChanges(DelegationChangeList {
         changes: vec![DelegationChange {
             path: "src/a.rs".into(),
-            change: "modified".into(),
+            change: theorem_workbench_core::completion::DelegationChangeKind::Modify,
             binary: false,
             has_before: true,
             has_after: true,

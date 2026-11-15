@@ -388,6 +388,18 @@ pub fn registry() -> Registry {
             // person's own navigation pauses it; either may pause or resume.
             ActionDescriptor::new("follow.pause", "Pause Follow the agent", Focus),
             ActionDescriptor::new("follow.resume", "Resume Follow the agent", Focus),
+            // Show the document a panel is bound to another way (R48, AC-59):
+            // the panel stays, and so do its place and its binding.
+            ActionDescriptor::new(
+                "panel.presentation",
+                "Choose how this document is shown",
+                Focus,
+            ),
+            ActionDescriptor::new(
+                "panel.presentation.next",
+                "Show this document the next way",
+                Focus,
+            ),
             ActionDescriptor::new("workbench.maximize", "Maximise or restore the group", Focus)
                 .key("Mod+Alt+M", KeyScope::Global),
             // Under More tools too, so the picker leads to them.

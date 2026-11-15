@@ -16,6 +16,7 @@ use crate::ids::{ActionId, PanelKind};
 use crate::panel::PickerView;
 use crate::panels::WORKBENCH_KIND;
 use crate::picker_layout::Layout;
+use crate::presentation::PRESENTATION_USE;
 use crate::registry::{ActionIntent, Availability, Capabilities, Chooses, PickerRow, Registry};
 
 /// The row that leads to the rest of the tools instead of choosing one.
@@ -40,6 +41,8 @@ pub const LAYOUT_APPLY: &str = "picker.layout.apply:";
 const SAVED_MARK: &str = "\u{25a0}";
 /// The Layouts page's heading.
 pub const HEADING_LAYOUTS: &str = "Layouts";
+/// The presentation chooser's heading.
+pub const HEADING_PRESENTATIONS: &str = "Show as";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
@@ -51,6 +54,8 @@ pub enum Page {
     /// A one-line name entry (the filter line is the entry); `entry` says what
     /// for.
     Name,
+    /// The ways to show the document a panel is bound to (R48, AC-59).
+    Presentations,
 }
 
 /// What a name is being asked for.
@@ -99,6 +104,8 @@ pub enum PickerMsg {
     ChooseRow(ActionId),
     /// The Layouts page (from any page of an open picker).
     Layouts,
+    /// The presentation chooser (from any page of an open picker).
+    Presentations,
     /// Ask for a name to save the arrangement under.
     SaveAs,
     /// Ask for a new name for the highlighted saved arrangement.
@@ -132,6 +139,9 @@ pub enum PickerOutcome {
     /// A layout row or the name entry was confirmed. The picker has closed
     /// for `Apply` and `Save`, and stays on the Layouts page for the others.
     Layout(LayoutChoice),
+    /// A presentation row was chosen. The picker has closed; the root swaps
+    /// the panel the chooser was opened for.
+    Presentation(PanelKind),
 }
 
 #[derive(Clone, Debug)]
@@ -158,6 +168,8 @@ pub struct Picker {
     name_from_layouts: bool,
     /// The saved arrangement a delete is waiting to be confirmed for.
     confirm: Option<String>,
+    /// The rows the presentation chooser lists.
+    presentations: Vec<PickerRow>,
 }
 
 impl Default for Picker {
@@ -176,6 +188,7 @@ impl Default for Picker {
             naming: None,
             name_from_layouts: false,
             confirm: None,
+            presentations: Vec::new(),
         }
     }
 }
@@ -208,6 +221,11 @@ impl Picker {
     /// The layouts the model last gave the picker.
     pub fn set_layouts(&mut self, layouts: Vec<ArrangementInfo>) {
         self.layouts = layouts;
+    }
+
+    /// The rows the presentation chooser lists.
+    pub fn set_presentations(&mut self, rows: Vec<PickerRow>) {
+        self.presentations = rows;
     }
 
     /// The text the rows are narrowed by.
@@ -254,6 +272,7 @@ impl Picker {
             Page::Main => registry.picker_rows(caps, pinned),
             Page::More => registry.more_tools(caps, pinned),
             Page::Layouts => self.layout_rows(),
+            Page::Presentations => self.presentations.clone(),
             Page::Name => Vec::new(),
         };
         let needle = self.filter.to_lowercase();
@@ -401,6 +420,7 @@ impl Picker {
             more: self.page != Page::Main,
             heading: match self.page {
                 Page::Layouts | Page::Name => Some(HEADING_LAYOUTS.to_owned()),
+                Page::Presentations => Some(HEADING_PRESENTATIONS.to_owned()),
                 Page::Main | Page::More => None,
             },
             entry: self.naming.as_ref().map(|n| match n {
@@ -587,6 +607,18 @@ impl Picker {
                 self.reason = None;
                 PickerOutcome::Nothing
             }
+            PickerMsg::Presentations if self.open => {
+                self.page = Page::Presentations;
+                self.naming = None;
+                self.filter.clear();
+                self.selected = self
+                    .presentations
+                    .iter()
+                    .position(|r| r.glyph.is_some())
+                    .unwrap_or(0);
+                self.reason = None;
+                PickerOutcome::Nothing
+            }
             PickerMsg::SaveAs if self.open => {
                 self.start_name(NameFor::Save, String::new());
                 PickerOutcome::Nothing
@@ -663,6 +695,16 @@ impl Picker {
                         reason: reason.clone(),
                     };
                 }
+                if self.page == Page::Presentations {
+                    let kind = row
+                        .action
+                        .as_str()
+                        .strip_prefix(PRESENTATION_USE)
+                        .unwrap_or_default()
+                        .to_owned();
+                    self.reset();
+                    return PickerOutcome::Presentation(PanelKind::new(kind));
+                }
                 if self.page == Page::Layouts {
                     let action = row.action.as_str().to_owned();
                     if action == LAYOUT_SAVE {
@@ -705,6 +747,7 @@ impl Picker {
             | PickerMsg::ChooseAt(_)
             | PickerMsg::ChooseRow(_)
             | PickerMsg::Layouts
+            | PickerMsg::Presentations
             | PickerMsg::SaveAs
             | PickerMsg::RenameSelected
             | PickerMsg::DeleteSelected

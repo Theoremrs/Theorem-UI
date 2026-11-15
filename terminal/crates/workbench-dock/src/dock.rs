@@ -237,6 +237,24 @@ impl Dock {
         true
     }
 
+    /// Give `panel`'s tab another kind (and title), keeping its place, group
+    /// and focus: a panel shown another way. It is no longer marked
+    /// unavailable. Returns false for an unknown panel.
+    pub fn set_tab_kind(&mut self, panel: &PanelId, kind: PanelKind, title: &str) -> bool {
+        let Some(tab) = self
+            .groups
+            .values_mut()
+            .flat_map(|g| g.tabs.iter_mut())
+            .find(|t| &t.panel == panel)
+        else {
+            return false;
+        };
+        tab.kind = kind;
+        title.clone_into(&mut tab.title);
+        tab.unavailable = false;
+        true
+    }
+
     /// Focus the group holding `panel` and make it the active tab.
     pub fn focus_panel(&mut self, panel: &PanelId) -> Result<GroupId, DockError> {
         let g = self

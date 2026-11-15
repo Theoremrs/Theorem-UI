@@ -24,6 +24,7 @@ pub mod panel;
 pub mod panels;
 pub mod picker;
 pub mod picker_layout;
+pub mod presentation;
 pub mod queue;
 mod redact;
 pub mod registry;
