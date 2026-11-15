@@ -1,0 +1,541 @@
+//! The Search panel driven through a real root.
+
+mod common;
+
+use common::{WORKSPACE, marked, names, open, open_with, row_with};
+use keybinds::{Key, Mods};
+use ratatui::style::{Color, Style};
+use serde_json::json;
+use theorem_workbench_core::Theme;
+use theorem_workbench_core::completion::{CompletionPayload, Outcome, SearchStarted};
+use theorem_workbench_core::effect::{Effect, EffectBody};
+use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::results::{
+    MatchRange, ReadAt, SearchEnd, SearchEndOutcome, SearchRow, SearchState,
+};
+use theorem_workbench_ide::SearchPanel;
+
+const CAPS: [&str; 3] = ["files", "documents", "search.query"];
+
+fn rig() -> common::Rig {
+    open("search", &CAPS, WORKSPACE).0
+}
+
+fn page(rig: &common::Rig, id: &str, rows: Vec<SearchRow>, state: SearchState) -> HostMessage {
+    HostMessage::SearchPage {
+        id: id.into(),
+        rows,
+        skipped: 0,
+        state,
+        end: None,
+        read_at: ReadAt {
+            workspace_id: WORKSPACE.into(),
+            version: None,
+            epoch: None,
+            generation: rig.m.workspace().generation.0,
+        },
+    }
+}
+
+fn row(path: &str, line: u32, text: &str, start: u32, end: u32) -> SearchRow {
+    SearchRow {
+        path: path.into(),
+        line,
+        text: text.into(),
+        matches: vec![MatchRange { start, end }],
+        text_offset: None,
+    }
+}
+
+/// Types `query`, presses Enter and answers the start with `id`.
+fn search_for(rig: &mut common::Rig, query: &str, id: &str) -> Vec<Effect> {
+    rig.typed(query);
+    let sent = rig.key(Key::Enter);
+    let start = sent
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::SearchQuery(_)))
+        .expect("a search query went out")
+        .clone();
+    rig.accept(
+        &start,
+        CompletionPayload::SearchStarted(SearchStarted { id: id.into() }),
+    );
+    sent
+}
+
+/// The status line in full, as the semantic tree carries it: the screen may wrap it.
+fn status(rig: &common::Rig) -> String {
+    rig.node("status").name
+}
+
+fn search_query(effects: &[Effect]) -> theorem_workbench_core::effect::SearchQuery {
+    effects
+        .iter()
+        .find_map(|e| match &e.body {
+            EffectBody::SearchQuery(q) => Some(q.clone()),
+            _ => None,
+        })
+        .expect("a search query went out")
+}
+
+#[test]
+fn typing_a_query_and_pressing_enter_sends_one_search_with_the_toggles_and_globs() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Char('r'), Mods::ALT);
+    rig.mods(Key::Char('w'), Mods::ALT);
+    rig.key(Key::Tab);
+    rig.typed("src/**/*.rs, docs/**");
+    rig.key(Key::Tab);
+    rig.typed("**/target/**");
+    let sent = rig.key(Key::Enter);
+    assert_eq!(names(&sent), ["search"]);
+    let q = search_query(&sent);
+    assert_eq!(q.query, "needle");
+    assert!(q.regex && q.whole_word && !q.case_sensitive);
+    assert_eq!(
+        q.include,
+        Some(vec!["src/**/*.rs".into(), "docs/**".into()])
+    );
+    assert_eq!(q.exclude, Some(vec!["**/target/**".into()]));
+}
+
+#[test]
+fn an_empty_query_sends_nothing_and_says_what_to_type() {
+    let mut rig = rig();
+    let sent = rig.key(Key::Enter);
+    assert!(sent.is_empty());
+    assert!(
+        rig.text().contains("Type what to find first."),
+        "{}",
+        rig.text()
+    );
+}
+
+#[test]
+fn a_new_query_cancels_the_running_one_before_it_sends_its_own() {
+    let mut rig = rig();
+    search_for(&mut rig, "one", "s1");
+    rig.key(Key::Tab);
+    rig.key(Key::Tab);
+    rig.key(Key::Tab);
+    rig.key(Key::Char('/'));
+    rig.typed("x");
+    let sent = rig.key(Key::Enter);
+    assert_eq!(names(&sent), ["search cancel", "search"]);
+    match &sent[0].body {
+        EffectBody::SearchCancel(c) => assert_eq!(c.id, "s1"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn a_page_for_a_search_the_panel_has_left_is_dropped() {
+    let mut rig = rig();
+    search_for(&mut rig, "one", "s1");
+    rig.typed("x");
+    let sent = rig.key(Key::Enter);
+    let second = sent
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::SearchQuery(_)))
+        .expect("the second search")
+        .clone();
+    rig.accept(
+        &second,
+        CompletionPayload::SearchStarted(SearchStarted { id: "s2".into() }),
+    );
+    let old = page(
+        &rig,
+        "s1",
+        vec![row("old.rs", 1, "stale one", 0, 5)],
+        SearchState::More,
+    );
+    rig.host(old);
+    assert!(!rig.text().contains("old.rs"), "{}", rig.text());
+    let new = page(
+        &rig,
+        "s2",
+        vec![row("new.rs", 1, "fresh onex", 0, 5)],
+        SearchState::More,
+    );
+    rig.host(new);
+    assert!(rig.text().contains("new.rs"), "{}", rig.text());
+    assert!(!rig.text().contains("old.rs"));
+}
+
+#[test]
+fn a_search_still_reading_is_labelled_partial_and_cancel_stops_it() {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let more = page(
+        &rig,
+        "s1",
+        vec![row("a.rs", 1, "needle", 0, 6)],
+        SearchState::More,
+    );
+    rig.host(more);
+    let text = rig.text();
+    assert!(text.contains("1 match in 1 file"), "{text}");
+    assert!(text.contains("(partial)"), "{text}");
+    assert!(text.contains("[Cancel]"), "{text}");
+    assert_eq!(
+        rig.panel().tab_label().map(|t| t.title),
+        Some("Search \u{2026}".to_owned())
+    );
+    let sent = rig.click("[Cancel]");
+    assert_eq!(names(&sent), ["search cancel"]);
+    assert_eq!(
+        status(&rig),
+        "Cancelled. 1 match in 1 file read before it stopped (partial)."
+    );
+    // The owner delivers nothing for a cancelled id, and a late page is not shown.
+    let late = page(
+        &rig,
+        "s1",
+        vec![row("late.rs", 1, "needle", 0, 6)],
+        SearchState::More,
+    );
+    rig.host(late);
+    assert!(!rig.text().contains("late.rs"));
+}
+
+#[test]
+fn a_finished_search_drops_the_partial_label_and_the_tab_counts_matches() {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let done = page(
+        &rig,
+        "s1",
+        vec![
+            row("a.rs", 1, "needle", 0, 6),
+            row("a.rs", 9, "needle again", 0, 6),
+        ],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    let text = rig.text();
+    assert!(text.contains("2 matches in 1 file."), "{text}");
+    assert!(!text.contains("(partial)"), "{text}");
+    assert_eq!(
+        rig.panel().tab_label().map(|t| t.title),
+        Some("Search (2)".to_owned())
+    );
+}
+
+#[test]
+fn an_empty_result_says_there_were_no_matches() {
+    let mut rig = rig();
+    search_for(&mut rig, "zzz", "s1");
+    let done = page(&rig, "s1", vec![], SearchState::Complete);
+    rig.host(done);
+    assert!(
+        rig.text().contains("No matches for \"zzz\"."),
+        "{}",
+        rig.text()
+    );
+}
+
+#[test]
+fn choosing_a_result_opens_the_file_at_its_line_and_utf16_column() {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let mut late = row("src/lib.rs", 3, "needle", 2, 8);
+    // The host cut ten code units from the start of a long line.
+    late.text_offset = Some(10);
+    let done = page(&rig, "s1", vec![late], SearchState::Complete);
+    rig.host(done);
+    rig.key(Key::Down);
+    rig.key(Key::Enter);
+    let opened = rig.opened.borrow().clone();
+    assert_eq!(opened.len(), 1, "{opened:?}");
+    assert_eq!(opened[0]["path"], "src/lib.rs");
+    assert_eq!(opened[0]["line"], 3);
+    assert_eq!(opened[0]["column"], 13);
+}
+
+#[test]
+fn clicking_a_result_with_the_pointer_opens_it_without_hover() {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let done = page(
+        &rig,
+        "s1",
+        vec![row("src/lib.rs", 7, "let needle = 1;", 4, 10)],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    rig.click("let needle");
+    let opened = rig.opened.borrow().clone();
+    assert_eq!(opened.len(), 1, "{opened:?}");
+    assert_eq!(
+        (opened[0]["line"].as_u64(), opened[0]["column"].as_u64()),
+        (Some(7), Some(5))
+    );
+}
+
+#[test]
+fn clicking_the_search_chip_and_a_toggle_chip_work_like_the_keys() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.click("[.*]");
+    let sent = rig.click("[Search]");
+    assert_eq!(names(&sent), ["search"]);
+    assert!(search_query(&sent).regex);
+}
+
+#[test]
+fn a_refused_search_is_shown_as_the_owner_said_it_and_never_sent_again() {
+    let mut rig = rig();
+    rig.typed("needle");
+    let sent = rig.key(Key::Enter);
+    let start = sent[0].clone();
+    rig.refuse(
+        &start,
+        "workspace_not_trusted",
+        "This workspace is not trusted for search.",
+    );
+    assert_eq!(
+        status(&rig),
+        "Refused (workspace_not_trusted): This workspace is not trusted for search. Not retried."
+    );
+    assert!(
+        rig.text().contains("Refused (workspace_not_trusted)"),
+        "{}",
+        rig.text()
+    );
+    assert!(rig.text().contains("Not retried."), "{}", rig.text());
+    assert!(rig.ticks(5).is_empty());
+    assert!(rig.key(Key::Down).is_empty());
+}
+
+#[test]
+fn a_failed_start_and_an_uncertain_end_are_each_shown_in_the_owners_words() {
+    let mut rig = rig();
+    rig.typed("needle");
+    let sent = rig.key(Key::Enter);
+    rig.answer(
+        &sent[0],
+        Outcome::Failed {
+            reason: "the index is rebuilding".into(),
+        },
+        None,
+    );
+    assert_eq!(status(&rig), "Failed: the index is rebuilding Not retried.");
+
+    let mut rig = rig_for_end();
+    let end = HostMessage::SearchPage {
+        id: "s1".into(),
+        rows: vec![row("a.rs", 1, "needle", 0, 6)],
+        skipped: 0,
+        state: SearchState::Ended,
+        end: Some(SearchEnd {
+            outcome: SearchEndOutcome::Uncertain,
+            code: None,
+            reason: "the connection dropped".into(),
+        }),
+        read_at: ReadAt {
+            workspace_id: WORKSPACE.into(),
+            version: None,
+            epoch: None,
+            generation: rig.m.workspace().generation.0,
+        },
+    };
+    rig.host(end);
+    assert_eq!(
+        status(&rig),
+        "Unknown: the connection dropped Not retried. 1 match in 1 file read before it ended (partial)."
+    );
+    assert!(rig.ticks(3).is_empty());
+}
+
+fn rig_for_end() -> common::Rig {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    rig
+}
+
+#[test]
+fn a_match_over_a_tab_cjk_text_and_a_zwj_emoji_marks_exactly_the_cells_the_host_matched() {
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let tab = row("a.txt", 1, "a\tneedle b", 2, 8);
+    let cjk = row(
+        "b.txt",
+        2,
+        "\u{65E5}\u{672C}\u{8A9E}\u{306E} needle \u{691C}\u{7D22}",
+        5,
+        11,
+    );
+    let zwj = row("c.txt", 3, &format!("{family} needle end"), 9, 15);
+    // A range that starts inside the cluster marks the whole of it.
+    let inside = row("d.txt", 4, &format!("x{family}y mid"), 3, 4);
+    let done = page(
+        &rig,
+        "s1",
+        vec![tab, cjk, zwj, inside],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    let green = Color::Green;
+    let theme = Theme::plain().with_search(Style::new().bg(green), Style::new().bg(Color::Blue));
+    let buf = rig.cells(&theme, 80, 24);
+    assert_eq!(marked(&buf, row_with(&buf, "needle b"), green), "needle");
+    assert_eq!(
+        marked(&buf, row_with(&buf, "\u{691C}\u{7D22}"), green),
+        "needle"
+    );
+    assert_eq!(marked(&buf, row_with(&buf, "needle end"), green), "needle");
+    assert_eq!(marked(&buf, row_with(&buf, "mid"), green), family);
+}
+
+#[test]
+fn a_tab_in_a_matched_line_advances_to_the_next_stop_of_four() {
+    let mut rig = rig();
+    search_for(&mut rig, "needle", "s1");
+    let done = page(
+        &rig,
+        "s1",
+        vec![row("a.txt", 1, "a\tneedle b", 2, 8)],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    assert!(rig.text().contains("a   needle b"), "{}", rig.text());
+}
+
+#[test]
+fn the_query_toggles_and_scroll_are_saved_and_restoring_them_starts_no_search() {
+    let mut rig = rig();
+    rig.typed("needle");
+    rig.mods(Key::Char('c'), Mods::ALT);
+    rig.key(Key::Tab);
+    rig.typed("src/**");
+    let saved = rig.panel().serialize();
+    assert_eq!(saved["query"], "needle");
+    assert_eq!(saved["caseSensitive"], true);
+    assert_eq!(saved["include"], json!(["src/**"]));
+    let restored = SearchPanel::restore(&saved);
+    assert_eq!(theorem_workbench_core::Panel::serialize(&restored), saved);
+    // A restored panel shows the saved query and sends nothing until the person asks.
+    let (mut fresh, fx) = open_with("search", &CAPS, WORKSPACE, Some(saved));
+    assert!(names(&fx).is_empty(), "restoring sends no search");
+    assert!(fresh.ticks(4).is_empty());
+    assert!(fresh.text().contains("needle"));
+}
+
+#[test]
+fn the_semantic_tree_names_the_state_the_counts_and_every_action_with_a_reason() {
+    let mut rig = rig();
+    let root = rig.node("search");
+    let run = root
+        .actions
+        .iter()
+        .find(|a| a.id.as_str() == "search.run")
+        .unwrap();
+    assert!(!run.enabled);
+    assert_eq!(run.reason.as_deref(), Some("Type what to find first."));
+    let cancel = root
+        .actions
+        .iter()
+        .find(|a| a.id.as_str() == "search.cancel")
+        .unwrap();
+    assert_eq!(cancel.reason.as_deref(), Some("No search is running."));
+
+    search_for(&mut rig, "needle", "s1");
+    let done = page(
+        &rig,
+        "s1",
+        vec![
+            row("a.rs", 1, "needle", 0, 6),
+            row("a.rs", 2, "needle", 0, 6),
+        ],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    let root = rig.node("search");
+    assert!(
+        root.actions
+            .iter()
+            .find(|a| a.id.as_str() == "search.run")
+            .unwrap()
+            .enabled
+    );
+    assert!(
+        root.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("2 matches in 1 file")
+    );
+    let results = rig.node("results");
+    assert_eq!(
+        results.state.description.as_deref(),
+        Some("2 matches in 1 file")
+    );
+    rig.key(Key::Down);
+    let rows: Vec<_> = rig
+        .nodes()
+        .into_iter()
+        .filter(|n| n.id.as_str().starts_with("result:"))
+        .collect();
+    assert_eq!(rows.len(), 3);
+    assert_eq!(rows.iter().filter(|n| n.state.selected).count(), 1);
+    assert!(rows[1].state.selected);
+}
+
+#[test]
+fn the_sending_actions_are_registered_as_emitting_and_the_rest_are_local() {
+    use theorem_workbench_core::effect::EffectKind;
+    use theorem_workbench_core::ids::ActionId;
+    let mut registry = theorem_workbench_core::builtin::registry();
+    theorem_workbench_ide::extend_registry(&mut registry).unwrap();
+    let emits = |id: &str| {
+        registry
+            .action(&ActionId::new(id))
+            .unwrap_or_else(|| panic!("{id} is registered"))
+            .1
+            .emits
+            .clone()
+    };
+    assert_eq!(emits("search.run"), [EffectKind::SearchQuery]);
+    assert_eq!(emits("search.cancel"), [EffectKind::SearchCancel]);
+    for id in [
+        "search.toggle-regex",
+        "search.open-result",
+        "search.cursor-down",
+    ] {
+        assert!(emits(id).is_empty(), "{id}");
+    }
+}
+
+#[test]
+fn search_at_80_by_24_draws_the_form_the_status_and_the_grouped_results() {
+    let mut rig = rig();
+    rig.standard();
+    search_for(&mut rig, "needle", "s1");
+    let done = page(
+        &rig,
+        "s1",
+        vec![
+            row("src/lib.rs", 3, "a\tneedle b", 2, 8),
+            row("src/lib.rs", 40, "let needle = 1;", 4, 10),
+            row(
+                "docs/readme.md",
+                12,
+                "\u{65E5}\u{672C}\u{8A9E}\u{306E} needle",
+                5,
+                11,
+            ),
+        ],
+        SearchState::Complete,
+    );
+    rig.host(done);
+    let screen = rig.screen();
+    println!("{}", screen.join("\n"));
+    assert_eq!(screen.len(), 24);
+    assert!(screen[0].starts_with("Find"), "{screen:?}");
+    assert!(screen[0].contains("needle") && screen[0].contains("[.*]"));
+    assert!(screen[3].contains("3 matches in 2 files.") && screen[3].contains("[Search]"));
+    assert!(screen[4].starts_with("src/lib.rs (2)"));
+    assert!(screen.iter().any(|l| l.contains("a   needle b")));
+}
