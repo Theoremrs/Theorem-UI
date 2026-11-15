@@ -338,11 +338,13 @@ impl MarkdownPanel {
             preedit: None,
             tokens: TokenState::new(),
             version: 0,
+            followed: None,
         };
         d.sync_read_only();
         self.phase = Phase::Ready(Box::new(d));
         self.relayout();
         self.place_reveal();
+        self.place_follow();
     }
 
     /// The name that makes a session client id: the panel instance, which the

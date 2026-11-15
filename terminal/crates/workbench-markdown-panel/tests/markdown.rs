@@ -7,6 +7,8 @@ use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use std::cell::RefCell;
+use std::rc::Rc;
 use theorem_workbench_core::OpenTarget;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
@@ -14,6 +16,7 @@ use theorem_workbench_core::completion::{
     DocumentOpened, DocumentSaved, FileEntry, FileKind, FileListing, Outcome, PendingEdit,
     PendingState,
 };
+use theorem_workbench_core::draft::SourceReference;
 use theorem_workbench_core::effect::{
     CoordinateUnit, Effect, EffectBody, EffectKind, TextChange as CoreChange,
 };
@@ -25,8 +28,8 @@ use theorem_workbench_core::registry::Capabilities;
 use theorem_workbench_core::results::SpanEncoding;
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
-    DockMsg, LocalProblem, LocalState, LocalStatus, Model, Msg, PanelFactories, Theme, ViewCtx,
-    semantics, update,
+    Ctx, DockMsg, LocalProblem, LocalState, LocalStatus, Model, Msg, Panel, PanelFactories,
+    PanelMsg, Theme, ViewCtx, semantics, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset, Role};
 use theorem_workbench_markdown::MarkdownStyles;
@@ -79,9 +82,37 @@ struct Rig {
     open: Option<Effect>,
 }
 
-fn model(caps: &[&'static str], drafts: &Drafts, width: u16) -> Model {
+/// What a conversation panel was handed, in order.
+type Refs = Rc<RefCell<Vec<SourceReference>>>;
+
+/// A conversation panel that keeps the references it is handed.
+struct Recorder(Refs);
+
+impl Panel for Recorder {
+    fn update(&mut self, msg: PanelMsg, _cx: &mut Ctx) {
+        if let PanelMsg::Reference(r) = msg {
+            self.0.borrow_mut().push(r);
+        }
+    }
+    fn view(&self, _area: Rect, _buf: &mut Buffer, _cx: &ViewCtx) {}
+    fn semantics(
+        &self,
+        _area: Rect,
+        _cx: &ViewCtx,
+    ) -> Vec<theorem_workbench_core::semantics::Node> {
+        vec![]
+    }
+    fn serialize(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+}
+
+fn model(caps: &[&'static str], drafts: &Drafts, width: u16, refs: Option<Refs>) -> Model {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
+    if let Some(refs) = refs {
+        factories.register("theo", move |_, _| Box::new(Recorder(refs.clone())));
+    }
     // The first kind that claims a target opens it: Markdown goes ahead of the
     // plain editor, which claims every file.
     register_with(&mut factories, drafts.clone());
@@ -212,7 +243,11 @@ impl Rig {
 
     /// The Files panel opens `path`; the panel the root chose asks the owner.
     fn start_file(path: &str, drafts: &Drafts, width: u16) -> Self {
-        let mut m = model(&CAPS, drafts, width);
+        Self::start_with(path, drafts, width, None)
+    }
+
+    fn start_with(path: &str, drafts: &Drafts, width: u16, refs: Option<Refs>) -> Self {
+        let mut m = model(&CAPS, drafts, width, refs);
         update(
             &mut m,
             Msg::Action {
@@ -2616,7 +2651,7 @@ fn takes_chord_answers_for_resend_only_while_an_edit_is_unknown() {
 #[test]
 fn takes_chord_leaves_a_plain_option_character_to_be_typed() {
     let rig = Rig::source("hello\n");
-    for c in ['q', 'e', 'n', 'z', '5', '[', 'c'] {
+    for c in ['e', 'n', 'z', '5', '[', 'c'] {
         assert!(!rig.m.takes_chord(&option(c)), "{c}");
     }
 }
@@ -3086,4 +3121,259 @@ fn recovered_edits_are_placed_in_order_before_the_choice_and_kept_edits_are_not_
     assert_eq!(settles(&fx), ["r1", "r2", "r3"]);
     let cleared = one(&rig.tick(), EffectKind::DocumentKeep);
     assert!(kept_changes(&cleared).is_empty());
+}
+
+// ---- add selection to chat ----------------------------------------------------
+
+/// A source-mode document with a conversation panel that records references.
+fn with_chat(text: &str) -> (Rig, Refs) {
+    let refs = Refs::default();
+    let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, Some(refs.clone()));
+    rig.answer_open(text, 1);
+    rig.alt('2');
+    (rig, refs)
+}
+
+fn pos_of(r: &SourceReference) -> ((u32, u32), (u32, u32)) {
+    let range = r.range.as_ref().expect("a range");
+    (
+        (range.start.line, range.start.character),
+        (range.end.line, range.end.character),
+    )
+}
+
+#[test]
+fn add_selection_names_the_path_the_range_and_the_text_without_moving_anything() {
+    let (mut rig, refs) = with_chat("hello\nworld\n");
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    let (focus, state) = (rig.m.focus(), rig.state());
+    let fx = rig.alt('q');
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].path, PATH);
+    assert_eq!(pos_of(&got[0]), ((0, 1), (0, 3)));
+    assert_eq!(got[0].excerpt.as_deref(), Some("el"));
+    assert_eq!(got[0].label.as_deref(), Some("a.md:1"));
+    assert_eq!(rig.m.focus(), focus, "the keyboard did not move");
+    assert_eq!(rig.state(), state, "caret and selection are as they were");
+}
+
+#[test]
+fn add_selection_counts_columns_in_utf16_units_for_multibyte_and_astral_text() {
+    let (mut rig, refs) = with_chat("a\u{e9}\u{1F600}b\n\nx\u{1F600}yz\n");
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.alt('q');
+    rig.key(Key::Down);
+    rig.key(Key::Down);
+    rig.key(Key::Home);
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.alt('q');
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 2);
+    assert_eq!(pos_of(&got[0]), ((0, 1), (0, 4)), "e-acute then the emoji");
+    assert_eq!(got[0].excerpt.as_deref(), Some("\u{e9}\u{1F600}"));
+    assert_eq!(pos_of(&got[1]), ((2, 1), (2, 4)), "the emoji then y");
+    assert_eq!(got[1].excerpt.as_deref(), Some("\u{1F600}y"));
+}
+
+#[test]
+fn add_selection_with_nothing_selected_refers_the_carets_line() {
+    let (mut rig, refs) = with_chat("one\ntwo\nthree\n");
+    rig.key(Key::Down);
+    rig.key(Key::Right);
+    rig.alt('q');
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(pos_of(&got[0]), ((1, 0), (1, 3)));
+    assert_eq!(got[0].excerpt.as_deref(), Some("two"));
+}
+
+#[test]
+fn add_selection_in_visual_mode_refers_the_line_without_an_open_block() {
+    let refs = Refs::default();
+    let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, Some(refs.clone()));
+    rig.answer_open("one\n\ntwo\n", 1);
+    assert_eq!(rig.mode(), "visual");
+    let fx = rig.alt('q');
+    assert!(fx.is_empty(), "{fx:#?}");
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].path, PATH);
+    assert!(got[0].range.is_some());
+}
+
+#[test]
+fn add_selection_is_disabled_with_its_reason_with_no_document_and_an_agent_may_use_it() {
+    let refs = Refs::default();
+    let mut rig = Rig::start_with(PATH, &Drafts::new(), 500, Some(refs.clone()));
+    let node = rig.node("state");
+    let a = node
+        .actions
+        .iter()
+        .find(|a| a.id.as_str() == "markdown.addSelection")
+        .expect("listed even with no document");
+    assert!(!a.enabled && a.reason.is_some(), "{a:?}");
+    rig.alt('q');
+    assert!(refs.borrow().is_empty());
+
+    rig.answer_open("hello\n", 1);
+    let fx = rig.send(Msg::Action {
+        id: ActionId::new("markdown.addSelection"),
+        actor: Actor::Agent {
+            run_id: "r1".into(),
+        },
+    });
+    assert!(fx.is_empty());
+    assert_eq!(refs.borrow().len(), 1, "an agent's action refers too");
+}
+
+// ---- follow the agent ---------------------------------------------------------
+
+/// `n` one-line paragraphs, `"Lxxx\n\n"` (6 scalars) each.
+fn paragraphs(n: usize) -> String {
+    (0..n).map(|i| format!("L{i:03}\n\n")).collect()
+}
+
+impl Rig {
+    /// Give the keyboard to the Files panel and follow run `r1`.
+    fn follow(&mut self) {
+        self.send(Msg::Action {
+            id: ActionId::new("files.focus"),
+            actor: Actor::Human,
+        });
+        self.send(Msg::Host(HostMessage::FollowedRuns {
+            runs: vec!["r1".into()],
+        }));
+        self.send(Msg::Action {
+            id: ActionId::new("follow.resume"),
+            actor: Actor::Human,
+        });
+    }
+
+    /// The agent inserts "x" at `at` (in `unit`) in what is revision `rev`.
+    fn agent_edit(&mut self, rev: u64, at: u32, unit: CoordinateUnit) -> Vec<Effect> {
+        self.host(HostMessage::DocumentChanged {
+            resource: doc(),
+            revision: seq(rev),
+            actor: "theorem:run:r1".into(),
+            operation_id: None,
+            unit,
+            edits: vec![CoreChange {
+                start: at,
+                end: at,
+                insert: "x".into(),
+            }],
+        })
+    }
+}
+
+#[test]
+fn a_followed_edit_scrolls_the_source_to_it_and_leaves_caret_and_selection_alone() {
+    let mut rig = Rig::source(&paragraphs(300));
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.follow();
+    let before = rig.state()["view"].clone();
+    assert!(rig.screen().contains("L000"));
+    let fx = rig.agent_edit(2, 6 * 100, CoordinateUnit::Utf16);
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    let s = rig.screen();
+    assert!(s.contains("L100"), "{s}");
+    assert!(!s.contains("L000"), "{s}");
+    let after = rig.state()["view"].clone();
+    for k in ["anchor", "head"] {
+        assert_eq!(before["selection"][k], after["selection"][k], "{k}");
+    }
+    assert!(
+        rig.m.focus().panel.as_ref() != Some(&rig.id),
+        "the keyboard is elsewhere"
+    );
+}
+
+#[test]
+fn a_followed_edit_scrolls_a_reading_view_to_its_block() {
+    let mut rig = Rig::opened(&paragraphs(300));
+    rig.alt('4');
+    rig.follow();
+    assert!(rig.screen().contains("L000"));
+    let fx = rig.agent_edit(2, 6 * 150, CoordinateUnit::Utf16);
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    let s = rig.screen();
+    assert!(s.contains("L150"), "{s}");
+    assert!(!s.contains("L000"), "{s}");
+}
+
+#[test]
+fn a_followed_edit_keeps_the_block_being_typed_in_visual_and_its_typing() {
+    let mut rig = Rig::opened(&paragraphs(300));
+    rig.typed("Z");
+    let before = rig.state()["view"].clone();
+    rig.follow();
+    let fx = rig.agent_edit(2, 6 * 150, CoordinateUnit::Utf16);
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    assert_eq!(rig.state()["view"]["open"], before["open"], "unsent typing");
+    assert_eq!(rig.state()["view"]["selection"], before["selection"]);
+    assert!(rig.screen().contains("Z"), "the block being typed in stays");
+}
+
+#[test]
+fn a_followed_offset_past_the_end_goes_to_the_end() {
+    let mut rig = Rig::source(&paragraphs(300));
+    rig.follow();
+    rig.agent_edit(2, 1_000_000, CoordinateUnit::Utf16);
+    assert!(rig.screen().contains("L299"), "{}", rig.screen());
+}
+
+#[test]
+fn a_followed_offset_in_utf16_units_and_bytes_lands_on_the_right_line_in_multibyte_text() {
+    // Each paragraph is 7 UTF-16 units (an emoji is two), 6 scalars, 9 bytes.
+    let text: String = (0..300).map(|i| format!("\u{1F600}{i:03}\n\n")).collect();
+    let mut rig = Rig::source(&text);
+    rig.follow();
+    rig.agent_edit(2, 7 * 200, CoordinateUnit::Utf16);
+    let s = rig.screen();
+    assert!(s.contains("200"), "{s}");
+    assert!(!s.contains("233"), "scalars would have gone here: {s}");
+    let mut rig = Rig::source(&text);
+    rig.follow();
+    rig.agent_edit(2, 9 * 100, CoordinateUnit::Utf8Bytes);
+    let s = rig.screen();
+    assert!(s.contains("100"), "{s}");
+}
+
+#[test]
+fn a_followed_offset_that_arrives_before_the_document_waits_and_a_later_one_replaces_it() {
+    // A panel that comes back from a saved layout in Source, still asking the
+    // owner for its text.
+    let mut first = Rig::source("short\n");
+    first.alt('2');
+    let layout = first.m.document();
+    let mut rig = Rig::start_file("b.txt", &Drafts::new(), 500);
+    let _ = rig.m.restore(layout);
+    rig.id = rig
+        .m
+        .panel_ids()
+        .find(|(_, k)| k.as_str() == "markdown")
+        .map(|(id, _)| id.clone())
+        .expect("the restored panel");
+    rig.kind = "markdown".into();
+    let fx = rig.tick();
+    rig.open = of_kind(&fx, EffectKind::DocumentOpen)
+        .into_iter()
+        .find(|e| e.resource == doc())
+        .cloned();
+    rig.follow();
+    rig.agent_edit(2, 6 * 250, CoordinateUnit::Utf16);
+    rig.agent_edit(2, 6 * 100, CoordinateUnit::Utf16);
+    rig.answer_open(&paragraphs(300), 1);
+    let s = rig.screen();
+    assert!(s.contains("L100"), "{s}");
+    assert!(!s.contains("L250"), "{s}");
 }

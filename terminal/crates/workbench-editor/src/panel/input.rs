@@ -50,6 +50,8 @@ fn chord(key: &KeyInput) -> Option<Choice> {
             'r' => Some(Choice::Resend),
             'd' => Some(Choice::KeepDisk),
             'k' => Some(Choice::KeepAuthority),
+            'q' => Some(Choice::AddSelection),
+            'v' => Some(Choice::History),
             _ => None,
         },
         _ => None,
@@ -73,6 +75,11 @@ impl EditorPanel {
         let d = self.doc()?;
         if self.naming.is_some() || d.rename.is_some() {
             return None;
+        }
+        if d.history.is_some() {
+            // The drawer's keys are its own; only the one that closes it is a chord.
+            return (chord(key) == Some(Choice::History))
+                .then_some(Command::Choose(Choice::History));
         }
         if let Some(choice) = chord(key) {
             return Some(Command::Choose(choice));
@@ -110,6 +117,12 @@ impl EditorPanel {
 
         // The name of a new page is modal like the rename name.
         if self.naming.is_some() && self.naming_key(&key, cx) {
+            return;
+        }
+
+        // The history drawer takes every key: nothing typed reaches the text.
+        if self.history_open() {
+            self.history_key(&key, cx);
             return;
         }
 
@@ -216,11 +229,12 @@ impl EditorPanel {
     }
 
     pub(super) fn on_text(&mut self, text: &str) {
-        if self.naming_text(text) {
+        if self.naming_text(text) || self.history_open() {
             return;
         }
         let Some(d) = self.doc_mut() else { return };
         d.popup = None;
+        d.followed = None;
         if d.in_find && d.in_replace {
             d.find.replacement.text(text);
             return;
@@ -239,11 +253,12 @@ impl EditorPanel {
     }
 
     pub(super) fn on_paste(&mut self, text: &str) {
-        if self.naming_text(text) {
+        if self.naming_text(text) || self.history_open() {
             return;
         }
         let Some(d) = self.doc_mut() else { return };
         d.popup = None;
+        d.followed = None;
         if d.in_find && d.in_replace {
             d.find.replacement.text(text.lines().next().unwrap_or(""));
             return;
@@ -332,6 +347,17 @@ impl EditorPanel {
             y: p.y - i32::from(frame.text.y),
             ..p
         };
+        if self.history_open() {
+            if matches!(p.kind, PointerKind::Down(Button::Left)) && frame.strip.is_some_and(inside)
+            {
+                if let Some(choice) = self.strip_button_at(&frame, p.x, p.y) {
+                    self.choose(choice, cx);
+                }
+            } else {
+                self.history_pointer(&p);
+            }
+            return;
+        }
         let find_button = self.find_button_at(&frame, p.x, p.y);
         let Some(d) = self.doc_mut() else { return };
         // A popup is over the text: its rows take the pointer first.
@@ -372,6 +398,7 @@ impl EditorPanel {
                     }
                 } else if inside(frame.text) {
                     d.in_find = false;
+                    d.followed = None;
                     let reaction = d.view.pointer(&mut d.session, to_text);
                     self.settle(reaction);
                 }
@@ -503,6 +530,13 @@ impl EditorPanel {
             }
             Choice::KeepDisk => self.reconcile(ReconcileKeep::Disk, cx),
             Choice::KeepAuthority => self.reconcile(ReconcileKeep::Authority, cx),
+            Choice::AddSelection => self.add_selection(cx),
+            Choice::History if self.history_open() => self.dismiss_history(),
+            Choice::History => self.open_history(cx),
+            Choice::Restore | Choice::RestoreConfirm if self.restore_refused(choice, cx) => {}
+            Choice::Restore => self.ask_restore(),
+            Choice::RestoreConfirm => self.send_restore(cx),
+            Choice::Dismiss if self.history_open() => self.dismiss_history(),
             Choice::Dismiss => {
                 if let Some(d) = self.doc_mut() {
                     if d.popup.is_some() {
@@ -520,6 +554,13 @@ impl EditorPanel {
             }
             Choice::Retry | Choice::Close | Choice::Create => {}
         }
+    }
+
+    /// Hand what is selected (or the caret's line) to the conversation's
+    /// draft. It sends nothing and the keyboard stays here.
+    fn add_selection(&mut self, cx: &mut Ctx) {
+        let Some(d) = self.doc() else { return };
+        cx.refer(crate::place::reference(&self.path, &d.session));
     }
 
     fn can_retry(&self) -> bool {
@@ -711,7 +752,12 @@ impl EditorPanel {
             let size = (frame.text.width, frame.text.height);
             if d.view.size() != size {
                 d.view.resize(&mut d.session, size.0, size.1);
-                d.view.reveal(&mut d.session);
+                // The place the agent edited stays in view until the person
+                // moves; else the caret does.
+                match d.followed {
+                    Some(at) => d.view.reveal_at(&mut d.session, at),
+                    None => d.view.reveal(&mut d.session),
+                }
             }
         }
     }

@@ -62,6 +62,7 @@ fn chord(key: &KeyInput, editing: bool, block_open: bool) -> Option<Choice> {
             'k' => Some(Choice::KeepAuthority),
             'j' => Some(Choice::KeepRecovered),
             'g' => Some(Choice::DiscardRecovered),
+            'q' => Some(Choice::AddSelection),
             _ => None,
         },
         Key::Enter if alt => Some(Choice::OpenLink),
@@ -182,6 +183,7 @@ impl MarkdownPanel {
         let Some(d) = self.doc() else { return };
         let mode = self.shown(d).mode;
         let Some(d) = self.doc_mut() else { return };
+        d.followed = None;
         let reaction = match mode {
             MarkdownMode::Source | MarkdownMode::Split => {
                 d.md.get_mut().apply_local(|s| d.source.text(s, text))
@@ -199,6 +201,7 @@ impl MarkdownPanel {
         let Some(d) = self.doc() else { return };
         let mode = self.shown(d).mode;
         let Some(d) = self.doc_mut() else { return };
+        d.followed = None;
         let reaction = match mode {
             MarkdownMode::Source | MarkdownMode::Split => {
                 d.md.get_mut().apply_local(|s| d.source.paste(s, text))
@@ -306,6 +309,7 @@ impl MarkdownPanel {
                 } else if matches!(mode, MarkdownMode::Source | MarkdownMode::Split)
                     && inside(source)
                 {
+                    d.followed = None;
                     let reaction = d.md.get_mut().apply_local(|s| d.source.pointer(s, to_text));
                     self.settle(reaction);
                 }
@@ -498,6 +502,11 @@ impl MarkdownPanel {
             Choice::DiscardRecovered => self.settle_recovered(false, cx),
             Choice::KeepDisk => self.reconcile(ReconcileKeep::Disk, cx),
             Choice::KeepAuthority => self.reconcile(ReconcileKeep::Authority, cx),
+            Choice::AddSelection => {
+                if let Some(reference) = self.selection_reference() {
+                    cx.refer(reference);
+                }
+            }
             Choice::Dismiss => {
                 if let Some(d) = self.doc_mut() {
                     d.notice = None;

@@ -226,6 +226,13 @@ impl SourceView {
 
     /// Scroll so the caret row is on screen, moving as little as possible.
     pub fn reveal(&mut self, session: &mut EditSession) {
+        let at = session.cursor();
+        self.reveal_at(session, at);
+    }
+
+    /// Scroll so the row of the scalar offset `at` is on screen, moving as
+    /// little as possible. The caret and the selection stay where they are.
+    pub fn reveal_at(&mut self, session: &mut EditSession, at: usize) {
         self.sync(session);
         if self.height == 0 {
             return;
@@ -235,10 +242,10 @@ impl SourceView {
         let top = self.top(session);
         let at = {
             let rope = session.rope();
-            let caret = session.cursor();
-            let line = Coords::new(rope).line_of(caret);
+            let place = at.min(rope.len_chars());
+            let line = Coords::new(rope).line_of(place);
             let rows = line_rows(rope, line, wrap, tab);
-            (line, row_index(&rows, caret))
+            (line, row_index(&rows, place))
         };
         let rope = session.rope();
         let new_top = if at < top {

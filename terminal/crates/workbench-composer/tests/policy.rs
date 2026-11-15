@@ -115,7 +115,8 @@ fn take_returns_the_draft_and_empties_the_composer_and_its_undo_history() {
         range: None,
         label: None,
         excerpt: None,
-    });
+    })
+    .expect("placed");
     let d = r.c.take();
     assert_eq!(d.text, "see @x.rs ");
     assert_eq!(d.references.len(), 1);
@@ -137,7 +138,8 @@ fn put_back_returns_the_draft_with_references_and_attachments() {
         range: None,
         label: None,
         excerpt: Some("e".into()),
-    });
+    })
+    .expect("placed");
     r.type_str("end");
     let before = r.c.draft();
     let d = r.c.take();
@@ -187,7 +189,8 @@ fn serialize_and_restore_round_trip_text_caret_selection_and_references() {
         range: None,
         label: Some("a".into()),
         excerpt: None,
-    });
+    })
+    .expect("placed");
     r.type_str("about \u{1F600} \u{4E2D}\u{6587}");
     r.press(Key::Left);
     r.key(Key::Left, shift());

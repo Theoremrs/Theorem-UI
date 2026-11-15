@@ -1032,6 +1032,24 @@ impl TheoPanel {
     }
 
     /// Give the composer an input and carry out what it asks for.
+    /// Put a reference into the draft, and say so, or say why it was not.
+    fn refer(&mut self, reference: SourceReference) {
+        let name = reference
+            .label
+            .clone()
+            .unwrap_or_else(|| reference.path.clone());
+        let said = if self.kind == Kind::Side && !self.bound() {
+            Err("not connected to a conversation yet".to_owned())
+        } else {
+            self.composer.borrow_mut().add_reference(reference)
+        };
+        let text = match said {
+            Ok(()) => format!("added {name} to the message"),
+            Err(why) => format!("not added: {name}: {why}"),
+        };
+        self.session.borrow_mut().notify(text);
+    }
+
     fn compose(&mut self, input: ComposerInput, cx: &mut Ctx) -> bool {
         let response = self.composer.borrow_mut().handle(input, now());
         let handled = response.handled;
@@ -1635,6 +1653,10 @@ impl Panel for TheoPanel {
                 }
             }
             PanelMsg::Motion { reduced } => self.composer.borrow_mut().set_reduced_motion(reduced),
+            // "Add selection to chat" from another panel: the same reference
+            // the person's own `@` insertion makes, at the draft's caret. The
+            // keyboard stays where it is; the pane says what happened.
+            PanelMsg::Reference(reference) => self.refer(reference),
             PanelMsg::Focus(focused) => self.composer.borrow_mut().set_window_focused(focused),
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
             PanelMsg::Completion(c) => self.completed(c),
@@ -3572,6 +3594,179 @@ mod tests {
             conversation_id: thread.into(),
             attachments: serde_json::from_value(list).unwrap(),
         })
+    }
+
+    /// A rig with the editor registered too, and `a.txt` open in it with
+    /// `text`: the editor refers to the conversation panel for real.
+    fn with_open_editor(text: &str) -> Rig {
+        use theorem_workbench_core::completion::{DocumentOpened, FileEntry, FileListing};
+        let directory = Directory::default();
+        let mut factories = PanelFactories::new();
+        register(&mut factories, &directory);
+        theorem_workbench_panels::register(&mut factories);
+        theorem_workbench_editor::register(&mut factories);
+        let mut registry = builtin::registry();
+        theorem_workbench_editor::extend_registry(&mut registry).expect("editor actions");
+        let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
+        assert!(issues.is_empty(), "{issues:?}");
+        let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
+        let mut m = Model::new(
+            registry,
+            factories,
+            keys,
+            Capabilities::of([
+                "files",
+                "documents",
+                "conversation",
+                "conversation.side",
+                "conversation.attach",
+                "conversation.model",
+            ]),
+            dock,
+        );
+        update(
+            &mut m,
+            Msg::Resize {
+                area: Rect::new(0, 0, 160, 50),
+                metrics: CellMetrics::new(8.0, 16.0),
+            },
+        );
+        let ws = ResourceRef::Workspace {
+            workspace: "w".into(),
+        };
+        update(
+            &mut m,
+            Msg::Host(HostMessage::WorkspaceChanged {
+                workspace: "w".into(),
+                environment: None,
+            }),
+        );
+        let mut r = Rig {
+            m,
+            directory,
+            seen: Vec::new(),
+        };
+        r.send(Msg::Action {
+            id: ActionId::new("theo.focus"),
+            actor: Actor::Human,
+        });
+        r.show(1, "t1", json!({}));
+        r.send(Msg::Action {
+            id: ActionId::new("files.focus"),
+            actor: Actor::Human,
+        });
+        let fx = r.send(Msg::Tick);
+        let list = fx
+            .iter()
+            .find(|e| e.kind() == EffectKind::FilesList)
+            .expect("the Files panel lists")
+            .id;
+        let mut c = Completion::new(list, ws, Outcome::Accepted);
+        c.payload = Some(CompletionPayload::Files(FileListing {
+            entries: vec![FileEntry::new("a.txt", FileKind::File)],
+            partial: false,
+        }));
+        r.send(Msg::Completion(c));
+        for ch in "a.txt".chars() {
+            r.key(Key::Char(ch), Mods::NONE);
+        }
+        r.enter();
+        let fx = r.send(Msg::Tick);
+        let open = fx
+            .into_iter()
+            .find(|e| e.kind() == EffectKind::DocumentOpen)
+            .expect("the editor asks the owner for the document");
+        let c = Completion::new(open.id, open.resource.clone(), Outcome::Accepted).with_payload(
+            CompletionPayload::DocumentOpened(DocumentOpened {
+                text: text.into(),
+                revision: Revision::Seq(1),
+                saved_revision: None,
+                dirty: false,
+                read_only: None,
+                pending: vec![],
+            }),
+        );
+        r.send(Msg::Completion(c));
+        r
+    }
+
+    fn add_selection(r: &mut Rig) -> Vec<Effect> {
+        r.key(Key::Char('q'), Mods::ALT)
+    }
+
+    #[test]
+    fn a_reference_from_the_editor_lands_in_the_draft_and_the_pane_says_so_without_moving_focus() {
+        let mut r = with_open_editor("hello\nworld\n");
+        let focus = r.m.focus();
+        let fx = add_selection(&mut r);
+        assert!(fx.is_empty(), "no effect: {fx:?}");
+        assert_eq!(r.m.focus(), focus, "the keyboard stayed in the editor");
+        let draft = draft_json(&r);
+        assert_eq!(draft["text"], json!("@a.txt:1 "), "{draft}");
+        assert_eq!(draft["references"].as_array().map(Vec::len), Some(1));
+        assert_eq!(draft["references"][0]["reference"]["path"], json!("a.txt"));
+        let screen = r.drawn();
+        assert!(screen.contains("added a.txt:1 to the message"), "{screen}");
+        assert!(
+            !screen.contains("not added"),
+            "a placed reference is not a refusal: {screen}"
+        );
+    }
+
+    #[test]
+    fn a_second_identical_reference_follows_the_composers_own_rule_for_the_persons_insertion() {
+        // The composer takes the same reference twice, as it does when the
+        // person picks the same file twice with `@`: two held tokens.
+        let mut r = with_open_editor("hello\nworld\n");
+        add_selection(&mut r);
+        add_selection(&mut r);
+        let draft = draft_json(&r);
+        assert_eq!(draft["text"], json!("@a.txt:1 @a.txt:1 "), "{draft}");
+        assert_eq!(draft["references"].as_array().map(Vec::len), Some(2));
+        // The person's own insertion of the same token through the popup gives
+        // the same draft, so the two paths agree.
+        let mut composer = Composer::new("c");
+        let reference = SourceReference {
+            path: "a.txt".into(),
+            range: None,
+            label: None,
+            excerpt: None,
+        };
+        composer.add_reference(reference.clone()).expect("first");
+        composer.add_reference(reference).expect("second");
+        assert_eq!(composer.serialize()["text"], json!("@a.txt @a.txt "));
+    }
+
+    #[test]
+    fn a_reference_the_conversation_panel_cannot_take_is_shown_as_a_notice_not_dropped() {
+        // A side chat that is not bound to a conversation refuses it and says so.
+        let directory = Directory::default();
+        let mut m = model(&directory);
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("theo.focus"),
+                actor: Actor::Human,
+            },
+        );
+        let mut panel = TheoPanel::new(Kind::Side, directory, &Value::Null);
+        panel.refer(SourceReference {
+            path: "a.txt".into(),
+            range: None,
+            label: Some("a.txt:1".into()),
+            excerpt: Some("secret".into()),
+        });
+        assert!(panel.composer.borrow().is_empty(), "nothing was added");
+        let said = panel
+            .session
+            .borrow()
+            .notice
+            .as_ref()
+            .map(|(t, _)| t.clone());
+        let said = said.expect("a notice");
+        assert!(said.contains("not added"), "{said}");
+        assert!(said.contains("a.txt:1"), "{said}");
+        assert!(!said.contains("secret"), "the text is not repeated: {said}");
     }
 
     #[test]

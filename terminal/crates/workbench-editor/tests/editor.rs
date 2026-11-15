@@ -7,6 +7,8 @@ use keybinds::{Key, KeyInput, Mods};
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Modifier;
+use std::cell::RefCell;
+use std::rc::Rc;
 use theorem_workbench_core::Composition;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{
@@ -14,6 +16,7 @@ use theorem_workbench_core::completion::{
     DocumentEdited, DocumentOpened, DocumentSaved, FileEntry, FileKind, FileListing, LanguagePlan,
     Outcome, PendingEdit, PendingState,
 };
+use theorem_workbench_core::draft::SourceReference;
 use theorem_workbench_core::effect::{
     CoordinateUnit, Effect, EffectBody, EffectKind, TextChange as CoreChange,
 };
@@ -27,8 +30,8 @@ use theorem_workbench_core::results::{
 };
 use theorem_workbench_core::semantics::NodeId;
 use theorem_workbench_core::{
-    Button, DockMsg, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, ViewCtx, semantics,
-    update,
+    Button, Ctx, DockMsg, Model, Msg, Panel, PanelFactories, PanelMsg, Pointer, PointerKind, Theme,
+    ViewCtx, semantics, update,
 };
 use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
 use theorem_workbench_editor::{Drafts, register_with};
@@ -75,9 +78,37 @@ struct Rig {
     open: Option<Effect>,
 }
 
-fn model(caps: &[&'static str], drafts: &Drafts) -> Model {
+/// What a conversation panel was handed, in order.
+type Refs = Rc<RefCell<Vec<SourceReference>>>;
+
+/// A conversation panel that keeps the references it is handed.
+struct Recorder(Refs);
+
+impl Panel for Recorder {
+    fn update(&mut self, msg: PanelMsg, _cx: &mut Ctx) {
+        if let PanelMsg::Reference(r) = msg {
+            self.0.borrow_mut().push(r);
+        }
+    }
+    fn view(&self, _area: Rect, _buf: &mut Buffer, _cx: &ViewCtx) {}
+    fn semantics(
+        &self,
+        _area: Rect,
+        _cx: &ViewCtx,
+    ) -> Vec<theorem_workbench_core::semantics::Node> {
+        vec![]
+    }
+    fn serialize(&self) -> serde_json::Value {
+        serde_json::Value::Null
+    }
+}
+
+fn model_with(caps: &[&'static str], drafts: &Drafts, refs: Option<Refs>) -> Model {
     let mut factories = PanelFactories::new();
     theorem_workbench_panels::register(&mut factories);
+    if let Some(refs) = refs {
+        factories.register("theo", move |_, _| Box::new(Recorder(refs.clone())));
+    }
     register_with(&mut factories, drafts.clone());
     let mut registry = builtin::registry();
     theorem_workbench_editor::extend_registry(&mut registry)
@@ -120,7 +151,11 @@ impl Rig {
     }
 
     fn start_with(caps: &[&'static str], drafts: &Drafts) -> Self {
-        let mut m = model(caps, drafts);
+        Self::start_in(caps, drafts, None)
+    }
+
+    fn start_in(caps: &[&'static str], drafts: &Drafts, refs: Option<Refs>) -> Self {
+        let mut m = model_with(caps, drafts, refs);
         update(
             &mut m,
             Msg::Action {
@@ -3371,7 +3406,7 @@ fn takes_chord_answers_for_shifted_format_and_leaves_a_plain_option_letter_to_ty
     // KeyInput drops Shift from a character key; Shift is the capital letter.
     assert!(rig.m.takes_chord(&option('F')));
     assert!(!rig.m.takes_chord(&option('f')), "format needs Shift");
-    for c in ['q', 'e', 'n', 'z', '1', '['] {
+    for c in ['e', 'n', 'z', '1', '['] {
         assert!(!rig.m.takes_chord(&option(c)), "{c}");
     }
 }
@@ -4285,4 +4320,731 @@ fn text_beyond_what_a_checkpoint_carries_is_left_out_whole_and_the_pane_says_so(
     let say = rig.status();
     assert!(say.contains("2 of 3 held edits are checkpointed"), "{say}");
     assert!(say.contains("may lose the rest"), "{say}");
+}
+
+// ---- add the selection to the chat ------------------------------------------
+
+fn alt_q(rig: &mut Rig) -> Vec<Effect> {
+    rig.mods(Key::Char('q'), Mods::ALT)
+}
+
+fn with_chat(text: &str) -> (Rig, Refs) {
+    let refs = Refs::default();
+    let mut rig = Rig::start_in(&CAPS, &Drafts::new(), Some(refs.clone()));
+    rig.answer_open(text, 1, true);
+    (rig, refs)
+}
+
+fn pos_of(r: &SourceReference) -> ((u32, u32), (u32, u32)) {
+    let range = r.range.as_ref().expect("a range");
+    (
+        (range.start.line, range.start.character),
+        (range.end.line, range.end.character),
+    )
+}
+
+#[test]
+fn add_selection_names_the_path_the_range_and_the_text_selected_without_moving_anything() {
+    let (mut rig, refs) = with_chat("hello\nworld\n");
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    let (focus, state) = (rig.m.focus(), rig.state());
+    let fx = alt_q(&mut rig);
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 1, "{got:?}");
+    assert_eq!(got[0].path, PATH);
+    assert_eq!(pos_of(&got[0]), ((0, 1), (0, 3)));
+    assert_eq!(got[0].excerpt.as_deref(), Some("el"));
+    assert_eq!(got[0].label.as_deref(), Some("a.txt:1"));
+    assert_eq!(rig.m.focus(), focus, "the keyboard did not move");
+    assert_eq!(rig.state(), state, "caret and selection are as they were");
+    assert!(rig.text().starts_with("hello"), "nothing was typed");
+}
+
+#[test]
+fn add_selection_counts_columns_in_utf16_units_for_multibyte_and_astral_text() {
+    // "é" is one unit, the emoji two; the second line starts after "x\n".
+    let (mut rig, refs) = with_chat("aé\u{1F600}b\nx\u{1F600}yz\n");
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    alt_q(&mut rig);
+    rig.key(Key::Down);
+    rig.key(Key::Home);
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.mods(Key::Right, Mods::SHIFT);
+    alt_q(&mut rig);
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 2);
+    assert_eq!(pos_of(&got[0]), ((0, 1), (0, 4)), "é then the emoji");
+    assert_eq!(got[0].excerpt.as_deref(), Some("é\u{1F600}"));
+    assert_eq!(pos_of(&got[1]), ((1, 1), (1, 4)), "the emoji then y");
+    assert_eq!(got[1].excerpt.as_deref(), Some("\u{1F600}y"));
+}
+
+#[test]
+fn add_selection_with_nothing_selected_refers_the_carets_line() {
+    let (mut rig, refs) = with_chat("one\ntwo\nthree\n");
+    rig.key(Key::Down);
+    rig.key(Key::Right);
+    alt_q(&mut rig);
+    let got = refs.borrow().clone();
+    assert_eq!(got.len(), 1);
+    assert_eq!(pos_of(&got[0]), ((1, 0), (1, 3)));
+    assert_eq!(got[0].excerpt.as_deref(), Some("two"));
+    assert_eq!(got[0].label.as_deref(), Some("a.txt:2"));
+}
+
+#[test]
+fn add_selection_is_cut_to_a_bounded_excerpt_but_names_the_whole_range() {
+    let long = "x".repeat(10_000);
+    let (mut rig, refs) = with_chat(&format!("{long}\n"));
+    rig.chord('a');
+    alt_q(&mut rig);
+    let got = refs.borrow().clone();
+    assert_eq!(
+        pos_of(&got[0]),
+        ((0, 0), (1, 0)),
+        "the whole text, newline too"
+    );
+    assert_eq!(
+        got[0].excerpt.as_deref().map(str::len),
+        Some(theorem_workbench_editor::EXCERPT_LIMIT)
+    );
+}
+
+#[test]
+fn add_selection_is_disabled_with_its_reason_when_there_is_no_document_and_an_agent_may_use_it() {
+    let refs = Refs::default();
+    let mut rig = Rig::start_in(&CAPS, &Drafts::new(), Some(refs.clone()));
+    let node = rig.node("state");
+    let a = node
+        .actions
+        .iter()
+        .find(|a| a.id.as_str() == "document.addSelection")
+        .expect("listed even with no document");
+    assert!(!a.enabled && a.reason.is_some(), "{a:?}");
+    alt_q(&mut rig);
+    assert!(refs.borrow().is_empty());
+
+    rig.answer_open("hello\n", 1, true);
+    let a = rig
+        .node("text")
+        .actions
+        .into_iter()
+        .find(|a| a.id.as_str() == "document.addSelection")
+        .unwrap();
+    assert!(a.enabled, "{a:?}");
+    let fx = rig.send(Msg::Action {
+        id: ActionId::new("document.addSelection"),
+        actor: Actor::Agent {
+            run_id: "r1".into(),
+        },
+    });
+    assert!(fx.is_empty());
+    assert_eq!(refs.borrow().len(), 1, "an agent's action refers too");
+}
+
+// ---- follow the agent -------------------------------------------------------
+
+fn numbered(n: usize, prefix: &str) -> String {
+    (0..n).map(|i| format!("{prefix}{i:03}\n")).collect()
+}
+
+impl Rig {
+    /// Give the keyboard to the Files panel and follow run `r1`.
+    fn follow(&mut self) {
+        self.send(Msg::Action {
+            id: ActionId::new("files.focus"),
+            actor: Actor::Human,
+        });
+        self.send(Msg::Host(HostMessage::FollowedRuns {
+            runs: vec!["r1".into()],
+        }));
+        self.send(Msg::Action {
+            id: ActionId::new("follow.resume"),
+            actor: Actor::Human,
+        });
+    }
+
+    /// The agent inserts "x" at `at` (in `unit`) in what is revision `rev`.
+    fn agent_edit(&mut self, rev: u64, at: u32, unit: CoordinateUnit) -> Vec<Effect> {
+        self.host(HostMessage::DocumentChanged {
+            resource: doc(),
+            revision: seq(rev),
+            actor: "theorem:run:r1".into(),
+            operation_id: None,
+            unit,
+            edits: vec![CoreChange {
+                start: at,
+                end: at,
+                insert: "x".into(),
+            }],
+        })
+    }
+
+    fn top_line(&self) -> u64 {
+        self.state()["scroll"]["top_line"].as_u64().unwrap_or(0)
+    }
+}
+
+#[test]
+fn a_followed_edit_scrolls_to_it_and_marks_the_line_and_leaves_caret_and_selection_alone() {
+    let mut rig = Rig::opened(&numbered(400, "L"));
+    rig.key(Key::Right);
+    rig.mods(Key::Right, Mods::SHIFT);
+    rig.follow();
+    let before = rig.state();
+    assert_eq!(rig.top_line(), 0);
+    let fx = rig.agent_edit(2, 5 * 60, CoordinateUnit::Utf16);
+    assert!(fx.is_empty(), "no effect: {fx:#?}");
+    assert!(rig.top_line() > 0, "scrolled: {}", rig.top_line());
+    assert!(rig.screen().contains("L060"), "{}", rig.screen());
+    let after = rig.state();
+    for k in ["anchor", "head"] {
+        assert_eq!(before[k], after[k], "{k}");
+    }
+    assert!(
+        rig.m.focus().panel.as_ref() != Some(&rig.id),
+        "the keyboard is elsewhere"
+    );
+}
+
+#[test]
+fn a_followed_offset_past_the_end_goes_to_the_end() {
+    let mut rig = Rig::opened(&numbered(400, "L"));
+    rig.follow();
+    rig.agent_edit(2, 1_000_000, CoordinateUnit::Utf16);
+    assert!(rig.screen().contains("L399"), "{}", rig.screen());
+}
+
+#[test]
+fn a_followed_offset_in_utf16_units_lands_on_the_right_line_in_multibyte_text() {
+    // Each line is 6 UTF-16 units (an emoji is two) and 5 scalars.
+    let text: String = (0..400).map(|i| format!("\u{1F600}{i:03}\n")).collect();
+    let mut rig = Rig::opened(&text);
+    rig.follow();
+    rig.agent_edit(2, 6 * 300, CoordinateUnit::Utf16);
+    let s = rig.screen();
+    assert!(s.contains("300"), "{s}");
+    assert!(!s.contains("360"), "scalars would have gone here: {s}");
+    // The same place in bytes (an emoji is four, so 8 per line).
+    let mut rig = Rig::opened(&text);
+    rig.follow();
+    rig.agent_edit(2, 8 * 200, CoordinateUnit::Utf8Bytes);
+    let s = rig.screen();
+    assert!(s.contains("200"), "{s}");
+}
+
+#[test]
+fn a_followed_offset_that_arrives_before_the_document_waits_and_a_later_one_replaces_it() {
+    let mut rig = Rig::start();
+    rig.follow();
+    rig.agent_edit(2, 5 * 300, CoordinateUnit::Utf16);
+    rig.agent_edit(2, 5 * 100, CoordinateUnit::Utf16);
+    assert!(rig.screen().contains("Opening"));
+    rig.answer_open(&numbered(400, "L"), 1, true);
+    let s = rig.screen();
+    assert!(s.contains("L100"), "{s}");
+    assert!(!s.contains("L300"), "{s}");
+}
+
+// ---- document history -------------------------------------------------------
+
+use theorem_workbench_core::completion::{DocumentHistory, DocumentHistoryEntry, DocumentPreview};
+
+fn alt_v(rig: &mut Rig) -> Vec<Effect> {
+    rig.mods(Key::Char('v'), Mods::ALT)
+}
+
+fn history_of(points: &[(&str, u64)]) -> CompletionPayload {
+    CompletionPayload::DocumentHistory(DocumentHistory {
+        entries: points
+            .iter()
+            .map(|(p, r)| DocumentHistoryEntry {
+                point: (*p).into(),
+                revision: seq(*r),
+            })
+            .collect(),
+    })
+}
+
+fn preview_of(text: &str) -> CompletionPayload {
+    CompletionPayload::DocumentPreview(DocumentPreview { text: text.into() })
+}
+
+fn point_of(e: &Effect) -> String {
+    match &e.body {
+        EffectBody::DocumentHistoryPreview(p) | EffectBody::DocumentHistoryRestore(p) => {
+            p.point.clone()
+        }
+        other => panic!("not a history effect: {other:?}"),
+    }
+}
+
+/// The drawer is open and listing h3, h2, h1 (newest first); the preview of
+/// h3 is asked for and returned in the second value.
+fn drawer(text: &str) -> (Rig, Effect) {
+    let mut rig = Rig::opened(text);
+    let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    let fx = rig.answer(
+        &list,
+        Outcome::Accepted,
+        Some(history_of(&[("h3", 3), ("h2", 2), ("h1", 1)])),
+    );
+    let ask = one(&fx, EffectKind::DocumentHistoryPreview);
+    assert_eq!(point_of(&ask), "h3");
+    (rig, ask)
+}
+
+fn shown(text: &str, past: &str) -> Rig {
+    let (mut rig, ask) = drawer(text);
+    rig.answer(&ask, Outcome::Accepted, Some(preview_of(past)));
+    rig
+}
+
+#[test]
+fn the_drawer_lists_points_newest_first_and_previews_the_chosen_one_read_only() {
+    let mut rig = Rig::opened("live text\n");
+    let fx = alt_v(&mut rig);
+    one(&fx, EffectKind::DocumentHistoryList);
+    assert!(
+        rig.screen().contains("Loading the history"),
+        "{}",
+        rig.screen()
+    );
+    let list = one(&fx, EffectKind::DocumentHistoryList);
+    let fx = rig.answer(
+        &list,
+        Outcome::Accepted,
+        Some(history_of(&[("h3", 3), ("h2", 2), ("h1", 1)])),
+    );
+    let ask = one(&fx, EffectKind::DocumentHistoryPreview);
+    assert_eq!(point_of(&ask), "h3");
+    let s = rig.screen();
+    let (a, b) = (s.find("Revision 3").unwrap(), s.find("Revision 2").unwrap());
+    assert!(a < b && b < s.find("Revision 1").unwrap(), "{s}");
+    rig.answer(&ask, Outcome::Accepted, Some(preview_of("past text\n")));
+    let s = rig.screen();
+    assert!(s.contains("past text"), "{s}");
+    assert!(s.contains("Past version, revision 3"), "{s}");
+    assert!(s.contains("read-only"), "{s}");
+    // The live text was not touched by looking.
+    none_of(&rig.tick(), EffectKind::DocumentEdit);
+    rig.key(Key::Esc);
+    assert_eq!(rig.text(), "live text");
+    assert!(!rig.screen().contains("Past version"));
+    rig.tree_ok();
+}
+
+#[test]
+fn moving_the_selection_previews_that_point_and_one_ask_is_in_flight_at_a_time() {
+    let (mut rig, ask) = drawer("live\n");
+    // Down while the first answer is owed asks nothing more.
+    let fx = rig.key(Key::Down);
+    none_of(&fx, EffectKind::DocumentHistoryPreview);
+    // The answer for the point left is dropped, and the one chosen is asked.
+    let fx = rig.answer(&ask, Outcome::Accepted, Some(preview_of("three\n")));
+    let next = one(&fx, EffectKind::DocumentHistoryPreview);
+    assert_eq!(point_of(&next), "h2");
+    assert!(!rig.screen().contains("three"), "{}", rig.screen());
+    rig.answer(&next, Outcome::Accepted, Some(preview_of("two\n")));
+    assert!(rig.screen().contains("two"), "{}", rig.screen());
+    // Going back to a point already shown asks again for the point chosen.
+    let fx = rig.key(Key::Up);
+    assert_eq!(
+        point_of(&one(&fx, EffectKind::DocumentHistoryPreview)),
+        "h3"
+    );
+}
+
+#[test]
+fn restore_asks_first_names_the_loss_and_sends_only_after_the_yes() {
+    let mut rig = shown("live\n", "past\n");
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentHistoryRestore);
+    let s = rig.screen();
+    assert!(s.contains("Restore the document to revision 3"), "{s}");
+    assert!(s.contains("[Restore"), "{s}");
+    // Esc calls it off and keeps the drawer.
+    rig.key(Key::Esc);
+    assert!(rig.screen().contains("Past version"), "{}", rig.screen());
+    assert!(!rig.screen().contains("Restore the document to"));
+    rig.key(Key::Enter);
+    let fx = rig.key(Key::Enter);
+    let restore = one(&fx, EffectKind::DocumentHistoryRestore);
+    assert_eq!(point_of(&restore), "h3");
+    // Accepted: the drawer closes on the live text; the preview was never pasted.
+    let fx = rig.answer(&restore, Outcome::Accepted, None);
+    none_of(&fx, EffectKind::DocumentEdit);
+    assert!(!rig.screen().contains("Past version"));
+    assert_eq!(rig.text(), "live");
+    assert!(
+        rig.status().contains("Restored to revision 3"),
+        "{}",
+        rig.status()
+    );
+    // The owner reports the restored text through the ordinary change path.
+    rig.host(HostMessage::DocumentChanged {
+        resource: doc(),
+        revision: seq(2),
+        actor: "owner".into(),
+        operation_id: None,
+        unit: CoordinateUnit::Utf16,
+        edits: vec![CoreChange {
+            start: 0,
+            end: 4,
+            insert: "past".into(),
+        }],
+    });
+    assert_eq!(rig.text(), "past");
+    rig.tree_ok();
+}
+
+#[test]
+fn restore_names_the_unsaved_text_it_would_lose() {
+    let mut rig = Rig::opened("live\n");
+    rig.host(HostMessage::DocumentLocal {
+        resource: doc(),
+        local: LocalState {
+            status: LocalStatus::Draft,
+            problem: None,
+        },
+    });
+    let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    let fx = rig.answer(&list, Outcome::Accepted, Some(history_of(&[("h1", 1)])));
+    let ask = one(&fx, EffectKind::DocumentHistoryPreview);
+    rig.answer(&ask, Outcome::Accepted, Some(preview_of("old\n")));
+    rig.key(Key::Enter);
+    assert!(
+        rig.screen().contains("Restore the document to revision 1"),
+        "{}",
+        rig.screen()
+    );
+}
+
+#[test]
+fn escape_closes_the_drawer_and_the_panel_holds_it() {
+    let mut rig = shown("live\n", "past\n");
+    assert!(rig.m.panel(&rig.id).unwrap().holds_escape());
+    rig.key(Key::Esc);
+    assert!(!rig.screen().contains("Past version"));
+    assert_eq!(rig.text(), "live");
+    // Alt+V again opens, and again closes.
+    one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    assert!(rig.screen().contains("History of"), "{}", rig.screen());
+    alt_v(&mut rig);
+    assert!(!rig.screen().contains("History of"));
+}
+
+#[test]
+fn typing_while_the_drawer_is_open_does_not_reach_the_document() {
+    let mut rig = shown("live\n", "past\n");
+    let fx = rig.typed("zz");
+    none_of(&fx, EffectKind::DocumentEdit);
+    rig.send(Msg::Paste("pasted".into()));
+    rig.key(Key::Esc);
+    assert_eq!(rig.text(), "live");
+    none_of(&rig.tick(), EffectKind::DocumentEdit);
+}
+
+#[test]
+fn the_list_and_preview_outcomes_are_each_shown() {
+    for (outcome, want) in [
+        (
+            Outcome::Refused {
+                code: "outside_workspace".into(),
+                reason: "that path is outside the workspace".into(),
+            },
+            "outside_workspace",
+        ),
+        (
+            Outcome::Failed {
+                reason: "the store is down".into(),
+            },
+            "the store is down",
+        ),
+        (
+            Outcome::Uncertain {
+                reason: "the connection dropped".into(),
+            },
+            "Unknown if the history was read",
+        ),
+    ] {
+        let mut rig = Rig::opened("live\n");
+        let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+        rig.answer(
+            &list,
+            Outcome::Failed {
+                reason: String::new(),
+            },
+            None,
+        );
+        rig.key(Key::Esc);
+        let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+        rig.answer(&list, outcome, None);
+        assert!(rig.screen().contains(want), "{want}: {}", rig.screen());
+        rig.tree_ok();
+    }
+    // Empty is an answer.
+    let mut rig = Rig::opened("live\n");
+    let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    rig.answer(&list, Outcome::Accepted, Some(history_of(&[])));
+    assert!(
+        rig.screen().contains("no earlier versions"),
+        "{}",
+        rig.screen()
+    );
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentHistoryRestore);
+    // A preview that is refused is said, and is not restored unseen.
+    let (mut rig, ask) = drawer("live\n");
+    rig.answer(
+        &ask,
+        Outcome::Refused {
+            code: "no_text".into(),
+            reason: "that version has no text".into(),
+        },
+        None,
+    );
+    assert!(rig.screen().contains("no_text"), "{}", rig.screen());
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentHistoryRestore);
+    assert!(
+        rig.status().contains("not restored unseen"),
+        "{}",
+        rig.status()
+    );
+    rig.tree_ok();
+}
+
+fn confirmed(rig: &mut Rig) -> Effect {
+    rig.key(Key::Enter);
+    one(&rig.key(Key::Enter), EffectKind::DocumentHistoryRestore)
+}
+
+#[test]
+fn a_restore_the_owner_refuses_fails_or_does_not_know_about_is_said_in_the_pane() {
+    for (code, want) in [
+        ("pending_edits", "pending_edits"),
+        ("unavailable", "unavailable"),
+        ("outside_workspace", "outside_workspace"),
+        ("no_text", "no_text"),
+    ] {
+        let mut rig = shown("live\n", "past\n");
+        let e = confirmed(&mut rig);
+        rig.answer(
+            &e,
+            Outcome::Refused {
+                code: code.into(),
+                reason: "the owner says no".into(),
+            },
+            None,
+        );
+        let s = rig.status();
+        assert!(s.contains("Not restored") && s.contains(want), "{s}");
+        // The drawer is still there and may try again.
+        assert!(rig.screen().contains("Past version"));
+    }
+    let mut rig = shown("live\n", "past\n");
+    let e = confirmed(&mut rig);
+    rig.answer(
+        &e,
+        Outcome::Failed {
+            reason: "disk full".into(),
+        },
+        None,
+    );
+    assert!(
+        rig.status().contains("The document was not restored"),
+        "{}",
+        rig.status()
+    );
+    assert!(rig.status().contains("disk full"));
+    // Uncertain: never retried by guess.
+    let mut rig = shown("live\n", "past\n");
+    let e = confirmed(&mut rig);
+    rig.answer(
+        &e,
+        Outcome::Uncertain {
+            reason: "lost the link".into(),
+        },
+        None,
+    );
+    assert!(
+        rig.status()
+            .contains("Unknown if the document was restored"),
+        "{}",
+        rig.status()
+    );
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentHistoryRestore);
+    let fx = rig.key(Key::Enter);
+    none_of(&fx, EffectKind::DocumentHistoryRestore);
+    rig.tree_ok();
+}
+
+#[test]
+fn a_late_answer_after_the_drawer_closed_changes_nothing() {
+    let mut rig = Rig::opened("live\n");
+    let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    rig.key(Key::Esc);
+    let fx = rig.answer(&list, Outcome::Accepted, Some(history_of(&[("h1", 1)])));
+    none_of(&fx, EffectKind::DocumentHistoryPreview);
+    assert_eq!(rig.text(), "live");
+    // A second drawer does not take the first one's answers either.
+    let second = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    assert_ne!(second.id, list.id);
+    assert!(rig.screen().contains("Loading the history"));
+    // A preview that arrives after the drawer closed is dropped too.
+    let (mut rig, ask) = drawer("live\n");
+    rig.key(Key::Esc);
+    rig.answer(&ask, Outcome::Accepted, Some(preview_of("late\n")));
+    assert_eq!(rig.text(), "live");
+    assert!(!rig.screen().contains("late"));
+    one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+    assert!(!rig.screen().contains("late"), "{}", rig.screen());
+}
+
+#[test]
+fn a_restore_is_refused_while_any_typing_is_unsettled_and_the_preview_is_still_shown() {
+    fn drawer_on(mut rig: Rig) -> Rig {
+        let list = one(&alt_v(&mut rig), EffectKind::DocumentHistoryList);
+        let fx = rig.answer(&list, Outcome::Accepted, Some(history_of(&[("h1", 1)])));
+        let ask = one(&fx, EffectKind::DocumentHistoryPreview);
+        rig.answer(&ask, Outcome::Accepted, Some(preview_of("past\n")));
+        assert!(rig.screen().contains("past"), "the preview is allowed");
+        rig
+    }
+    fn refused(mut rig: Rig, state: &str) {
+        for _ in 0..2 {
+            let fx = rig.key(Key::Enter);
+            none_of(&fx, EffectKind::DocumentHistoryRestore);
+        }
+        let s = rig.status();
+        assert!(
+            s.contains("sent, saved or discarded first") || s.contains("has to be sent"),
+            "{state}: {s}"
+        );
+        assert!(!rig.screen().contains("Restore the document to"), "{state}");
+        // The action says so too.
+        let a = rig
+            .node("history")
+            .actions
+            .into_iter()
+            .find(|a| a.id.as_str() == "document.restore")
+            .unwrap();
+        assert!(!a.enabled && a.reason.is_some(), "{state}: {a:?}");
+    }
+    // Typed and in flight (and so pending).
+    let mut rig = Rig::opened("live\n");
+    rig.key(Key::Char('X'));
+    refused(drawer_on(rig), "in flight");
+    // Uncertain.
+    let mut rig = Rig::opened("live\n");
+    let e = the_edit(&rig.key(Key::Char('X')));
+    rig.answer(
+        &e,
+        Outcome::Uncertain {
+            reason: "dropped".into(),
+        },
+        None,
+    );
+    refused(drawer_on(rig), "uncertain");
+    // Held.
+    refused(drawer_on(held(40)), "held");
+    // Recovered and not yet chosen.
+    refused(drawer_on(recovered_rig(40)), "recovered");
+    // Typed more than one edit ahead (pending behind the first).
+    let mut rig = Rig::opened("live\n");
+    rig.key(Key::Char('X'));
+    rig.key(Key::Char('Y'));
+    refused(drawer_on(rig), "pending");
+}
+
+#[test]
+fn an_agent_cannot_restore_and_a_restore_waiting_for_the_yes_is_not_confirmed_by_it() {
+    let mut rig = shown("live\n", "past\n");
+    rig.key(Key::Enter);
+    for id in ["document.restore", "document.restoreConfirm"] {
+        let fx = rig.send(Msg::Action {
+            id: ActionId::new(id),
+            actor: Actor::Agent {
+                run_id: "r1".into(),
+            },
+        });
+        none_of(&fx, EffectKind::DocumentHistoryRestore);
+    }
+    // The catalog says so for the agent.
+    let mut registry = builtin::registry();
+    theorem_workbench_editor::extend_registry(&mut registry).unwrap();
+    let human_only = |id: &str| {
+        registry
+            .agent_catalog(&Capabilities::of(CAPS))
+            .into_iter()
+            .find(|e| e.action.as_str() == id)
+            .map(|e| format!("{e:?}"))
+    };
+    for id in ["document.restore", "document.restoreConfirm"] {
+        let entry = human_only(id);
+        assert!(
+            entry
+                .as_deref()
+                .is_none_or(|e| e.to_lowercase().contains("human")),
+            "{id}: {entry:?}"
+        );
+    }
+    // The person's yes still works.
+    let fx = rig.key(Key::Enter);
+    one(&fx, EffectKind::DocumentHistoryRestore);
+}
+
+#[test]
+fn the_drawer_has_semantic_nodes_with_their_actions_and_wraps_and_escapes_long_text() {
+    let long = format!("{}\n\u{1b}[31mred\n", "word ".repeat(60));
+    let mut rig = shown("live\n", &long);
+    rig.tree_ok();
+    let dialog = rig.node("history");
+    assert!(dialog.name.contains("History of"));
+    assert!(
+        dialog
+            .actions
+            .iter()
+            .any(|a| a.id.as_str() == "document.restore")
+    );
+    let list = rig.node("history-list");
+    assert_eq!(list.children.len(), 3);
+    let first = rig.node("history:0");
+    assert!(first.state.selected);
+    assert_eq!((first.pos_in_set, first.set_size), (Some(1), Some(3)));
+    let past = rig.node("history-preview");
+    assert!(past.name.contains("Past version"), "{}", past.name);
+    assert!(past.text.as_deref().unwrap_or("").contains("word"));
+    let s = rig.screen();
+    assert!(s.contains("\\u{1b}"), "{s}");
+    assert!(!s.contains('\u{1b}'));
+    // Every row fits the pane: nothing runs past it.
+    let w = usize::from(rig.body().width);
+    for row in rig.screen().lines() {
+        assert!(row.width() <= w, "{row:?}");
+    }
+    rig.key(Key::Enter);
+    assert!(rig.node("strip:document.restoreConfirm").actions[0].enabled);
+    rig.tree_ok();
+}
+
+#[test]
+fn clicking_a_point_chooses_it() {
+    let (mut rig, ask) = drawer("live\n");
+    rig.answer(&ask, Outcome::Accepted, Some(preview_of("three\n")));
+    let row = rig.node("history:2").rect;
+    let b = rig.body();
+    let fx = rig.click(row.x - b.x + 3, row.y - b.y, 1);
+    assert_eq!(
+        point_of(&one(&fx, EffectKind::DocumentHistoryPreview)),
+        "h1"
+    );
 }

@@ -46,6 +46,7 @@ pub enum Choice {
     KeepAuthority,
     KeepRecovered,
     DiscardRecovered,
+    AddSelection,
     Dismiss,
     Retry,
     Close,
@@ -121,7 +122,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 26] = [
+const TABLE: [Descriptor; 27] = [
     d(
         Choice::Visual,
         "markdown.mode.visual",
@@ -292,6 +293,13 @@ const TABLE: [Descriptor; 26] = [
         recovery::DISCARD_CHORD,
         Some("documents"),
         EffectKind::DocumentSettle,
+    ),
+    d(
+        Choice::AddSelection,
+        "markdown.addSelection",
+        "Add selection to chat",
+        "Alt+Q",
+        None,
     ),
     d(Choice::Dismiss, "markdown.dismiss", "Dismiss", "Esc", None),
     sends(

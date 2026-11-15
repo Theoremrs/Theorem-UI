@@ -244,6 +244,20 @@ impl Doc {
                 style: severity_style(styles, f.severity),
             })
             .collect();
+        // Where the agent last edited, over its whole line.
+        if let Some(at) = self.followed {
+            let coords = self.session.coords();
+            let at = at.min(self.session.len());
+            if let Some((start, end)) = coords.line_range(coords.line_of(at))
+                && start < end
+            {
+                marks.push(Mark {
+                    start,
+                    end,
+                    style: styles.search_match,
+                });
+            }
+        }
         marks.sort_by_key(|m| m.start);
         marks
     }

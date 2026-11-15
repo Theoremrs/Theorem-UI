@@ -16,6 +16,7 @@
 mod chrome;
 mod create;
 mod flow;
+mod history;
 mod input;
 mod language;
 
@@ -27,7 +28,9 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use serde_json::{Value, json};
 use theorem_workbench_core::completion::Outcome;
-use theorem_workbench_core::effect::{DocumentOpen, Effect, EffectBody, ReconcileKeep};
+use theorem_workbench_core::effect::{
+    CoordinateUnit, DocumentOpen, Effect, EffectBody, ReconcileKeep,
+};
 use theorem_workbench_core::host::{ConnectionState, LocalState};
 use theorem_workbench_core::ids::{
     EffectId, Generation, ResourceRef, Revision as CoreRevision, WorkspaceIdentity,
@@ -225,6 +228,11 @@ pub(crate) struct Doc {
     /// Text an input method is composing at the caret.
     pub preedit: Option<String>,
     pub busy: Option<&'static str>,
+    /// Where the agent last edited (`PanelMsg::RevealOffset`), a scalar
+    /// offset: marked until the person types, moves or clicks.
+    pub followed: Option<usize>,
+    /// The history drawer, when open: it takes the text's place.
+    pub history: Option<history::History>,
 }
 
 impl Doc {
@@ -290,6 +298,21 @@ pub(crate) enum Task {
         path: String,
         adopt: bool,
     },
+    /// The list of points of the drawer opened as number `drawer`.
+    HistoryList {
+        drawer: u64,
+    },
+    /// The text of one point, for the drawer that asked.
+    HistoryPreview {
+        drawer: u64,
+        point: String,
+    },
+    /// The restore the person confirmed; `label` names the revision for the
+    /// notice.
+    HistoryRestore {
+        drawer: u64,
+        label: String,
+    },
 }
 
 #[derive(Clone)]
@@ -340,6 +363,11 @@ pub struct EditorPanel {
     reveal: Option<(u32, u32)>,
     /// What the host says about keeping this document's edits on the device.
     local: Option<LocalState>,
+    /// Where the agent edited (`PanelMsg::RevealOffset`), kept until the text
+    /// is here; a later one replaces it.
+    follow: Option<(u32, CoordinateUnit)>,
+    /// Counts the history drawers opened, so a late answer knows its own.
+    drawers: u64,
 }
 
 /// The scalar offset of `line` (from 1) and `column` (UTF-16 units, from 1),
@@ -398,6 +426,8 @@ impl EditorPanel {
             outstanding: BTreeMap::new(),
             restore,
             reveal: None,
+            follow: None,
+            drawers: 0,
             local: None,
             need_pump: false,
             naming: state["path"]
@@ -480,6 +510,18 @@ impl EditorPanel {
         let at = reveal_offset(&d.session.text(), line, column);
         d.session.set_selection(at, at);
         d.view.reveal(&mut d.session);
+    }
+
+    /// Scroll to where the agent edited and mark it, once there is text. The
+    /// caret, the selection and what is typed are not touched.
+    pub(super) fn place_follow(&mut self) {
+        let Some((start, unit)) = self.follow else {
+            return;
+        };
+        let Some(d) = self.doc_mut() else { return };
+        let at = crate::place::follow_offset(&d.session, start, unit);
+        d.followed = Some(at);
+        d.view.reveal_at(&mut d.session, at);
     }
 
     fn doc(&self) -> Option<&Doc> {
@@ -624,6 +666,10 @@ impl Panel for EditorPanel {
                 self.reveal = Some((line, column));
                 self.place_reveal();
             }
+            PanelMsg::RevealOffset { start, unit } => {
+                self.follow = Some((start, unit));
+                self.place_follow();
+            }
             PanelMsg::Composition(event) => self.on_composition(event),
             // Focus and the terminal's messages mean nothing to a document; the
             // core adds messages over time, so the rest are ignored the same way.
@@ -682,6 +728,10 @@ impl Panel for EditorPanel {
 
     fn text_entry(&self) -> bool {
         matches!(self.phase, Phase::Ready(_))
+    }
+
+    fn holds_escape(&self) -> bool {
+        self.history_open() || self.text_entry()
     }
 
     fn takes_chord(&self, key: &keybinds::KeyInput) -> bool {

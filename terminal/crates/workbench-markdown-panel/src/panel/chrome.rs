@@ -213,6 +213,7 @@ impl MarkdownPanel {
                 (!(d.notice.is_some() || d.sync.recoverable.is_some() || d.link.is_some()))
                     .then(|| "There is nothing to dismiss.".to_owned())
             }
+            Choice::AddSelection => None,
             Choice::Retry => Some("Nothing failed.".to_owned()),
             Choice::Close => None,
         }
@@ -827,9 +828,11 @@ impl MarkdownPanel {
     ) {
         let md = d.md.borrow();
         let tokens = d.token_marks(&styles.editor);
+        let marks = d.followed_marks(md.session(), &styles.editor);
         let paint = Paint {
             focused: cx.focused,
             tokens: &tokens,
+            marks: &marks,
             preedit: d.preedit.as_deref(),
             ..Paint::new(&styles.editor)
         };
@@ -1001,6 +1004,7 @@ impl MarkdownPanel {
             Choice::CopyMine,
             Choice::KeepRecovered,
             Choice::DiscardRecovered,
+            Choice::AddSelection,
         ]
         .into_iter()
         .map(|c| self.action(c))
@@ -1165,6 +1169,7 @@ impl MarkdownPanel {
         root.binding = self.resource();
         root.state.busy = matches!(self.phase, Phase::Opening);
         root.state.focused = cx.focused;
+        root.actions.push(self.action(Choice::AddSelection));
         let mut kids = vec![];
         for choice in self.message_buttons() {
             let a = self.action(choice);

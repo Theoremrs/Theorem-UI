@@ -238,7 +238,8 @@ fn add_reference_inserts_at_the_caret_for_ask_about_this() {
         }),
         label: Some("parse".into()),
         excerpt: Some("fn parse() {}".into()),
-    });
+    })
+    .expect("placed");
     assert_eq!(r.c.text(), "what is @src/lib.rs:10 ");
     let refs = r.c.references();
     assert_eq!(refs.len(), 1);
@@ -254,9 +255,9 @@ fn add_reference_inserts_at_the_caret_for_ask_about_this() {
 #[test]
 fn references_come_back_in_text_order() {
     let mut r = rig(60, 10);
-    r.c.add_reference(file("b.rs"));
+    r.c.add_reference(file("b.rs")).expect("placed");
     r.press(Key::Home);
-    r.c.add_reference(file("a.rs"));
+    r.c.add_reference(file("a.rs")).expect("placed");
     let paths: Vec<String> = r.c.references().into_iter().map(|x| x.path).collect();
     assert_eq!(paths, ["a.rs", "b.rs"]);
 }
@@ -275,7 +276,7 @@ fn a_reference_chosen_by_pointer() {
 #[test]
 fn the_reference_text_is_drawn_in_the_atomic_role() {
     let mut r = rig(60, 6);
-    r.c.add_reference(file("x.rs"));
+    r.c.add_reference(file("x.rs")).expect("placed");
     let buf = r.buffer();
     let theme = theorem_workbench_core::Theme::plain();
     let cell = &buf[(2, 0)];

@@ -109,7 +109,7 @@ impl Strip {
 }
 
 /// `text` broken into rows of at most `width` cells, at spaces where it can.
-fn wrap(text: &str, width: u16) -> Vec<String> {
+pub(super) fn wrap(text: &str, width: u16) -> Vec<String> {
     textwrap::wrap(text, usize::from(width.max(1)))
         .into_iter()
         .map(std::borrow::Cow::into_owned)
@@ -148,7 +148,7 @@ fn layout_buttons(buttons: &[Choice], width: u16) -> Vec<Vec<(Choice, String)>> 
 }
 
 /// The first `cells` display cells of `text`.
-fn take_cells(text: &str, cells: usize) -> String {
+pub(super) fn take_cells(text: &str, cells: usize) -> String {
     let mut out = String::new();
     let mut n = 0;
     for c in text.chars() {
@@ -180,7 +180,7 @@ fn take_cells_back(text: &str, cells: usize) -> String {
 /// `path` in `room` cells. The leading directories give way first (`.../a/b.txt`
 /// then `.../b.txt`), then the file name loses its middle (`no...es.txt`), so
 /// the name stays whole for as long as any room remains for it.
-fn shorten_path(path: &str, room: usize) -> String {
+pub(super) fn shorten_path(path: &str, room: usize) -> String {
     if path.width() <= room {
         return path.to_owned();
     }
@@ -375,7 +375,11 @@ impl EditorPanel {
                 .disk
                 .is_none()
                 .then(|| "The file on disk has not changed under the editor.".to_owned()),
+            Choice::AddSelection | Choice::History | Choice::Restore | Choice::RestoreConfirm => {
+                self.history_unavailable(choice, d)
+            }
             Choice::Dismiss => (!(d.find.is_open()
+                || d.history.is_some()
                 || d.popup.is_some()
                 || d.notice.is_some()
                 || d.sync.recoverable.is_some()
@@ -442,6 +446,9 @@ impl EditorPanel {
                 prompt: Prompt::Name(n.error.clone()),
                 buttons: vec![],
             });
+        }
+        if let Some((t, tone, buttons)) = self.history_strip(d, true) {
+            return text(t, tone, buttons);
         }
         if let Some(r) = &d.sync.restored {
             let bar = self.recovered_bar(d, r);
@@ -543,6 +550,9 @@ impl EditorPanel {
         }
         if let Some(why) = &d.sync.desync {
             return text(why.clone(), Tone::Warn, vec![]);
+        }
+        if let Some((t, tone, buttons)) = self.history_strip(d, false) {
+            return text(t, tone, buttons);
         }
         None
     }
@@ -1025,7 +1035,11 @@ impl EditorPanel {
         let gutter = d.gutter(&styles);
         let tokens = d.tokens.marks(&d.session, d.version, &styles);
         let paint = Paint {
-            focused: cx.focused && !d.in_find && d.rename.is_none() && self.naming.is_none(),
+            focused: cx.focused
+                && !d.in_find
+                && d.rename.is_none()
+                && self.naming.is_none()
+                && d.history.is_none(),
             matches: if d.find.is_open() {
                 d.find.ranges()
             } else {
@@ -1038,9 +1052,13 @@ impl EditorPanel {
             preedit: d.preedit.as_deref(),
             ..Paint::new(&styles)
         };
-        let caret = d.view.draw(&d.session, frame.text, buf, &paint);
-        if let Some(popup) = &d.popup {
-            draw_popup(popup, caret, frame.text, buf, &styles);
+        if d.history.is_some() {
+            self.draw_history(d, frame.text, buf, cx);
+        } else {
+            let caret = d.view.draw(&d.session, frame.text, buf, &paint);
+            if let Some(popup) = &d.popup {
+                draw_popup(popup, caret, frame.text, buf, &styles);
+            }
         }
 
         // The find bar.
@@ -1384,7 +1402,7 @@ impl EditorPanel {
 
     // ---- semantics --------------------------------------------------------
 
-    fn action(&self, choice: Choice) -> NodeAction {
+    pub(super) fn action(&self, choice: Choice) -> NodeAction {
         let why = self.unavailable(choice);
         NodeAction {
             id: choice.action_id(),
@@ -1404,7 +1422,7 @@ impl EditorPanel {
         let mut root = Node::new("text", Role::TextBox, &self.path, frame.text);
         root.binding = self.resource();
         root.revision = Some(CoreRevision::Seq(d.session.accepted_revision()));
-        root.state.focused = cx.focused && !d.in_find && d.rename.is_none();
+        root.state.focused = cx.focused && !d.in_find && d.rename.is_none() && d.history.is_none();
         root.state.busy =
             d.sync.inflight.is_some() || d.sync.save.inflight.is_some() || d.busy.is_some();
         let selected = d.session.selection().map_or(0, |(a, b)| {
@@ -1463,6 +1481,9 @@ impl EditorPanel {
             Choice::Definition,
             Choice::References,
             Choice::Check,
+            Choice::AddSelection,
+            Choice::History,
+            Choice::Restore,
         ]
         .into_iter()
         .map(|c| self.action(c))
@@ -1628,6 +1649,13 @@ impl EditorPanel {
                 }
             }
         }
+        if d.history.is_some() {
+            let drawer = self.history_nodes(d, frame.text);
+            if let Some(first) = drawer.first() {
+                children.push(first.id.clone());
+            }
+            out.extend(drawer);
+        }
         if let Some(popup) = &d.popup {
             let rows = popup.rows();
             let mut list = Node::new("popup", Role::Menu, popup.title(), frame.text);
@@ -1674,6 +1702,8 @@ impl EditorPanel {
         root.binding = self.resource();
         root.state.busy = matches!(self.phase, Phase::Opening);
         root.state.focused = cx.focused;
+        root.actions.push(self.action(Choice::AddSelection));
+        root.actions.push(self.action(Choice::History));
         let mut kids = vec![];
         if self.naming_idle()
             && let Some(n) = &self.naming

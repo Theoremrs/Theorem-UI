@@ -12,6 +12,7 @@ mod field;
 mod find;
 mod owner;
 mod panel;
+mod place;
 mod styles;
 mod sync;
 mod tokens;
@@ -25,6 +26,7 @@ pub use owner::{
     Step, Unknown, revision_number,
 };
 pub use panel::{Drafts, EditorPanel, KIND, register, register_with};
+pub use place::{EXCERPT_LIMIT, follow_offset, reference, reference_of};
 pub use styles::EditorStyles;
 pub use sync::{Changed, apply_owner_change, resync, step_before};
 pub use tokens::TokenState;

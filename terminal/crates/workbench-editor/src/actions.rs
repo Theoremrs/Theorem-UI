@@ -49,6 +49,10 @@ pub enum Choice {
     KeepDisk,
     KeepAuthority,
     Create,
+    AddSelection,
+    History,
+    Restore,
+    RestoreConfirm,
     Dismiss,
     Retry,
     Close,
@@ -69,6 +73,8 @@ pub struct Descriptor {
     pub emits: Option<EffectKind>,
     /// How [`extend_registry`] lists it.
     pub listed: Listed,
+    /// The person's own: an agent's call is refused, and the catalog says so.
+    pub human_only: bool,
 }
 
 /// How an action reaches the registry.
@@ -99,6 +105,7 @@ const fn d(
         requires,
         emits: None,
         listed: Listed::No,
+        human_only: false,
     }
 }
 
@@ -133,7 +140,7 @@ const fn sends(
     }
 }
 
-const TABLE: [Descriptor; 31] = [
+const TABLE: [Descriptor; 35] = [
     sends(
         Choice::Save,
         "document.save",
@@ -362,6 +369,44 @@ const TABLE: [Descriptor; 31] = [
         )
     },
     local(
+        Choice::AddSelection,
+        "document.addSelection",
+        "Add selection to chat",
+        "Alt+Q",
+        None,
+        Listed::Local,
+    ),
+    sends(
+        Choice::History,
+        "document.history",
+        "Show history",
+        "Alt+V",
+        Some("documents"),
+        EffectKind::DocumentHistoryList,
+    ),
+    Descriptor {
+        human_only: true,
+        ..sends(
+            Choice::Restore,
+            "document.restore",
+            "Restore this version",
+            "Enter",
+            Some("documents"),
+            EffectKind::DocumentHistoryRestore,
+        )
+    },
+    Descriptor {
+        human_only: true,
+        ..sends(
+            Choice::RestoreConfirm,
+            "document.restoreConfirm",
+            "Restore",
+            "Enter",
+            Some("documents"),
+            EffectKind::DocumentHistoryRestore,
+        )
+    },
+    local(
         Choice::Dismiss,
         "document.dismiss",
         "Dismiss",
@@ -413,6 +458,9 @@ pub fn actions() -> Vec<ActionDescriptor> {
             }
             if d.listed == Listed::Keyed {
                 action = action.key(d.chord, KeyScope::Panel);
+            }
+            if d.human_only {
+                action = action.human_only();
             }
             action
         })

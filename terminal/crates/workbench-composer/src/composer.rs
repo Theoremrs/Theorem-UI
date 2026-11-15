@@ -664,7 +664,7 @@ impl Composer {
                 ..
             }) => {
                 if let Some(path) = rows.get(selected) {
-                    self.insert_reference(
+                    let _ = self.insert_reference(
                         SourceReference {
                             path: path.clone(),
                             range: None,
@@ -786,7 +786,11 @@ impl Composer {
 
     /// Insert `reference` as an atomic `@path`: over `[from, caret)` when given,
     /// else at the caret (over the selection).
-    fn insert_reference(&mut self, reference: SourceReference, from: Option<usize>) {
+    fn insert_reference(
+        &mut self,
+        reference: SourceReference,
+        from: Option<usize>,
+    ) -> Result<(), String> {
         let token = reference_token(&reference);
         let (s, e) = match from {
             Some(f) => (f, self.session.cursor()),
@@ -799,11 +803,20 @@ impl Composer {
         let rope = self.session.rope();
         let before_ok = s == 0 || rope.char(s - 1).is_whitespace();
         let lead = if before_ok || from.is_some() { "" } else { " " };
-        let _ = self.session.insert_text(&format!("{lead}{token}"));
+        if let Err(why) = self.session.insert_text(&format!("{lead}{token}")) {
+            return Err(why.to_string());
+        }
         let end = self.session.cursor();
         let start = end - token.chars().count();
-        if let Ok(id) = self.session.mark_atomic(start, end) {
-            self.slots.push(Slot { id, reference });
+        match self.session.mark_atomic(start, end) {
+            Ok(id) => self.slots.push(Slot { id, reference }),
+            Err(_) => {
+                // A token that is not held as one would be plain text the
+                // turn does not know is a reference: take it back out.
+                self.session.set_selection(start, end);
+                let _ = self.session.delete(Deletion::Backward);
+                return Err("the reference could not be placed in the draft".to_owned());
+            }
         }
         let rope = self.session.rope();
         let at = self.session.cursor();
@@ -811,14 +824,18 @@ impl Composer {
         if !next_blank {
             let _ = self.session.insert_text(" ");
         }
+        Ok(())
     }
 
     /// Insert a reference at the caret: "ask about this" from another panel.
-    pub fn add_reference(&mut self, reference: SourceReference) {
+    /// A reference the draft does not take is refused with the reason, and
+    /// the draft is as it was.
+    pub fn add_reference(&mut self, reference: SourceReference) -> Result<(), String> {
         self.chip = None;
-        self.insert_reference(reference, None);
+        let placed = self.insert_reference(reference, None);
         let mut sink = Response::default();
         self.after_edit(&mut sink);
+        placed
     }
 
     /// The session restores an atomic range, under its own id, when an undo
@@ -1194,7 +1211,7 @@ impl Composer {
         let end = self.session.len();
         self.session.set_selection(end, end);
         for r in missing {
-            self.insert_reference(r, None);
+            let _ = self.insert_reference(r, None);
         }
         self.editing = Some(self.session.text());
         let mut sink = Response::default();

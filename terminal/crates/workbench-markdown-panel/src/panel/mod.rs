@@ -21,7 +21,10 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 use theorem_workbench_core::completion::Outcome;
-use theorem_workbench_core::effect::{DocumentOpen, Effect, EffectBody, ReconcileKeep};
+use theorem_workbench_core::draft::SourceReference;
+use theorem_workbench_core::effect::{
+    CoordinateUnit, DocumentOpen, Effect, EffectBody, ReconcileKeep,
+};
 use theorem_workbench_core::host::{ConnectionState, LocalState};
 use theorem_workbench_core::ids::{
     EffectId, Generation, ResourceRef, Revision as CoreRevision, WorkspaceIdentity,
@@ -29,9 +32,11 @@ use theorem_workbench_core::ids::{
 use theorem_workbench_core::semantics::Node;
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{Composition, Ctx, EmitError, Panel, PanelMsg, TabLabel, ViewCtx};
-use theorem_workbench_editor::{EditorStyles, Mark, OwnerSync, SourceView, TokenState};
-use theorem_workbench_markdown::{MarkdownDoc, MarkdownMode, MarkdownViewState};
-use theorem_workbench_text::{OpId, recovery};
+use theorem_workbench_editor::{
+    EditorStyles, Mark, OwnerSync, SourceView, TokenState, follow_offset, reference, reference_of,
+};
+use theorem_workbench_markdown::{Anchor, MarkdownDoc, MarkdownMode, MarkdownViewState};
+use theorem_workbench_text::{EditSession, OpId, Snap, Unit, recovery};
 
 use crate::Drafts;
 use crate::actions::Choice;
@@ -157,6 +162,9 @@ pub(crate) struct Doc {
     /// Changes with every message that can change the text, so colour laid
     /// out for earlier text is not drawn on this.
     pub version: u64,
+    /// Where the agent last edited (`PanelMsg::RevealOffset`), a scalar
+    /// offset: marked in the source until the person types or clicks.
+    pub followed: Option<usize>,
 }
 
 impl Doc {
@@ -167,6 +175,22 @@ impl Doc {
     }
 
     /// Typed text that has not reached the owner's session: in the open block.
+    /// The mark over the line the agent last edited.
+    pub fn followed_marks(&self, session: &EditSession, styles: &EditorStyles) -> Vec<Mark> {
+        let Some(at) = self.followed else {
+            return vec![];
+        };
+        let coords = session.coords();
+        match coords.line_range(coords.line_of(at.min(session.len()))) {
+            Some((start, end)) if start < end => vec![Mark {
+                start,
+                end,
+                style: styles.search_match,
+            }],
+            _ => vec![],
+        }
+    }
+
     pub fn block_dirty(&self) -> bool {
         self.md
             .borrow_mut()
@@ -259,6 +283,9 @@ pub struct MarkdownPanel {
     reveal: Option<(u32, u32)>,
     /// How far the document's edits are from being safe, as the host last said.
     local: Option<LocalState>,
+    /// Where the agent edited, kept until the text is here; a later one
+    /// replaces it.
+    follow: Option<(u32, CoordinateUnit)>,
 }
 
 impl MarkdownPanel {
@@ -282,6 +309,7 @@ impl MarkdownPanel {
             outstanding: BTreeMap::new(),
             restore,
             reveal: None,
+            follow: None,
             need_pump: false,
             local: None,
         }
@@ -395,6 +423,68 @@ impl MarkdownPanel {
         self.go_to(at);
     }
 
+    /// Scroll to where the agent edited and mark it, once there is text. The
+    /// caret, the selection and what is typed are not touched.
+    pub(super) fn place_follow(&mut self) {
+        let Some((start, unit)) = self.follow else {
+            return;
+        };
+        if self.doc().is_none() {
+            return;
+        }
+        self.follow = None;
+        // The views take their real size first.
+        self.relayout();
+        let mode = match self.doc() {
+            Some(d) => self.shown(d).mode,
+            None => return,
+        };
+        let Some(d) = self.doc_mut() else { return };
+        let md = d.md.get_mut();
+        let at = follow_offset(md.session(), start, unit);
+        d.followed = Some(at);
+        match mode {
+            MarkdownMode::Source | MarkdownMode::Split => {
+                md.apply_local(|s| d.source.reveal_at(s, at));
+            }
+            MarkdownMode::Visual | MarkdownMode::Preview => {
+                let byte = md
+                    .session()
+                    .coords()
+                    .from_scalar(at, Unit::Utf8)
+                    .unwrap_or(0);
+                if let Some(block) = md.block_at(byte) {
+                    let mut view = md.view_state();
+                    view.anchor = Anchor { block, row: 0 };
+                    md.restore_view(&view);
+                }
+            }
+        }
+    }
+
+    /// What the person has selected, as a reference for the conversation: the
+    /// selection of the text, or of the open block placed in the document, or
+    /// else the line the caret is on.
+    pub(super) fn selection_reference(&mut self) -> Option<SourceReference> {
+        let path = self.path.clone();
+        let d = self.doc_mut()?;
+        let md = d.md.get_mut();
+        let block_start = md.open_range().map(|r| {
+            md.session()
+                .coords()
+                .to_scalar(r.start, Unit::Utf8, Snap::Backward)
+                .unwrap_or(0)
+        });
+        if let Some(start) = block_start
+            && let Some(s) = md.block_session()
+        {
+            let (a, b) = s.selection().unwrap_or((s.cursor(), s.cursor()));
+            let (a, b) = (start + a, start + b);
+            return Some(reference_of(&path, md.session(), a, b));
+        }
+        Some(reference(&path, md.session()))
+    }
+
     /// Take the workspace the root names. The first one the panel sees is the
     /// one its saved view state was for. A different one after that, or a new
     /// generation of the same one, means the document it showed is another
@@ -502,6 +592,10 @@ impl Panel for MarkdownPanel {
             PanelMsg::Reveal { line, column } => {
                 self.reveal = Some((line, column));
                 self.place_reveal();
+            }
+            PanelMsg::RevealOffset { start, unit } => {
+                self.follow = Some((start, unit));
+                self.place_follow();
             }
             // Focus, composition and the terminal's messages mean nothing here;
             // the core adds messages over time, so the rest are ignored the

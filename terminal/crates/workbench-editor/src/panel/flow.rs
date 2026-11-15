@@ -36,6 +36,7 @@ impl EditorPanel {
     pub(super) fn after(&mut self, cx: &mut Ctx) {
         self.relayout();
         self.pump(cx);
+        self.history_pump(cx);
         if let Some(d) = self.doc_mut() {
             let version = d.version;
             d.find.refresh(&d.session, version);
@@ -214,6 +215,9 @@ impl EditorPanel {
                 references,
             } => self.on_places(revision, references, c),
             Task::Check(revision) => self.on_check(revision, c),
+            Task::HistoryList { drawer } => self.on_history_list(drawer, c),
+            Task::HistoryPreview { drawer, point } => self.on_history_preview(drawer, point, c),
+            Task::HistoryRestore { drawer, label } => self.on_history_restore(drawer, &label, c),
             Task::Restore => {
                 let Some(d) = self.doc_mut() else { return };
                 let step = d.sync.restored_settled(&c);
@@ -325,6 +329,8 @@ impl EditorPanel {
             tokens: TokenState::new(),
             preedit: None,
             busy: None,
+            followed: None,
+            history: None,
         };
         if let Some(n) = d
             .sync
@@ -339,6 +345,7 @@ impl EditorPanel {
         d.view.resize(&mut d.session, w, h);
         self.phase = Phase::Ready(Box::new(d));
         self.place_reveal();
+        self.place_follow();
     }
 
     fn on_edit(&mut self, op: OpId, c: Completion, cx: &mut Ctx) {
