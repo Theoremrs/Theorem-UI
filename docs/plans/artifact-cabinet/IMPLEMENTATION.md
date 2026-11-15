@@ -167,6 +167,11 @@ the grid and started 3 px off the content edge. Changes:
 - Card descriptions drop Markdown markers (`plainText` in `catalog.ts`).
 - Fixed a card frame whose top border stopped one column short of its right
   side (pre-existing; `a_card_frame_closes_on_its_own_corner`).
+- Grown targets never reach a neighbour, compact header included: the filter
+  row's centre sits at least a full target below the search input's, and the
+  gap before the gallery is at least the filter targets' overhang, so a tap
+  on a filter's lower edge no longer lands on the first card (review
+  finding; `a_compact_header_leaves_room_for_a_grown_filter_target`).
 
 | Check                                       | Before               | After         |
 | ------------------------------------------- | -------------------- | ------------- |

@@ -46,13 +46,13 @@ async function openCabinet(page) {
   await search.fill('field'); await page.waitForTimeout(1200); const s1 = await count()
   const s1t = await page.locator('[data-cabinet-card]').first().getAttribute('data-cabinet-card')
   await search.fill(''); await page.waitForTimeout(1200)
-  await page.getByRole('button', { name: 'Images' }).click({ force: true }); await page.waitForTimeout(1200); const f1 = await count()
-  await page.getByRole('button', { name: 'Apps' }).click({ force: true }); await page.waitForTimeout(1200); const f2 = await count()
+  await page.locator('[data-artifact-cabinet]').getByRole('button', { name: 'Images', exact: true }).click({ force: true }); await page.waitForTimeout(1200); const f1 = await count()
+  await page.locator('[data-artifact-cabinet]').getByRole('button', { name: 'Apps', exact: true }).click({ force: true }); await page.waitForTimeout(1200); const f2 = await count()
   const emptyText = await page.locator('[data-artifact-cabinet]').innerText()
-  await page.getByRole('button', { name: 'All' }).click({ force: true }); await page.waitForTimeout(1200)
+  await page.screenshot({ path: out + 'a06-apps-empty.png' })
+  await page.locator('[data-artifact-cabinet]').getByRole('button', { name: 'All', exact: true }).click({ force: true }); await page.waitForTimeout(1200)
   const order = await page.$$eval('[data-cabinet-card]', (b) => b.map((x) => x.dataset.cabinetCard.slice(-6)))
   log('A06', JSON.stringify({ searchField: s1, first: s1t?.slice(-8), images: f1, apps: f2, appsPressed: true, allOrder: order }))
-  await page.screenshot({ path: out + 'a06-apps-empty.png' })
 
   // A11: the terminal keeps its screen and identity across cabinet visits.
   await page.getByRole('tab', { name: 'Terminal' }).click()

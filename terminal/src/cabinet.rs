@@ -466,7 +466,8 @@ impl Cabinet {
             });
         }
         // The filter row's centre must sit a full target below the input's.
-        y += 3 + related.max(pitch.saturating_sub(3));
+        // (The input sits on the box's middle row, y + 1.)
+        y += 1 + (2 + related).max(pitch);
         // Filters wrap onto further rows, a full target apart, rather than
         // drop off the edge. The active one is semibold, accented and
         // bracketed, so it reads without colour.
@@ -536,6 +537,10 @@ impl Cabinet {
         y += 1;
         // The status (loading, unavailable, stale) gets up to two rows inside
         // the gap before the gallery.
+        // Whatever fills it, the gap is at least the filter targets' overhang
+        // (a target grows evenly around its row), so a grown filter never
+        // reaches into the gallery, whose cards would take the tap.
+        let filters_end = y;
         let status = wrap(&self.view.status, w as usize, 2);
         if status.is_empty() {
             y += group;
@@ -550,6 +555,7 @@ impl Cabinet {
             }
             y += u16::from(!compact);
         }
+        y = y.max(filters_end + pitch.saturating_sub(1));
         y - area.y
     }
 
@@ -1041,6 +1047,41 @@ mod tests {
             gallery - filters - 1,
             2,
             "two rows between controls and gallery"
+        );
+    }
+
+    #[test]
+    fn a_compact_header_leaves_room_for_a_grown_filter_target() {
+        // 16 px cells under a coarse pointer: 44 px targets need three rows
+        // per filter row, so the gallery starts at least two rows below it.
+        let mut view = sample();
+        view["targetPx"] = 44.into();
+        use wasm_bindgen::JsCast;
+        let mut cabinet = Cabinet::new(wasm_bindgen::JsValue::NULL.unchecked_into());
+        cabinet.cell = (7.5, 16.0);
+        cabinet.set_view(&view.to_string()).unwrap();
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(60, 16)).unwrap();
+        terminal
+            .draw(|frame| {
+                cabinet.layout_and_draw(frame);
+            })
+            .unwrap();
+        let rows = rows(terminal.backend().buffer());
+        assert!(
+            !rows.iter().any(|r| r.contains("newest first")),
+            "a 16-row window draws the compact header"
+        );
+        let input = rows.iter().position(|r| r.contains('⌕')).unwrap();
+        let filters = rows.iter().position(|r| r.contains("[All]")).unwrap();
+        assert!(
+            filters - input >= 3,
+            "input at {input}, filters at {filters}"
+        );
+        let gallery = rows.iter().position(|r| r.contains("01─┐")).unwrap();
+        assert!(
+            gallery - filters > 2,
+            "gallery at {gallery}, filters at {filters}"
         );
     }
 
