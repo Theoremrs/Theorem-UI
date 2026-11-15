@@ -1881,3 +1881,20 @@ pub fn render_preview(source_json: &str, rgba: &[u8], width: u32, height: u32) -
     js_sys::Reflect::set(&out, &"indices".into(), &js_sys::Uint8Array::from(result.raster.indices.as_slice()))?;
     Ok(out.into())
 }
+
+/// The preview palette as `{id, version, colours: ["#rrggbb", …]}` in index
+/// order, so the page paints a raster's indices with the colours it was
+/// converted against.
+#[wasm_bindgen]
+pub fn preview_palette() -> String {
+    let colours: Vec<String> = preview::palette::REFERENCE
+        .iter()
+        .map(|(_, [r, g, b])| format!("#{r:02x}{g:02x}{b:02x}"))
+        .collect();
+    serde_json::json!({
+        "id": preview::palette::PALETTE_ID,
+        "version": preview::palette::PALETTE_VERSION,
+        "colours": colours,
+    })
+    .to_string()
+}

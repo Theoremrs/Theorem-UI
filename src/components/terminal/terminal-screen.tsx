@@ -429,7 +429,7 @@ export function TerminalAgent(props: AgentProps) {
  * works out from the workspace around it.
  */
 let wasmModule: Promise<typeof TerminalWasm> | undefined
-const loadWasm = () =>
+export const loadWasm = () =>
   (wasmModule ??= Promise.all([
     import('@/terminal-wasm/theorem_terminal'),
     import('./live-terminal-theme'),

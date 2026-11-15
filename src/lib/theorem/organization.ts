@@ -1,6 +1,7 @@
 // SOURCING: @tanstack/react-query over lib/theorem/passthrough (the routes in docs/plans/thread-organization-and-review.md, which the vendored SDK has no client for yet), @theoremharness/sdk projects.list and threads.list for a Theorem that predates those routes. The membership and Librarian rules are translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann); Theorem enforces them, this only reads and asks.
 import {
   queryOptions,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -167,7 +168,37 @@ export type ProjectOutput = {
   documentId?: string
   uploadId?: string
   reviewId?: string
+  /** Card facts (Theorem's cabinet catalog); absent from an older Theorem. */
+  category?: OutputCategory
+  mediaType?: string
+  artifactKind?: string
+  digest?: string
+  byteLen?: number
+  description?: {
+    text: string
+    provenance: 'authored' | 'metadata' | 'derived'
+  }
 }
+
+export type OutputCategory =
+  | 'document'
+  | 'image'
+  | 'app'
+  | 'code'
+  | 'diagram'
+  | 'chart'
+  | 'review'
+  | 'other'
+
+/** One page of a project's outputs: an exact total of what matched, and where to go on. */
+export type ProjectOutputPage = {
+  items: ProjectOutput[]
+  total: number
+  nextCursor?: string
+}
+
+/** What the cabinet asks of the outputs route; the authority filters and counts (§3.3). */
+export type OutputsFilter = { q?: string; category?: OutputCategory }
 
 /** What the sidebar reads: the organization, and whether this Theorem serves the routes that change it. */
 export type OrganizationRead = Organization & {
@@ -831,6 +862,33 @@ export function useProjectOutputs(projectId: string | undefined) {
       theoremJson<{ items: ProjectOutput[]; total: number }>(
         `${BASE}/projects/${encodeURIComponent(projectId!)}/outputs`,
       ),
+  })
+}
+
+const CABINET_PAGE = 48
+
+/**
+ * A project's outputs, filtered and searched by Theorem, a page at a time.
+ * The total is the authority's count of every match, not the loaded pages'.
+ */
+export function useCabinetOutputs(
+  projectId: string | undefined,
+  filter: OutputsFilter,
+) {
+  return useInfiniteQuery({
+    queryKey: [...outputsKey(projectId ?? ''), 'cabinet', filter] as const,
+    enabled: projectId !== undefined,
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (page: ProjectOutputPage) => page.nextCursor,
+    queryFn: ({ pageParam }) => {
+      const query = new URLSearchParams({ limit: String(CABINET_PAGE) })
+      if (pageParam) query.set('cursor', pageParam)
+      if (filter.q) query.set('q', filter.q)
+      if (filter.category) query.set('category', filter.category)
+      return theoremJson<ProjectOutputPage>(
+        `${BASE}/projects/${encodeURIComponent(projectId!)}/outputs?${query}`,
+      )
+    },
   })
 }
 
