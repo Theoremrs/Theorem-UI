@@ -95,7 +95,7 @@ export interface FixtureOptions {
   /** The account's layout cannot be read: the host answers with this browser's copy, labelled `device`. */
   deviceLayout?: boolean
   /** Called with the kind of each effect the core asked the host for. */
-  performed?: (kind: string) => void
+  performed?: (kind: string, effect: Effect) => void
 }
 
 /** What a story can still do to the host once it is running: say something the host would say. */
@@ -168,11 +168,15 @@ function applyEdits(text: string, edits: TextChange[]) {
 /** The shell's echo of typed input: printable text as it is, Enter as a new line and prompt, Backspace as an erase. */
 const echo = (typed: string) =>
   typed
-    .replace(/\r\n?|\n/g, '\r\n\u001b[1;32mada@story\u001b[0m:\u001b[1;34m~/project\u001b[0m$ ')
+    .replace(
+      /\r\n?|\n/g,
+      '\r\n\u001b[1;32mada@story\u001b[0m:\u001b[1;34m~/project\u001b[0m$ ',
+    )
     .replace(/\u007f/g, '\b \b')
 
 /** The key and record the documents owner's `DraftStore` writes for a path (`documents/local.ts`, `nodeId` and `write`). */
-const draftKey = (path: string) => `theorem-workbench:draft:${WORKSPACE}:${path}`
+const draftKey = (path: string) =>
+  `theorem-workbench:draft:${WORKSPACE}:${path}`
 const DRAFT_SAVED_AT_MS = 1
 
 type Held = {
@@ -182,6 +186,8 @@ type Held = {
   disk: string
   /** Edits made since the last save, kept as the device would checkpoint them. */
   pending: PendingEdit[]
+  /** The edits the editor holds behind an unanswered one (`documentKeep`): kept on the device with the rest, never applied here. */
+  behind?: PendingEdit[]
 }
 
 /** What the host holds for one signed-in account: nothing of it is visible to another. */
@@ -230,7 +236,8 @@ export function createFixtureHost(
   let offset = 0
   const epoch = 1
   /** The terminal's attachment, once something has attached. */
-  let terminal: { resource: ResourceRef; cols: number; rows: number } | undefined
+  let terminal:
+    { resource: ResourceRef; cols: number; rows: number } | undefined
   /** The branch of the thread the transcript shows, and the revision of the last snapshot sent. */
   let branch = 'root'
   let revision = STORY_CONVERSATION.revision
@@ -245,7 +252,11 @@ export function createFixtureHost(
     send(
       modelsMessage('story-project', conversationId, {
         models: [
-          { ref: 'deepseek-v4-flash', label: 'DeepSeek V4 Flash', contextTokens: 128_000 },
+          {
+            ref: 'deepseek-v4-flash',
+            label: 'DeepSeek V4 Flash',
+            contextTokens: 128_000,
+          },
           { ref: 'claude-opus', label: 'Claude Opus', contextTokens: 200_000 },
         ],
         selected: model,
@@ -352,10 +363,14 @@ export function createFixtureHost(
                 program: 1,
                 state: 'running',
                 controlledElsewhere: false,
-                ...(options.terminalModes ? { modes: options.terminalModes } : {}),
+                ...(options.terminalModes
+                  ? { modes: options.terminalModes }
+                  : {}),
               },
             ],
-        ...(options.terminalAdoption ? { adoption: options.terminalAdoption } : {}),
+        ...(options.terminalAdoption
+          ? { adoption: options.terminalAdoption }
+          : {}),
       })
     // The conversation owner's first snapshot, as its port sends one at connect.
     if (options.transcript)
@@ -370,6 +385,32 @@ export function createFixtureHost(
       localStorage.removeItem(draftKey(path))
     } catch {
       // Nothing was kept.
+    }
+  }
+
+  /** The device record for one document: every edit held, then every edit held behind them, in order. */
+  function writeDraft(path: string, held: Held) {
+    const all = [...held.pending, ...(held.behind ?? [])]
+    if (all.length === 0) return clearDraft(path)
+    try {
+      localStorage.setItem(
+        draftKey(path),
+        JSON.stringify({
+          workspaceId: WORKSPACE,
+          path,
+          revision: held.revision,
+          draft: JSON.stringify(
+            all.map(({ operationId, baseRevision, edits }) => ({
+              operationId,
+              baseRevision,
+              edits,
+            })),
+          ),
+          savedAtMs: DRAFT_SAVED_AT_MS,
+        }),
+      )
+    } catch {
+      // Without a store the owner says the draft is held in memory only; a story needs the store.
     }
   }
 
@@ -400,7 +441,7 @@ export function createFixtureHost(
   }
 
   function perform(effect: Effect) {
-    options.performed?.(effect.kind)
+    options.performed?.(effect.kind, effect)
     switch (effect.kind) {
       case 'filesList': {
         const listing = tree[treeKey(effect.payload.path)]
@@ -412,7 +453,8 @@ export function createFixtureHost(
         })
       }
       case 'documentOpen': {
-        if (effect.resource.type !== 'document') return refuse(effect, 'Not a document')
+        if (effect.resource.type !== 'document')
+          return refuse(effect, 'Not a document')
         const path = effect.resource.resourceId
         const text = DOCUMENTS[path] ?? effect.payload.seedText ?? ''
         const held = documents.get(path) ?? {
@@ -425,7 +467,8 @@ export function createFixtureHost(
         documents.set(path, held)
         // Unsaved edits this account left behind come back as restored edits, never applied on their own.
         const restored =
-          kept.checkpoints.get(path) ?? (options.holdEdits ? deviceDraft(path, held) : undefined)
+          kept.checkpoints.get(path) ??
+          (options.holdEdits ? deviceDraft(path, held) : undefined)
         accept(effect, {
           type: 'documentOpened',
           text: held.text,
@@ -477,29 +520,29 @@ export function createFixtureHost(
             state: 'uncertain',
             reason: 'The host did not answer in time',
           })
-          send({ type: 'documentLocal', resource: effect.resource, local: { state: 'draft' } })
-          try {
-            localStorage.setItem(
-              draftKey(path),
-              JSON.stringify({
-                workspaceId: WORKSPACE,
-                path,
-                revision: held.revision,
-                draft: JSON.stringify(
-                  held.pending.map(({ operationId, baseRevision, edits }) => ({ operationId, baseRevision, edits })),
-                ),
-                savedAtMs: DRAFT_SAVED_AT_MS,
-              }),
-            )
-          } catch {
-            // Without a store the owner says the draft is held in memory only; a story needs the store.
-          }
           send({
             type: 'documentLocal',
             resource: effect.resource,
-            local: { state: 'checkpointed', savedAtMs: DRAFT_SAVED_AT_MS, recovered: false },
+            local: { state: 'draft' },
           })
-          return complete(effect, { status: 'uncertain', reason: 'The host did not answer in time' })
+          // An edit that reaches the host leaves the queue behind it by its operation id.
+          held.behind = held.behind?.filter(
+            ({ operationId }) => operationId !== effect.payload.operationId,
+          )
+          writeDraft(path, held)
+          send({
+            type: 'documentLocal',
+            resource: effect.resource,
+            local: {
+              state: 'checkpointed',
+              savedAtMs: DRAFT_SAVED_AT_MS,
+              recovered: false,
+            },
+          })
+          return complete(effect, {
+            status: 'uncertain',
+            reason: 'The host did not answer in time',
+          })
         }
         held.pending.push({
           operationId: effect.payload.operationId,
@@ -511,9 +554,25 @@ export function createFixtureHost(
         held.revision += 1
         if (options.holdEdits) {
           // The owner drops an accepted edit from what it holds and says the device copy is no longer needed.
-          held.pending = held.pending.filter(({ operationId }) => operationId !== effect.payload.operationId)
-          if (held.pending.length === 0) clearDraft(path)
-          send({ type: 'documentLocal', resource: effect.resource, local: { state: 'accepted' } })
+          held.pending = held.pending.filter(
+            ({ operationId }) => operationId !== effect.payload.operationId,
+          )
+          held.behind = held.behind?.filter(
+            ({ operationId }) => operationId !== effect.payload.operationId,
+          )
+          writeDraft(path, held)
+          send({
+            type: 'documentLocal',
+            resource: effect.resource,
+            local:
+              held.pending.length + (held.behind?.length ?? 0) > 0
+                ? {
+                    state: 'checkpointed',
+                    savedAtMs: DRAFT_SAVED_AT_MS,
+                    recovered: false,
+                  }
+                : { state: 'accepted' },
+          })
         }
         return accept(effect, {
           type: 'documentEdited',
@@ -528,6 +587,7 @@ export function createFixtureHost(
         held.saved = held.revision
         held.disk = held.text
         held.pending = []
+        held.behind = []
         kept.checkpoints.delete(found[0])
         clearDraft(found[0])
         return accept(effect, {
@@ -552,13 +612,55 @@ export function createFixtureHost(
         if (options.diagnostics && effect.resource.type === 'document')
           send({ type: 'diagnosticsCleared', path: effect.resource.resourceId })
         return accept(effect)
+      case 'documentKeep': {
+        const found = document(effect)
+        if (!found) return refuse(effect, 'This document is not open')
+        const [path, held] = found
+        // The whole queue each time; kept on the device and applied nowhere.
+        held.behind = effect.payload.edits.map(
+          ({ operationId, baseRevision, edits }) => ({
+            operationId,
+            baseRevision,
+            edits,
+            state: 'restored' as const,
+          }),
+        )
+        writeDraft(path, held)
+        send({
+          type: 'documentLocal',
+          resource: effect.resource,
+          local:
+            held.pending.length + held.behind.length > 0
+              ? {
+                  state: 'checkpointed',
+                  savedAtMs: DRAFT_SAVED_AT_MS,
+                  recovered: false,
+                }
+              : { state: 'accepted' },
+        })
+        return accept(effect)
+      }
       case 'documentSettle':
       case 'documentRevert':
         if (effect.resource.type === 'document') {
-          const settled = effect.kind === 'documentSettle' ? effect.payload.operationId : undefined
+          const settled =
+            effect.kind === 'documentSettle'
+              ? effect.payload.operationId
+              : undefined
           const held = documents.get(effect.resource.resourceId)
-          if (held) held.pending = settled ? held.pending.filter(({ operationId }) => operationId !== settled) : []
-          if (!held || held.pending.length === 0) clearDraft(effect.resource.resourceId)
+          if (held) {
+            held.pending = settled
+              ? held.pending.filter(
+                  ({ operationId }) => operationId !== settled,
+                )
+              : []
+            held.behind = settled
+              ? held.behind?.filter(
+                  ({ operationId }) => operationId !== settled,
+                )
+              : []
+            writeDraft(effect.resource.resourceId, held)
+          } else clearDraft(effect.resource.resourceId)
         }
         return accept(effect)
       case 'layoutLoad':
@@ -664,7 +766,10 @@ export function createFixtureHost(
         })
       case 'terminalOpen':
       case 'terminalAttach': {
-        if (effect.resource.type !== 'terminal' && effect.kind === 'terminalAttach')
+        if (
+          effect.resource.type !== 'terminal' &&
+          effect.kind === 'terminalAttach'
+        )
           return refuse(effect, 'Not a terminal')
         const attachment =
           effect.kind === 'terminalOpen'
@@ -837,7 +942,10 @@ export function createFixtureHost(
         if (held.revision !== held.saved) {
           kept.checkpoints.set(
             path,
-            held.pending.map((edit) => ({ ...edit, state: 'restored' as const })),
+            held.pending.map((edit) => ({
+              ...edit,
+              state: 'restored' as const,
+            })),
           )
           // The file itself is what was saved: the draft lived only on the device.
           held.text = held.disk
@@ -852,8 +960,15 @@ export function createFixtureHost(
       restoreLayout(account, kept)
       documents = kept.documents
       later(() => {
-        send({ type: 'workspaceChanged', workspace: WORKSPACE, environment: 'story' })
-        send({ type: 'capabilitiesChanged', capabilities: { granted: options.granted } })
+        send({
+          type: 'workspaceChanged',
+          workspace: WORKSPACE,
+          environment: 'story',
+        })
+        send({
+          type: 'capabilitiesChanged',
+          capabilities: { granted: options.granted },
+        })
         send({ type: 'connectionChanged', workspace: WORKSPACE, state: 'open' })
       })
     },

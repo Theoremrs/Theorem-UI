@@ -357,6 +357,10 @@ export function createDocumentsPort({
         case 'documentSettle':
           handle.settle(effect.payload.operationId)
           return { outcome: 'accepted' }
+        case 'documentKeep':
+          // Kept on this device, sent nowhere; the whole queue each time, empty when nothing is held.
+          handle.keep(effect.payload.edits)
+          return { outcome: 'accepted' }
         case 'documentClose': {
           const done = await handle.close({ requestId })
           if (done.outcome === 'accepted') {

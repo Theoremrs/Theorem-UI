@@ -1032,6 +1032,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'documentReconcile':
       case 'documentRevert':
       case 'documentSettle':
+      case 'documentKeep':
         return route('documents', options.documents, effect, requestId)
 
       case 'scmStatus':

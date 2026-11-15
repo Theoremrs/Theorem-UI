@@ -54,6 +54,15 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   documentReconcile: { keep: 'disk' },
   documentRevert: undefined,
   documentSettle: { operationId: 'op' },
+  documentKeep: {
+    edits: [
+      {
+        operationId: 'op',
+        baseRevision: { scheme: 'seq', value: 1 },
+        edits: [{ start: 0, end: 0, insert: 'x' }],
+      },
+    ],
+  },
   scmStatus: undefined,
   scmDiff: { staged: false },
   scmShow: { path: 'a', reference: 'head' },
@@ -493,6 +502,17 @@ describe('routing', () => {
         calls: 1,
       })
     }
+  })
+
+  test('a document keep goes to the documents owner with its kept edits, and only there', async () => {
+    const t = await setup()
+    await performAll(t, ['documentKeep'], (kind, index) =>
+      effectOf(index, kind, {}),
+    )
+    await t.settle()
+    const made = t.calls.filter((call) => call.kind === 'documentKeep')
+    expect(made.map((call) => call.owner)).toEqual(['documents'])
+    expect(t.calls.filter((call) => call.owner === 'documents')).toHaveLength(1)
   })
 
   test('every effect completes exactly once, echoing its id, resource, revision and generation', async () => {
@@ -1570,6 +1590,69 @@ describe('host events', () => {
         expect(p.unavailableReason).toContain('herdr-core 9.9.9')
         expect(p.unavailableReason).not.toContain('terminals not ready')
       }
+    })
+
+    test('capabilities that change after the first listing republish the Herdr profiles with the reason that is true each time', async () => {
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          herdr: { ready: false },
+          canList: async () => true,
+          list: async () => ({
+            sessions: [row('pty-1', 'native')],
+            adoption: { state: 'settled' },
+          }),
+        },
+      )
+      await t.settle()
+      const herdrNow = () =>
+        sessionLists(t)
+          .at(-1)!
+          .profiles.filter((p) => p.backend === 'herdr')
+      const change = async (backend: Record<string, unknown>) => {
+        t.host.on('capabilities', async () => ({
+          schema: 'theorem-workspace-capabilities/1',
+          workspace_id: 'w1',
+          version: '1.2.3',
+          epoch: 'e1',
+          cursor: '0',
+          granted_by: 'test-host',
+          backends: { herdr: backend },
+          operations: [
+            'workspace.files.list',
+            'documents.open',
+            'scm.status',
+            'terminal.open',
+          ].map((name) => op(name)),
+        }))
+        t.live.emit('workspace.capabilities', {})
+        await t.settle()
+        await t.settle()
+      }
+      const before = sessionLists(t).length
+
+      expect(herdrNow().every((p) => !p.available)).toBe(true)
+      for (const p of herdrNow())
+        expect(p.unavailableReason).toContain('Herdr not ready')
+
+      await change({ ready: true, generation: 1, version: '0.1.17' })
+      expect(herdrNow().every((p) => p.available)).toBe(true)
+      for (const p of herdrNow()) expect(p.unavailableReason).toBeUndefined()
+
+      await change({ ready: true, generation: 1, version: '9.9.9' })
+      expect(herdrNow().every((p) => !p.available)).toBe(true)
+      for (const p of herdrNow()) {
+        expect(p.unavailableReason).toContain('herdr-core 9.9.9')
+        expect(p.unavailableReason).not.toContain('terminals not ready')
+      }
+
+      await change({ ready: false })
+      expect(herdrNow().every((p) => !p.available)).toBe(true)
+      for (const p of herdrNow())
+        expect(p.unavailableReason).toContain('Herdr not ready')
+      expect(sessionLists(t).length).toBeGreaterThan(before)
     })
 
     test('an unavailable adoption is stated on the Herdr profiles with its reason, and no session is dropped', async () => {
