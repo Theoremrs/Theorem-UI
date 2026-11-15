@@ -8,32 +8,6 @@
 use ratatui::style::Style;
 use theorem_workbench_core::Theme;
 
-/// A role of the workbench theme.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ThemeRole {
-    Text,
-    Muted,
-    Warning,
-    Success,
-    Error,
-}
-
-impl ThemeRole {
-    pub fn of(self, theme: &Theme) -> Style {
-        match self {
-            Self::Text => theme.text,
-            Self::Muted => theme.muted,
-            Self::Warning => theme.warning,
-            Self::Success => theme.success,
-            Self::Error => theme.error,
-        }
-    }
-}
-
-/// The role a changed file's letter wears. The theme has no role of its own for "changed"
-/// yet, so it borrows the warning role; this is the one place that choice is made.
-pub const CHANGED_ROLE: ThemeRole = ThemeRole::Warning;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChangesStyles {
     /// Text with no role of its own.
@@ -79,16 +53,16 @@ impl ChangesStyles {
         Self {
             text: theme.text,
             muted: theme.muted,
-            line: theme.line,
+            line: theme.divider,
             cursor: theme.focus,
-            cursor_idle: theme.selected,
-            selected: theme.selected,
-            heading: theme.muted,
-            letter_added: theme.success,
-            letter_changed: CHANGED_ROLE.of(theme),
-            letter_deleted: theme.error,
-            letter_conflict: theme.error,
-            letter_untracked: theme.muted,
+            cursor_idle: theme.selection,
+            selected: theme.selection,
+            heading: theme.section_heading,
+            letter_added: theme.change_added,
+            letter_changed: theme.change_changed,
+            letter_deleted: theme.change_deleted,
+            letter_conflict: theme.change_conflict,
+            letter_untracked: theme.change_untracked,
             error: theme.error,
             warning: theme.warning,
             success: theme.success,
@@ -96,12 +70,12 @@ impl ChangesStyles {
             removed_line: theme.removed_line,
             added_words: theme.added_words,
             removed_words: theme.removed_words,
-            hunk_header: theme.muted,
-            hunk_current: theme.selected,
-            gutter: theme.muted,
-            field_focus: theme.focus,
-            button: theme.focus,
-            button_disabled: theme.muted,
+            hunk_header: theme.hunk_header,
+            hunk_current: theme.hunk_current,
+            gutter: theme.gutter,
+            field_focus: theme.field_focus,
+            button: theme.control,
+            button_disabled: theme.control_disabled,
         }
     }
 

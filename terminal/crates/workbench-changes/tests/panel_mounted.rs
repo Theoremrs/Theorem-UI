@@ -262,6 +262,17 @@ impl Rig {
         Ref::map(self.handle.borrow(), |p| p.model())
     }
 
+    /// The panel drawn under `theme`, cell by cell.
+    fn cells(&self, theme: &Theme, width: u16, height: u16) -> Buffer {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let mut cx =
+            ViewCtx::new(theme, self.m.workspace()).with_capabilities(self.m.capabilities());
+        cx.focused = true;
+        self.panel().view(area, &mut buf, &cx);
+        buf
+    }
+
     fn text(&self, width: u16, height: u16) -> Vec<String> {
         let area = Rect::new(0, 0, width, height);
         let mut buf = Buffer::empty(area);
@@ -2229,4 +2240,101 @@ fn the_dismiss_action_clears_the_notices() {
     assert!(rig.screen().contains("no remote"), "{}", rig.screen());
     rig.action(actions::DISMISS_NOTICES, agent());
     assert!(!rig.screen().contains("no remote"), "{}", rig.screen());
+}
+
+// ---- the theme's roles and where the panel opens -----------------------------------------
+
+#[test]
+fn changing_the_added_role_of_the_theme_changes_what_the_panel_draws() {
+    let (mut rig, fx) = opened_with(&CAPS, "w");
+    let next = rig.accept(
+        &fx[0],
+        common::status(
+            1,
+            vec![change("fresh.rs", "A", " "), change("old.rs", "M", " ")],
+        ),
+    );
+    rig.accept(&next[0], log_answer(&["x"]));
+    let plain = Theme::plain();
+    let mut tinted = Theme::plain();
+    tinted.change_added = ratatui::style::Style::default().fg(ratatui::style::Color::Green);
+    let before = rig.cells(&plain, 100, 30);
+    let after = rig.cells(&tinted, 100, 30);
+    let changed: Vec<_> = (0..30u16)
+        .flat_map(|y| (0..100u16).map(move |x| (x, y)))
+        .filter(|(x, y)| before[(*x, *y)] != after[(*x, *y)])
+        .collect();
+    assert!(!changed.is_empty(), "the added role reached nothing");
+    for (x, y) in changed {
+        assert_eq!(
+            after[(x, y)].fg,
+            ratatui::style::Color::Green,
+            "cell {x},{y} {:?}",
+            after[(x, y)].symbol()
+        );
+    }
+}
+
+#[test]
+fn the_conflict_role_of_the_theme_changes_a_conflicted_rows_letter() {
+    let rig = conflicted();
+    let plain = Theme::plain();
+    let mut tinted = Theme::plain();
+    tinted.change_conflict = ratatui::style::Style::default().fg(ratatui::style::Color::Magenta);
+    assert_ne!(rig.cells(&plain, 100, 30), rig.cells(&tinted, 100, 30));
+}
+
+fn tools_group_holds_changes(m: &Model) -> bool {
+    let dock = m.dock();
+    dock.group_ids().into_iter().any(|id| {
+        dock.group(id).is_some_and(|g| {
+            g.role() == theorem_workbench_dock::Role::Tools
+                && g.tabs().iter().any(|t| t.kind.name == "changes")
+        })
+    })
+}
+
+#[test]
+fn the_changes_descriptor_declares_the_tools_placement() {
+    let registry = builtin::registry();
+    let descriptor = registry
+        .get(&theorem_workbench_core::ids::PanelKind::new("changes"))
+        .expect("registered");
+    assert_eq!(
+        descriptor.default_placement,
+        theorem_workbench_core::registry::Placement::Tools
+    );
+}
+
+#[test]
+fn opening_changes_from_its_action_lands_in_the_tool_group() {
+    let mut m = model_with(&CAPS, "w", &Slot::default());
+    update(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new("changes.open"),
+            actor: Actor::Human,
+        },
+    );
+    assert!(tools_group_holds_changes(&m));
+}
+
+#[test]
+fn opening_changes_from_its_chord_lands_in_the_tool_group() {
+    let mut m = model_with(&CAPS, "w", &Slot::default());
+    update(
+        &mut m,
+        Msg::Key(KeyInput::new(Key::Char('g'), Mods::CTRL | Mods::ALT)),
+    );
+    assert!(tools_group_holds_changes(&m), "the chord opened nothing");
+}
+
+#[test]
+fn opening_changes_from_the_picker_lands_in_the_tool_group() {
+    use theorem_workbench_core::picker::PickerMsg;
+    let mut m = model_with(&CAPS, "w", &Slot::default());
+    update(&mut m, Msg::Picker(PickerMsg::Open));
+    update(&mut m, Msg::Picker(PickerMsg::Filter("Changes".into())));
+    update(&mut m, Msg::Picker(PickerMsg::Choose));
+    assert!(tools_group_holds_changes(&m), "the picker opened nothing");
 }

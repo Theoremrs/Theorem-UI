@@ -40,5 +40,5 @@ pub use semantics::actions;
 pub use status::{
     Basis, Change, Groups, Head, LISTED, Loss, RowKey, Section, is_folder, letter, loss, shown,
 };
-pub use styles::{CHANGED_ROLE, ChangesStyles, ThemeRole};
+pub use styles::ChangesStyles;
 pub use view_state::{VERSION, ViewState};
