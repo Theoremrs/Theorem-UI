@@ -3,6 +3,11 @@
 // License: Apache-2.0 (see LICENSE-HERDR). Upstream has no NOTICE file.
 // MODIFIED: extracted into a standalone crate. See
 // docs/plans/theo-workbench/gate-0/herdr-layout-donor.md for the change list.
+// CHANGED from the donor (Gate 1): the process-global pane-id counter is gone.
+// Each layout allocates ids itself (saved with it) or takes caller-supplied ids
+// (`split_pane_with`); `Node` and the layout serialize with serde and restore
+// through `TileLayout::restore`, which refuses malformed trees with a typed
+// `LayoutError`. Tests keep their assertions and only obtain ids differently.
 
 //! BSP tree layout for tiling panes within a workspace.
 
@@ -13,26 +18,54 @@ use ratatui::{
     widgets::Borders,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+/// Lowest and highest first-child ratio a split may hold.
+pub const MIN_RATIO: f32 = 0.1;
+pub const MAX_RATIO: f32 = 0.9;
+/// Deepest tree `restore` accepts, so a hostile document cannot exhaust the stack.
+pub const MAX_DEPTH: usize = 64;
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(transparent)]
 pub struct PaneId(u32);
 
-/// Global atomic counter for unique PaneId generation across all workspaces.
-static NEXT_PANE_ID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
-
 impl PaneId {
-    /// Allocate a globally unique PaneId.
-    pub fn alloc() -> Self {
-        Self(NEXT_PANE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-
     pub fn raw(self) -> u32 {
         self.0
     }
 
-    /// Reconstruct from a saved u32 (persistence only).
+    /// Rebuild an id from its number: persistence, or a caller that owns the ids.
     pub fn from_raw(id: u32) -> Self {
         Self(id)
     }
+}
+
+/// Why a saved layout was refused.
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum LayoutError {
+    #[error("pane id {0:?} appears more than once")]
+    DuplicateId(PaneId),
+    #[error("split ratio {0} is outside {MIN_RATIO}..={MAX_RATIO} or not a number")]
+    RatioOutOfRange(f32),
+    #[error("focus names pane {0:?}, which is not in the tree")]
+    FocusMissing(PaneId),
+    #[error("previous focus names pane {0:?}, which is not in the tree")]
+    PreviousFocusMissing(PaneId),
+    #[error("tree is deeper than {MAX_DEPTH} levels")]
+    TooDeep,
+}
+
+/// The persisted form of a layout. `TileLayout::restore` validates it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SavedLayout {
+    pub root: Node,
+    pub focus: PaneId,
+    #[serde(default)]
+    pub prev_focus: Option<PaneId>,
+    /// Next id the layout will allocate. Saved so ids closed since are not reused.
+    #[serde(default)]
+    pub next_id: u32,
 }
 
 /// Snapshot of a pane's position and focus state after layout.
@@ -67,7 +100,7 @@ pub struct SplitBorder {
 }
 
 /// Cardinal direction for pane navigation.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavDirection {
     Left,
     Right,
@@ -76,6 +109,7 @@ pub enum NavDirection {
 }
 
 /// A node in the BSP tree. Public for serialization.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Node {
     Pane(PaneId),
     Split {
@@ -87,9 +121,12 @@ pub enum Node {
 }
 
 /// BSP tiling layout. Tracks a tree of splits and a focused pane.
+#[derive(Debug, Clone, PartialEq)]
 pub struct TileLayout {
     root: Node,
     focus: PaneId,
+    /// Next id `split_pane` hands out; always above every id in the tree.
+    next_id: u32,
     /// Pane focused before `focus`, used by `close_focused`. Only a real focus
     /// move writes it; tree edits go through the target-taking primitives
     /// (`split_pane`, `close_pane`, unfocused `insert_pane_near`) so internal
@@ -98,18 +135,30 @@ pub struct TileLayout {
 }
 
 impl TileLayout {
-    /// Create a new layout with a single pane (globally unique ID).
-    /// Returns (layout, root_pane_id) so the caller can create the pane.
+    /// Create a new layout with a single pane. The id is allocated by the
+    /// layout itself (1), never from a global. Returns (layout, root_pane_id).
     pub fn new() -> (Self, PaneId) {
-        let root_id = PaneId::alloc();
-        (
-            Self {
-                root: Node::Pane(root_id),
-                focus: root_id,
-                prev_focus: None,
-            },
-            root_id,
-        )
+        let root_id = PaneId(1);
+        (Self::with_root(root_id), root_id)
+    }
+
+    /// Create a layout whose single pane has a caller-supplied id.
+    pub fn with_root(root_id: PaneId) -> Self {
+        Self {
+            root: Node::Pane(root_id),
+            focus: root_id,
+            next_id: root_id.0.saturating_add(1),
+            prev_focus: None,
+        }
+    }
+
+    /// Keep `next_id` above an id that entered the tree.
+    fn note_id(&mut self, id: PaneId) {
+        self.next_id = self.next_id.max(id.0.saturating_add(1));
+    }
+
+    pub fn prev_focused(&self) -> Option<PaneId> {
+        self.prev_focus
     }
 
     /// Move focus, recording the pane being left. No-op when focus is unchanged.
@@ -191,10 +240,29 @@ impl TileLayout {
         direction: Direction,
         ratio: f32,
     ) -> Option<PaneId> {
-        let node = find_pane_mut(&mut self.root, target)?;
-        let new_id = PaneId::alloc();
+        let new_id = PaneId(self.next_id);
+        self.split_pane_with(target, new_id, direction, ratio)
+            .then_some(new_id)
+    }
+
+    /// Split `target` and give the new pane a caller-supplied id. Returns false
+    /// (changing nothing) when `target` is absent or `new_id` is already used.
+    pub fn split_pane_with(
+        &mut self,
+        target: PaneId,
+        new_id: PaneId,
+        direction: Direction,
+        ratio: f32,
+    ) -> bool {
+        if self.pane_ids().contains(&new_id) {
+            return false;
+        }
+        let Some(node) = find_pane_mut(&mut self.root, target) else {
+            return false;
+        };
         *node = split_node(target, direction, new_id, valid_split_ratio(ratio));
-        Some(new_id)
+        self.note_id(new_id);
+        true
     }
 
     /// Insert an existing pane id next to a target pane without allocating a new
@@ -219,6 +287,7 @@ impl TileLayout {
             return false;
         };
         *node = split_node(target, direction, moved, valid_split_ratio(ratio));
+        self.note_id(moved);
         if focus {
             self.set_focus(moved);
         }
@@ -298,7 +367,7 @@ impl TileLayout {
 
     /// Set the ratio of a split node at the given path.
     pub fn set_ratio_at(&mut self, path: &[bool], ratio: f32) -> bool {
-        set_ratio_at(&mut self.root, path, ratio.clamp(0.1, 0.9))
+        set_ratio_at(&mut self.root, path, ratio.clamp(MIN_RATIO, MAX_RATIO))
     }
 
     /// Adjust the nearest split in the given direction for the focused pane.
@@ -358,13 +427,95 @@ impl TileLayout {
         &self.root
     }
 
-    /// Reconstruct a layout from a saved tree.
-    /// Reconstruct a layout from a saved tree.
+    /// Reconstruct a layout from a tree without checking it. Prefer `restore`.
     pub fn from_saved(root: Node, focus: PaneId) -> Self {
+        let mut ids = Vec::new();
+        collect_ids(&root, &mut ids);
+        let next_id = ids
+            .iter()
+            .map(|id| id.0)
+            .max()
+            .map_or(1, |m| m.saturating_add(1));
         Self {
             root,
             focus,
+            next_id,
             prev_focus: None,
+        }
+    }
+
+    /// The persisted form of this layout.
+    pub fn save(&self) -> SavedLayout {
+        SavedLayout {
+            root: self.root.clone(),
+            focus: self.focus,
+            prev_focus: self.prev_focus,
+            next_id: self.next_id,
+        }
+    }
+
+    /// Rebuild a layout from its persisted form, refusing a malformed tree.
+    pub fn restore(saved: SavedLayout) -> Result<Self, LayoutError> {
+        let mut ids = Vec::new();
+        validate_node(&saved.root, 0, &mut ids)?;
+        if !ids.contains(&saved.focus) {
+            return Err(LayoutError::FocusMissing(saved.focus));
+        }
+        if let Some(prev) = saved.prev_focus
+            && !ids.contains(&prev)
+        {
+            return Err(LayoutError::PreviousFocusMissing(prev));
+        }
+        let floor = ids
+            .iter()
+            .map(|id| id.0)
+            .max()
+            .map_or(1, |m| m.saturating_add(1));
+        Ok(Self {
+            root: saved.root,
+            focus: saved.focus,
+            next_id: saved.next_id.max(floor),
+            prev_focus: saved.prev_focus,
+        })
+    }
+}
+
+impl serde::Serialize for TileLayout {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.save().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TileLayout {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let saved = SavedLayout::deserialize(deserializer)?;
+        Self::restore(saved).map_err(serde::de::Error::custom)
+    }
+}
+
+fn validate_node(node: &Node, depth: usize, ids: &mut Vec<PaneId>) -> Result<(), LayoutError> {
+    if depth > MAX_DEPTH {
+        return Err(LayoutError::TooDeep);
+    }
+    match node {
+        Node::Pane(id) => {
+            if ids.contains(id) {
+                return Err(LayoutError::DuplicateId(*id));
+            }
+            ids.push(*id);
+            Ok(())
+        }
+        Node::Split {
+            ratio,
+            first,
+            second,
+            ..
+        } => {
+            if !ratio.is_finite() || !(MIN_RATIO..=MAX_RATIO).contains(ratio) {
+                return Err(LayoutError::RatioOutOfRange(*ratio));
+            }
+            validate_node(first, depth + 1, ids)?;
+            validate_node(second, depth + 1, ids)
         }
     }
 }
@@ -633,7 +784,7 @@ fn split_node(target: PaneId, direction: Direction, new_id: PaneId, split_ratio:
 
 pub(crate) fn valid_split_ratio(ratio: f32) -> f32 {
     if ratio.is_finite() {
-        ratio.clamp(0.1, 0.9)
+        ratio.clamp(MIN_RATIO, MAX_RATIO)
     } else {
         0.5
     }
@@ -730,12 +881,7 @@ mod tests {
 
     #[test]
     fn split_paths_preserve_preorder_geometry_and_resize_targets() {
-        let ids = [
-            PaneId::alloc(),
-            PaneId::alloc(),
-            PaneId::alloc(),
-            PaneId::alloc(),
-        ];
+        let ids = [pane(1), pane(2), pane(3), pane(4)];
         let mut layout = TileLayout::from_saved(
             Node::Split {
                 direction: Direction::Horizontal,
@@ -778,13 +924,15 @@ mod tests {
     fn rejected_splits_and_insertions_preserve_layout_and_focus_history() {
         let (mut layout, root) = TileLayout::new();
         let second = layout.split_focused(Direction::Horizontal);
-        let absent = PaneId::alloc();
+        let absent = pane(900);
         let before = pane_rects(&layout);
         let splits = split_snapshot(&layout);
-        assert!(layout
-            .split_pane(absent, Direction::Vertical, 0.5)
-            .is_none());
-        for (target, moved) in [(absent, PaneId::alloc()), (root, second), (root, root)] {
+        assert!(
+            layout
+                .split_pane(absent, Direction::Vertical, 0.5)
+                .is_none()
+        );
+        for (target, moved) in [(absent, pane(901)), (root, second), (root, root)] {
             assert!(!layout.insert_pane_near(target, moved, Direction::Vertical, 0.3, true));
         }
         assert_eq!(pane_rects(&layout), before);
@@ -844,9 +992,11 @@ mod tests {
             );
             assert_eq!(layout.pane_ids()[new_index], new_id);
         }
-        assert!(layout
-            .panes_after_split(area, PaneId::alloc(), Direction::Vertical, 0.5)
-            .is_none());
+        assert!(
+            layout
+                .panes_after_split(area, pane(900), Direction::Vertical, 0.5)
+                .is_none()
+        );
     }
 
     #[test]
@@ -895,7 +1045,9 @@ mod tests {
                 let build = measure(|| {
                     black_box(build(count, balanced));
                 });
-                println!("bsp panes={count} balanced={balanced} splits_us={splits:.3} build_us={build:.3}");
+                println!(
+                    "bsp panes={count} balanced={balanced} splits_us={splits:.3} build_us={build:.3}"
+                );
             }
         }
     }
@@ -1067,7 +1219,9 @@ mod tests {
         let (mut horizontal, _left) = TileLayout::new();
         let right = horizontal.split_focused(Direction::Horizontal);
 
-        assert!(horizontal.resize_pane(right, NavDirection::Right, 0.05, Rect::new(0, 0, 100, 40),));
+        assert!(
+            horizontal.resize_pane(right, NavDirection::Right, 0.05, Rect::new(0, 0, 100, 40),)
+        );
         let split = split_snapshot(&horizontal)[0];
         assert_eq!(split.0, Direction::Horizontal);
         assert!((split.1 - 0.55).abs() < f32::EPSILON);
@@ -1224,8 +1378,6 @@ mod tests {
 
     #[test]
     fn close_focused_returns_to_the_pane_that_opened_a_split() {
-        // Allocated ids only: sample_layout() uses from_raw and shares the id
-        // space with the allocator.
         let (mut layout, first) = TileLayout::new();
         let second = layout.split_focused(Direction::Horizontal);
         let third = layout.split_focused(Direction::Vertical);
@@ -1350,5 +1502,119 @@ mod tests {
         assert_eq!(layout.focused(), pane(4));
         assert!(layout.close_focused());
         assert_eq!(layout.focused(), pane(2));
+    }
+
+    #[test]
+    fn layouts_do_not_share_an_id_counter() {
+        let (mut a, a_root) = TileLayout::new();
+        let (mut b, b_root) = TileLayout::new();
+        assert_eq!(a_root, b_root);
+        assert_eq!(
+            a.split_pane(a_root, Direction::Horizontal, 0.5),
+            Some(pane(2))
+        );
+        assert_eq!(
+            b.split_pane(b_root, Direction::Horizontal, 0.5),
+            Some(pane(2))
+        );
+    }
+
+    #[test]
+    fn split_pane_with_takes_the_callers_id_and_refuses_used_ones() {
+        let (mut layout, root) = TileLayout::new();
+        assert!(layout.split_pane_with(root, pane(40), Direction::Vertical, 0.5));
+        assert!(!layout.split_pane_with(root, pane(40), Direction::Vertical, 0.5));
+        assert!(!layout.split_pane_with(pane(7), pane(41), Direction::Vertical, 0.5));
+        assert_eq!(layout.pane_ids(), [root, pane(40)]);
+        assert_eq!(
+            layout.split_pane(root, Direction::Horizontal, 0.5),
+            Some(pane(41))
+        );
+    }
+
+    #[test]
+    fn ids_survive_a_serde_round_trip_and_closed_ids_are_not_reused() {
+        let mut layout = sample_layout();
+        let five = layout
+            .split_pane(pane(1), Direction::Vertical, 0.5)
+            .unwrap();
+        assert_eq!(five, pane(5));
+        layout.focus_pane(pane(4));
+        assert!(layout.close_pane(five));
+        let json = serde_json::to_string(&layout).unwrap();
+        let mut back: TileLayout = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, layout);
+        assert_eq!(back.pane_ids(), layout.pane_ids());
+        assert_eq!(back.focused(), pane(4));
+        assert_eq!(back.prev_focused(), layout.prev_focused());
+        assert_eq!(
+            back.split_pane(pane(1), Direction::Vertical, 0.5),
+            Some(pane(6))
+        );
+    }
+
+    #[test]
+    fn restore_refuses_malformed_trees_without_panicking() {
+        let saved = sample_layout().save();
+        let mut dup = saved.clone();
+        dup.root = Node::Split {
+            direction: Direction::Horizontal,
+            ratio: 0.5,
+            first: Box::new(Node::Pane(pane(1))),
+            second: Box::new(Node::Pane(pane(1))),
+        };
+        dup.focus = pane(1);
+        assert_eq!(
+            TileLayout::restore(dup),
+            Err(LayoutError::DuplicateId(pane(1)))
+        );
+
+        for bad in [0.05, 0.95, f32::NAN, f32::INFINITY, -1.0] {
+            let mut s = saved.clone();
+            if let Node::Split { ratio, .. } = &mut s.root {
+                *ratio = bad;
+            }
+            assert!(matches!(
+                TileLayout::restore(s),
+                Err(LayoutError::RatioOutOfRange(_))
+            ));
+        }
+
+        let mut s = saved.clone();
+        s.focus = pane(77);
+        assert_eq!(
+            TileLayout::restore(s),
+            Err(LayoutError::FocusMissing(pane(77)))
+        );
+
+        let mut s = saved.clone();
+        s.prev_focus = Some(pane(78));
+        assert_eq!(
+            TileLayout::restore(s),
+            Err(LayoutError::PreviousFocusMissing(pane(78)))
+        );
+
+        let mut deep = Node::Pane(pane(0));
+        for i in 1..=(MAX_DEPTH as u32 + 2) {
+            deep = Node::Split {
+                direction: Direction::Horizontal,
+                ratio: 0.5,
+                first: Box::new(deep),
+                second: Box::new(Node::Pane(pane(i))),
+            };
+        }
+        let s = SavedLayout {
+            root: deep,
+            focus: pane(0),
+            prev_focus: None,
+            next_id: 0,
+        };
+        assert_eq!(TileLayout::restore(s), Err(LayoutError::TooDeep));
+    }
+
+    #[test]
+    fn deserializing_a_malformed_layout_is_an_error_not_a_panic() {
+        let bad = r#"{"root":{"Pane":1},"focus":2}"#;
+        assert!(serde_json::from_str::<TileLayout>(bad).is_err());
     }
 }

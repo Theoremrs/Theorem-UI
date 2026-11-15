@@ -20,7 +20,7 @@ Crate: `terminal/crates/workbench-layout` (package `theorem-workbench-layout`). 
 
 ## Modifications
 
-1. Added the 5-line provenance header (above the donor's first line). The donor text below it is otherwise byte-identical: no donor line was edited, removed, or reordered.
+1. Added the 5-line provenance header (above the donor's first line). At the extraction commit (`287997fc`) the donor text below it was byte-identical: no donor line was edited, removed, or reordered. That stopped being true in Gate 1; see "Gate 1 adaptation" at the end of this record.
 2. Crate wiring only: `Cargo.toml` with `ratatui 0.30.1` (`default-features = false`, as the root crate) and `serde 1` with `derive`.
    - `serde` is needed because the donor derives `Serialize`/`Deserialize` on `PaneId`. It is pure Rust and builds for wasm32. It was kept rather than removed, to avoid editing donor code.
 3. No local replacement types were needed: `layout.rs` imports only `std::cmp::Reverse`, `ratatui::layout::{Direction, Rect}` and `ratatui::widgets::Borders`. It does not import other Herdr modules.
@@ -132,3 +132,19 @@ intermittently when tests run in parallel:
   global counter with caller-supplied stable ids, the crate's tests are run with
   `-- --test-threads=1`. The dock task must make this test pass in parallel without
   editing its assertions.
+
+## Gate 1 adaptation
+
+The dock work changed `src/lib.rs`. The file is no longer byte-identical to the donor below the header, and the blob check from the extraction step no longer applies. The header in the file names the change. What changed:
+
+1. The process-global `NEXT_PANE_ID` counter and `PaneId::alloc()` are removed. Each `TileLayout` holds its own `next_id`, kept above every id in its tree and saved with it, so two layouts never share a counter and a restored layout cannot hand out an id it already holds.
+2. New entry points: `TileLayout::with_root(id)`, `split_pane_with(target, new_id, direction, ratio)` for caller-supplied ids, `prev_focused()`, `save()` and `restore()`.
+3. `Node` and `TileLayout` serialize with serde (`SavedLayout` is the persisted form). `restore` refuses a duplicate id, a ratio outside 0.1 to 0.9 or not finite, a focus or previous focus that is not in the tree, and a tree deeper than 64 levels, each with a typed `LayoutError`. `from_saved` stays as the unchecked constructor the donor tests use.
+4. `MIN_RATIO`, `MAX_RATIO` and `MAX_DEPTH` are named constants; the two `clamp(0.1, 0.9)` calls use them.
+5. `NavDirection` derives `PartialEq, Eq`; `PaneId` derives `PartialOrd, Ord` and is `serde(transparent)`; `TileLayout` derives `Debug, Clone, PartialEq`.
+6. Donor tests keep every assertion. They obtain ids through `pane(n)` where they used `PaneId::alloc()`. Five tests were added for the points above.
+7. `cargo fmt` reflowed four donor test expressions and one `println!`. No behavior is involved.
+8. `Cargo.toml` gained ratatui's `serde` feature, `thiserror`, and `serde_json` as a dev dependency.
+
+The parallel-test failure recorded above is gone: the suite runs with the default thread count (31 passed, 1 ignored, which is the donor's own ignored benchmark).
+
