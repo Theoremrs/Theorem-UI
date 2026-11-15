@@ -30,6 +30,12 @@ fn start(id: &str, title: &str, emits: EffectKind) -> ActionDescriptor {
         .emits(emits)
 }
 
+/// An action the panel handles itself, with no effect: a movement, a toggle, a way back.
+/// It needs `scm` like the rest, since the panel only exists where the host has it.
+fn local(id: &str, title: &str) -> ActionDescriptor {
+    ActionDescriptor::local(id, title).requires(CAPABILITY)
+}
+
 /// The workflow actions of the "changes" panel kind.
 pub fn descriptors() -> Vec<ActionDescriptor> {
     use EffectKind::*;
@@ -51,6 +57,8 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
         )
         .requires(CAPABILITY)
         .emits(ScmDiscard)
+        .emits(ScmResolve)
+        .emits(ScmRestore)
         .human_only(),
         start(
             id::RESTORE,
@@ -115,6 +123,43 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
             Open,
         )
         .requires("documents"),
+        local(id::CURSOR_UP, "Move the cursor up"),
+        local(id::CURSOR_DOWN, "Move the cursor down"),
+        local(
+            id::NEXT_GROUP,
+            "Move to the next group: files, message, log",
+        ),
+        local(id::FOCUS_FILES, "Focus the list of changes"),
+        local(id::FOCUS_DRAFT, "Focus the commit message"),
+        // Expanding a diff reads it, so it names the read; collapsing sends nothing.
+        start(
+            id::TOGGLE_DIFF,
+            "Expand or collapse the diff of the selected file",
+            ScmDiff,
+        ),
+        local(
+            id::TOGGLE_SELECTED,
+            "Select or deselect the file under the cursor",
+        ),
+        local(id::SELECT_ALL, "Select every file"),
+        // Turning amend on reads the log when it is not loaded.
+        start(id::TOGGLE_AMEND, "Turn the amend box on or off", ScmLog),
+        local(
+            id::TOGGLE_LAYOUT,
+            "Switch the diff between split and unified",
+        ),
+        local(
+            id::TOGGLE_FOLD,
+            "Fold or unfold the unchanged lines of the diff",
+        ),
+        local(id::NEXT_HUNK, "Move to the next hunk"),
+        local(id::PREVIOUS_HUNK, "Move to the previous hunk"),
+        local(id::OPEN_FILE, "Open the selected file in the editor"),
+        local(
+            id::CANCEL,
+            "Close the prompt, decline the question, or leave the read view",
+        ),
+        local(id::DISMISS_NOTICES, "Dismiss the notices"),
         start(id::FETCH, "Fetch from the remote", ScmFetch),
         start(id::PUSH, "Push to the remote", ScmPush),
         // These three ask for the branch name in a prompt, which lists the branches the

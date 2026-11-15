@@ -48,6 +48,23 @@ pub mod actions {
     pub const TAKE_OURS: &str = "changes.takeOurs";
     pub const TAKE_THEIRS: &str = "changes.takeTheirs";
     pub const EDIT_CONFLICT: &str = "changes.editConflict";
+    // The panel's own movement and view actions: the keys they stand for, as actions.
+    pub const CURSOR_UP: &str = "changes.cursorUp";
+    pub const CURSOR_DOWN: &str = "changes.cursorDown";
+    pub const NEXT_GROUP: &str = "changes.nextGroup";
+    pub const FOCUS_FILES: &str = "changes.focusFiles";
+    pub const FOCUS_DRAFT: &str = "changes.focusDraft";
+    pub const TOGGLE_DIFF: &str = "changes.toggleDiff";
+    pub const TOGGLE_SELECTED: &str = "changes.toggleSelected";
+    pub const SELECT_ALL: &str = "changes.selectAll";
+    pub const TOGGLE_AMEND: &str = "changes.toggleAmend";
+    pub const TOGGLE_LAYOUT: &str = "changes.toggleLayout";
+    pub const TOGGLE_FOLD: &str = "changes.toggleFold";
+    pub const NEXT_HUNK: &str = "changes.nextHunk";
+    pub const PREVIOUS_HUNK: &str = "changes.previousHunk";
+    pub const OPEN_FILE: &str = "changes.openFile";
+    pub const CANCEL: &str = "changes.cancel";
+    pub const DISMISS_NOTICES: &str = "changes.dismissNotices";
 }
 
 fn act(id: &str, reason: Option<String>) -> NodeAction {

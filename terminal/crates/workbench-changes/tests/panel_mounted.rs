@@ -1050,7 +1050,7 @@ fn the_actions_are_in_the_catalog_with_a_reason_when_unavailable() {
         .iter()
         .map(|d| d.id.as_str().to_owned())
         .collect();
-    assert_eq!(ids.len(), 28);
+    assert_eq!(ids.len(), 44);
     let with = registry.agent_catalog(&Capabilities::of(CAPS_AMEND));
     let without = registry.agent_catalog(&Capabilities::of(["files"]));
     for id in &ids {
@@ -2114,4 +2114,119 @@ fn the_conflicted_row_offers_open_and_edit_in_the_semantic_tree() {
         .collect();
     assert!(ids.contains(&actions::OPEN_CONFLICT), "{ids:?}");
     assert!(ids.contains(&actions::EDIT_CONFLICT), "{ids:?}");
+}
+
+// ---- the panel's own actions ----------------------------------------------------------
+
+#[test]
+fn the_confirm_action_names_every_effect_a_confirmation_can_send() {
+    use theorem_workbench_core::effect::EffectKind;
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).unwrap();
+    let (_, confirm) = registry
+        .action(&ActionId::new(actions::CONFIRM))
+        .expect("registered");
+    let emits = &confirm.emits;
+    for kind in [
+        EffectKind::ScmDiscard,
+        EffectKind::ScmResolve,
+        EffectKind::ScmRestore,
+    ] {
+        assert!(emits.contains(&kind), "{kind:?} in {emits:?}");
+    }
+}
+
+#[test]
+fn the_movement_actions_move_the_cursor_and_the_focus_like_their_keys() {
+    let mut rig = loaded();
+    let first = rig.model().cursor_path().map(str::to_owned);
+    assert!(rig.action(actions::CURSOR_DOWN, agent()).is_empty());
+    assert_ne!(rig.model().cursor_path().map(str::to_owned), first);
+    rig.action(actions::CURSOR_UP, agent());
+    assert_eq!(rig.model().cursor_path().map(str::to_owned), first);
+    rig.action(actions::NEXT_GROUP, agent());
+    assert_ne!(rig.model().focus(), theorem_workbench_changes::Focus::Files);
+    rig.action(actions::FOCUS_FILES, agent());
+    assert_eq!(rig.model().focus(), theorem_workbench_changes::Focus::Files);
+    rig.action(actions::FOCUS_DRAFT, agent());
+    assert_eq!(
+        rig.model().focus(),
+        theorem_workbench_changes::Focus::Message
+    );
+    assert_valid(&rig);
+}
+
+#[test]
+fn the_selection_and_view_actions_change_the_view_and_send_nothing() {
+    let mut rig = loaded();
+    assert!(rig.action(actions::SELECT_ALL, agent()).is_empty());
+    assert!(rig.model().selected().len() > 1);
+    assert!(rig.action(actions::TOGGLE_SELECTED, agent()).is_empty());
+    let layout = rig.model().layout();
+    assert!(rig.action(actions::TOGGLE_LAYOUT, agent()).is_empty());
+    assert_ne!(rig.model().layout(), layout);
+    assert!(rig.action(actions::TOGGLE_FOLD, agent()).is_empty());
+    assert!(rig.action(actions::NEXT_HUNK, agent()).is_empty());
+    assert!(rig.action(actions::PREVIOUS_HUNK, agent()).is_empty());
+    assert_valid(&rig);
+}
+
+#[test]
+fn the_diff_action_expands_a_diff_by_reading_it_and_collapses_it_by_sending_nothing() {
+    let mut rig = loaded();
+    let fx = rig.action(actions::TOGGLE_DIFF, agent());
+    once(&fx, "diff");
+    rig.accept(&fx[0], diff_answer("src/main.rs", true, SMALL_DIFF, 1));
+    assert!(rig.action(actions::TOGGLE_DIFF, agent()).is_empty());
+}
+
+#[test]
+fn the_amend_toggle_action_turns_the_box_on_and_off_for_an_agent() {
+    let mut rig = loaded_with(&CAPS_AMEND);
+    assert!(rig.action(actions::TOGGLE_AMEND, agent()).is_empty());
+    assert!(rig.model().amend());
+    rig.action(actions::TOGGLE_AMEND, agent());
+    assert!(!rig.model().amend());
+}
+
+#[test]
+fn the_cancel_action_closes_the_prompt_then_the_question_then_the_read_view() {
+    let mut rig = conflicted();
+    open_sides(&mut rig, sides(true));
+    rig.ch('o');
+    assert!(rig.model().confirm_pending().is_some());
+    rig.action(actions::CANCEL, agent());
+    assert!(rig.model().confirm_pending().is_none());
+    assert!(rig.model().read_view().is_some());
+    rig.action(actions::CANCEL, agent());
+    assert!(rig.model().read_view().is_none());
+    let mut rig = loaded();
+    rig.ch('n');
+    assert!(rig.model().prompt().is_some());
+    rig.action(actions::CANCEL, agent());
+    assert!(rig.model().prompt().is_none());
+}
+
+#[test]
+fn the_open_file_action_opens_the_selected_file_in_the_editor() {
+    let mut rig = loaded();
+    assert!(rig.action(actions::OPEN_FILE, agent()).is_empty());
+    assert!(rig.m.panel_ids().any(|(_, k)| k.as_str() == "document"));
+}
+
+#[test]
+fn the_dismiss_action_clears_the_notices() {
+    let mut rig = loaded();
+    let fx = rig.ch('f');
+    rig.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "no_remote".into(),
+            reason: "there is no remote".into(),
+        },
+        None,
+    );
+    assert!(rig.screen().contains("no remote"), "{}", rig.screen());
+    rig.action(actions::DISMISS_NOTICES, agent());
+    assert!(!rig.screen().contains("no remote"), "{}", rig.screen());
 }

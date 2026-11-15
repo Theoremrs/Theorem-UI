@@ -569,6 +569,31 @@ impl ChangesPanel {
         }
     }
 
+    /// Moves the cursor of whatever has it: a history's, the list's or the log's; any
+    /// other read view scrolls.
+    fn move_by(&mut self, delta: isize) {
+        if self.model.mode() == Mode::Read {
+            if self.model.commit_row_open() {
+                self.model.move_read_cursor(delta);
+            } else {
+                self.model.scroll_by(delta);
+            }
+        } else {
+            self.model.move_cursor(delta, false);
+        }
+    }
+
+    /// Goes back one step: the prompt, else the question, else the read view.
+    fn cancel(&mut self) {
+        if self.prompt.is_some() {
+            self.close_prompt();
+        } else if self.model.confirm_pending().is_some() {
+            self.model.cancel_confirm();
+        } else if self.model.mode() == Mode::Read {
+            self.model.close_read();
+        }
+    }
+
     fn open_file(&mut self, cx: &mut Ctx) {
         if let Some(path) = self.model.cursor_path()
             && !path.ends_with('/')
@@ -651,6 +676,28 @@ impl ChangesPanel {
             actions::TAKE_OURS => self.take_side(Side::Ours),
             actions::TAKE_THEIRS => self.take_side(Side::Theirs),
             actions::EDIT_CONFLICT => self.edit_conflict(cx),
+            actions::CURSOR_UP => self.move_by(-1),
+            actions::CURSOR_DOWN => self.move_by(1),
+            actions::NEXT_GROUP => {
+                self.model.focus_next();
+                self.mark_caret();
+            }
+            actions::FOCUS_FILES => {
+                self.model.set_focus(Focus::Files);
+                self.mark_caret();
+            }
+            actions::FOCUS_DRAFT => self.focus_message(false, 0),
+            actions::TOGGLE_DIFF => self.toggle_diff(cx),
+            actions::TOGGLE_SELECTED => self.model.toggle_selected(),
+            actions::SELECT_ALL => self.model.select_all(),
+            actions::TOGGLE_AMEND => self.toggle_amend(cx),
+            actions::TOGGLE_LAYOUT => self.model.toggle_layout(),
+            actions::TOGGLE_FOLD => self.model.toggle_fold(),
+            actions::NEXT_HUNK => self.model.move_hunk(1),
+            actions::PREVIOUS_HUNK => self.model.move_hunk(-1),
+            actions::OPEN_FILE => self.open_file(cx),
+            actions::CANCEL => self.cancel(),
+            actions::DISMISS_NOTICES => self.model.dismiss_notices(),
             _ => {}
         }
     }
