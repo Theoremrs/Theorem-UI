@@ -46,6 +46,7 @@ import {
 } from './fixtures'
 import type { Listing } from './fixtures'
 import type { Dispatch } from './workbench'
+import { createClipboardPort } from './ports'
 
 export interface FixtureOptions {
   granted: string[]
@@ -92,10 +93,29 @@ export interface FixtureOptions {
    * `DraftStore` (`documents/local.ts`) keeps a record under `theorem-workbench:draft:<workspace>:<path>`.
    */
   holdEdits?: boolean
+  /** The thread is at rest (no working run, no approval waiting): a message is a new turn, not a steer. */
+  idle?: boolean
+  /** The conversation's last assistant message also carries these delegations (`theorem-delegation` parts). */
+  delegations?: Array<{
+    delegationId: string
+    runId: string
+    label: string
+    objective: string
+    state: string
+    verdict?: string
+  }>
+  /** The delegation's changes also list a file whose path carries hostile text, and a very long path. */
+  delegationHostile?: boolean
+  /** Texts the documents owner holds besides (or in place of) the shared fixtures, by workspace path. */
+  documents?: Record<string, string>
+  /** Paths the documents owner holds with unsaved changes already (opened dirty): a replace leaves them alone. */
+  dirty?: string[]
   /** The documents owner reports this path's disk as changed under the open document. */
   conflict?: string
   /** The signed-in account the story starts as. */
   account?: string
+  /** The layout document (`theorem.workbench` JSON) the account's record starts as: what a person saved last time. */
+  layout?: string
   /** The account's layout record survives a reload of the story (local storage stands in for the server). */
   persistLayout?: boolean
   /** The account's layout cannot be read: the host answers with this browser's copy, labelled `device`. */
@@ -109,6 +129,8 @@ export interface FixtureHost extends Adapter {
   send: (message: HostMessage) => void
   /** The terminal's recorded chunks after the resize, and the resize itself, in order. */
   resizeTerminal: () => void
+  /** The attached program writes `text` to its terminal (a mode switch such as `\u001b[?2004h`, or output). */
+  terminalWrite: (text: string) => void
   /**
    * The signed-in account changes, as the real adapter reports it: the host says so once, lets go of
    * everything of the old account and serves the new one. The mount then asks the core to load.
@@ -116,6 +138,13 @@ export interface FixtureHost extends Adapter {
   switchAccount: (next: string) => void
   /** The runs the conversation's working turn follows, as the conversation owner reports them: replaces the set. */
   followRuns: (runs: string[]) => void
+  /**
+   * An agent run inserts text at the start of a (1-based) line of a document through the documents owner: the owner's held text takes it (a
+   * path nobody has opened yet is held with it), and every panel bound to the path is told, as the live stream does.
+   */
+  runEdits: (path: string, run: string, line: number, insert: string) => void
+  /** The documents owner answers each save after this many milliseconds (0: at once), so a run is still working a moment. */
+  slowSaves: (ms: number) => void
 }
 
 /** A conflicted binary file: both branches changed an image. */
@@ -234,6 +263,58 @@ const DELEGATION_TEXT: Record<string, { before?: string; after?: string }> = {
   'src/old.ts': { before: 'export const removed = true\n' },
 }
 
+/** Changes added by `delegationHostile`: a path with a right-to-left override and an escape, and a path too long for a row. */
+const HOSTILE_DELEGATION_PATH = 'src/evil\u202Etxt.ts\u001b[31m'
+const LONG_DELEGATION_PATH = `src/${'deeply-nested-directory/'.repeat(6)}file.ts`
+const HOSTILE_DELEGATION_CHANGES: DelegationChange[] = [
+  // Both sides are said to exist, but the owner keeps only the after text: its before read is refused `no_such_side`.
+  {
+    path: 'src/gone.ts',
+    change: 'modify',
+    binary: false,
+    hasBefore: true,
+    hasAfter: true,
+  },
+  {
+    path: 'src/long.ts',
+    change: 'add',
+    binary: false,
+    hasBefore: false,
+    hasAfter: true,
+  },
+  {
+    path: HOSTILE_DELEGATION_PATH,
+    change: 'modify',
+    binary: false,
+    hasBefore: true,
+    hasAfter: true,
+  },
+  {
+    path: LONG_DELEGATION_PATH,
+    change: 'add',
+    binary: false,
+    hasBefore: false,
+    hasAfter: true,
+  },
+]
+const HOSTILE_DELEGATION_TEXT: Record<
+  string,
+  { before?: string; after?: string }
+> = {
+  'src/long.ts': {
+    after: Array.from(
+      { length: 80 },
+      (_, i) => `export const line${i + 1} = ${i + 1}\n`,
+    ).join(''),
+  },
+  'src/gone.ts': { after: 'export const kept = 1\n' },
+  [HOSTILE_DELEGATION_PATH]: {
+    before: 'before \u202E text\n',
+    after: 'after \u001b[31m text\n',
+  },
+  [LONG_DELEGATION_PATH]: { after: 'export const deep = 1\n' },
+}
+
 type Held = {
   text: string
   revision: number
@@ -286,10 +367,16 @@ export function createFixtureHost(
     }
   }
   let kept = keep(account)
+  if (options.layout) kept.layout = { revision: 1, current: options.layout }
   restoreLayout(account, kept)
   let documents = kept.documents
   let offset = 0
   const epoch = 1
+  let saveDelay = 0
+  const delegationChanges = () =>
+    options.delegationHostile
+      ? [...DELEGATION_CHANGES, ...HOSTILE_DELEGATION_CHANGES]
+      : DELEGATION_CHANGES
   /** The terminal's attachment, once something has attached. */
   let terminal:
     { resource: ResourceRef; cols: number; rows: number } | undefined
@@ -326,10 +413,21 @@ export function createFixtureHost(
     revision,
     context: { usedTokens: 18_400, windowTokens: 128_000 },
     // A thread with branches is shown at rest, so the status row can say which branch it is on.
-    ...(options.branches && { run: { state: 'idle' }, approval: undefined }),
-    messages: STORY_CONVERSATION.messages.map((message) => ({
+    ...((options.branches || options.idle) && {
+      run: { state: 'idle' },
+      approval: undefined,
+    }),
+    messages: STORY_CONVERSATION.messages.map((message, at, all) => ({
       ...message,
-      parts: message.parts.map((part, index) =>
+      parts: [
+        ...message.parts,
+        ...(at === all.length - 1 && message.role === 'assistant'
+          ? (options.delegations ?? []).map((delegation) => ({
+              type: 'delegation' as const,
+              ...delegation,
+            }))
+          : []),
+      ].map((part, index) =>
         branch === 'b1' &&
         message.role === 'assistant' &&
         index === 0 &&
@@ -351,6 +449,7 @@ export function createFixtureHost(
     }),
   })
 
+  const clipboard = createClipboardPort()
   const later = (task: () => void) =>
     queueMicrotask(() => {
       if (live) task()
@@ -514,10 +613,15 @@ export function createFixtureHost(
         if (effect.resource.type !== 'document')
           return refuse(effect, 'Not a document')
         const path = effect.resource.resourceId
-        const text = DOCUMENTS[path] ?? effect.payload.seedText ?? ''
+        const text =
+          options.documents?.[path] ??
+          DOCUMENTS[path] ??
+          effect.payload.seedText ??
+          ''
+        const unsaved = options.dirty?.includes(path)
         const held = documents.get(path) ?? {
           text,
-          revision: 1,
+          revision: unsaved ? 2 : 1,
           saved: 1,
           disk: text,
           pending: [],
@@ -648,10 +752,13 @@ export function createFixtureHost(
         held.behind = []
         kept.checkpoints.delete(found[0])
         clearDraft(found[0])
-        return accept(effect, {
-          type: 'documentSaved',
-          revision: seq(held.revision),
-        })
+        const saved = () =>
+          accept(effect, {
+            type: 'documentSaved',
+            revision: seq(held.revision),
+          })
+        if (saveDelay > 0) return void setTimeout(saved, saveDelay)
+        return saved()
       }
       case 'documentReconcile': {
         const found = document(effect)
@@ -712,11 +819,11 @@ export function createFixtureHost(
       case 'delegationChanges':
         return accept(effect, {
           type: 'delegationChanges',
-          changes: DELEGATION_CHANGES.map((change) => ({ ...change })),
+          changes: delegationChanges().map((change) => ({ ...change })),
         })
       case 'delegationContent': {
         const { path, side } = effect.payload
-        const change = DELEGATION_CHANGES.find((entry) => entry.path === path)
+        const change = delegationChanges().find((entry) => entry.path === path)
         if (!change)
           return refuse(effect, 'Not one of the changes', 'no_such_change')
         if (change.binary)
@@ -725,7 +832,9 @@ export function createFixtureHost(
             'A binary change is not shown',
             'binary_skipped',
           )
-        const text = DELEGATION_TEXT[path]?.[side]
+        const text = { ...DELEGATION_TEXT, ...HOSTILE_DELEGATION_TEXT }[path]?.[
+          side
+        ]
         return text === undefined
           ? refuse(effect, `No ${side} content`, 'no_such_side')
           : accept(effect, { type: 'delegationText', text })
@@ -930,6 +1039,12 @@ export function createFixtureHost(
           full: true,
           findings: [],
         })
+      case 'conversationSend':
+        // The runtime took the turn; the story's thread does not grow, the effect is what a scenario reads.
+        return accept(effect, {
+          type: 'conversationSent',
+          clientMessageId: effect.payload.clientMessageId,
+        })
       case 'conversationSwitchBranch': {
         branch = effect.payload.branchId
         revision += 1
@@ -942,21 +1057,29 @@ export function createFixtureHost(
       }
       case 'searchQuery': {
         const needle = effect.payload.query.toLowerCase()
-        const rows = Object.entries(DOCUMENTS).flatMap(([path, text]) =>
-          text.split('\n').flatMap((line, index) => {
-            const start = line.toLowerCase().indexOf(needle)
-            return needle && start >= 0
-              ? [
-                  {
-                    path,
-                    line: index + 1,
-                    text: line,
-                    matches: [{ start, end: start + needle.length }],
-                  },
-                ]
-              : []
-          }),
-        )
+        // A story with documents of its own searches those, as the documents owner holds them now (an edit shows), and
+        // marks every match in a line, as the search owner does.
+        const own = options.documents
+        const rows = Object.entries(own ? { ...DOCUMENTS, ...own } : DOCUMENTS)
+          .map(
+            ([path, text]) =>
+              [path, documents.get(path)?.text ?? text] as const,
+          )
+          .flatMap(([path, text]) =>
+            text.split('\n').flatMap((line, index) => {
+              const lower = line.toLowerCase()
+              const matches: Array<{ start: number; end: number }> = []
+              for (
+                let at = needle ? lower.indexOf(needle) : -1;
+                at >= 0;
+                at = own ? lower.indexOf(needle, at + needle.length) : -1
+              )
+                matches.push({ start: at, end: at + needle.length })
+              return matches.length
+                ? [{ path, line: index + 1, text: line, matches }]
+                : []
+            }),
+          )
         accept(effect, { type: 'searchStarted', id: 'search-1' })
         send({
           type: 'searchPage',
@@ -1042,6 +1165,25 @@ export function createFixtureHost(
       }
       case 'terminalDetach':
         return accept(effect)
+      // The browser's own clipboard, through the port the real mount uses.
+      case 'clipboardWrite':
+      case 'clipboardRead':
+        return void clipboard
+          .perform(effect, `fixture-${effect.id}`)
+          .then((result) => {
+            if (result.outcome === 'accepted')
+              return accept(effect, result.value)
+            return complete(
+              effect,
+              result.outcome === 'refused'
+                ? {
+                    status: 'refused',
+                    code: result.code,
+                    reason: result.reason,
+                  }
+                : { status: result.outcome, reason: result.reason },
+            )
+          })
       default:
         return refuse(effect, 'This story has no owner for that')
     }
@@ -1051,6 +1193,46 @@ export function createFixtureHost(
     perform,
     send,
     followRuns: (runs) => send({ type: 'followedRuns', runs }),
+    slowSaves: (ms) => {
+      saveDelay = ms
+    },
+    runEdits(path, run, line, insert) {
+      const base = options.documents?.[path] ?? DOCUMENTS[path] ?? ''
+      const held = documents.get(path) ?? {
+        text: base,
+        revision: 1,
+        saved: 1,
+        disk: base,
+        pending: [],
+      }
+      // The offset of the line's first character: every earlier line and its line break.
+      const start = held.text
+        .split('\n')
+        .slice(0, line - 1)
+        .reduce((sum, earlier) => sum + earlier.length + 1, 0)
+      held.text = held.text.slice(0, start) + insert + held.text.slice(start)
+      held.revision += 1
+      held.saved = held.revision
+      held.disk = held.text
+      documents.set(path, held)
+      send({
+        type: 'documentChanged',
+        resource: { type: 'document', workspace: WORKSPACE, resourceId: path },
+        revision: seq(held.revision),
+        actor: `theorem:run:${run}`,
+        unit: 'utf16',
+        edits: [{ start, end: start, insert }],
+      })
+      // The run's edit is written to disk as it is made, so the owner reports it saved.
+      send({
+        type: 'documentSaved',
+        resource: { type: 'document', workspace: WORKSPACE, resourceId: path },
+        revision: seq(held.revision),
+      })
+    },
+    terminalWrite(text) {
+      if (terminal) frame(terminal.resource, text)
+    },
     resizeTerminal() {
       if (!terminal) return
       const { resource } = terminal

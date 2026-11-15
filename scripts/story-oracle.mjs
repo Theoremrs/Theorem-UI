@@ -280,6 +280,60 @@ const layoutOf = (page) =>
   })
 const describeLayout = (l) => `${l.groups.map((g) => `[${g.tabs.map((t) => (t === g.active ? `${t}*` : t)).join(' ')}]`).join(' ')} focus ${l.focused}`
 
+/**
+ * AC-47 and AC-25 on `workbench-keyboard-journey`: where focus is, read from the semantic tree the story exposes
+ * (`window.__storyTree`, read only) and from the grid's own cell styles; the effects the core asked the host for,
+ * whole, from `window.__journeyEffects`.
+ */
+const focusNow = (page) =>
+  page.evaluate(() => {
+    const nodes = window.__storyTree().nodes
+    const on = nodes.filter((n) => n.state.focused)
+    const tab = on.find((n) => n.role === 'tab')
+    const panelId = tab ? tab.id.replace(/^tab:/, '') : null
+    const owned = (n) => panelId && n.id.startsWith(`${panelId}/`)
+    const chrome = ['tab', 'tabPanel', 'group', 'region']
+    const leaf = on.find((n) => !chrome.includes(n.role) && owned(n))
+    return {
+      panel: tab?.name ?? null,
+      group: on.find((n) => n.role === 'group')?.name ?? null,
+      focusedTabs: on.filter((n) => n.role === 'tab').length,
+      focusedGroups: on.filter((n) => n.role === 'group').length,
+      leaf: leaf ? `${leaf.role}:${leaf.name}` : null,
+      leafRect: leaf?.rect ?? null,
+      leafText: leaf?.text,
+      // Rows flagged focused that belong to a panel other than the focused one.
+      strays: on.filter((n) => !chrome.includes(n.role) && !owned(n)).map((n) => `${n.role}:${n.name}`),
+    }
+  })
+/** The cells of the grid in the leaf's row that are not the grid's ordinary background: a drawn fill (selection or caret). */
+const filledAt = (page, rect) =>
+  page.evaluate((r) => {
+    const grid = document.querySelector('[id$=_ratzilla_grid]')
+    const row = grid.children[r.y]
+    if (!row) return 0
+    const counts = new Map()
+    for (const line of grid.children) for (const c of [...line.children].slice(r.x, r.x + r.width)) counts.set(c.style.backgroundColor, (counts.get(c.style.backgroundColor) ?? 0) + 1)
+    const base = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+    return [...row.children].slice(r.x, r.x + r.width).filter((c) => c.style.backgroundColor !== base).length
+  }, rect)
+const walkTo = async (page, wanted, key = 'ArrowDown', max = 30) => {
+  let presses = 0
+  let where = await focusNow(page)
+  while (!wanted(where.leaf ?? '') && presses < max) {
+    await page.keyboard.press(key)
+    presses++
+    await page.waitForTimeout(120)
+    where = await focusNow(page)
+  }
+  return { where, presses, reached: wanted(where.leaf ?? '') }
+}
+const journeyEffects = (page, from = 0) => page.evaluate((n) => (window.__journeyEffects ?? []).slice(n), from)
+const journeyMark = (page) => page.evaluate(() => (window.__journeyEffects ?? []).length)
+/** The chord declared for an action in the action registry (builtin.rs), the one place the keymap's chords are written. */
+const REGISTRY = readFileSync(join(ROOT, 'terminal/crates/workbench-core/src/builtin.rs'), 'utf8')
+const declaredChord = (action, chord) => new RegExp(`new\\(\\s*"${action.replace(/\./g, '\\.')}"(?:(?!ActionDescriptor::new)[\\s\\S]){0,500}?\\.key\\("${chord.replace(/[+\]\[]/g, '\\$&')}"`).test(REGISTRY)
+
 /** Opens the Shell tool's chooser by its chord and reads the words it shows. */
 const openShellChooser = async (page) => {
   await page.waitForTimeout(500)
@@ -317,7 +371,10 @@ const activeDescendant = async (page) => {
   await page.waitForSelector('[data-workbench-story] textarea', { timeout: 20_000 })
   return page.evaluate(() => {
     const field = document.querySelector('[data-workbench-story] textarea')
-    const el = document.getElementById(field.getAttribute('aria-activedescendant') ?? '')
+    const id = field.getAttribute('aria-activedescendant')
+    // A focused text field is the input itself: it takes that node's name, text and caret, and points at nothing.
+    if (!id) return { held: document.activeElement === field, role: 'textbox', name: field.getAttribute('aria-label'), node: null }
+    const el = document.getElementById(id)
     return {
       held: document.activeElement === field,
       role: el?.getAttribute('role') ?? null,
@@ -598,7 +655,7 @@ const SCENARIOS = {
         'the grid host stays aria-hidden': await page.evaluate(() => !!document.querySelector('[id$=_ratzilla_grid]')?.closest('[aria-hidden="true"]')),
         'the input names itself and holds focus': start.held && (await attr(page, 'body:p3', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workbench input',
         'the composer is where focus starts': start.role === 'textbox' && start.name === 'Message to Theo',
-        'focus moves to Files with its chord, input still focused': files.held && files.node === 'body:p3' && files.role === 'tabpanel' && files.name === 'Files',
+        'focus moves to Files with its chord and lands on its first row, input still focused': files.held && files.node === 'p3/f:.github' && files.role === 'treeitem',
         'focus moves to Changes with its chord': changes.held && changes.role === 'group' && /Cargo\.toml/.test(changes.name ?? ''),
         'the Files tab and the Changes tab each appear once': (await countByRole(page, 'tab', 'Files')) === 1 && (await countByRole(page, 'tab', 'Changes')) === 1 && (await countByRole(page, 'textbox', 'Workbench input')) === 1,
         'no element id is repeated': ids.all === ids.unique,
@@ -623,7 +680,7 @@ const SCENARIOS = {
       await page.keyboard.type('Sh')
       await page.waitForFunction(() => document.querySelectorAll('[role=listbox][aria-label="Tools"] [role=option]').length === 1, null, { timeout: 10_000 }).catch(() => {})
       const filtered = await list.getByRole('option').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))
-      const typed = await describedBy(page, 'p2/filter')
+      const typed = await page.evaluate(() => document.querySelector('[data-node="p2/filter"]')?.textContent ?? null)
       await page.keyboard.press('Escape')
       await list.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
       await page.waitForTimeout(400)
@@ -640,10 +697,9 @@ const SCENARIOS = {
     },
     // The Files tree: levels, and an expanded state that changes.
     async (page) => {
+      // Files lands on its first row, .github, when it takes focus.
       await page.keyboard.press(`${CHORD}e`)
-      await page.waitForTimeout(500)
-      await page.keyboard.press('ArrowDown')
-      await page.waitForTimeout(400)
+      await page.waitForTimeout(700)
       const row = '[data-node="p3/f:.github"]'
       const folded = await page.evaluate((row) => document.querySelector(row)?.getAttribute('aria-expanded'), row)
       const levelsBefore = await overlayBox(page).getByRole('treeitem').evaluateAll((els) => els.map((e) => e.getAttribute('aria-level')))
@@ -716,7 +772,7 @@ const SCENARIOS = {
         'the terminal is a text box': (await countByRole(page, 'textbox', 'Terminal sh-1')) === 1,
         'Request control is disabled': (await request.getAttribute('aria-disabled')) === 'true',
         'and gives its reason': /already controls the terminal/.test(await describedBy(page, 'p4/request-control')),
-        'a notice from the host is an alert': /alert: Adopted a terminal/.test(tree),
+        'a remark from the host is a status, not an alert': /status: Adopted a terminal/.test(tree) && !/alert: Adopted a terminal/.test(tree),
       }
     },
     // A notice is announced once: the status region's words are written once per notice, never again on later changes.
@@ -785,14 +841,309 @@ const SCENARIOS = {
   'workbench-changes': [
     async (page) => {
       await page.keyboard.press('Escape')
-      // The list: Staged first, then Unstaged; step down to the first unstaged file.
-      for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowDown')
-      const before = await pageText(page)
+      await recordEffects(page)
+      // What the page says, from the semantic tree: the Staged heading's count, the list's rows, and which file row has focus.
+      const read = () =>
+        page.evaluate(() => {
+          const nodes = window.__storyTree().nodes
+          const files = nodes.filter((n) => n.role === 'treeItem' && n.id.includes('changes/file/'))
+          return {
+            staged: Number((nodes.find((n) => /^Staged \(\d+\)$/.test(n.name))?.name.match(/\d+/) ?? [])[0]),
+            files: files.map((n) => ({ id: n.id.slice(n.id.indexOf('file/') + 5), name: n.name, focused: n.state.focused })),
+            focused: files.find((n) => n.state.focused)?.name,
+          }
+        })
+      // Walk down the list by what the page says is focused, until the first unstaged file (a row that can be staged) has focus.
+      const stageable = (name) => /^M src\/main\.rs$/.test(name ?? '')
+      let walked = 0
+      let now = await read()
+      while (!stageable(now.focused) && walked < 20) {
+        await page.keyboard.press('ArrowDown')
+        walked++
+        await page.waitForTimeout(80)
+        now = await read()
+      }
+      const before = now
+      const idOf = (state) => state.files.find((f) => f.name === 'M src/main.rs')?.id
       await page.keyboard.press('s')
+      let after = await read()
+      for (let i = 0; i < 20 && after.staged === before.staged; i++) {
+        await page.waitForTimeout(100)
+        after = await read()
+      }
+      const asked = await effectsSince(page)
+      return {
+        'the walk reached the unstaged file by what the page says has focus': stageable(before.focused) && idOf(before)?.startsWith('Unstaged/'),
+        'staged count grew by one': after.staged === before.staged + 1,
+        'the file moved from Unstaged to Staged': idOf(after)?.startsWith('Staged/') === true,
+        'the host was asked to stage it': asked.includes('scmStage'),
+      }
+    },
+  ],
+  // AC-47: one keyboard-only workflow, choose tools, browse/open/edit a document, navigate changes, move and resize a
+  // pane, answer an approval, open a terminal and return focus. Key presses only: the page is read, never driven, other
+  // than by keys. AC-25: paste, copy, control characters and composition on each surface that takes text.
+  'workbench-keyboard-journey': [
+    async (page) => {
+      const checks = {}
+      const strays = []
+      // Instrument only: count any pointer event that reaches the page, to prove the journey used none.
+      await page.evaluate(() => {
+        window.__pointerEvents = 0
+        for (const type of ['pointerdown', 'mousedown', 'click', 'wheel']) document.addEventListener(type, () => window.__pointerEvents++, true)
+      })
+      /** One step of the journey: what was pressed, where focus must be, and that the focus is seen. */
+      const arrive = async (label, expected, { leaf, panel = expected } = {}) => {
+        await page.waitForTimeout(450)
+        const where = await focusNow(page)
+        const drawn = (await layoutOf(page)).focused
+        if (where.strays.length) strays.push(`${label}: ${where.strays.join(', ')}`)
+        checks[`${label}: focus is in the ${panel} panel`] = where.panel === panel
+        if (leaf) checks[`${label}: the focused item is ${leaf}`] = where.leaf === leaf
+        checks[`${label}: focus is never lost (one focused panel, one focused group)`] = where.focusedTabs === 1 && where.focusedGroups === 1
+        checks[`${label}: focus is drawn (the ${panel} tab carries the accent fill)`] = drawn === panel
+        if (where.leafRect && where.leaf?.startsWith('treeItem') | where.leaf?.startsWith('menuItem'))
+          checks[`${label}: the focused row is drawn with a fill`] = (await filledAt(page, where.leafRect)) > 0
+        return where
+      }
+      const documented = (action, chord) => {
+        checks[`chord ${chord} is declared for ${action} in the action registry`] = declaredChord(action, chord)
+      }
+      const press = async (chord) => {
+        await page.keyboard.press(chord)
+      }
+      await page.waitForTimeout(500)
+      await recordEffects(page)
+      await arrive('0 start', 'Theo', { leaf: 'textBox:Message to Theo' })
+
+      // 1. choose tools: the picker by its chord, a tool by Enter; Escape returns focus to where it was.
+      documented('picker.open', 'Mod+Alt+T')
+      await press(`${CHORD}t`)
+      await arrive('1 picker opens (Mod+Alt+T)', 'Add tool', { leaf: 'menuItem:Changes' })
+      const rows = await pageText(page)
+      for (const [name, chord] of [['Changes', '⌥⌘G'], ['Shell', '⌥⌘S'], ['Files', '⌥⌘E']])
+        checks[`1 the picker row ${name} shows its chord ${chord}`] = rows.includes(chord)
+      await press('Escape')
+      await arrive('2 Escape closes the picker', 'Theo', { leaf: 'textBox:Message to Theo' })
+      await press(`${CHORD}t`)
+      await page.waitForTimeout(300)
+      await press('ArrowDown')
+      await press('ArrowUp')
+      await press('Enter')
+      await arrive('3 Enter on Changes in the picker opens it', 'Changes')
+
+      // 2. browse, open and edit a document from Files.
+      documented('files.focus', 'Mod+Alt+E')
+      await press(`${CHORD}e`)
+      await arrive('4 Files by its chord (Mod+Alt+E)', 'Files')
+      const docs = await walkTo(page, (leaf) => leaf === 'treeItem:docs')
+      checks['5 ArrowDown walks the tree to the docs folder'] = docs.reached
+      await arrive('5 docs', 'Files', { leaf: 'treeItem:docs' })
+      await press('Enter')
+      const note = await walkTo(page, (leaf) => leaf === 'treeItem:notes.txt')
+      checks['6 ArrowDown walks into docs to notes.txt'] = note.reached
+      await recordEffects(page)
+      await press('Enter')
+      await arrive('7 Enter opens the document in the editor', 'notes.txt', { leaf: 'textBox:docs/notes.txt' })
+      await page.keyboard.type('Hello')
+      await page.waitForTimeout(500)
+      checks['8 typing edits the document once (the text is on screen once, the host was asked to edit)'] =
+        ((await pageText(page)).match(/Hello/g) ?? []).length === 1 && (await effectsSince(page)).includes('documentEdit')
+
+      // 3. navigate changes.
+      documented('changes.open', 'Mod+Alt+G')
+      await press(`${CHORD}g`)
+      await arrive('9 Changes by its chord (Mod+Alt+G)', 'Changes')
+      const file = await walkTo(page, (leaf) => leaf === 'treeItem:M src/main.rs')
+      checks['10 ArrowDown walks the list to M src/main.rs'] = file.reached
+      await press('Enter')
+      await page.waitForTimeout(500)
+      checks['10 Enter opens the file diff'] = await page.evaluate(() => window.__storyTree().nodes.some((n) => n.name === 'Diff of src/main.rs'))
+
+      // 4. move and resize a pane.
+      const split = () => page.evaluate(() => window.__storyTree().nodes.filter((n) => n.role === 'separator').map((n) => n.state.description).join(' | '))
+      const before = await split()
+      documented('workbench.resize.wider', 'Mod+Alt+]')
+      await press(`${CHORD}]`)
+      await page.waitForTimeout(500)
+      const wider = await split()
+      checks['11 Mod+Alt+] makes the focused group wider (the divider moves)'] = wider !== before
+      documented('workbench.resize.narrower', 'Mod+Alt+[')
+      await press(`${CHORD}[`)
+      await page.waitForTimeout(500)
+      checks['11 Mod+Alt+[ undoes it (the divider returns)'] = (await split()) === before
+      await arrive('11 resizing keeps focus on Changes', 'Changes')
+      const groupOf = async (tab) => (await layoutOf(page)).groups.find((g) => g.tabs.includes(tab))?.tabs
+      documented('workbench.move.left', 'Mod+Alt+Shift+Left')
+      await press(`${CHORD}Shift+ArrowLeft`)
+      await page.waitForTimeout(500)
+      checks['12 Mod+Alt+Shift+Left moves Changes into the conversation group'] = (await groupOf('Changes'))?.includes('Theo') === true
+      await arrive('12 a moved panel keeps focus', 'Changes')
+      documented('workbench.move.right', 'Mod+Alt+Shift+Right')
+      await press(`${CHORD}Shift+ArrowRight`)
+      await page.waitForTimeout(500)
+      checks['12 Mod+Alt+Shift+Right moves it back with the document'] = (await groupOf('Changes'))?.some((tab) => tab.endsWith('notes.txt')) === true
+      await arrive('12 moved back, still focused', 'Changes')
+
+      // Focus moves between groups in order, and back.
+      const order = []
+      documented('workbench.focus.left', 'Mod+Alt+Left')
+      documented('workbench.focus.right', 'Mod+Alt+Right')
+      for (const key of ['ArrowLeft', 'ArrowLeft', 'ArrowRight', 'ArrowRight']) {
+        await press(`${CHORD}${key}`)
+        await page.waitForTimeout(400)
+        order.push((await focusNow(page)).group)
+      }
+      checks['13 Mod+Alt+Left and Right visit the groups in order, Main then Files, then back to Main and Tools'] = order.join(',') === 'Main,Files,Main,Tools'
+
+      // 5. answer an approval: the conversation, then y with an empty draft.
+      await press(`${CHORD}ArrowLeft`)
+      await arrive('14 focus returns to the conversation', 'Theo', { leaf: 'textBox:Message to Theo' })
+      const mark = await journeyMark(page)
+      await press('y')
       await page.waitForTimeout(600)
-      const after = await pageText(page)
-      const stagedAt = (text) => (text.match(/Staged (\d+)/) ?? [])[1]
-      return { 'staged count grew': Number(stagedAt(after)) === Number(stagedAt(before)) + 1 }
+      const answered = (await journeyEffects(page, mark)).find((e) => e.kind === 'conversationApproval')
+      checks['15 y answers the waiting approval: the host is asked to allow it'] = answered?.payload.decision === 'allow' && answered.payload.approvalId === 'approval-1'
+      await arrive('15 focus stays in the composer after the answer', 'Theo', { leaf: 'textBox:Message to Theo' })
+
+      // 6. a terminal, by its chord and Enter on the existing session.
+      documented('shell.choose', 'Mod+Alt+S')
+      await press(`${CHORD}s`)
+      await sees(page, 'Nothing starts until you choose a row', 4000)
+      await arrive('16 Shell chooser by its chord (Mod+Alt+S)', 'Shell')
+      await press('Enter')
+      await sees(page, 'PID', 4000)
+      await arrive('17 Enter takes the existing session', 'Shell', { leaf: 'textBox:Terminal sh-1' })
+      await page.keyboard.type('echo hi')
+      await page.waitForTimeout(700)
+      await press('Enter')
+      await page.waitForTimeout(900)
+      const tt = await page.evaluate(() => window.__storyTree().nodes.find((n) => n.id.endsWith('/terminal'))?.text ?? '')
+      checks['18 the terminal takes typed input and echoes it'] = tt.replace(/\u00a0/g, ' ').includes('echo hi')
+
+      // 7. return focus, with unsent work kept.
+      await press(`${CHORD}ArrowLeft`)
+      await arrive('19 focus returns to the conversation', 'Theo', { leaf: 'textBox:Message to Theo' })
+      await page.keyboard.type('keep this draft')
+      await page.waitForTimeout(700)
+      await press(`${CHORD}t`)
+      await arrive('20 the picker opens over unsent work', 'Add tool')
+      await press('Escape')
+      const back = await arrive('21 Escape closes only the picker', 'Theo', { leaf: 'textBox:Message to Theo' })
+      checks['21 the unsent draft survived the picker'] = back.leafText?.replace(/\u00a0/g, ' ') === 'keep this draft'
+      checks['no item in an unfocused panel is flagged focused at any step'] = strays.length === 0
+      if (strays.length) console.error(`strays: ${strays.join(' ; ')}`)
+      checks['no pointer event reached the page during the journey'] = (await page.evaluate(() => window.__pointerEvents)) === 0
+      return checks
+    },
+    // AC-25: paste, copy and control characters on the composer, the editor and the terminal.
+    async (page) => {
+      const engine = process.env.ORACLE_BROWSER ?? 'chromium'
+      // Chromium and Firefox let a context grant the clipboard; WebKit has no such permission.
+      let real = false
+      if (engine !== 'webkit') {
+        await page.context().grantPermissions(['clipboard-read', 'clipboard-write']).catch(() => {})
+      }
+      const setClipboard = (text) => page.evaluate((t) => navigator.clipboard.writeText(t).then(() => true, () => false), text)
+      const readClipboard = () => page.evaluate(() => navigator.clipboard.readText().then((t) => t, () => undefined))
+      real = await setClipboard('probe')
+      // WebKit lets the page write the clipboard but not read it back without a permission it cannot be granted.
+      const readable = real && (await readClipboard()) === 'probe'
+      const mode = real ? 'real clipboard' : 'synthetic paste event'
+      const checks = {}
+      /** One paste: the real clipboard and the paste key where the engine allows it; otherwise the paste event a browser dispatches. */
+      const paste = async (text) => {
+        if (real && (await setClipboard(text))) {
+          await page.keyboard.press('ControlOrMeta+v')
+        } else {
+          await page.evaluate((t) => {
+            const data = new DataTransfer()
+            data.setData('text/plain', t)
+            document.querySelector('textarea').dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+          }, text)
+        }
+        await page.waitForTimeout(600)
+      }
+      const composer = () => page.evaluate(() => window.__storyTree().nodes.find((n) => n.id === 'p1/composer:text')?.text)
+      await page.waitForTimeout(500)
+
+      // The composer.
+      let mark = await journeyMark(page)
+      await paste('line one\nline two')
+      checks[`composer [${mode}]: a multi-line paste inserts the text once`] = (await composer()) === 'line one\nline two'
+      checks[`composer [${mode}]: a multi-line paste does not send the message`] = !(await journeyEffects(page, mark)).some((e) => e.kind === 'conversationSend')
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('Backspace')
+      mark = await journeyMark(page)
+      await paste('a\u0007b\u001b[31mc\u0000d\te\r\nf')
+      const afterControls = await composer()
+      // The printable text arrives once; the control characters are the composer's own to keep or drop.
+      checks[`composer [${mode}]: a paste with control characters keeps the printable text once and sends nothing`] =
+        // The node's text spells a control character out as \u{..}, so it is read with those taken away.
+        afterControls?.replace(/\\u\{[0-9a-f]+\}/g, '').replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '') === 'ab[31mcd\te\nf' &&!(await journeyEffects(page, mark)).some((e) => e.kind === 'conversationSend')
+      await page.keyboard.type('Z')
+      await page.waitForTimeout(300)
+      checks['composer: typing still works after a paste with control characters'] = ((await composer()) ?? '').endsWith('Z')
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('Backspace')
+      await page.keyboard.type('copy me')
+      await page.waitForTimeout(700)
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.waitForTimeout(500)
+      mark = await journeyMark(page)
+      await page.keyboard.press('ControlOrMeta+c')
+      await page.waitForTimeout(500)
+      const copied = (await journeyEffects(page, mark)).find((e) => e.kind === 'clipboardWrite')
+      checks['composer: copy of the selection asks the host to write exactly the selection'] = copied?.payload.text.replace(/\u00a0/g, ' ') === 'copy me'
+      if (readable) checks['composer: the real clipboard holds the copied selection'] = (await readClipboard()) === 'copy me'
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('Backspace')
+
+      // The editor: Files, docs, notes.txt, by keys.
+      await page.keyboard.press(`${CHORD}e`)
+      await page.waitForTimeout(300)
+      await walkTo(page, (leaf) => leaf === 'treeItem:docs')
+      await page.keyboard.press('Enter')
+      await walkTo(page, (leaf) => leaf === 'treeItem:notes.txt')
+      await page.keyboard.press('Enter')
+      await sees(page, 'Notes', 4000)
+      mark = await journeyMark(page)
+      await paste('PASTED one\nPASTED two')
+      const inserted = (await journeyEffects(page, mark)).filter((e) => e.kind === 'documentEdit' && JSON.stringify(e.payload).includes('PASTED one'))
+      checks[`editor [${mode}]: a multi-line paste is one edit`] = inserted.length === 1
+      checks[`editor [${mode}]: a multi-line paste shows once on screen`] = ((await pageText(page)).match(/PASTED one/g) ?? []).length === 1
+      mark = await journeyMark(page)
+      await page.keyboard.press('ControlOrMeta+a')
+      await page.keyboard.press('ControlOrMeta+c')
+      await page.waitForTimeout(500)
+      const editorCopy = (await journeyEffects(page, mark)).find((e) => e.kind === 'clipboardWrite')
+      checks['editor: copy of the selection asks the host to write the whole selected text'] = typeof editorCopy?.payload.text === 'string' && editorCopy.payload.text.includes('# Notes') && editorCopy.payload.text.includes('Ada\tEngineer')
+      if (readable) checks['editor: the real clipboard holds the copied selection'] = (await readClipboard()) === editorCopy?.payload.text
+
+      // The terminal: plain, then with bracketed paste on (what a shell asks for), then with an embedded end marker.
+      await page.keyboard.press(`${CHORD}s`)
+      await sees(page, 'Nothing starts until you choose a row', 4000)
+      await page.keyboard.press('Enter')
+      await sees(page, 'PID', 4000)
+      const sentBytes = async (from) =>
+        (await journeyEffects(page, from)).filter((e) => e.kind === 'terminalInput' || e.kind === 'terminalInputBytes').map((e) => (e.kind === 'terminalInput' ? e.payload.bytes : atob(e.payload.data)))
+      mark = await journeyMark(page)
+      await paste('t1\nt2')
+      const plain = await sentBytes(mark)
+      checks[`terminal [${mode}]: a plain multi-line paste is one input, line breaks as carriage returns`] = plain.length === 1 && plain[0] === 't1\rt2'
+      await page.evaluate(() => document.querySelector('[data-story-control="bracketed-paste-on"]')?.click())
+      await page.waitForTimeout(500)
+      mark = await journeyMark(page)
+      await paste('b1\nb2')
+      const bracketed = await sentBytes(mark)
+      checks[`terminal [${mode}]: with bracketed paste on the paste is wrapped, newlines kept inside, one input`] =
+        bracketed.length === 1 && bracketed[0] === '\u001b[200~b1\nb2\u001b[201~'
+      mark = await journeyMark(page)
+      await paste('c1\u001b[201~rm -rf x\u0007')
+      const hostile = await sentBytes(mark)
+      checks[`terminal [${mode}]: an end marker inside the paste cannot close the bracket early`] =
+        hostile.length === 1 && hostile[0].startsWith('\u001b[200~') && hostile[0].endsWith('\u001b[201~') && hostile[0].indexOf('\u001b[201~') === hostile[0].length - 6
+      return checks
     },
   ],
   // Shell on a fresh terminal story: type echo hi, Enter, see the echo.
@@ -1321,7 +1672,8 @@ const SCENARIOS = {
           }
           const tree = window.__resize?.tree()
           const nodes = tree?.nodes ?? []
-          const rect = (n) => ({ x: n.rect.x, y: n.rect.y, width: n.rect.width, height: n.rect.height })
+          // A node that is not drawn carries no rect; it measures as an empty box, which `visible` leaves out.
+          const rect = (n) => ({ x: n.rect?.x ?? 0, y: n.rect?.y ?? 0, width: n.rect?.width ?? 0, height: n.rect?.height ?? 0 })
           return {
             fontSize: getComputedStyle(grid).fontSize,
             spanFontSize: getComputedStyle(span).fontSize,
@@ -1495,6 +1847,9 @@ const SCENARIOS = {
     },
   ],
 }
+
+// The feature stories' scenarios live in their own module (they share this file's helpers).
+Object.assign(SCENARIOS, (await import('./story-oracle-features.mjs')).scenarios({ pageText, has, sees, hasWrapped, wrappedIncludes, recordEffects, effectsSince, snap, layoutOf, CHORD }))
 
 async function interact(story) {
   const scenarios = SCENARIOS[story.id]

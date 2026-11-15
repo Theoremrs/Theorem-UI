@@ -11,6 +11,24 @@ import { WorkbenchSurface } from './workbench'
 import type { Effect } from '@/lib/workbench/wire'
 import type { Dispatch, SemanticsFeed, SurfaceHost, SurfaceParts } from './workbench'
 import type { ReactNode } from 'react'
+import { useWorkbenchAgent } from '@/lib/workbench/agent/store'
+
+declare global {
+  interface Window {
+    /** The core's semantic tree as the mounted handle gives it, for a scenario to read (never to change anything). */
+    __storyTree?: () => {
+      nodes: Array<{
+        id: string
+        role: string
+        name: string
+        text?: string
+        state: Record<string, unknown>
+        actions: Array<{ id: string; enabled: boolean }>
+        rect: { x: number; y: number; width: number; height: number }
+      }>
+    }
+  }
+}
 
 /** What the picker lists as live: every tool the fixture host can serve. */
 export const EVERY_TOOL = [
@@ -163,6 +181,15 @@ export function FixtureStory({
   const feedRef = useRef<SemanticsFeed>(undefined)
   const hostRef = useRef<FixtureHost>(undefined)
   const surfaceRef = useRef<SurfaceHost>(undefined)
+  useEffect(() => {
+    window.__storyTree = () =>
+      JSON.parse(
+        useWorkbenchAgent.getState().handle?.semantics() ?? '{"nodes":[]}',
+      )
+    return () => {
+      window.__storyTree = undefined
+    }
+  }, [])
   const [lastEffect, setLastEffect] = useState<string>()
   const [drawn, setDrawn] = useState(false)
   const [ready, setReady] = useState(false)
@@ -331,8 +358,8 @@ export function WorkbenchFilesStory() {
       options={{ granted: ['files'], tree: FILES_TREE }}
       script={[
         { chord: 'e' },
+        // Files lands on its first row when it takes focus.
         { see: 'README.md' },
-        { key: 'ArrowDown' },
         { key: 'Enter' },
         { key: 'ArrowDown' },
         { key: 'ArrowDown' },
@@ -401,11 +428,11 @@ export function WorkbenchEditorConflictStory() {
 }
 
 /** The Files steps that open `docs/notes.txt` into the editor. */
-const EDITOR_OPEN = 10
+const EDITOR_OPEN = 9
 const EDITOR_SCRIPT: Step[] = [
   { chord: 'e' },
+  // Files lands on its first row when it takes focus.
   { see: 'README.md' },
-  { key: 'ArrowDown' },
   { key: 'ArrowDown' },
   { key: 'Enter' },
   { see: 'architecture.md' },
@@ -422,8 +449,8 @@ const EDITOR_SCRIPT: Step[] = [
 /** The Files steps that open `docs/guide.md` into the Markdown panel. */
 export const MARKDOWN_OPEN: Step[] = [
   { chord: 'e' },
+  // Files lands on its first row when it takes focus.
   { see: 'README.md' },
-  { key: 'ArrowDown' },
   { key: 'ArrowDown' },
   { key: 'Enter' },
   { see: 'architecture.md' },

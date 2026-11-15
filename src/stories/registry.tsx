@@ -87,7 +87,16 @@ import {
   WorkbenchTerminalAdoptionUnavailableStory,
 } from '@/components/workbench/workbench-state-stories'
 import { WorkbenchAgentOperationsStory } from '@/components/workbench/workbench-agent-story'
+import {
+  WorkbenchAddSelectionStory,
+  WorkbenchFollowStory,
+  WorkbenchDocumentHistoryStory,
+  WorkbenchPresentationStory,
+  WorkbenchDelegationStory,
+  WorkbenchReplaceStory,
+} from '@/components/workbench/workbench-feature-stories'
 import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
+import { WorkbenchKeyboardJourneyStory } from '@/components/workbench/workbench-keyboard-journey-story'
 import { PALETTE_MATRIX_REGISTRY } from '@/components/workbench/workbench-palette-stories'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
@@ -841,7 +850,14 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-arrangements': WorkbenchArrangementsStory,
   'workbench-layouts-page': WorkbenchLayoutsPageStory,
   'workbench-agent-operations': WorkbenchAgentOperationsStory,
+  'workbench-add-selection': WorkbenchAddSelectionStory,
+  'workbench-follow': WorkbenchFollowStory,
+  'workbench-document-history': WorkbenchDocumentHistoryStory,
+  'workbench-presentation': WorkbenchPresentationStory,
+  'workbench-delegation': WorkbenchDelegationStory,
+  'workbench-replace': WorkbenchReplaceStory,
   'workbench-resize': WorkbenchResizeStory,
+  'workbench-keyboard-journey': WorkbenchKeyboardJourneyStory,
   'workbench-appearance': WorkbenchAppearanceStory,
   'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
   'workbench-markdown-source': WorkbenchMarkdownSourceStory,

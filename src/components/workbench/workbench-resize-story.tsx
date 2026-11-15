@@ -14,8 +14,8 @@ declare global {
 /** Files, then `docs/notes.txt` into the editor: the steps the editor story opens its document with. */
 const OPEN_DOCUMENT: Step[] = [
   { chord: 'e' },
+  // Files lands on its first row when it takes focus.
   { see: 'README.md' },
-  { key: 'ArrowDown' },
   { key: 'ArrowDown' },
   { key: 'Enter' },
   { see: 'architecture.md' },
