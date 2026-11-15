@@ -199,3 +199,78 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn a_renamed_tab_is_measured_at_its_new_width_and_its_neighbours_move() {
+    let (mut d, r) = Dock::from_preset(DockConfig::default(), Preset::Minimal);
+    for id in ["a", "b", "c"] {
+        d.open_panel(tab(id), OpenAt::Group(r.main)).unwrap();
+    }
+    let before = d.solve(area(120, 20), m());
+    let g = before.group(r.main).unwrap();
+    let (a, b) = (g.tabs[0].rect, g.tabs[1].rect);
+
+    assert!(
+        !d.set_tab_title(&pid("a"), "a"),
+        "the same title is no change"
+    );
+    assert!(!d.set_tab_title(&pid("nope"), "x"));
+    assert!(d.set_tab_title(&pid("a"), "long-name-here.md"));
+    let after = d.solve(area(120, 20), m());
+    let g = after.group(r.main).unwrap();
+    assert_eq!(g.tabs[0].rect.width, "long-name-here.md".len() as u16 + 4);
+    assert!(g.tabs[0].rect.width > a.width);
+    assert_eq!(g.tabs[1].rect.x, g.tabs[0].rect.right());
+    assert_eq!(g.tabs[1].rect.x, b.x + (g.tabs[0].rect.width - a.width));
+    // The neighbour's hit area moved with it: its old place now hits the
+    // renamed tab, its new place hits it.
+    assert_eq!(
+        after.hit_test(b.x, b.y),
+        Hit::Tab {
+            group: r.main,
+            panel: pid("a")
+        }
+    );
+    assert_eq!(
+        after.hit_test(g.tabs[1].rect.x, b.y),
+        Hit::Tab {
+            group: r.main,
+            panel: pid("b")
+        }
+    );
+}
+
+#[test]
+fn a_strip_that_overflows_after_a_rename_still_reaches_every_tab() {
+    let (mut d, r) = Dock::from_preset(DockConfig::default(), Preset::Minimal);
+    let ids = ["a", "b", "c", "d"];
+    for id in ids {
+        d.open_panel(tab(id), OpenAt::Group(r.main)).unwrap();
+    }
+    let wide = area(60, 20);
+    let g = d.solve(wide, m());
+    assert_eq!(g.group(r.main).unwrap().tabs_after, 0);
+    for id in ids {
+        d.set_tab_title(&pid(id), &format!("{id}-{}", "x".repeat(20)));
+    }
+    for id in ids {
+        d.focus_panel(&pid(id)).unwrap();
+        let f = d.solve(wide, m());
+        let g = f.group(r.main).unwrap();
+        assert_eq!(g.tabs_before + g.tabs.len() + g.tabs_after, ids.len());
+        assert!(g.tabs.len() < ids.len(), "the strip overflows");
+        let shown = g
+            .tabs
+            .iter()
+            .find(|t| t.panel == pid(id))
+            .expect("the active tab is shown");
+        assert!(shown.rect.right() <= g.tab_strip.right());
+        assert_eq!(
+            f.hit_test(shown.rect.x, shown.rect.y),
+            Hit::Tab {
+                group: r.main,
+                panel: pid(id)
+            }
+        );
+    }
+}

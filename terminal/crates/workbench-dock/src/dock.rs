@@ -203,6 +203,26 @@ impl Dock {
         self.split_group(group, side, role)
     }
 
+    /// Rename a tab. The strip measures tabs from their titles, so the next
+    /// solve lays this one out at the new width and the tabs after it move
+    /// with it; whatever no longer fits overflows as it always does. Returns
+    /// whether the title changed (false for an unknown panel or the same title).
+    pub fn set_tab_title(&mut self, panel: &PanelId, title: &str) -> bool {
+        let Some(tab) = self
+            .groups
+            .values_mut()
+            .flat_map(|g| g.tabs.iter_mut())
+            .find(|t| &t.panel == panel)
+        else {
+            return false;
+        };
+        if tab.title == title {
+            return false;
+        }
+        title.clone_into(&mut tab.title);
+        true
+    }
+
     /// Focus the group holding `panel` and make it the active tab.
     pub fn focus_panel(&mut self, panel: &PanelId) -> Result<GroupId, DockError> {
         let g = self

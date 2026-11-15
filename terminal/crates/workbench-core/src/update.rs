@@ -156,6 +156,7 @@ impl Model {
     pub(crate) fn settle(&mut self) {
         self.announce_workspace();
         self.replay_retained();
+        self.sync_tab_titles();
         let Some(vp) = self.viewport else {
             self.frame = None;
             return;
@@ -239,6 +240,26 @@ impl Model {
     /// terminal sessions for a panel bound to terminals. Silent, and judged
     /// by the same gate a live message passes, so a snapshot older than the
     /// panel's revision is not replayed.
+    /// Hand the dock each tab's current title so it measures the width the tab
+    /// draws. Only panels that name themselves are touched; the others keep the
+    /// title they were registered with.
+    fn sync_tab_titles(&mut self) {
+        let renames: Vec<(theorem_workbench_dock::PanelId, String)> = self
+            .panels
+            .iter()
+            .filter_map(|(id, e)| {
+                let label = e.panel.tab_label()?;
+                Some((
+                    theorem_workbench_dock::PanelId(id.as_str().to_owned()),
+                    label.title,
+                ))
+            })
+            .collect();
+        for (panel, title) in renames {
+            self.dock.set_tab_title(&panel, &title);
+        }
+    }
+
     fn replay_retained(&mut self) {
         let ids: Vec<PanelInstanceId> = self.panels.keys().cloned().collect();
         for id in ids {

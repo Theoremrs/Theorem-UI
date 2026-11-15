@@ -175,6 +175,7 @@ impl Panel for TestPanel {
                 self.taps += 1;
             }
             PanelMsg::Key(k) if k.key() == Key::Char('r') => self.doc = "b.md".into(),
+            PanelMsg::Key(k) if k.key() == Key::Char('R') => self.doc = "long-name-here.md".into(),
             PanelMsg::Action(id) => match id.as_str() {
                 "note.save" => self.try_emit(cx, EffectBody::DocumentSave),
                 "term.end" => self.try_emit(cx, EffectBody::TerminalEnd),
@@ -1993,6 +1994,32 @@ fn a_tab_shows_what_its_panel_names_itself_and_marks_unsaved_changes() {
         .find(|n| n.id.as_str() == format!("tab:{}", term.as_str()))
         .unwrap();
     assert_eq!(node.name, "term");
+}
+
+#[test]
+fn a_tab_whose_label_grows_is_measured_whole_and_the_dock_follows() {
+    let (mut m, _log) = new_model();
+    action(&mut m, "note.open");
+    action(&mut m, "term.open");
+    let note = kinds(&m, "note")[0].clone();
+    let term = kinds(&m, "term")[0].clone();
+    let rect = |m: &Model, id: &PanelInstanceId| {
+        semantics(m)
+            .nodes
+            .iter()
+            .find(|n| n.id.as_str() == format!("tab:{}", id.as_str()))
+            .map(|n| n.rect)
+            .expect("tab")
+    };
+    let (n0, t0) = (rect(&m, &note), rect(&m, &term));
+    assert_eq!(n0.x + n0.width, t0.x);
+    // Focus the note and grow its label.
+    click(&mut m, n0.x + 1, n0.y);
+    ch(&mut m, 'R');
+    let (n1, t1) = (rect(&m, &note), rect(&m, &term));
+    assert_eq!(n1.width, "long-name-here.md".len() as u16 + 4);
+    assert!(n1.width > n0.width);
+    assert_eq!(t1.x, n1.x + n1.width, "the neighbour moved with it");
 }
 
 #[test]
