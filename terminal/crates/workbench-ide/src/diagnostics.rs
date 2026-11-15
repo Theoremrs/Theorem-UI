@@ -1,16 +1,13 @@
-//! The Diagnostics panel: the findings the language owner returned, grouped by file, with the
-//! counts by severity and a filter.
+//! The Diagnostics panel: the findings of the documents open in the workbench, grouped by
+//! file, with the counts by severity and a filter.
 //!
-//! The owner answers `languageDiagnostics` for one document at one revision, with each
-//! finding as UTF-8 byte offsets into that revision's text. So the panel keeps one snapshot
-//! per file, replaced when a newer or equal revision arrives and dropped when an older one
-//! does, and it turns a byte offset into a line and column only when it holds the text of the
-//! same revision. Without that text the row shows the byte offset and the panel says why,
-//! rather than guessing a line. Reads go one document at a time, and the panel is bound to the
-//! document being read (or the one under the cursor), which is what lets the root deliver a
-//! refusal to it.
+//! The core feeds it: `DiagnosticsSet` carries every finding of one open document at one
+//! revision, already placed by line and column, and `DiagnosticsCleared` says the document
+//! closed. The core keeps the latest set per path, drops an older revision and replays to a
+//! panel that mounts late, so this panel holds no read loop of its own. What it shows is what
+//! the backend reports per open document; nothing scans the workspace, and the status says so.
 
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 
 use keybinds::{Key, KeyInput};
 use ratatui::buffer::Buffer;
@@ -18,14 +15,12 @@ use ratatui::layout::Rect;
 use ratatui::style::Style;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome};
-use theorem_workbench_core::effect::{Effect, EffectBody, EffectKind};
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{
-    ActionId, Capability, EffectId, Generation, PanelKind, ResourceRef, Revision, WorkspaceIdentity,
+    ActionId, Capability, Generation, PanelKind, ResourceRef, Revision, WorkspaceIdentity,
 };
-use theorem_workbench_core::registry::{ActionDescriptor, ActionIntent};
-use theorem_workbench_core::results::{LanguageDiagnostics, Severity};
+use theorem_workbench_core::registry::ActionDescriptor;
+use theorem_workbench_core::results::{FindingAt, Severity};
 use theorem_workbench_core::semantics::{Node, NodeAction, Role};
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
@@ -41,7 +36,6 @@ pub const CAPABILITY: &str = "diagnostics.subscribe";
 
 /// The action ids of the panel, as `descriptors` registers them.
 pub mod actions {
-    pub const REFRESH: &str = "diagnostics.refresh";
     pub const FILTER_ALL: &str = "diagnostics.filter-all";
     pub const FILTER_ERROR: &str = "diagnostics.filter-error";
     pub const FILTER_WARNING: &str = "diagnostics.filter-warning";
@@ -75,14 +69,6 @@ struct ViewState {
     /// `error`, `warning`, `info` or `hint`; absent shows every severity.
     filter: Option<String>,
     scroll: usize,
-    /// The files the panel reads, with the revision last known for each.
-    files: Vec<SavedFile>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-struct SavedFile {
-    path: String,
-    revision: Option<u64>,
 }
 
 /// Registers the panel under the builtin kind `"diagnostics"`.
@@ -94,29 +80,26 @@ pub fn register(factories: &mut PanelFactories) {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Finding {
-    id: String,
     severity: Severity,
     message: String,
     source: Option<String>,
-    start: u64,
-    /// Line and column from 1, the column in UTF-16 code units, when the text of the
-    /// snapshot's revision is held.
-    place: Option<(u32, u32)>,
+    code: Option<String>,
+    /// From 0, as the feed places it.
+    line: u32,
+    character: u32,
+}
+
+impl Finding {
+    fn key(&self) -> (u32, u32, String) {
+        (self.line, self.character, self.message.clone())
+    }
 }
 
 #[derive(Clone, Debug, Default)]
 struct FileSet {
-    /// The revision the findings are against.
-    revision: Option<u64>,
-    /// The newest revision of the document the panel has heard of.
-    document: Option<u64>,
-    /// The findings are a part of the document's set, not the whole of it.
-    partial: bool,
+    /// The revision the findings are against, as the owner names it.
+    revision: Option<String>,
     findings: Vec<Finding>,
-    /// The document text at a revision, from a resync.
-    text: Option<(u64, String)>,
-    /// What the owner last said that was not a snapshot, in its words.
-    note: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -163,67 +146,32 @@ pub struct DiagnosticsPanel {
     files: BTreeMap<String, FileSet>,
     filter: Option<Severity>,
     flat: Vec<Item>,
-    sel: Option<(String, String)>,
+    sel: Option<(String, (u32, u32, String))>,
     top: usize,
-    /// Files waiting for a read, and the one being read.
-    queue: VecDeque<String>,
-    reading: Option<(EffectId, String)>,
-    /// A read of every file is owed: the panel was restored, or the workspace named.
-    owed: bool,
-    notice: Option<String>,
-    /// An open is under way. The root focuses a panel already bound to the document an open
-    /// names, so for that moment the panel is bound to the workspace and the editor opens.
-    yielding: bool,
-    /// Snapshots dropped because the file had a newer one.
-    dropped_sets: u32,
     identity: WorkspaceIdentity,
     caps_ok: bool,
     area: Rect,
 }
 
 impl DiagnosticsPanel {
+    /// Only the filter and scroll are saved: the findings come back from the feed, which the
+    /// core replays to a panel that mounts.
     pub fn restore(state: &Value) -> Self {
         let saved: ViewState = serde_json::from_value(state.clone()).unwrap_or_default();
         let filter = saved
             .filter
             .as_deref()
             .and_then(|f| ORDER.iter().copied().find(|s| word(*s) == f));
-        let files = saved
-            .files
-            .into_iter()
-            .map(|f| {
-                (
-                    f.path,
-                    FileSet {
-                        document: f.revision,
-                        ..FileSet::default()
-                    },
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-        let mut panel = Self {
-            owed: !files.is_empty(),
-            files,
+        Self {
+            files: BTreeMap::new(),
             filter,
             flat: vec![],
             sel: None,
             top: saved.scroll,
-            queue: VecDeque::new(),
-            reading: None,
-            notice: None,
-            yielding: false,
-            dropped_sets: 0,
             identity: WorkspaceIdentity::default(),
             caps_ok: true,
             area: Rect::default(),
-        };
-        panel.rebuild();
-        panel
-    }
-
-    /// Snapshots dropped because the file already had a newer one.
-    pub fn dropped_sets(&self) -> u32 {
-        self.dropped_sets
+        }
     }
 
     fn counts(&self) -> [usize; 4] {
@@ -271,8 +219,7 @@ impl DiagnosticsPanel {
             self.flat
                 .extend(shown.into_iter().map(|i| Item::Finding(g, i)));
         }
-        let still = self.sel_index().is_some();
-        if !still {
+        if self.sel_index().is_none() {
             self.sel = self.flat.iter().find_map(|i| match *i {
                 Item::Finding(g, f) => self.key_of(g, f),
                 Item::Header(_) => None,
@@ -281,16 +228,16 @@ impl DiagnosticsPanel {
         self.clamp_top();
     }
 
-    fn key_of(&self, g: usize, f: usize) -> Option<(String, String)> {
+    fn key_of(&self, g: usize, f: usize) -> Option<(String, (u32, u32, String))> {
         let (path, file) = self.files.iter().nth(g)?;
-        Some((path.clone(), file.findings.get(f)?.id.clone()))
+        Some((path.clone(), file.findings.get(f)?.key()))
     }
 
     fn sel_index(&self) -> Option<usize> {
-        let (path, id) = self.sel.as_ref()?;
+        let (path, key) = self.sel.as_ref()?;
         self.flat.iter().position(|item| match *item {
             Item::Finding(g, f) => self.files.iter().nth(g).is_some_and(|(p, file)| {
-                p == path && file.findings.get(f).is_some_and(|x| &x.id == id)
+                p == path && file.findings.get(f).is_some_and(|x| &x.key() == key)
             }),
             Item::Header(_) => false,
         })
@@ -327,247 +274,53 @@ impl DiagnosticsPanel {
             && (self.identity.workspace != identity.workspace
                 || self.identity.environment != identity.environment);
         if moved {
+            // Another workspace's findings are not this one's.
             self.files.clear();
-            self.queue.clear();
-            self.reading = None;
-            self.notice = None;
             self.flat.clear();
             self.sel = None;
         }
         self.identity = identity.clone();
     }
 
-    /// Takes one document's snapshot. False: the file already had a newer one and this was
-    /// dropped.
-    fn ingest(
-        &mut self,
-        path: &str,
-        snapshot: LanguageDiagnostics,
-        answered_at: Option<u64>,
-    ) -> bool {
-        let revision = snapshot.revision.or(answered_at);
-        let file = self.files.entry(path.to_owned()).or_default();
-        if let (Some(have), Some(now)) = (file.revision, revision)
-            && now < have
-        {
-            self.dropped_sets += 1;
-            return false;
-        }
-        let same = file.revision == revision && revision.is_some();
-        let mut incoming: Vec<Finding> = snapshot
-            .findings
+    /// Takes the latest set of one document. The core has already dropped an older revision.
+    fn take(&mut self, path: String, revision: Revision, findings: Vec<FindingAt>) {
+        let mut findings: Vec<Finding> = findings
             .into_iter()
             .map(|f| Finding {
-                id: f.id,
                 severity: f.severity,
                 message: f.message,
-                source: f.provider,
-                start: f.start,
-                place: None,
+                source: f.source,
+                code: f.code,
+                line: f.range.start.line,
+                character: f.range.start.character,
             })
             .collect();
-        if snapshot.full || !same {
-            file.findings = std::mem::take(&mut incoming);
-        } else {
-            // A part of the set at the revision already shown: its findings replace the ones
-            // with the same id and join the rest.
-            for f in incoming {
-                match file.findings.iter_mut().find(|x| x.id == f.id) {
-                    Some(slot) => *slot = f,
-                    None => file.findings.push(f),
-                }
-            }
-        }
-        file.findings.sort_by_key(|f| (f.start, f.id.clone()));
-        file.partial = !snapshot.full;
-        file.revision = revision;
-        file.document = file.document.max(revision);
-        file.note = None;
-        place_all(file);
-        true
-    }
-
-    fn on_completion(&mut self, completion: Completion, cached: bool) {
-        let (path, was_read) = match (&self.reading, &completion.resource) {
-            (Some((effect, path)), _) if *effect == completion.effect => (path.clone(), true),
-            (
-                _,
-                ResourceRef::Document {
-                    workspace,
-                    resource_id,
-                },
-            ) if cached && *workspace == self.identity.workspace => (resource_id.clone(), false),
-            _ => return,
-        };
-        if was_read {
-            self.reading = None;
-        }
-        let at = match &completion.revision {
-            Some(Revision::Seq(n)) => Some(*n),
-            _ => None,
-        };
-        match (completion.outcome, completion.payload) {
-            (Outcome::Accepted, Some(CompletionPayload::LanguageDiagnostics(snapshot))) => {
-                self.ingest(&path, snapshot, at);
-            }
-            (Outcome::Accepted, _) => {
-                self.note(
-                    &path,
-                    "The language service accepted the request but sent no findings.",
-                );
-            }
-            (Outcome::Refused { code, reason }, _) => {
-                self.note(&path, &format!("Refused ({code}): {reason}"));
-            }
-            (Outcome::Failed { reason }, _) => {
-                self.note(&path, &format!("Failed: {reason}"));
-            }
-            (Outcome::Uncertain { reason }, _) => {
-                self.note(
-                    &path,
-                    &format!("Unknown whether the findings are current: {reason}"),
-                );
-            }
-        }
+        findings.sort_by_key(Finding::key);
+        let revision = Some(match revision {
+            Revision::Seq(n) => n.to_string(),
+            Revision::Opaque(s) => s,
+        });
+        self.files.insert(path, FileSet { revision, findings });
         self.rebuild();
     }
 
-    fn note(&mut self, path: &str, note: &str) {
-        self.files.entry(path.to_owned()).or_default().note = Some(note.to_owned());
-        self.notice = Some(format!("{path}: {note} Not retried."));
-    }
-
     fn on_host(&mut self, message: HostMessage) {
-        let workspace = self.identity.workspace.clone();
-        let doc = |resource: &ResourceRef| match resource {
-            ResourceRef::Document {
-                workspace: w,
-                resource_id,
-            } if *w == workspace => Some(resource_id.clone()),
-            _ => None,
-        };
         match message {
-            HostMessage::DocumentResync {
-                resource,
-                revision: Revision::Seq(n),
-                text,
-            } => {
-                if let Some(path) = doc(&resource) {
-                    let file = self.files.entry(path).or_default();
-                    file.document = file.document.max(Some(n));
-                    file.text = Some((n, text));
-                    place_all(file);
-                    self.rebuild();
-                }
-            }
-            HostMessage::DocumentChanged {
-                resource,
-                revision: Revision::Seq(n),
+            HostMessage::DiagnosticsSet {
+                path,
+                revision,
+                findings,
                 ..
-            }
-            | HostMessage::DocumentSaved {
-                resource,
-                revision: Revision::Seq(n),
-            }
-            | HostMessage::DocumentAcknowledged {
-                resource,
-                revision: Revision::Seq(n),
-                ..
-            } => {
-                if let Some(path) = doc(&resource) {
-                    let file = self.files.entry(path.clone()).or_default();
-                    file.document = file.document.max(Some(n));
-                    if file.text.as_ref().is_some_and(|(at, _)| *at < n) {
-                        file.text = None;
-                    }
-                    // The document moved on, so the findings are for older text: read again.
-                    if !self.queue.contains(&path) {
-                        self.queue.push_back(path);
-                    }
-                    self.rebuild();
-                }
-            }
-            HostMessage::DocumentRetired { resource } => {
-                if let Some(path) = doc(&resource) {
-                    self.files.remove(&path);
-                    self.rebuild();
-                }
-            }
-            HostMessage::DocumentMoved { from, to } => {
-                if let (Some(old), Some(new)) = (doc(&from), doc(&to))
-                    && let Some(file) = self.files.remove(&old)
-                {
-                    self.files.insert(new, file);
-                    self.rebuild();
-                }
+            } => self.take(path, revision, findings),
+            HostMessage::DiagnosticsCleared { path } => {
+                self.files.remove(&path);
+                self.rebuild();
             }
             _ => {}
         }
     }
 
-    /// Starts the next read, one document at a time: the root judges an answer against the
-    /// one document the panel is bound to, so a refusal for it is not lost.
-    fn pump(&mut self, cx: &mut Ctx) {
-        if !self.caps_ok || !self.identity.is_set() || self.area.width == 0 || self.area.height == 0
-        {
-            return;
-        }
-        if self.owed {
-            self.owed = false;
-            for path in self.files.keys() {
-                if !self.queue.contains(path) {
-                    self.queue.push_back(path.clone());
-                }
-            }
-        }
-        while self.reading.is_none() {
-            let Some(path) = self.queue.pop_front() else {
-                return;
-            };
-            let Some(file) = self.files.get(&path) else {
-                continue;
-            };
-            let Some(revision) = file.document.or(file.revision) else {
-                self.note(
-                    &path,
-                    "No revision of this document is known, and the host refuses a language request without one.",
-                );
-                continue;
-            };
-            let resource = ResourceRef::Document {
-                workspace: self.identity.workspace.clone(),
-                resource_id: path.clone(),
-            };
-            let generation = self.identity.generation;
-            match cx.emit(|id| {
-                Effect::new(id, resource, EffectBody::LanguageDiagnostics)
-                    .with_revision(Revision::Seq(revision))
-                    .with_generation(generation)
-            }) {
-                Ok(id) => self.reading = Some((id, path)),
-                Err(error) => {
-                    self.notice = Some(format!("Not sent: {error}."));
-                    self.queue.push_front(path);
-                    return;
-                }
-            }
-        }
-    }
-
     // ---- what the person does -------------------------------------------------------------
-
-    fn refresh(&mut self) {
-        self.notice = None;
-        if !self.caps_ok {
-            self.notice = Some(self.unavailable());
-            return;
-        }
-        if self.files.is_empty() {
-            self.notice = Some(NO_FILES.to_owned());
-            return;
-        }
-        self.owed = true;
-    }
 
     fn set_filter(&mut self, filter: Option<Severity>) {
         self.filter = filter;
@@ -609,39 +362,30 @@ impl DiagnosticsPanel {
     }
 
     fn open_finding(&mut self, cx: &mut Ctx) {
-        let Some((path, id)) = self.sel.clone() else {
+        let Some((path, key)) = self.sel.clone() else {
             return;
         };
-        let place = self
-            .files
-            .get(&path)
-            .and_then(|f| f.findings.iter().find(|x| x.id == id))
-            .and_then(|f| f.place);
-        self.open_at(path, place, cx);
+        self.open_at(path, Some((key.0, key.1)), cx);
     }
 
+    /// The feed counts the column in the unit it states, and `FileAt` counts UTF-16 code
+    /// units from 1; the two agree for every line the backend reports in UTF-16 and for
+    /// any line whose text before the finding is ASCII.
     fn open_at(&mut self, path: String, place: Option<(u32, u32)>, cx: &mut Ctx) {
-        self.yielding = true;
         let workspace = self.identity.workspace.clone();
         match place {
-            Some((line, column)) => cx.open(OpenTarget::FileAt {
+            Some((line, character)) => cx.open(OpenTarget::FileAt {
                 workspace,
                 path,
-                line,
-                column,
+                line: line + 1,
+                column: character + 1,
             }),
-            None => {
-                self.notice = Some(format!(
-                    "Opened {path} without a position: its text at the findings' revision is not known here, so a byte offset cannot be turned into a line."
-                ));
-                cx.open(OpenTarget::File { workspace, path });
-            }
+            None => cx.open(OpenTarget::File { workspace, path }),
         }
     }
 
     fn on_action(&mut self, id: &ActionId, cx: &mut Ctx) {
         match id.as_str() {
-            actions::REFRESH => self.refresh(),
             actions::FILTER_ALL => self.set_filter(None),
             actions::FILTER_ERROR => self.set_filter(Some(Severity::Error)),
             actions::FILTER_WARNING => self.set_filter(Some(Severity::Warning)),
@@ -674,7 +418,6 @@ impl DiagnosticsPanel {
             Key::Char('3') => self.set_filter(Some(Severity::Info)),
             Key::Char('4') => self.set_filter(Some(Severity::Hint)),
             Key::Char('f') => self.filter_next(),
-            Key::Char('r') => self.refresh(),
             _ => {}
         }
     }
@@ -726,64 +469,36 @@ impl DiagnosticsPanel {
 
     fn unavailable(&self) -> String {
         format!(
-            "The language service is unavailable: this host does not report the \"{CAPABILITY}\" capability. No findings are shown because none can be read, not because there are none."
+            "The host cannot report findings: it does not report the \"{CAPABILITY}\" capability. None are shown because none can be read, not because there are none."
         )
-    }
-
-    fn unplaced(&self) -> usize {
-        self.files
-            .values()
-            .flat_map(|f| &f.findings)
-            .filter(|f| f.place.is_none())
-            .count()
     }
 
     fn status(&self, caps_ok: bool) -> (String, bool) {
         if !caps_ok {
             return (self.unavailable(), true);
         }
-        if let Some(notice) = &self.notice {
-            return (notice.clone(), true);
-        }
         if self.files.is_empty() {
-            return (NO_FILES.to_owned(), false);
+            return (NO_DOCUMENTS.to_owned(), false);
         }
         let n = self.total();
         let files = self.files.len();
-        let mut text = if n == 0 {
-            format!(
-                "No findings in {files} {}.",
-                if files == 1 { "file" } else { "files" }
-            )
+        let open = if files == 1 {
+            "1 open document".to_owned()
+        } else {
+            format!("{files} open documents")
+        };
+        let text = if n == 0 {
+            format!("No findings in {open}. {SCOPE}")
         } else {
             format!(
-                "{n} {} in {files} {}.",
+                "{n} {} in {open}. {SCOPE}",
                 if n == 1 { "finding" } else { "findings" },
-                if files == 1 { "file" } else { "files" }
             )
         };
-        if self.reading.is_some() {
-            text.push_str(" Reading\u{2026}");
-        }
-        let unplaced = self.unplaced();
-        if unplaced > 0 {
-            text.push_str(&format!(
-                " {unplaced} without a line: the text of their revision is not held, so the byte offset is shown."
-            ));
-        }
         (text, false)
     }
 
-    fn actions_listed(&self, caps_ok: bool) -> Vec<NodeAction> {
-        let refresh = if !caps_ok {
-            Some(self.unavailable())
-        } else if self.files.is_empty() {
-            Some(NO_FILES.to_owned())
-        } else if !self.identity.is_set() {
-            Some("No workspace is open yet.".to_owned())
-        } else {
-            None
-        };
+    fn actions_listed(&self) -> Vec<NodeAction> {
         let moves = (!self.flat.iter().any(|i| matches!(i, Item::Finding(..))))
             .then(|| "There are no findings to select.".to_owned());
         let item = |id: &str, reason: Option<String>| NodeAction {
@@ -792,7 +507,6 @@ impl DiagnosticsPanel {
             reason,
         };
         vec![
-            item(actions::REFRESH, refresh),
             item(actions::FILTER_ALL, None),
             item(actions::FILTER_ERROR, None),
             item(actions::FILTER_WARNING, None),
@@ -888,10 +602,7 @@ impl DiagnosticsPanel {
                     if is_sel {
                         buf.set_style(row, base);
                     }
-                    let place = match finding.place {
-                        Some((l, c)) => format!("{l}:{c}"),
-                        None => format!("@{}", finding.start),
-                    };
+                    let place = format!("{}:{}", finding.line + 1, finding.character + 1);
                     let head = format!("  {:<7} {:>8}  ", word(finding.severity), place);
                     let sev_style = if is_sel {
                         base
@@ -901,8 +612,14 @@ impl DiagnosticsPanel {
                     let used = text::put(buf, row.x, row.y, row.width as usize, &head, sev_style);
                     let first = finding.message.lines().next().unwrap_or("");
                     let mut message = first.to_owned();
-                    if let Some(source) = &finding.source {
-                        message.push_str(&format!("  [{source}]"));
+                    match (&finding.source, &finding.code) {
+                        (Some(source), Some(code)) => {
+                            message.push_str(&format!("  [{source} {code}]"));
+                        }
+                        (Some(tag), None) | (None, Some(tag)) => {
+                            message.push_str(&format!("  [{tag}]"));
+                        }
+                        (None, None) => {}
                     }
                     let cells = text::cells(&message, &[]);
                     let avail = row.width.saturating_sub(used);
@@ -918,21 +635,10 @@ impl DiagnosticsPanel {
             return;
         };
         let mut tail = format!(" ({})", file.findings.len());
-        if let Some(rev) = file.revision {
+        if let Some(rev) = &file.revision {
             tail.push_str(&format!(" r{rev}"));
         }
-        if file.partial {
-            tail.push_str(" partial");
-        }
-        if let (Some(now), Some(rev)) = (file.document, file.revision)
-            && now > rev
-        {
-            tail.push_str(&format!(" stale (document is at r{now})"));
-        }
-        if let Some(note) = &file.note {
-            tail.push_str(&format!(" {note}"));
-        }
-        if file.findings.is_empty() && file.note.is_none() {
+        if file.findings.is_empty() {
             tail.push_str(" no findings");
         }
         let room =
@@ -946,11 +652,7 @@ impl DiagnosticsPanel {
             row.y,
             rest,
             &text::fit(&tail, rest),
-            if file.note.is_some() {
-                s.error
-            } else {
-                s.muted
-            },
+            s.muted,
         );
     }
 
@@ -959,9 +661,8 @@ impl DiagnosticsPanel {
         let mut root = Node::new("diagnostics", Role::Region, "Diagnostics", area);
         let (words, problem) = self.status(caps_ok);
         root.state.description = Some(words.clone());
-        root.state.busy = self.reading.is_some();
         root.state.focused = focused;
-        root.actions = self.actions_listed(caps_ok);
+        root.actions = self.actions_listed();
         let counts = self.counts();
         let mut out = vec![];
         let mut x = area.x;
@@ -1025,27 +726,26 @@ impl DiagnosticsPanel {
             let (name, level) = match *item {
                 Item::Header(g) => {
                     let (path, file) = self.files.iter().nth(g).expect("a header names a file");
-                    let mut name = format!("{path}: {} findings", file.findings.len());
-                    if let Some(note) = &file.note {
-                        name.push_str(&format!(", {note}"));
-                    }
-                    (name, 1)
+                    (format!("{path}: {} findings", file.findings.len()), 1)
                 }
                 Item::Finding(g, f) => {
                     let (path, file) = self.files.iter().nth(g).expect("a finding names a file");
                     let finding = &file.findings[f];
-                    let place = match finding.place {
-                        Some((l, c)) => format!("line {l} column {c}"),
-                        None => format!("byte {}", finding.start),
-                    };
+                    let place =
+                        format!("line {} column {}", finding.line + 1, finding.character + 1);
                     let source = finding
                         .source
                         .as_ref()
                         .map(|s| format!(" from {s}"))
                         .unwrap_or_default();
+                    let code = finding
+                        .code
+                        .as_ref()
+                        .map(|c| format!(" code {c}"))
+                        .unwrap_or_default();
                     (
                         format!(
-                            "{} in {path} at {place}: {}{source}",
+                            "{} in {path} at {place}: {}{source}{code}",
                             word(finding.severity),
                             finding.message
                         ),
@@ -1076,7 +776,8 @@ impl DiagnosticsPanel {
     }
 }
 
-const NO_FILES: &str = "No findings have been read yet: nothing has told this panel which documents to ask the language service about.";
+const NO_DOCUMENTS: &str = "No documents are open in the workbench. Findings cover open documents only: the backend reports diagnostics per open document and does not scan the workspace.";
+const SCOPE: &str = "Open documents only; the workspace is not scanned.";
 
 struct Layout {
     status: Rect,
@@ -1099,39 +800,10 @@ fn layout(area: Rect, status_rows: u16) -> Layout {
     }
 }
 
-/// Turns each finding's byte offset into a line and column, when the file's text is held at
-/// the revision the findings are against. Otherwise the place is unknown.
-fn place_all(file: &mut FileSet) {
-    let text = match (&file.text, file.revision) {
-        (Some((at, text)), Some(rev)) if *at == rev => Some(text.as_str()),
-        _ => None,
-    };
-    for finding in &mut file.findings {
-        finding.place = text.and_then(|t| place_of(t, finding.start));
-    }
-}
-
-fn place_of(text: &str, byte: u64) -> Option<(u32, u32)> {
-    let byte = usize::try_from(byte).ok()?;
-    if byte > text.len() || !text.is_char_boundary(byte) {
-        return None;
-    }
-    let before = &text[..byte];
-    let line = before.matches('\n').count() as u32 + 1;
-    let start = before.rfind('\n').map_or(0, |i| i + 1);
-    let column = before[start..].encode_utf16().count() as u32 + 1;
-    Some((line, column))
-}
-
 impl Panel for DiagnosticsPanel {
     fn update(&mut self, msg: PanelMsg, cx: &mut Ctx) {
-        self.yielding = false;
         self.adopt(cx.workspace());
         self.caps_ok = cx.capabilities().has(&Capability::new(CAPABILITY));
-        let quiet = matches!(
-            msg,
-            PanelMsg::Resize { .. } | PanelMsg::Focus(_) | PanelMsg::Workspace(_)
-        );
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
@@ -1139,16 +811,9 @@ impl Panel for DiagnosticsPanel {
                 self.area = Rect::new(0, 0, area.width, area.height);
                 self.clamp_top();
             }
-            PanelMsg::Completion(c) => self.on_completion(c, false),
-            // An accepted answer for another document is still true of that document, and this
-            // panel shows many.
-            PanelMsg::Cached(c) => self.on_completion(c, true),
             PanelMsg::Host(message) => self.on_host(message),
             PanelMsg::Action(id) => self.on_action(&id, cx),
             _ => {}
-        }
-        if !quiet {
-            self.pump(cx);
         }
     }
 
@@ -1177,16 +842,13 @@ impl Panel for DiagnosticsPanel {
         serde_json::to_value(ViewState {
             filter: self.filter.map(|s| word(s).to_owned()),
             scroll: self.top,
-            files: self
-                .files
-                .iter()
-                .map(|(path, f)| SavedFile {
-                    path: path.clone(),
-                    revision: f.document.or(f.revision),
-                })
-                .collect(),
         })
         .unwrap_or(Value::Null)
+    }
+
+    /// The panel reads the feed of open documents' findings.
+    fn wants_diagnostics(&self) -> bool {
+        true
     }
 
     fn tab_label(&self) -> Option<TabLabel> {
@@ -1197,35 +859,15 @@ impl Panel for DiagnosticsPanel {
         })
     }
 
-    /// The document being read, else the one under the cursor, else the workspace.
+    /// The workspace: the panel shows findings of many documents and is bound to none, so
+    /// opening one of them reaches the editor.
     fn binding(&self) -> Option<Binding> {
-        let path = self
-            .reading
-            .as_ref()
-            .map(|(_, p)| p.clone())
-            .or_else(|| self.sel.as_ref().map(|(p, _)| p.clone()))
-            .filter(|_| !self.yielding);
-        let generation = Some(Generation(self.identity.generation.0));
-        Some(match path {
-            Some(path) => Binding {
-                revision: self
-                    .files
-                    .get(&path)
-                    .and_then(|f| f.revision)
-                    .map(Revision::Seq),
-                resource: ResourceRef::Document {
-                    workspace: self.identity.workspace.clone(),
-                    resource_id: path,
-                },
-                generation,
+        Some(Binding {
+            resource: ResourceRef::Workspace {
+                workspace: self.identity.workspace.clone(),
             },
-            None => Binding {
-                resource: ResourceRef::Workspace {
-                    workspace: self.identity.workspace.clone(),
-                },
-                revision: None,
-                generation,
-            },
+            revision: None,
+            generation: Some(Generation(self.identity.generation.0)),
         })
     }
 }
@@ -1234,18 +876,10 @@ pub(crate) fn kind() -> PanelKind {
     PanelKind::new(KIND)
 }
 
-/// The registry entries. Reading is a `Start` that names the language read it sends; the
-/// filters and movement are local.
+/// The registry entries. Everything is local: the feed needs no request.
 pub(crate) fn descriptors() -> Vec<ActionDescriptor> {
     let local = |id: &str, title: &str| ActionDescriptor::local(id, title).requires(CAPABILITY);
     vec![
-        ActionDescriptor::new(
-            actions::REFRESH,
-            "Read the findings again",
-            ActionIntent::Start,
-        )
-        .requires(CAPABILITY)
-        .emits(EffectKind::LanguageDiagnostics),
         local(actions::FILTER_ALL, "Show findings of every severity"),
         local(actions::FILTER_ERROR, "Show only errors"),
         local(actions::FILTER_WARNING, "Show only warnings"),

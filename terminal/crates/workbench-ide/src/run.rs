@@ -1,6 +1,7 @@
 //! The Run output panel: start a configured run, watch its state and output, stop it.
 //!
-//! The run owner has no event stream and no listing. It answers `runPoll` with the host's
+//! The run owner has no event stream. It lists runs on request (`run.list`, when the host
+//! grants it) so a run started elsewhere can be shown here by its handle. It answers `runPoll` with the host's
 //! word for one run and everything the run wrote so far (not only what is new), so the panel
 //! polls on its own ticks and replaces what it shows with each answer. It reads no clock: a
 //! poll goes out every `POLL_EVERY` frames while the run is live, and an answer that says
@@ -35,7 +36,7 @@ use theorem_workbench_core::ids::{
     ActionId, Capability, EffectId, Generation, PanelKind, ResourceRef, WorkspaceIdentity,
 };
 use theorem_workbench_core::registry::{ActionDescriptor, ActionIntent};
-use theorem_workbench_core::results::RunState;
+use theorem_workbench_core::results::{RunState, RunSummary};
 use theorem_workbench_core::semantics::{Node, NodeAction, Role};
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
@@ -49,6 +50,7 @@ use crate::text;
 pub const KIND: &str = "run-output";
 const START_CAPABILITY: &str = "run.start";
 const READ_CAPABILITY: &str = "run.subscribe";
+const LIST_CAPABILITY: &str = "run.list";
 
 /// Frames between two polls of a live run.
 const POLL_EVERY: u32 = 8;
@@ -61,6 +63,11 @@ pub mod actions {
     pub const STOP_CONFIRM: &str = "run.stop-confirm";
     pub const STOP_CANCEL: &str = "run.stop-cancel";
     pub const REFRESH: &str = "run.refresh";
+    pub const LIST: &str = "run.list";
+    pub const LIST_UP: &str = "run.list-up";
+    pub const LIST_DOWN: &str = "run.list-down";
+    pub const ATTACH: &str = "run.attach";
+    pub const LIST_CLOSE: &str = "run.list-close";
     pub const FOLLOW: &str = "run.follow";
     pub const NEXT_FIELD: &str = "run.next-field";
     pub const SCROLL_UP: &str = "run.scroll-up";
@@ -114,6 +121,7 @@ enum Step {
     Start,
     Poll,
     Stop,
+    List,
 }
 
 /// Where the panel learned of the run.
@@ -179,6 +187,14 @@ enum Row {
     Text(Line<'static>),
 }
 
+/// The runs the host listed, shown in place of the output until one is chosen or the list is
+/// closed.
+struct Picker {
+    runs: Vec<RunSummary>,
+    sel: usize,
+    top: usize,
+}
+
 struct Told {
     outcome: &'static str,
     text: String,
@@ -210,6 +226,8 @@ pub struct RunPanel {
     identity: WorkspaceIdentity,
     can_start: bool,
     can_read: bool,
+    can_list: bool,
+    picker: Option<Picker>,
     area: Rect,
 }
 
@@ -240,6 +258,8 @@ impl RunPanel {
             identity: WorkspaceIdentity::default(),
             can_start: true,
             can_read: true,
+            can_list: false,
+            picker: None,
             area: Rect::default(),
         };
         panel.rebuild();
@@ -308,6 +328,7 @@ impl RunPanel {
             self.stdout.clear();
             self.stderr.clear();
             self.pending.clear();
+            self.picker = None;
             self.asking = false;
             self.stopping = false;
             self.told = None;
@@ -387,6 +408,24 @@ impl RunPanel {
                 self.paused = true;
                 self.notice = Some("The host answered the read with no run state.".to_owned());
             }
+            (Step::List, Outcome::Accepted, Some(CompletionPayload::RunList(list))) => {
+                let mut runs = list.runs;
+                // Newest first; the host's own order breaks ties.
+                runs.sort_by_key(|r| std::cmp::Reverse(r.started_at_ms.unwrap_or(0)));
+                if runs.is_empty() {
+                    self.picker = None;
+                    self.notice = Some("The host lists no runs.".to_owned());
+                } else {
+                    self.picker = Some(Picker {
+                        runs,
+                        sel: 0,
+                        top: 0,
+                    });
+                }
+            }
+            (Step::List, Outcome::Accepted, _) => {
+                self.notice = Some("The host answered the list with no runs.".to_owned());
+            }
             (Step::Stop, Outcome::Accepted, _) => {
                 // The next frame reads the run to see it end.
                 self.ticks = POLL_EVERY;
@@ -397,6 +436,7 @@ impl RunPanel {
                     Step::Start => "Starting the run",
                     Step::Poll => "Reading the run",
                     Step::Stop => "Stopping the run",
+                    Step::List => "Listing the runs",
                 };
                 self.told(word, outcome);
                 if step == Step::Poll {
@@ -562,6 +602,75 @@ impl RunPanel {
         }
     }
 
+    fn list(&mut self, cx: &mut Ctx) {
+        self.notice = None;
+        self.told = None;
+        if !self.can_list {
+            return;
+        }
+        if self.pending.values().any(|s| *s == Step::List) {
+            self.notice = Some("A list is already on its way.".to_owned());
+        } else if !self.identity.is_set() {
+            self.notice = Some("No workspace is open yet.".to_owned());
+        } else {
+            self.send(cx, Step::List, EffectBody::RunList);
+        }
+    }
+
+    fn move_pick(&mut self, delta: isize) {
+        let height = self.list_height().saturating_sub(1).max(1);
+        let Some(p) = &mut self.picker else {
+            return;
+        };
+        p.sel = (p.sel as isize + delta).clamp(0, p.runs.len() as isize - 1) as usize;
+        if p.sel < p.top {
+            p.top = p.sel;
+        } else if p.sel >= p.top + height {
+            p.top = p.sel + 1 - height;
+        }
+    }
+
+    /// Shows the listed run in this panel: its handle is read like any restored one. The run
+    /// is not this panel's to stop or restart unless the person says so, and closing the view
+    /// leaves it running.
+    fn attach(&mut self, index: Option<usize>, cx: &mut Ctx) {
+        let Some(picker) = self.picker.take() else {
+            return;
+        };
+        let Some(run) = picker.runs.get(index.unwrap_or(picker.sel)) else {
+            return;
+        };
+        if let Some(name) = &run.name {
+            self.name = Field::new(name);
+        }
+        if let Some(argv) = &run.command
+            && let Ok(line) = shlex::try_join(argv.iter().map(String::as_str))
+        {
+            self.command = Field::new(&line);
+        }
+        self.handle = Some(run.handle.clone());
+        self.origin = Origin::Observed;
+        self.state = Some(Word {
+            word: run.state.clone(),
+            code: None,
+        });
+        self.stdout.clear();
+        self.stderr.clear();
+        self.rebuild();
+        self.follow = true;
+        self.paused = false;
+        self.asking = false;
+        self.stopping = false;
+        self.told = None;
+        self.notice = None;
+        self.focus = Focus::Output;
+        if self.can_read {
+            self.poll(cx);
+        } else {
+            self.notice = Some(self.unavailable_read());
+        }
+    }
+
     fn refresh(&mut self, cx: &mut Ctx) {
         self.notice = None;
         self.told = None;
@@ -625,6 +734,11 @@ impl RunPanel {
             actions::STOP_CONFIRM => self.confirm_stop(cx),
             actions::STOP_CANCEL => self.asking = false,
             actions::REFRESH => self.refresh(cx),
+            actions::LIST => self.list(cx),
+            actions::LIST_UP => self.move_pick(-1),
+            actions::LIST_DOWN => self.move_pick(1),
+            actions::ATTACH => self.attach(None, cx),
+            actions::LIST_CLOSE => self.picker = None,
             actions::FOLLOW => self.set_follow(!self.follow),
             actions::NEXT_FIELD => self.next_focus(false),
             actions::SCROLL_UP => self.scroll(-(self.list_height().max(2) as isize - 1)),
@@ -643,6 +757,21 @@ impl RunPanel {
             match key.key() {
                 Key::Enter | Key::Char('y') => self.confirm_stop(cx),
                 Key::Esc | Key::Char('n') => self.asking = false,
+                _ => {}
+            }
+            return;
+        }
+        if self.picker.is_some() {
+            let page = self.list_height().saturating_sub(1).max(2) as isize - 1;
+            match key.key() {
+                Key::Up => self.move_pick(-1),
+                Key::Down => self.move_pick(1),
+                Key::PageUp => self.move_pick(-page),
+                Key::PageDown => self.move_pick(page),
+                Key::Home => self.move_pick(-1_000_000),
+                Key::End => self.move_pick(1_000_000),
+                Key::Enter => self.attach(None, cx),
+                Key::Esc | Key::Char('l') => self.picker = None,
                 _ => {}
             }
             return;
@@ -676,6 +805,7 @@ impl RunPanel {
             Key::Char('f') if mods.is_empty() => self.set_follow(!self.follow),
             Key::Char('s') if mods.is_empty() => self.ask_stop(),
             Key::Char('r') if mods.is_empty() => self.refresh(cx),
+            Key::Char('l') if mods.is_empty() && self.can_list => self.list(cx),
             Key::Char('g') if mods.is_empty() => self.start(cx),
             _ => {}
         }
@@ -692,6 +822,9 @@ impl RunPanel {
                 && y < i32::from(r.y + r.height)
         };
         match p.kind {
+            PointerKind::Wheel { dy, .. } if self.picker.is_some() => {
+                self.move_pick(isize::from(dy));
+            }
             PointerKind::Wheel { dy, .. } => self.scroll(isize::from(dy) * 3),
             PointerKind::Down(Button::Left) => {
                 for (focus, rect) in [(Focus::Name, lay.name), (Focus::Command, lay.command)] {
@@ -716,10 +849,24 @@ impl RunPanel {
                 }
                 if inside(lay.secondary) {
                     self.asking = false;
+                } else if inside(lay.runs) {
+                    if self.picker.is_some() {
+                        self.picker = None;
+                    } else {
+                        self.list(cx);
+                    }
                 } else if inside(lay.follow) {
                     self.set_follow(!self.follow);
                 } else if inside(lay.list) {
                     self.focus = Focus::Output;
+                    // The first row of the picker is its title; the runs follow it.
+                    if let Some(p) = &self.picker {
+                        let row = (y - i32::from(lay.list.y)) as usize;
+                        if row >= 1 && p.top + row - 1 < p.runs.len() {
+                            let at = p.top + row - 1;
+                            self.attach(Some(at), cx);
+                        }
+                    }
                 }
             }
             _ => {}
@@ -811,6 +958,11 @@ impl RunPanel {
                 "[Start]"
             },
             secondary: if self.asking { "[Keep going]" } else { "" },
+            runs: match (self.can_list, self.picker.is_some()) {
+                (false, _) => "",
+                (true, false) => "[Runs]",
+                (true, true) => "[Close runs]",
+            },
             follow: if self.follow {
                 "[Following]"
             } else {
@@ -857,7 +1009,12 @@ impl RunPanel {
             .rows
             .is_empty()
             .then(|| "There is no output to scroll.".to_owned());
-        vec![
+        let list_reason = if self.picker.is_some() {
+            None
+        } else {
+            Some("No run list is open.".to_owned())
+        };
+        let mut listed = vec![
             item(actions::START, start),
             item(actions::STOP, stop),
             item(actions::STOP_CONFIRM, confirm),
@@ -871,7 +1028,19 @@ impl RunPanel {
             item(actions::SCROLL_UP, scroll.clone()),
             item(actions::SCROLL_DOWN, scroll.clone()),
             item(actions::SCROLL_END, scroll),
-        ]
+        ];
+        // Without the capability the control is absent, not disabled.
+        if self.can_list {
+            listed.push(item(
+                actions::LIST,
+                (!self.identity.is_set()).then(|| "No workspace is open yet.".to_owned()),
+            ));
+            listed.push(item(actions::LIST_UP, list_reason.clone()));
+            listed.push(item(actions::LIST_DOWN, list_reason.clone()));
+            listed.push(item(actions::ATTACH, list_reason.clone()));
+            listed.push(item(actions::LIST_CLOSE, list_reason));
+        }
+        listed
     }
 
     // ---- drawing --------------------------------------------------------------------------
@@ -947,6 +1116,7 @@ impl RunPanel {
                 if self.asking { s.error } else { s.on },
             ),
             (lay.secondary, labels.secondary, s.on),
+            (lay.runs, labels.runs, s.on),
             (
                 lay.follow,
                 labels.follow,
@@ -958,6 +1128,10 @@ impl RunPanel {
             }
         }
         let list = lay.list;
+        if let Some(p) = &self.picker {
+            self.draw_picker(p, list, buf, focused, s);
+            return;
+        }
         let first = self.first_row();
         for y in 0..list.height {
             let Some(row) = self.rows.get(first + y as usize) else {
@@ -989,6 +1163,36 @@ impl RunPanel {
                 ""
             };
             text::put(buf, list.x, list.y, list.width as usize, empty, s.muted);
+        }
+    }
+
+    fn draw_picker(&self, p: &Picker, list: Rect, buf: &mut Buffer, focused: bool, s: &Styles) {
+        if list.height == 0 {
+            return;
+        }
+        let title = format!(
+            "{} {} on the host. Enter shows one here; Esc closes the list.",
+            p.runs.len(),
+            if p.runs.len() == 1 { "run" } else { "runs" }
+        );
+        text::put(buf, list.x, list.y, list.width as usize, &title, s.muted);
+        for (i, run) in p.runs.iter().enumerate().skip(p.top) {
+            let y = list.y + 1 + (i - p.top) as u16;
+            if y >= list.y + list.height {
+                break;
+            }
+            let row = Rect::new(list.x, y, list.width, 1);
+            let base = if i != p.sel {
+                s.text
+            } else if focused {
+                s.cursor
+            } else {
+                s.cursor_idle
+            };
+            if i == p.sel {
+                buf.set_style(row, base);
+            }
+            text::put(buf, row.x, row.y, row.width as usize, &run_line(run), base);
         }
     }
 
@@ -1081,6 +1285,23 @@ impl RunPanel {
         );
         follow.state.selected = self.follow;
         put(&mut root, follow, &mut out);
+        if self.can_list {
+            let name = if self.picker.is_some() {
+                "Close the list of runs"
+            } else {
+                "List the runs on the host"
+            };
+            let action = if self.picker.is_some() {
+                actions::LIST_CLOSE
+            } else {
+                actions::LIST
+            };
+            put(
+                &mut root,
+                button("runs", name, lay.runs, action, &listed),
+                &mut out,
+            );
+        }
         let mut status = Node::new("status", Role::Status, &words, lay.status);
         status.state.busy = self.running();
         if problem {
@@ -1091,6 +1312,37 @@ impl RunPanel {
         status.state.description = self.told.as_ref().map(|t| t.outcome.to_owned());
         put(&mut root, status, &mut out);
 
+        if let Some(p) = &self.picker {
+            let mut tree = Node::new("picker", Role::Tree, "Runs on the host", lay.list);
+            tree.state.focused = focused;
+            let size = p.runs.len().min(usize::from(u16::MAX)) as u16;
+            for (i, run) in p.runs.iter().enumerate().skip(p.top) {
+                let y = lay.list.y + 1 + (i - p.top) as u16;
+                if y >= lay.list.y + lay.list.height {
+                    break;
+                }
+                let mut item = Node::new(
+                    &format!("run:{i}"),
+                    Role::TreeItem,
+                    &run_line(run),
+                    Rect::new(lay.list.x, y, lay.list.width, 1),
+                );
+                item.pos_in_set = Some((i + 1).min(usize::from(u16::MAX)) as u16);
+                item.set_size = Some(size);
+                item.state.selected = i == p.sel;
+                item.actions = listed
+                    .iter()
+                    .filter(|a| a.id.as_str() == actions::ATTACH)
+                    .cloned()
+                    .collect();
+                tree.children.push(item.id.clone());
+                out.push(item);
+            }
+            put(&mut root, tree, &mut out);
+            let mut all = vec![root];
+            all.extend(out);
+            return all;
+        }
         let first = self.first_row();
         let shown: Vec<String> = self
             .rows
@@ -1123,9 +1375,22 @@ impl RunPanel {
     }
 }
 
+/// One listed run on one row: the host's state word, its name, its command and its handle.
+fn run_line(run: &RunSummary) -> String {
+    let mut line = format!("{:<9} ", run.state);
+    line.push_str(run.name.as_deref().unwrap_or("(unnamed)"));
+    if let Some(argv) = &run.command {
+        line.push_str("  ");
+        line.push_str(&argv.join(" "));
+    }
+    line.push_str(&format!("  [{}]", run.handle));
+    line
+}
+
 struct ChipLabels {
     primary: &'static str,
     secondary: &'static str,
+    runs: &'static str,
     follow: &'static str,
 }
 
@@ -1135,6 +1400,7 @@ struct Layout {
     status: Rect,
     primary: Rect,
     secondary: Rect,
+    runs: Rect,
     follow: Rect,
     list: Rect,
 }
@@ -1153,7 +1419,8 @@ fn layout(area: Rect, labels: &ChipLabels, status_rows: u16) -> Layout {
     let field_x = LABEL.min(area.width);
     let field_w = area.width.saturating_sub(field_x);
     // The chips sit at the end of the status row; the status words take what is left.
-    let widths = [labels.primary, labels.secondary, labels.follow].map(|l| text::width(l) as u16);
+    let widths = [labels.primary, labels.secondary, labels.runs, labels.follow]
+        .map(|l| text::width(l) as u16);
     let total: u16 = widths.iter().filter(|w| **w > 0).map(|w| w + 1).sum();
     let chips_fit = total + 12 <= area.width;
     let mut x = area.width.saturating_sub(total);
@@ -1167,7 +1434,8 @@ fn layout(area: Rect, labels: &ChipLabels, status_rows: u16) -> Layout {
     };
     let primary = place(widths[0]);
     let secondary = place(widths[1]);
-    let follow = place(widths[2]);
+    let runs = place(widths[2]);
+    let follow = place(widths[3]);
     let status_w = if chips_fit {
         area.width.saturating_sub(total + 1)
     } else {
@@ -1185,6 +1453,7 @@ fn layout(area: Rect, labels: &ChipLabels, status_rows: u16) -> Layout {
         status,
         primary,
         secondary,
+        runs,
         follow,
         list: Rect::new(area.x, area.y + top, area.width, area.height - top),
     }
@@ -1289,6 +1558,7 @@ impl Panel for RunPanel {
         self.adopt(cx.workspace());
         self.can_start = cx.capabilities().has(&Capability::new(START_CAPABILITY));
         self.can_read = cx.capabilities().has(&Capability::new(READ_CAPABILITY));
+        self.can_list = cx.capabilities().has(&Capability::new(LIST_CAPABILITY));
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
@@ -1351,7 +1621,7 @@ impl Panel for RunPanel {
     }
 
     fn text_entry(&self) -> bool {
-        self.focus != Focus::Output
+        self.focus != Focus::Output && self.picker.is_none()
     }
 
     /// Closing the view sends nothing: the run belongs to the host, and a stop is its own
@@ -1388,6 +1658,27 @@ pub(crate) fn descriptors() -> Vec<ActionDescriptor> {
         ActionDescriptor::new(actions::REFRESH, "Read the run again", ActionIntent::Start)
             .requires(READ_CAPABILITY)
             .emits(EffectKind::RunPoll),
+        ActionDescriptor::new(
+            actions::LIST,
+            "List the runs on the host",
+            ActionIntent::Start,
+        )
+        .requires(LIST_CAPABILITY)
+        .emits(EffectKind::RunList),
+        ActionDescriptor::local(actions::LIST_UP, "Select the previous listed run")
+            .requires(LIST_CAPABILITY),
+        ActionDescriptor::local(actions::LIST_DOWN, "Select the next listed run")
+            .requires(LIST_CAPABILITY),
+        ActionDescriptor::new(
+            actions::ATTACH,
+            "Show the selected listed run here and read it",
+            ActionIntent::Start,
+        )
+        .requires(LIST_CAPABILITY)
+        .requires(READ_CAPABILITY)
+        .emits(EffectKind::RunPoll),
+        ActionDescriptor::local(actions::LIST_CLOSE, "Close the list of runs")
+            .requires(LIST_CAPABILITY),
         local(
             actions::FOLLOW,
             "Follow the end of the output, or stop following",

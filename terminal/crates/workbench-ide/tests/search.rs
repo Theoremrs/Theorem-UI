@@ -11,7 +11,7 @@ use theorem_workbench_core::completion::{CompletionPayload, Outcome, SearchStart
 use theorem_workbench_core::effect::{Effect, EffectBody};
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::results::{
-    MatchRange, ReadAt, SearchEnd, SearchEndOutcome, SearchRow, SearchState,
+    MatchRange, ReadAt, SearchEnd, SearchEndOutcome, SearchRow, SearchState, SpanEncoding,
 };
 use theorem_workbench_ide::SearchPanel;
 
@@ -22,6 +22,16 @@ fn rig() -> common::Rig {
 }
 
 fn page(rig: &common::Rig, id: &str, rows: Vec<SearchRow>, state: SearchState) -> HostMessage {
+    page_in(rig, id, rows, state, SpanEncoding::Utf16CodeUnits)
+}
+
+fn page_in(
+    rig: &common::Rig,
+    id: &str,
+    rows: Vec<SearchRow>,
+    state: SearchState,
+    encoding: SpanEncoding,
+) -> HostMessage {
     HostMessage::SearchPage {
         id: id.into(),
         rows,
@@ -34,6 +44,7 @@ fn page(rig: &common::Rig, id: &str, rows: Vec<SearchRow>, state: SearchState) -
             epoch: None,
             generation: rig.m.workspace().generation.0,
         },
+        encoding,
     }
 }
 
@@ -333,6 +344,7 @@ fn a_failed_start_and_an_uncertain_end_are_each_shown_in_the_owners_words() {
             code: None,
             reason: "the connection dropped".into(),
         }),
+        encoding: SpanEncoding::Utf16CodeUnits,
         read_at: ReadAt {
             workspace_id: WORKSPACE.into(),
             version: None,
@@ -387,6 +399,83 @@ fn a_match_over_a_tab_cjk_text_and_a_zwj_emoji_marks_exactly_the_cells_the_host_
     );
     assert_eq!(marked(&buf, row_with(&buf, "needle end"), green), "needle");
     assert_eq!(marked(&buf, row_with(&buf, "mid"), green), family);
+}
+
+/// The same match on a line of CJK text and a ZWJ emoji, counted in each unit the host may
+/// state. The highlight and the opened column must land on the same characters in all three.
+#[test]
+fn a_match_after_cjk_and_a_zwj_emoji_is_placed_by_the_encoding_the_page_states() {
+    let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}";
+    let before = format!("\u{65E5}\u{672C}\u{8A9E} {family} ");
+    let line = format!("{before}needle end");
+    let utf8 = before.len() as u32;
+    let scalars = before.chars().count() as u32;
+    let utf16 = before.encode_utf16().count() as u32;
+    // The three counts differ, so a panel that assumed one would mark the wrong cells.
+    assert!(utf8 > utf16 && utf16 > scalars);
+    for (encoding, start) in [
+        (SpanEncoding::Utf8Bytes, utf8),
+        (SpanEncoding::Utf16CodeUnits, utf16),
+        (SpanEncoding::UnicodeScalars, scalars),
+    ] {
+        let mut rig = rig();
+        search_for(&mut rig, "needle", "s1");
+        let done = page_in(
+            &rig,
+            "s1",
+            vec![row("a.txt", 7, &line, start, start + 6)],
+            SearchState::Complete,
+            encoding,
+        );
+        rig.host(done);
+        let green = Color::Green;
+        let theme =
+            Theme::plain().with_search(Style::new().bg(green), Style::new().bg(Color::Blue));
+        let buf = rig.cells(&theme, 80, 24);
+        assert_eq!(
+            marked(&buf, row_with(&buf, "needle end"), green),
+            "needle",
+            "{encoding:?}"
+        );
+        // Opening it names the column in UTF-16 code units from 1, whatever the page counted.
+        rig.key(Key::Down);
+        rig.key(Key::Enter);
+        assert_eq!(
+            rig.opened.borrow().last(),
+            Some(&json!({"workspace": WORKSPACE, "path": "a.txt", "line": 7, "column": utf16 + 1})),
+            "{encoding:?}"
+        );
+    }
+}
+
+#[test]
+fn a_match_that_starts_inside_a_character_marks_the_whole_character_in_every_encoding() {
+    let line = "x\u{65E5}y";
+    // The middle of the CJK character is byte 2 of 1..4, and it is one scalar and one unit.
+    for (encoding, start, end) in [
+        (SpanEncoding::Utf8Bytes, 2, 3),
+        (SpanEncoding::Utf16CodeUnits, 1, 2),
+        (SpanEncoding::UnicodeScalars, 1, 2),
+    ] {
+        let mut rig = rig();
+        search_for(&mut rig, "q", "s1");
+        let done = page_in(
+            &rig,
+            "s1",
+            vec![row("a.txt", 1, line, start, end)],
+            SearchState::Complete,
+            encoding,
+        );
+        rig.host(done);
+        let theme =
+            Theme::plain().with_search(Style::new().bg(Color::Green), Style::new().bg(Color::Blue));
+        let buf = rig.cells(&theme, 80, 24);
+        assert_eq!(
+            marked(&buf, row_with(&buf, "y"), Color::Green),
+            "\u{65E5}",
+            "{encoding:?}"
+        );
+    }
 }
 
 #[test]

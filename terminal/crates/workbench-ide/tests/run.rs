@@ -10,8 +10,10 @@ use theorem_workbench_core::Theme;
 use theorem_workbench_core::completion::{CompletionPayload, Outcome, RunStarted};
 use theorem_workbench_core::effect::{Effect, EffectBody};
 use theorem_workbench_core::host::HostMessage;
+use theorem_workbench_core::ids::Actor;
 use theorem_workbench_core::registry::Capabilities;
-use theorem_workbench_core::results::{ReadAt, RunState};
+use theorem_workbench_core::results::RunList;
+use theorem_workbench_core::results::{ReadAt, RunState, RunSummary};
 use theorem_workbench_ide::RunPanel;
 
 const CAPS: [&str; 4] = ["files", "documents", "run.start", "run.subscribe"];
@@ -535,4 +537,248 @@ fn run_output_at_80_by_24_draws_the_form_the_state_and_the_output() {
     assert!(screen[4].contains("Compiling"), "{screen:?}");
     assert!(screen[5].contains("Finished dev in 1.2s"));
     let _ = (Style::new(), Mods::NONE);
+}
+
+// ---- listing runs and attaching to one started elsewhere ----------------------------------
+
+const LIST_CAPS: [&str; 5] = [
+    "files",
+    "documents",
+    "run.start",
+    "run.subscribe",
+    "run.list",
+];
+
+fn summary(handle: &str, name: &str, command: &[&str], state: &str, at: u64) -> RunSummary {
+    RunSummary {
+        handle: handle.into(),
+        name: Some(name.into()),
+        command: Some(command.iter().map(|w| (*w).to_owned()).collect()),
+        state: state.into(),
+        started_at_ms: Some(at),
+    }
+}
+
+fn two_runs() -> CompletionPayload {
+    CompletionPayload::RunList(RunList {
+        runs: vec![
+            summary("h-old", "lint", &["cargo", "clippy"], "exited", 1_000),
+            summary(
+                "h-new",
+                "serve",
+                &["npm", "run", "dev server"],
+                "running",
+                9_000,
+            ),
+        ],
+    })
+}
+
+fn listing() -> (common::Rig, Vec<Effect>) {
+    let (mut rig, _) = open("run-output", &LIST_CAPS, WORKSPACE);
+    rig.standard();
+    let sent = rig.click("[Runs]");
+    (rig, sent)
+}
+
+#[test]
+fn without_the_list_capability_the_control_is_absent_not_disabled() {
+    let mut rig = rig();
+    rig.standard();
+    assert!(!rig.text().contains("[Runs]"));
+    let root = rig.node("run");
+    assert!(
+        root.actions
+            .iter()
+            .all(|a| !a.id.as_str().starts_with("run.list"))
+    );
+    assert!(root.actions.iter().all(|a| a.id.as_str() != "run.attach"));
+    assert!(rig.nodes().iter().all(|n| n.id.as_str() != "runs"));
+    assert!(rig.key_in_output('l').is_empty());
+    assert!(rig.action("run.list", Actor::Human).is_empty());
+}
+
+#[test]
+fn the_runs_chip_asks_the_host_for_its_runs_and_shows_them_newest_first() {
+    let (mut rig, sent) = listing();
+    assert_eq!(names(&sent), ["run list"]);
+    rig.accept(&sent[0], two_runs());
+    let screen = rig.screen();
+    let at = |s: &str| {
+        screen
+            .iter()
+            .position(|l| l.contains(s))
+            .unwrap_or_else(|| panic!("{s}: {screen:?}"))
+    };
+    assert!(screen[at("2 runs on the host")].contains("Esc closes the list"));
+    assert!(at("serve") < at("lint"), "the newest run is first");
+    assert!(
+        screen[at("serve")].contains("npm run dev server")
+            && screen[at("serve")].contains("[h-new]")
+    );
+    assert!(rig.text().contains("[Close runs]"));
+}
+
+#[test]
+fn choosing_a_listed_run_shows_it_as_observed_and_reads_it_without_starting_anything() {
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], two_runs());
+    let fx = rig.key(Key::Enter);
+    assert_eq!(names(&fx), ["run poll"], "attaching only reads");
+    match &fx[0].body {
+        EffectBody::RunPoll(h) => assert_eq!(h.handle, "h-new"),
+        other => panic!("{other:?}"),
+    }
+    let mut poll = state(&rig, "running", None, "listening on 3000\n", "");
+    if let CompletionPayload::RunState(s) = &mut poll {
+        s.handle = "h-new".into();
+    }
+    rig.accept(&fx[0], poll);
+    assert!(
+        status(&rig).starts_with("running, observed, not started here"),
+        "{}",
+        status(&rig)
+    );
+    assert!(rig.text().contains("listening on 3000"));
+    assert_eq!(rig.node("name").text.as_deref(), Some("serve"));
+    assert_eq!(
+        rig.node("command").text.as_deref(),
+        Some("npm run 'dev server'")
+    );
+    assert!(rig.text().contains("[Runs]") && !rig.text().contains("[Close runs]"));
+    // It is the host's run: this panel does not stop it unless asked, and closing sends nothing.
+    let fx = rig.close();
+    assert!(fx.is_empty(), "{fx:?}");
+}
+
+#[test]
+fn arrow_keys_and_the_pointer_choose_among_the_listed_runs() {
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], two_runs());
+    rig.key(Key::Down);
+    let fx = rig.key(Key::Enter);
+    match &fx[0].body {
+        EffectBody::RunPoll(h) => assert_eq!(h.handle, "h-old"),
+        other => panic!("{other:?}"),
+    }
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], two_runs());
+    let fx = rig.click("lint");
+    match &fx[0].body {
+        EffectBody::RunPoll(h) => assert_eq!(h.handle, "h-old"),
+        other => panic!("{other:?}"),
+    }
+}
+
+#[test]
+fn escape_or_the_close_chip_leaves_the_list_and_the_current_run_untouched() {
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], two_runs());
+    assert!(rig.key(Key::Esc).is_empty());
+    assert!(!rig.text().contains("runs on the host"));
+    let sent = rig.click("[Runs]");
+    rig.accept(&sent[0], two_runs());
+    assert!(rig.click("[Close runs]").is_empty());
+    assert!(!rig.text().contains("runs on the host"));
+}
+
+#[test]
+fn a_refused_or_empty_list_is_told_in_the_owners_words_and_not_retried() {
+    let (mut rig, sent) = listing();
+    rig.refuse(&sent[0], "run_list_denied", "Runs cannot be listed here.");
+    assert_eq!(
+        status(&rig),
+        "Listing the runs refused (run_list_denied): Runs cannot be listed here. Not retried."
+    );
+    assert!(rig.ticks(40).is_empty());
+    let (mut rig, sent) = listing();
+    rig.accept(
+        &sent[0],
+        CompletionPayload::RunList(RunList { runs: vec![] }),
+    );
+    assert_eq!(status(&rig), "The host lists no runs.");
+}
+
+#[test]
+fn the_list_has_semantic_items_and_an_attach_action_registered_with_what_it_sends() {
+    let (mut rig, sent) = listing();
+    rig.accept(&sent[0], two_runs());
+    let items: Vec<_> = rig
+        .nodes()
+        .into_iter()
+        .filter(|n| n.id.as_str().starts_with("run:"))
+        .collect();
+    assert_eq!(items.len(), 2);
+    assert!(items[0].state.selected && items[0].name.contains("serve"));
+    assert!(
+        items[0]
+            .actions
+            .iter()
+            .any(|a| a.id.as_str() == "run.attach" && a.enabled)
+    );
+    assert_eq!(rig.node("runs").name, "Close the list of runs");
+    let fx = rig.action("run.attach", Actor::Human);
+    assert_eq!(names(&fx), ["run poll"]);
+
+    use theorem_workbench_core::effect::EffectKind;
+    use theorem_workbench_core::ids::ActionId;
+    let mut registry = theorem_workbench_core::builtin::registry();
+    theorem_workbench_ide::extend_registry(&mut registry).unwrap();
+    let get = |id: &str| registry.action(&ActionId::new(id)).expect(id).1.clone();
+    assert_eq!(get("run.list").emits, [EffectKind::RunList]);
+    assert_eq!(get("run.attach").emits, [EffectKind::RunPoll]);
+    assert!(get("run.list-up").emits.is_empty());
+}
+
+// ---- placing the caret by pointer ----------------------------------------------------------
+
+fn field_text(rig: &common::Rig, id: &str) -> String {
+    rig.node(id).text.unwrap_or_default()
+}
+
+#[test]
+fn clicking_in_the_name_field_puts_the_caret_under_the_pointer() {
+    let mut rig = rig();
+    rig.typed("abcdef");
+    // The label takes 9 columns; column 2 of the field is the gap between b and c.
+    rig.press(9 + 2, 0);
+    rig.ch('X');
+    assert_eq!(field_text(&rig, "name"), "abXcdef");
+    // Past the end is the end.
+    rig.press(9 + 40, 0);
+    rig.ch('Z');
+    assert_eq!(field_text(&rig, "name"), "abXcdefZ");
+}
+
+#[test]
+fn a_click_chooses_the_field_and_lands_by_cells_over_wide_characters() {
+    let mut rig = rig();
+    rig.key(Key::Tab);
+    rig.typed("\u{65E5}\u{672C}\u{8A9E}");
+    rig.press(9 + 2, 1);
+    rig.ch('X');
+    assert_eq!(field_text(&rig, "command"), "\u{65E5}X\u{672C}\u{8A9E}");
+    // Back in the name field by clicking it, whatever had focus.
+    rig.press(9, 0);
+    rig.ch('N');
+    assert_eq!(field_text(&rig, "name"), "N");
+}
+
+#[test]
+fn a_click_in_a_scrolled_field_accounts_for_the_scroll() {
+    let mut rig = rig();
+    rig.key(Key::Tab);
+    let long: String = (0..30).map(|n| format!("{n:03} ")).collect();
+    rig.typed(&long);
+    let shown = rig.screen()[1].chars().skip(9).collect::<String>();
+    let first = shown.trim_end().chars().take(3).collect::<String>();
+    rig.press(9, 1);
+    rig.ch('X');
+    let value = field_text(&rig, "command");
+    let at = value.find('X').expect("typed");
+    assert!(
+        at > 0,
+        "the field was scrolled, so column 0 is not the start: {value}"
+    );
+    assert_eq!(&value[at + 1..at + 4], first, "{value}");
 }

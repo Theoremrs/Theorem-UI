@@ -10,6 +10,7 @@
 use ratatui::buffer::Buffer;
 use ratatui::style::Style;
 use ratatui::text::{Line, Span};
+use theorem_workbench_core::results::SpanEncoding;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
@@ -149,6 +150,32 @@ pub(crate) fn cells(text: &str, ranges: &[(u32, u32)]) -> Vec<Cell> {
         });
     }
     out
+}
+
+/// A `[start, end)` range counted in `encoding` over `text`, as UTF-16 code units. A bound
+/// that falls inside a character moves out to that character's edge, so the range always
+/// covers whole characters; past the end it stops at the end.
+pub(crate) fn to_utf16(text: &str, (start, end): (u32, u32), encoding: SpanEncoding) -> (u32, u32) {
+    let mut from: Option<u32> = None;
+    let mut to: Option<u32> = None;
+    let (mut bytes, mut scalars, mut units) = (0u32, 0u32, 0u32);
+    for c in text.chars() {
+        let (here, step) = match encoding {
+            SpanEncoding::Utf8Bytes => (bytes, c.len_utf8() as u32),
+            SpanEncoding::UnicodeScalars => (scalars, 1),
+            SpanEncoding::Utf16CodeUnits => (units, c.len_utf16() as u32),
+        };
+        if from.is_none() && here + step > start {
+            from = Some(units);
+        }
+        if to.is_none() && here >= end {
+            to = Some(units);
+        }
+        bytes += c.len_utf8() as u32;
+        scalars += 1;
+        units += c.len_utf16() as u32;
+    }
+    (from.unwrap_or(units), to.unwrap_or(units))
 }
 
 /// The column the first marked cell starts at.

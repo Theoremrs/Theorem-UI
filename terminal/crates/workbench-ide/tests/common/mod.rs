@@ -53,6 +53,17 @@ impl Panel for Doc {
     fn serialize(&self) -> Value {
         serde_json::json!({ "path": self.path })
     }
+    /// What an editor binds to: its document, so a second open of it is a reveal.
+    fn binding(&self) -> Option<theorem_workbench_core::stale::Binding> {
+        Some(theorem_workbench_core::stale::Binding {
+            resource: theorem_workbench_core::ids::ResourceRef::Document {
+                workspace: WORKSPACE.into(),
+                resource_id: self.path.clone(),
+            },
+            revision: None,
+            generation: None,
+        })
+    }
 }
 
 pub struct Rig {
@@ -386,6 +397,7 @@ pub fn names(effects: &[Effect]) -> Vec<&'static str> {
             EffectBody::RunStart(_) => "run start",
             EffectBody::RunStop(_) => "run stop",
             EffectBody::RunPoll(_) => "run poll",
+            EffectBody::RunList => "run list",
             _ => "other",
         })
         .collect()

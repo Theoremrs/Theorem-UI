@@ -24,7 +24,9 @@ use theorem_workbench_core::ids::{
     ActionId, Capability, EffectId, Generation, PanelKind, ResourceRef, WorkspaceIdentity,
 };
 use theorem_workbench_core::registry::{ActionDescriptor, ActionIntent};
-use theorem_workbench_core::results::{SearchEnd, SearchEndOutcome, SearchRow, SearchState};
+use theorem_workbench_core::results::{
+    SearchEnd, SearchEndOutcome, SearchRow, SearchState, SpanEncoding,
+};
 use theorem_workbench_core::semantics::{Node, NodeAction, Role};
 use theorem_workbench_core::stale::Binding;
 use theorem_workbench_core::{
@@ -560,6 +562,7 @@ impl SearchPanel {
         skipped: u32,
         state: SearchState,
         end: Option<SearchEnd>,
+        encoding: SpanEncoding,
     ) {
         match &self.status {
             Status::Reading(active) if active == id => {}
@@ -575,10 +578,17 @@ impl SearchPanel {
                 break;
             }
             self.max_line = self.max_line.max(row.line);
+            // The highlight and the opened column are placed in UTF-16 whatever unit the page
+            // counted in, so the two stay one number.
+            let matches = row
+                .matches
+                .iter()
+                .map(|m| text::to_utf16(&row.text, (m.start, m.end), encoding))
+                .collect();
             let item = Row {
                 line: row.line,
                 text: row.text,
-                matches: row.matches.iter().map(|m| (m.start, m.end)).collect(),
+                matches,
                 text_offset: row.text_offset.unwrap_or(0),
             };
             match self.groups.iter_mut().find(|g| g.path == row.path) {
@@ -1305,8 +1315,9 @@ impl Panel for SearchPanel {
                 skipped,
                 state,
                 end,
+                encoding,
                 ..
-            }) => self.on_page(&id, rows, skipped, state, end),
+            }) => self.on_page(&id, rows, skipped, state, end, encoding),
             PanelMsg::Action(id) => self.on_action(&id, cx),
             // Other host events are for other panels; a message added to the core later is
             // not this panel's until it is read here.
