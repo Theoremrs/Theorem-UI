@@ -1287,13 +1287,23 @@ impl EditSession {
         self.atomic_snap(p, snap != Snap::Backward)
     }
 
-    /// Move `pos` out of the inside of an atomic range, forward to its end or backward to its start.
+    /// Move `pos` out of the inside of an atomic range, forward to its end or
+    /// backward to its start. An edge of a range can sit inside a cluster (text
+    /// typed right after it can join the cluster before it), so the edge is
+    /// snapped on to a cluster boundary in the same direction, which can lead
+    /// into the next range; this goes on until the position is outside all of them.
     fn atomic_snap(&self, pos: usize, forward: bool) -> usize {
-        match self.atomics.iter().find(|a| pos > a.start && pos < a.end) {
-            Some(a) if forward => a.end,
-            Some(a) => a.start,
-            None => pos,
+        let coords = Coords::new(&self.local);
+        let snap = if forward {
+            Snap::Forward
+        } else {
+            Snap::Backward
+        };
+        let mut pos = pos;
+        while let Some(a) = self.atomics.iter().find(|a| pos > a.start && pos < a.end) {
+            pos = coords.snap_grapheme(if forward { a.end } else { a.start }, snap);
         }
+        pos
     }
 
     /// Widen `[start, end)` so neither end is inside an atomic range.

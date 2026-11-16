@@ -976,3 +976,20 @@ fn changes_that_do_not_fit_the_text_change_nothing() {
     assert_eq!(s.apply_changes(&[]).unwrap(), None);
     ok(&s);
 }
+
+#[test]
+fn a_selection_end_pushed_out_of_an_atomic_range_stays_on_a_cluster_boundary() {
+    // The range ends after the CR; a line feed typed there joins it into one CRLF cluster,
+    // so the range's own end is no longer a place the selection can stand.
+    let mut s = session("\u{200b}\u{200b}\u{200b}a\r");
+    s.mark_atomic(1, 5).unwrap();
+    end(&mut s);
+    s.insert_text("\n").unwrap();
+    assert_eq!(s.text(), "\u{200b}\u{200b}\u{200b}a\r\n");
+    s.set_selection(0, 2);
+    ok(&s);
+    assert_eq!(s.selection(), Some((0, 6)));
+    s.set_selection(2, 0);
+    ok(&s);
+    assert_eq!(s.selection(), Some((0, 6)));
+}
