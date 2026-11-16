@@ -214,6 +214,68 @@
   background: var(--sheet-from);
 }
 
+/* Notes mode's workspace (notes-workspace.tsx): each pane is a card, and its
+   tab bar floats over the card's top edge as pills, the note scrolling under
+   them. The bar itself takes no clicks, so the page beneath it stays live. */
+.notes-dock,
+[data-notes-workspace] {
+  --notes-pane-radius: 14px;
+  /* The panes are raised a step off the sheet, so the gap between them reads. */
+  --notes-pane: var(--surface-raised);
+}
+.notes-dock .dv-groupview {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--line-separator);
+  border-radius: var(--notes-pane-radius);
+  background: var(--notes-pane);
+}
+.notes-dock .dv-groupview > .dv-tabs-and-actions-container {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 48px;
+  align-items: center;
+  pointer-events: none;
+}
+.notes-dock .dv-groupview > .dv-content-container {
+  height: 100%;
+}
+.notes-dock .dv-tabs-container {
+  gap: 6px;
+  padding-inline-start: 10px;
+  pointer-events: auto;
+}
+.notes-dock .dv-right-actions-container {
+  pointer-events: auto;
+}
+.notes-dock .dv-tab,
+.notes-pill {
+  border: 1px solid var(--line-separator);
+  border-radius: 9999px;
+  background: color-mix(in oklab, var(--notes-pane) 86%, transparent);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 6%, transparent);
+}
+.notes-dock .dv-tab {
+  height: 32px;
+  padding: 0;
+  color: var(--ink-muted);
+}
+.notes-dock .dv-tab.dv-active-tab {
+  color: var(--ink);
+}
+.notes-dock .dv-tab::after,
+.notes-dock .dv-tab .dv-default-tab-action {
+  display: none;
+}
+.notes-dock .dv-tabs-container > .dv-tab:not(:first-child)::before {
+  display: none;
+}
+.notes-dock .dv-groupview.dv-active-group {
+  border-color: color-mix(in oklab, var(--ink) 18%, var(--line-separator));
+}
+
 /* The sheet's split (chat-shell.tsx) draws its divider on the dock's edge;
    with the panel closed the dock meets the rail, and the divider goes too. */
 .sheet-split
@@ -1744,6 +1806,12 @@
   /* Prose keeps Plex's own spacing; the interface's tighter tracking stays
      with the interface. */
   letter-spacing: normal;
+}
+/* A note set as a page in a notes workspace pane: the margins grow with the
+   pane, from a narrow pane's 20px to a wide one's 72px, so a half-width pane
+   keeps a full reading line. The pane's scroller is the container. */
+.theorem-note.note-page .milkdown .ProseMirror {
+  padding: 12px clamp(20px, 8cqi, 72px) 120px;
 }
 
 .theorem-note .milkdown .ProseMirror :is(p, li) {

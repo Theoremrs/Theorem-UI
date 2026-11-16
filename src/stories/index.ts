@@ -142,6 +142,12 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 390, height: 844 },
   },
   {
+    id: 'notes-workspace',
+    title: 'Notes with several notes open side by side',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
+  },
+  {
     id: 'settings-ai',
     title: 'AI settings and model table',
     lane: 'original',

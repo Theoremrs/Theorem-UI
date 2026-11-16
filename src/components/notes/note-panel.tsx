@@ -97,16 +97,24 @@ export function selectedTextIn(container: Element): string | undefined {
 function Banner({
   note,
   readOnlyNotice,
+  className,
 }: {
   note: Note
   readOnlyNotice?: ReactNode
+  /** Replaces the full-width strip's edges, for a note set as a page. */
+  className?: string
 }) {
   const queryClient = useQueryClient()
   const status = useNoteStatus((s) => s.status[note.documentId])
   const [reloading, setReloading] = useState(false)
   if (status === 'conflict')
     return (
-      <div className="flex items-center gap-2 border-b border-separator bg-error-container px-4 py-2 text-xs text-error-ink">
+      <div
+        className={cn(
+          'flex items-center gap-2 border-b border-separator bg-error-container px-4 py-2 text-xs text-error-ink',
+          className,
+        )}
+      >
         <span className="me-auto">
           This note changed elsewhere and the edits could not be merged.
         </span>
@@ -127,7 +135,12 @@ function Banner({
     )
   if (!note.editable)
     return (
-      <div className="flex items-center gap-2 border-b border-separator bg-frame px-4 py-2 text-xs text-ink-muted">
+      <div
+        className={cn(
+          'flex items-center gap-2 border-b border-separator bg-frame px-4 py-2 text-xs text-ink-muted',
+          className,
+        )}
+      >
         {readOnlyNotice ?? (
           <span>
             Read only. This document has a block structure the Markdown editor
@@ -145,9 +158,16 @@ export function NotePanel({
   onClose,
   actions,
   readOnlyNotice,
+  chrome = 'header',
   className,
 }: {
   documentId: string
+  /**
+   * `header`: its own bar with the title, status and actions, for the dock
+   * panel and the phone. `page`: no bar, the note set as a page with wide
+   * margins, under the pills of a notes workspace pane.
+   */
+  chrome?: 'header' | 'page'
   onClose?: () => void
   /** Controls in the header, before Close: Notes mode's Trash and Restore. */
   actions?: ReactNode
@@ -158,6 +178,7 @@ export function NotePanel({
   const queryClient = useQueryClient()
   const note = useNote(documentId)
   const openComposer = useComposer((s) => s.open)
+  const page = chrome === 'page'
 
   const ask = (anchor: { x: number; y: number }, quote?: string) => {
     // The editor flushes immediately before Ask, ahead of React's next render.
@@ -172,7 +193,14 @@ export function NotePanel({
   }
 
   return (
-    <div className={cn('flex h-full flex-col bg-artifact', className)}>
+    <div
+      className={cn(
+        'flex h-full flex-col',
+        page ? 'bg-transparent' : 'bg-artifact',
+        className,
+      )}
+    >
+      {!page && (
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-separator px-4">
         <Icon.Article className="size-4 shrink-0 text-ink-faint" />
         <h2 className="min-w-0 flex-1 truncate text-sm font-medium">
@@ -191,15 +219,23 @@ export function NotePanel({
           </Button>
         )}
       </header>
+      )}
       {note.isPending ? (
-        <p className="p-6 text-sm text-ink-muted">Loading note…</p>
+        <p className={cn('p-6 text-sm text-ink-muted', page && 'pt-16')}>
+          Loading note…
+        </p>
       ) : note.isError ? (
-        <p className="p-6 text-sm text-ink-muted">This note is unavailable.</p>
+        <p className={cn('p-6 text-sm text-ink-muted', page && 'pt-16')}>
+          This note is unavailable.
+        </p>
       ) : (
         <>
-          <Banner note={note.data} readOnlyNotice={readOnlyNotice} />
+          {!page && <Banner note={note.data} readOnlyNotice={readOnlyNotice} />}
           <div
-            className="min-h-0 flex-1 overflow-y-auto"
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto',
+              page && 'pt-12 [container-type:inline-size]',
+            )}
             onContextMenu={(event) => {
               const quote = selectedTextIn(event.currentTarget)
               // Without a selection the browser's own menu stays.
@@ -208,10 +244,21 @@ export function NotePanel({
               ask({ x: event.clientX, y: event.clientY }, quote)
             }}
           >
+            {page && (
+              <Banner
+                note={note.data}
+                readOnlyNotice={readOnlyNotice}
+                className="mx-[clamp(20px,8cqi,72px)] mt-2 rounded-lg border"
+              />
+            )}
             <NoteEditor
               note={note.data}
               onAsk={() => ask(caretPoint())}
-              className="mx-auto max-w-3xl px-2 py-4"
+              className={
+                page
+                  ? 'note-page pt-6'
+                  : 'mx-auto max-w-3xl px-2 py-4'
+              }
             />
           </div>
         </>

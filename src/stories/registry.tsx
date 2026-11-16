@@ -172,6 +172,29 @@ function ShellNavigationStory() {
   return <RouterProvider router={router} />
 }
 
+/** Notes mode at desktop width over the story transport, with a note open and no review beside it. */
+function NotesWorkspaceStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: NotesWorkspaceFrame,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['/', 'notes', 'notes/$documentId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({ initialEntries: ['/notes/doc-proposal'] }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
 /** A project's page in the real shell: the projects route over the story transport. */
 function ProjectHomeStory() {
   const [router] = useState(() => {
@@ -224,6 +247,14 @@ function SessionGraphStory() {
     })
   })
   return <RouterProvider router={router} />
+}
+
+function NotesWorkspaceFrame() {
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId={undefined} />
+    </WithRuntime>
+  )
 }
 
 function ShellNavigationFrame() {
@@ -822,6 +853,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,
+  'notes-workspace': NotesWorkspaceStory,
   'settings-ai': SettingsAiStory,
   'glass-compare': () => (
     <WithRuntime>
