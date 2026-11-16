@@ -1,9 +1,10 @@
-// SOURCING: bun:test over the pure selection rules and the persisted per-thread store
-import { beforeEach, expect, test } from 'bun:test'
+// SOURCING: bun:test over the pure selection rules (with and without a project's default) and the persisted per-thread store
+import { beforeEach, describe, expect, test } from 'bun:test'
 import {
   changeSelection,
   connectionTurnOptions,
   connectionsOn,
+  projectBase,
   reconcile,
   toolId,
   toolSelectionTurnOptions,
@@ -163,4 +164,85 @@ test('a durable id that already has a choice keeps it', () => {
 test('with no choice for the conversation a turn carries nothing', () => {
   expect(connectionTurnOptions('local-1', 'durable-1')).toEqual({})
   expect(connectionTurnOptions('local-1', undefined)).toEqual({})
+})
+
+describe("a project's connections as the default", () => {
+  const base = projectBase(['github'])
+
+  test('a project that names none sets no default, so every enabled connection is on', () => {
+    expect(projectBase(null)).toBeUndefined()
+    expect(projectBase(undefined)).toBeUndefined()
+    expect(projectBase([])).toEqual({ connections: [] })
+  })
+
+  test("with no choice of its own a conversation has the project's connections on", () => {
+    expect([...connectionsOn(roster, base)]).toEqual(['github'])
+    // Nothing is sent: Theorem applies the project's choice to a turn that carries none.
+    expect(reconcile(roster, undefined, base)).toBeUndefined()
+  })
+
+  test("a change starts from the project's connections, not from every connection", () => {
+    expect(
+      changeSelection(
+        roster,
+        undefined,
+        { connection: 'mcp:abc', on: true },
+        base,
+      ),
+    ).toEqual({
+      connections: ['github', 'mcp:abc'],
+    })
+    expect(
+      changeSelection(
+        roster,
+        undefined,
+        { tool: 'github/create_issue', on: false },
+        base,
+      ),
+    ).toEqual({
+      connections: ['github'],
+      tools: ['github/search_issues'],
+    })
+  })
+
+  test("changing back to the project's connections sends nothing again", () => {
+    const widened = changeSelection(
+      roster,
+      undefined,
+      { connection: 'mcp:abc', on: true },
+      base,
+    )
+    expect(
+      changeSelection(
+        roster,
+        widened,
+        { connection: 'mcp:abc', on: false },
+        base,
+      ),
+    ).toBeUndefined()
+  })
+
+  test('every enabled connection under a project that names fewer is sent, or the project would narrow it', () => {
+    const everything = changeSelection(
+      roster,
+      undefined,
+      { connection: 'mcp:abc', on: true },
+      base,
+    )
+    expect(everything).toEqual({ connections: ['github', 'mcp:abc'] })
+    expect(reconcile(roster, everything, base)).toEqual({
+      connections: ['github', 'mcp:abc'],
+    })
+    // Without a project default the same choice is the default and drops out.
+    expect(reconcile(roster, everything)).toBeUndefined()
+  })
+
+  test('a stored choice equal to the project default is no choice, and a project id that is gone is ignored', () => {
+    expect(reconcile(roster, { connections: ['github'] }, base)).toBeUndefined()
+    const stale = projectBase(['github', 'mcp:gone', 'mcp:off'])
+    expect([...connectionsOn(roster, stale)]).toEqual(['github'])
+    expect(
+      reconcile(roster, { connections: ['github'] }, stale),
+    ).toBeUndefined()
+  })
 })

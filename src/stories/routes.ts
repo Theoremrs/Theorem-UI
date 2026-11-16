@@ -1,4 +1,4 @@
-// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted.
+// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted; so do project context and its Library (fixtures/project-context).
 import type { Theorem } from '@/lib/theorem/client'
 import type { Review, ReviewResponse } from '@/lib/theorem/reviews'
 import type { FakeRoutes } from './fake-theorem'
@@ -15,6 +15,7 @@ import {
   outputsAnswer,
 } from './fixtures/notebook-parts'
 import { organizationFixture } from './fixtures/organization'
+import { projectContextRoutes } from './fixtures/project-context'
 import { reviewFixture, reviewShots } from './fixtures/review'
 import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
@@ -98,6 +99,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   }
   return {
     ...sessionGraphRoutes(now),
+    ...projectContextRoutes(now),
     [`GET ${BASE}/models`]: () => ({
       defaultRef: 'example/research',
       models: ['Research', 'Writing', 'Code', 'Vision', 'Fast', 'Reasoning', 'Local', 'Compact'].map((name) => ({

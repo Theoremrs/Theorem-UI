@@ -1,4 +1,4 @@
-// SOURCING: Base UI Popover (placement, collision, dismissal) as components/program/palette uses it, with ui/tooltip for the chip's hint like the Web and Plan chips beside it; coss ui Switch and Checkbox for the toggles, fuzzysort through connections/search for the filter, the assistant-ui thread item for the conversation's id; the roster is GET /api/connections/v1/tools (lib/theorem/connections) and the per-conversation choice is lib/theorem/tool-selection. A real switch per row, not cmdk: a switch inside a cmdk option is a control inside an option, which screen readers cannot reach.
+// SOURCING: Base UI Popover (placement, collision, dismissal) as components/program/palette uses it, with ui/tooltip for the chip's hint like the Web and Plan chips beside it; coss ui Switch and Checkbox for the toggles, fuzzysort through connections/search for the filter, the assistant-ui thread item for the conversation's id; the roster is GET /api/connections/v1/tools (lib/theorem/connections) and the per-conversation choice is lib/theorem/tool-selection, starting from the connections the conversation's project names (lib/theorem/project-context; the thread's home project, or for a new conversation the project the shell will create it in, as the runtime does). A real switch per row, not cmdk: a switch inside a cmdk option is a control inside an option, which screen readers cannot reach.
 import { useAuiState } from '@assistant-ui/react'
 import { Popover } from '@base-ui/react/popover'
 import { Link } from '@tanstack/react-router'
@@ -9,6 +9,7 @@ import { Checkbox } from '@/components/coss/checkbox'
 import { Input } from '@/components/coss/input'
 import { Switch } from '@/components/coss/switch'
 import { Icon } from '@/components/icons'
+import { useActiveProject } from '@/components/shell/projects'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -19,15 +20,19 @@ import {
 import { describeError } from '@/lib/theorem/client'
 import { useConnectionTools } from '@/lib/theorem/connections'
 import type { ToolGroup } from '@/lib/theorem/connections'
+import { useOrganization } from '@/lib/theorem/organization'
 import { isNotServed } from '@/lib/theorem/passthrough'
+import { useProjectContext } from '@/lib/theorem/project-context'
 import {
   changeSelection,
   connectionsOn,
+  projectBase,
   reconcile,
   toolId,
   toolsOn,
   useToolSelections,
 } from '@/lib/theorem/tool-selection'
+import type { ToolSelection } from '@/lib/theorem/tool-selection'
 import { cn } from '@/lib/utils'
 import { COMPOSER_TOOLTIP_DELAY } from './composer-tools'
 
@@ -38,16 +43,23 @@ const CHIP_CUSTOM =
   'bg-redwood/15 text-redwood hover:bg-redwood/25 hover:text-redwood data-popup-open:bg-redwood/25 data-popup-open:text-redwood'
 
 /**
- * Which connections' tools this conversation may use. It starts on every
- * connection that is switched on in Settings and sends nothing; once the
- * person narrows it, each turn carries the choice. It stays out of the row
+ * Which connections' tools this conversation may use. It starts on the
+ * connections its project names, or every connection switched on in Settings
+ * when the project names none, and sends nothing (Theorem applies the
+ * project's choice itself); once the person changes it, each turn carries the
+ * choice. It stays out of the row
  * when this Theorem has no connections to list.
  */
 export function ComposerConnections() {
   // A new conversation has only its local id until its first send gives it the durable one.
+  const remoteId = useAuiState((state) => state.threadListItem.remoteId)
   const threadKey = useAuiState(
     (state) => state.threadListItem.remoteId ?? state.threadListItem.id,
   )
+  const projectId = useConversationProject(remoteId)
+  // React Query keeps an unchanged answer's identity, so the base changes only when the project's choice does.
+  const chosen = useProjectContext(projectId).data?.connections
+  const base = useMemo(() => projectBase(chosen), [chosen])
   const tools = useConnectionTools()
   if (tools.isPending || (tools.error && isNotServed(tools.error))) return null
   return (
@@ -55,20 +67,37 @@ export function ComposerConnections() {
       key={threadKey}
       threadKey={threadKey}
       roster={tools.data}
+      base={base}
       error={tools.error}
       retry={() => void tools.refetch()}
     />
   )
 }
 
+/**
+ * The project whose connections a conversation starts from: the one Theorem
+ * reads, the thread's home project, or for a conversation not sent yet the
+ * project it will be created in.
+ */
+function useConversationProject(remoteId: string | undefined) {
+  const { data: organization } = useOrganization()
+  const { project } = useActiveProject()
+  if (remoteId === undefined) return project?.projectId
+  return organization?.threads.find((thread) => thread.threadId === remoteId)
+    ?.homeProjectId
+}
+
 function Control({
   threadKey,
   roster,
+  base,
   error,
   retry,
 }: {
   threadKey: string
   roster: ToolGroup[] | undefined
+  /** The project's choice, which a conversation with none of its own follows. */
+  base: ToolSelection | undefined
   error: unknown
   retry: () => void
 }) {
@@ -76,8 +105,8 @@ function Control({
   const stored = useToolSelections((state) => state.byThread[threadKey])
   const save = useToolSelections((state) => state.set)
   const selection = useMemo(
-    () => (roster ? reconcile(roster, stored) : stored),
-    [roster, stored],
+    () => (roster ? reconcile(roster, stored, base) : stored),
+    [roster, stored, base],
   )
 
   // A connection removed since the choice was made drops out of it, so a send never names one that is gone.
@@ -87,8 +116,10 @@ function Control({
   }, [roster, selection, stored, save, threadKey])
 
   const custom = selection !== undefined
-  const count = connectionsOn(roster ?? [], selection).size
-  const label = custom ? `Connections, ${count} on` : 'Connections'
+  const effective = selection ?? base
+  const narrowed = effective !== undefined
+  const count = connectionsOn(roster ?? [], effective).size
+  const label = narrowed ? `Connections, ${count} on` : 'Connections'
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
@@ -105,8 +136,13 @@ function Control({
           >
             <Icon.Plugin className="size-4" />
             <span className="pe-0.5">Connections</span>
-            {custom && (
-              <span className="bg-redwood/20 -ms-0.5 me-0.5 rounded-full px-1.5 text-xs tabular-nums">
+            {narrowed && (
+              <span
+                className={cn(
+                  '-ms-0.5 me-0.5 rounded-full px-1.5 text-xs tabular-nums',
+                  custom ? 'bg-redwood/20' : 'bg-hover',
+                )}
+              >
                 {count}
               </span>
             )}
@@ -114,7 +150,9 @@ function Control({
           <TooltipContent side="bottom">
             {custom
               ? `${count} ${count === 1 ? 'connection is' : 'connections are'} on in this conversation`
-              : 'Choose the connections this conversation can use'}
+              : narrowed
+                ? `${count} ${count === 1 ? 'connection is' : 'connections are'} on, as this project sets`
+                : 'Choose the connections this conversation can use'}
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>
@@ -131,9 +169,17 @@ function Control({
               roster={roster}
               error={error}
               retry={retry}
-              selection={selection}
+              selection={effective}
+              followsProject={base !== undefined && !custom}
               onChange={(change) =>
-                save(threadKey, changeSelection(roster ?? [], selection, change))
+                save(
+                  threadKey,
+                  changeSelection(roster ?? [], selection, change, base),
+                )
+              }
+              onReset={custom ? () => save(threadKey, undefined) : undefined}
+              resetLabel={
+                base ? "Use the project's connections" : 'Use every connection'
               }
               onLeave={() => setOpen(false)}
             />
@@ -168,14 +214,22 @@ function Roster({
   error,
   retry,
   selection,
+  followsProject,
   onChange,
+  onReset,
+  resetLabel,
   onLeave,
 }: {
   roster: ToolGroup[] | undefined
   error: unknown
   retry: () => void
+  /** What is on now: the conversation's own choice, or the project's. */
   selection: Parameters<typeof connectionsOn>[1]
+  followsProject: boolean
   onChange: (change: Parameters<typeof changeSelection>[2]) => void
+  /** Back to the default; absent while the conversation has no choice of its own. */
+  onReset: (() => void) | undefined
+  resetLabel: string
   onLeave: () => void
 }) {
   const [query, setQuery] = useState('')
@@ -305,6 +359,21 @@ function Roster({
           </ul>
         )}
       </div>
+
+      {(followsProject || onReset) && roster && roster.length > 0 && (
+        <div className="flex min-h-9 items-center gap-2 border-t border-separator px-3 py-1.5">
+          <p className="min-w-0 flex-1 text-xs text-ink-muted">
+            {onReset
+              ? 'This conversation has its own choice.'
+              : "This project's connections."}
+          </p>
+          {onReset && (
+            <Button variant="ghost" size="xs" onClick={onReset}>
+              {resetLabel}
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="border-t border-separator p-1">
         <Link

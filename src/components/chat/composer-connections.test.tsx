@@ -1,4 +1,4 @@
-// SOURCING: bun:test and the block render helpers over an assistant-ui external-store runtime (the thread item whose id keys the choice), TanStack Router (the popover's link to Settings), and stories/fake-theorem answering GET /api/connections/v1/tools in process
+// SOURCING: bun:test and the block render helpers over an assistant-ui external-store runtime (the thread item whose id keys the choice), TanStack Router (the popover's link to Settings), and stories/fake-theorem answering GET /api/connections/v1/tools, the project list and the project's context (Theorem docs/plans/project-context/CONTRACT.md) in process
 import { act } from 'react'
 import {
   afterAll,
@@ -77,8 +77,39 @@ function Host() {
   )
 }
 
+const PROJECT = {
+  schema: 'theorem.chat.project.v1',
+  projectId: 'project-a',
+  tenantId: 'test',
+  title: 'Project A',
+  instructions: '',
+  status: 'regular',
+  revision: 1,
+  createdAtMs: 1,
+  updatedAtMs: 1,
+}
+
+/** The project a new conversation is created in, with no context route: a Theorem from before project context. */
+const projectRoutes: FakeRoutes = {
+  'GET /api/chat/v1/projects': () => ({ items: [PROJECT] }),
+  'GET /api/chat/v1/projects/:projectId/threads': () => ({ items: [] }),
+}
+
+const projectContext = (connections: string[] | null): FakeRoutes => ({
+  'GET /api/chat/v1/projects/:projectId/context': ({ projectId }) => ({
+    schema: 'theorem-chat-project-context/1',
+    projectId,
+    revision: 1,
+    documents: [],
+    repositories: [],
+    links: [],
+    connections,
+    updatedAtMs: 1,
+  }),
+})
+
 async function mount(routes: FakeRoutes, settle = true) {
-  restore = installFakeTheorem(routes)
+  restore = installFakeTheorem({ ...projectRoutes, ...routes })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const root = createRootRoute({
     component: () => (
@@ -266,4 +297,68 @@ test('a roster that fails to load says why and can be tried again', async () => 
   )!
   await click(retry)
   await waitFor(() => named('GitHub available in this conversation'))
+})
+
+test("a new conversation starts from its project's connections and sends nothing", async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(['github']),
+  })
+  await waitFor(
+    () => chip(container)?.getAttribute('aria-label') === 'Connections, 1 on',
+  )
+  await open(container)
+  expect(
+    named('GitHub available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
+  expect(
+    named('Docs server available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('false')
+  expect(document.body.textContent).toContain("This project's connections.")
+  // Theorem applies the project's choice to a turn that carries none.
+  expect(chosen()).toEqual([])
+})
+
+test("turning on more than the project names is sent, and Use the project's connections drops it", async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(['github']),
+  })
+  await waitFor(
+    () => chip(container)?.getAttribute('aria-label') === 'Connections, 1 on',
+  )
+  await open(container)
+  await click(named('Docs server available in this conversation')!)
+  // Every enabled connection, which is the default only without a project choice.
+  expect(chosen()).toEqual([{ connections: ['github', 'mcp:abc'] }])
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 2 on')
+  expect(document.body.textContent).toContain(
+    'This conversation has its own choice.',
+  )
+
+  const reset = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent.trim() === "Use the project's connections",
+  )!
+  await click(reset)
+  expect(chosen()).toEqual([])
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 1 on')
+})
+
+test('a project that names none leaves every enabled connection on', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(null),
+  })
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections')
+  await open(container)
+  expect(
+    named('Docs server available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
+  expect(document.body.textContent).not.toContain("This project's connections.")
 })

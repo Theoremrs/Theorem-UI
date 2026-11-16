@@ -1,7 +1,6 @@
-// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, lucide-react marks for the context kinds Theorem does not serve yet, lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, the project's context in a small column beside them, and its apps and outputs in the artifact cabinet, components/cabinet) follows Claude's project page on Mobbin, with the composer on the artifact cabinet spec's 680px track (docs/plans/artifact-cabinet SPEC §3.4). The owner's call on 2026-11-15: context in a small right column, and below the sessions when the page is too narrow for both (a container query, so an open terminal counts), with the sessions capped so the context stays in reach; docs/plans/projects-sidebar-and-session-graph.md §7.
+// SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, components/projects/project-context for the documents, repositories, links and connections the project gives its sessions (Theorem's project context routes), lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, the project's context in a small column beside them, and its apps and outputs in the artifact cabinet, components/cabinet) follows Claude's project page on Mobbin, with the composer on the artifact cabinet spec's 680px track (docs/plans/artifact-cabinet SPEC §3.4). The owner's call on 2026-11-15: context in a small right column, and below the sessions when the page is too narrow for both (a container query, so an open terminal counts), with the sessions capped so the context stays in reach; docs/plans/projects-sidebar-and-session-graph.md §7.
 import { useParams } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
-import { Database, FileText, FolderGit2, Link2 } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Composer } from '@/components/chat/composer'
@@ -14,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { lastMoved, useOrganization } from '@/lib/theorem/organization'
 import { isPinned, useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
+import { ProjectContextList } from './project-context'
 import { ProjectEditDialog } from './project-edit-dialog'
 import { ProjectSessions } from './project-sessions'
 
@@ -43,52 +43,6 @@ function Section({
       </div>
       {children}
     </section>
-  )
-}
-
-/** Context Theorem does not serve per project yet, said plainly instead of drawn as empty controls. */
-const NOT_SERVED = [
-  {
-    Mark: FileText,
-    label: 'Documents',
-    detail: 'Files and notes attached to the project for every session.',
-  },
-  {
-    Mark: FolderGit2,
-    label: 'Repositories',
-    detail: 'Code the project works in.',
-  },
-  {
-    Mark: Link2,
-    label: 'Links',
-    detail: 'Pages and references kept with the project.',
-  },
-  {
-    Mark: Database,
-    label: 'Databases and servers',
-    detail: 'Connections sessions here may use.',
-  },
-] as const
-
-function NotServedList() {
-  return (
-    <>
-      <p className="text-xs text-ink-muted">
-        Theorem does not serve these per project yet.
-      </p>
-      <ul className="flex flex-col gap-1.5">
-        {NOT_SERVED.map(({ Mark, label, detail }) => (
-          <li
-            key={label}
-            title={detail}
-            className="flex items-center gap-2 text-sm text-ink-muted"
-          >
-            <Mark aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
-            <span className="min-w-0 truncate">{label}</span>
-          </li>
-        ))}
-      </ul>
-    </>
   )
 }
 
@@ -275,7 +229,7 @@ export function ProjectHome({ projectId }: { projectId: string }) {
               </Section>
             )}
             <Section title="Knowledge and connections" className="p-3">
-              <NotServedList />
+              <ProjectContextList projectId={projectId} />
             </Section>
           </aside>
         </div>
