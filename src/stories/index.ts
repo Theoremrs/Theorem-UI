@@ -119,6 +119,18 @@ export const STORIES: readonly StoryMeta[] = [
     },
     evidenceDir: 'workbench-theo-blocks',
   },
+  {
+    id: 'workbench-theo-composer',
+    title: 'Workbench: the Theo composer during a working run (messages sent mid-turn over the box, a waiting approval pinned over it, an answered approval\'s receipt, the footer under it) over an invented fixture at the reference size',
+    lane: 'translation',
+    reference: 'workbench-theo-composer@delta-2026-11-15.png',
+    viewport: { width: 1568, height: 914 },
+    tolerance: {
+      threshold: 0.2,
+      note: 'Layout reference, not a pixel target: the blurred frame shows how the queued messages, the approval and the footer stand around the composer; contents, colours and metrics differ by design. The differing share is reported, never a verdict.',
+    },
+    evidenceDir: 'workbench-theo-composer',
+  },
   { id: 'workbench-delta-parity-before', title: 'Workbench: the same fixture as workbench-delta-parity in the colours from before the ladder', lane: 'translation', viewport: { width: 1568, height: 914 } },
   { id: 'workbench-threads-withheld', title: 'Workbench: the Threads panel where the host grants no delete, tags, pin or admission', lane: 'translation', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },

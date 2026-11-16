@@ -2239,6 +2239,310 @@ export function scenarios(h) {
         return checks
       },
     ],
+
+    // L30: the composer during a working run. Every function starts on a fresh load: the run waits on an approval,
+    // two messages sent mid-turn stand over the box (one the owner holds, one that failed), and the footer is under it.
+    'workbench-theo-composer': [
+      // Several messages mid-turn: each stands over the box at once, in order, with its state; the run takes them in
+      // with no flicker and no duplicate; a refused one fails with its reason; retry and remove by click and by key.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        const inputs = async () => (await effects(page)).filter((e) => e.kind === 'conversationInput').map((e) => e.payload.text)
+        const named = async (words) => (await c.queue()).find((n) => n.name.startsWith(words))
+        const FIRST = 'Use a header test for it.'
+        const SECOND = 'And keep the column order.'
+        const opening = (await c.queue()).map((n) => n.name)
+        checks['the two messages already sent stand over the box: one held for the run, one failed with its reason'] =
+          opening.length === 2 && /^Keep the old column names working for one release\.: queued/.test(opening[0]) && /^Then add a note to the changelog\.: not sent: the connection closed/.test(opening[1])
+
+        await page.keyboard.type(FIRST, { delay: 8 })
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(150)
+        const freeAfterOne = (await composer(page)) === ''
+        await page.keyboard.type(SECOND, { delay: 8 })
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(250)
+        const rows = await c.queue()
+        const scan = await c.scan()
+        checks['the composer is free while the run works: it is empty after each send and takes the next message'] = freeAfterOne && (await composer(page)) === ''
+        checks['each message sent stands over the box at once, in the order sent, after the ones already there'] =
+          rows.length === 4 && rows[2].name.startsWith(FIRST) && rows[3].name.startsWith(SECOND) && rows.every((n, i) => n.rect.height === 1 && n.rect.y < scan.boxTop && (i === 0 || n.rect.y === rows[i - 1].rect.y + 1))
+        checks['each row says its state in words'] = rows.slice(2).every((n) => /: (sending|queued for its next step)$/.test(n.name)) && rows.slice(2).every((n) => /(sending|queued)/.test(scan.rows[n.rect.y]))
+        checks['each goes to the working run as input, in the order sent'] = (await inputs()).join('|') === `${FIRST}|${SECOND}`
+
+        // The run takes each in a while after it is queued: sampled through the take-in, each is on screen exactly once
+        // at every instant (in the queue, then in the transcript), never twice and never gone.
+        const seen = { [FIRST]: [], [SECOND]: [] }
+        for (let i = 0; i < 60; i++) {
+          const { rows: now } = await c.scan()
+          for (const words of Object.keys(seen)) seen[words].push(now.filter((l) => l.includes(words)).length)
+          await page.waitForTimeout(100)
+        }
+        const after = await c.queue()
+        const body = (await c.scan()).rows.slice(0, (await c.scan()).statusTop)
+        checks['taken in, a message leaves the queue and shows in the transcript'] = !after.some((n) => n.name.startsWith(FIRST) || n.name.startsWith(SECOND)) && body.some((l) => l.includes(FIRST)) && body.some((l) => l.includes(SECOND))
+        checks['through the take-in each message is on screen exactly once at every instant: no flicker, no duplicate'] = Object.values(seen).every((counts) => counts.every((n) => n === 1))
+
+        // A message the run will not take: failed, with the reason, retry and remove.
+        await page.keyboard.type('Use the deploy key for the fixtures.', { delay: 8 })
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(600)
+        const refused = await named('Use the deploy key for the fixtures.')
+        const refusedRow = refused ? (await c.scan()).rows[refused.rect.y] : ''
+        console.error('DBG', JSON.stringify((await c.queue()).map((n) => [n.id, n.name])), JSON.stringify(await composer(page)))
+        checks['a message the run refuses stands as failed with the owner\'s reason, and offers retry and remove'] =
+          /not sent: the run does not take input about credentials/.test(refused?.name ?? '') && /\[retry\]\s+\[remove\]\s*$/.test(refusedRow.trimEnd()) && refused.actions.filter((a) => a.enabled).length === 2
+        checks['the refused message stands once, and its words come back to the composer whole, to edit'] =
+          (await c.queue()).filter((n) => n.name.startsWith('Use the deploy key')).length === 1 && (await composer(page)) === 'Use the deploy key for the fixtures.'
+        await c.clear(composer)
+
+        // Retry by click: the failed message goes again as new input, its old row goes, it shows once.
+        const failed = await named('Then add a note to the changelog.')
+        const sentBefore = (await inputs()).length
+        await c.clickWord(failed.rect.y, '[retry]')
+        await page.waitForTimeout(500)
+        const again = (await inputs()).slice(sentBefore)
+        const retried = (await c.queue()).filter((n) => n.name.startsWith('Then add a note to the changelog.'))
+        checks['a click on [retry] sends the failed message again, and it stands once, now queued'] =
+          again.join('|') === 'Then add a note to the changelog.' && retried.length === 1 && /queued for its next step|sending/.test(retried[0].name) && !(await nodes(page)).some((n) => n.id.endsWith('/q:composer-q2'))
+
+        // Remove by click: the refused row goes, and nothing is sent for it.
+        const effectsBefore = (await effects(page)).length
+        const refusedNow = await named('Use the deploy key for the fixtures.')
+        await c.clickWord(refusedNow.rect.y, '[remove]')
+        await page.waitForTimeout(400)
+        checks['a click on [remove] takes a failed message off, and sends nothing'] = !(await named('Use the deploy key for the fixtures.')) && (await effects(page)).length === effectsBefore
+
+        // Remove by key: Alt+Q gives the keys to the queue, End takes the last row, Delete removes it, Esc leaves.
+        await page.keyboard.type('The deploy key is in the vault.', { delay: 8 })
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(600)
+        await c.clear(composer)
+        await keys(page, 'Alt+q', 'End')
+        const picked = await named('The deploy key is in the vault.')
+        await keys(page, 'Delete')
+        const gone = !(await named('The deploy key is in the vault.'))
+        await keys(page, 'Escape')
+        checks['Alt+Q and the arrows choose a row, and Delete removes a failed one'] = picked?.state.selected === true && gone
+        checks['Esc leaves the queue without stopping the run'] = !(await effects(page)).some((e) => e.kind === 'conversationCancel') && !(await c.queue()).some((n) => n.state.selected)
+        const held = await named('Keep the old column names working for one release.')
+        const remove = held?.actions.find((a) => a.id.includes('queue.remove'))
+        checks['a message the owner holds for the run says why it cannot be removed'] = remove?.enabled === false && /owner holds it/.test(remove.reason ?? '')
+        return checks
+      },
+      // The approval: pinned over the box with what is asked and the command; y as text while something is typed;
+      // y on an empty composer allows, and the region becomes a receipt in the transcript where it was asked.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        const approvals = async () => (await effects(page)).filter((e) => e.kind === 'conversationApproval').map((e) => e.payload)
+        const region = await node(page, 'approval')
+        const scan = await c.scan()
+        const lines = scan.rows.slice(region.rect.y, region.rect.y + region.rect.height).join('\n')
+        checks['a waiting approval is a region directly over the box: the tool, what is asked, the command, Allow and Deny'] =
+          region.role === 'alert' && region.rect.y + region.rect.height === scan.boxTop &&
+          /\? run_command needs your approval\s+· medium risk/.test(lines) && lines.includes('Run the importer row tests') && lines.includes('$ cargo test -p importer rows') && /\[ Allow\s+y \]\s+\[ Deny\s+n \]/.test(lines)
+        const allow = await node(page, 'approval:allow')
+        const deny = await node(page, 'approval:deny')
+        checks['Allow and Deny are buttons in the region with y and n as their keys'] = allow.shortcut === 'Y' && deny.shortcut === 'N' && allow.rect.y > region.rect.y - 1 && allow.rect.y < scan.boxTop
+        const earlier = await node(page, 'r:composer-ap-1')
+        checks['an approval answered earlier is a one-line receipt in the transcript where it was asked'] = earlier?.rect.height === 1 && /✓ Allowed: Remove the stale test fixtures/.test(scan.rows[earlier.rect.y]) && /run_command\s+\{"command":"rm -r tests\/fixtures\/stale"\}/.test(scan.rows[earlier.rect.y + 1])
+        await snap(page, 'workbench-theo-composer-approval', 1568, 914)
+
+        // y and n are text while something is typed.
+        await page.keyboard.type('ok y n', { delay: 30 })
+        await page.waitForTimeout(250)
+        checks['with words in the composer, y and n are typed as text and answer nothing'] = (await composer(page)) === 'ok y n' && (await approvals()).length === 0 && !!(await node(page, 'approval'))
+        for (let i = 0; i < 6; i++) await keys(page, 'Backspace')
+        await keys(page, 'y')
+        await page.waitForTimeout(500)
+        const answered = await approvals()
+        const receipt = await node(page, 'r:composer-ap-2')
+        const after = await c.scan()
+        checks['y on an empty composer allows the waiting approval, once'] = answered.length === 1 && answered[0].decision === 'allow' && answered[0].approvalId === 'composer-ap-2' && (await composer(page)) === ''
+        checks['answered, the region over the box goes'] = !(await node(page, 'approval')) && !after.rows.slice(after.statusTop, after.boxTop).some((l) => l.includes('[ Allow'))
+        checks['and a one-line receipt stands in the transcript where it was asked: the question and the answer'] =
+          receipt?.rect.height === 1 && /✓ Allowed: Run the importer row tests/.test(after.rows[receipt.rect.y]) && /run_command\s+\{"command":"cargo test -p importer rows"\}/.test(after.rows[receipt.rect.y + 1]) && receipt.name === 'Allowed: Run the importer row tests'
+        await snap(page, 'workbench-theo-composer-receipt', 1568, 914)
+        return checks
+      },
+      // The approval by click, and the receipt of a denial.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        await c.click((await node(page, 'approval:deny')).rect)
+        await page.waitForTimeout(500)
+        const answered = (await effects(page)).filter((e) => e.kind === 'conversationApproval').map((e) => e.payload)
+        const receipt = await node(page, 'r:composer-ap-2')
+        const scan = await c.scan()
+        checks['a click on Deny denies the waiting approval, once'] = answered.length === 1 && answered[0].decision === 'deny'
+        checks['the denial leaves its receipt where it was asked, and the region goes'] = /✗ Denied: Run the importer row tests/.test(scan.rows[receipt?.rect.y] ?? '') && !(await node(page, 'approval'))
+        return checks
+      },
+      // The approval by a click on Allow.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        await c.click((await node(page, 'approval:allow')).rect)
+        await page.waitForTimeout(500)
+        const answered = (await effects(page)).filter((e) => e.kind === 'conversationApproval').map((e) => e.payload)
+        const receipt = await node(page, 'r:composer-ap-2')
+        checks['a click on Allow allows the waiting approval, once, and leaves the receipt'] = answered.length === 1 && answered[0].decision === 'allow' && /✓ Allowed: Run the importer row tests/.test((await c.scan()).rows[receipt?.rect.y] ?? '')
+        return checks
+      },
+      // The footer: project, branch, diff totals from the Changes source, effort, model, stop, in that order; effort and
+      // model by click and by key through the existing pickers; whole items dropped at narrower widths, never stop.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        const sent = async (kind) => (await effects(page)).filter((e) => e.kind === kind).map((e) => e.payload)
+        const items = ['project', 'branch', 'totals', 'effort', 'model', 'stop']
+        const footer = async () => {
+          const { rows, region, boxBottom } = await c.scan()
+          const all = await nodes(page)
+          const found = items.map((name) => all.find((n) => n.id.endsWith(`/footer:${name}`)) ?? null)
+          return {
+            boxBottom,
+            nodes: found,
+            drawn: found.map((n) => (n ? rows[n.rect.y].slice(n.rect.x - region.x, n.rect.x - region.x + n.rect.width).trim() : null)),
+          }
+        }
+        const wide = await footer()
+        const [project, branch, totals, effort, model, stop] = wide.nodes
+        const changes = /Since last commit\s+\+(\d+)\s+[−-](\d+)/.exec(await pageText(page))
+        checks['the footer is the row under the box, left to right: project, branch, diff totals, effort, model, stop'] =
+          wide.nodes.every(Boolean) && wide.nodes.every((n) => n.rect.y === wide.boxBottom + 1) && wide.nodes.every((n, i) => i === 0 || n.rect.x > wide.nodes[i - 1].rect.x + wide.nodes[i - 1].rect.width - 1)
+        checks['it names the project and the branch'] = project.name === 'Project: Orchard' && wide.drawn[0] === 'Orchard' && branch.name === 'Branch: main' && wide.drawn[1] === 'main'
+        checks['its diff totals are the Changes panel\'s, from the same source'] = !!changes && totals.name === `${changes[1]} lines added, ${changes[2]} removed` && wide.drawn[2] === `+${changes[1]} −${changes[2]}`
+        checks['it names the effort and the model'] = wide.drawn[3] === 'medium effort' && wide.drawn[4] === 'DeepSeek V4 Flash' && effort.shortcut === 'Alt+T' && model.shortcut === 'Alt+M'
+        checks['stop is live while the run works, with Esc as its key'] = /stop/.test(wide.drawn[5]) && stop.shortcut === 'Esc' && stop.actions.every((a) => a.enabled)
+
+        // Effort by click and by key.
+        await c.click(effort.rect)
+        await page.waitForTimeout(500)
+        await keys(page, 'Alt+t')
+        await page.waitForTimeout(500)
+        const efforts = (await sent('conversationSetEffort')).map((p) => p.level)
+        const effortNow = (await footer()).drawn[3]
+        checks['a click on the effort takes the next level, and Alt+T the one after, through the owner'] = efforts.join() === 'high,low' && effortNow === 'low effort'
+
+        // Model by click: the existing model picker opens; Down and Enter choose the other model.
+        await c.click((await footer()).nodes[4].rect)
+        await page.waitForTimeout(400)
+        const listed = await has(page, 'Claude Opus')
+        await keys(page, 'ArrowDown', 'Enter')
+        await page.waitForTimeout(500)
+        const models = (await sent('conversationSetModel')).map((p) => p.ref ?? p.modelRef ?? p.model)
+        checks['a click on the model opens the model picker, and the model chosen there is set through the owner'] = listed && models.join() === 'claude-opus' && (await footer()).drawn[4] === 'Claude Opus'
+        // Alt+M opens the same picker; Esc closes it and does not stop the run.
+        await keys(page, 'Alt+m')
+        await page.waitForTimeout(300)
+        const opened = await has(page, 'DeepSeek V4 Flash')
+        await keys(page, 'Escape')
+        await page.waitForTimeout(300)
+        checks['Alt+M opens the same picker, and Esc closes it without stopping the run'] = opened && !(await has(page, 'DeepSeek V4 Flash')) && (await sent('conversationCancel')).length === 0 && (await composer(page)) === ''
+
+        // Three widths: whole items dropped in order, never a word cut, never stop while the run works.
+        const full = (await footer()).drawn
+        const widths = [
+          [1568, 914, 'wide'],
+          [1100, 914, 'narrow'],
+          [390, 844, '390'],
+        ]
+        const shown = {}
+        for (const [w, h, label] of widths) {
+          await page.setViewportSize({ width: w, height: h })
+          await page.waitForTimeout(900)
+          const now = await footer()
+          shown[label] = now.nodes.map((n, i) => (n ? items[i] : null)).filter(Boolean)
+          checks[`at ${label} width, stop stays while the run works`] = !!now.nodes[5] && /stop/.test(now.drawn[5])
+          checks[`at ${label} width, every footer item drawn is whole: no word cut`] = now.nodes.every((n, i) => !n || now.drawn[i] === full[i])
+          await snap(page, `workbench-theo-composer-${label}`, w, h)
+        }
+        const order = (list) => list.every((item, i) => i === 0 || items.indexOf(item) > items.indexOf(list[i - 1]))
+        checks['narrower widths drop whole items, keeping the order, and never add one back'] =
+          shown.wide.length === 6 && shown.narrow.every((i) => shown.wide.includes(i)) && shown['390'].every((i) => shown.narrow.includes(i)) && shown['390'].length < shown.wide.length && order(shown.narrow) && order(shown['390'])
+        checks['the project goes before the model and the effort when room runs out'] = !shown['390'].includes('project') && shown['390'].includes('model')
+        console.error(JSON.stringify({ footer: shown, full }))
+        return checks
+      },
+      // Stop by click.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        await c.click((await node(page, 'footer:stop')).rect)
+        await page.waitForTimeout(600)
+        const stops = (await effects(page)).filter((e) => e.kind === 'conversationCancel')
+        const stop = await node(page, 'footer:stop')
+        checks['a click on stop stops the run, once'] = stops.length === 1
+        checks['once the run has stopped, stop is not live'] = !!stop && stop.actions.every((a) => !a.enabled)
+        return checks
+      },
+      // Stop by Esc on an empty composer.
+      async (page) => {
+        const checks = {}
+        const c = composerKit(page)
+        await c.ready()
+        await keys(page, 'Escape')
+        await page.waitForTimeout(600)
+        checks['Esc on an empty composer stops the run, once'] = (await effects(page)).filter((e) => e.kind === 'conversationCancel').length === 1
+        return checks
+      },
+    ],
+  }
+}
+
+/** The pieces of `workbench-theo-composer` read off the page: the Theo column's rows, where the box is, clicks on cells. */
+function composerKit(page) {
+  const theo = theoBlocks(page)
+  /** In one instant: the Theo region, its rows, the queue's nodes in order, and the rows of the box's edges and the status row. */
+  const scan = () =>
+    page.evaluate(() => {
+      const tree = window.__workbenchTree().nodes
+      const region = tree.find((n) => n.id === 'p1/theo')?.rect
+      const grid = document.querySelector('[id$=_ratzilla_grid]')
+      const rows = !region || !grid ? [] : Array.from(grid.children, (row) =>
+        Array.from(row.children)
+          .slice(region.x, region.x + region.width)
+          .map((cell) => (cell.textContent || ' ').replace(/\u00a0/g, ' '))
+          .join(''),
+      )
+      let boxTop = -1
+      rows.forEach((l, i) => {
+        if (/^\s*╭─+╮\s*$/.test(l)) boxTop = i
+      })
+      const boxBottom = rows.findIndex((l, i) => i > boxTop && /^\s*╰─+╯\s*$/.test(l))
+      const statusTop = rows.findIndex((l) => /activity: /.test(l))
+      return { region, rows, boxTop, boxBottom, statusTop, queue: tree.filter((n) => /^p1\/q:/.test(n.id)) }
+    })
+  const click = async (rect) => {
+    const at = await theo.cells()
+    await page.mouse.click(...theo.point(at, rect))
+  }
+  return {
+    scan,
+    ready: theo.ready,
+    click,
+    queue: async () => (await scan()).queue,
+    /** Backspace until the composer (read by `text`) is empty. */
+    clear: async (text) => {
+      for (let i = 0; i < 80 && (await text(page)); i++) await page.keyboard.press('Backspace')
+      await page.waitForTimeout(150)
+    },
+    /** A real mouse press on `word` where it is drawn on grid row `y` of the Theo column. */
+    clickWord: async (y, word) => {
+      const { region, rows } = await scan()
+      const col = (rows[y] ?? '').lastIndexOf(word)
+      if (col < 0) throw new Error(`no "${word}" on row ${y}`)
+      await click({ x: region.x + col, y, width: word.length, height: 1 })
+    },
   }
 }
 

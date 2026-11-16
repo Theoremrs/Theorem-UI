@@ -598,8 +598,9 @@ pub enum HostMessage {
     },
     /// The account's projects and threads changed (a thread was renamed,
     /// archived, deleted, opened or given a new message): the whole listing,
-    /// replacing the last. For every panel that lists threads; a panel mounted
-    /// later is handed the last one.
+    /// replacing the last. For every panel (the Threads panel lists it, the
+    /// conversation names its project from it); a panel mounted later is
+    /// handed the last one.
     ThreadsChanged {
         listing: crate::threads::ThreadListing,
     },

@@ -115,6 +115,13 @@ export interface FixtureOptions {
   }
   /** The threads the Threads panel lists, in place of the default account (needs `threads`). */
   threadsSeed?: ThreadsSeed
+  /**
+   * The conversation owner takes words for the working run and answers approvals and stops as the real owner does
+   * (needs `transcript`): input goes to its outbox as `queued` and the run takes it into the transcript as an `input`
+   * part after `takeAfterMs`; input whose text holds `refuse` is refused with `reason` and kept in the outbox as
+   * `failed`; an answer to the waiting approval settles its tool call and the run goes on; a stop stops the run.
+   */
+  owner?: { takeAfterMs: number; refuse?: string; reason: string }
   /** The repository's changes and the diff each shows, in place of `CHANGES` and `diffOf`. */
   repository?: {
     changes: ScmChange[]
@@ -438,8 +445,57 @@ export function createFixtureHost(
       }),
     )
 
+  /** What the owner did with input, approvals and stops while the story runs (`options.owner`). */
+  const owned = {
+    queued: [...first.queued],
+    taken: [] as Array<{ inputId: string; text: string }>,
+    answered: new Map<string, 'approved' | 'declined'>(),
+    run: undefined as ConversationSnapshot['run'] | undefined,
+  }
+  /** The owner's own state over the story's: its outbox, the input the run took, the approvals it answered. */
+  const overlay = (snapshot: ConversationSnapshot): ConversationSnapshot => {
+    const approval =
+      snapshot.approval &&
+      !owned.answered.has(snapshot.approval.approvalId) &&
+      owned.run === undefined
+        ? snapshot.approval
+        : undefined
+    return {
+      ...snapshot,
+      queued: owned.queued,
+      run: owned.run ?? snapshot.run,
+      approval,
+      messages: snapshot.messages.map((message, at, all) => ({
+        ...message,
+        parts: [
+          ...message.parts.map((part) => {
+            if (part.type !== 'tool' || !part.approvalId) return part
+            const outcome = owned.answered.get(part.approvalId)
+            return outcome
+              ? {
+                  ...part,
+                  approvalOutcome: outcome,
+                  status: part.status === 'approval' ? 'running' : part.status,
+                }
+              : part
+          }),
+          ...(at === all.length - 1
+            ? owned.taken.map(({ inputId, text }) => ({
+                type: 'input' as const,
+                inputId,
+                text,
+                status: 'delivered',
+              }))
+            : []),
+        ],
+      })),
+    }
+  }
+
   /** The transcript of the selected branch: the second branch answers with a different first line. */
-  const thread = (): ConversationSnapshot => ({
+  const thread = (): ConversationSnapshot =>
+    options.owner ? overlay(storyThread()) : storyThread()
+  const storyThread = (): ConversationSnapshot => ({
     ...story,
     revision,
     context: { usedTokens: 18_400, windowTokens: 128_000 },
@@ -1131,6 +1187,67 @@ export function createFixtureHost(
           type: 'conversationSent',
           clientMessageId: effect.payload.clientMessageId,
         })
+      case 'conversationInput': {
+        const own = options.owner
+        if (!own) return refuse(effect, 'This story has no owner for that')
+        const { clientMessageId, text } = effect.payload
+        const resend = () => {
+          revision += 1
+          send(snapshotMessage('story-project', thread()))
+        }
+        if (own.refuse && text.includes(own.refuse)) {
+          // A refusal sent nothing; the owner keeps it in its outbox as failed.
+          owned.queued = [
+            ...owned.queued,
+            { clientMessageId, text, state: 'failed', reason: own.reason },
+          ]
+          refuse(effect, own.reason, 'run_not_accepting_input')
+          return resend()
+        }
+        owned.queued = [
+          ...owned.queued,
+          { clientMessageId, text, state: 'queued' },
+        ]
+        accept(effect, { type: 'conversationSent', clientMessageId })
+        resend()
+        // The run takes it at its next step: it leaves the outbox and shows in the transcript in the same snapshot.
+        setTimeout(() => {
+          if (!live) return
+          owned.queued = owned.queued.filter(
+            (q) => q.clientMessageId !== clientMessageId,
+          )
+          owned.taken = [...owned.taken, { inputId: clientMessageId, text }]
+          resend()
+        }, own.takeAfterMs)
+        return
+      }
+      case 'conversationApproval': {
+        if (!options.owner)
+          return refuse(effect, 'This story has no owner for that')
+        const { runId, approvalId, decision } = effect.payload
+        owned.answered.set(
+          approvalId,
+          decision === 'allow' ? 'approved' : 'declined',
+        )
+        owned.run = { state: 'streaming', runId }
+        accept(effect, { type: 'conversationApproved', approvalId })
+        revision += 1
+        send(snapshotMessage('story-project', thread()))
+        return
+      }
+      case 'conversationCancel': {
+        if (!options.owner)
+          return refuse(effect, 'This story has no owner for that')
+        const runId = effect.payload.runId ?? story.run.runId
+        owned.run = { state: 'stopped', ...(runId && { runId }) }
+        accept(effect, {
+          type: 'conversationStopped',
+          ...(runId && { runId }),
+        })
+        revision += 1
+        send(snapshotMessage('story-project', thread()))
+        return
+      }
       case 'conversationSwitchBranch': {
         branch = effect.payload.branchId
         revision += 1

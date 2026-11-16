@@ -18,7 +18,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     rc::Rc,
 };
 
@@ -33,6 +33,7 @@ use ratatui::{
 use ratzilla::event::{KeyCode, KeyEvent};
 use serde::Deserialize;
 use serde_json::{Value, json};
+use theorem_workbench_changes::{Groups, Head, LineKind, Parsed, REPOSITORY, RowKey, parse};
 use theorem_workbench_composer::{
     Composer, ComposerStatus, Draft, Event as ComposerEvent, Input as ComposerInput, Policy,
     Response as ComposerResponse, SubmitMode,
@@ -189,6 +190,15 @@ enum OwnerPart {
         /// Not sent by the owner today: the file the call worked on.
         #[serde(default)]
         open: Option<Open>,
+        /// The approval the call asked for, when it asked for one.
+        #[serde(default)]
+        approval_id: Option<String>,
+        /// What became of it: awaiting, approved, declined, failed or unanswered.
+        #[serde(default)]
+        approval_outcome: Option<String>,
+        /// What it asked, in the run's words.
+        #[serde(default)]
+        approval_summary: Option<String>,
     },
     Program {
         source: String,
@@ -269,8 +279,12 @@ struct OwnerRun {
 struct OwnerApproval {
     run_id: String,
     approval_id: String,
+    /// The tool call that asked, whose arguments are the command or change asked about.
+    tool_call_id: String,
     tool_name: String,
     summary: String,
+    /// The run's own word for how risky it is; `unknown` when it gave none.
+    risk: String,
 }
 
 #[derive(Deserialize, Default)]
@@ -327,6 +341,40 @@ impl Owner {
         rows
     }
 
+    /// What the tool call an approval asks about would do, from its arguments: `$ ` and the
+    /// command a call runs, else the path it changes, else the arguments as they came.
+    fn asked(&self, approval: &OwnerApproval) -> Option<String> {
+        let args = self
+            .messages
+            .iter()
+            .flat_map(|m| &m.parts)
+            .find_map(|part| match part {
+                OwnerPart::Tool { id, args, .. } if *id == approval.tool_call_id => {
+                    Some(args.as_str())
+                }
+                _ => None,
+            })
+            .filter(|args| !args.trim().is_empty())?;
+        let read: Option<Value> = serde_json::from_str(args).ok();
+        let field = |key: &str| match read.as_ref().and_then(|v| v.get(key)) {
+            Some(Value::String(text)) => Some(text.clone()),
+            Some(Value::Array(words)) => Some(
+                words
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(" "),
+            ),
+            _ => None,
+        };
+        let words = field("command")
+            .or_else(|| field("cmd"))
+            .map(|command| format!("$ {command}"))
+            .or_else(|| field("path"))
+            .unwrap_or_else(|| args.to_owned());
+        Some(words.split_whitespace().collect::<Vec<_>>().join(" "))
+    }
+
     fn last_user(&self) -> Option<&OwnerMessage> {
         self.messages.iter().rev().find(|m| m.role == "user")
     }
@@ -345,7 +393,7 @@ impl Owner {
 
 /// What the drawer's transcript draws for the owner's snapshot. Every field it
 /// shows is one the snapshot carries.
-fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
+fn drawn(project: &str, owner: &Owner) -> Snapshot {
     let working = owner.working();
     let messages = owner
         .messages
@@ -353,34 +401,13 @@ fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
         .map(|message| Message {
             id: (!message.id.is_empty()).then(|| message.id.clone()),
             role: message.role.clone(),
-            parts: message.parts.iter().map(part_of).collect(),
+            parts: message.parts.iter().flat_map(parts_of).collect(),
             attachments: message.attachments.iter().map(|a| a.name.clone()).collect(),
         })
         .collect();
-    let mut outgoing: Vec<Sent> = owner
-        .queued
-        .iter()
-        .map(|q| Sent {
-            text: q.text.clone(),
-            status: q.state.clone(),
-            reason: q.reason.clone(),
-        })
-        .collect();
-    outgoing.extend(pending.iter().map(|p| {
-        Sent {
-            text: p.text.clone(),
-            status: match &p.state {
-                PendingState::Sending => "sending",
-                PendingState::Refused(_) => "failed",
-                PendingState::Unknown => "uncertain",
-            }
-            .to_owned(),
-            reason: match &p.state {
-                PendingState::Refused(reason) => Some(reason.clone()),
-                _ => None,
-            },
-        }
-    }));
+    // What the person sent while the run works is the panel's own queue, over the
+    // composer, where it can be retried and removed; the transcript shows what was taken.
+    let outgoing = Vec::new();
     Snapshot {
         now_ms: owner.now_ms,
         running: working,
@@ -410,6 +437,38 @@ fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
             .and_then(OwnerHistory::position)
             .map(|(position, total)| Branches { position, total }),
     }
+}
+
+/// A part as the transcript draws it: an answered approval adds its receipt before the call
+/// that asked.
+fn parts_of(part: &OwnerPart) -> Vec<Part> {
+    let receipt = match part {
+        OwnerPart::Tool {
+            name,
+            args,
+            approval_id: Some(approval),
+            approval_outcome: Some(outcome),
+            approval_summary,
+            ..
+        } if outcome != "awaiting" => {
+            let asked = approval_summary
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+                .unwrap_or_else(|| {
+                    format!(
+                        "{name} {}",
+                        args.split_whitespace().collect::<Vec<_>>().join(" ")
+                    )
+                });
+            Some(Part::Receipt {
+                text: asked,
+                outcome: outcome.clone(),
+                approval: approval.clone(),
+            })
+        }
+        _ => None,
+    };
+    receipt.into_iter().chain([part_of(part)]).collect()
 }
 
 fn part_of(part: &OwnerPart) -> Part {
@@ -446,6 +505,7 @@ fn part_of(part: &OwnerPart) -> Part {
             result_truncated,
             diff,
             open,
+            ..
         } => {
             let mut lines = result.as_deref().map(plain).unwrap_or_default();
             if *result_truncated {
@@ -691,7 +751,117 @@ enum Tracked {
     Paste,
     /// A file-name search for the `@` popup, by the composer's token.
     Files(u64),
+    /// The repository's status for the footer, by the read it belongs to.
+    RepoStatus(u64),
+    /// One changed file's diff for the footer's totals: the read, and the row's place.
+    RepoDiff(u64, usize),
 }
+
+/// Where a message sent while the run works stands, as the queue over the composer shows it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum QueueState {
+    /// On its way to the owner.
+    Sending,
+    /// The owner has it; the run takes it at its next step.
+    Queued,
+    /// Nothing was sent, and why.
+    Failed(Option<String>),
+    /// Whether the owner took it is not known; it is never sent again.
+    Uncertain,
+}
+
+/// One row of the queue: the owner's outbox entry or the panel's own pending send.
+#[derive(Clone, Debug)]
+struct QueueRow {
+    id: String,
+    text: String,
+    state: QueueState,
+}
+
+impl QueueRow {
+    /// A failed send was never made: it can go again.
+    fn retries(&self) -> bool {
+        matches!(self.state, QueueState::Failed(_))
+    }
+
+    /// A row nothing more will happen to can be taken off the queue. One the owner holds
+    /// for the run, or one still on its way, is not the panel's to take back.
+    fn removes(&self) -> bool {
+        matches!(self.state, QueueState::Failed(_) | QueueState::Uncertain)
+    }
+
+    /// Where it stands, in the transcript's words for sent input.
+    fn words(&self) -> (String, Style) {
+        let (status, reason) = match &self.state {
+            QueueState::Sending => ("sending", None),
+            QueueState::Queued => ("queued", None),
+            QueueState::Failed(reason) => ("failed", reason.clone()),
+            QueueState::Uncertain => ("uncertain", None),
+        };
+        let (tag, style) = crate::sent_tag(&Sent {
+            text: String::new(),
+            status: status.to_owned(),
+            reason: reason.map(|r| visible(&r)),
+        });
+        (tag.unwrap_or_default(), style)
+    }
+}
+
+/// What the footer under the composer shows, left to right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum FooterItem {
+    Project,
+    Branch,
+    Totals,
+    Effort,
+    Model,
+    Stop,
+}
+
+/// The repository as the footer reads it: the Changes panel's own reads (the status, then
+/// each changed row's diff), counted the way its review counts them.
+#[derive(Default)]
+struct Repo {
+    /// The scm capability was granted at the last tick.
+    granted: bool,
+    /// A read is wanted.
+    due: bool,
+    /// A status read is in flight.
+    reading: bool,
+    /// The diffs of the rows the last status listed are to be asked for at the next tick.
+    asking: bool,
+    /// The read the answers in flight belong to.
+    generation: u64,
+    head: Option<String>,
+    keys: Vec<RowKey>,
+    /// Lines added and removed per row, once its diff has arrived and could be read.
+    counts: Vec<Option<(usize, usize)>>,
+}
+
+impl Repo {
+    /// Lines added and removed over every changed row, once every diff behind them is in.
+    fn totals(&self) -> Option<(usize, usize)> {
+        if self.keys.is_empty() || self.counts.iter().any(Option::is_none) {
+            return None;
+        }
+        Some(
+            self.counts
+                .iter()
+                .flatten()
+                .fold((0, 0), |(a, d), (x, y)| (a + x, d + y)),
+        )
+    }
+}
+
+/// Where a queued row was drawn: the row, its retry and its remove.
+type QueueCells = (Rect, Option<Rect>, Option<Rect>);
+
+/// The most queue rows shown over the composer at once; the rest scroll with the chosen row.
+const MAX_QUEUE_ROWS: usize = 4;
+/// Send a failed queued message again, by its client message id.
+const ACTION_QUEUE_RETRY: &str = "theo.view.queue.retry.";
+/// Take a failed or uncertain queued message off the queue, by its client message id.
+const ACTION_QUEUE_REMOVE: &str = "theo.view.queue.remove.";
 
 /// The most text rows the composer takes before its text scrolls.
 const MAX_TEXT_ROWS: u16 = 8;
@@ -748,6 +918,26 @@ pub(crate) struct TheoPanel {
     selected_model: Option<String>,
     effort: Option<String>,
     efforts: Vec<String>,
+    /// Failed or uncertain rows of the owner's outbox the person took off the queue here.
+    dismissed: BTreeSet<String>,
+    /// Whether the queue has the keys (Up and Down choose, Enter sends a failed one again,
+    /// Delete removes, Esc gives them back), and the row chosen.
+    in_queue: bool,
+    queue_pick: usize,
+    /// Where each shown queue row was drawn, with its retry and remove words, and the index
+    /// of the first one shown.
+    queue_cells: RefCell<Vec<QueueCells>>,
+    queue_first: Cell<usize>,
+    /// Where the approval region and its Allow and Deny buttons were drawn.
+    approval_cells: Cell<(Rect, Rect, Rect)>,
+    /// Where each footer item was drawn.
+    footer_cells: RefCell<Vec<(FooterItem, Rect)>>,
+    repo: Repo,
+    /// The conversation the model list was last asked for, so the footer names the model and
+    /// effort without waiting for the person to open the list.
+    models_asked: Option<String>,
+    /// The account's projects by id, as the host last listed them.
+    project_names: BTreeMap<String, String>,
 }
 
 impl TheoPanel {
@@ -817,6 +1007,16 @@ impl TheoPanel {
             selected_model: None,
             effort: None,
             efforts: Vec::new(),
+            dismissed: BTreeSet::new(),
+            in_queue: false,
+            queue_pick: 0,
+            queue_cells: RefCell::new(Vec::new()),
+            queue_first: Cell::new(0),
+            approval_cells: Cell::new(Default::default()),
+            footer_cells: RefCell::new(Vec::new()),
+            repo: Repo::default(),
+            models_asked: None,
+            project_names: BTreeMap::new(),
         }
     }
 
@@ -864,7 +1064,12 @@ impl TheoPanel {
         self.project = project.to_owned();
         self.thread = thread.to_owned();
         self.revision = Some(revision);
+        let was_working = self.owner.working();
         self.owner = owner;
+        // A turn that ended may have changed the work tree: the footer reads it again.
+        if was_working && !self.owner.working() {
+            self.repo.due = true;
+        }
         self.pending
             .retain(|p| !self.owner.shows(&p.client_message_id));
         if self.answered.as_ref().is_some_and(|id| {
@@ -884,7 +1089,7 @@ impl TheoPanel {
     }
 
     fn refresh(&self) {
-        let snapshot = drawn(&self.project, &self.owner, &self.pending);
+        let snapshot = drawn(&self.project, &self.owner);
         self.session.borrow_mut().set_snapshot(snapshot);
         self.composer
             .borrow_mut()
@@ -925,10 +1130,13 @@ impl TheoPanel {
             .as_ref()
             .filter(|c| c.window_tokens > 0)
             .map(|c| (c.used_tokens.saturating_mul(100) / c.window_tokens).min(100) as u8);
+        // The model and effort are the footer's under the box, where they are chosen; the
+        // composer keeps how much of the window the thread uses.
+        let _ = model;
         ComposerStatus {
             policy,
-            model,
-            effort: self.effort.clone(),
+            model: None,
+            effort: None,
             context_percent,
         }
     }
@@ -1059,8 +1267,10 @@ impl TheoPanel {
                 })
             }
         };
+        // The draft a refusal put back is the same message: sending it again replaces its
+        // failed row. Other failed rows stay until they are sent again or removed.
         self.pending
-            .retain(|p| !matches!(p.state, PendingState::Refused(_)));
+            .retain(|p| !matches!(p.state, PendingState::Refused(_)) || p.text != text);
         if self.emit(cx, body, Tracked::Turn(id.clone())) {
             let editing = self.editing.take();
             let draft = {
@@ -1334,6 +1544,639 @@ impl TheoPanel {
             }
         }
         true
+    }
+
+    // ---- the queue ----
+
+    /// What the person sent while the run works that the transcript does not show yet, in
+    /// the order sent: the owner's outbox, then the sends the owner has not answered.
+    fn queue(&self) -> Vec<QueueRow> {
+        if !self.bound() || self.unreadable {
+            return Vec::new();
+        }
+        let owned = self
+            .owner
+            .queued
+            .iter()
+            .filter(|q| !self.dismissed.contains(&q.client_message_id))
+            .map(|q| QueueRow {
+                id: q.client_message_id.clone(),
+                text: q.text.clone(),
+                state: match q.state.as_str() {
+                    "sending" => QueueState::Sending,
+                    "failed" => QueueState::Failed(q.reason.clone()),
+                    "uncertain" => QueueState::Uncertain,
+                    _ => QueueState::Queued,
+                },
+            });
+        let mine = self.pending.iter().map(|p| QueueRow {
+            id: p.client_message_id.clone(),
+            text: p.text.clone(),
+            state: match &p.state {
+                PendingState::Sending => QueueState::Sending,
+                PendingState::Refused(reason) => QueueState::Failed(Some(reason.clone())),
+                PendingState::Unknown => QueueState::Uncertain,
+            },
+        });
+        owned.chain(mine).collect()
+    }
+
+    /// Take a failed or uncertain row off the queue. True when one was.
+    fn remove_queued(&mut self, id: &str) -> bool {
+        let Some(row) = self.queue().into_iter().find(|r| r.id == id) else {
+            return false;
+        };
+        if !row.removes() {
+            return false;
+        }
+        let before = self.pending.len();
+        self.pending.retain(|p| p.client_message_id != id);
+        if self.pending.len() == before {
+            self.dismissed.insert(id.to_owned());
+        }
+        true
+    }
+
+    /// Send a failed row's words again, as a new message: input while the run works, else
+    /// a new turn. The old row leaves the queue for the new one.
+    fn retry_queued(&mut self, id: &str, cx: &mut Ctx) {
+        let Some(row) = self.queue().into_iter().find(|r| r.id == id && r.retries()) else {
+            self.session
+                .borrow_mut()
+                .notify("that message is not one to send again");
+            return;
+        };
+        let text = row.text.clone();
+        let id = self.mint();
+        let body = if self.owner.working() {
+            let Some(run_id) = self.owner.run.run_id.clone() else {
+                self.session
+                    .borrow_mut()
+                    .notify("the run has no id to send input to");
+                return;
+            };
+            EffectBody::ConversationInput(ConversationInput {
+                run_id,
+                client_message_id: id.clone(),
+                text: text.clone(),
+            })
+        } else {
+            EffectBody::ConversationSend(ConversationSend {
+                client_message_id: id.clone(),
+                text: text.clone(),
+                attachments: Vec::new(),
+                references: Vec::new(),
+            })
+        };
+        if self.emit(cx, body, Tracked::Turn(id.clone())) {
+            self.remove_queued(&row.id);
+            self.pending.push(Pending {
+                client_message_id: id,
+                text,
+                state: PendingState::Sending,
+                draft: None,
+                editing: None,
+            });
+        }
+    }
+
+    /// Alt+Q takes the keys into the queue, and again gives them back. Within it: Up and
+    /// Down, Home and End choose, Enter sends a failed row again, Delete or Backspace
+    /// removes a failed or uncertain one, Esc leaves. Any other key leaves and is the composer's.
+    fn queue_key(&mut self, input: &KeyInput, cx: &mut Ctx) -> bool {
+        let mods = input.mods();
+        let rows = self.queue();
+        if mods == Mods::ALT && input.key() == Key::Char('q') && !rows.is_empty() {
+            self.in_queue = !self.in_queue;
+            if self.in_queue {
+                self.queue_pick = rows.iter().position(QueueRow::removes).unwrap_or(0);
+            }
+            return true;
+        }
+        if !self.in_queue {
+            return false;
+        }
+        if rows.is_empty() {
+            self.in_queue = false;
+            return false;
+        }
+        let last = rows.len() - 1;
+        self.queue_pick = self.queue_pick.min(last);
+        let row = rows[self.queue_pick].clone();
+        match (input.key(), mods.is_empty()) {
+            (Key::Up, true) => self.queue_pick = self.queue_pick.saturating_sub(1),
+            (Key::Down, true) => self.queue_pick = (self.queue_pick + 1).min(last),
+            (Key::Home, true) => self.queue_pick = 0,
+            (Key::End, true) => self.queue_pick = last,
+            (Key::Enter, true) => {
+                if row.retries() {
+                    self.retry_queued(&row.id, cx);
+                } else {
+                    self.session
+                        .borrow_mut()
+                        .notify("only a message that was not sent goes again");
+                }
+            }
+            (Key::Delete | Key::Backspace, true) => {
+                if !self.remove_queued(&row.id) {
+                    self.session
+                        .borrow_mut()
+                        .notify("the owner holds this one for the run");
+                }
+            }
+            (Key::Esc, _) => self.in_queue = false,
+            _ => {
+                self.in_queue = false;
+                return false;
+            }
+        }
+        if self.queue().is_empty() {
+            self.in_queue = false;
+        }
+        true
+    }
+
+    /// The queue over the composer: one row per message, its words, where it stands, and
+    /// what can be done with it.
+    fn draw_queue(&self, buf: &mut Buffer, area: Rect, rows: &[QueueRow], focused: bool) {
+        self.queue_cells.borrow_mut().clear();
+        if area.height == 0 || rows.is_empty() {
+            return;
+        }
+        let p = palette();
+        let room = usize::from(area.height);
+        let picked = self.queue_pick.min(rows.len() - 1);
+        let first = if !self.in_queue || picked < room {
+            0
+        } else {
+            picked + 1 - room
+        };
+        self.queue_first.set(first);
+        let mut cells = Vec::new();
+        for (offset, row) in rows.iter().skip(first).take(room).enumerate() {
+            let y = area.y + offset as u16;
+            let line = Rect::new(area.x, y, area.width, 1);
+            let chosen = self.in_queue && first + offset == picked;
+            if chosen {
+                buf.set_style(line, Style::new().bg(p.selected_row.unwrap_or(p.selection)));
+            }
+            // The controls sit at the right: what can be done with this row.
+            let mut right: Vec<(&str, bool)> = Vec::new();
+            if row.retries() {
+                right.push(("retry", true));
+            }
+            if row.removes() {
+                right.push(("remove", false));
+            }
+            let controls: u16 = right.iter().map(|(w, _)| w.len() as u16 + 3).sum();
+            let mut x = area.right().saturating_sub(controls + 1);
+            let (mut retry, mut remove) = (None, None);
+            for (word, is_retry) in &right {
+                let text = format!("[{word}]");
+                let w = text.len() as u16;
+                if x >= area.x + 8 {
+                    buf.set_stringn(
+                        x,
+                        y,
+                        &text,
+                        usize::from(w),
+                        Style::new().fg(if *is_retry { p.accent } else { p.muted }),
+                    );
+                    let at = Rect::new(x, y, w, 1);
+                    if *is_retry {
+                        retry = Some(at);
+                    } else {
+                        remove = Some(at);
+                    }
+                }
+                x += w + 1;
+            }
+            let (tag, tag_style) = row.words();
+            let words = visible(&row.text.split_whitespace().collect::<Vec<_>>().join(" "));
+            let mark = if chosen { "\u{25b8} " } else { "\u{276F} " };
+            let room_for_text = usize::from(
+                area.width
+                    .saturating_sub(controls + 2)
+                    .saturating_sub(tag.chars().count() as u16 + 5),
+            );
+            let shown = clip_words(&words, room_for_text.max(8));
+            let spans = vec![
+                Span::styled(
+                    format!(" {mark}"),
+                    Style::new().fg(if chosen { p.accent } else { p.muted }),
+                ),
+                Span::styled(shown, Style::new().fg(p.ink)),
+                Span::styled(format!("  \u{b7} {tag}"), tag_style),
+            ];
+            let text_area = Rect::new(area.x, y, area.width.saturating_sub(controls + 1).max(1), 1);
+            Line::from(spans).render(text_area, buf);
+            cells.push((line, retry, remove));
+        }
+        let _ = focused;
+        *self.queue_cells.borrow_mut() = cells;
+    }
+
+    /// A click on a queued row's retry or remove, an approval's Allow or Deny, or a
+    /// footer item. True when it was one of them.
+    fn click_controls(&mut self, cell: Position, cx: &mut Ctx) -> bool {
+        let rows = self.queue();
+        let cells = self.queue_cells.borrow().clone();
+        let first = self.queue_first.get();
+        for (at, (line, retry, remove)) in cells.into_iter().enumerate() {
+            let Some(row) = rows.get(first + at) else {
+                continue;
+            };
+            if retry.is_some_and(|r| r.contains(cell)) {
+                self.retry_queued(&row.id, cx);
+                return true;
+            }
+            if remove.is_some_and(|r| r.contains(cell)) {
+                self.remove_queued(&row.id);
+                return true;
+            }
+            if line.contains(cell) {
+                self.in_queue = true;
+                self.queue_pick = first + at;
+                return true;
+            }
+        }
+        let (region, allow, deny) = self.approval_cells.get();
+        if allow.contains(cell) {
+            self.approve(true, cx);
+            return true;
+        }
+        if deny.contains(cell) {
+            self.approve(false, cx);
+            return true;
+        }
+        if region.contains(cell) {
+            return true;
+        }
+        let item = self
+            .footer_cells
+            .borrow()
+            .iter()
+            .find(|(_, r)| r.contains(cell))
+            .map(|(i, _)| *i);
+        match item {
+            Some(FooterItem::Effort) => self.next_effort(cx),
+            Some(FooterItem::Model) => self.choose_model(cx),
+            Some(FooterItem::Stop) if self.owner.working() => self.stop(cx),
+            Some(_) => {}
+            None => return false,
+        }
+        true
+    }
+
+    // ---- the approval ----
+
+    /// Rows the approval region takes: what is asked and the tool's risk, the summary, the
+    /// command or change when the call carries one, and the two answers.
+    fn approval_rows(&self) -> u16 {
+        match &self.owner.approval {
+            Some(approval) if self.bound() && !self.unreadable => {
+                3 + u16::from(self.owner.asked(approval).is_some())
+            }
+            _ => 0,
+        }
+    }
+
+    /// The waiting approval, pinned over the composer on the ground of a call that waits on
+    /// the person.
+    fn draw_approval(&self, buf: &mut Buffer, area: Rect) {
+        self.approval_cells.set(Default::default());
+        let Some(approval) = &self.owner.approval else {
+            return;
+        };
+        if area.height < 3 {
+            return;
+        }
+        let p = palette();
+        let ground = Style::new().bg(p.pending_row());
+        buf.set_style(area, ground);
+        for y in area.y..area.bottom() {
+            buf.set_stringn(area.x, y, "\u{258E}", 1, Style::new().fg(p.approval));
+        }
+        let inner = Rect::new(
+            area.x + 2,
+            area.y,
+            area.width.saturating_sub(3),
+            area.height,
+        );
+        let width = usize::from(inner.width);
+        let mut y = inner.y;
+        let risk = visible(&approval.risk);
+        let mut heading = vec![
+            Span::styled(
+                "? ",
+                Style::new().fg(p.approval).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{} needs your approval", visible(&approval.tool_name)),
+                Style::new().fg(p.bright).add_modifier(Modifier::BOLD),
+            ),
+        ];
+        if !risk.is_empty() && risk != "unknown" {
+            heading.push(Span::styled(
+                format!("  \u{b7} {risk} risk"),
+                Style::new().fg(p.warning),
+            ));
+        }
+        Line::from(heading).render(Rect::new(inner.x, y, inner.width, 1), buf);
+        y += 1;
+        let summary = visible(
+            &approval
+                .summary
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
+        buf.set_stringn(
+            inner.x,
+            y,
+            clip_words(&summary, width),
+            width,
+            Style::new().fg(p.ink),
+        );
+        y += 1;
+        if let Some(asked) = self.owner.asked(approval)
+            && y + 1 < inner.bottom()
+        {
+            let command = visible(&asked.split_whitespace().collect::<Vec<_>>().join(" "));
+            buf.set_stringn(
+                inner.x,
+                y,
+                clip_words(&command, width),
+                width,
+                Style::new().fg(p.sage),
+            );
+            y += 1;
+        }
+        let sent = self.answered.as_deref() == Some(approval.approval_id.as_str());
+        if sent {
+            buf.set_stringn(inner.x, y, "answer sent", width, Style::new().fg(p.muted));
+            self.approval_cells
+                .set((area, Rect::default(), Rect::default()));
+            return;
+        }
+        let allow = "[ Allow  y ]";
+        let deny = "[ Deny  n ]";
+        let allow_at = Rect::new(inner.x, y, allow.len() as u16, 1);
+        let deny_at = Rect::new(allow_at.right() + 2, y, deny.len() as u16, 1);
+        buf.set_stringn(
+            allow_at.x,
+            y,
+            allow,
+            width,
+            Style::new().fg(p.success).add_modifier(Modifier::BOLD),
+        );
+        if deny_at.right() <= inner.right() {
+            buf.set_stringn(
+                deny_at.x,
+                y,
+                deny,
+                usize::from(deny_at.width),
+                Style::new().fg(p.error).add_modifier(Modifier::BOLD),
+            );
+        }
+        self.approval_cells.set((area, allow_at, deny_at));
+    }
+
+    // ---- the footer ----
+
+    /// What the footer would show, in order, and each item's words.
+    fn footer_items(&self) -> Vec<(FooterItem, String)> {
+        let mut items = Vec::new();
+        if let Some(name) = self.project_names.get(&self.project) {
+            items.push((FooterItem::Project, visible(name)));
+        }
+        if let Some(head) = &self.repo.head {
+            items.push((FooterItem::Branch, visible(head)));
+        }
+        if let Some((added, removed)) = self.repo.totals() {
+            items.push((FooterItem::Totals, format!("+{added} \u{2212}{removed}")));
+        }
+        if let Some(effort) = &self.effort {
+            items.push((FooterItem::Effort, format!("{} effort", visible(effort))));
+        }
+        if let Some(model) = &self.selected_model {
+            let label = self
+                .models
+                .iter()
+                .find(|c| c.model_ref == *model)
+                .map_or_else(|| model.clone(), |c| c.label.clone());
+            items.push((FooterItem::Model, visible(&label)));
+        }
+        items.push((FooterItem::Stop, "\u{25A0} stop".to_owned()));
+        items
+    }
+
+    /// The footer under the box, left to right as room allows: the project and branch and
+    /// the diff totals at the left, effort, model and stop at the right. Too narrow for all
+    /// of them, whole items go, in this order: the project, the totals, the branch, the
+    /// effort, the model; stop goes first while no run works, and never while one does.
+    fn draw_footer_row(&self, buf: &mut Buffer, area: Rect) {
+        self.footer_cells.borrow_mut().clear();
+        if area.height == 0 || area.width < 4 {
+            return;
+        }
+        let p = palette();
+        let working = self.owner.working();
+        let mut items = self.footer_items();
+        let order: &[FooterItem] = if working {
+            &[
+                FooterItem::Project,
+                FooterItem::Totals,
+                FooterItem::Branch,
+                FooterItem::Effort,
+                FooterItem::Model,
+            ]
+        } else {
+            &[
+                FooterItem::Stop,
+                FooterItem::Project,
+                FooterItem::Totals,
+                FooterItem::Branch,
+                FooterItem::Effort,
+                FooterItem::Model,
+            ]
+        };
+        let cols = |t: &str| unicode_width::UnicodeWidthStr::width(t) as u16;
+        let left_of = |i: &FooterItem| {
+            matches!(
+                i,
+                FooterItem::Project | FooterItem::Branch | FooterItem::Totals
+            )
+        };
+        // Each side's items are joined by " · "; the sides stand two cells apart.
+        let needed = |items: &[(FooterItem, String)]| -> u16 {
+            let side = |left: bool| {
+                let words: Vec<u16> = items
+                    .iter()
+                    .filter(|(i, _)| left_of(i) == left)
+                    .map(|(_, t)| cols(t))
+                    .collect();
+                words.iter().sum::<u16>() + 3 * words.len().saturating_sub(1) as u16
+            };
+            2 + side(true) + 2 + side(false)
+        };
+        for drop in order {
+            if needed(&items) <= area.width {
+                break;
+            }
+            items.retain(|(i, _)| i != drop);
+        }
+        if needed(&items) > area.width {
+            items.retain(|(i, _)| *i == FooterItem::Stop && working);
+        }
+        let style_of = |item: FooterItem| match item {
+            FooterItem::Project => Style::new().fg(p.ink),
+            FooterItem::Branch => Style::new().fg(p.muted),
+            FooterItem::Totals => Style::new().fg(p.muted),
+            FooterItem::Effort | FooterItem::Model => Style::new().fg(p.muted),
+            FooterItem::Stop if working => Style::new().fg(p.error).add_modifier(Modifier::BOLD),
+            FooterItem::Stop => Style::new().fg(p.text_disabled()),
+        };
+        let mut cells = Vec::new();
+        let sep = Style::new().fg(p.text_disabled());
+        let y = area.y;
+        let mut x = area.x + 1;
+        let left: Vec<_> = items.iter().filter(|(i, _)| left_of(i)).collect();
+        for (at, (item, text)) in left.iter().enumerate() {
+            if at > 0 {
+                buf.set_stringn(x, y, " \u{b7} ", 3, sep);
+                x += 3;
+            }
+            if *item == FooterItem::Totals {
+                // The Changes panel's colours for added and removed lines.
+                let (plus, minus) = text.split_once(' ').unwrap_or((text, ""));
+                buf.set_stringn(
+                    x,
+                    y,
+                    plus,
+                    usize::from(cols(plus)),
+                    Style::new().fg(p.diff_added_mark()),
+                );
+                buf.set_stringn(
+                    x + cols(plus) + 1,
+                    y,
+                    minus,
+                    usize::from(cols(minus)),
+                    Style::new().fg(p.diff_removed_mark()),
+                );
+            } else {
+                buf.set_stringn(x, y, text, usize::from(cols(text)), style_of(*item));
+            }
+            cells.push((*item, Rect::new(x, y, cols(text), 1)));
+            x += cols(text);
+        }
+        let right: Vec<_> = items.iter().filter(|(i, _)| !left_of(i)).collect();
+        let width: u16 = right.iter().map(|(_, t)| cols(t)).sum::<u16>()
+            + 3 * right.len().saturating_sub(1) as u16;
+        let mut x = area.right().saturating_sub(width + 1);
+        for (at, (item, text)) in right.iter().enumerate() {
+            if at > 0 {
+                buf.set_stringn(x, y, " \u{b7} ", 3, sep);
+                x += 3;
+            }
+            buf.set_stringn(x, y, text, usize::from(cols(text)), style_of(*item));
+            cells.push((*item, Rect::new(x, y, cols(text), 1)));
+            x += cols(text);
+        }
+        *self.footer_cells.borrow_mut() = cells;
+    }
+
+    /// The model list in the composer, or the owner asked for it first.
+    fn choose_model(&mut self, cx: &mut Ctx) {
+        self.control("conversation.model", cx, |me, cx| {
+            if me.models.is_empty() {
+                me.session.borrow_mut().notify("loading the models");
+                me.emit(cx, EffectBody::ConversationModels, Tracked::Control);
+            } else {
+                let at = me
+                    .models
+                    .iter()
+                    .position(|m| Some(&m.model_ref) == me.selected_model.as_ref())
+                    .unwrap_or(0);
+                me.composer.borrow_mut().open_models(me.models.clone(), at);
+            }
+        });
+    }
+
+    /// The next effort level the model offers, through the owner.
+    fn next_effort(&mut self, cx: &mut Ctx) {
+        self.control("conversation.model", cx, |me, cx| {
+            if me.efforts.is_empty() {
+                me.session
+                    .borrow_mut()
+                    .notify("this model has no effort levels");
+                return;
+            }
+            let at = me
+                .efforts
+                .iter()
+                .position(|e| Some(e) == me.effort.as_ref())
+                .map_or(0, |i| i + 1);
+            let level = me.efforts[at % me.efforts.len()].clone();
+            me.emit(
+                cx,
+                EffectBody::ConversationSetEffort(SetEffort { level }),
+                Tracked::Control,
+            );
+        });
+    }
+
+    // ---- the repository, for the footer ----
+
+    fn repository(cx: &Ctx) -> ResourceRef {
+        ResourceRef::Repository {
+            workspace: cx.workspace().workspace.clone(),
+            repository: REPOSITORY.to_owned(),
+        }
+    }
+
+    /// Ask for what the footer reads of the repository, where the host grants scm: the
+    /// status when a read is due, then the diff of each row it lists.
+    fn read_repo(&mut self, cx: &mut Ctx) {
+        let scm = self.bound() && cx.capabilities().has(&Capability::new("scm"));
+        if scm && !self.repo.granted {
+            self.repo.due = true;
+        }
+        self.repo.granted = scm;
+        if !scm {
+            return;
+        }
+        if self.repo.due && !self.repo.reading {
+            self.repo.generation += 1;
+            let generation = self.repo.generation;
+            let resource = Self::repository(cx);
+            if self.emit_to(
+                resource,
+                cx,
+                EffectBody::ScmStatus,
+                Tracked::RepoStatus(generation),
+            ) {
+                self.repo.due = false;
+                self.repo.reading = true;
+                self.repo.asking = false;
+            }
+        }
+        if self.repo.asking {
+            self.repo.asking = false;
+            let generation = self.repo.generation;
+            for (at, key) in self.repo.keys.clone().into_iter().enumerate() {
+                let resource = Self::repository(cx);
+                self.emit_to(
+                    resource,
+                    cx,
+                    EffectBody::ScmDiff(theorem_workbench_core::effect::ScmDiff {
+                        path: Some(key.path.clone()),
+                        staged: key.section.diff_staged(),
+                    }),
+                    Tracked::RepoDiff(generation, at),
+                );
+            }
+        }
     }
 
     fn stop(&mut self, cx: &mut Ctx) {
@@ -1637,6 +2480,59 @@ impl TheoPanel {
                         .notify(format!("not pasted: {why}"));
                 }
             },
+            Tracked::RepoStatus(generation) => {
+                if generation != self.repo.generation {
+                    return;
+                }
+                self.repo.reading = false;
+                match (&c.outcome, c.payload) {
+                    (Outcome::Accepted, Some(CompletionPayload::Scm(status))) => {
+                        let head = Head::of(&status);
+                        self.repo.head = (head != Head::NotReported).then(|| head.label());
+                        self.repo.keys = Groups::classify(&status.changes)
+                            .keys()
+                            .filter(|k| k.section.can_diff())
+                            .take(theorem_workbench_changes::LISTED)
+                            .collect();
+                        self.repo.counts = vec![None; self.repo.keys.len()];
+                        self.repo.asking = !self.repo.keys.is_empty();
+                    }
+                    // A status the host could not read leaves the footer without the
+                    // branch and the totals until the next read.
+                    _ => {
+                        self.repo.head = None;
+                        self.repo.keys.clear();
+                        self.repo.counts.clear();
+                    }
+                }
+            }
+            Tracked::RepoDiff(generation, at) => {
+                if generation != self.repo.generation {
+                    return;
+                }
+                let counted = match (&c.outcome, c.payload) {
+                    (Outcome::Accepted, Some(CompletionPayload::ScmDiff(diff))) => {
+                        match parse(&diff.text) {
+                            Ok(Parsed::Hunks(hunks)) => {
+                                Some(hunks.iter().flat_map(|h| &h.lines).fold(
+                                    (0, 0),
+                                    |(a, d), line| match line.kind {
+                                        LineKind::Added => (a + 1, d),
+                                        LineKind::Removed => (a, d + 1),
+                                        _ => (a, d),
+                                    },
+                                ))
+                            }
+                            Ok(_) => Some((0, 0)),
+                            Err(_) => None,
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(slot) = self.repo.counts.get_mut(at) {
+                    *slot = counted;
+                }
+            }
             Tracked::Files(token) => {
                 if let (Outcome::Accepted, Some(CompletionPayload::FileSearchPage(page))) =
                     (&c.outcome, c.payload)
@@ -1749,6 +2645,12 @@ impl TheoPanel {
     fn takes_chord(&self, input: &KeyInput) -> bool {
         (input.mods() == Mods::ALT && input.key() == Key::Char('v'))
             || (input.mods() == Mods::ALT
+                && input.key() == Key::Char('q')
+                && !self.queue().is_empty())
+            || (input.mods() == Mods::ALT
+                && matches!(input.key(), Key::Char('m' | 't'))
+                && self.bound())
+            || (input.mods() == Mods::ALT
                 && input.key() == Key::Up
                 && !self.session.borrow().stops().is_empty())
             || (input.mods() == Mods::ALT
@@ -1784,6 +2686,16 @@ impl TheoPanel {
         // Alt+[ and Alt+] select the previous and the next branch of the thread.
         if let Some(step) = self.branch_step(input) {
             return self.branch(step, cx);
+        }
+        if self.queue_key(input, cx) {
+            return;
+        }
+        // Alt+M opens the model list and Alt+T takes the next effort, as the footer's do.
+        if mods == Mods::ALT && input.key() == Key::Char('m') {
+            return self.choose_model(cx);
+        }
+        if mods == Mods::ALT && input.key() == Key::Char('t') {
+            return self.next_effort(cx);
         }
         // `y` and `n` answer a waiting approval while nothing is typed; they
         // are checked before the composer so they are never taken as text.
@@ -1987,6 +2899,9 @@ impl TheoPanel {
                     return;
                 };
                 let cell = Position::new(area.x + x, area.y + y);
+                if self.click_controls(cell, cx) {
+                    return;
+                }
                 // The status row's activity level: a click takes the next one.
                 if self.session.borrow().level_area.contains(cell) {
                     self.cycle_level();
@@ -2058,6 +2973,38 @@ fn open_file(open: Open, cx: &mut Ctx) {
     })
 }
 
+/// `text` in at most `width` columns, cut at a word's end with an ellipsis, never in a word.
+fn clip_words(text: &str, width: usize) -> String {
+    let cols = |t: &str| unicode_width::UnicodeWidthStr::width(t);
+    if cols(text) <= width {
+        return text.to_owned();
+    }
+    let mut out = String::new();
+    for word in text.split(' ') {
+        let next = if out.is_empty() {
+            word.to_owned()
+        } else {
+            format!("{out} {word}")
+        };
+        if cols(&next) + 1 > width {
+            break;
+        }
+        out = next;
+    }
+    if out.is_empty() {
+        // One word wider than the room: its first characters, marked as cut.
+        let mut cut = String::new();
+        for c in text.chars() {
+            if cols(&cut) + unicode_width::UnicodeWidthChar::width(c).unwrap_or(0) + 1 > width {
+                break;
+            }
+            cut.push(c);
+        }
+        out = cut;
+    }
+    format!("{out}\u{2026}")
+}
+
 /// A key as the drawer's session reads it.
 fn event_of(input: &KeyInput) -> Option<KeyEvent> {
     let code = match input.key() {
@@ -2115,6 +3062,7 @@ impl Panel for TheoPanel {
                     _ => {
                         // Any other typing gives the keys back to the composer.
                         self.leave_blocks();
+                        self.in_queue = false;
                         self.compose(ComposerInput::Text(text), cx);
                     }
                 }
@@ -2163,6 +3111,17 @@ impl Panel for TheoPanel {
                 self.effort = effort;
                 self.efforts = efforts;
             }
+            PanelMsg::Host(HostMessage::ThreadsChanged { listing }) => {
+                self.project_names = listing
+                    .projects
+                    .into_iter()
+                    .map(|p| (p.id, p.name))
+                    .collect();
+            }
+            // The work tree may have changed: the footer's branch and totals are read again.
+            PanelMsg::Host(HostMessage::FileChanged { .. } | HostMessage::Resync { .. }) => {
+                self.repo.due = true;
+            }
             PanelMsg::Action(id) => match id.as_str() {
                 "theo.stop" => self.stop(cx),
                 "approval.allow" => self.approve(true, cx),
@@ -2182,38 +3141,20 @@ impl Panel for TheoPanel {
                     let response = me.composer.borrow_mut().attach();
                     me.run(response, cx);
                 }),
-                "theo.model" => self.control("conversation.model", cx, |me, cx| {
-                    if me.models.is_empty() {
-                        me.session.borrow_mut().notify("loading the models");
-                        me.emit(cx, EffectBody::ConversationModels, Tracked::Control);
-                    } else {
-                        let at = me
-                            .models
-                            .iter()
-                            .position(|m| Some(&m.model_ref) == me.selected_model.as_ref())
-                            .unwrap_or(0);
-                        me.composer.borrow_mut().open_models(me.models.clone(), at);
-                    }
-                }),
-                "theo.effort" => self.control("conversation.model", cx, |me, cx| {
-                    if me.efforts.is_empty() {
-                        me.session
+                "theo.model" => self.choose_model(cx),
+                "theo.effort" => self.next_effort(cx),
+                name if name.starts_with(ACTION_QUEUE_RETRY) => {
+                    let id = name[ACTION_QUEUE_RETRY.len()..].to_owned();
+                    self.retry_queued(&id, cx);
+                }
+                name if name.starts_with(ACTION_QUEUE_REMOVE) => {
+                    let id = name[ACTION_QUEUE_REMOVE.len()..].to_owned();
+                    if !self.remove_queued(&id) {
+                        self.session
                             .borrow_mut()
-                            .notify("this model has no effort levels");
-                        return;
+                            .notify("the owner holds this one for the run");
                     }
-                    let at = me
-                        .efforts
-                        .iter()
-                        .position(|e| Some(e) == me.effort.as_ref())
-                        .map_or(0, |i| i + 1);
-                    let level = me.efforts[at % me.efforts.len()].clone();
-                    me.emit(
-                        cx,
-                        EffectBody::ConversationSetEffort(SetEffort { level }),
-                        Tracked::Control,
-                    );
-                }),
+                }
                 "theo.switch" => self
                     .session
                     .borrow_mut()
@@ -2256,6 +3197,18 @@ impl Panel for TheoPanel {
                     self.list_side_chats(cx);
                 }
                 let moved = self.follow_directory();
+                let reading = self.repo.reading || self.repo.counts.iter().any(Option::is_none);
+                self.read_repo(cx);
+                if self.bound()
+                    && self.models.is_empty()
+                    && self.models_asked.as_deref() != Some(self.thread.as_str())
+                    && cx
+                        .capabilities()
+                        .has(&Capability::new("conversation.model"))
+                {
+                    self.models_asked = Some(self.thread.clone());
+                    self.emit(cx, EffectBody::ConversationModels, Tracked::Control);
+                }
                 let live = {
                     let session = self.session.borrow();
                     session.snapshot.running
@@ -2265,7 +3218,7 @@ impl Panel for TheoPanel {
                             .iter()
                             .any(|p| p.state == PendingState::Sending)
                 };
-                if moved || live {
+                if moved || live || reading {
                     cx.invalidate();
                 }
             }
@@ -2273,7 +3226,10 @@ impl Panel for TheoPanel {
             // panel is bound to, so the core hands its answer over as cached;
             // it is the answer to the `@` popup all the same.
             PanelMsg::Cached(c) => {
-                if matches!(self.tracked.get(&c.effect), Some(Tracked::Files(_))) {
+                if matches!(
+                    self.tracked.get(&c.effect),
+                    Some(Tracked::Files(_) | Tracked::RepoStatus(_) | Tracked::RepoDiff(..))
+                ) {
                     self.completed(c);
                 }
             }
@@ -2325,6 +3281,26 @@ impl Panel for TheoPanel {
         } else {
             vec![]
         };
+        // Over the box, the messages sent while the run works and a waiting approval;
+        // under it, the footer. The transcript keeps three rows and the box four; the
+        // footer goes in first, then the approval, then as many queued rows as fit.
+        let live = self.bound() && !self.unreadable && !self.owner.loading;
+        let queue = if live { self.queue() } else { Vec::new() };
+        let available = area
+            .height
+            .saturating_sub(1 + u16::from(referenced) + 4 + 3);
+        let footer_rows = u16::from(live && available >= 1);
+        let approval_rows = {
+            let wanted = if live { self.approval_rows() } else { 0 };
+            if footer_rows + wanted <= available {
+                wanted
+            } else {
+                0
+            }
+        };
+        let queue_rows = (queue.len().min(MAX_QUEUE_ROWS) as u16)
+            .min(available.saturating_sub(footer_rows + approval_rows));
+        let extra = footer_rows + approval_rows + queue_rows;
         let strip = {
             let wanted = if delegations.is_empty() {
                 0
@@ -2333,7 +3309,7 @@ impl Panel for TheoPanel {
             };
             let spare = area
                 .height
-                .saturating_sub(1 + u16::from(referenced) + 4 + 3);
+                .saturating_sub(1 + u16::from(referenced) + 4 + 3 + extra);
             let strip = wanted.min(spare);
             if strip < 2 { 0 } else { strip }
         };
@@ -2341,21 +3317,35 @@ impl Panel for TheoPanel {
         // never takes the transcript's last three rows.
         let room = area
             .height
-            .saturating_sub(1 + u16::from(referenced) + strip + 3);
+            .saturating_sub(1 + u16::from(referenced) + strip + 3 + extra);
         let wanted = {
             let composer = self.composer.borrow();
             // Two borders and a margin each side.
             composer.desired_height(area.width.saturating_sub(4), MAX_TEXT_ROWS) + 2
         };
         let box_height = wanted.min(room).min(area.height / 2).max(4.min(room));
-        let [body, list, status, references, prompt] = Layout::vertical([
+        let [
+            body,
+            list,
+            status,
+            references,
+            queued,
+            asking,
+            prompt,
+            footer,
+        ] = Layout::vertical([
             Constraint::Fill(1),
             Constraint::Length(strip),
             Constraint::Length(1),
             Constraint::Length(u16::from(referenced)),
+            Constraint::Length(queue_rows),
+            Constraint::Length(approval_rows),
             Constraint::Length(box_height),
+            Constraint::Length(footer_rows),
         ])
         .areas(area);
+        // The approval is asked over the box, so the status row does not ask it again.
+        session.approval_elsewhere = approval_rows > 0;
         session.draw_body(buf, body);
         self.draw_delegations(buf, list, &delegations, cx.focused);
         // The face takes the first cells of the status row when the page has
@@ -2393,6 +3383,10 @@ impl Panel for TheoPanel {
         if referenced {
             session.draw_references(buf, references);
         }
+        drop(session);
+        self.draw_queue(buf, queued, &queue, cx.focused);
+        self.draw_approval(buf, asking);
+        self.draw_footer_row(buf, footer);
         // The prompt is the composer's, in the drawer's rounded box. The
         // caret is the root's overlay (`Panel::caret`), never a cell of this grid.
         let block = Block::new()
@@ -2595,8 +3589,12 @@ impl Panel for TheoPanel {
                 let OwnerPart::Tool {
                     id,
                     name,
+                    args,
                     status,
                     result,
+                    approval_id,
+                    approval_outcome,
+                    approval_summary,
                     ..
                 } = part
                 else {
@@ -2663,6 +3661,34 @@ impl Panel for TheoPanel {
                         }
                         _ => {}
                     }
+                }
+                // An answered approval: its receipt, on the row it is drawn on.
+                if let (Some(approval), Some(outcome)) = (approval_id, approval_outcome)
+                    && outcome != "awaiting"
+                {
+                    let asked = approval_summary
+                        .clone()
+                        .filter(|s| !s.trim().is_empty())
+                        .unwrap_or_else(|| format!("{name} {args}"));
+                    let answer = match outcome.as_str() {
+                        "approved" => "Allowed",
+                        "declined" => "Denied",
+                        "failed" => "The answer failed",
+                        _ => "Not answered",
+                    };
+                    let at = session
+                        .receipts
+                        .iter()
+                        .find(|(_, of)| of == approval)
+                        .map_or(rect, |&(line, _)| header(line));
+                    let mut receipt = Node::new(
+                        &format!("r:{approval}"),
+                        Role::Status,
+                        &format!("{answer}: {}", visible(asked.trim())),
+                        at,
+                    );
+                    receipt.binding = resource.clone();
+                    kids.push(receipt);
                 }
                 kids.push(tool);
             }
@@ -2876,6 +3902,9 @@ impl Panel for TheoPanel {
         if let Some(approval) = &self.owner.approval {
             let open = self.answered.as_deref() != Some(approval.approval_id.as_str());
             let why = "The answer is already sent";
+            // Where the region over the box drew it, when it did.
+            let (region, allow_at, deny_at) = self.approval_cells.get();
+            let at = |r: Rect| if r.is_empty() { bar_rect } else { r };
             let mut dialog = Node::new(
                 "approval",
                 Role::Alert,
@@ -2883,10 +3912,24 @@ impl Panel for TheoPanel {
                     "{} needs approval: {}",
                     approval.tool_name, approval.summary
                 ),
-                bar_rect,
+                at(region),
             );
-            let allow = control("approval:allow", "Allow", "approval.allow", open, why);
-            let deny = control("approval:deny", "Deny", "approval.deny", open, why);
+            let mut said = Vec::new();
+            if !approval.risk.is_empty() && approval.risk != "unknown" {
+                said.push(format!("{} risk", approval.risk));
+            }
+            if let Some(asked) = self.owner.asked(approval) {
+                said.push(asked.to_owned());
+            }
+            dialog.state.description = (!said.is_empty()).then(|| said.join("\n"));
+            let mut allow = control("approval:allow", "Allow", "approval.allow", open, why);
+            allow.rect = Some(theorem_workbench_core::semantics::CellRect::of(at(
+                allow_at,
+            )));
+            allow.shortcut = Some("Y".to_owned());
+            let mut deny = control("approval:deny", "Deny", "approval.deny", open, why);
+            deny.rect = Some(theorem_workbench_core::semantics::CellRect::of(at(deny_at)));
+            deny.shortcut = Some("N".to_owned());
             dialog.children = vec![allow.id.clone(), deny.id.clone()];
             children.push(dialog.id.clone());
             nodes.push(dialog);
@@ -2928,6 +3971,131 @@ impl Panel for TheoPanel {
         children.push(bar.id.clone());
         nodes.push(bar);
         nodes.append(&mut buttons);
+
+        // The messages sent while the run works, in the order sent, each with what can be
+        // done with it.
+        let queue = if self.bound() && !self.unreadable {
+            self.queue()
+        } else {
+            Vec::new()
+        };
+        if !queue.is_empty() {
+            let cells = self.queue_cells.borrow();
+            let first = self.queue_first.get();
+            let whole = cells.iter().fold(Rect::default(), |u, (line, ..)| {
+                if u.is_empty() { *line } else { u.union(*line) }
+            });
+            let mut list = Node::new("queue", Role::List, "Sent while the run works", whole);
+            list.binding = resource.clone();
+            list.state.description = Some(
+                "Alt+Q chooses a message, Enter sends a failed one again, Delete removes it, Esc leaves."
+                    .to_owned(),
+            );
+            let count = queue.len();
+            for (index, row) in queue.iter().enumerate() {
+                let (state, _) = row.words();
+                let drawn = index.checked_sub(first).and_then(|at| cells.get(at));
+                let mut item = Node::new(
+                    &format!("q:{}", row.id),
+                    Role::ListItem,
+                    &format!("{}: {state}", visible(row.text.trim())),
+                    drawn.map_or_else(Rect::default, |(line, ..)| *line),
+                );
+                item.pos_in_set = u16::try_from(index + 1).ok();
+                item.set_size = u16::try_from(count).ok();
+                item.state.selected = self.in_queue && index == self.queue_pick;
+                item.state.focused = cx.focused && item.state.selected;
+                if row.retries() {
+                    item.actions.push(NodeAction {
+                        id: ActionId::new(format!("{ACTION_QUEUE_RETRY}{}", row.id)),
+                        enabled: true,
+                        reason: None,
+                        title: Some("Send it again".to_owned()),
+                    });
+                }
+                item.actions.push(NodeAction {
+                    id: ActionId::new(format!("{ACTION_QUEUE_REMOVE}{}", row.id)),
+                    enabled: row.removes(),
+                    reason: (!row.removes()).then(|| "The owner holds it for the run".to_owned()),
+                    title: Some("Remove it".to_owned()),
+                });
+                list.children.push(item.id.clone());
+                nodes.push(item);
+            }
+            children.push(list.id.clone());
+            nodes.push(list);
+        }
+
+        // The footer under the box: what it shows, and the items that act.
+        let footer = self.footer_cells.borrow();
+        if !footer.is_empty() {
+            let whole =
+                footer.iter().fold(
+                    Rect::default(),
+                    |u, (_, r)| {
+                        if u.is_empty() { *r } else { u.union(*r) }
+                    },
+                );
+            let mut bar = Node::new("footer", Role::Toolbar, "Thread footer", whole);
+            let words: BTreeMap<_, _> = self.footer_items().into_iter().collect();
+            for (item, rect) in footer.iter() {
+                let text = words.get(item).cloned().unwrap_or_default();
+                let (id, role, name) = match item {
+                    FooterItem::Project => {
+                        ("footer:project", Role::Status, format!("Project: {text}"))
+                    }
+                    FooterItem::Branch => {
+                        ("footer:branch", Role::Status, format!("Branch: {text}"))
+                    }
+                    FooterItem::Totals => {
+                        let (added, removed) = self.repo.totals().unwrap_or_default();
+                        (
+                            "footer:totals",
+                            Role::Status,
+                            format!("{added} lines added, {removed} removed"),
+                        )
+                    }
+                    FooterItem::Effort => {
+                        ("footer:effort", Role::Button, format!("Effort: {text}"))
+                    }
+                    FooterItem::Model => ("footer:model", Role::Button, format!("Model: {text}")),
+                    FooterItem::Stop => ("footer:stop", Role::Button, "Stop the run".to_owned()),
+                };
+                let mut node = Node::new(id, role, &name, *rect);
+                let act = |action: &str, title: &str, enabled: bool, why: &str| NodeAction {
+                    id: ActionId::new(action),
+                    enabled,
+                    reason: (!enabled).then(|| why.to_owned()),
+                    title: Some(title.to_owned()),
+                };
+                match item {
+                    FooterItem::Effort => {
+                        node.shortcut = Some("Alt+T".to_owned());
+                        node.actions = vec![act("theo.effort", "Take the next effort", true, "")];
+                    }
+                    FooterItem::Model => {
+                        node.shortcut = Some("Alt+M".to_owned());
+                        node.actions = vec![act("theo.model", "Choose the model", true, "")];
+                    }
+                    FooterItem::Stop => {
+                        node.shortcut = Some("Esc".to_owned());
+                        node.state.disabled = !working;
+                        node.actions = vec![act(
+                            "theo.stop",
+                            "Stop the run",
+                            working,
+                            "No run is working",
+                        )];
+                    }
+                    _ => {}
+                }
+                bar.children.push(node.id.clone());
+                nodes.push(node);
+            }
+            children.push(bar.id.clone());
+            nodes.push(bar);
+        }
+        drop(footer);
 
         // The composer: its own nodes (one text field, the chips, the popup,
         // the footer), joined here. The draft is the field's value and nowhere
@@ -4814,11 +5982,23 @@ mod tests {
                 "approval": {"runId": "run-1", "approvalId": "ap-1", "toolName": "shell", "summary": "ls"}
             }),
         );
-        let (status, footer) = rows_of(&r);
-        eprintln!("approval: {status:?} | {footer:?}");
-        assert!(status.starts_with("? shell ls"), "{status}");
+        // The approval is asked once, in the region pinned over the box, with its keys on
+        // its buttons; the status row keeps the activity and does not ask it again.
+        let (asked, footer) = rows_of(&r);
+        eprintln!("approval: {asked:?} | {footer:?}");
+        assert!(asked.contains("[ Allow  y ]  [ Deny  n ]"), "{asked}");
+        let drawn = r.drawn();
+        assert_eq!(
+            drawn.matches("shell needs your approval").count(),
+            1,
+            "{drawn}"
+        );
+        let status = drawn
+            .lines()
+            .find(|l| l.contains("activity: headers"))
+            .expect("the status row");
         assert!(
-            status.ends_with("y allow \u{b7} n deny \u{b7} activity: headers"),
+            !status.contains("allow") && !status.contains("? shell"),
             "{status}"
         );
         assert!(!footer.contains("allow"), "{footer}");
@@ -5809,5 +6989,817 @@ mod tests {
             json!({"type": "delegation", "delegationId": "d1", "label": "x", "state": "started"}),
         ]);
         assert!(!r.drawn().contains("Delegations"));
+    }
+
+    // ---- L30: the queue, the approval region and its receipt, the footer ----
+
+    /// A node's id within its panel.
+    fn local(n: &Node) -> &str {
+        n.id.as_str()
+            .split_once('/')
+            .map_or(n.id.as_str(), |(_, l)| l)
+    }
+
+    /// The frame cell where `needle` starts, in the drawn frame.
+    fn cell_of(r: &Rig, needle: &str) -> Option<(u16, u16)> {
+        let area = Rect::new(0, 0, 160, 50);
+        let mut buf = Buffer::empty(area);
+        theorem_workbench_core::view(&r.m, area, &mut buf, &Theme::plain());
+        for y in 0..area.height {
+            let mut line = String::new();
+            let mut xs = Vec::new();
+            for x in 0..area.width {
+                let symbol = buf[(x, y)].symbol();
+                for _ in 0..symbol.len() {
+                    xs.push(x);
+                }
+                line.push_str(symbol);
+            }
+            if let Some(at) = line.find(needle) {
+                return Some((xs[at], y));
+            }
+        }
+        None
+    }
+
+    fn click_at(r: &mut Rig, (x, y): (u16, u16)) -> Vec<Effect> {
+        r.send(Msg::Pointer(theorem_workbench_core::Pointer {
+            kind: PointerKind::Down(theorem_workbench_core::Button::Left),
+            x,
+            y,
+            mods: Mods::NONE,
+            clicks: 1,
+        }))
+    }
+
+    fn click_on(r: &mut Rig, needle: &str) -> Vec<Effect> {
+        let at = cell_of(r, needle).unwrap_or_else(|| panic!("{needle:?} in\n{}", r.drawn()));
+        click_at(r, at)
+    }
+
+    /// The row the box's top border is on.
+    fn box_top(r: &Rig) -> usize {
+        r.drawn()
+            .lines()
+            .collect::<Vec<_>>()
+            .iter()
+            .rposition(|l| l.contains('\u{256D}'))
+            .expect("the box's top border")
+    }
+
+    fn working_with(queued: Value) -> Value {
+        json!({
+            "messages": [user("m1", "start")],
+            "run": {"state": "streaming", "runId": "run-1"},
+            "queued": queued,
+        })
+    }
+
+    #[test]
+    fn messages_sent_mid_turn_stand_over_the_box_in_the_order_sent_with_their_state() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            working_with(json!([
+                {"clientMessageId": "c1", "text": "first steer", "state": "queued"},
+                {"clientMessageId": "c2", "text": "second steer", "state": "failed", "reason": "the run ended"},
+            ])),
+        );
+        // The composer stays usable: a third goes as input for the run.
+        r.typed("third steer");
+        let fx = r.enter();
+        assert_eq!(fx[0].kind(), EffectKind::ConversationInput, "{fx:?}");
+        let drawn = r.drawn();
+        let lines: Vec<&str> = drawn.lines().collect();
+        let row = |t: &str| {
+            lines
+                .iter()
+                .position(|l| l.contains(t))
+                .unwrap_or_else(|| panic!("{t} in\n{drawn}"))
+        };
+        let (a, b, c) = (row("first steer"), row("second steer"), row("third steer"));
+        assert!(a < b && b < c && c < box_top(&r), "{drawn}");
+        assert!(lines[a].contains("queued"), "{}", lines[a]);
+        assert!(lines[b].contains("not sent: the run ended"), "{}", lines[b]);
+        assert!(lines[b].contains("[retry]") && lines[b].contains("[remove]"));
+        assert!(lines[c].contains("sending"), "{}", lines[c]);
+        assert!(
+            !lines[a].contains("[remove]"),
+            "the owner holds a queued one"
+        );
+        let tree = r.tree();
+        let names: Vec<_> = tree
+            .nodes
+            .iter()
+            .filter(|n| local(n).starts_with("q:"))
+            .map(|n| n.name.clone())
+            .collect();
+        assert_eq!(names.len(), 3, "{names:?}");
+        assert!(names[0].starts_with("first steer"), "{names:?}");
+    }
+
+    #[test]
+    fn a_queued_message_the_snapshot_takes_in_leaves_the_queue_once_and_shows_once() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            working_with(
+                json!([{"clientMessageId": "c1", "text": "steer left", "state": "queued"}]),
+            ),
+        );
+        assert_eq!(r.drawn().matches("steer left").count(), 1);
+        let mut taken = assistant(
+            "a1",
+            json!([{"type": "input", "inputId": "c1", "text": "steer left", "status": "delivered"}]),
+            "running",
+        );
+        taken["clientMessageId"] = json!(null);
+        r.show(
+            2,
+            "t1",
+            json!({
+                "messages": [user("m1", "start"), taken],
+                "run": {"state": "streaming", "runId": "run-1"},
+                "queued": [],
+            }),
+        );
+        let drawn = r.drawn();
+        assert_eq!(drawn.matches("steer left").count(), 1, "{drawn}");
+        assert!(!r.tree().nodes.iter().any(|n| local(n) == "q:c1"));
+    }
+
+    #[test]
+    fn a_failed_message_is_removed_by_key_by_click_and_by_action() {
+        let queued = json!([
+            {"clientMessageId": "c1", "text": "kept one", "state": "queued"},
+            {"clientMessageId": "c2", "text": "lost one", "state": "failed", "reason": "no run"},
+            {"clientMessageId": "c3", "text": "maybe one", "state": "uncertain"},
+        ]);
+        // By key: Alt+Q takes the keys to the first one that can go, Delete removes it.
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued.clone()));
+        r.key(Key::Char('q'), Mods::ALT);
+        r.key(Key::Delete, Mods::NONE);
+        let drawn = r.drawn();
+        assert!(!drawn.contains("lost one"), "{drawn}");
+        assert!(drawn.contains("kept one") && drawn.contains("maybe one"));
+        // A queued one the owner holds does not go.
+        r.key(Key::Home, Mods::NONE);
+        r.key(Key::Backspace, Mods::NONE);
+        assert!(r.drawn().contains("kept one"));
+        // Esc gives the keys back; typing goes to the composer.
+        r.key(Key::Esc, Mods::NONE);
+        r.typed("x");
+        assert_eq!(draft_json(&r)["text"], json!("x"));
+        // The removal holds across a snapshot that still carries it.
+        r.show(2, "t1", working_with(queued.clone()));
+        assert!(!r.drawn().contains("lost one"));
+
+        // By click on its remove.
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued.clone()));
+        let (_, y) = cell_of(&r, "maybe one").unwrap();
+        let line = r.drawn().lines().nth(usize::from(y)).unwrap().to_owned();
+        let x = line
+            .find("[remove]")
+            .expect("a remove on the uncertain row") as u16;
+        click_at(&mut r, (x + 1, y));
+        assert!(!r.drawn().contains("maybe one"), "{}", r.drawn());
+
+        // By the tree's action.
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued));
+        r.act("theo.view.queue.remove.c2");
+        assert!(!r.drawn().contains("lost one"));
+        r.act("theo.view.queue.remove.c1");
+        assert!(r.drawn().contains("kept one"));
+    }
+
+    #[test]
+    fn retry_sends_a_failed_message_again_as_new_input_and_its_old_row_goes() {
+        let queued = json!([
+            {"clientMessageId": "c2", "text": "try again", "state": "failed", "reason": "no run"},
+        ]);
+        let check = |fx: &[Effect], r: &Rig| {
+            let sent = conversation_effects(fx);
+            let EffectBody::ConversationInput(input) = &sent[0].body else {
+                panic!("{fx:?}")
+            };
+            assert_eq!(input.text, "try again");
+            assert_eq!(input.run_id, "run-1");
+            assert_ne!(input.client_message_id, "c2", "a new message");
+            let drawn = r.drawn();
+            assert_eq!(drawn.matches("try again").count(), 1, "{drawn}");
+            assert!(!drawn.contains("not sent"), "{drawn}");
+            assert!(drawn.contains("sending"), "{drawn}");
+        };
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued.clone()));
+        r.key(Key::Char('q'), Mods::ALT);
+        let fx = r.enter();
+        check(&fx, &r);
+
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued.clone()));
+        let fx = click_on(&mut r, "[retry]");
+        check(&fx, &r);
+
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued));
+        let fx = r.act("theo.view.queue.retry.c2");
+        check(&fx, &r);
+    }
+
+    #[test]
+    fn sending_a_new_message_keeps_other_failed_rows() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let refuse = |r: &mut Rig, text: &str| {
+            r.typed(text);
+            let fx = r.enter();
+            r.send(Msg::Completion(Completion::new(
+                fx[0].id,
+                fx[0].resource.clone(),
+                Outcome::Refused {
+                    code: "unavailable".into(),
+                    reason: "busy".into(),
+                },
+            )));
+        };
+        refuse(&mut r, "alpha words");
+        // The draft came back; it goes again and replaces its own failed row.
+        let fx = r.enter();
+        assert_eq!(fx.len(), 1);
+        r.send(Msg::Completion(Completion::new(
+            fx[0].id,
+            fx[0].resource.clone(),
+            Outcome::Refused {
+                code: "unavailable".into(),
+                reason: "busy".into(),
+            },
+        )));
+        // One failed row over the box (the draft is back in it as well).
+        let over = |r: &Rig, t: &str| {
+            let top = box_top(r);
+            r.drawn()
+                .lines()
+                .take(top)
+                .filter(|l| l.contains(t))
+                .count()
+        };
+        assert_eq!(over(&r, "alpha words"), 1, "{}", r.drawn());
+        // Clear the draft and send another: the failed alpha row stays.
+        r.key(Key::Char('a'), Mods::CMD);
+        r.key(Key::Backspace, Mods::NONE);
+        r.typed("beta words");
+        r.enter();
+        assert_eq!(over(&r, "alpha words"), 1, "{}", r.drawn());
+        assert_eq!(over(&r, "beta words"), 1, "{}", r.drawn());
+    }
+
+    fn waiting() -> Value {
+        json!({
+            "messages": [user("m1", "list it"), assistant("a1", json!([
+                {"type": "tool", "id": "call-1", "name": "shell", "args": "{\"command\": [\"ls\", \"-la\", \"src\"]}",
+                 "status": "running", "approvalId": "ap-1", "approvalOutcome": "awaiting"}
+            ]), "running")],
+            "run": {"state": "waiting_approval", "runId": "run-1"},
+            "approval": {"runId": "run-1", "approvalId": "ap-1", "toolCallId": "call-1",
+                         "toolName": "shell", "summary": "List the source folder", "risk": "low"}
+        })
+    }
+
+    #[test]
+    fn a_waiting_approval_is_pinned_over_the_box_with_the_command_and_both_answers() {
+        let mut r = rig();
+        r.show(1, "t1", waiting());
+        let drawn = r.drawn();
+        let lines: Vec<&str> = drawn.lines().collect();
+        let top = box_top(&r);
+        assert!(
+            lines[top - 1].contains("[ Allow  y ]  [ Deny  n ]"),
+            "{drawn}"
+        );
+        assert!(lines[top - 2].contains("$ ls -la src"), "{drawn}");
+        assert!(lines[top - 3].contains("List the source folder"), "{drawn}");
+        assert!(
+            lines[top - 4].contains("shell needs your approval")
+                && lines[top - 4].contains("low risk"),
+            "{drawn}"
+        );
+        let alert = r
+            .tree()
+            .nodes
+            .into_iter()
+            .find(|n| local(n) == "approval")
+            .unwrap();
+        assert_eq!(alert.rect.map(|c| c.y), Some(top as u16 - 4));
+        // A click on Allow answers it.
+        let fx = click_on(&mut r, "[ Allow");
+        let EffectBody::ConversationApproval(a) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(
+            a.decision,
+            theorem_workbench_core::effect::ApprovalDecision::Allow
+        );
+        assert!(r.drawn().contains("answer sent"), "{}", r.drawn());
+        // And on Deny.
+        let mut r = rig();
+        r.show(1, "t1", waiting());
+        let fx = click_on(&mut r, "[ Deny");
+        let EffectBody::ConversationApproval(a) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(
+            a.decision,
+            theorem_workbench_core::effect::ApprovalDecision::Deny
+        );
+        // With words typed, y is a letter of them and the region still waits.
+        let mut r = rig();
+        r.show(1, "t1", waiting());
+        r.typed("ok");
+        assert!(r.typed_effects("y").is_empty());
+        assert_eq!(draft_json(&r)["text"], json!("oky"));
+        assert!(r.drawn().contains("[ Allow  y ]"));
+        // A change names the path it would write.
+        let mut edit = waiting();
+        edit["messages"][1]["parts"][0]["name"] = json!("edit_file");
+        edit["messages"][1]["parts"][0]["args"] = json!("{\"path\": \"src/a.rs\"}");
+        let mut r = rig();
+        r.show(1, "t1", edit);
+        let drawn = r.drawn();
+        let lines: Vec<&str> = drawn.lines().collect();
+        let top = box_top(&r);
+        assert!(
+            lines[top - 2].contains("src/a.rs") && !lines[top - 2].contains('$'),
+            "{drawn}"
+        );
+    }
+
+    #[test]
+    fn an_answered_approval_leaves_a_receipt_where_it_was_asked() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({
+                "messages": [user("m1", "list it"), assistant("a1", json!([
+                    {"type": "tool", "id": "call-1", "name": "shell", "args": "ls -la src",
+                     "status": "complete", "result": "a b", "approvalId": "ap-1",
+                     "approvalOutcome": "approved", "approvalSummary": "List the source folder"},
+                    {"type": "tool", "id": "call-2", "name": "shell", "args": "rm -rf build",
+                     "status": "failed", "approvalId": "ap-2", "approvalOutcome": "declined"}
+                ]), "complete")],
+            }),
+        );
+        let drawn = r.drawn();
+        assert!(
+            drawn.contains("\u{2713} Allowed: List the source folder"),
+            "{drawn}"
+        );
+        assert!(
+            drawn.contains("\u{2717} Denied: shell rm -rf build"),
+            "{drawn}"
+        );
+        assert!(!drawn.contains("needs your approval"));
+        let lines: Vec<&str> = drawn.lines().collect();
+        let receipt = lines.iter().position(|l| l.contains("Allowed:")).unwrap();
+        assert!(receipt < box_top(&r));
+        let receipts: Vec<_> = r
+            .tree()
+            .nodes
+            .into_iter()
+            .filter(|n| local(n).starts_with("r:"))
+            .collect();
+        // Each receipt node is the one row it is drawn on.
+        for node in &receipts {
+            let at = node.rect.expect("a receipt has a place");
+            assert_eq!(at.height, 1, "{}", node.name);
+            let word = node.name.split(':').next().unwrap();
+            assert!(
+                lines[usize::from(at.y)].contains(&format!("{word}:")),
+                "{} drawn on {:?}",
+                node.name,
+                lines[usize::from(at.y)]
+            );
+        }
+        let names: Vec<_> = receipts.into_iter().map(|n| n.name).collect();
+        assert_eq!(
+            names,
+            [
+                "Allowed: List the source folder",
+                "Denied: shell rm -rf build"
+            ]
+        );
+    }
+
+    fn models_for(r: &mut Rig) {
+        r.send(Msg::Host(HostMessage::ConversationModels {
+            resource: ResourceRef::Conversation {
+                project: PROJECT.into(),
+                thread: "t1".into(),
+            },
+            conversation_id: "t1".into(),
+            models: vec![
+                serde_json::from_value(json!({"ref": "m-a", "label": "Alpha"})).unwrap(),
+                serde_json::from_value(json!({"ref": "m-b", "label": "Beta"})).unwrap(),
+            ],
+            selected: Some("m-a".into()),
+            effort: Some("low".into()),
+            efforts: vec!["low".into(), "high".into()],
+        }));
+    }
+
+    fn named(r: &mut Rig) {
+        r.send(Msg::Host(HostMessage::ThreadsChanged {
+            listing: theorem_workbench_core::threads::ThreadListing {
+                projects: vec![theorem_workbench_core::threads::ThreadProject {
+                    id: PROJECT.into(),
+                    name: "Orchard".into(),
+                }],
+                threads: vec![],
+                open: None,
+                as_of_ms: 0,
+            },
+        }));
+    }
+
+    #[test]
+    fn the_footer_under_the_box_names_the_project_effort_model_and_stop_and_they_act() {
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"run": {"state": "streaming", "runId": "run-1"}}),
+        );
+        models_for(&mut r);
+        named(&mut r);
+        let drawn = r.drawn();
+        let lines: Vec<&str> = drawn.lines().collect();
+        let bottom = lines.iter().rposition(|l| l.contains('\u{2570}')).unwrap();
+        let footer = lines[bottom + 1];
+        for word in ["Orchard", "low effort", "Alpha", "\u{25A0} stop"] {
+            assert!(footer.contains(word), "{word} in {footer:?}");
+        }
+        assert!(
+            !lines[bottom - 1].contains("Alpha"),
+            "said once, in the footer"
+        );
+        let ids: Vec<_> = r
+            .tree()
+            .nodes
+            .iter()
+            .filter(|n| local(n).starts_with("footer:"))
+            .map(|n| local(n).to_owned())
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                "footer:project",
+                "footer:effort",
+                "footer:model",
+                "footer:stop"
+            ]
+        );
+        // Effort by click and by Alt+T.
+        let fx = click_on(&mut r, "low effort");
+        let EffectBody::ConversationSetEffort(e) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(e.level, "high");
+        let fx = r.key(Key::Char('t'), Mods::ALT);
+        assert!(
+            matches!(fx[0].body, EffectBody::ConversationSetEffort(_)),
+            "{fx:?}"
+        );
+        // The model by click opens the list; by Alt+M too.
+        click_on(&mut r, "Alpha");
+        r.key(Key::Down, Mods::NONE);
+        let fx = r.enter();
+        let EffectBody::ConversationSetModel(m) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(m.model_ref, "m-b");
+        r.key(Key::Char('m'), Mods::ALT);
+        let fx = r.enter();
+        assert!(
+            matches!(fx[0].body, EffectBody::ConversationSetModel(_)),
+            "{fx:?}"
+        );
+        // Stop by click while the run works.
+        let fx = click_on(&mut r, "\u{25A0} stop");
+        assert_eq!(fx[0].kind(), EffectKind::ConversationCancel, "{fx:?}");
+        // Idle, stop is off: a click does nothing.
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let fx = click_on(&mut r, "\u{25A0} stop");
+        assert!(conversation_effects(&fx).is_empty(), "{fx:?}");
+        let stop = r
+            .tree()
+            .nodes
+            .into_iter()
+            .find(|n| local(n) == "footer:stop")
+            .unwrap();
+        assert!(stop.state.disabled);
+    }
+
+    #[test]
+    fn takes_chord_answers_for_the_queue_model_and_effort_chords() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let id = r.id();
+        let panel = r.m.panel(&id).unwrap();
+        let chord = |c| KeyInput::new(Key::Char(c), Mods::ALT);
+        assert!(panel.takes_chord(&chord('m')));
+        assert!(panel.takes_chord(&chord('t')));
+        assert!(
+            !panel.takes_chord(&chord('q')),
+            "an empty queue takes no chord"
+        );
+        r.show(
+            2,
+            "t1",
+            working_with(json!([{"clientMessageId": "c1", "text": "x", "state": "failed"}])),
+        );
+        assert!(r.m.panel(&id).unwrap().takes_chord(&chord('q')));
+    }
+
+    /// A panel bound and drawn into a footer row `width` wide, with every item there.
+    fn footer_at(width: u16, working: bool) -> String {
+        let mut p = TheoPanel::new(Kind::Main, Directory::default(), &json!({}));
+        let run = if working {
+            json!({"state": "streaming", "runId": "r"})
+        } else {
+            json!({"state": "idle"})
+        };
+        p.adopt(
+            PROJECT,
+            "t1",
+            1,
+            &json!({"conversationId": "t1", "messages": [], "run": run, "queued": []}).to_string(),
+        );
+        p.project_names.insert(PROJECT.into(), "Orchard".into());
+        p.repo.head = Some("feature/queue".into());
+        p.repo.keys = vec![RowKey {
+            section: theorem_workbench_changes::Section::Unstaged,
+            path: "a.rs".into(),
+        }];
+        p.repo.counts = vec![Some((12, 3))];
+        p.effort = Some("medium".into());
+        p.selected_model = Some("m-a".into());
+        p.models = vec![serde_json::from_value(json!({"ref": "m-a", "label": "Alpha"})).unwrap()];
+        let area = Rect::new(0, 0, width, 1);
+        let mut buf = Buffer::empty(area);
+        p.draw_footer_row(&mut buf, area);
+        (0..width)
+            .map(|x| buf[(x, 0)].symbol().to_owned())
+            .collect::<String>()
+    }
+
+    #[test]
+    fn the_footer_drops_whole_items_in_order_and_never_stop_while_a_run_works() {
+        let wide = footer_at(120, true);
+        for word in [
+            "Orchard",
+            "feature/queue",
+            "+12",
+            "\u{2212}3",
+            "medium effort",
+            "Alpha",
+            "\u{25A0} stop",
+        ] {
+            assert!(wide.contains(word), "{word} in {wide:?}");
+        }
+        // Narrower, whole items go in order: the project, the totals, the branch, the
+        // effort, the model. Stop stays while the run works.
+        let all = [
+            "Orchard",
+            "feature/queue",
+            "+12",
+            "medium effort",
+            "Alpha",
+            "\u{25A0} stop",
+        ];
+        let shows =
+            |row: &str| -> Vec<&str> { all.iter().copied().filter(|w| row.contains(w)).collect() };
+        assert_eq!(
+            shows(&footer_at(60, true)),
+            [
+                "feature/queue",
+                "+12",
+                "medium effort",
+                "Alpha",
+                "\u{25A0} stop"
+            ]
+        );
+        assert_eq!(
+            shows(&footer_at(50, true)),
+            ["feature/queue", "medium effort", "Alpha", "\u{25A0} stop"]
+        );
+        assert_eq!(
+            shows(&footer_at(40, true)),
+            ["medium effort", "Alpha", "\u{25A0} stop"]
+        );
+        // A phone's width (390px is about 48 cells less the panel's chrome).
+        assert_eq!(shows(&footer_at(30, true)), ["Alpha", "\u{25A0} stop"]);
+        assert_eq!(shows(&footer_at(12, true)), ["\u{25A0} stop"]);
+        // Idle, stop goes first.
+        assert_eq!(
+            shows(&footer_at(44, false)),
+            ["feature/queue", "medium effort", "Alpha"]
+        );
+        // Whatever the width, no word is cut.
+        for width in 8..120 {
+            for working in [true, false] {
+                let row = footer_at(width, working);
+                for word in ["Orchard", "feature/queue", "medium", "Alpha", "stop"] {
+                    let prefix = &word[..word.len().min(3)];
+                    if row.contains(prefix) && !row.contains(word) {
+                        panic!("{word} cut at {width}: {row:?}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn clip_words_cuts_at_a_word_end_never_inside_one() {
+        assert_eq!(clip_words("short", 10), "short");
+        assert_eq!(clip_words("one two three four", 10), "one two\u{2026}");
+        assert_eq!(clip_words("unbreakableword", 6), "unbre\u{2026}");
+    }
+
+    fn scm_rig() -> Rig {
+        let directory = Directory::default();
+        let mut m = model_with(
+            &directory,
+            &["files", "conversation", "conversation.model", "scm"],
+        );
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("theo.focus"),
+                actor: Actor::Human,
+            },
+        );
+        Rig {
+            m,
+            directory,
+            seen: Vec::new(),
+        }
+    }
+
+    fn scm_status(paths: &[&str]) -> CompletionPayload {
+        CompletionPayload::Scm(theorem_workbench_core::completion::ScmStatus {
+            branch: Some("feature/queue".into()),
+            head: None,
+            changes: paths
+                .iter()
+                .map(|p| theorem_workbench_core::completion::ScmChange {
+                    path: (*p).into(),
+                    index: " ".into(),
+                    worktree: "M".into(),
+                    original_path: None,
+                    conflict: false,
+                })
+                .collect(),
+            state: None,
+        })
+    }
+
+    fn scm_diff(text: &str) -> CompletionPayload {
+        CompletionPayload::ScmDiff(theorem_workbench_core::completion::ScmDiffResult {
+            path: None,
+            staged: false,
+            commit: None,
+            text: text.into(),
+            hunks: vec![],
+            state: None,
+        })
+    }
+
+    #[test]
+    fn the_footer_reads_the_branch_and_diff_totals_from_the_changes_source() {
+        let mut r = scm_rig();
+        r.show(1, "t1", json!({}));
+        let status: Vec<_> = r
+            .seen
+            .iter()
+            .filter(|e| e.kind() == EffectKind::ScmStatus)
+            .cloned()
+            .collect();
+        assert_eq!(status.len(), 1, "{:?}", r.seen);
+        r.send(Msg::Completion(
+            Completion::new(status[0].id, status[0].resource.clone(), Outcome::Accepted)
+                .with_payload(scm_status(&["a.rs", "b.rs"])),
+        ));
+        let fx = r.send(Msg::Tick);
+        let diffs: Vec<_> = fx
+            .iter()
+            .filter(|e| e.kind() == EffectKind::ScmDiff)
+            .cloned()
+            .collect();
+        assert_eq!(diffs.len(), 2, "{fx:?}");
+        assert!(r.drawn().contains("feature/queue"), "{}", r.drawn());
+        // One diff in: no totals yet, never a partial sum.
+        r.send(Msg::Completion(
+            Completion::new(diffs[0].id, diffs[0].resource.clone(), Outcome::Accepted)
+                .with_payload(scm_diff("@@ -1,2 +1,3 @@\n a\n-b\n+c\n+d\n")),
+        ));
+        assert!(!r.drawn().contains("+2"), "{}", r.drawn());
+        r.send(Msg::Completion(
+            Completion::new(diffs[1].id, diffs[1].resource.clone(), Outcome::Accepted)
+                .with_payload(scm_diff("@@ -1 +1 @@\n-x\n+y\n")),
+        ));
+        assert!(r.drawn().contains("+3 \u{2212}2"), "{}", r.drawn());
+        // A file change reads it again at the next tick.
+        r.send(Msg::Host(HostMessage::FileChanged {
+            workspace: String::new(),
+            path: "a.rs".into(),
+        }));
+        let fx = r.send(Msg::Tick);
+        assert!(
+            fx.iter().any(|e| e.kind() == EffectKind::ScmStatus),
+            "{fx:?}"
+        );
+    }
+
+    #[test]
+    fn without_scm_the_footer_asks_for_nothing_and_shows_no_totals() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        assert!(!r.seen.iter().any(|e| e.kind() == EffectKind::ScmStatus));
+        assert!(!r.tree().nodes.iter().any(|n| local(n) == "footer:totals"));
+    }
+
+    #[test]
+    fn a_bound_panel_asks_for_the_models_once_so_the_footer_can_name_them() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let asked = |r: &Rig| {
+            r.seen
+                .iter()
+                .filter(|e| e.kind() == EffectKind::ConversationModels)
+                .count()
+        };
+        assert_eq!(asked(&r), 1, "{:?}", r.seen);
+        r.send(Msg::Tick);
+        r.show(2, "t1", json!({}));
+        assert_eq!(asked(&r), 1, "once per conversation");
+        // Without the capability it asks for nothing.
+        let directory = Directory::default();
+        let mut m = model_with(&directory, &["files", "conversation"]);
+        update(
+            &mut m,
+            Msg::Action {
+                id: ActionId::new("theo.focus"),
+                actor: Actor::Human,
+            },
+        );
+        let mut r = Rig {
+            m,
+            directory,
+            seen: Vec::new(),
+        };
+        r.show(1, "t1", json!({}));
+        assert_eq!(asked(&r), 0);
+    }
+
+    #[test]
+    fn a_theo_panel_mounted_after_the_listing_still_names_its_project() {
+        let directory = Directory::default();
+        let mut m = model(&directory);
+        let listing = Msg::Host(HostMessage::ThreadsChanged {
+            listing: theorem_workbench_core::threads::ThreadListing {
+                projects: vec![theorem_workbench_core::threads::ThreadProject {
+                    id: PROJECT.into(),
+                    name: "Orchard".into(),
+                }],
+                threads: vec![],
+                open: None,
+                as_of_ms: 0,
+            },
+        });
+        update(&mut m, listing);
+        let mut r = Rig {
+            m,
+            directory,
+            seen: Vec::new(),
+        };
+        r.send(Msg::Action {
+            id: ActionId::new("theo.focus"),
+            actor: Actor::Human,
+        });
+        r.send(Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w1".into(),
+            environment: None,
+        }));
+        r.show(1, "t1", json!({}));
+        let drawn = r.drawn();
+        let footer = drawn.lines().last().unwrap_or_default().to_owned();
+        assert!(drawn.contains("Orchard"), "{drawn}\n{footer}");
     }
 }

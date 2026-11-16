@@ -454,6 +454,7 @@ impl Snapshot {
                     }
                     Part::Program { lines, .. } => spell_tokens(lines),
                     Part::Input(sent) => spell_sent(sent),
+                    Part::Receipt { text, .. } => spell(text),
                     Part::Code { lang, lines, diff } => {
                         spell(lang);
                         spell_tokens(lines);
@@ -548,6 +549,16 @@ enum Part {
     },
     /// Sent while the run worked, drawn where the run took it in.
     Input(Sent),
+    /// How an approval the run asked for was answered, drawn where it was asked: what was
+    /// asked and the answer (`approved`, `declined`, `failed` or `unanswered`).
+    Receipt {
+        text: String,
+        #[serde(default)]
+        outcome: String,
+        /// The approval it answers, so the overlay can name the row it is drawn on.
+        #[serde(default)]
+        approval: String,
+    },
     /// A fenced block from an answer, highlighted by the page.
     Code {
         #[serde(default)]
@@ -886,6 +897,7 @@ struct Built {
     toggles: Vec<(usize, String)>,
     links: Vec<(usize, Open)>,
     blocks: Vec<blocks::BlockRow>,
+    receipts: Vec<(usize, String)>,
 }
 
 impl Built {
@@ -972,6 +984,9 @@ struct Session {
     /// status row leaves that hint out. The drawer's prompt is the session's
     /// own and keeps it.
     hint_in_footer: bool,
+    /// Whether the panel draws the waiting approval in a region of its own, so the status
+    /// row leaves it out.
+    approval_elsewhere: bool,
     /// Transcript lines, rebuilt when the snapshot, the width or the palette changes.
     lines: Vec<Line<'static>>,
     /// Each line's first row once wrapped, then the total, for clicks.
@@ -996,6 +1011,8 @@ struct Session {
     level: blocks::Activity,
     /// The transcript's blocks by line, at the last build.
     blocks: Vec<blocks::BlockRow>,
+    /// The approval receipts by line and the approval each answers, at the last build.
+    receipts: Vec<(usize, String)>,
     /// The block the keys are on, by key, while they walk the transcript.
     cursor: Option<String>,
     /// Scroll the cursor's block into view at the next draw.
@@ -1026,6 +1043,7 @@ impl Session {
             has_output: false,
             notice: None,
             hint_in_footer: false,
+            approval_elsewhere: false,
             lines: Vec::new(),
             rows: Vec::new(),
             links: Vec::new(),
@@ -1039,6 +1057,7 @@ impl Session {
             built_for: None,
             level: blocks::Activity::default(),
             blocks: Vec::new(),
+            receipts: Vec::new(),
             cursor: None,
             reveal: false,
             anchor: None,
@@ -1495,6 +1514,14 @@ impl Session {
                         out.lines.extend(sent_lines(sent));
                         out.lines.push(Line::default());
                     }
+                    Part::Receipt {
+                        text,
+                        outcome,
+                        approval,
+                    } => {
+                        out.receipts.push((out.lines.len(), approval.clone()));
+                        out.lines.push(receipt_line(text, outcome));
+                    }
                     Part::Code { diff, .. } if !diff.is_empty() => {
                         out.filled(diff_lines(diff, INDENT));
                     }
@@ -1522,6 +1549,7 @@ impl Session {
             toggles,
             links,
             blocks,
+            receipts,
         } = out;
         if let Some(row) = caret {
             lines[row]
@@ -1590,6 +1618,7 @@ impl Session {
         self.starts = starts;
         self.fills = fills;
         self.blocks = blocks;
+        self.receipts = receipts;
         self.lines = lines;
         self.built_for = Some((width, palette()));
     }
@@ -1777,7 +1806,12 @@ impl Session {
         {
             self.notice = None;
         }
-        let left = if let Some(approval) = &self.snapshot.approval {
+        let approval = self
+            .snapshot
+            .approval
+            .as_ref()
+            .filter(|_| !self.approval_elsewhere);
+        let left = if let Some(approval) = approval {
             Line::from(vec![
                 Span::styled(
                     " ? ",
@@ -1811,7 +1845,7 @@ impl Session {
             Line::default()
         };
         left.render(area, buf);
-        let right = if self.snapshot.approval.is_some() {
+        let right = if approval.is_some() {
             "y allow · n deny ".to_owned()
         } else if self.scroll_back > 0 {
             format!("↓ {} more · pgdn ", self.scroll_back)
@@ -2180,7 +2214,33 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
             Style::new().fg(palette().ink),
         )
     };
-    let (tag, tag_style) = match sent.status.as_str() {
+    let (tag, tag_style) = sent_tag(sent);
+    let rows: Vec<&str> = sent.text.lines().collect();
+    let last = rows.len().saturating_sub(1);
+    rows.iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let mut spans = vec![
+                if index == 0 {
+                    Span::styled(PROMPT, glyph)
+                } else {
+                    Span::raw(INDENT)
+                },
+                Span::styled((*row).to_owned(), ink),
+            ];
+            if index == last
+                && let Some(tag) = &tag
+            {
+                spans.push(Span::styled(format!("  · {tag}"), tag_style));
+            }
+            Line::from(spans)
+        })
+        .collect()
+}
+
+/// What became of words sent to a working run, in plain words, and the colour they are said in.
+fn sent_tag(sent: &Sent) -> (Option<String>, Style) {
+    match sent.status.as_str() {
         "delivered" => (None, Style::new().fg(palette().muted)),
         "sending" => (Some("sending".to_owned()), Style::new().fg(palette().muted)),
         "next" => (
@@ -2213,28 +2273,22 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
             Some("queued for its next step".to_owned()),
             Style::new().fg(palette().muted),
         ),
+    }
+}
+
+/// An answered approval, one line where it was asked: the answer, then what was asked.
+fn receipt_line(text: &str, outcome: &str) -> Line<'static> {
+    let p = palette();
+    let (glyph, word, style) = match outcome {
+        "approved" => ("✓", "Allowed", Style::new().fg(p.success)),
+        "declined" => ("✗", "Denied", Style::new().fg(p.error)),
+        "failed" => ("✗", "The answer failed", Style::new().fg(p.error)),
+        _ => ("·", "Not answered", Style::new().fg(p.muted)),
     };
-    let rows: Vec<&str> = sent.text.lines().collect();
-    let last = rows.len().saturating_sub(1);
-    rows.iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let mut spans = vec![
-                if index == 0 {
-                    Span::styled(PROMPT, glyph)
-                } else {
-                    Span::raw(INDENT)
-                },
-                Span::styled((*row).to_owned(), ink),
-            ];
-            if index == last
-                && let Some(tag) = &tag
-            {
-                spans.push(Span::styled(format!("  · {tag}"), tag_style));
-            }
-            Line::from(spans)
-        })
-        .collect()
+    indented(Line::from(vec![
+        Span::styled(format!("{glyph} {word}: "), style),
+        Span::styled(text.to_owned(), Style::new().fg(p.muted)),
+    ]))
 }
 
 /// One tool's row. A row that opens a file underlines its summary, as a

@@ -2,7 +2,7 @@
 
 import type { ThreadMessage } from '@assistant-ui/react'
 import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
-import type { TheoremApproval } from '@/lib/theorem/approval'
+import type { ApprovalOutcome, TheoremApproval } from '@/lib/theorem/approval'
 import { describeError } from '@/lib/theorem/client'
 import { plainObjective } from '@/lib/theorem/delegations'
 import { DELEGATION_PART, readDelegation } from '@/lib/theorem/working-runs'
@@ -42,6 +42,10 @@ export type TranscriptPart =
       result?: string
       resultTruncated?: boolean
       approvalId?: string
+      /** How the approval the call asked for stands: awaiting, approved, declined, failed or unanswered. */
+      approvalOutcome?: ApprovalOutcome
+      /** What the approval asked, in the words the run gave it, for the receipt once it is answered. */
+      approvalSummary?: string
       /** An edit's result read as a diff, highlighted line by line; absent when the result is not a diff. */
       diff?: DiffLine[]
       /** The file the call worked on and the one-based lines it touched. */
@@ -264,7 +268,11 @@ export function transcriptOf(
             result: shown.text,
             resultTruncated: shown.truncated,
           }),
-          ...(asked && { approvalId: asked.approvalId }),
+          ...(asked && {
+            approvalId: asked.approvalId,
+            approvalOutcome: approvalOutcome(asked),
+            approvalSummary: asked.summary,
+          }),
           ...(diff && diff.length > 0 && { diff }),
           ...(open && { open }),
         },

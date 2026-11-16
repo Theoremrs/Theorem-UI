@@ -74,6 +74,9 @@ export function ParityStory({
   liveConversation,
   persistLayout,
   documents,
+  granted = THREADS_CAPS,
+  threadsSeed = PARITY_THREADS,
+  owner,
 }: {
   id: string
   ladder: boolean
@@ -94,6 +97,12 @@ export function ParityStory({
   persistLayout?: boolean
   /** Texts the documents owner holds, by path, for a file the story opens. */
   documents?: FixtureOptions['documents']
+  /** What the host can do, in place of the parity story's capabilities. */
+  granted?: string[]
+  /** The account the Threads panel lists, in place of the parity fixture's. */
+  threadsSeed?: FixtureOptions['threadsSeed']
+  /** The conversation owner takes input and answers approvals and stops while the story runs. */
+  owner?: FixtureOptions['owner']
 }) {
   const profile = PALETTE_PROFILES.find((p) => p.id === 'github-sharp-dark')!
   return (
@@ -104,7 +113,7 @@ export function ParityStory({
           width={fill ? '100vw' : PARITY_VIEWPORT.width}
           height={fill ? '100dvh' : PARITY_VIEWPORT.height}
           options={{
-            granted: THREADS_CAPS,
+            granted,
             transcript: true,
             idle: false,
             threads: true,
@@ -113,7 +122,8 @@ export function ParityStory({
             liveConversation,
             persistLayout,
             documents,
-            threadsSeed: PARITY_THREADS,
+            threadsSeed,
+            owner,
             repository,
           }}
           script={[]}

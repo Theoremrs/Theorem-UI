@@ -602,13 +602,16 @@ impl Model {
     /// panel bound to terminals that has just been told the workspace.
     fn replay_sessions(&mut self, id: &PanelInstanceId) {
         let workspace = self.workspace.workspace.clone();
-        // A panel that lists threads is handed the last list of them, and the
-        // sessions too: the agents it shows are the terminals' own.
+        // Every panel is handed the last list of threads, as a live one reaches
+        // every panel (the conversation names its project from it); a panel
+        // that lists threads is handed the sessions too: the agents it shows
+        // are the terminals' own.
+        let available = self.panels.get(id).is_some_and(|e| e.available);
         let lists_threads = self
             .panels
             .get(id)
             .is_some_and(|e| e.available && e.kind.as_str() == THREADS_KIND);
-        if lists_threads && let Some(message) = self.retained.threads.clone() {
+        if available && let Some(message) = self.retained.threads.clone() {
             self.call(id, Mode::Silent, |p, cx| {
                 p.update(PanelMsg::Host(message), cx)
             });

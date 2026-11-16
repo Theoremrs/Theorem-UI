@@ -131,6 +131,7 @@ import {
 } from '@/components/workbench/workbench-delta-parity-story'
 import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-review-story'
 import { WorkbenchTheoBlocksStory } from '@/components/workbench/workbench-theo-blocks-story'
+import { WorkbenchTheoComposerStory } from '@/components/workbench/workbench-theo-composer-story'
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(
@@ -842,6 +843,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-delta-parity-before': WorkbenchDeltaParityBeforeStory,
   'workbench-changes-review': WorkbenchChangesReviewStory,
   'workbench-theo-blocks': WorkbenchTheoBlocksStory,
+  'workbench-theo-composer': WorkbenchTheoComposerStory,
   'workbench-terminal': WorkbenchTerminalStory,
   'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
   'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,
