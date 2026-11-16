@@ -1,4 +1,5 @@
-// SOURCING: none — the settings route table, pure data
+// SOURCING: none — the settings route table, pure data; lucide-react for the one mark the owner's icon set does not hold
+import { UserRound } from 'lucide-react'
 import { Icon } from '@/components/icons'
 
 /** Settings' sections, grouped as the nav shows them. Each path is a file route. */
@@ -6,6 +7,7 @@ export const SETTINGS_GROUPS = [
   {
     label: 'You',
     sections: [
+      { path: '/settings/profile', label: 'Profile', Mark: UserRound },
       { path: '/settings/appearance', label: 'Appearance', Mark: Icon.Sun },
     ],
   },
@@ -14,10 +16,23 @@ export const SETTINGS_GROUPS = [
     sections: [
       { path: '/settings/ai', label: 'AI', Mark: Icon.Model, width: 1280 },
       { path: '/settings/keys', label: 'API keys', Mark: Icon.Key },
-      { path: '/settings/connections', label: 'Connections', Mark: Icon.Plugin },
-      { path: '/settings/import', label: 'Import context', Mark: Icon.Download },
+      {
+        path: '/settings/connections',
+        label: 'Connections',
+        Mark: Icon.Plugin,
+      },
+      {
+        path: '/settings/import',
+        label: 'Import context',
+        Mark: Icon.Download,
+      },
       // Tables of turns and a time axis: wider than a page of fields.
-      { path: '/settings/observe', label: 'Observe', Mark: Icon.Eye, width: 1080 },
+      {
+        path: '/settings/observe',
+        label: 'Observe',
+        Mark: Icon.Eye,
+        width: 1080,
+      },
       { path: '/settings/work', label: 'Work', Mark: Icon.Checklist },
     ],
   },

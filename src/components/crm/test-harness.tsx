@@ -13,7 +13,7 @@ import { render } from '../../../test/blocks/render'
 
 /**
  * Renders `subject` at `path` in a router with the CRM's routes (and /index,
- * where "Data model" leads). The subject is drawn by the root, as ModeView
+ * where "Data model" leads, and Settings' Profile). The subject is drawn by the root, as ModeView
  * draws a mode whatever the matched child is.
  */
 export async function mountAt(path: string, subject: () => ReactNode) {
@@ -42,6 +42,11 @@ export async function mountAt(path: string, subject: () => ReactNode) {
     path: '/index',
     component: empty,
   })
+  const profile = createRoute({
+    getParentRoute: () => root,
+    path: '/settings/profile',
+    component: empty,
+  })
   const home = createRoute({
     getParentRoute: () => root,
     path: '/',
@@ -51,6 +56,7 @@ export async function mountAt(path: string, subject: () => ReactNode) {
     routeTree: root.addChildren([
       crm.addChildren([type.addChildren([record])]),
       index,
+      profile,
       home,
     ]),
     history: createMemoryHistory({ initialEntries: [path] }),

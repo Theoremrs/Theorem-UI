@@ -53,7 +53,8 @@ export function CrmPanel({ switcher }: { switcher: ReactNode }) {
 function Me() {
   const { life, types, selfId, recordById } = useCrmScope()
   const { recordId } = useCrmPlace()
-  const { openRecord, openType } = useCrmNavigate()
+  const { openRecord } = useCrmNavigate()
+  const navigate = useNavigate()
   const people = personType(types)
   if (!life?.installed || !people) return null
   const self = selfId ? recordById(selfId) : undefined
@@ -82,7 +83,7 @@ function Me() {
       <button
         type="button"
         className={ROW}
-        onClick={() => void openType(people)}
+        onClick={() => void navigate({ to: '/settings/profile' })}
       >
         {mark}
         <span className="min-w-0 flex-1 truncate">Me</span>
@@ -91,7 +92,7 @@ function Me() {
       <p className="px-2 pt-0.5 pb-1 text-xs leading-5 text-ink-faint-sheet">
         {life.self.state === 'unavailable'
           ? 'This sign-in names a workspace but not a person, so no record can be marked as you.'
-          : 'Open your own record under People and choose “This is me”, so Theorem knows who is asking.'}
+          : 'Say which person you are in Settings, under Profile, so Theorem knows who is asking.'}
       </p>
     </div>
   )

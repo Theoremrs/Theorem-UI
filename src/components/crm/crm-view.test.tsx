@@ -17,6 +17,7 @@ import {
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { CrmPanel } from './crm-panel'
 import { CrmView } from './crm-view'
+import { ProfileSettings } from './profile-settings'
 import { FIXTURE_TYPE, createFixtureServer, fixtureFetch } from './fixture'
 import type { FixtureServer } from './fixture'
 import { resetCrmWrites } from './queries'
@@ -625,7 +626,7 @@ test('"Private to me" saves at the record\'s revision and marks the row', async 
   )
 })
 
-test('"This is me" marks a person as you', async () => {
+test('a person who is not you carries no "This is me"; who you are is chosen in Settings, Profile', async () => {
   serve({ self: 'unbound' })
   const { container } = await view('/crm/people')
   const noor = await waitFor(() =>
@@ -637,10 +638,34 @@ test('"This is me" marks a person as you', async () => {
   )
   await click(noor)
   const preview = await waitFor(() => container.querySelector('aside'))
-  await click(buttonNamed(preview, 'This is me')!)
-  await waitFor(() => preview.textContent.includes('This record is you'))
-  expect(server.state.self).toBe('person:noor')
-  expect(noor.textContent).toContain('You')
+  expect(buttonNamed(preview, 'This is me')).toBeUndefined()
+  expect(preview.textContent).not.toContain('This record is you')
+
+  // In Settings, Profile: not set, then Noor is chosen.
+  const settings = await mountAt('/settings/profile', () => <ProfileSettings />)
+  await waitFor(() => settings.container.textContent.includes('Not set'))
+  const trigger = await waitFor(() =>
+    settings.container.querySelector<HTMLElement>(
+      '[aria-label="Your person record"]',
+    ),
+  )
+  await click(trigger)
+  const option = await waitFor(() =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((o) =>
+      o.textContent.includes('Noor'),
+    ),
+  )
+  // The select ignores a release that comes straight after it opens.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 500)))
+  await act(async () => {
+    for (const kind of ['pointerdown', 'mousedown', 'pointerup', 'mouseup'])
+      option.dispatchEvent(new MouseEvent(kind, { bubbles: true }))
+    option.click()
+  })
+  await waitFor(() => server.state.self === 'person:noor')
+  await waitFor(() =>
+    settings.container.textContent.includes('Theorem reads “I” and “me”'),
+  )
 })
 
 test('"Ask Theorem" puts the record in the next message, by id and type', async () => {
@@ -779,5 +804,7 @@ test('with nobody marked as you, the panel says how to do it', async () => {
   const { container } = await mountAt('/crm/people', () => (
     <CrmPanel switcher={null} />
   ))
-  await waitFor(() => container.textContent.includes('choose “This is me”'))
+  await waitFor(() =>
+    container.textContent.includes('in Settings, under Profile'),
+  )
 })

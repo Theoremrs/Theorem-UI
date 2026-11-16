@@ -49,12 +49,7 @@ import {
   isPrivate,
   shownFields,
 } from './model'
-import {
-  editorRead,
-  useBindSelfPerson,
-  useFieldEdit,
-  useUnsavedEdits,
-} from './queries'
+import { editorRead, useFieldEdit, useUnsavedEdits } from './queries'
 import type { CrmWrites, EditorRead, FieldEdit } from './queries'
 import { recordReference } from './reference'
 
@@ -520,9 +515,9 @@ export function PrivateToggle({
   )
 }
 
-// This is me
+// This is you
 
-/** On a person: say that this record is the signed-in person, or see that it is. */
+/** On the record that is the signed-in person: say so. Which record that is, is chosen in Settings, Profile. */
 export function SelfControl({
   type,
   record,
@@ -530,41 +525,13 @@ export function SelfControl({
   type: ObjectType
   record: CrmRecord
 }) {
-  const { life, selfId } = useCrmScope()
-  const bind = useBindSelfPerson()
-  if (builtInName(type) !== 'person') return null
-  if (selfId === record.id)
-    return (
-      <p className="flex items-center gap-2 text-xs leading-5 text-ink-muted">
-        <YouBadge />
-        This record is you. Theorem reads “I” and “me” as this person.
-      </p>
-    )
-  const unavailable = life?.self.state === 'unavailable'
+  const { selfId } = useCrmScope()
+  if (builtInName(type) !== 'person' || selfId !== record.id) return null
   return (
-    <div className="flex flex-col gap-1">
-      <Button
-        variant="outline"
-        size="sm"
-        className="self-start"
-        disabled={unavailable || bind.isPending}
-        onClick={() => bind.mutate(record.id)}
-      >
-        This is me
-      </Button>
-      <p
-        role={bind.isError ? 'alert' : undefined}
-        className="text-xs leading-5 text-ink-muted"
-      >
-        {bind.isError
-          ? crmErrorText(bind.error, type)
-          : unavailable
-            ? 'This sign-in names a workspace but not a person, so no record can be marked as you.'
-            : selfId
-              ? 'Another person record is marked as you. Choosing this one replaces it.'
-              : 'Marks this record as you, so Theorem knows who is asking.'}
-      </p>
-    </div>
+    <p className="flex items-center gap-2 text-xs leading-5 text-ink-muted">
+      <YouBadge />
+      This record is you. Theorem reads “I” and “me” as this person.
+    </p>
   )
 }
 
