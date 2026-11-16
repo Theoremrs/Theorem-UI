@@ -155,7 +155,7 @@
       "authority": "diagnostic",
       "expectation": "records added outside the screen are counted",
       "measured": {
-        "shown": "11",
+        "shown": "9",
         "saved": 41,
         "secondsSinceTheyWereAdded": 2
       },
@@ -210,9 +210,133 @@
       "id": "selection.bounded-update",
       "authority": "target",
       "expectation": "a bounded update panel for the selected records, as in M02",
-      "measured": "All Organizations\n· 41\n2 selected\nDelete\nFilter\nSort\nOptions",
-      "result": "fail",
-      "note": "only a count and Delete are offered; there is no bulk update"
+      "measured": "Update 2 organizations",
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.width",
+      "authority": "target",
+      "expectation": "the update panel is 420 px wide, as the record preview is",
+      "measured": 420,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.header",
+      "authority": "target",
+      "expectation": "the update panel header is 44 px",
+      "measured": 44,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.table-retained",
+      "authority": "contract",
+      "expectation": "the table stays beside the panel with its two rows still marked",
+      "measured": {
+        "tableRight": 1017,
+        "panelLeft": 1017,
+        "marked": 2
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.actions",
+      "authority": "target",
+      "expectation": "the panel ends in Cancel and Apply, as in M02",
+      "measured": [
+        "Cancel",
+        "Apply"
+      ],
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.nothing-saved-before-apply",
+      "authority": "contract",
+      "expectation": "marking rows and choosing a value saves nothing",
+      "measured": {
+        "before": {
+          "org:geometry-c1c33bc9-0": {
+            "revision": 15378,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-1": {
+            "revision": 15382,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-2": {
+            "revision": 15386,
+            "location": null
+          }
+        },
+        "chosen": {
+          "org:geometry-c1c33bc9-0": {
+            "revision": 15378,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-1": {
+            "revision": 15382,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-2": {
+            "revision": 15386,
+            "location": null
+          }
+        }
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.exact-targets",
+      "authority": "contract",
+      "expectation": "Apply changes the two marked records and no other; each is saved at a later revision",
+      "measured": {
+        "before": {
+          "org:geometry-c1c33bc9-0": {
+            "revision": 15378,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-1": {
+            "revision": 15382,
+            "location": null
+          },
+          "org:geometry-c1c33bc9-2": {
+            "revision": 15386,
+            "location": null
+          }
+        },
+        "after": {
+          "org:geometry-c1c33bc9-0": {
+            "revision": 15538,
+            "location": "Leeds"
+          },
+          "org:geometry-c1c33bc9-1": {
+            "revision": 15542,
+            "location": "Leeds"
+          },
+          "org:geometry-c1c33bc9-2": {
+            "revision": 15386,
+            "location": null
+          }
+        }
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update.per-record-outcome",
+      "authority": "contract",
+      "expectation": "the panel says what happened to each record, with the revisions it moved between",
+      "measured": [
+        "Alder Press 1\nUpdated · revision 15378 to 15538",
+        "Birch Pottery 2\nUpdated · revision 15382 to 15542"
+      ],
+      "result": "pass",
+      "note": ""
     },
     {
       "id": "preview.width",

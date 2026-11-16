@@ -849,12 +849,19 @@ try {
       why,
     )
 } finally {
+  // The update panel saved two of these again, so the revision each was added
+  // at is no longer the one to delete from: read it as it stands now.
+  const org = types.Organization.object_type_id
   let left = 0
   for (const each of added)
-    await verb(types.Organization.object_type_id, 'delete_one', {
-      id: each.id,
-      expected_revision: each.version,
-    }).catch(() => left++)
+    await verb(org, 'find_one', { id: each.id })
+      .then((now) =>
+        verb(org, 'delete_one', {
+          id: each.id,
+          expected_revision: now.version,
+        }),
+      )
+      .catch(() => left++)
   log(
     left
       ? `${left} of the organizations this run added could not be removed`
