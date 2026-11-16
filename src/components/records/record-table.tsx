@@ -1,4 +1,4 @@
-// SOURCING: TanStack Table v9 through the app's kit hook (useAppTable with the kit's FilterList, SortList, ViewOptions and ResizeHandle; sizing, pinning, ordering, visibility and row selection), TanStack Virtual for rows (Table's virtualized-rows example), coss ui Menu, Popover and Checkbox, d3-dsv for CSV export; behaviour after Twenty's record table (twenty-front record-table: column menu, "+" column, Add New, Calculate footer, three-level focus, Enter/Tab/Escape-saves, empty states)
+// SOURCING: TanStack Table v9 through the app's kit hook (useAppTable with the kit's FilterList, SortList, ViewOptions and ResizeHandle; sizing, pinning, ordering, visibility and row selection), TanStack Virtual for rows (Table's virtualized-rows example), coss ui Menu, Popover and Checkbox, d3-dsv for CSV export; behaviour after Twenty's record table (twenty-front record-table: column menu, "+" column, Add New, Calculate footer, three-level focus, Enter and Tab save, empty states; Escape cancels an edit here, where Twenty saves it)
 import type { RowSelectionState } from '@tanstack/react-table'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { csvFormatRows } from 'd3-dsv'
@@ -288,6 +288,7 @@ export function RecordTable({
   const [focus, setFocus] = useState<Focus | null>(null)
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState<string | null>(null)
+  const draftLeft = useRef(false)
   const [anchorIndex, setAnchorIndex] = useState<number | null>(null)
   const [writeError, setWriteError] = useState<unknown>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -371,6 +372,12 @@ export function RecordTable({
     write(row, field, value)
     const index = shown.findIndex((r) => r.id === row.id)
     if (move && index >= 0) moveFocus({ row: index, col: field.key }, move)
+    requestAnimationFrame(() => gridRef.current?.focus({ preventScroll: true }))
+  }
+
+  /** Escape in an editor: the value stays as it was and the cell keeps focus. */
+  const discardEdit = () => {
+    setEditing(null)
     requestAnimationFrame(() => gridRef.current?.focus({ preventScroll: true }))
   }
 
@@ -865,7 +872,7 @@ export function RecordTable({
                                     onCommit={(value, move) =>
                                       commit(record, field, value, move)
                                     }
-                                    onDiscard={() => setEditing(null)}
+                                    onDiscard={discardEdit}
                                   />
                                 </div>
                               ) : (
@@ -954,14 +961,21 @@ export function RecordTable({
                           aria-label={`New ${objectType.label_singular.toLowerCase()} ${identifier.label.toLowerCase()}`}
                           placeholder={identifier.label}
                           onChange={(event) => setDraft(event.target.value)}
-                          onBlur={() => addRecord(draft)}
+                          onFocus={() => {
+                            draftLeft.current = false
+                          }}
+                          onBlur={() => {
+                            if (!draftLeft.current) addRecord(draft)
+                          }}
                           onKeyDown={(event) => {
-                            if (
-                              event.key === 'Enter' ||
-                              event.key === 'Escape'
-                            ) {
+                            if (event.key === 'Enter') {
                               event.preventDefault()
                               addRecord(draft)
+                            } else if (event.key === 'Escape') {
+                              // Nothing is created; the blur that follows must not create it either.
+                              event.preventDefault()
+                              draftLeft.current = true
+                              setDraft(null)
                             }
                           }}
                           className="h-6 w-full rounded bg-background px-1.5 text-sm text-ink outline-none ring-1 ring-focus"
@@ -1033,7 +1047,7 @@ export function RecordTable({
               setEditing(null)
               write(editingRow, editingField, value)
             }}
-            onDiscard={() => setEditing(null)}
+            onDiscard={discardEdit}
           />
         )}
 

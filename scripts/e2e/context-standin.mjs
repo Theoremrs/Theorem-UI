@@ -1,0 +1,101 @@
+// SOURCING: node:http; a test double of the one chat-completions route Theorem calls, so nothing upstream models it.
+//
+// The model provider as Theorem sees it during scripts/e2e/crm-context.mjs. It
+// keeps every request body whole, beside the saved-record spans it found in
+// it, so the scenario can read exactly what was serialized for the model, and
+// it answers from that body alone: its reply
+// names only what the admitted saved records say. An answer that changes when
+// a saved record changes therefore changed because the request did.
+//
+// It keeps whole requests, so it is for synthetic data only. Nothing here
+// reaches a real provider and no real key is involved.
+import { createServer } from 'node:http'
+
+const PORT = Number(process.env.E2E_STANDIN_PORT)
+const RECORD_SOURCE = 'life_context_record'
+const BRIEF_START = '{"brief_id"'
+
+const requests = []
+
+const answer = (res, status, body) => {
+  res.writeHead(status, { 'content-type': 'application/json' })
+  res.end(JSON.stringify(body))
+}
+
+const text = (content) =>
+  typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.map((part) => part?.text ?? '').join('')
+      : ''
+
+/** The saved-record spans of the context brief in a request's system messages. */
+function recordSpans(body) {
+  const spans = []
+  for (const message of body?.messages ?? []) {
+    if (message.role !== 'system') continue
+    const system = text(message.content)
+    const start = system.indexOf(BRIEF_START)
+    if (start < 0) continue
+    let brief
+    try {
+      brief = JSON.parse(system.slice(start))
+    } catch {
+      continue
+    }
+    for (const span of brief.evidence ?? [])
+      if (span.source_type === RECORD_SOURCE) spans.push(span)
+  }
+  return spans
+}
+
+/** One sentence per admitted record, from its serialized content and nothing else. */
+function reply(body) {
+  const lines = []
+  for (const span of recordSpans(body)) {
+    let record
+    try {
+      record = JSON.parse(span.content)
+    } catch {
+      continue
+    }
+    const fields = record.fields ?? {}
+    const name = fields.title ?? fields.name ?? fields.statement ?? fields.summary
+    if (!name) continue
+    if (record.type === 'Commitment' && fields.due)
+      lines.push(`"${name}" is due ${fields.due}.`)
+    else lines.push(`${record.type}: ${name}.`)
+  }
+  return lines.length
+    ? `From your saved records. ${lines.join(' ')}`
+    : 'I have no saved record about that.'
+}
+
+createServer(async (req, res) => {
+  if (req.url === '/__requests' && req.method === 'GET')
+    return answer(res, 200, requests)
+  if (req.url === '/__requests' && req.method === 'DELETE') {
+    requests.length = 0
+    return answer(res, 200, [])
+  }
+
+  const chunks = []
+  for await (const chunk of req) chunks.push(chunk)
+  let body
+  try {
+    body = JSON.parse(Buffer.concat(chunks).toString())
+  } catch {
+    return answer(res, 400, { error: { message: 'request body is not JSON' } })
+  }
+  requests.push({ path: req.url, at: Date.now(), body, recordSpans: recordSpans(body) })
+  answer(res, 200, {
+    choices: [
+      {
+        index: 0,
+        message: { role: 'assistant', content: reply(body) },
+        finish_reason: 'stop',
+      },
+    ],
+    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  })
+}).listen(PORT, '127.0.0.1')

@@ -39,6 +39,7 @@ import {
 } from '@/components/artifacts/artifact-model'
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
+import { ContextManifestPart } from '@/components/crm/context-manifest-part'
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
@@ -1106,6 +1107,8 @@ const RENDERERS = (
     ['theorem-user_input', UserInputPart],
     // A run's completion: why it stopped, and the way back up when a limit stopped it.
     ['theorem-completion', CompletionFooter],
+    // The saved records a reply was given, each at its saved revision, and what was held back.
+    ['theorem-context_manifest', ContextManifestPart],
     ...DELEGATION_RENDERERS,
   ] satisfies Array<[string, DataMessagePartComponent]>
 )

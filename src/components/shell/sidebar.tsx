@@ -5,6 +5,7 @@ import { Suspense, lazy, useState } from 'react'
 import type { ReactNode } from 'react'
 import { SpaceNotes } from '@/components/canvas/space-notes'
 import { Icon } from '@/components/icons'
+import { CrmPanel } from '@/components/crm/crm-panel'
 import { IndexPanel } from '@/components/index/index-panel'
 import { NewProjectDialog } from '@/components/organize/new-project-dialog'
 import { OrganizedPanel } from '@/components/organize/organized-panel'
@@ -193,6 +194,11 @@ export function ContextPanel({ sections, footer }: { sections?: ReactNode; foote
         {mode === 'index' && (
           <div hidden={filesShown} className="min-h-0 flex-1">
             <IndexPanel />
+          </div>
+        )}
+        {mode === 'crm' && (
+          <div hidden={filesShown} className="min-h-0 flex-1">
+            <CrmPanel switcher={<ProjectSwitcher />} />
           </div>
         )}
         {mode === 'spaces' && (

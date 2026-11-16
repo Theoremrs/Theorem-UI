@@ -1,4 +1,4 @@
-// SOURCING: none for the registry itself — Twenty's per-type cell display and input behaviour (twenty-front record-field meta-types: Enter saves and moves down, Tab across, Escape saves, invalid JSON is not saved, booleans and ratings toggle in the cell) mapped onto the schema register's field kinds; coss ui Command for searchable option and record pickers; the app's Icon set and Stone tokens
+// SOURCING: none for the registry itself — Twenty's per-type cell display and input behaviour (twenty-front record-field meta-types: Enter saves and moves down, Tab across; Escape cancels here, where Twenty saves; invalid JSON is not saved, booleans and ratings toggle in the cell) mapped onto the schema register's field kinds; coss ui Command for searchable option and record pickers; the app's Icon set and Stone tokens
 import { useImperativeHandle, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent, ReactNode, Ref } from 'react'
 import {
@@ -639,10 +639,14 @@ export type EditorProps = {
   commitRef?: Ref<(move?: Move) => void>
 }
 
-/** Twenty's keys: Enter saves and moves down, Tab across, Escape saves too. */
+/**
+ * An editor's keys: Enter saves and moves down, Tab saves and moves across,
+ * Escape leaves without saving and the value stays as it was.
+ */
 function commitKeys(
   event: KeyboardEvent,
   commit: (move?: Move) => void,
+  discard: () => void,
   { multiline = false } = {},
 ) {
   if (event.key === 'Enter' && !(multiline && event.shiftKey)) {
@@ -654,7 +658,7 @@ function commitKeys(
   } else if (event.key === 'Escape') {
     event.preventDefault()
     event.stopPropagation()
-    commit()
+    discard()
   }
 }
 
@@ -666,13 +670,27 @@ function parseNumber(text: string, integer: boolean) {
   return integer ? Math.round(n) : n
 }
 
-function TextEditor({ field, value, typed, onCommit, commitRef }: EditorProps) {
+function TextEditor({
+  field,
+  value,
+  typed,
+  onCommit,
+  onDiscard,
+  commitRef,
+}: EditorProps) {
   const kind = field.field_type.kind
   const numeric = kind === 'integer' || kind === 'number'
   const multiline = kind === 'long_text'
   const [text, setText] = useState(typed ?? asString(value))
   const [invalid, setInvalid] = useState(false)
+  // Escape closes the editor, and the blur that follows must not save.
+  const left = useRef(false)
+  const discard = () => {
+    left.current = true
+    onDiscard()
+  }
   const commit = (move?: Move) => {
+    if (left.current) return
     if (!numeric) return onCommit(text.trim() ? text.trim() : null, move)
     const n = parseNumber(text, kind === 'integer')
     if (n === undefined) return setInvalid(true)
@@ -703,7 +721,9 @@ function TextEditor({ field, value, typed, onCommit, commitRef }: EditorProps) {
       {...shared}
       rows={Math.min(10, Math.max(3, text.split('\n').length))}
       onChange={(event) => setText(event.target.value)}
-      onKeyDown={(event) => commitKeys(event, commit, { multiline: true })}
+      onKeyDown={(event) =>
+        commitKeys(event, commit, discard, { multiline: true })
+      }
       className={cn(shared.className, 'min-w-72 resize-none p-2')}
     />
   ) : (
@@ -714,13 +734,19 @@ function TextEditor({ field, value, typed, onCommit, commitRef }: EditorProps) {
         setInvalid(false)
         setText(event.target.value)
       }}
-      onKeyDown={(event) => commitKeys(event, commit)}
+      onKeyDown={(event) => commitKeys(event, commit, discard)}
     />
   )
 }
 
 /** Dates travel as ISO strings: a date as YYYY-MM-DD, a timestamp in UTC. */
-function DateEditor({ field, value, onCommit, commitRef }: EditorProps) {
+function DateEditor({
+  field,
+  value,
+  onCommit,
+  onDiscard,
+  commitRef,
+}: EditorProps) {
   const withTime = field.field_type.kind === 'timestamp'
   const initial = (() => {
     if (typeof value !== 'string' && typeof value !== 'number') return ''
@@ -744,7 +770,7 @@ function DateEditor({ field, value, onCommit, commitRef }: EditorProps) {
         aria-label={field.label}
         value={text}
         onChange={(event) => setText(event.target.value)}
-        onKeyDown={(event) => commitKeys(event, commit)}
+        onKeyDown={(event) => commitKeys(event, commit, onDiscard)}
         className="rounded-md border border-separator bg-background px-2 py-1 text-sm text-ink"
       />
       <button
@@ -794,13 +820,7 @@ function JsonEditor({
           if (event.key === 'Escape') {
             event.preventDefault()
             event.stopPropagation()
-            // Invalid JSON is never saved; Escape then leaves it as it was.
-            try {
-              if (text.trim()) JSON.parse(text)
-              commit()
-            } catch {
-              onDiscard()
-            }
+            onDiscard()
           } else if (
             event.key === 'Enter' &&
             (event.metaKey || event.ctrlKey)
@@ -812,13 +832,17 @@ function JsonEditor({
         className="w-full resize-none rounded-md border border-separator bg-background p-2 font-mono text-xs text-ink outline-none focus:border-focus"
       />
       <p className={cn('text-xs', error ? 'text-error-ink' : 'text-ink-faint')}>
-        {error ?? '⌘↩ to save. Invalid JSON is not saved.'}
+        {error ?? '⌘↩ to save, Esc to cancel. Invalid JSON is not saved.'}
       </p>
     </div>
   )
 }
 
-function OptionList({
+/**
+ * A searchable list of options, one or many of which are picked. Tab is done
+ * and moves across; Escape cancels and nothing picked meanwhile is kept.
+ */
+export function OptionList({
   label,
   options,
   selected,
@@ -826,6 +850,7 @@ function OptionList({
   emptyText,
   onPick,
   onDone,
+  onCancel,
   render,
 }: {
   label: string
@@ -835,6 +860,7 @@ function OptionList({
   emptyText: string
   onPick: (value: string | null) => void
   onDone: (move?: Move) => void
+  onCancel: () => void
   render?: (value: string) => ReactNode
 }) {
   return (
@@ -845,16 +871,14 @@ function OptionList({
       <div
         className="w-64"
         onKeyDown={(event) => {
-          if (event.key === 'Escape' || event.key === 'Tab') {
+          if (event.key === 'Escape') {
             event.preventDefault()
             event.stopPropagation()
-            onDone(
-              event.key === 'Tab'
-                ? event.shiftKey
-                  ? 'left'
-                  : 'right'
-                : undefined,
-            )
+            onCancel()
+          } else if (event.key === 'Tab') {
+            event.preventDefault()
+            event.stopPropagation()
+            onDone(event.shiftKey ? 'left' : 'right')
           }
         }}
       >
@@ -905,7 +929,13 @@ function OptionList({
   )
 }
 
-function SelectEditor({ field, value, onCommit, commitRef }: EditorProps) {
+function SelectEditor({
+  field,
+  value,
+  onCommit,
+  onDiscard,
+  commitRef,
+}: EditorProps) {
   const type = field.field_type
   const multiple = type.kind === 'enum_many'
   const variants =
@@ -937,6 +967,7 @@ function SelectEditor({ field, value, onCommit, commitRef }: EditorProps) {
         )
       }}
       onDone={commit}
+      onCancel={onDiscard}
     />
   )
 }
@@ -946,6 +977,7 @@ function RelationEditor({
   row,
   model,
   onCommit,
+  onDiscard,
   commitRef,
 }: EditorProps) {
   const type = field.field_type
@@ -982,6 +1014,7 @@ function RelationEditor({
         )
       }}
       onDone={commit}
+      onCancel={onDiscard}
     />
   )
 }
@@ -1010,10 +1043,11 @@ export function FieldEditor(props: EditorProps) {
 }
 
 /**
- * A field's editor in a popover. Clicking away saves, as Escape does, so
- * choices the editor is still holding are not lost; an editor that refuses its
- * value stays open and says why. `onCommitAway` receives that save when focus
- * has gone somewhere the person chose and should stay there.
+ * A field's editor in a popover. Clicking away saves, so choices the editor
+ * is still holding are not lost; Escape cancels and the value stays as it
+ * was. An editor that refuses its value stays open and says why.
+ * `onCommitAway` receives the click-away save when focus has gone somewhere
+ * the person chose and should stay there.
  */
 export function FieldEditorPopover({
   anchor,
@@ -1031,8 +1065,10 @@ export function FieldEditorPopover({
   return (
     <Popover
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open, details) => {
         if (open) return
+        // Escape that reaches the popover itself cancels, as it does in the editor.
+        if (details.reason === 'escape-key') return editor.onDiscard()
         away.current = true
         commit.current?.()
         away.current = false

@@ -6,10 +6,14 @@
 import type { TheoremContextReference } from '@theoremharness/sdk'
 import { resourceKey } from '@theoremharness/sdk'
 import { create } from 'zustand'
+import type { RecordReference } from '@/components/crm/reference'
 import { Icon } from '@/components/icons'
 import type { DelegationReference } from '@/lib/theorem/delegations'
 
-export type ComposerReference = TheoremContextReference | DelegationReference
+export type ComposerReference =
+  | TheoremContextReference
+  | DelegationReference
+  | RecordReference
 
 export function referenceKey({ location }: ComposerReference): string {
   const { resource, range } = location
@@ -21,6 +25,9 @@ export function referenceKey({ location }: ComposerReference): string {
       return `delegation:${resource.runId}:${resource.delegationId}`
     case 'delegation-change':
       return `delegation-change:${resource.runId}:${resource.delegationId}:${resource.side}:${resource.path}${at}`
+    // A saved record: the turn reads it at the revision saved when it is sent.
+    case 'record':
+      return `record:${resource.objectType}/${resource.objectId}`
     default:
       return `${resourceKey(resource)}${at}`
   }
@@ -99,6 +106,8 @@ function referenceLabel({ label, location }: ComposerReference): string {
       return 'Run'
     case 'graph-object':
       return resource.objectType ?? 'Graph object'
+    case 'record':
+      return resource.objectType
   }
 }
 

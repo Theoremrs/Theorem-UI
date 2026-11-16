@@ -1,5 +1,5 @@
 // SOURCING: coss ui Popover (anchored field editors, through FieldEditorPopover) and the app's Dialog; Twenty's record side panel for its anatomy (an editable title over inline label and value rows, relations as boxed sections, a danger zone), with records of other types that point here standing in for its Tasks and Notes widgets; the register's undeclared properties shown with Add as field
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
@@ -302,6 +302,7 @@ function LoadedInspector({
   const [deleting, setDeleting] = useState(false)
   const [adding, setAdding] = useState<FieldDraft | null>(null)
   const [titleText, setTitleText] = useState<string | null>(null)
+  const titleLeft = useRef(false)
   const identifier = identifierField(type)
   const write = (field: FieldSpec, value: unknown) => {
     if (
@@ -338,11 +339,21 @@ function LoadedInspector({
               value={titleText}
               aria-label={identifier.label}
               onChange={(event) => setTitleText(event.target.value)}
-              onBlur={commitTitle}
+              onFocus={() => {
+                titleLeft.current = false
+              }}
+              onBlur={() => {
+                if (!titleLeft.current) commitTitle()
+              }}
               onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === 'Escape') {
+                if (event.key === 'Enter') {
                   event.preventDefault()
                   commitTitle()
+                } else if (event.key === 'Escape') {
+                  // The title stays as it was; the blur that follows must not save.
+                  event.preventDefault()
+                  titleLeft.current = true
+                  setTitleText(null)
                 }
               }}
               className="font-heading w-full rounded-md bg-background px-1.5 text-[22px] font-medium text-ink outline-none ring-1 ring-focus"

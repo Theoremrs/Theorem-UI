@@ -1,5 +1,7 @@
-// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home)
+// SOURCING: @tanstack/react-router (each mode is a route), assistant-ui Thread element, the Spaces canvas (React Flow), the IDE frame (browser-only Theia), the Vault's file list on a phone (FoldersSection), the program canvas (React Flow), Index mode (its page, pages/mode-page.tsx), Pages (Puck over the vault's page files; a mode's page opens there to be arranged), Notes (Theorem documents in the Milkdown note editor), a project's home in chat mode (components/projects/project-home), the CRM (components/crm: saved people, organizations and what is owed, over the schema register's record verbs)
 import { Canvas } from '@/components/canvas/canvas'
+import { CrmView } from '@/components/crm/crm-view'
+import { CrmRailMark } from '@/components/crm/type-icons'
 import { ProgramSurface } from '@/components/program/program-surface'
 import { RailMark } from './rail-marks'
 import { IdeFrame } from '@/components/ide/ide-frame'
@@ -22,6 +24,7 @@ import { useShell } from './shell-state'
 export type ShellMode =
   | 'chat'
   | 'index'
+  | 'crm'
   | 'notes'
   | 'pages'
   | 'vault'
@@ -33,6 +36,7 @@ export type ShellMode =
 export const MODES = [
   { mode: 'chat', label: 'Home', Mark: RailMark.Home },
   { mode: 'index', label: 'Index', Mark: RailMark.Index },
+  { mode: 'crm', label: 'CRM', Mark: CrmRailMark },
   { mode: 'notes', label: 'Notes', Mark: RailMark.Notes },
   { mode: 'pages', label: 'Pages', Mark: RailMark.Pages },
   // The Vault works on Home and the opened folders; the rail offers it while
@@ -46,6 +50,7 @@ export const MODES = [
 /** The modes that show their own view and list in place of the conversation and its threads. */
 export const hasOwnView = (mode: ShellMode) =>
   mode === 'index' ||
+  mode === 'crm' ||
   mode === 'notes' ||
   mode === 'pages' ||
   mode === 'spaces' ||
@@ -53,11 +58,11 @@ export const hasOwnView = (mode: ShellMode) =>
 
 /**
  * Whether the file tree sits under the mode's own list. Notes keeps its own
- * folders and ends with its Trash; the rail's Files control still shows the
- * files there.
+ * folders and ends with its Trash, and the CRM's list is records, not files;
+ * the rail's Files control still shows the files there.
  */
 export const filesUnderPanel = (mode: ShellMode) =>
-  hasOwnView(mode) && mode !== 'notes'
+  hasOwnView(mode) && mode !== 'notes' && mode !== 'crm'
 
 export const modeLabel = (mode: ShellMode) =>
   MODES.find((entry) => entry.mode === mode)!.label
@@ -70,7 +75,7 @@ export const navigatorMode = (mode: ShellMode): ShellMode =>
   mode === 'vault' ? 'chat' : mode
 
 /**
- * The mode is the route: /index, /notes, /pages, /vault, /spaces, /canvas and /ide, and chat everywhere else. It reads
+ * The mode is the route: /index, /crm, /notes, /pages, /vault, /spaces, /canvas and /ide, and chat everywhere else. It reads
  * the router's matches, as useParams does, so the mode and the thread id
  * always describe the same navigation.
  */
@@ -79,6 +84,12 @@ export function useShellMode(): ShellMode {
     select: (matches) => {
       for (const { routeId } of matches) {
         if (routeId === '/_chat/index') return 'index'
+        if (
+          routeId === '/_chat/crm' ||
+          routeId === '/_chat/crm/$objectType' ||
+          routeId === '/_chat/crm/$objectType/$recordId'
+        )
+          return 'crm'
         if (routeId === '/_chat/notes' || routeId === '/_chat/notes/$documentId')
           return 'notes'
         if (routeId === '/_chat/pages' || routeId === '/_chat/pages/$pageId')
@@ -99,6 +110,7 @@ export function useOpenMode() {
   return useCallback(
     (next: ShellMode) => {
       if (next === 'index') return navigate({ to: '/index' })
+      if (next === 'crm') return navigate({ to: '/crm' })
       if (next === 'notes') return navigate({ to: '/notes' })
       if (next === 'pages') return navigate({ to: '/pages' })
       if (next === 'vault') return navigate({ to: '/vault' })
@@ -138,6 +150,7 @@ export function ModeView({ docked = false }: { docked?: boolean }) {
       {mode === 'ide' && !docked && <IdeFrame />}
       {mode === 'vault' && !docked && <VaultPhone />}
       {mode === 'index' && <IndexMode />}
+      {mode === 'crm' && <CrmView />}
       {mode === 'notes' && <NotesView />}
       {mode === 'pages' && <PagesView />}
       {mode === 'spaces' && <Canvas />}
