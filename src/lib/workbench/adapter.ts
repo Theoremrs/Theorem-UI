@@ -100,13 +100,12 @@ export interface TerminalOwner {
    * `terminal.list`, its inventory. Without `list`, the session list is what this workbench knows.
    */
   host: Pick<TerminalHost, 'onEvent'> &
-    Partial<Pick<TerminalHost, 'canList' | 'list'>> & {
-      /**
-       * Takes a session the host lists as not yet in this workspace (`admitted: false`) into it. Absent,
-       * the host cannot, and `terminalAdmit` is refused `owner_unavailable`.
-       */
-      admit?: (session: string) => Promise<unknown>
-    }
+    /**
+     * `admit` takes a terminal the host lists as not yet in this workspace (`unadmitted`, sent on as
+     * `admitted: false`) into it. Absent, or on a host whose `canAdmit` says no, `terminalAdmit` is
+     * refused `owner_unavailable`.
+     */
+    Partial<Pick<TerminalHost, 'canList' | 'list' | 'admit' | 'canAdmit'>>
 }
 
 /** What the adapter reads of the environment. `Environment` satisfies it. */
@@ -525,14 +524,11 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const modes = wireModes(row.modes)
       const held = sessions.get(row.session)
       const report = row.programReport
-      const extra = row as {
-        name?: unknown
-        cwd?: unknown
-        host?: unknown
-        admitted?: unknown
-      }
-      const name = typeof extra.name === 'string' ? extra.name : undefined
-      const cwd = typeof extra.cwd === 'string' ? extra.cwd : undefined
+      const extra = row as { host?: unknown }
+      // What its owner called it, else the program in its foreground (`claude`, `zsh`): either says
+      // which terminal this is, where the profile alone would call every Herdr session the same.
+      const name = row.name ?? row.command
+      const cwd = row.cwd
       const owned = typeof extra.host === 'string' ? extra.host : undefined
       if (terminals.has(row.session)) {
         // The binding owns the rest of its entry; the host's modes are still the host's to say.
@@ -556,7 +552,28 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         ...(name ? { name } : {}),
         ...(cwd ? { cwd } : {}),
         ...(owned ? { host: owned } : {}),
-        ...(extra.admitted === false ? { admitted: false } : {}),
+      })
+    }
+    // The person's own terminals the host offers to take in: listed, and nothing else until
+    // `terminalAdmit`. Admitted, the same id comes back as a session above.
+    for (const row of listed.unadmitted ?? []) {
+      if (rows.has(row.session)) continue
+      rows.add(row.session)
+      const report = row.programReport
+      const name = row.name ?? row.command
+      sessions.set(row.session, {
+        ...(report && report.kind !== 'unavailable'
+          ? { programReport: report }
+          : {}),
+        session: row.session,
+        profile: profileLabel(row.backend),
+        backend: row.backend,
+        workspace,
+        state: row.state,
+        controlledElsewhere: false,
+        ...(name ? { name } : {}),
+        ...(row.cwd ? { cwd: row.cwd } : {}),
+        admitted: false,
       })
     }
     // Only a settled inventory proves a terminal is gone; pending and unavailable ones prove nothing.
@@ -765,8 +782,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
 
   /** Takes a session the host lists as outside this workspace into it, then reads the list again so the row is an ordinary one. */
   async function admitTerminal(session: string): Promise<OwnerReply> {
-    const { admit } = options.terminal.host
-    if (!admit) return unavailable('terminal admission')
+    const { admit, canAdmit } = options.terminal.host
+    if (!admit || (canAdmit && !(await canAdmit())))
+      return unavailable('terminal admission')
     try {
       await admit(session)
     } catch (error) {
@@ -1351,8 +1369,9 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     if (options.conversation?.canSwitchBranch) local.push('conversation.branch')
     if (options.conversation?.canAttach) local.push('conversation.attach')
     if (options.conversation?.canPickModel) local.push('conversation.model')
-    // What the account's SDK can do. Pin, tags, unread marks and title regeneration, and admitting a
-    // Herdr session, have no call there, so they are not granted: the panel offers none of them.
+    // What the account's SDK can do. Pin, tags, unread marks and title regeneration have no call
+    // there, so they are not granted: the panel offers none of them. Admitting a Herdr session is the
+    // host's `terminal.admit`, granted with the rest of what the host lists.
     if (options.threads)
       local.push(
         'threads',

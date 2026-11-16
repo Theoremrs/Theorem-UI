@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` (attach, input, inputBytes, kill, list and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
+// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` (attach, input, inputBytes, kill, list, admit and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
 import type {
   TerminalListReply,
   TerminalOpenRequest,
@@ -38,6 +38,7 @@ export interface TerminalDeps {
         | 'close'
         | 'kill'
         | 'list'
+        | 'admit'
       >
     }
   }
@@ -46,8 +47,8 @@ export interface TerminalDeps {
   csrfToken: () => string | Promise<string>
   /**
    * Whether the host advertises an operation (the environment owner's `has`, once the workspace is
-   * open). `terminal.kill`, `terminal.input.bytes` and `terminal.list` are sent only to a host that
-   * lists them; absent, none of the three is offered.
+   * open). `terminal.kill`, `terminal.input.bytes`, `terminal.list` and `terminal.admit` are sent only
+   * to a host that lists them; absent, none of the four is offered.
    */
   offers?: (operation: string) => Promise<boolean>
   /**
@@ -58,11 +59,22 @@ export interface TerminalDeps {
 }
 
 /** The host's listing, each row with the program's report read defensively (`unavailable` when the row carries none). */
-export type ListedTerminals = Omit<TerminalListReply, 'sessions'> & {
+export type ListedTerminals = Omit<
+  TerminalListReply,
+  'sessions' | 'unadmitted'
+> & {
   sessions: (TerminalListReply['sessions'][number] & {
     programReport?: ProgramReport
     /** What the row says about reaching the terminal's core; absent when it says nothing (an older host). */
     connectivity?: Connectivity
+  })[]
+  /**
+   * The person's own Herdr terminals that no workspace has taken in, each under the id `admit` takes
+   * and the session keeps. Absent when the host cannot say (an older host, no core, or a core that is
+   * away); empty when there are none.
+   */
+  unadmitted?: (NonNullable<TerminalListReply['unadmitted']>[number] & {
+    programReport?: ProgramReport
   })[]
 }
 
@@ -111,6 +123,12 @@ export interface TerminalHost {
   ) => Promise<{ process_killed?: boolean; session_live?: boolean }>
   /** The host's workspace terminals and whether that inventory is complete. */
   list: () => Promise<ListedTerminals>
+  /**
+   * Takes one of the host's `unadmitted` terminals into this workspace. Its id does not change: the
+   * host announces it with `terminal.opened` and lists it as a session from then on.
+   */
+  admit: (session: string) => Promise<unknown>
+  canAdmit: () => Promise<boolean>
   canKill: () => Promise<boolean>
   /** Whether bytes may be sent as `bytes_base64`; a host that does not list `terminal.input.bytes` reads text only. */
   canInputBytes: () => Promise<boolean>
@@ -135,7 +153,7 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
     deps.offers ? deps.offers(operation) : Promise.resolve(false)
   return {
     // The generated `open`, `resize`, `paste`, `close`, `kill` and `list` take the body as a free
-    // record; `input`, `inputBytes` and `attach` are flat and typed.
+    // record; `input`, `inputBytes`, `attach` and `admit` are flat and typed.
     async open(body, key) {
       return (await terminal.open({
         ...(await headers(key)),
@@ -174,8 +192,18 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
             ? { connectivity: readConnectivity(row) }
             : {}),
         })),
+        ...(listed.unadmitted
+          ? {
+              unadmitted: listed.unadmitted.map((row) => ({
+                ...row,
+                programReport: parseProgramReport(row.program_report),
+              })),
+            }
+          : {}),
       }
     },
+    admit: async (session) => terminal.admit({ ...(await headers()), session }),
+    canAdmit: () => offers('terminal.admit'),
     canKill: () => offers('terminal.kill'),
     canInputBytes: () => offers('terminal.input.bytes'),
     canList: () => offers('terminal.list'),

@@ -21,7 +21,12 @@ const flush = () => new Promise((resolve) => setTimeout(resolve, 0))
 type Call = Record<string, unknown> & { op: string }
 
 /** A client with the SDK's method shapes and a live stream we can drive, with no network. */
-const OFFERED = ['terminal.kill', 'terminal.input.bytes', 'terminal.list']
+const OFFERED = [
+  'terminal.kill',
+  'terminal.input.bytes',
+  'terminal.list',
+  'terminal.admit',
+]
 
 function rig(options: { offers?: boolean | string[] } = {}) {
   const calls: Call[] = []
@@ -61,6 +66,7 @@ function rig(options: { offers?: boolean | string[] } = {}) {
           close: call('close'),
           kill: call('kill'),
           list: call('list'),
+          admit: call('admit'),
         },
       },
     },
@@ -1036,6 +1042,48 @@ describe('the host’s terminal list', () => {
       body: {},
     })
     expect(await rig({ offers: ['terminal.kill'] }).host.canList()).toBe(false)
+  })
+
+  test('the person’s own terminals the host offers come through with their program reports', async () => {
+    const r = rig()
+    const adoption = { state: 'settled' as const }
+    const mine = {
+      session: 'hc-mine',
+      terminal: 't7',
+      backend: 'herdr' as const,
+      state: 'running' as const,
+      cols: 120,
+      rows: 40,
+      name: 'agent',
+      command: 'claude',
+      cwd: '/work/app',
+    }
+    r.handlers.list = () => ({ sessions: [], adoption, unadmitted: [mine] })
+    expect((await r.host.list()).unadmitted).toEqual([
+      { ...mine, programReport: { kind: 'unavailable' } },
+    ])
+    // A host that does not say (an older one, or one whose core is away) says nothing here either.
+    r.handlers.list = () => ({ sessions: [], adoption })
+    expect(await r.host.list()).not.toHaveProperty('unadmitted')
+  })
+
+  test('a terminal is admitted by its id with the workspace headers, where the host lists terminal.admit', async () => {
+    const r = rig()
+    r.handlers.admit = () => ({
+      session: 'hc-mine',
+      admitted: true,
+      already_admitted: false,
+    })
+    expect(await r.host.canAdmit()).toBe(true)
+    await r.host.admit('hc-mine')
+    expect(r.of('admit')).toHaveLength(1)
+    expect(r.of('admit')[0]).toMatchObject({
+      workspaceId: 'ws-1',
+      'X-CSRF-Token': 'csrf-1',
+      session: 'hc-mine',
+    })
+    expect(r.of('admit')[0]).not.toHaveProperty('body')
+    expect(await rig({ offers: ['terminal.list'] }).host.canAdmit()).toBe(false)
   })
 
   test('the adoption event is the workspace’s, so no terminal binding reacts to it', async () => {

@@ -1798,7 +1798,7 @@ describe('host events', () => {
       ).toEqual(['pty-1'])
     })
 
-    test('a session the host lists as outside the workspace carries admitted: false, and the rest do not say', async () => {
+    test('a terminal the host offers to admit is listed with admitted: false, and the workspace’s own do not say', async () => {
       const t = await setup(
         {},
         undefined,
@@ -1808,17 +1808,133 @@ describe('host events', () => {
           list: async () =>
             ({
               sessions: [
-                { ...row('hc-1', 'herdr'), admitted: false },
+                { ...row('hc-1', 'herdr'), command: 'zsh', cwd: '/work' },
                 row('pty-1', 'native'),
               ],
               adoption: { state: 'settled' },
+              unadmitted: [
+                {
+                  session: 'hc-mine',
+                  terminal: 't7',
+                  backend: 'herdr',
+                  state: 'running',
+                  cols: 120,
+                  rows: 40,
+                  name: 'agent',
+                  command: 'claude',
+                  cwd: '/work/app',
+                },
+                {
+                  session: 'hc-bare',
+                  terminal: 't8',
+                  backend: 'herdr',
+                  state: 'running',
+                  cols: 80,
+                  rows: 24,
+                  command: 'claude',
+                },
+              ],
             }) as unknown as TerminalListReply,
         },
       )
       await t.settle()
-      const [outside, inside] = sessionLists(t).at(-1)!.sessions
-      expect(outside).toMatchObject({ session: 'hc-1', admitted: false })
-      expect(inside).not.toHaveProperty('admitted')
+      const listed = sessionLists(t).at(-1)!.sessions
+      const of = (id: string) => listed.find((s) => s.session === id)!
+      // What its owner called it, and where its program works.
+      expect(of('hc-mine')).toEqual({
+        session: 'hc-mine',
+        profile: of('hc-1').profile,
+        backend: 'herdr',
+        workspace: of('hc-1').workspace,
+        state: 'running',
+        controlledElsewhere: false,
+        name: 'agent',
+        cwd: '/work/app',
+        admitted: false,
+      })
+      // Unnamed, it is called by the program in its foreground.
+      expect(of('hc-bare')).toMatchObject({ name: 'claude', admitted: false })
+      expect(of('hc-bare')).not.toHaveProperty('cwd')
+      expect(of('hc-1')).toMatchObject({ name: 'zsh', cwd: '/work' })
+      expect(of('hc-1')).not.toHaveProperty('admitted')
+      expect(of('pty-1')).not.toHaveProperty('admitted')
+      expect(of('pty-1')).not.toHaveProperty('name')
+    })
+
+    test('once admitted the same id is a session of the workspace, and a settled list drops what is no longer offered', async () => {
+      const offered = {
+        session: 'hc-mine',
+        terminal: 't7',
+        backend: 'herdr',
+        state: 'running',
+        cols: 80,
+        rows: 24,
+        name: 'agent',
+      }
+      let answer = {
+        sessions: [] as unknown[],
+        adoption: { state: 'settled' },
+        unadmitted: [
+          offered,
+          { ...offered, session: 'hc-gone', terminal: 't9' },
+        ],
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer as unknown as TerminalListReply,
+        },
+      )
+      ;(
+        t.options.terminal.host as {
+          admit?: (session: string) => Promise<unknown>
+        }
+      ).admit = async () => {
+        answer = {
+          sessions: [{ ...row('hc-mine', 'herdr'), name: 'agent' }],
+          adoption: { state: 'settled' },
+          unadmitted: [],
+        }
+      }
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.map((s) => [s.session, s.admitted]),
+      ).toEqual([
+        ['hc-mine', false],
+        ['hc-gone', false],
+      ])
+      t.adapter.perform({
+        ...effectOf(903, 'terminalAdmit'),
+        payload: { session: 'hc-mine' },
+      } as Effect)
+      await t.settle()
+      await t.settle()
+      const after = sessionLists(t).at(-1)!.sessions
+      expect(after.map((s) => s.session)).toEqual(['hc-mine'])
+      expect(after[0]).toMatchObject({ name: 'agent' })
+      expect(after[0]).not.toHaveProperty('admitted')
+    })
+
+    test('a host that lists no terminal.admit is not asked: refused owner_unavailable', async () => {
+      const t = await setup()
+      const asked: string[] = []
+      const host = t.options.terminal.host as {
+        admit?: (session: string) => Promise<unknown>
+        canAdmit?: () => Promise<boolean>
+      }
+      host.admit = async (session) => void asked.push(session)
+      host.canAdmit = async () => false
+      t.adapter.perform(effectOf(904, 'terminalAdmit'))
+      await t.settle()
+      expect(
+        t.completions().find((c) => c.effect === 904)!.outcome,
+      ).toMatchObject({ status: 'refused', code: 'owner_unavailable' })
+      expect(asked).toEqual([])
     })
 
     test('admitting a session asks the host, then lists again so the row is an ordinary one', async () => {
@@ -2030,7 +2146,11 @@ describe('host events', () => {
       }
       t.announce({
         kind: 'terminal.adoption',
-        data: { state: 'unavailable', reason: 'core_closed', next_step: 'retry' },
+        data: {
+          state: 'unavailable',
+          reason: 'core_closed',
+          next_step: 'retry',
+        },
       })
       await t.settle()
       const last = sessionLists(t).at(-1)!
