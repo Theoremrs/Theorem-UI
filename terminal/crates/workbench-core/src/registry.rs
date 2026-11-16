@@ -466,6 +466,10 @@ pub enum Refusal {
     },
     /// An action was aimed at a panel that is not open.
     UnknownPanel(PanelInstanceId),
+    /// The action's arguments were not what it takes.
+    InvalidArgs {
+        reason: String,
+    },
 }
 
 /// An action resolved against the registry and the host's capabilities.

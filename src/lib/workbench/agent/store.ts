@@ -6,8 +6,12 @@ import type { WorkbenchHandle } from '@/terminal-wasm/theorem_terminal'
 export interface AgentSurface {
   /** Every registered action as the agent sees it (JSON array of `CatalogEntry`). */
   agent_catalog: () => string
-  /** Runs an action for one agent run (JSON: `accepted` with effects and notices, or `refused` with a code and reason). */
-  agent_act: (action: string, run_id: string, panel?: string) => string
+  /**
+   * Runs an action for one agent run (JSON `AgentOutcome`: `accepted` with effects, notices and the panel it opened or
+   * acted on, or `refused` with a code and reason). `args` is the JSON of `ActionArgs` (`{ input?, option? }`), for
+   * the actions that take any, such as `code.start`, `code.send` and `code.stop`.
+   */
+  agent_act: (action: string, run_id: string, panel?: string, args?: string) => string
 }
 
 /**

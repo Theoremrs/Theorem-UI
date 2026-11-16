@@ -242,6 +242,17 @@ impl fmt::Debug for PickerMsg {
     }
 }
 
+/// The task or words an agent sends are content: their size is printed,
+/// never the text. The option is a word from a fixed set.
+impl fmt::Debug for crate::agent::ActionArgs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ActionArgs")
+            .field("input", &self.input.as_ref().map(|t| Size(t.len())))
+            .field("option", &self.option.as_ref().map(|o| Size(o.len())))
+            .finish()
+    }
+}
+
 impl fmt::Debug for Msg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -269,6 +280,18 @@ impl fmt::Debug for Msg {
                 .field("id", id)
                 .field("actor", actor)
                 .field("panel", panel)
+                .finish(),
+            Self::ActionWith {
+                id,
+                actor,
+                panel,
+                args,
+            } => f
+                .debug_struct("ActionWith")
+                .field("id", id)
+                .field("actor", actor)
+                .field("panel", panel)
+                .field("args", args)
                 .finish(),
             Self::Picker(m) => f.debug_tuple("Picker").field(m).finish(),
             Self::Dock(m) => f.debug_tuple("Dock").field(m).finish(),

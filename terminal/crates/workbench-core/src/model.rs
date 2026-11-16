@@ -353,6 +353,10 @@ pub struct Model {
     pub(crate) capture: Option<PanelInstanceId>,
     /// Who the action being run is for; a person for everything else.
     pub(crate) acting: crate::ids::Actor,
+    /// The arguments of the action being run; empty for everything else.
+    pub(crate) acting_args: crate::agent::ActionArgs,
+    /// The panel the action being captured opened or acted on first.
+    pub(crate) acted_panel: Option<PanelInstanceId>,
 
     pub(crate) counters: Counters,
     /// Notices not yet taken, oldest first, at most [`NOTICE_LIMIT`].
@@ -424,6 +428,8 @@ impl Model {
             layout_pending: BTreeMap::new(),
             capture: None,
             acting: crate::ids::Actor::Human,
+            acting_args: Default::default(),
+            acted_panel: None,
             counters: Counters::default(),
             notices: std::collections::VecDeque::new(),
             notices_overflowed: 0,
@@ -636,6 +642,21 @@ impl Model {
     /// Start keeping a copy of every notice raised, until `take_captured`.
     pub fn capture_notices(&mut self) {
         self.captured = Some(vec![]);
+        self.acted_panel = None;
+    }
+
+    /// The panel the action run since `capture_notices` opened or acted on
+    /// first, if it reached one.
+    pub fn take_acted_panel(&mut self) -> Option<PanelInstanceId> {
+        self.acted_panel.take()
+    }
+
+    /// Note `panel` as the one the action being captured reached, unless an
+    /// earlier one was.
+    pub(crate) fn note_acted(&mut self, panel: &PanelInstanceId) {
+        if self.captured.is_some() && self.acted_panel.is_none() {
+            self.acted_panel = Some(panel.clone());
+        }
     }
 
     /// The notices kept since `capture_notices`, ending the capture.

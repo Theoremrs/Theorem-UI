@@ -15,4 +15,9 @@ effects: number,
 /**
  * The words of any notice the action raised.
  */
-notices: Array<string>, } | { "outcome": "refused", code: RefusalCode, reason: string, };
+notices: Array<string>, 
+/**
+ * The panel the action opened or acted on, when it reached one: the
+ * handle for the next action on it and for reading it in the tree.
+ */
+panel?: string, } | { "outcome": "refused", code: RefusalCode, reason: string, };

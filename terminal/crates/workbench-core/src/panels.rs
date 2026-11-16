@@ -24,6 +24,26 @@ pub const THREADS_KIND: &str = "threads";
 /// The kind the workbench's own actions belong to (focus and move panels,
 /// resize, maximise, apply a layout). It is never opened as a panel.
 pub const WORKBENCH_KIND: &str = "workbench";
+/// The kind the coding actions belong to: start a coding agent on a task,
+/// send it words, stop it. Never opened as a panel; the actions open or reach
+/// a side chat or a shell.
+pub const CODING_KIND: &str = "coding";
+/// The side chat: a conversation of its own beside the main one.
+pub const SIDE_CHAT_KIND: &str = "side-chat";
+/// The shell: a terminal session, native or Herdr.
+pub const SHELL_KIND: &str = "shell";
+
+/// Start a coding agent on the task in `input`. `option` names the agent:
+/// `theorem` (a side chat, the default), `claude` or `codex` (a terminal).
+pub const ACTION_CODE_START: &str = "code.start";
+/// Send the words in `input` to a coding panel: a message (or steer) to a
+/// side chat, a paste and Enter to a terminal.
+pub const ACTION_CODE_SEND: &str = "code.send";
+/// Stop a coding panel's work: the side chat's run, or Ctrl-C to a terminal.
+pub const ACTION_CODE_STOP: &str = "code.stop";
+/// The terminal profiles `code.start` names, by option.
+pub const CODING_PROFILES: [(&str, &str); 2] =
+    [("claude", "Claude Code (Herdr)"), ("codex", "Codex (Herdr)")];
 
 /// The semantic action of the More tools page's back row.
 pub const ACTION_BACK: &str = "picker.back";

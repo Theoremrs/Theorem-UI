@@ -397,6 +397,34 @@ pub fn registry() -> Registry {
                 .emits(EffectKind::ThreadsRetitle)
                 .requires("threads.retitle"),
         ]),
+        // The coding actions: no panel of this kind is ever opened. Each
+        // opens or reaches a side chat (Theorem's own coding agent) or a
+        // shell running a coding CLI, so an agent can hand a task over, steer
+        // it and stop it. Availability depends on the agent chosen, so it is
+        // told when the action runs, with the reason.
+        Spec {
+            kind: crate::panels::CODING_KIND,
+            title: "Coding",
+            icon: "terminal",
+            binding: R::None,
+            placement: Tools,
+            min: (1, 1),
+            role: Role::Region,
+            theme_roles: CHROME,
+            requires: &[],
+        }
+        .build(vec![
+            ActionDescriptor::new(crate::panels::ACTION_CODE_START, "Start a coding agent", Start)
+                .emits(EffectKind::ConversationSideChat)
+                .emits(EffectKind::TerminalOpen),
+            ActionDescriptor::new(crate::panels::ACTION_CODE_SEND, "Send to a coding agent", Start)
+                .emits(EffectKind::ConversationSend)
+                .emits(EffectKind::ConversationInput)
+                .emits(EffectKind::TerminalInput),
+            ActionDescriptor::new(crate::panels::ACTION_CODE_STOP, "Stop a coding agent", Destroy)
+                .emits(EffectKind::ConversationCancel)
+                .emits(EffectKind::TerminalInput),
+        ]),
         // The workbench's own actions: no panel of this kind is ever opened.
         // They move focus and panels between groups, resize and maximise from
         // the keyboard, and apply a preset.

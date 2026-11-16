@@ -3,4 +3,4 @@
 /**
  * Why an agent's action was not dispatched.
  */
-export type RefusalCode = "unknown_action" | "human_only" | "unavailable" | "unknown_panel" | "empty_run";
+export type RefusalCode = "unknown_action" | "human_only" | "unavailable" | "unknown_panel" | "empty_run" | "invalid_args";

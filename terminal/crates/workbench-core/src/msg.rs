@@ -87,6 +87,16 @@ pub enum Msg {
         actor: Actor,
         panel: PanelInstanceId,
     },
+    /// An action with arguments, as an agent asks for it (see
+    /// [`ActionArgs`](crate::agent::ActionArgs)): the same checks as
+    /// [`Msg::Action`] and [`Msg::ActionOn`], and the panel it reaches reads
+    /// the arguments from [`Ctx::args`](crate::Ctx::args).
+    ActionWith {
+        id: ActionId,
+        actor: Actor,
+        panel: Option<PanelInstanceId>,
+        args: crate::agent::ActionArgs,
+    },
     Picker(PickerMsg),
     Dock(DockMsg),
     /// Saved arrangements: load, save, apply, rename, delete.

@@ -21,6 +21,49 @@ pub enum RefusalCode {
     UnknownPanel,
     /// The run id was empty: an action with no run cannot be attributed.
     EmptyRun,
+    /// The action's arguments were not what it takes: a missing task, an
+    /// option it does not know, or arguments that are not JSON.
+    InvalidArgs,
+}
+
+/// What an action takes besides its id and its panel. Most actions take
+/// nothing; the coding actions take the task or the words to send as `input`
+/// and a choice such as the coding agent as `option`.
+#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(deny_unknown_fields)]
+pub struct ActionArgs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub input: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub option: Option<String>,
+}
+
+impl ActionArgs {
+    /// The arguments in `json`, or none when absent or blank.
+    pub fn parse(json: Option<&str>) -> Result<Self, AgentOutcome> {
+        match json.map(str::trim) {
+            None | Some("") => Ok(Self::default()),
+            Some(json) => serde_json::from_str(json).map_err(|error| {
+                AgentOutcome::refused(
+                    RefusalCode::InvalidArgs,
+                    format!("The arguments are not {{\"input\"?, \"option\"?}}: {error}."),
+                )
+            }),
+        }
+    }
+
+    /// The input with its outer whitespace removed, when any is left.
+    pub fn input(&self) -> Option<&str> {
+        self.input.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
+
+    /// The option, trimmed, when one was given.
+    pub fn option(&self) -> Option<&str> {
+        self.option.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    }
 }
 
 /// What the model did with an agent's action.
@@ -36,6 +79,11 @@ pub enum AgentOutcome {
         effects: usize,
         /// The words of any notice the action raised.
         notices: Vec<String>,
+        /// The panel the action opened or acted on, when it reached one: the
+        /// handle for the next action on it and for reading it in the tree.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(feature = "ts", ts(optional))]
+        panel: Option<String>,
     },
     Refused {
         code: RefusalCode,
@@ -53,21 +101,29 @@ impl AgentOutcome {
 }
 
 /// The message for an agent run's action, or the refusal when the request
-/// cannot be attributed. `panel` is a panel instance id from the semantic tree.
-pub fn agent_request(action: &str, run_id: &str, panel: Option<&str>) -> Result<Msg, AgentOutcome> {
+/// cannot be attributed or its arguments cannot be read. `panel` is a panel
+/// instance id from the semantic tree; `args` is the JSON of [`ActionArgs`].
+pub fn agent_request(
+    action: &str,
+    run_id: &str,
+    panel: Option<&str>,
+    args: Option<&str>,
+) -> Result<Msg, AgentOutcome> {
     if run_id.trim().is_empty() {
         return Err(AgentOutcome::refused(
             RefusalCode::EmptyRun,
             "An agent action needs a run id to say who asked for it.",
         ));
     }
-    Ok(action_msg(
-        action,
-        Actor::Agent {
+    let args = ActionArgs::parse(args)?;
+    Ok(Msg::ActionWith {
+        id: ActionId::new(action),
+        actor: Actor::Agent {
             run_id: run_id.to_owned(),
         },
-        panel,
-    ))
+        panel: panel.map(PanelInstanceId::new),
+        args,
+    })
 }
 
 /// The message that runs `action` for `actor`, aimed at `panel` when given.
@@ -86,8 +142,13 @@ pub fn action_msg(action: &str, actor: Actor, panel: Option<&str>) -> Msg {
 
 /// The answer, from the notices the action raised (see
 /// [`Model::capture_notices`](crate::Model::capture_notices)) and the number of
-/// effects it emitted. The first refusal wins.
-pub fn agent_outcome(notices: &[Notice], effects: usize) -> AgentOutcome {
+/// effects it emitted, and the panel it opened or acted on. The first refusal
+/// wins.
+pub fn agent_outcome(
+    notices: &[Notice],
+    effects: usize,
+    panel: Option<&PanelInstanceId>,
+) -> AgentOutcome {
     for notice in notices {
         let code = match notice {
             Notice::Refused(Refusal::UnknownAction(_)) => RefusalCode::UnknownAction,
@@ -96,6 +157,7 @@ pub fn agent_outcome(notices: &[Notice], effects: usize) -> AgentOutcome {
                 RefusalCode::Unavailable
             }
             Notice::Refused(Refusal::UnknownPanel(_)) => RefusalCode::UnknownPanel,
+            Notice::Refused(Refusal::InvalidArgs { .. }) => RefusalCode::InvalidArgs,
             _ => continue,
         };
         let reason = crate::notice::describe(notice)
@@ -109,5 +171,6 @@ pub fn agent_outcome(notices: &[Notice], effects: usize) -> AgentOutcome {
             .iter()
             .filter_map(|n| crate::notice::describe(n).map(|(text, _)| text))
             .collect(),
+        panel: panel.map(|p| p.as_str().to_owned()),
     }
 }

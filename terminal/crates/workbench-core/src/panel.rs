@@ -467,6 +467,7 @@ pub struct Ctx<'a> {
     pub(crate) workspace: &'a WorkspaceIdentity,
     pub(crate) caps: &'a Capabilities,
     pub(crate) actor: &'a Actor,
+    pub(crate) args: &'a crate::agent::ActionArgs,
     pub(crate) effects: Vec<Effect>,
     pub(crate) opens: Vec<OpenTarget>,
     pub(crate) references: Vec<SourceReference>,
@@ -475,6 +476,8 @@ pub struct Ctx<'a> {
     pub(crate) invalidated: bool,
     /// The in-flight bound refused an emit: the limit it hit.
     pub(crate) full: Option<usize>,
+    /// Why the panel would not do the action it was asked for.
+    pub(crate) refusals: Vec<String>,
 }
 
 impl Ctx<'_> {
@@ -530,6 +533,19 @@ impl Ctx<'_> {
         self.actor
     }
 
+    /// The arguments of the action being run (the task, the words to send,
+    /// the option chosen); empty for everything else.
+    pub fn args(&self) -> &crate::agent::ActionArgs {
+        self.args
+    }
+
+    /// Say why the action this call is for was not done. The root raises it
+    /// as a refusal, so the agent that asked is answered with the reason and
+    /// the person sees it as a notice.
+    pub fn refuse(&mut self, reason: impl Into<String>) {
+        self.refusals.push(reason.into());
+    }
+
     /// The workspace and environment now, read-only.
     pub fn workspace(&self) -> &WorkspaceIdentity {
         self.workspace
@@ -539,12 +555,25 @@ impl Ctx<'_> {
     /// effect is registered as in flight, and its completion comes back to
     /// this panel as [`PanelMsg::Completion`] or [`PanelMsg::Cached`].
     pub fn emit(&mut self, build: impl FnOnce(EffectId) -> Effect) -> Result<EffectId, EmitError> {
+        let actor = self.actor.clone();
+        self.emit_as(actor, build)
+    }
+
+    /// Emit an effect for `actor` instead of this call's: work an earlier
+    /// action asked for that waited on an answer, such as a side chat's first
+    /// task, sent once the chat exists. The same checks as [`Ctx::emit`],
+    /// human-only kinds included.
+    pub fn emit_as(
+        &mut self,
+        actor: Actor,
+        build: impl FnOnce(EffectId) -> Effect,
+    ) -> Result<EffectId, EmitError> {
         if self.mode == Mode::Silent {
             return Err(EmitError::Silent);
         }
         let mut effect = build(self.ids.mint());
         // The envelope says who the call was for, whatever `build` left there.
-        effect.actor = self.actor.clone();
+        effect.actor = actor;
         if effect.kind().human_only() && matches!(effect.actor, Actor::Agent { .. }) {
             return Err(EmitError::HumanOnly(effect.kind()));
         }

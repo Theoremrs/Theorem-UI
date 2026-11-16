@@ -70,6 +70,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
                 actor: Actor::Human,
                 ..
             }
+            | Msg::ActionWith {
+                actor: Actor::Human,
+                ..
+            }
     );
     let held = by_person.then(|| (model.dock.focused(), model.focus_owner()));
     let effects = match msg {
@@ -94,6 +98,17 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
         Msg::Completion(completion) => model.on_completion(completion),
         Msg::Action { id, actor } => model.run_action(id, actor, None),
         Msg::ActionOn { id, actor, panel } => model.run_action(id, actor, Some(panel)),
+        Msg::ActionWith {
+            id,
+            actor,
+            panel,
+            args,
+        } => {
+            let before = std::mem::replace(&mut model.acting_args, args);
+            let effects = model.run_action(id, actor, panel);
+            model.acting_args = before;
+            effects
+        }
         Msg::Picker(msg) => model.picker_msg(msg),
         Msg::Dock(msg) => model.on_dock(msg),
         Msg::Arrangement(msg) => model.on_arrangement(msg),
@@ -130,6 +145,7 @@ pub(crate) struct CtxOut {
     pub(crate) close: bool,
     pub(crate) invalidated: bool,
     pub(crate) full: Option<usize>,
+    pub(crate) refusals: Vec<String>,
 }
 
 /// How far the keyboard moves a splitter at a time.
@@ -155,6 +171,7 @@ impl Model {
             workspace: &self.workspace,
             caps: &self.caps,
             actor: &self.acting,
+            args: &self.acting_args,
             effects: vec![],
             opens: vec![],
             references: vec![],
@@ -162,6 +179,7 @@ impl Model {
             close: false,
             invalidated: false,
             full: None,
+            refusals: vec![],
         };
         f(&mut cx);
         CtxOut {
@@ -172,6 +190,7 @@ impl Model {
             close: cx.close,
             invalidated: cx.invalidated,
             full: cx.full,
+            refusals: cx.refusals,
         }
     }
 
@@ -209,6 +228,9 @@ impl Model {
             // already waiting for answers are untouched.
             self.counters.refused_full += 1;
             self.notify(Notice::EffectsFull { limit });
+        }
+        for reason in out.refusals {
+            self.notify(Notice::Refused(Refusal::Unavailable { reason }));
         }
         let mut effects = out.effects;
         for target in out.opens {
@@ -903,13 +925,23 @@ impl Model {
         if kind.as_str() == crate::panels::WORKBENCH_KIND {
             return self.workbench_action(id.as_str(), on);
         }
+        if kind.as_str() == crate::panels::CODING_KIND {
+            return self.coding_action(id, on);
+        }
         match intent {
             ActionIntent::Focus => {
                 self.focus_or_open(&kind);
+                if let Some(owner) = self.focus_owner()
+                    && self.panels.get(&owner).is_some_and(|e| e.kind == kind)
+                {
+                    self.note_acted(&owner);
+                }
                 vec![]
             }
             ActionIntent::Open => {
-                self.open_panel(&kind);
+                if let Some(opened) = self.open_panel(&kind) {
+                    self.note_acted(&opened);
+                }
                 vec![]
             }
             ActionIntent::Local => {
@@ -933,6 +965,7 @@ impl Model {
                     }));
                     return vec![];
                 };
+                self.note_acted(&target);
                 self.call(&target, Mode::Normal, |p, cx| {
                     p.update(PanelMsg::Action(id), cx)
                 })
@@ -942,6 +975,7 @@ impl Model {
                     self.notify(Notice::NoPanel(id));
                     return vec![];
                 };
+                self.note_acted(&target);
                 let mode = if intent == ActionIntent::Destroy {
                     Mode::Destroying
                 } else {
@@ -1608,6 +1642,95 @@ impl Model {
             _ => {}
         }
         vec![]
+    }
+
+    /// `code.start`, `code.send` and `code.stop`. The model checks what it
+    /// can see (the arguments, the kind of panel, the kind's availability);
+    /// the panel that does the work checks the rest and refuses with its
+    /// reason.
+    fn coding_action(&mut self, id: ActionId, on: Option<PanelInstanceId>) -> Vec<Effect> {
+        use crate::panels::{
+            ACTION_CODE_SEND, ACTION_CODE_START, CODING_PROFILES, SHELL_KIND, SIDE_CHAT_KIND,
+        };
+        let invalid = |me: &mut Self, reason: String| {
+            me.notify(Notice::Refused(Refusal::InvalidArgs { reason }));
+            vec![]
+        };
+        if id.as_str() == ACTION_CODE_START {
+            if self.acting_args.input().is_none() {
+                return invalid(self, "code.start needs the task as input.".into());
+            }
+            let (kind, opener) = match self.acting_args.option() {
+                None | Some("theorem") => (SIDE_CHAT_KIND, "side-chat.choose"),
+                Some(o) if CODING_PROFILES.iter().any(|(name, _)| *name == o) => {
+                    (SHELL_KIND, "shell.choose")
+                }
+                Some(o) => {
+                    return invalid(
+                        self,
+                        format!("code.start takes the option theorem, claude or codex, not \"{o}\"."),
+                    );
+                }
+            };
+            // The kind's own availability, as its opener would be refused.
+            if let Err(refusal) =
+                self.registry
+                    .resolve(&ActionId::new(opener), &self.acting, &self.caps)
+            {
+                self.notify(Notice::Refused(refusal));
+                return vec![];
+            }
+            let Some(panel) = self.open_panel(&PanelKind::new(kind)) else {
+                return vec![];
+            };
+            self.note_acted(&panel);
+            let effects = self.call(&panel, Mode::Normal, |p, cx| {
+                p.update(PanelMsg::Action(id), cx)
+            });
+            // A panel that started nothing refused, and said why: the pane it
+            // was opened in goes again, so no empty chooser is left behind.
+            if effects.is_empty() {
+                return self.close_panel(&panel, false);
+            }
+            return effects;
+        }
+        let Some(target) = on.or_else(|| self.focus_owner()) else {
+            self.notify(Notice::Refused(Refusal::Unavailable {
+                reason: format!("{} needs the side chat or shell panel to act on.", id.as_str()),
+            }));
+            return vec![];
+        };
+        let Some((kind, available)) = self
+            .panels
+            .get(&target)
+            .map(|e| (e.kind.clone(), e.available))
+        else {
+            self.notify(Notice::Refused(Refusal::UnknownPanel(target)));
+            return vec![];
+        };
+        if !matches!(kind.as_str(), SIDE_CHAT_KIND | SHELL_KIND) {
+            self.notify(Notice::Refused(Refusal::Unavailable {
+                reason: format!(
+                    "{} acts on a side chat or a shell, not a {} panel.",
+                    id.as_str(),
+                    kind.as_str()
+                ),
+            }));
+            return vec![];
+        }
+        if !available {
+            self.notify(Notice::Refused(Refusal::Unavailable {
+                reason: "That panel is unavailable here.".into(),
+            }));
+            return vec![];
+        }
+        if id.as_str() == ACTION_CODE_SEND && self.acting_args.input().is_none() {
+            return invalid(self, "code.send needs the words to send as input.".into());
+        }
+        self.note_acted(&target);
+        self.call(&target, Mode::Normal, |p, cx| {
+            p.update(PanelMsg::Action(id), cx)
+        })
     }
 
     fn set_following(&mut self, on: bool) {

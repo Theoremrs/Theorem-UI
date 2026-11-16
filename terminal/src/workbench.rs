@@ -693,8 +693,9 @@ impl Core {
         action: &str,
         run_id: &str,
         panel: Option<&str>,
+        args: Option<&str>,
     ) -> (AgentOutcome, Vec<Effect>) {
-        match agent_request(action, run_id, panel) {
+        match agent_request(action, run_id, panel, args) {
             Ok(msg) => self.run_for(msg),
             Err(refused) => (refused, vec![]),
         }
@@ -710,7 +711,8 @@ impl Core {
         self.model.capture_notices();
         let effects = self.update(msg);
         let notices = self.model.take_captured();
-        (agent_outcome(&notices, effects.len()), effects)
+        let acted = self.model.take_acted_panel();
+        (agent_outcome(&notices, effects.len(), acted.as_ref()), effects)
     }
 
     /// Every action the registry offers, as the agent sees it (JSON).
@@ -1229,19 +1231,30 @@ impl WorkbenchHandle {
 
     /// Run `action` for the agent run `run_id` through the same `update` a key
     /// uses, aimed at the panel instance `panel` (an id from the semantic tree)
-    /// when given. Effects go out through the effect callback.
+    /// when given, with `args` (JSON: `{"input"?: string, "option"?: string}`)
+    /// as the action's arguments when it takes any. Effects go out through the
+    /// effect callback.
     ///
     /// Returns JSON, exactly one of
-    /// `{"outcome":"accepted","effects":n,"notices":[...]}` or
-    /// `{"outcome":"refused","code":"unknown_action"|"human_only"|"unavailable"|"unknown_panel"|"empty_run","reason":"..."}`.
+    /// `{"outcome":"accepted","effects":n,"notices":[...],"panel"?:"panel-3"}` or
+    /// `{"outcome":"refused","code":"unknown_action"|"human_only"|"unavailable"|"unknown_panel"|"empty_run"|"invalid_args","reason":"..."}`.
     /// "accepted" means the action was dispatched, not that its effects
-    /// succeeded: those are answered later as completions. A refusal emits
-    /// nothing and changes nothing except the notice the person sees.
-    pub fn agent_act(&self, action: &str, run_id: &str, panel: Option<String>) -> String {
-        let (outcome, effects) = self
-            .core
-            .borrow_mut()
-            .agent_act(action, run_id, panel.as_deref());
+    /// succeeded: those are answered later as completions. `panel` is the
+    /// panel the action opened or acted on. A refusal emits nothing and
+    /// changes nothing except the notice the person sees.
+    pub fn agent_act(
+        &self,
+        action: &str,
+        run_id: &str,
+        panel: Option<String>,
+        args: Option<String>,
+    ) -> String {
+        let (outcome, effects) = self.core.borrow_mut().agent_act(
+            action,
+            run_id,
+            panel.as_deref(),
+            args.as_deref(),
+        );
         deliver(&self.on_effect, &self.on_semantics, &effects, None);
         serde_json::to_string(&outcome).unwrap_or_default()
     }
@@ -2221,6 +2234,7 @@ mod tests {
             "panel.presentation.use:markdown",
             "run-1",
             Some(id.as_str()),
+            None,
         );
         let refused = matches!(outcome, AgentOutcome::Refused { .. });
         assert!(
@@ -2864,7 +2878,7 @@ mod tests {
         run: &str,
         panel: Option<&str>,
     ) -> (Value, Vec<Effect>) {
-        let (outcome, effects) = core.agent_act(action, run, panel);
+        let (outcome, effects) = core.agent_act(action, run, panel, None);
         (serde_json::to_value(&outcome).unwrap(), effects)
     }
 
