@@ -1,10 +1,12 @@
-// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. TanStack Table v9 through the app's kit hook (components/data-table/table-hook, vendored from TanStack's kitchen-sink-shadcn-base example) owns the columns, their widths and pinning, sorting, the filter, hidden columns and the marked rows; the rows it returns are drawn here to Twenty's measurements
+// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. TanStack Table v9 through the app's kit hook (components/data-table/table-hook, vendored from TanStack's kitchen-sink-shadcn-base example, with its ResizeHandle) owns the columns, their order, widths and pinning, sorting, the filter, hidden columns and the marked rows; the rows it returns are drawn here to Twenty's measurements. Behaviour restored from the generic record table it replaced (git a416d0b, components/records/record-table): the column menu and the "+" column (./column-menu), the Calculate row (./calculate-footer), CSV export by d3-dsv (./export-csv), shift-click range marking, column resizing, Tab and Backspace in the grid, and each view's arrangement kept in localStorage (components/records/view-state)
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  Download,
   ListFilter,
   Plus,
+  RotateCcw,
   Settings2,
   X,
 } from 'lucide-react'
@@ -26,6 +28,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from '@/components/coss/menu'
+import type { AggregateOp } from '@/components/records/aggregate'
 import type { FieldSpec, ObjectType } from '@/components/records/contract'
 import {
   FieldEditor,
@@ -37,10 +40,14 @@ import type { Move } from '@/components/records/fields'
 import {
   displayHint,
   identifierField,
+  isEmptyValue,
   recordTitle,
 } from '@/components/records/model'
 import { useDeclareObjectType } from '@/components/records/queries'
 import { toInput } from '@/components/records/schema-edit'
+import { useRecordViewState } from '@/components/records/view-state'
+import type { RecordViewState } from '@/components/records/view-state'
+import { useMaybeIndexPlace } from '@/components/index/navigation'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -53,6 +60,9 @@ import {
 import { cn } from '@/lib/utils'
 import { RecordAccessError } from './api'
 import type { CrmRecord } from './api'
+import { CalculationRow } from './calculate-footer'
+import { useCalculationsShown } from './calculations-setting'
+import { AddFieldMenu, HeaderMenu } from './column-menu'
 import {
   CrmEditorPopover,
   CrmFieldValue,
@@ -61,6 +71,7 @@ import {
   editStyle,
 } from './cells'
 import { useCrmScope } from './context'
+import { downloadCsv, recordsCsv } from './export-csv'
 import {
   CONTEXT_EXTENSION,
   accessFor,
@@ -86,6 +97,10 @@ const ROW = 36
 const HEADER = 32
 const CHECK = 32
 const IDENTIFIER = 220
+/** The "+" column that brings a hidden field back. */
+const PLUS = 40
+/** No column is dragged narrower than this. */
+const MIN_WIDTH = 104
 /** Rows drawn at first, and added by "Show more". */
 const STEP = 200
 /** The checkbox column's id; no field is named this. */
@@ -165,10 +180,20 @@ function compare(a: unknown, b: unknown) {
 export function CrmTable({
   type,
   fieldKeys,
+  viewKey,
 }: {
   type: ObjectType
-  /** The columns to show, in order, when a view picks them; else every shown field. */
+  /**
+   * The columns to show, in order, when a view picks them; else every shown
+   * field. A saved arrangement of the view's columns replaces this order.
+   */
   fieldKeys?: string[]
+  /**
+   * What keeps this table's arrangement apart from the same type's table
+   * elsewhere. By default the Index view it is drawn in; a table that is not
+   * in an Index view (a page's module) names its own.
+   */
+  viewKey?: string
 }) {
   const scope = useCrmScope()
   const { life, titleOf } = scope
@@ -177,7 +202,9 @@ export function CrmTable({
   const writes = useCrmWrites(type)
   const create = useCreateCrmRecord(type)
   const declare = useDeclareObjectType()
-  const { openRecord } = useCrmNavigate()
+  const { openRecord, openDataModel } = useCrmNavigate()
+  const place = useMaybeIndexPlace()
+  const calculationsShown = useCalculationsShown()
   const view = useCrmTableSearch(type)
   const previewId = view.record
   const changeView = view.change
@@ -218,9 +245,11 @@ export function CrmTable({
     (next: Sort | null) => setSortText(sortToText(next)),
     [setSortText],
   )
-  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const [limit, setLimit] = useState(STEP)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  // The row last marked, and whether Shift was held for the click being handled.
+  const markedLast = useRef<string | null>(null)
+  const shiftHeld = useRef(false)
   const [focus, setFocus] = useState<{ row: number; col: number }>({
     row: 0,
     col: 0,
@@ -271,11 +300,13 @@ export function CrmTable({
             {
               id: field.key,
               header: field.label,
-              size:
+              size: Math.max(
+                MIN_WIDTH,
                 field.key === identifier?.key
                   ? IDENTIFIER
                   : KIND[field.field_type.kind].width,
-              enableResizing: false,
+              ),
+              minSize: MIN_WIDTH,
               enableHiding: field.key !== identifier?.key,
               sortUndefined: 'last',
               sortFn: (a, b, columnId) =>
@@ -292,6 +323,50 @@ export function CrmTable({
     [fields, identifier?.key, titleOf, type],
   )
 
+  // How this view is arranged (column order, widths, what is hidden and what
+  // is calculated) is kept in this browser per view; the filter, the sort and
+  // the previewed record are the address's. The view is the Index view the
+  // table is drawn in, and the type, so a custom view of People and the
+  // People table keep separate arrangements.
+  const fieldIds = useMemo(
+    () => [SELECT, ...fields.map((field) => field.key)],
+    [fields],
+  )
+  const [arrangement, setArrangement, resetArrangement] = useRecordViewState(
+    `${viewKey ?? place?.search.view ?? 'table'}:${type.name_singular}`,
+    () => ({
+      columnOrder: fieldIds,
+      columnSizing: {},
+      columnVisibility: {},
+      aggregates: {},
+    }),
+  )
+  const arrange =
+    <TKey extends 'columnOrder' | 'columnSizing' | 'columnVisibility'>(
+      key: TKey,
+    ) =>
+    (
+      updater:
+        | RecordViewState[TKey]
+        | ((old: RecordViewState[TKey]) => RecordViewState[TKey]),
+    ) =>
+      setArrangement((old) => ({
+        ...old,
+        [key]: typeof updater === 'function' ? updater(old[key]) : updater,
+      }))
+  // A field added since the arrangement was saved joins at the end.
+  const columnOrder = useMemo(() => {
+    const kept = arrangement.columnOrder.filter((id) => fieldIds.includes(id))
+    return [...kept, ...fieldIds.filter((id) => !kept.includes(id))]
+  }, [arrangement.columnOrder, fieldIds])
+  const hiddenKeys = fields
+    .filter(
+      (field) =>
+        field.key !== identifier?.key &&
+        arrangement.columnVisibility[field.key] === false,
+    )
+    .map((field) => field.key)
+
   const records = page.data?.records
   const loaded = records?.length ?? 0
   const total = page.data?.count ?? 0
@@ -305,8 +380,10 @@ export function CrmTable({
       sorting: sort ? [{ id: sort.key, desc: sort.descending }] : [],
       columnFilters:
         needle && fields[0] ? [{ id: fields[0].key, value: needle }] : [],
+      columnOrder,
+      columnSizing: arrangement.columnSizing,
       columnVisibility: Object.fromEntries(
-        [...hidden].map((key) => [key, false]),
+        hiddenKeys.map((key) => [key, false]),
       ),
       columnPinning: {
         start: identifier ? [SELECT, identifier.key] : [SELECT],
@@ -322,12 +399,9 @@ export function CrmTable({
       const [next] = typeof updater === 'function' ? updater(held) : updater
       setSort(next ? { key: next.id, descending: next.desc } : null)
     },
-    onColumnVisibilityChange: (updater) =>
-      setHidden((held) => {
-        const before = Object.fromEntries([...held].map((key) => [key, false]))
-        const after = typeof updater === 'function' ? updater(before) : updater
-        return new Set(Object.keys(after).filter((key) => after[key] === false))
-      }),
+    onColumnVisibilityChange: arrange('columnVisibility'),
+    onColumnOrderChange: arrange('columnOrder'),
+    onColumnSizingChange: arrange('columnSizing'),
     onRowSelectionChange: (updater) =>
       setSelected((held) => {
         const before = Object.fromEntries(
@@ -353,8 +427,32 @@ export function CrmTable({
   const widthOf = (field: FieldSpec) =>
     table.getColumn(field.key)?.getSize() ?? KIND[field.field_type.kind].width
   const totalWidth = table.getTotalSize()
+  const gridWidth = totalWidth + PLUS
   const rows = table.getRowModel().rows.map((row) => row.original)
   const shown = rows.slice(0, limit)
+  const headerOf = new Map(
+    table.getFlatHeaders().map((header) => [header.column.id, header]),
+  )
+  const hiddenFields = fields.filter((field) => hiddenKeys.includes(field.key))
+  // The columns that can move: every shown one but the pinned identifier.
+  const movable = columns.filter((field) => field.key !== identifier?.key)
+
+  /** Swaps a column with its neighbour among the columns that are shown. */
+  const moveColumn = (key: string, delta: -1 | 1) => {
+    const neighbour = movable[movable.findIndex((f) => f.key === key) + delta]
+    if (!neighbour) return
+    const order = [...columnOrder]
+    const [a, b] = [order.indexOf(key), order.indexOf(neighbour.key)]
+    ;[order[a], order[b]] = [order[b]!, order[a]!]
+    table.setColumnOrder(order)
+  }
+  const setAggregate = (key: string, op: AggregateOp | undefined) =>
+    setArrangement((old) => {
+      const aggregates = { ...old.aggregates }
+      if (op) aggregates[key] = op
+      else delete aggregates[key]
+      return { ...old, aggregates }
+    })
 
   // Cell focus
 
@@ -443,6 +541,32 @@ export function CrmTable({
       move,
     )
   }
+  /**
+   * Backspace or Delete on a cell empties it, by the same write the editor
+   * makes on closing: it names the revision that was on screen, so a record
+   * changed elsewhere is refused and the refusal is shown as any other.
+   * The identifier and a required field are never emptied, nor is a switch.
+   */
+  const clearable = (field: FieldSpec) =>
+    editable(field) &&
+    editStyle(field) !== 'toggle' &&
+    field.key !== identifier?.key &&
+    !field.required
+  const clearCell = (record: CrmRecord, field: FieldSpec) => {
+    const spec = field.field_type
+    const many =
+      spec.kind === 'enum_many' ||
+      (spec.kind === 'relation' && spec.cardinality === 'many')
+    const waiting = editorRead(
+      record,
+      field,
+      edits[editKey(record.id, field.key)],
+    )
+    // Nothing to empty, or a save still on its way: nothing is sent.
+    if (isEmptyValue(waiting.shown)) return
+    if (edits[editKey(record.id, field.key)]?.status === 'saving') return
+    void writes.saveFrom(record, field, many ? [] : null, waiting)
+  }
   /** Escape: the value stays as it was and the cell keeps the cursor. */
   const discard = () => {
     setEditing(null)
@@ -478,6 +602,19 @@ export function CrmTable({
       if (previewId) {
         event.preventDefault()
         setPreview(undefined)
+      }
+    } else if (event.key === 'Tab') {
+      // Across the row; past its ends Tab leaves the grid, which is no trap.
+      const to = col + (event.shiftKey ? -1 : 1)
+      if (to >= 0 && to < columns.length) {
+        event.preventDefault()
+        focusCell(row, to)
+      }
+    } else if (event.key === 'Backspace' || event.key === 'Delete') {
+      const field = columns[col]
+      if (record && field && clearable(field)) {
+        event.preventDefault()
+        clearCell(record, field)
       }
     } else if (
       event.key.length === 1 &&
@@ -529,6 +666,23 @@ export function CrmTable({
   // Selection
 
   const toggleSelected = (id: string) => table.getRow(id).toggleSelected()
+  /** A click on a row's box; with Shift, every row from the last one marked to this one. */
+  const markRow = (id: string, range: boolean) => {
+    const at = shown.findIndex((record) => record.id === id)
+    const from = shown.findIndex((record) => record.id === markedLast.current)
+    if (range && from >= 0 && at >= 0) {
+      const on = !selected.has(id)
+      const between = shown.slice(Math.min(from, at), Math.max(from, at) + 1)
+      setSelected((held) => {
+        const next = new Set(held)
+        for (const record of between)
+          if (on) next.add(record.id)
+          else next.delete(record.id)
+        return next
+      })
+    } else toggleSelected(id)
+    markedLast.current = id
+  }
   const allSelected =
     shown.length > 0 && shown.every((record) => selected.has(record.id))
   const someSelected = shown.some((record) => selected.has(record.id))
@@ -538,6 +692,18 @@ export function CrmTable({
     () => (records ?? []).filter((record) => selected.has(record.id)),
     [records, selected],
   )
+  /** The marked records, else every record the filter leaves, as a CSV file of the columns shown. */
+  const exportRows = () => {
+    const inView = new Set(rows.map((record) => record.id))
+    const marked = [
+      ...rows.filter((record) => selected.has(record.id)),
+      ...chosen.filter((record) => !inView.has(record.id)),
+    ]
+    downloadCsv(
+      type.name_plural,
+      recordsCsv(columns, selected.size ? marked : rows, titleOf),
+    )
+  }
   const deleteSelected = async () => {
     setConfirmDelete(false)
     let deleted = 0
@@ -673,27 +839,35 @@ export function CrmTable({
                 </span>
               )}
               <span className="flex-1" />
-              {selected.size > 0 && access.write && (
+              {selected.size > 0 && (
                 <>
                   <span className="text-xs text-ink-muted tabular-nums">
                     {selected.size} selected
                   </span>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    aria-pressed={bulk}
-                    onClick={() => setBulk(true)}
-                  >
-                    Update
+                  <Button size="xs" variant="ghost" onClick={exportRows}>
+                    <Download aria-hidden />
+                    Export
                   </Button>
-                  <Button
-                    size="xs"
-                    variant="ghost"
-                    className="text-error-ink hover:text-error-ink"
-                    onClick={() => setConfirmDelete(true)}
-                  >
-                    Delete
-                  </Button>
+                  {access.write && (
+                    <>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        aria-pressed={bulk}
+                        onClick={() => setBulk(true)}
+                      >
+                        Update
+                      </Button>
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        className="text-error-ink hover:text-error-ink"
+                        onClick={() => setConfirmDelete(true)}
+                      >
+                        Delete
+                      </Button>
+                    </>
+                  )}
                   <span aria-hidden className="mx-1 h-4 w-px bg-separator" />
                 </>
               )}
@@ -822,7 +996,7 @@ export function CrmTable({
                         key={field.key}
                         closeOnClick={false}
                         disabled={field.key === identifier?.key}
-                        checked={!hidden.has(field.key)}
+                        checked={!hiddenKeys.includes(field.key)}
                         onCheckedChange={(checked) =>
                           table.getColumn(field.key)?.toggleVisibility(checked)
                         }
@@ -831,6 +1005,17 @@ export function CrmTable({
                       </MenuCheckboxItem>
                     ))}
                   </MenuGroup>
+                  <MenuSeparator />
+                  <MenuItem disabled={!rows.length} onClick={exportRows}>
+                    <Download aria-hidden />
+                    {selected.size
+                      ? `Export ${selected.size} selected as CSV`
+                      : 'Export as CSV'}
+                  </MenuItem>
+                  <MenuItem onClick={resetArrangement}>
+                    <RotateCcw aria-hidden />
+                    Reset arrangement
+                  </MenuItem>
                   <MenuSeparator />
                   <MenuGroup>
                     <MenuGroupLabel>Theorem</MenuGroupLabel>
@@ -905,94 +1090,136 @@ export function CrmTable({
               role="grid"
               aria-label={`All ${plural}`}
               aria-rowcount={page.data ? rows.length + 1 : undefined}
-              aria-colcount={columns.length + 1}
+              aria-colcount={columns.length + 2}
               aria-busy={page.isPending || undefined}
               className="min-h-0 flex-1 overflow-auto text-[13px]"
             >
-              <div role="rowgroup" className="sticky top-0 z-20">
-                <div
-                  role="row"
-                  aria-rowindex={1}
-                  className="flex border-b border-separator bg-raised"
-                  style={{
-                    height: HEADER,
-                    width: `max(100%, ${totalWidth}px)`,
-                  }}
-                >
+              <table.AppTable>
+                <div role="rowgroup" className="sticky top-0 z-20">
                   <div
-                    role="columnheader"
-                    className="sticky left-0 z-10 flex shrink-0 items-center justify-center bg-raised"
-                    style={{ width: CHECK }}
+                    role="row"
+                    aria-rowindex={1}
+                    className="flex border-b border-separator bg-raised"
+                    style={{
+                      height: HEADER,
+                      width: `max(100%, ${gridWidth}px)`,
+                    }}
                   >
-                    <Checkbox
-                      aria-label={`Select all ${plural.toLowerCase()}`}
-                      checked={allSelected}
-                      indeterminate={someSelected && !allSelected}
-                      disabled={!shown.length}
-                      onCheckedChange={(checked) =>
-                        setSelected(
-                          checked ? new Set(shown.map((r) => r.id)) : new Set(),
-                        )
-                      }
-                    />
-                  </div>
-                  {columns.map((field, col) => {
-                    const sorted = sort?.key === field.key
-                    return (
-                      <div
-                        key={field.key}
-                        role="columnheader"
-                        aria-sort={
-                          sorted
-                            ? sort.descending
-                              ? 'descending'
-                              : 'ascending'
-                            : 'none'
+                    <div
+                      role="columnheader"
+                      className="sticky left-0 z-10 flex shrink-0 items-center justify-center bg-raised"
+                      style={{ width: CHECK }}
+                    >
+                      <Checkbox
+                        aria-label={`Select all ${plural.toLowerCase()}`}
+                        checked={allSelected}
+                        indeterminate={someSelected && !allSelected}
+                        disabled={!shown.length}
+                        onCheckedChange={(checked) =>
+                          setSelected(
+                            checked
+                              ? new Set(shown.map((r) => r.id))
+                              : new Set(),
+                          )
                         }
-                        className={cn(
-                          'flex shrink-0 items-center border-s border-separator bg-raised',
-                          col === 0 && 'sticky z-10 border-s-0',
-                        )}
-                        style={{
-                          width: widthOf(field),
-                          left: col === 0 ? CHECK : undefined,
-                        }}
-                      >
-                        <button
-                          type="button"
-                          title={field.description}
-                          onClick={() =>
-                            // Ascending, then descending, then unsorted.
-                            sorted && sort.descending
-                              ? table.getColumn(field.key)?.clearSorting()
-                              : table
-                                  .getColumn(field.key)
-                                  ?.toggleSorting(sorted)
+                      />
+                    </div>
+                    {columns.map((field, col) => {
+                      const sorted = sort?.key === field.key
+                      const header = headerOf.get(field.key)
+                      const isIdentifier = field.key === identifier?.key
+                      const at = movable.findIndex((f) => f.key === field.key)
+                      return (
+                        <div
+                          key={field.key}
+                          role="columnheader"
+                          aria-sort={
+                            sorted
+                              ? sort.descending
+                                ? 'descending'
+                                : 'ascending'
+                              : 'none'
                           }
-                          className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                          className={cn(
+                            'group/header flex shrink-0 items-center border-s border-separator bg-raised',
+                            col === 0 ? 'sticky z-10 border-s-0' : 'relative',
+                          )}
+                          style={{
+                            width: widthOf(field),
+                            left: col === 0 ? CHECK : undefined,
+                          }}
                         >
-                          <FieldTypeIcon kind={field.field_type.kind} />
-                          <span className="min-w-0 flex-1 truncate">
-                            {field.label}
-                          </span>
-                          {sorted &&
-                            (sort.descending ? (
-                              <ArrowDown
-                                aria-hidden
-                                className="size-3 shrink-0"
-                              />
-                            ) : (
-                              <ArrowUp
-                                aria-hidden
-                                className="size-3 shrink-0"
-                              />
-                            ))}
-                        </button>
-                      </div>
-                    )
-                  })}
+                          <button
+                            type="button"
+                            title={field.description}
+                            onClick={() =>
+                              // Ascending, then descending, then unsorted.
+                              sorted && sort.descending
+                                ? table.getColumn(field.key)?.clearSorting()
+                                : table
+                                    .getColumn(field.key)
+                                    ?.toggleSorting(sorted)
+                            }
+                            className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                          >
+                            <FieldTypeIcon kind={field.field_type.kind} />
+                            <span className="min-w-0 flex-1 truncate">
+                              {field.label}
+                            </span>
+                            {sorted &&
+                              (sort.descending ? (
+                                <ArrowDown
+                                  aria-hidden
+                                  className="size-3 shrink-0"
+                                />
+                              ) : (
+                                <ArrowUp
+                                  aria-hidden
+                                  className="size-3 shrink-0"
+                                />
+                              ))}
+                          </button>
+                          <HeaderMenu
+                            field={field}
+                            isIdentifier={isIdentifier}
+                            canMoveLeft={at > 0}
+                            canMoveRight={at >= 0 && at < movable.length - 1}
+                            onSort={(descending) =>
+                              setSort({ key: field.key, descending })
+                            }
+                            onFilter={() => setFiltering(true)}
+                            onMove={(delta) => moveColumn(field.key, delta)}
+                            onHide={() =>
+                              table
+                                .getColumn(field.key)
+                                ?.toggleVisibility(false)
+                            }
+                          />
+                          {header && header.column.getCanResize() && (
+                            <table.AppHeader header={header}>
+                              {(h) => <h.ResizeHandle />}
+                            </table.AppHeader>
+                          )}
+                        </div>
+                      )
+                    })}
+                    <div
+                      role="columnheader"
+                      aria-label="Fields"
+                      className="shrink-0 border-s border-separator bg-raised"
+                      style={{ width: PLUS }}
+                    >
+                      <AddFieldMenu
+                        hidden={hiddenFields}
+                        onShow={(key) =>
+                          table.getColumn(key)?.toggleVisibility(true)
+                        }
+                        onCustomize={() => void openDataModel(type)}
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              </table.AppTable>
 
               <div role="rowgroup">
                 {shown.map((record, row) => {
@@ -1015,14 +1242,14 @@ export function CrmTable({
                       )}
                       style={{
                         height: ROW,
-                        width: `max(100%, ${totalWidth}px)`,
+                        width: `max(100%, ${gridWidth}px)`,
                       }}
                     >
                       <div
                         role="gridcell"
                         onClick={(event) => event.stopPropagation()}
                         className={cn(
-                          'sticky left-0 z-10 flex shrink-0 items-center justify-center',
+                          'sticky left-0 z-10 flex shrink-0 select-none items-center justify-center',
                           ground,
                           !isPreviewed &&
                             !isSelected &&
@@ -1033,7 +1260,13 @@ export function CrmTable({
                         <Checkbox
                           aria-label={`Select ${recordTitle(type, record)}`}
                           checked={isSelected}
-                          onCheckedChange={() => toggleSelected(record.id)}
+                          onClick={(event) => {
+                            shiftHeld.current = event.shiftKey
+                          }}
+                          onCheckedChange={() => {
+                            markRow(record.id, shiftHeld.current)
+                            shiftHeld.current = false
+                          }}
                         />
                       </div>
                       {columns.map((field, col) => {
@@ -1192,7 +1425,7 @@ export function CrmTable({
                 <div
                   data-add-row
                   className="flex border-b border-separator"
-                  style={{ height: ROW, width: `max(100%, ${totalWidth}px)` }}
+                  style={{ height: ROW, width: `max(100%, ${gridWidth}px)` }}
                 >
                   {draft === null ? (
                     <button
@@ -1238,6 +1471,26 @@ export function CrmTable({
                     </div>
                   )}
                 </div>
+              )}
+
+              {/* Calculate: over the records loaded, as the count below says */}
+              {calculationsShown && page.data && columns.length > 0 && (
+                <CalculationRow
+                  fields={columns}
+                  height={HEADER}
+                  checkWidth={CHECK}
+                  totalWidth={gridWidth}
+                  widthOf={widthOf}
+                  aggregates={arrangement.aggregates}
+                  partial={total > loaded}
+                  valuesOf={(field) =>
+                    rows.map((record) => {
+                      const edit = edits[editKey(record.id, field.key)]
+                      return edit ? edit.value : record.values[field.key]
+                    })
+                  }
+                  onChange={setAggregate}
+                />
               )}
             </div>
 

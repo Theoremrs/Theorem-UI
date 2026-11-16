@@ -262,7 +262,7 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   )
 }
 
-function RecordsModule({ settings, output, emit }: ModuleViewProps) {
+function RecordsModule({ settings, output, emit, path }: ModuleViewProps) {
   const name = text(settings.object)
   // The table keeps a place of its own on the page; a record opened from it
   // is this module's selection, for an inspector connected to it.
@@ -290,7 +290,8 @@ function RecordsModule({ settings, output, emit }: ModuleViewProps) {
   return (
     <IndexPlaceContext.Provider value={reporting}>
       <div className="h-full min-h-[24rem]">
-        <CrmTableView object={name} />
+        {/* This module's own arrangement: it is on no Index view of its own. */}
+        <CrmTableView object={name} viewKey={`module:${path}`} />
       </div>
     </IndexPlaceContext.Provider>
   )

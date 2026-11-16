@@ -116,14 +116,22 @@ function WithType({
 export function CrmTableView({
   object,
   fields,
+  viewKey,
 }: {
   object: string
   fields?: string[]
+  /** Keeps this table's arrangement apart when it is not in an Index view. */
+  viewKey?: string
 }) {
   return (
     <WithType name={object}>
       {(type) => (
-        <CrmTable key={type.object_type_id} type={type} fieldKeys={fields} />
+        <CrmTable
+          key={type.object_type_id}
+          type={type}
+          fieldKeys={fields}
+          viewKey={viewKey}
+        />
       )}
     </WithType>
   )
@@ -159,10 +167,7 @@ export function RecordsHome() {
     <Ready>
       {(scope) =>
         scope.life?.started && scope.types[0] ? (
-          <CrmTable
-            key={scope.types[0].object_type_id}
-            type={scope.types[0]}
-          />
+          <CrmTable key={scope.types[0].object_type_id} type={scope.types[0]} />
         ) : (
           <FirstRun scope={scope} />
         )
@@ -226,7 +231,11 @@ function InspectedRecord({
       {text && <p className={detail}>{text}</p>}
       <div className="flex gap-2">
         {retry && (
-          <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void query.refetch()}
+          >
             Try again
           </Button>
         )}

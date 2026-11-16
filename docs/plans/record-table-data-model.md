@@ -9,8 +9,8 @@ composes like any other. The checklist is `record-table-data-model.checklist.jso
 The owner decided that the CRM's table replaces this plan's generic records
 table everywhere, and that the CRM lives in the Index rather than at its own
 `/crm` route. `src/components/records/record-table.tsx` and
-`record-inspector.tsx` were removed. The data model and the work tracker
-still use this plan's other modules (`aggregate.ts`, `view-state.ts`,
+`record-inspector.tsx` were removed. The CRM table, the data model and the work
+tracker use this plan's other modules (`aggregate.ts`, `view-state.ts`,
 `layout.ts`, `fields.tsx`, `data-model.tsx`).
 
 - `RecordTable("<name>")` in a view program and the built-in
@@ -25,24 +25,39 @@ still use this plan's other modules (`aggregate.ts`, `view-state.ts`,
 - Pages' records module (`theorem.records.table`) draws the CRM table and
   opens record pages in the Index.
 
-What the generic table had that the CRM table does not, so a person loses it
-with the replacement (the checklist rows say which):
+What the generic table had that the CRM table did not, and what was brought
+back into the CRM table afterwards (2026-11-16; the checklist rows say where
+each lives and which test covers it):
 
-- the per-column menu (filter, sort, move, hide) and the "+" column for
-  showing hidden fields and customizing them;
-- the Calculate footer (the CRM footer is the dataset count);
-- search of any field and and/or filter rules (the CRM filters on the
-  identifier field), multi-sort, field order, reset and CSV export;
-- shift-range selection and export of the selection;
-- column resize by drag and virtualized rows;
-- Tab across cells and Backspace to clear;
-- the arrangement kept per view in localStorage (the CRM keeps filter, sort
-  and the open record in the address, and nothing per view).
+- Restored: the per-column menu (Filter, Sort, Move left and right, Hide; the
+  identifier column only Filter and Sort) and the "+" column that shows hidden
+  fields again and opens the data model to customize them. Filter on a column
+  other than the identifier opens the view bar's filter, which is on the
+  identifier field.
+- Restored, behind a setting: the Calculate row (Count, Percent, Date, More
+  options, saved per view). It shows only when Settings, Appearance,
+  "Calculations under record tables" is on (off by default, kept per browser);
+  off, the footer is the dataset count.
+- Restored: shift-click range marking, CSV export of the marked rows (else the
+  rows the filter leaves, the columns shown in order, named `<plural>.csv`)
+  from the marked-row actions and from Options (a text cell a spreadsheet
+  would run as a formula is written with a leading apostrophe), column resizing by the header
+  edge, Tab and Shift+Tab across cells, and Backspace or Delete to empty a
+  cell through the same revision-checked write the editor makes.
+- Restored per browser: each view's column order, widths, hidden fields and
+  calculations in localStorage (`theorem.crm.view:<Index view id>:<type>`),
+  with Reset arrangement in Options. Filter, sort and the previewed record
+  stay in the address.
+
+Still absent from the CRM table: search of any field, and/or filter rules,
+multi-sort, putting fields in order by drag or from a list (a column moves with
+Move left and Move right), virtualized rows, rectangle drag-select, and an
+arrangement that follows the person across browsers (it is localStorage, not
+Theorem).
 
 The CRM table brings revision-checked writes with visible stale refusals,
 bounded update of marked records, the record page with history, and the
-measurements of Theorem's CRM spec. Which of the losses to bring back is the
-owner's call; none was ported in this change.
+measurements of Theorem's CRM spec.
 
 ## Sources
 

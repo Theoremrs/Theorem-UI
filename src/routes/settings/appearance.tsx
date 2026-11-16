@@ -16,11 +16,16 @@ import {
   NumberFieldGroup,
   NumberFieldInput,
 } from '@/components/coss/number-field'
+import { Switch } from '@/components/coss/switch'
 import { Textarea } from '@/components/coss/textarea'
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/coss/segmented-control'
+import {
+  setCalculationsShown,
+  useCalculationsShown,
+} from '@/components/crm/calculations-setting'
 import { Icon } from '@/components/icons'
 import {
   SettingsBox,
@@ -98,6 +103,7 @@ export function AppearanceSettings() {
     useLifeControls.setState({ shown: undefined })
   }
   const figures = useFigures()
+  const calculations = useCalculationsShown()
   return (
     <SettingsPage
       title="Appearance"
@@ -242,6 +248,17 @@ export function AppearanceSettings() {
                 onPress={() => setOverrides({ reading: 'wide' })}
               />
             </SegmentedControl>
+          </SettingsRow>
+          <SettingsRow
+            Mark={Icon.Table}
+            title="Calculations under record tables"
+            description="A Calculate row under each record table: counts, percentages, sums and dates over the records loaded. Off, the table shows only how many records it holds. Kept on this device."
+          >
+            <Switch
+              aria-label="Calculations under record tables"
+              checked={calculations}
+              onCheckedChange={setCalculationsShown}
+            />
           </SettingsRow>
           <SettingsRow
             Mark={Icon.Grip}

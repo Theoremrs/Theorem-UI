@@ -10,6 +10,7 @@ import type { IndexSearch, TableSearch } from '@/components/index/navigation'
 import { observer } from '@/components/index/observe'
 import {
   RECORDS_PREFIX,
+  dataModelViewId,
   parseRecordPageViewId,
   recordPageViewId,
   recordsViewId,
@@ -57,11 +58,20 @@ export function useCrmNavigate() {
           closeItem: true,
           replace: options?.replace,
         }),
+      /** The type's fields in the data model, where they are added, renamed and retired. */
+      openDataModel: (type: ObjectType) =>
+        navigate.openView(dataModelViewId(type.name_singular), HOME, {
+          closeItem: true,
+        }),
       openRecord: (type: ObjectType, recordId: string) => {
         opened(recordItemId(type, recordId))
-        navigate.openView(recordPageViewId(type.name_singular, recordId), HOME, {
-          closeItem: true,
-        })
+        navigate.openView(
+          recordPageViewId(type.name_singular, recordId),
+          HOME,
+          {
+            closeItem: true,
+          },
+        )
       },
       /** Opens a record beside the table, or closes the one that is open. */
       preview: (type: ObjectType, recordId: string | undefined) => {
@@ -90,12 +100,11 @@ export function useCrmTableSearch(type: ObjectType) {
   const record =
     open?.nameSingular === type.name_singular ? open.recordId : undefined
   const change = useMemo(
-    () =>
-      (patch: CrmTableSearch) => {
-        const { record: next, ...table } = patch
-        if ('record' in patch && next !== record) preview(type, next)
-        if (Object.keys(table).length) setTable(table)
-      },
+    () => (patch: CrmTableSearch) => {
+      const { record: next, ...table } = patch
+      if ('record' in patch && next !== record) preview(type, next)
+      if (Object.keys(table).length) setTable(table)
+    },
     [preview, setTable, type, record],
   )
   return { record, q: search.q, sort: search.sort, desc: search.desc, change }
