@@ -26,7 +26,7 @@ export interface IndexNavigator {
   ) => void
   openItem: (item: string) => void
   closeItem: () => void
-  /** Changes the open table's filter or sort, in place of the current entry. */
+  /** Changes the open table's search or sort, in place of the current entry. */
   setTable: (patch: TableSearch) => void
 }
 

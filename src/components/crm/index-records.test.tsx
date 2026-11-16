@@ -72,6 +72,14 @@ const type = (input: HTMLInputElement, text: string) =>
     )!.set!.call(input, text)
     input.dispatchEvent(new Event('input', { bubbles: true }))
   })
+const change = (select: HTMLSelectElement, value: string) =>
+  act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      'value',
+    )!.set!.call(select, value)
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+  })
 const updates = () =>
   server.state.verbs.filter((call) => call.verb === 'update_one')
 
@@ -371,13 +379,13 @@ test('Escape in the "Add new" row creates nothing', async () => {
   expect(buttonNamed(container, 'Add new')).toBeDefined()
 })
 
-test('the filter narrows by name and the footer says so', async () => {
+test('the search narrows by name and the footer says so', async () => {
   const { container } = await view(tableAt('person'))
   await waitFor(() => container.querySelector('[role="grid"] [data-r="1"]'))
-  await click(buttonNamed(container, 'Filter')!)
+  await click(buttonNamed(container, 'Search')!)
   const input = await waitFor(() =>
     container.querySelector<HTMLInputElement>(
-      'input[aria-label^="Filter people"]',
+      'input[aria-label="Search people"]',
     ),
   )
   await type(input, 'noo')
@@ -389,7 +397,10 @@ test('the filter narrows by name and the footer says so', async () => {
   )
 })
 
-test('a column header sorts, and says which way', async () => {
+// Changed on purpose: a click on a header used to sort (ascending, then
+// descending, then none). It now opens the column's menu, as in Twenty, and
+// the sort is chosen there. The order and aria-sort assertions are the same.
+test('a column header opens its menu, and sorting from it says which way', async () => {
   const { container } = await view(tableAt('person'))
   await waitFor(() => container.querySelector('[role="grid"] [data-r="1"]'))
   const names = () =>
@@ -399,23 +410,41 @@ test('a column header sorts, and says which way', async () => {
   const header = container.querySelectorAll('[role="columnheader"]')[
     columns(container).indexOf('Name')
   ]!
+  const choose = async (item: string) => {
+    await click(header.querySelector('button')!)
+    await click(
+      await waitFor(() =>
+        [...document.querySelectorAll('[role^="menuitem"]')].find((i) =>
+          i.textContent.trim().endsWith(item),
+        ),
+      ),
+    )
+  }
+  // The click only opens the menu: nothing is sorted by it.
   await click(header.querySelector('button')!)
-  expect(header.getAttribute('aria-sort')).toBe('ascending')
+  await waitFor(() => document.querySelector('[role="menu"]'))
+  expect(header.getAttribute('aria-sort')).toBe('none')
+  await key(document.querySelector('[role="menu"]')!, 'Escape')
+  await waitFor(() => !document.querySelector('[role="menu"]'))
+
+  await choose('Sort ascending')
+  await waitFor(() => header.getAttribute('aria-sort') === 'ascending')
   const ascending = names()
-  await click(header.querySelector('button')!)
-  expect(header.getAttribute('aria-sort')).toBe('descending')
+  await choose('Sort descending')
+  await waitFor(() => header.getAttribute('aria-sort') === 'descending')
   expect(names()).toEqual([...ascending].reverse())
 })
 
-test('the Sort menu sorts by the field chosen', async () => {
+test('the Sort list sorts by the field added to it', async () => {
   const { container } = await commitments()
   await click(buttonNamed(container, 'Sort')!)
-  const due = await waitFor(() =>
-    [...document.querySelectorAll('[role="menuitemradio"]')].find(
-      (candidate) => candidate.textContent.trim() === 'Due',
+  await click(await waitFor(() => buttonNamed(document.body, 'Add sort')))
+  const rule = await waitFor(() =>
+    document.querySelector<HTMLSelectElement>(
+      'select[aria-label="Sort 1 field"]',
     ),
   )
-  await click(due)
+  await change(rule, 'due')
   const header = container.querySelectorAll('[role="columnheader"]')[
     columns(container).indexOf('Due')
   ]!
@@ -582,15 +611,15 @@ test('a row opens the preview: saved revision, private switch, and the ways on',
   )
 })
 
-test('the preview, the filter and the sort are in the address, and a table opened there shows them', async () => {
+test('the preview, the search and the sort are in the address, and a table opened there shows them', async () => {
   const first = await view(tableAt('person'))
   await waitFor(() =>
     first.container.querySelector('[role="grid"] [data-r="1"]'),
   )
-  await click(buttonNamed(first.container, 'Filter')!)
+  await click(buttonNamed(first.container, 'Search')!)
   const input = await waitFor(() =>
     first.container.querySelector<HTMLInputElement>(
-      'input[aria-label^="Filter people"]',
+      'input[aria-label="Search people"]',
     ),
   )
   await type(input, 'noo')
@@ -632,7 +661,7 @@ test('the preview, the filter and the sort are in the address, and a table opene
   ).toBe('ascending')
 })
 
-test('when the address drops the filter and the sort, so does the table', async () => {
+test('when the address drops the search and the sort, so does the table', async () => {
   const { container, router, search } = await view(
     tableAt('person', { q: 'noo', sort: 'name', desc: true }),
   )

@@ -33,12 +33,53 @@
     },
     {
       "id": "column-menu",
-      "requirement": "Filter, Sort, Move left, Move right, Hide; the identifier column only Filter and Sort",
+      "requirement": "Search, Sort, Move left, Move right, Hide; the identifier column only Search and Sort",
       "status": "partial",
       "evidence": [
-        "Restored in the CRM table: src/components/crm/column-menu.tsx HeaderMenu (the arrow beside each column's name): Filter, Sort ascending and descending, Move left, Move right, Hide; the identifier column offers only Filter and Sort. Sort goes through the table's one sort, mirrored to the address (sort, desc); crm-table.tsx",
-        "src/components/crm/table-arrangement.test.tsx: Hide in a column's menu hides it; the identifier column's menu offers only Filter and Sort; a column menu sorts through the one sort the address holds; Move left and Move right reorder the columns",
-        "Not as the generic table had it: Filter on a column other than the identifier opens the view bar's filter, which is on the identifier field; there are no per-column filter rules. Clicking a header still sorts (ascending, descending, none); the menu is its own arrow"
+        "Restored in the CRM table: src/components/crm/column-menu.tsx HeaderMenu (opened by clicking the column's header): Search (was Filter), Sort ascending and descending, Move left, Move right, Hide; the identifier column offers only Search and Sort. Sort replaces the whole list of sort rules with its one rule, mirrored to the address (sort, desc, then); crm-table.tsx",
+        "src/components/crm/table-arrangement.test.tsx: Hide in a column's menu hides it; the identifier column's menu offers only Search and Sort; a column menu sorts through the one sort the address holds; Move left and Move right reorder the columns",
+        "Not as the generic table had it: Search on any column opens the view bar's search, which reads every shown field; there are no per-column filter rules. Clicking a header no longer sorts: the header is the menu's trigger (see header-click-menu)"
+      ]
+    },
+    {
+      "id": "header-click-menu",
+      "requirement": "Clicking a column's header opens its menu (Search, Sort ascending, Sort descending, Move left, Move right, Hide), as in Twenty",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/column-menu.tsx HeaderMenu: the header's button is the menu trigger and shows the field's icon, name and sort arrow; Enter or Space opens it from the keyboard. A pointer press opens nothing (it may begin a drag); the click that follows does",
+        "src/components/crm/index-records.test.tsx: a column header opens its menu, and sorting from it says which way (the old test, 'a column header sorts, and says which way', encoded click-to-sort and was changed on purpose)",
+        "src/components/crm/table-search-sort.test.tsx: a click on a header label opens the column menu, and Escape closes it"
+      ]
+    },
+    {
+      "id": "search-every-field",
+      "requirement": "The view bar's Search matches its text, case-insensitively, against the display text of every shown column (name, fields, related records' titles)",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/crm-table.tsx: TanStack's globalFilter with a globalFilterFn over each shown column's sortValue text (hidden columns are not searched); q stays in the address and mirrored with useMirrored; magnifier icon, placeholder and aria-label 'Search <plural>'; the column menu's Search item opens it",
+        "src/components/crm/table-search-sort.test.tsx: the search finds a record by a field that is not its name; the search reads the title of a related record, in any case; a hidden column is not searched; a needle nothing holds shows the empty state",
+        "src/components/crm/index-records.test.tsx: the search narrows by name and the footer says so; the preview, the search and the sort are in the address"
+      ]
+    },
+    {
+      "id": "multi-sort",
+      "requirement": "A sort list: several rules (field and direction, removable), Add sort, Clear sorts; rows sort by rule 1, then rule 2",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/crm-table.tsx: the Sort popover lists the rules (field, Ascending or Descending, remove), Add sort takes the first field not yet used, Clear sorts empties it; TanStack enableMultiSort with a sorting array; the button reads 'Sort: <first field>' and ' +N' for more. The header menu's Sort replaces the list",
+        "src/components/crm/table-sorts.ts: the address holds the first rule in sort and desc as before and the rest in then as key1:desc,key2 (a key with a comma or colon is skipped); src/components/index/search.ts and src/components/crm/navigation.ts carry then",
+        "src/components/crm/table-search-sort.test.tsx: two rules order the rows, the second breaking the first's ties; the rules are in the address as sort, desc and then, and a reload restores them; a column menu's sort replaces the whole list with its one rule; removing a rule and Clear sorts take rules off the list; the address reads then strictly",
+        "src/components/crm/index-records.test.tsx: the Sort list sorts by the field added to it (replaces the radio-menu test)"
+      ]
+    },
+    {
+      "id": "drag-reorder-columns",
+      "requirement": "Drag a column header to a new place among the movable columns (not the checkbox, not the pinned identifier); the drop lands in the saved arrangement",
+      "status": "done",
+      "evidence": [
+        "src/components/crm/header-drag.tsx: @dnd-kit horizontal sortable over the headers (pointer sensor with a 4 px activation distance so a click still opens the menu, a keyboard sensor started by Alt with Space or Enter because bare Space and Enter open the menu, restrictToHorizontalAxis); the drop calls table.setColumnOrder through reorderColumns, which is saved by the arrangement's columnOrder. The resize handle is outside the dragged button. Move left and Move right remain",
+        "src/components/crm/table-search-sort.test.tsx: Alt and Space picks a column up, the arrows move it and Space drops it (dnd-kit's keyboard sensor with the headers given places, as happy-dom lays nothing out); a drop moves a column to the place of the one it is dropped on, and never a pinned one; the movable headers are sortable items and the identifier is not",
+        "Not covered by a test: a pointer drag (happy-dom has no layout or pointer geometry)"
       ]
     },
     {
@@ -103,19 +144,21 @@
       "requirement": "Search any field, filter list with and/or, sort list, fields visibility and order, export, reset",
       "status": "partial",
       "evidence": [
-        "src/components/crm/crm-table.tsx: filter on the identifier field and one sort, both kept in the address (q, sort, desc); hidden fields; Options now also has Export as CSV (the marked rows, else the rows the filter leaves) and Reset arrangement",
+        "src/components/crm/crm-table.tsx: search over every shown field and a list of sort rules, kept in the address (q, sort, desc, then); hidden fields; Options now also has Export as CSV (the marked rows, else the rows the filter leaves) and Reset arrangement",
         "src/components/crm/table-arrangement.test.tsx: with no rows marked, Export in Options writes the rows the filter leaves, in the sort order; nothing is saved until the arrangement is changed, and Reset arrangement forgets it",
-        "Not in the CRM table: search of any field, and/or filter rules, multi-sort, field order by drag or from the Options list (a column moves with Move left and Move right), saved named views"
+        "Not in the CRM table: and/or filter rules, field order from the Options list (a column moves by drag or with Move left and Move right), saved named views"
       ]
     },
     {
       "id": "view-persistence",
       "requirement": "A view's arrangement kept in Theorem so it follows the person",
-      "status": "partial",
+      "status": "done",
       "evidence": [
-        "Restored per browser: src/components/records/view-state.ts useRecordViewState keeps each view's column order, widths, hidden fields and calculations in localStorage under theorem.crm.view:<Index view id>:<type name> (a page's records module passes module:<its path>); a view program's fields is the starting set and order, and a saved arrangement replaces it; filter, sort and the previewed record stay in the address",
-        "src/components/crm/table-arrangement.test.tsx: the arrangement survives a remount, and is the view's own; a view that picks its fields starts from them, and a saved arrangement replaces them; a saved arrangement of the wrong shape is ignored, field by field; storage that cannot be used leaves the table working",
-        "Not in Theorem: the arrangement does not follow the person to another browser. Theorem has dataViews/upsertDataView to build on"
+        "src/components/records/view-state.ts: useRecordViewState keeps each view's column order, widths, hidden fields and calculations in the useRecordLayouts store (localStorage theorem-ui:record-layouts; a legacy theorem.crm.view:<key> entry is read once), keyed <Index view id>:<type name> (a page's records module passes module:<its path>); search, sort and the previewed record stay in the address",
+        "src/lib/theorem/models.ts usePreferencesSync: the layouts travel in the person's Theorem preferences (/api/chat/v1/preferences, principal-scoped, If-Match) as recordLayouts, the 50 most recently changed within 32 KB; each write starts from Theorem's last copy so keys this client does not own survive the whole-object replace; Theorem's copy is applied on load without a write-back",
+        "src/components/records/record-layouts.test.tsx: a layout change is written as recordLayouts with If-Match; Theorem's layouts reach the table without a write-back; a write keeps keys it does not own; a legacy entry is picked up and Reset forgets it; malformed layouts are dropped; only the 50 most recent are sent; wide layouts give way oldest first under the size cap",
+        "src/components/crm/table-arrangement.test.tsx: the arrangement survives a remount, and is the view's own; a saved arrangement of the wrong shape is ignored, field by field; storage that cannot be used leaves the table working",
+        "Limit: two browsers changing layouts at once, the later write wins for the whole map. Not observed against a deployed Theorem"
       ]
     },
     {

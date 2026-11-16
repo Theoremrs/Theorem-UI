@@ -87,8 +87,8 @@ export function useCrmNavigate() {
 
 /**
  * What a table is showing: the record previewed beside it (the Index's open
- * item, when it is one of this type's records), the text it is filtered by,
- * and the field it is sorted by.
+ * item, when it is one of this type's records), the text it is searched
+ * for, and the fields it is sorted by.
  */
 export type CrmTableSearch = TableSearch & { record?: string }
 
@@ -107,5 +107,12 @@ export function useCrmTableSearch(type: ObjectType) {
     },
     [preview, setTable, type, record],
   )
-  return { record, q: search.q, sort: search.sort, desc: search.desc, change }
+  return {
+    record,
+    q: search.q,
+    sort: search.sort,
+    desc: search.desc,
+    then: search.then,
+    change,
+  }
 }

@@ -26,6 +26,7 @@ import { CALCULATIONS_KEY, setCalculationsShown } from './calculations-setting'
 import { CrmTableView } from './index-views'
 import { resetCrmWrites } from './queries'
 import { IndexRecords, mountAt, tableAt } from './test-harness'
+import { useRecordLayouts } from '@/components/records/view-state'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -38,6 +39,7 @@ const realFetch = window.fetch
 beforeEach(() => {
   resetCrmWrites()
   window.localStorage.clear()
+  useRecordLayouts.setState({ layouts: {} })
   setCalculationsShown(false)
   server = createFixtureServer()
   window.fetch = fixtureFetch(server)
@@ -46,6 +48,7 @@ afterEach(async () => {
   await cleanup()
   window.fetch = realFetch
   window.localStorage.clear()
+  useRecordLayouts.setState({ layouts: {} })
 })
 
 const settle = () =>
@@ -112,11 +115,14 @@ async function fromColumnMenu(
   await click(container.querySelector(`[aria-label="${column} column menu"]`)!)
   await click(await menuItem(item))
 }
+// Arrangements live in the layouts store (also kept in localStorage, and sent to Theorem); the
+// keys keep the old `theorem.crm.view:` spelling so each assertion still names its view.
 const saved = () =>
   Object.fromEntries(
-    Object.keys(window.localStorage)
-      .filter((k) => k.startsWith('theorem.crm.view:'))
-      .map((k) => [k, JSON.parse(window.localStorage.getItem(k)!)]),
+    Object.entries(useRecordLayouts.getState().layouts).map(([k, layout]) => [
+      `theorem.crm.view:${k}`,
+      layout,
+    ]),
   )
 
 // The column menu and the "+" column
@@ -132,14 +138,14 @@ test('Hide in a column\'s menu hides it, and the "+" column shows it again', asy
   await waitFor(() => headers(container).includes('Email'))
 })
 
-test("the identifier column's menu offers only Filter and Sort", async () => {
+test("the identifier column's menu offers only Search and Sort", async () => {
   const { container } = await people()
   await click(container.querySelector('[aria-label="Name column menu"]')!)
-  await menuItem('Filter')
+  await menuItem('Search')
   const items = [...document.querySelectorAll('[role="menuitem"]')].map((i) =>
     i.textContent.trim(),
   )
-  expect(items).toEqual(['Filter', 'Sort ascending', 'Sort descending'])
+  expect(items).toEqual(['Search', 'Sort ascending', 'Sort descending'])
 })
 
 test('a column menu sorts through the one sort the address holds', async () => {
@@ -154,11 +160,11 @@ test('a column menu sorts through the one sort the address holds', async () => {
   expect(buttonNamed(container, 'Sort: Email')).toBeDefined()
 })
 
-test("Filter in a column menu opens the view bar's filter", async () => {
+test("Search in a column menu opens the view bar's search", async () => {
   const { container } = await people()
-  await fromColumnMenu(container, 'Email', 'Filter')
+  await fromColumnMenu(container, 'Email', 'Search')
   await waitFor(() =>
-    container.querySelector('input[aria-label^="Filter people"]'),
+    container.querySelector('input[aria-label="Search people"]'),
   )
 })
 
@@ -489,18 +495,20 @@ test('Export writes the marked rows as CSV, with the columns shown, in order', a
 test('with no rows marked, Export in Options writes the rows the filter leaves, in the sort order', async () => {
   const caught = catchDownload()
   try {
-    addPeople('Bea')
+    // The search reads every field, so the needle is one only these two hold
+    // ("e" is also in Noor's role); it was "e", over names alone, before.
+    addPeople('Bea Quill')
     const { container } = await mountAt(
-      tableAt('person', { q: 'e', sort: 'name', desc: true }),
+      tableAt('person', { q: 'qu', sort: 'name', desc: true }),
       () => <IndexRecords />,
     )
     await waitFor(() => container.querySelector('[data-r="1"]'))
     await click(buttonNamed(container, 'Options')!)
     await click(await menuItem('Export as CSV'))
     const rows = (await caught.downloads[0]!.blob.text()).trim().split('\n')
-    // Avery and Bea contain "e"; Noor does not. Z to A.
+    // Bea Quill and Avery Quinn contain "qu"; Noor does not. Z to A.
     expect(rows.slice(1).map((row) => row.split(',')[0])).toEqual([
-      'Bea',
+      'Bea Quill',
       'Avery Quinn',
     ])
   } finally {

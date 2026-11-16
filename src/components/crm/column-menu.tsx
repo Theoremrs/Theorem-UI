@@ -1,16 +1,16 @@
-// SOURCING: the generic record table's HeaderMenu and AddFieldMenu (Twenty's column menu: Filter, Sort, Move left and right, Hide; and the "+" column that lists the hidden fields and "Customize fields"), over coss ui Menu; the schema register's field icons (components/records/fields)
+// SOURCING: the generic record table's HeaderMenu and AddFieldMenu (Twenty's column menu, opened by clicking the header: Search, Sort, Move left and right, Hide; and the "+" column that lists the hidden fields and "Customize fields"), over coss ui Menu; the schema register's field icons (components/records/fields)
 import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   ArrowUp,
-  ChevronDown,
   EyeOff,
-  ListFilter,
   Plus,
+  Search,
   Settings2,
 } from 'lucide-react'
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
+import type { ReactNode } from 'react'
 import {
   Menu,
   MenuGroup,
@@ -22,61 +22,88 @@ import {
 } from '@/components/coss/menu'
 import type { FieldSpec } from '@/components/records/contract'
 import { FieldTypeIcon } from '@/components/records/fields'
+import type { HeaderDrag } from './header-drag'
 
 /**
- * A column's menu: the arrow beside its name. The identifier column offers
- * Filter and Sort only; it is pinned and always shown.
+ * A column's menu. The column's header is its trigger, as in Twenty: a click
+ * anywhere on the label opens it, and Enter or Space does from the keyboard.
+ * The identifier column offers Search and Sort only; it is pinned and always
+ * shown. `drag` makes the same button the column's drag handle.
  */
 export function HeaderMenu({
   field,
   isIdentifier,
   canMoveLeft,
   canMoveRight,
+  drag,
   onSort,
-  onFilter,
+  onSearch,
   onMove,
   onHide,
+  children,
 }: {
   field: FieldSpec
   isIdentifier: boolean
   canMoveLeft: boolean
   canMoveRight: boolean
+  drag?: HeaderDrag
   onSort: (descending: boolean) => void
-  onFilter: () => void
+  onSearch: () => void
   onMove: (delta: -1 | 1) => void
   onHide: () => void
+  /** What the header shows: the field's icon and name, and its sort arrow. */
+  children: ReactNode
 }) {
-  // Filter puts the cursor in the filter field; the menu must not take it back.
-  const filtering = useRef(false)
+  // Search puts the cursor in the search field; the menu must not take it back.
+  const searching = useRef(false)
+  const [open, setOpen] = useState(false)
   return (
     <Menu
-      onOpenChange={(open) => {
-        if (open) filtering.current = false
+      open={open}
+      onOpenChange={(next, details) => {
+        // A press on the header neither opens nor closes the menu: it may be
+        // the start of a drag. The click that follows it, which a drag never
+        // makes, does.
+        if (
+          details.reason === 'trigger-press' &&
+          details.event.type !== 'click'
+        )
+          return
+        if (next) searching.current = false
+        setOpen(next)
       }}
     >
       <MenuTrigger
         render={
           <button
             type="button"
+            title={field.description}
             aria-label={`${field.label} column menu`}
-            className="mx-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-faint opacity-0 hover:bg-hover hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus group-hover/header:opacity-100 data-popup-open:bg-hover data-popup-open:opacity-100"
+            {...drag?.attributes}
+            {...drag?.listeners}
+            ref={drag?.setActivatorNodeRef}
+            // A mouse click, as the press that began it opened nothing.
+            onClick={(event) => {
+              if (event.detail > 0) setOpen((was) => !was)
+            }}
+            className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
           />
         }
       >
-        <ChevronDown aria-hidden className="size-3" />
+        {children}
       </MenuTrigger>
       <MenuPopup
         align="start"
         className="w-44"
-        finalFocus={() => !filtering.current}
+        finalFocus={() => !searching.current}
       >
         <MenuItem
           onClick={() => {
-            filtering.current = true
-            onFilter()
+            searching.current = true
+            onSearch()
           }}
         >
-          <ListFilter aria-hidden /> Filter
+          <Search aria-hidden /> Search
         </MenuItem>
         <MenuItem onClick={() => onSort(false)}>
           <ArrowUp aria-hidden /> Sort ascending

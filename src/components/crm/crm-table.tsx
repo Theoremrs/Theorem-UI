@@ -1,12 +1,12 @@
-// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. TanStack Table v9 through the app's kit hook (components/data-table/table-hook, vendored from TanStack's kitchen-sink-shadcn-base example, with its ResizeHandle) owns the columns, their order, widths and pinning, sorting, the filter, hidden columns and the marked rows; the rows it returns are drawn here to Twenty's measurements. Behaviour restored from the generic record table it replaced (git a416d0b, components/records/record-table): the column menu and the "+" column (./column-menu), the Calculate row (./calculate-footer), CSV export by d3-dsv (./export-csv), shift-click range marking, column resizing, Tab and Backspace in the grid, and each view's arrangement kept in localStorage (components/records/view-state)
+// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. TanStack Table v9 through the app's kit hook (components/data-table/table-hook, vendored from TanStack's kitchen-sink-shadcn-base example, with its ResizeHandle) owns the columns, their order, widths and pinning, sorting by several rules, the global filter that searches every shown field, hidden columns and the marked rows; @dnd-kit (./header-drag, after the example's sortable) drags a column header to a new place and the drop is the table's setColumnOrder;  the rows it returns are drawn here to Twenty's measurements. Behaviour restored from the generic record table it replaced (git a416d0b, components/records/record-table): the column menu and the "+" column (./column-menu), the Calculate row (./calculate-footer), CSV export by d3-dsv (./export-csv), shift-click range marking, column resizing, Tab and Backspace in the grid, and each view's arrangement kept in localStorage (components/records/view-state)
 import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
   Download,
-  ListFilter,
   Plus,
   RotateCcw,
+  Search,
   Settings2,
   X,
 } from 'lucide-react'
@@ -23,8 +23,6 @@ import {
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
   MenuSeparator,
   MenuTrigger,
 } from '@/components/coss/menu'
@@ -48,6 +46,11 @@ import { toInput } from '@/components/records/schema-edit'
 import { useRecordViewState } from '@/components/records/view-state'
 import type { RecordViewState } from '@/components/records/view-state'
 import { useMaybeIndexPlace } from '@/components/index/navigation'
+import {
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+} from '@/components/coss/popover'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -63,6 +66,11 @@ import type { CrmRecord } from './api'
 import { CalculationRow } from './calculate-footer'
 import { useCalculationsShown } from './calculations-setting'
 import { AddFieldMenu, HeaderMenu } from './column-menu'
+import {
+  HeaderDragContext,
+  SortableHeader,
+  reorderColumns,
+} from './header-drag'
 import {
   CrmEditorPopover,
   CrmFieldValue,
@@ -90,6 +98,13 @@ import {
 import type { EditorRead } from './queries'
 import { ReadOnlyNote, UnsavedEdits, crmErrorText } from './record-fields'
 import { BulkUpdatePanel } from './bulk-update'
+import {
+  sortsFromAddress,
+  sortsFromText,
+  sortsToAddress,
+  sortsToText,
+} from './table-sorts'
+import type { Sort } from './table-sorts'
 import { Checkbox } from './twenty/checkbox'
 import { TypeIcon } from './type-icons'
 
@@ -108,8 +123,9 @@ const SELECT = '__select'
 /** Every row at once: the table pages by "Show more", not by TanStack's pager. */
 const ALL_ROWS = { pageIndex: 0, pageSize: Number.MAX_SAFE_INTEGER }
 const columnHelper = createAppColumnHelper<CrmRecord>()
+const SORT_SELECT =
+  'h-7 min-w-0 flex-1 rounded-md border border-control bg-background px-1.5 text-[13px] text-ink focus-visible:outline-2 focus-visible:outline-focus'
 
-type Sort = { key: string; descending: boolean }
 type Editing = {
   rowId: string
   col: string
@@ -121,11 +137,15 @@ type Editing = {
 
 const NUMBER = new Intl.NumberFormat('en-US')
 
-/** A sort as one string, so it can be compared with what the address holds. */
-const sortToText = (sort: Sort | null) =>
-  sort ? `${sort.descending ? '-' : '+'}${sort.key}` : ''
-const sortFromText = (text: string): Sort | null =>
-  text ? { key: text.slice(1), descending: text.startsWith('-') } : null
+/** What a value shows as, for the search to read; a switch has no text to find. */
+const shownText = (value: unknown): string =>
+  value === null || value === undefined || typeof value === 'boolean'
+    ? ''
+    : Array.isArray(value)
+      ? value.map(shownText).join(', ')
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value)
 
 /**
  * A value set here and mirrored to the address. The control shows what was
@@ -215,8 +235,8 @@ export function CrmTable({
   const edits = useCrmEdits((s) => s.edits)
 
   const identifier = identifierField(type)
-  // Filter and sort are typed here and mirrored to the address, so the field
-  // never waits on the router.
+  // Search and sort are typed here and mirrored to the address, so the
+  // controls never wait on the router.
   const [filter, setFilter] = useMirrored(
     view.q ?? '',
     useCallback(
@@ -226,23 +246,17 @@ export function CrmTable({
   )
   const [filtering, setFiltering] = useState(false)
   const [sortText, setSortText] = useMirrored(
-    sortToText(
-      view.sort ? { key: view.sort, descending: view.desc === true } : null,
+    sortsToText(
+      sortsFromAddress({ sort: view.sort, desc: view.desc, then: view.then }),
     ),
     useCallback(
-      (text: string) => {
-        const next = sortFromText(text)
-        void changeView({
-          sort: next?.key,
-          desc: next?.descending ? true : undefined,
-        })
-      },
+      (text: string) => void changeView(sortsToAddress(sortsFromText(text))),
       [changeView],
     ),
   )
-  const sort = useMemo(() => sortFromText(sortText), [sortText])
-  const setSort = useCallback(
-    (next: Sort | null) => setSortText(sortToText(next)),
+  const sorts = useMemo(() => sortsFromText(sortText), [sortText])
+  const setSorts = useCallback(
+    (next: Sort[]) => setSortText(sortsToText(next)),
     [setSortText],
   )
   const [limit, setLimit] = useState(STEP)
@@ -311,16 +325,11 @@ export function CrmTable({
               sortUndefined: 'last',
               sortFn: (a, b, columnId) =>
                 compare(a.getValue(columnId), b.getValue(columnId)),
-              // The filter is over a record's name, whichever column holds it.
-              filterFn: (row, _columnId, needle) =>
-                recordTitle(type, row.original)
-                  .toLowerCase()
-                  .includes(String(needle)),
             },
           ),
         ),
       ]),
-    [fields, identifier?.key, titleOf, type],
+    [fields, identifier?.key, titleOf],
   )
 
   // How this view is arranged (column order, widths, what is hidden and what
@@ -373,13 +382,17 @@ export function CrmTable({
   const data = useMemo(() => records ?? [], [records])
   const needle = filter.trim().toLowerCase()
   const table = useAppTable({
+    // The search reads every shown column, as its cells show: a record is
+    // found by its name, its email or the title of a record it points to.
+    globalFilterFn: (row, columnId, text) =>
+      !hiddenKeys.includes(columnId) &&
+      shownText(row.getValue(columnId)).toLowerCase().includes(String(text)),
     columns: tableColumns,
     data,
     getRowId: (record) => record.id,
     state: {
-      sorting: sort ? [{ id: sort.key, desc: sort.descending }] : [],
-      columnFilters:
-        needle && fields[0] ? [{ id: fields[0].key, value: needle }] : [],
+      sorting: sorts.map((rule) => ({ id: rule.key, desc: rule.descending })),
+      globalFilter: needle,
       columnOrder,
       columnSizing: arrangement.columnSizing,
       columnVisibility: Object.fromEntries(
@@ -395,9 +408,12 @@ export function CrmTable({
       pagination: ALL_ROWS,
     },
     onSortingChange: (updater) => {
-      const held = sort ? [{ id: sort.key, desc: sort.descending }] : []
-      const [next] = typeof updater === 'function' ? updater(held) : updater
-      setSort(next ? { key: next.id, descending: next.desc } : null)
+      const held = sorts.map((rule) => ({
+        id: rule.key,
+        desc: rule.descending,
+      }))
+      const next = typeof updater === 'function' ? updater(held) : updater
+      setSorts(next.map((rule) => ({ key: rule.id, descending: rule.desc })))
     },
     onColumnVisibilityChange: arrange('columnVisibility'),
     onColumnOrderChange: arrange('columnOrder'),
@@ -411,7 +427,7 @@ export function CrmTable({
         return new Set(Object.keys(after).filter((id) => after[id]))
       }),
     enableRowSelection: true,
-    enableMultiSort: false,
+    enableMultiSort: true,
     autoResetPageIndex: false,
   })
   const fieldOf = useMemo(
@@ -433,6 +449,13 @@ export function CrmTable({
   const headerOf = new Map(
     table.getFlatHeaders().map((header) => [header.column.id, header]),
   )
+  const sortable = shownFields(type)
+  const labelOfKey = (key: string) =>
+    type.fields.find((field) => field.key === key)?.label ?? key
+  // The field the next rule would sort by: the first not yet used.
+  const unsorted = sortable.find(
+    (field) => !sorts.some((rule) => rule.key === field.key),
+  )
   const hiddenFields = fields.filter((field) => hiddenKeys.includes(field.key))
   // The columns that can move: every shown one but the pinned identifier.
   const movable = columns.filter((field) => field.key !== identifier?.key)
@@ -446,6 +469,16 @@ export function CrmTable({
     ;[order[a], order[b]] = [order[b]!, order[a]!]
     table.setColumnOrder(order)
   }
+  /** A column dropped on another takes its place among the columns. */
+  const dropColumn = (activeId: string, overId: string) =>
+    table.setColumnOrder(
+      reorderColumns(
+        columnOrder,
+        activeId,
+        overId,
+        identifier ? [SELECT, identifier.key] : [SELECT],
+      ),
+    )
   const setAggregate = (key: string, op: AggregateOp | undefined) =>
     setArrangement((old) => {
       const aggregates = { ...old.aggregates }
@@ -787,7 +820,7 @@ export function CrmTable({
     const some = (n: number) =>
       `${NUMBER.format(n)} ${n === 1 ? noun : plural.toLowerCase()}`
     if (total > loaded)
-      return `Showing the first ${NUMBER.format(loaded)} of ${some(total)}. Filter and sort work on these ${NUMBER.format(loaded)}.`
+      return `Showing the first ${NUMBER.format(loaded)} of ${some(total)}. Search and sort work on these ${NUMBER.format(loaded)}.`
     if (filter.trim())
       return `${NUMBER.format(rows.length)} of ${some(loaded)} match “${filter.trim()}”`
     return some(loaded)
@@ -873,12 +906,12 @@ export function CrmTable({
               )}
               {filtering || filter ? (
                 <span className="flex h-7 items-center gap-1 rounded-md border border-control bg-background ps-2 pe-1 focus-within:outline-2 focus-within:outline-focus">
-                  <ListFilter aria-hidden className="size-3.5 text-ink-muted" />
+                  <Search aria-hidden className="size-3.5 text-ink-muted" />
                   <input
                     autoFocus={filtering}
                     value={filter}
-                    aria-label={`Filter ${plural.toLowerCase()} by ${identifier?.label.toLowerCase() ?? 'name'}`}
-                    placeholder={`${identifier?.label ?? 'Name'} contains`}
+                    aria-label={`Search ${plural.toLowerCase()}`}
+                    placeholder={`Search ${plural.toLowerCase()}`}
                     onChange={(event) => {
                       setFilter(event.target.value)
                       setLimit(STEP)
@@ -895,7 +928,7 @@ export function CrmTable({
                   />
                   <button
                     type="button"
-                    aria-label="Clear filter"
+                    aria-label="Clear search"
                     onClick={() => {
                       setFilter('')
                       setFiltering(false)
@@ -911,74 +944,124 @@ export function CrmTable({
                   variant="ghost"
                   onClick={() => setFiltering(true)}
                 >
-                  <ListFilter aria-hidden />
-                  Filter
+                  <Search aria-hidden />
+                  Search
                 </Button>
               )}
-              <Menu>
-                <MenuTrigger
+              <Popover>
+                <PopoverTrigger
                   render={
                     <Button size="xs" variant="ghost">
                       <ArrowUpDown aria-hidden />
-                      {sort
-                        ? `Sort: ${type.fields.find((f) => f.key === sort.key)?.label ?? sort.key}`
+                      {sorts.length
+                        ? `Sort: ${labelOfKey(sorts[0]!.key)}${sorts.length > 1 ? ` +${sorts.length - 1}` : ''}`
                         : 'Sort'}
                     </Button>
                   }
                 />
-                <MenuPopup align="end" className="w-56">
-                  <MenuRadioGroup
-                    value={sort?.key ?? ''}
-                    onValueChange={(key) =>
-                      setSort({
-                        key: String(key),
-                        descending: sort?.descending ?? false,
-                      })
-                    }
-                  >
-                    <MenuGroupLabel>Sort by</MenuGroupLabel>
-                    {shownFields(type).map((field) => (
-                      <MenuRadioItem
-                        key={field.key}
-                        value={field.key}
-                        closeOnClick={false}
+                <PopoverPopup align="end" className="w-80">
+                  <ul aria-label="Sort rules" className="flex flex-col gap-1.5">
+                    {sorts.map((rule, at) => (
+                      <li
+                        key={rule.key}
+                        className="flex items-center gap-1.5 text-[13px]"
                       >
-                        {field.label}
-                      </MenuRadioItem>
+                        <span className="w-9 shrink-0 text-xs text-ink-muted">
+                          {at === 0 ? 'Sort' : 'Then'}
+                        </span>
+                        <select
+                          aria-label={`Sort ${at + 1} field`}
+                          value={rule.key}
+                          onChange={(event) =>
+                            setSorts(
+                              sorts.map((held, i) =>
+                                i === at
+                                  ? { ...held, key: event.target.value }
+                                  : held,
+                              ),
+                            )
+                          }
+                          className={SORT_SELECT}
+                        >
+                          {sortable
+                            .filter(
+                              (field) =>
+                                field.key === rule.key ||
+                                !sorts.some((held) => held.key === field.key),
+                            )
+                            .map((field) => (
+                              <option key={field.key} value={field.key}>
+                                {field.label}
+                              </option>
+                            ))}
+                        </select>
+                        <select
+                          aria-label={`Sort ${at + 1} direction`}
+                          value={rule.descending ? 'descending' : 'ascending'}
+                          onChange={(event) =>
+                            setSorts(
+                              sorts.map((held, i) =>
+                                i === at
+                                  ? {
+                                      ...held,
+                                      descending:
+                                        event.target.value === 'descending',
+                                    }
+                                  : held,
+                              ),
+                            )
+                          }
+                          className={SORT_SELECT}
+                        >
+                          <option value="ascending">Ascending</option>
+                          <option value="descending">Descending</option>
+                        </select>
+                        <button
+                          type="button"
+                          aria-label={`Remove sort ${at + 1}`}
+                          onClick={() =>
+                            setSorts(sorts.filter((_, i) => i !== at))
+                          }
+                          className="flex size-6 shrink-0 items-center justify-center rounded-sm text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
+                        >
+                          <X aria-hidden className="size-3" />
+                        </button>
+                      </li>
                     ))}
-                  </MenuRadioGroup>
-                  <MenuSeparator />
-                  <MenuRadioGroup
-                    value={sort?.descending ? 'descending' : 'ascending'}
-                    onValueChange={(direction) =>
-                      sort &&
-                      setSort({
-                        ...sort,
-                        descending: direction === 'descending',
-                      })
-                    }
-                  >
-                    <MenuRadioItem
-                      value="ascending"
-                      disabled={!sort}
-                      closeOnClick={false}
+                  </ul>
+                  {!sorts.length && (
+                    <p className="text-[13px] text-ink-muted">
+                      Not sorted. Add a sort to order the rows.
+                    </p>
+                  )}
+                  <div className="mt-2 flex items-center gap-1">
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={!unsorted}
+                      onClick={() =>
+                        unsorted &&
+                        setSorts([
+                          ...sorts,
+                          { key: unsorted.key, descending: false },
+                        ])
+                      }
                     >
-                      Ascending
-                    </MenuRadioItem>
-                    <MenuRadioItem
-                      value="descending"
-                      disabled={!sort}
-                      closeOnClick={false}
+                      <Plus aria-hidden />
+                      Add sort
+                    </Button>
+                    <span className="flex-1" />
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      disabled={!sorts.length}
+                      onClick={() => setSorts([])}
                     >
-                      Descending
-                    </MenuRadioItem>
-                  </MenuRadioGroup>
-                  <MenuSeparator />
-                  <MenuItem disabled={!sort} onClick={() => setSort(null)}>
-                    Clear sort
-                  </MenuItem>
-                </MenuPopup>
-              </Menu>
+                      Clear sorts
+                    </Button>
+                  </div>
+                </PopoverPopup>
+              </Popover>
               <Menu>
                 <MenuTrigger
                   render={
@@ -1124,85 +1207,91 @@ export function CrmTable({
                         }
                       />
                     </div>
-                    {columns.map((field, col) => {
-                      const sorted = sort?.key === field.key
-                      const header = headerOf.get(field.key)
-                      const isIdentifier = field.key === identifier?.key
-                      const at = movable.findIndex((f) => f.key === field.key)
-                      return (
-                        <div
-                          key={field.key}
-                          role="columnheader"
-                          aria-sort={
-                            sorted
-                              ? sort.descending
-                                ? 'descending'
-                                : 'ascending'
-                              : 'none'
-                          }
-                          className={cn(
-                            'group/header flex shrink-0 items-center border-s border-separator bg-raised',
-                            col === 0 ? 'sticky z-10 border-s-0' : 'relative',
-                          )}
-                          style={{
-                            width: widthOf(field),
-                            left: col === 0 ? CHECK : undefined,
-                          }}
-                        >
-                          <button
-                            type="button"
-                            title={field.description}
-                            onClick={() =>
-                              // Ascending, then descending, then unsorted.
-                              sorted && sort.descending
-                                ? table.getColumn(field.key)?.clearSorting()
-                                : table
-                                    .getColumn(field.key)
-                                    ?.toggleSorting(sorted)
+                    <HeaderDragContext
+                      movable={movable.map((field) => field.key)}
+                      labelOf={labelOfKey}
+                      onMove={dropColumn}
+                    >
+                      {columns.map((field, col) => {
+                        const rule = sorts.find(
+                          (held) => held.key === field.key,
+                        )
+                        const header = headerOf.get(field.key)
+                        const isIdentifier = field.key === identifier?.key
+                        const at = movable.findIndex((f) => f.key === field.key)
+                        return (
+                          <SortableHeader
+                            key={field.key}
+                            id={field.key}
+                            pinned={isIdentifier}
+                            role="columnheader"
+                            aria-sort={
+                              rule
+                                ? rule.descending
+                                  ? 'descending'
+                                  : 'ascending'
+                                : 'none'
                             }
-                            className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                            className={cn(
+                              'group/header flex shrink-0 items-center border-s border-separator bg-raised data-dragging:shadow-md',
+                              col === 0 ? 'sticky z-10 border-s-0' : 'relative',
+                            )}
+                            style={{
+                              width: widthOf(field),
+                              left: col === 0 ? CHECK : undefined,
+                            }}
                           >
-                            <FieldTypeIcon kind={field.field_type.kind} />
-                            <span className="min-w-0 flex-1 truncate">
-                              {field.label}
-                            </span>
-                            {sorted &&
-                              (sort.descending ? (
-                                <ArrowDown
-                                  aria-hidden
-                                  className="size-3 shrink-0"
-                                />
-                              ) : (
-                                <ArrowUp
-                                  aria-hidden
-                                  className="size-3 shrink-0"
-                                />
-                              ))}
-                          </button>
-                          <HeaderMenu
-                            field={field}
-                            isIdentifier={isIdentifier}
-                            canMoveLeft={at > 0}
-                            canMoveRight={at >= 0 && at < movable.length - 1}
-                            onSort={(descending) =>
-                              setSort({ key: field.key, descending })
-                            }
-                            onFilter={() => setFiltering(true)}
-                            onMove={(delta) => moveColumn(field.key, delta)}
-                            onHide={() =>
-                              table
-                                .getColumn(field.key)
-                                ?.toggleVisibility(false)
-                            }
-                          />
-                          {header && header.column.getCanResize() && (
-                            <table.AppHeader header={header}>
-                              {(h) => <h.ResizeHandle />}
-                            </table.AppHeader>
-                          )}
-                        </div>
-                      )
-                    })}
+                            {(drag) => (
+                              <>
+                                <HeaderMenu
+                                  field={field}
+                                  isIdentifier={isIdentifier}
+                                  canMoveLeft={at > 0}
+                                  canMoveRight={
+                                    at >= 0 && at < movable.length - 1
+                                  }
+                                  drag={drag}
+                                  onSort={(descending) =>
+                                    setSorts([{ key: field.key, descending }])
+                                  }
+                                  onSearch={() => setFiltering(true)}
+                                  onMove={(delta) =>
+                                    moveColumn(field.key, delta)
+                                  }
+                                  onHide={() =>
+                                    table
+                                      .getColumn(field.key)
+                                      ?.toggleVisibility(false)
+                                  }
+                                >
+                                  <FieldTypeIcon kind={field.field_type.kind} />
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {field.label}
+                                  </span>
+                                  {rule &&
+                                    (rule.descending ? (
+                                      <ArrowDown
+                                        aria-hidden
+                                        className="size-3 shrink-0"
+                                      />
+                                    ) : (
+                                      <ArrowUp
+                                        aria-hidden
+                                        className="size-3 shrink-0"
+                                      />
+                                    ))}
+                                </HeaderMenu>
+                                {header && header.column.getCanResize() && (
+                                  <table.AppHeader header={header}>
+                                    {(h) => <h.ResizeHandle />}
+                                  </table.AppHeader>
+                                )}
+                              </>
+                            )}
+                          </SortableHeader>
+                        )
+                      })}
+                    </HeaderDragContext>
                     <div
                       role="columnheader"
                       aria-label="Fields"
