@@ -1564,3 +1564,61 @@ fn a_diff_the_panel_cannot_read_says_so_without_the_line_that_failed() {
     assert!(screen.contains("malformed"), "{screen}");
     assert!(!screen.contains(SECRET), "{screen}");
 }
+
+// ---- the cursor after a file leaves its section -------------------------------
+
+#[test]
+fn staging_the_file_under_the_cursor_moves_to_the_next_unstaged_file() {
+    let mut model = loaded(vec![
+        change("src/main.rs", "M", " "),
+        change("a.rs", " ", "M"),
+        change("b.rs", " ", "M"),
+        change("c.rs", " ", "M"),
+    ]);
+    model.select(&key(Section::Unstaged, "a.rs"), false);
+    let stage = model.stage().unwrap();
+    let read = accept_bare(&mut model, &stage);
+    let read = read
+        .iter()
+        .find(|i| i.kind == IntentKind::Status)
+        .expect("a mutation rereads the status");
+    accept(
+        &mut model,
+        read,
+        status(
+            2,
+            vec![
+                change("src/main.rs", "M", " "),
+                change("a.rs", "M", " "),
+                change("b.rs", " ", "M"),
+                change("c.rs", " ", "M"),
+            ],
+        ),
+    );
+    // Not the staged copy of a.rs, which now sits at the old row.
+    assert_eq!(model.cursor(), Some(&key(Section::Unstaged, "b.rs")));
+    // Unstage has nothing to act on there, so it cannot undo another file's staging.
+    assert_eq!(model.unstage().unwrap_err().code(), "no_paths");
+}
+
+#[test]
+fn staging_the_last_unstaged_file_of_several_moves_to_the_one_before() {
+    let mut model = loaded(vec![change("a.rs", " ", "M"), change("b.rs", " ", "M")]);
+    model.select(&key(Section::Unstaged, "b.rs"), false);
+    let read = model.refresh();
+    accept(
+        &mut model,
+        &read,
+        status(2, vec![change("a.rs", " ", "M"), change("b.rs", "M", " ")]),
+    );
+    assert_eq!(model.cursor(), Some(&key(Section::Unstaged, "a.rs")));
+}
+
+#[test]
+fn a_cursor_whose_section_emptied_takes_the_row_now_where_it_was() {
+    let mut model = loaded(vec![change("a.rs", " ", "M")]);
+    model.select(&key(Section::Unstaged, "a.rs"), false);
+    let read = model.refresh();
+    accept(&mut model, &read, status(2, vec![change("a.rs", "M", " ")]));
+    assert_eq!(model.cursor(), Some(&key(Section::Staged, "a.rs")));
+}

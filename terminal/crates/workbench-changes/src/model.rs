@@ -1627,8 +1627,10 @@ impl Changes {
         self.reveal_cursor();
     }
 
-    /// The key to put the cursor on after the list changed: itself, else the row now
-    /// where it was.
+    /// The key to put the cursor on after the list changed: itself; else the next row
+    /// of its own section that is still listed, or the one before it (so staging one
+    /// file after another walks down the unstaged files and never lands on a staged
+    /// one); else, with its section gone, the row now where it was.
     fn nearest(&self, old: &[RowKey], new: &[RowKey], key: Option<RowKey>) -> Option<RowKey> {
         let key = key?;
         if new.contains(&key) {
@@ -1638,6 +1640,12 @@ impl Changes {
             return None;
         }
         let at = old.iter().position(|k| *k == key).unwrap_or(0);
+        let kept = |k: &&RowKey| k.section == key.section && new.contains(k);
+        let after = old.iter().skip(at + 1).find(kept);
+        let before = || old.iter().take(at).rev().find(kept);
+        if let Some(neighbour) = after.or_else(before) {
+            return Some(neighbour.clone());
+        }
         Some(new[at.min(new.len() - 1)].clone())
     }
 
