@@ -18,6 +18,7 @@
     "e2e:app-db": "node scripts/e2e/app-db.mjs",
     "e2e:app-ts": "node scripts/e2e/app-ts.mjs",
     "e2e:workbench": "node scripts/e2e/workbench.mjs",
+    "e2e:admit": "node scripts/e2e/admit.mjs",
     "dev": "sh terminal/build.sh && bun --bun vite dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "sh scripts/build.sh",

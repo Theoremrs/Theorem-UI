@@ -327,9 +327,10 @@ async function choose(page, re, key = 'Enter') {
 }
 
 /** Takes control the way a person does: a key to be told why not, then Enter to ask. */
+/** An observer's first key sends nothing: the pane offers control, and Enter takes it. */
 async function takeControl(page) {
-  await page.keyboard.press('Shift')
-  await pause(300)
+  await page.keyboard.press('x')
+  await waitFor(page, /Enter requests control/, 'the offer of control')
   await page.keyboard.press('Enter')
   await waitFor(page, /\| controlling \|/, 'controlling')
 }

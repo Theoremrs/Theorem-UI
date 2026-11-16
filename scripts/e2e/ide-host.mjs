@@ -10,13 +10,14 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
+  chmodSync,
   closeSync,
   copyFileSync,
   existsSync,
-  chmodSync,
   mkdirSync,
   openSync,
   readFileSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
@@ -68,10 +69,16 @@ export function prepareIdeHost() {
   if (!core || !existsSync(core)) throw new Error('Set E2E_HERDR_HC to a herdr-core binary.')
   for (const dir of [DIR, BIN_DIR, HOST_ROOT, XDG_STATE, XDG_RUNTIME])
     mkdirSync(dir, { recursive: true, mode: 0o700 })
-  copyFileSync(host, HOST_COPY)
-  copyFileSync(core, HC_COPY)
-  chmodSync(HOST_COPY, 0o755)
-  chmodSync(HC_COPY, 0o755)
+  // Each copy lands under a new name and is renamed over the old one. macOS kills a program whose
+  // file was written over while a copy of it was running, and the core usually is.
+  for (const [from, to] of [
+    [host, HOST_COPY],
+    [core, HC_COPY],
+  ]) {
+    copyFileSync(from, `${to}.new`)
+    chmodSync(`${to}.new`, 0o755)
+    renameSync(`${to}.new`, to)
+  }
   if (!existsSync(TOKEN_FILE))
     writeFileSync(TOKEN_FILE, randomBytes(32).toString('hex'), { mode: 0o600 })
   writeFileSync(NO_LANGUAGE_SERVERS, '[]')
