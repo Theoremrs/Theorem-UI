@@ -18,19 +18,10 @@ import { randomUUID } from 'node:crypto'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { DATA_DIR, OTHER_ACCOUNT, STANDIN, UI } from './config.mjs'
-import { READ, SHOTS, check, finish, log, open } from './lib.mjs'
+import { SHOTS, check, finish, log, open } from './lib.mjs'
+import { records, reset } from './crm-records.mjs'
 import { turns } from './turns.mjs'
 
-const BUILT_IN = [
-  'Person',
-  'Organization',
-  'Relationship',
-  'Activity',
-  'Commitment',
-  'Interaction',
-  'Goal',
-  'Constraint',
-]
 const PHONE = '555-0100'
 const PRIVATE_NOTE = 'Noor mentioned the studio may close'
 const OTHER_WORKSPACE = "Blake's landlord"
@@ -39,60 +30,6 @@ const LIST = 'List my interactions'
 const FOLLOW_UP =
   'Has that changed? When is the materials list for Noor due now?'
 const RECORD_SOURCE = 'life_context_record'
-
-const RECORD_VERB = `mutation RecordVerb($objectTypeId: String!, $verb: String!, $input: JSON!) {
-  invokeRecordVerb(objectTypeId: $objectTypeId, verb: $verb, input: $input)
-}`
-
-/** Theorem's typed record API, as the signed-in browser reaches it. */
-function records(session) {
-  const { writing } = turns(session)
-  async function graphql(query, variables = {}) {
-    const response = await session.context.request.fetch(`${UI}/graphql`, {
-      ...READ,
-      method: 'POST',
-      headers: await writing({ 'Content-Type': 'application/json' }),
-      data: { query, variables },
-    })
-    const body = await response.json().catch(() => ({}))
-    if (body.errors?.length || !body.data)
-      throw new Error(
-        `GraphQL refused: ${JSON.stringify(body.errors ?? response.status())}`,
-      )
-    return body.data
-  }
-  const verb = async (objectTypeId, name, input) => {
-    const out = (
-      await graphql(RECORD_VERB, { objectTypeId, verb: name, input })
-    ).invokeRecordVerb
-    return out?.record ?? out
-  }
-  const types = async () =>
-    (await graphql('{ dataModel(includeObserved: false) { objectTypes } }'))
-      .dataModel.objectTypes
-  return { graphql, types, verb }
-}
-
-/** Install the built-in types and remove every record of them, so a run starts clean. */
-async function reset(api) {
-  await api.graphql('mutation { installLifeContextTypes }')
-  const byName = Object.fromEntries(
-    (await api.types()).map((type) => [type.name_singular, type]),
-  )
-  for (const name of BUILT_IN) {
-    const type = byName[name]
-    const page = await api.verb(type.object_type_id, 'find_many', {
-      limit: 1000,
-      offset: 0,
-    })
-    for (const record of page.records ?? [])
-      await api.verb(type.object_type_id, 'delete_one', {
-        id: record.id,
-        expected_revision: record.version,
-      })
-  }
-  return byName
-}
 
 const requests = async () => (await fetch(`${STANDIN}/__requests`)).json()
 

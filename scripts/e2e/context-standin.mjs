@@ -10,6 +10,11 @@
 // Asked to "list my <type>", it calls Theorem's look-up tool when the request
 // offers it, and answers from what the tool returned.
 //
+// Asked to "move the materials list to <day>", it looks the commitments and
+// interactions up, proposes the new due day with Theorem's propose tool,
+// naming the planning call as support, and then says what became of the
+// proposal. It never says a change was saved: the person decides.
+//
 // It keeps whole requests, so it is for synthetic data only. Nothing here
 // reaches a real provider and no real key is involved.
 import { createServer } from 'node:http'
@@ -85,15 +90,71 @@ function sinceAsked(body) {
   return { asked: messages[asked], after: messages.slice(asked + 1) }
 }
 
-/** The look-up to make for this request, when it asks for one and has none yet. */
-function lookUpFor(body) {
-  const offered = (body?.tools ?? []).some(
-    (tool) => (tool?.function?.name ?? tool?.name) === LOOK_UP,
-  )
+const PROPOSE = 'saved_records_propose_change'
+
+const offers = (body, name) =>
+  (body?.tools ?? []).some((tool) => (tool?.function?.name ?? tool?.name) === name)
+
+const parsed = (message) => {
+  try {
+    return JSON.parse(text(message.content))
+  } catch {
+    return undefined
+  }
+}
+
+/** The day the person asked to move the materials list to, if they did. */
+const movedTo = (body) =>
+  /move .*materials list.* to (\w+day)/i.exec(text(sinceAsked(body).asked?.content))?.[1]
+
+/** The tool call to make for this request, when it needs one it has not made. */
+function callFor(body) {
   const { asked, after } = sinceAsked(body)
-  if (!offered || after.some((message) => message.role === 'tool')) return
+  const results = after.filter((message) => message.role === 'tool').map(parsed)
+  const day = movedTo(body)
+  if (day && offers(body, PROPOSE)) {
+    if (results.length === 0)
+      return { name: LOOK_UP, arguments: { types: ['Commitment', 'Interaction'] } }
+    if (results.length > 1) return
+    const found = results[0]?.records ?? []
+    const target = found.find(
+      (entry) =>
+        entry.record?.type === 'Commitment' &&
+        /materials list/i.test(entry.record?.fields?.title ?? ''),
+    )
+    if (!target) return
+    const support = found
+      .filter((entry) => /planning call/i.test(entry.record?.fields?.summary ?? ''))
+      .map((entry) => entry.reference)
+    return {
+      name: PROPOSE,
+      arguments: {
+        record: target.reference,
+        fields: { due: day },
+        reason: `You asked to move the materials list to ${day}.`,
+        evidence: support,
+      },
+    }
+  }
+  if (!offers(body, LOOK_UP) || results.length) return
   const type = /list (?:all )?my (\w+)/i.exec(text(asked?.content))?.[1]
-  return type ? { types: [type] } : undefined
+  return type ? { name: LOOK_UP, arguments: { types: [type] } } : undefined
+}
+
+/** What became of a proposal this request made, in words. */
+function proposed(body) {
+  const day = movedTo(body)
+  if (!day) return
+  const result = sinceAsked(body)
+    .after.filter((message) => message.role === 'tool')
+    .map(parsed)
+    .find((value) => value && ('proposal_id' in value || 'error' in value))
+  if (!result) return
+  if (result.status === 'pending_approval')
+    return `I proposed moving the materials list to ${day}. Nothing is saved until you approve it.`
+  if (result.error === 'proposal_dismissed')
+    return `You dismissed moving it to ${day}, so I left it as it is.`
+  return `I could not propose that: ${result.error}.`
 }
 
 /** The records a look-up returned to this request, if it made one. */
@@ -113,6 +174,8 @@ function lookedUp(body) {
 
 /** One sentence per admitted record, from its serialized content and nothing else. */
 function reply(body) {
+  const outcome = proposed(body)
+  if (outcome) return outcome
   const found = lookedUp(body)
   const given = found.length
     ? found
@@ -164,11 +227,11 @@ createServer(async (req, res) => {
     recordSpans: recordSpans(body),
     modelSpans: modelSpans(body),
   })
-  const lookUp = lookUpFor(body)
-  const call = lookUp && {
+  const next = callFor(body)
+  const call = next && {
     id: `call-${requests.length}`,
     type: 'function',
-    function: { name: LOOK_UP, arguments: JSON.stringify(lookUp) },
+    function: { name: next.name, arguments: JSON.stringify(next.arguments) },
   }
   const content = call ? null : reply(body)
   const finish = call ? 'tool_calls' : 'stop'
