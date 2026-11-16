@@ -136,7 +136,8 @@ export const conversationServices: ConversationServices = {
     await sendApprovalDecision(runId, { approvalId, toolCallId }, choice)
   },
   sendInput: async ({ runId, inputId, text }) => {
-    await sendRunInput(runId, text, inputId)
+    const receipt = await sendRunInput(runId, text, inputId)
+    return { inputId: receipt.inputId }
   },
   openUnder: (threadId, projectId) =>
     useShell

@@ -21,7 +21,10 @@ function setup() {
     runtime: stub.runtime,
     services: {
       answerApproval: async (request) => void answers.push(request),
-      sendInput: async (request) => void inputs.push(request),
+      sendInput: async (request) => {
+        inputs.push(request)
+        return { inputId: `in-${inputs.length}` }
+      },
       openUnder: (threadId, projectId) =>
         void asked.push([threadId, projectId]),
     },
@@ -342,7 +345,7 @@ describe('side chats', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
       },
       workspaceId: 'w1',
       schedule: (callback) => {
@@ -582,7 +585,7 @@ describe('switching a branch through the port', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
         history: async () =>
           ({
             rootBranchId: 'b0',

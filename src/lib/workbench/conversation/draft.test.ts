@@ -112,7 +112,7 @@ function setup(extra: Partial<ConversationServices> = {}) {
   let chosen: File[] = []
   const services: ConversationServices = {
     answerApproval: async () => {},
-    sendInput: async () => {},
+    sendInput: async () => ({ inputId: 'in-1' }),
     references: {
       add: (references) => {
         added.push(references)
@@ -232,7 +232,10 @@ describe('draft attachments', () => {
     const stub = new StubRuntime()
     const bare = createConversation({
       runtime: stub.runtime,
-      services: { answerApproval: async () => {}, sendInput: async () => {} },
+      services: {
+        answerApproval: async () => {},
+        sendInput: async () => ({ inputId: 'in-1' }),
+      },
       workspaceId: 'w1',
     })
     expect(bare.canAttach).toBe(false)

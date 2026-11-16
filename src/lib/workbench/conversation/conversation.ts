@@ -77,12 +77,15 @@ export interface ConversationServices {
     toolCallId: string
     choice: { optionId: string } | { decision: ApprovalDecision }
   }) => Promise<void>
-  /** Words for a run that is working; they join it and never stop it. */
+  /**
+   * Words for a run that is working; they join it and never stop it. `inputId` is the request's
+   * key; the answer is the id Theorem gave the input, the one the transcript shows it under.
+   */
   sendInput: (request: {
     runId: string
     inputId: string
     text: string
-  }) => Promise<void>
+  }) => Promise<{ inputId: string }>
   /**
    * Says which project a thread is to open under before it is switched to (a thread placed in several
    * projects, picked under one of them), or takes that back with no project when the switch fails. Absent:
@@ -474,6 +477,8 @@ export function createConversation({
   const sends = new Map<string, Completion<Sent>>()
   const inFlight = new Map<string, Promise<Completion<Sent>>>()
   const outbox = new Map<string, QueuedInput>()
+  /** The id Theorem gave each accepted input, by client message id. */
+  const theoremInputIds = new Map<string, string>()
   /** Approvals an answer went out for; an answer that was accepted or whose result is unknown stands. */
   const answered = new Set<string>()
 
@@ -806,7 +811,10 @@ export function createConversation({
       conversationId: conversationId(),
       loading: state.isLoading,
       ...transcript,
-      queued: [...outbox.values()].filter((q) => !shown.has(q.clientMessageId)),
+      queued: [...outbox.values()].filter((q) => {
+        const inputId = theoremInputIds.get(q.clientMessageId)
+        return inputId === undefined || !shown.has(inputId)
+      }),
       ...(historyOf() && { history: historyOf() }),
       ...(used?.window !== undefined && {
         context: { usedTokens: used.tokens, windowTokens: used.window },
@@ -1057,7 +1065,12 @@ export function createConversation({
         })
         changed()
         try {
-          await services.sendInput({ runId, inputId: id, text: request.text })
+          const sent = await services.sendInput({
+            runId,
+            inputId: id,
+            text: request.text,
+          })
+          theoremInputIds.set(id, sent.inputId)
         } catch (error) {
           const result = failure(answers, error, true)
           outbox.set(id, {
