@@ -5,8 +5,6 @@
 // TheoremWeb uses (stroke outlines; provenance in PROVENANCE.md).
 import type { CSSProperties, ComponentProps, FC } from 'react'
 import { cn } from '@/lib/utils'
-import Microphone from '@/assets/icons/composer/noun-microphone-8216254.svg?react'
-import Refresh from '@/assets/icons/composer/noun-refresh-8086048.svg?react'
 import CopiedMark from '@/assets/icons/message/theorem-copied.svg?react'
 import EditMark from '@/assets/icons/message/theorem-edit.svg?react'
 import MoreMark from '@/assets/icons/message/theorem-more.svg?react'
@@ -219,6 +217,8 @@ export const painted = (
   shift = 0,
   /** true for SOFT, or a mark's own layer-to-paint map. */
   soft: boolean | LayerPaint = false,
+  /** A mark that is itself a state (approved) keeps its colours at rest. */
+  state = false,
 ): PaintedMark => {
   const paint = soft === true ? SOFT : soft || undefined
   return function PaintedMark({ className, style, ...props }) {
@@ -227,6 +227,7 @@ export const painted = (
         aria-hidden="true"
         {...props}
         className={cn('rail-mark size-4', className)}
+        data-mark-state={state || undefined}
         style={{ ...style, '--rail-shift': shift } as CSSProperties}
       >
         {ORDER.map((layer) => {
@@ -446,6 +447,10 @@ const Hide = painted(CONTROL_LAYERS.hide, 180, true)
 const Stop = painted(CONTROL_LAYERS.stop, 0, true)
 const Detach = painted(CONTROL_LAYERS.detach, 45, true)
 const MicOff = painted(CONTROL_LAYERS.micOff, 0, true)
+const Microphone = painted(CONTROL_LAYERS.microphone, 0, true)
+const Refresh = painted(CONTROL_LAYERS.refresh, 180, true)
+/** A tool call or request the person allowed; a menu's tick stays Check. */
+const Approved = painted(CONTROL_LAYERS.approved, 135, true, true)
 
 export const Icon = {
   Group: SquareDashed,
@@ -560,6 +565,7 @@ export const Icon = {
   Thread,
   Memory,
   Approval,
+  Approved,
   ToolDone,
   ToolRunning,
   Unpin,

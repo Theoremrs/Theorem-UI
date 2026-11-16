@@ -98,6 +98,13 @@ import detachAccent from './detach-accent.svg'
 import detachPaper from './detach-paper.svg'
 import micOffLine from './micOff-line.svg'
 import micOffAccent from './micOff-accent.svg'
+import microphoneLine from './microphone-line.svg'
+import microphoneAccent from './microphone-accent.svg'
+import refreshLine from './refresh-line.svg'
+import refreshTint from './refresh-tint.svg'
+import approvedLine from './approved-line.svg'
+import approvedAccent from './approved-accent.svg'
+import approvedTint from './approved-tint.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -132,6 +139,9 @@ export const CONTROL_LAYERS = {
   stop: { line: stopLine, accent: stopAccent, paper: stopPaper },
   detach: { line: detachLine, accent: detachAccent, paper: detachPaper },
   micOff: { line: micOffLine, accent: micOffAccent },
+  microphone: { line: microphoneLine, accent: microphoneAccent },
+  refresh: { line: refreshLine, tint: refreshTint },
+  approved: { line: approvedLine, accent: approvedAccent, tint: approvedTint },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

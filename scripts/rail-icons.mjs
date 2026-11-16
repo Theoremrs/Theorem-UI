@@ -116,6 +116,12 @@ export const CONTROLS = [
   { name: 'stop', source: 'control/source/streamline-button-stop-1.png' },
   { name: 'detach', source: 'control/source/streamline-expand-6.png' },
   { name: 'micOff', source: 'control/source/streamline-microphone-off.png' },
+  { name: 'microphone', source: 'control/source/streamline-microphone.png' },
+  {
+    name: 'refresh',
+    source: 'control/source/streamline-button-refresh-arrows.png',
+  },
+  { name: 'approved', source: 'control/source/streamline-check-2.png' },
 ]
 
 /**

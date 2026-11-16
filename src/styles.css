@@ -1389,6 +1389,7 @@
      palette, the mode and the glass the same way the colours do. Owner's
      review, 2026-11-15. */
   .rail-mark:not(
+    [data-mark-state],
     :is(
         [data-appearance-part='rail'],
         [aria-pressed='true'],

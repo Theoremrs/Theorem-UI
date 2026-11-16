@@ -727,12 +727,21 @@
 /* The stop mark on a filled action (Cancel, Stop generating) and the
    microphone-off of a running dictation are drawn in their button's own
    colour: the ring and the square on the destructive fill, and the mark in
-   the recording red. Their fills are a faint wash of it. */
-:is(.aui-composer-cancel-icon, .aui-composer-stop-dictation-icon).rail-mark
+   the recording red, and the resume arrows on theirs. Their fills are a
+   faint wash of it. */
+:is(
+    .aui-composer-cancel-icon,
+    .aui-composer-stop-dictation-icon,
+    .aui-composer-resume-icon
+  ).rail-mark
   > .icon-mask {
   background-color: color-mix(in oklab, currentColor 22%, transparent);
 }
-:is(.aui-composer-cancel-icon, .aui-composer-stop-dictation-icon).rail-mark
+:is(
+    .aui-composer-cancel-icon,
+    .aui-composer-stop-dictation-icon,
+    .aui-composer-resume-icon
+  ).rail-mark
   > [data-layer='line'],
 .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
   background-color: currentColor;

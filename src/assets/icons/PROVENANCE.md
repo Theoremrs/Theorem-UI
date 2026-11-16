@@ -734,3 +734,20 @@ Retired with this change, and removed from the tree:
 | `records/noun-expand-8086092.svg`    | `ea84fb04d755d2779822ad12e05e486b07fa07b57987642a08a2a5b05d18f65f` | Expand            |
 | `records/noun-eye-8086063.svg`       | `34f002e915ec846d0892446e012c1d05db82d366008a677204bde5db2853c873` | Eye               |
 | `records/noun-link-8086078.svg`      | `224dbfbb1129c46d5d15233d5dc361716d217a10c5061986a63f176f775a283a` | Link              |
+
+Added from the owner's later downloads of 2026-11-15 ("PNG11", "PNG12" and
+"PNG2"). Approved is a state, so it keeps its colours at rest
+(`painted(..., state)` sets `data-mark-state`).
+
+| Mark       | Where                                                                 | Source                                                           | Streamline name            | Style   | SHA-256                                                            |
+| ---------- | --------------------------------------------------------------------- | ---------------------------------------------------------------- | -------------------------- | ------- | ------------------------------------------------------------------ |
+| Microphone | Start dictation                                                       | `streamline/control/source/streamline-microphone.png`            | Microphone (24px download) | colored | `d2df3c8e8f888d8dab44fd9c70150cfe8c138826fabcab70dc2d213b1c1c76b1` |
+| Refresh    | Refresh, retry, resume, and the spinning wait                         | `streamline/control/source/streamline-button-refresh-arrows.png` | Button Refresh Arrows      | colored | `e4adcffe226c257e0e174395ef30ad34e43ded7e0e44c853b749dd391022ebc5` |
+| Approved   | An allowed tool call and a finished approval; a menu tick stays Check | `streamline/control/source/streamline-check-2.png`               | Check 2                    | colored | `dfe447a93b4528e390d36b29b6cd28d1a524350158d9dd165ff716d7de4061a3` |
+
+Retired with them, and removed from the tree:
+
+| File                                   | Digest                                                             | Was        |
+| -------------------------------------- | ------------------------------------------------------------------ | ---------- |
+| `composer/noun-microphone-8216254.svg` | `4e6cdaa318bf1d49ff204fa8834a491789fe651ca222091601edda9fc199be03` | Microphone |
+| `composer/noun-refresh-8086048.svg`    | `ec0b1e2d68207b399efed91bf3bfe227130941f4b04f6920603594e18a9260d8` | Refresh    |
