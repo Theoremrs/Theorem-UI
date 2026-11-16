@@ -1053,14 +1053,40 @@ impl ProcessPanel {
         }
     }
 
+    /// The coding profile this pane's bound terminal runs, if it is one: the
+    /// profile it was opened from here, else the one the host names for the
+    /// session. `code.send` and `code.stop` act on coding sessions only.
+    fn coding_profile(&self) -> Option<String> {
+        let Stage::Bound(b) = &self.stage else {
+            return None;
+        };
+        let named = b.profile.as_ref().map(|c| c.id.clone()).or_else(|| {
+            self.catalog
+                .snapshot(&b.workspace)
+                .sessions
+                .iter()
+                .find(|s| s.session == b.session && s.workspace == b.workspace)
+                .map(|s| s.profile.clone())
+        });
+        named.filter(|id| CODING_PROFILES.iter().any(|(_, label)| id == label))
+    }
+
     /// `code.send` pastes the words and presses Enter; `code.stop` sends
     /// Ctrl-C, which asks the program to stop and never ends the process.
     fn type_coding(&mut self, cx: &mut Ctx, send: bool) {
+        let coding = self.coding_profile();
         let text = cx.args().input().map(str::to_owned);
         let Some(b) = self.bound_mut() else {
             cx.refuse("This shell is not attached to a terminal.");
             return;
         };
+        if coding.is_none() {
+            let action = if send { "code.send" } else { "code.stop" };
+            cx.refuse(format!(
+                "{action} steers a claude or codex coding session, not this shell."
+            ));
+            return;
+        }
         if b.end == EndAsk::Asking {
             cx.refuse("The person is being asked whether to end this process.");
             return;

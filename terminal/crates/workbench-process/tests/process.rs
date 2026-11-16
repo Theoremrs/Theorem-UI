@@ -55,12 +55,16 @@ fn named(workspace: &str) -> Msg {
 }
 
 fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
+    session_named(name, backend, "zsh")
+}
+
+fn session_named(name: &str, backend: TerminalBackend, profile: &str) -> TerminalSessionInfo {
     TerminalSessionInfo {
         name: None,
         cwd: None,
         admitted: true,
         session: name.into(),
-        profile: "zsh".into(),
+        profile: profile.into(),
         backend,
         workspace: "w".into(),
         host: Some("devbox".into()),
@@ -100,6 +104,14 @@ fn listing(workspace: &str, sessions: Vec<TerminalSessionInfo>) -> Msg {
 
 fn data() -> Msg {
     listing("w", vec![session("s1", TerminalBackend::Herdr)])
+}
+
+/// A host listing whose session `s1` runs the Claude Code coding profile.
+fn coding_listing() -> Msg {
+    listing(
+        "w",
+        vec![session_named("s1", TerminalBackend::Herdr, "Claude Code (Herdr)")],
+    )
 }
 
 fn palette() -> Palette {
@@ -4071,6 +4083,7 @@ fn an_unavailable_coding_profile_is_refused_with_the_reason_and_no_shell_is_left
 #[test]
 fn code_send_pastes_then_presses_enter_and_code_stop_sends_ctrl_c() {
     let mut r = rig();
+    r.send(coding_listing());
     r.live();
     let id = r.id.as_str().to_owned();
     let (outcome, fx) = act(
@@ -4127,7 +4140,11 @@ fn code_send_is_refused_without_words_and_on_an_observer() {
         "{outcome:?}"
     );
 
-    let mut r = observing();
+    let mut r = rig();
+    r.send(coding_listing());
+    let fx = r.key(Key::Char('o'));
+    let attach = only_attach(&fx);
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
     let id = r.id.as_str().to_owned();
     let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
     assert!(fx.is_empty(), "an observer types nothing: {fx:?}");
@@ -4141,6 +4158,45 @@ fn code_send_is_refused_without_words_and_on_an_observer() {
         ),
         "{outcome:?}"
     );
+}
+
+#[test]
+fn code_send_and_code_stop_refuse_a_shell_that_is_not_a_coding_session() {
+    let mut r = bound();
+    let id = r.id.as_str().to_owned();
+    for (action, args) in [
+        ("code.send", Some(r#"{"input":"rm -rf /"}"#)),
+        ("code.stop", None),
+    ] {
+        let (outcome, fx) = act(&mut r.m, action, Some(&id), args);
+        assert!(fx.is_empty(), "{action} typed into a plain shell: {fx:?}");
+        let AgentOutcome::Refused { code, reason } = &outcome else {
+            panic!("{action} accepted: {outcome:?}")
+        };
+        assert_eq!(*code, RefusalCode::Unavailable);
+        assert!(reason.contains("coding session"), "{reason}");
+    }
+}
+
+#[test]
+fn code_send_steers_an_adopted_coding_session_the_host_names() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(sent, vec!["run the tests".to_owned(), "\r".to_owned()]);
+    assert!(fx.iter().all(|e| e.actor == agent()));
 }
 
 #[test]
