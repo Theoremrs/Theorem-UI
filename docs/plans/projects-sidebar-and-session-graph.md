@@ -334,6 +334,11 @@ record per project (`theorem-chat-project-context/1`), `GET` and `PUT
   - Documents: the chat Library (`GET /api/chat/v1/library`), searchable.
     A source that cannot be read is listed but cannot be added; one the
     project names that the Library no longer lists can still be taken out.
+    Upload puts a file from this machine in the project and keeps it in the
+    Library (`POST /api/chat/v1/projects/:project_id/uploads`, then `POST
+    /api/chat/v1/library/uploads/:upload_id/retain`), ticked and listed
+    first; Save names it. The intake's bounds are said before Theorem
+    refuses: 16 MB, and the types `DOCUMENT_ACCEPT` lists.
   - Repositories: the GitHub connection's tracked repositories, or a link to
     Settings → Connections when there are none or GitHub is not connected.
   - Links: an address and an optional title, checked as Theorem checks them
@@ -344,6 +349,17 @@ record per project (`theorem-chat-project-context/1`), `GET` and `PUT
   overwrites another kind. A write refused for its revision (409) is re-read
   and applied once more. Theorem's other refusals (422) are said in the
   editor, which stays open.
+- **Entries no longer held:** Theorem asks the owners only about entries a
+  write adds, so a document deleted, a repository no longer tracked or a
+  connection removed afterwards stays on the record and sessions stop being
+  given it. `GET /api/chat/v1/projects/:project_id/context/availability`
+  says which; the column marks each one ("· removed", "· not tracked",
+  "· not readable"). A Theorem that cannot say marks none. Such an entry
+  never blocks another edit, and can be taken out like any other.
+- **From a session:** a conversation turn in the project can read and
+  replace the context itself (`read_project_context`,
+  `write_project_context` in Theorem's contract). This page needs nothing
+  for that: it shows what Theorem holds when it is next read.
 - **States:** loading; a Theorem without the routes (a bare 404 or 405) says
   "This Theorem does not serve project context yet."; a project Theorem no
   longer has (`chat_resource_not_found`) says so; any other failure says why,
@@ -363,9 +379,14 @@ record per project (`theorem-chat-project-context/1`), `GET` and `PUT
   the Library and the Connections routes in memory, with the contract's
   refusals, on every story (`/story/project-home` shows the column).
 
-Not in this change: adding a file straight into project context (files reach
-the Library from a chat first), an agent capability that edits context, and
-per-project databases.
+- **End to end:** `bun run e2e:project-context`, against a stack started
+  with `E2E_SCRIPTED_MODEL=1` (`scripts/e2e/scripted-model.mjs`, a model that
+  follows a rule). The real server, sign-in and this UI: a link and an
+  uploaded file are saved from the page, a session in the project is given
+  both and adds a link itself, and a file deleted from the Library afterwards
+  is marked without blocking another edit.
+
+Not in this change: per-project databases.
 
 ## Shared layout
 

@@ -59,7 +59,13 @@ export async function open(path = '/', { browser: name = 'chromium' } = {}) {
   const browser =
     name === 'firefox'
       ? await firefox.launch({ channel: 'moz-firefox' })
-      : await chromium.launch({ channel: 'chromium' })
+      : await chromium.launch(
+          // E2E_CHROMIUM names a Chromium already on this machine, where
+          // Playwright's own download is not the one installed.
+          process.env.E2E_CHROMIUM
+            ? { executablePath: process.env.E2E_CHROMIUM }
+            : { channel: 'chromium' },
+        )
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
     colorScheme: 'dark',

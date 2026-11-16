@@ -1,4 +1,4 @@
-// SOURCING: @tanstack/react-query over lib/theorem/passthrough and client.mutate (the CSRF and idempotency headers every Theorem mutation carries), for routes the vendored SDK has no client for yet; the wire types are copied from Theorem's docs/plans/project-context/CONTRACT.md, and the Library's from GET /api/chat/v1/library (rustyred-thg-server theorem_chat_library). A revisioned edit is re-read and re-applied once on a conflict, as lib/theorem/spaces edits a Space.
+// SOURCING: @tanstack/react-query over lib/theorem/passthrough and client.mutate (the CSRF and idempotency headers every Theorem mutation carries), for routes the vendored SDK has no client for yet; the wire types are copied from Theorem's docs/plans/project-context/CONTRACT.md, and the Library's from GET /api/chat/v1/library (rustyred-thg-server theorem_chat_library). A file goes up through imports' uploadFile (the project's uploads route) and is kept by uploads' retainUpload. A revisioned edit is re-read and re-applied once on a conflict, as lib/theorem/spaces edits a Space.
 import {
   queryOptions,
   useMutation,
@@ -7,7 +7,9 @@ import {
 } from '@tanstack/react-query'
 import { TheoremError } from '@theoremharness/sdk'
 import { mutate } from './client'
+import { uploadFile } from './imports'
 import { isNotServed, theoremJson } from './passthrough'
+import { retainUpload } from './uploads'
 
 /** A source a turn can read by reference: what the Library lists. */
 export type ContextReference = {
@@ -40,6 +42,23 @@ export type ProjectContextBody = Pick<
 
 export type ProjectContextKind =
   'documents' | 'repositories' | 'links' | 'connections'
+
+/**
+ * An entry the project names that the person no longer holds: a document
+ * they cannot read, a repository they stopped tracking, a connection that
+ * is gone. Sessions are not given these.
+ */
+export type UnavailableEntry =
+  | { list: 'documents'; reference: ContextReference; reason: string }
+  | { list: 'repositories'; fullName: string; reason: string }
+  | { list: 'connections'; id: string; reason: string }
+
+export type ContextAvailability = {
+  projectId: string
+  /** The revision of the context these entries were read from. */
+  revision: number
+  unavailable: UnavailableEntry[]
+}
 
 /** One Library entry; `reference` is what the project's context keeps. */
 export type LibraryItem = {
@@ -81,6 +100,8 @@ export const projectContextApi = {
         body,
       }),
     ),
+  availability: (projectId: string) =>
+    theoremJson<ContextAvailability>(`${contextPath(projectId)}/availability`),
   library: (projectId: string) =>
     theoremJson<{ items: LibraryItem[] }>(
       `/api/chat/v1/library?${new URLSearchParams({ projectId })}`,
@@ -105,9 +126,68 @@ export const useProjectContext = (projectId: string | undefined) =>
     enabled: projectId !== undefined,
   })
 
+export const projectAvailabilityKey = (projectId: string) =>
+  [...projectContextKey(projectId), 'availability'] as const
+
+/** Which entries are no longer held. A Theorem that cannot say flags none. */
+export const projectAvailabilityQuery = (projectId: string) =>
+  queryOptions({
+    queryKey: projectAvailabilityKey(projectId),
+    queryFn: () => projectContextApi.availability(projectId),
+    staleTime: 30_000,
+    retry: false,
+  })
+
+export const useProjectAvailability = (projectId: string | undefined) =>
+  useQuery({
+    ...projectAvailabilityQuery(projectId ?? ''),
+    enabled: projectId !== undefined,
+  })
+
+/** Why an entry is unavailable, in a word or two beside its name. */
+export function unavailableNote(entry: UnavailableEntry): string {
+  switch (entry.list) {
+    case 'repositories':
+      return 'not tracked'
+    case 'connections':
+      return 'removed'
+    case 'documents':
+      return entry.reason === 'source_not_found' ||
+        entry.reason === 'source_removed'
+        ? 'removed'
+        : 'not readable'
+  }
+}
+
+const libraryKey = (projectId: string) =>
+  ['theorem', 'library', projectId] as const
+
+/**
+ * Puts a file in the project and keeps it in the Library, and returns it as
+ * the document the project's context names.
+ */
+export async function uploadProjectDocument(
+  projectId: string,
+  file: File,
+): Promise<ContextDocument> {
+  const { uploadId } = await uploadFile(projectId, file)
+  await retainUpload(uploadId)
+  return {
+    reference: { kind: 'upload', id: uploadId },
+    title: documentTitle(file.name),
+  }
+}
+
+/** What a project's documents take, as Theorem's upload intake reads them. */
+export const DOCUMENT_ACCEPT =
+  'text/plain,text/markdown,text/html,text/csv,application/json,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png,image/jpeg,image/gif,image/webp,.md,.csv,.txt,.docx'
+
+/** The intake's bound on one file. */
+export const DOCUMENT_MAX_BYTES = 16 * 1024 * 1024
+
 export const libraryQuery = (projectId: string) =>
   queryOptions({
-    queryKey: ['theorem', 'library', projectId] as const,
+    queryKey: libraryKey(projectId),
     queryFn: async () => (await projectContextApi.library(projectId)).items,
     staleTime: 30_000,
   })
@@ -180,8 +260,13 @@ export function useEditProjectContext(projectId: string) {
         return attempt(true)
       }
     },
-    onSuccess: (context) =>
-      queryClient.setQueryData(projectContextKey(projectId), context),
+    onSuccess: (context) => {
+      queryClient.setQueryData(projectContextKey(projectId), context)
+      // What is held was asked about the context before this one.
+      void queryClient.invalidateQueries({
+        queryKey: projectAvailabilityKey(projectId),
+      })
+    },
   })
 }
 

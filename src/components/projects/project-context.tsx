@@ -1,9 +1,10 @@
-// SOURCING: lib/theorem/project-context (Theorem's project context routes, docs/plans/project-context/CONTRACT.md, and the chat Library it picks documents from), lib/theorem/connections (the GitHub connection's tracked repositories and the connection list, as Settings → Connections reads them), ui/dialog over Base UI Dialog with coss Checkbox and Input and Base UI RadioGroup (as components/workspace/folder-settings-dialog draws its choice), @tanstack/react-router Link for a document's page, lucide-react marks for the four kinds. Each kind points at the owner that holds the thing; the project only says which ones are its own.
+// SOURCING: lib/theorem/project-context (Theorem's project context routes, docs/plans/project-context/CONTRACT.md, the chat Library it picks documents from and the project's uploads route a file goes up through), lib/theorem/connections (the GitHub connection's tracked repositories and the connection list, as Settings → Connections reads them), ui/dialog over Base UI Dialog with coss Checkbox and Input and Base UI RadioGroup (as components/workspace/folder-settings-dialog draws its choice), @tanstack/react-router Link for a document's page, lucide-react marks for the four kinds. Each kind points at the owner that holds the thing; the project only says which ones are its own.
 import { Radio } from '@base-ui/react/radio'
 import { RadioGroup } from '@base-ui/react/radio-group'
 import { Link } from '@tanstack/react-router'
-import { FileText, FolderGit2, Link2, Plug, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { FileText, FolderGit2, Link2, Plug, Upload, X } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Checkbox } from '@/components/coss/checkbox'
 import { StatusBadge } from '@/components/connections/parts'
@@ -22,16 +23,22 @@ import { useConnections, useGithub } from '@/lib/theorem/connections'
 import type { Connection } from '@/lib/theorem/connections'
 import {
   CONTEXT_LIMITS,
+  DOCUMENT_ACCEPT,
+  DOCUMENT_MAX_BYTES,
   contextUnavailable,
   documentHref,
   documentTitle,
   keptLink,
+  libraryQuery,
   linkLabel,
   linkProblem,
   repositoryUrl,
   sameReference,
+  unavailableNote,
+  uploadProjectDocument,
   useEditProjectContext,
   useLibrary,
+  useProjectAvailability,
   useProjectContext,
 } from '@/lib/theorem/project-context'
 import type {
@@ -41,6 +48,7 @@ import type {
   LibraryItem,
   ProjectContext,
   ProjectContextKind,
+  UnavailableEntry,
 } from '@/lib/theorem/project-context'
 import { cn } from '@/lib/utils'
 
@@ -90,6 +98,8 @@ const externalLink = 'min-w-0 truncate text-ink hover:underline'
  */
 export function ProjectContextList({ projectId }: { projectId: string }) {
   const context = useProjectContext(projectId)
+  // What the person no longer holds. Sessions are not given those entries.
+  const unavailable = useProjectAvailability(projectId).data?.unavailable ?? []
   const [editing, setEditing] = useState<ProjectContextKind>()
 
   if (context.isPending)
@@ -128,8 +138,18 @@ export function ProjectContextList({ projectId }: { projectId: string }) {
           onEdit={() => setEditing('documents')}
         >
           {data.documents.slice(0, SHOWN).map((document) => (
-            <li key={`${document.reference.kind}:${document.reference.id}`}>
+            <li
+              key={`${document.reference.kind}:${document.reference.id}`}
+              className={entryRow}
+            >
               <DocumentLink document={document} />
+              <Unavailable
+                entry={unavailable.find(
+                  (entry) =>
+                    entry.list === 'documents' &&
+                    sameReference(entry.reference, document.reference),
+                )}
+              />
             </li>
           ))}
         </Kind>
@@ -139,7 +159,7 @@ export function ProjectContextList({ projectId }: { projectId: string }) {
           onEdit={() => setEditing('repositories')}
         >
           {data.repositories.slice(0, SHOWN).map(({ fullName }) => (
-            <li key={fullName}>
+            <li key={fullName} className={entryRow}>
               <a
                 href={repositoryUrl(fullName)}
                 target="_blank"
@@ -148,6 +168,13 @@ export function ProjectContextList({ projectId }: { projectId: string }) {
               >
                 {fullName}
               </a>
+              <Unavailable
+                entry={unavailable.find(
+                  (entry) =>
+                    entry.list === 'repositories' &&
+                    entry.fullName.toLowerCase() === fullName.toLowerCase(),
+                )}
+              />
             </li>
           ))}
         </Kind>
@@ -172,6 +199,7 @@ export function ProjectContextList({ projectId }: { projectId: string }) {
         </Kind>
         <ConnectionsKind
           chosen={data.connections}
+          unavailable={unavailable}
           onEdit={() => setEditing('connections')}
         />
       </div>
@@ -239,6 +267,20 @@ function Kind({
   )
 }
 
+const entryRow = 'flex min-w-0 items-center gap-1.5'
+
+/** Said beside an entry sessions are no longer given, as a connection's state is. */
+function Unavailable({ entry }: { entry: UnavailableEntry | undefined }) {
+  return entry ? (
+    <span
+      className="shrink-0 text-xs text-ink-muted"
+      title="Sessions in this project are not given this."
+    >
+      · {unavailableNote(entry)}
+    </span>
+  ) : null
+}
+
 function DocumentLink({ document }: { document: ContextDocument }) {
   const { reference, title } = document
   const kind = SOURCE_KIND[reference.kind] ?? 'Source'
@@ -276,9 +318,11 @@ function DocumentLink({ document }: { document: ContextDocument }) {
 
 function ConnectionsKind({
   chosen,
+  unavailable,
   onEdit,
 }: {
   chosen: string[] | null
+  unavailable: UnavailableEntry[]
   onEdit: () => void
 }) {
   const { data } = useConnections()
@@ -293,15 +337,20 @@ function ConnectionsKind({
         chosen.slice(0, SHOWN).map((id) => {
           const connection = byId.get(id)
           // Said only once the list has arrived: before that every id is merely unknown.
-          const note = !data
-            ? undefined
-            : !connection
-              ? 'removed'
-              : !connection.enabled
-                ? 'off in Settings'
-                : connection.status !== 'connected'
-                  ? 'not connected'
-                  : undefined
+          const gone = unavailable.find(
+            (entry) => entry.list === 'connections' && entry.id === id,
+          )
+          const note = gone
+            ? unavailableNote(gone)
+            : !data
+              ? undefined
+              : !connection
+                ? 'removed'
+                : !connection.enabled
+                  ? 'off in Settings'
+                  : connection.status !== 'connected'
+                    ? 'not connected'
+                    : undefined
           return (
             <li key={id} className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 truncate text-ink">
@@ -338,7 +387,7 @@ const TITLES: Record<
   documents: {
     title: 'Project documents',
     description:
-      'Every session in this project reads these, within its context budget. Add files to the Library from a chat first.',
+      'Every session in this project reads these, within its context budget. Choose from the Library or upload a file.',
   },
   repositories: {
     title: 'Project repositories',
@@ -510,6 +559,12 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
   const library = useLibrary(projectId, true)
   const [chosen, setChosen] = useState<ContextDocument[]>(context.documents)
   const [query, setQuery] = useState('')
+  // Files put in the project from here: ticked, and listed first until saved.
+  const [uploaded, setUploaded] = useState<ContextDocument[]>([])
+  const [uploading, setUploading] = useState<string>()
+  const [uploadProblem, setUploadProblem] = useState<string>()
+  const picker = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
   const isChosen = (reference: ContextReference) =>
     chosen.some((d) => sameReference(d.reference, reference))
   const toggle = (document: ContextDocument, on: boolean) =>
@@ -519,31 +574,57 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
         : now.filter((d) => !sameReference(d.reference, document.reference)),
     )
 
+  const upload = async (files: readonly File[]) => {
+    setUploadProblem(undefined)
+    for (const file of files) {
+      if (file.size > DOCUMENT_MAX_BYTES) {
+        setUploadProblem(`${file.name} is larger than 16 MB.`)
+        continue
+      }
+      setUploading(file.name)
+      try {
+        const document = await uploadProjectDocument(projectId, file)
+        setUploaded((now) => [...now, document])
+        setChosen((now) =>
+          now.some((d) => sameReference(d.reference, document.reference))
+            ? now
+            : [...now, document],
+        )
+      } catch (cause) {
+        setUploadProblem(`${file.name}: ${describeError(cause)}`)
+      }
+    }
+    setUploading(undefined)
+    void queryClient.invalidateQueries({
+      queryKey: libraryQuery(projectId).queryKey,
+    })
+  }
+
   const listed = useMemo(() => {
     const items = library.data ?? []
     const needle = query.trim().toLowerCase()
     const matches = (title: string) =>
       !needle || title.toLowerCase().includes(needle)
-    // What the project names but the Library no longer lists stays visible, so it can be taken out.
-    const missing = context.documents.filter(
-      (d) => !items.some((item) => sameReference(item.reference, d.reference)),
-    )
+    // What the project named when the editor opened comes first, then what was uploaded here, so both are in view; the order holds while boxes are ticked.
+    const first = [...context.documents, ...uploaded]
     return {
-      missing: missing.filter((d) => matches(d.title)),
-      // What the project named when the editor opened comes first, so it is in view; the order holds while boxes are ticked.
+      // What the project names but the Library does not list stays visible, so it can be taken out. A file just uploaded is one until the Library is read again.
+      missing: first.filter(
+        (d) =>
+          matches(d.title) &&
+          !items.some((item) => sameReference(item.reference, d.reference)),
+      ),
       items: [
-        ...context.documents.flatMap((d) =>
+        ...first.flatMap((d) =>
           items.filter((item) => sameReference(item.reference, d.reference)),
         ),
         ...items.filter(
           (item) =>
-            !context.documents.some((d) =>
-              sameReference(item.reference, d.reference),
-            ),
+            !first.some((d) => sameReference(item.reference, d.reference)),
         ),
       ].filter((item) => matches(item.title)),
     }
-  }, [library.data, query, context.documents])
+  }, [library.data, query, context.documents, uploaded])
 
   const submit = (event: FormEvent) => {
     event.preventDefault()
@@ -576,12 +657,46 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
   const over = chosen.length > CONTEXT_LIMITS.documents
   return (
     <form onSubmit={submit} className="flex min-h-0 flex-col gap-3">
-      <Input
-        aria-label="Search the Library"
-        placeholder="Search the Library"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-      />
+      <div className="flex items-center gap-2">
+        <Input
+          aria-label="Search the Library"
+          placeholder="Search the Library"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <input
+          ref={picker}
+          type="file"
+          hidden
+          multiple
+          accept={DOCUMENT_ACCEPT}
+          aria-label="Upload files"
+          onChange={(event) => {
+            const files = [...(event.target.files ?? [])]
+            event.target.value = ''
+            void upload(files)
+          }}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          disabled={uploading !== undefined}
+          onClick={() => picker.current?.click()}
+        >
+          <Upload aria-hidden data-icon="inline-start" />
+          Upload
+        </Button>
+      </div>
+      {uploading !== undefined && (
+        <p role="status" className="truncate text-sm text-ink-muted">
+          Uploading {uploading}…
+        </p>
+      )}
+      {uploadProblem && (
+        <p role="alert" className="text-sm text-error-ink">
+          {uploadProblem}
+        </p>
+      )}
       {library.isPending ? (
         <p className="text-sm text-ink-muted">Reading the Library…</p>
       ) : library.isError ? (
@@ -595,7 +710,13 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
               key={referenceKey(document.reference)}
               checked={isChosen(document.reference)}
               onChange={(on) => toggle(document, on)}
-              note="Not in the Library"
+              note={
+                uploaded.some((d) =>
+                  sameReference(d.reference, document.reference),
+                )
+                  ? 'File'
+                  : 'Not in the Library'
+              }
             >
               {document.title}
             </Choice>
@@ -620,13 +741,14 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
             <p className="px-2 text-sm text-ink-muted">
               {query.trim()
                 ? 'Nothing in the Library matches.'
-                : 'The Library is empty.'}
+                : 'The Library is empty. Upload a file to add one.'}
             </p>
           )}
         </ListBox>
       )}
       <Footer
         save={save}
+        disabled={uploading !== undefined}
         problem={
           over
             ? `A project can name at most ${CONTEXT_LIMITS.documents} documents.`

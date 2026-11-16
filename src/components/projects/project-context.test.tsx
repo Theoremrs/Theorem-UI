@@ -1,4 +1,4 @@
-// SOURCING: bun:test and the block render helpers, TanStack Router (the column's links), and stories/fake-theorem answering the project context routes, the Library and the Connections routes from stories/fixtures/project-context, which keeps Theorem's contract (docs/plans/project-context/CONTRACT.md): revision checks, untracked and unreadable refusals. The column and its editors run with the real client code.
+// SOURCING: bun:test and the block render helpers, TanStack Router (the column's links), and stories/fake-theorem answering the project context routes, the Library and the Connections routes from stories/fixtures/project-context, which keeps Theorem's contract (docs/plans/project-context/CONTRACT.md): revision checks, untracked and unreadable refusals for what a write adds, the availability of what it already names, and an upload into the Library. The column and its editors run with the real client code.
 import { act } from 'react'
 import { afterAll, afterEach, beforeAll, expect, test } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
@@ -11,6 +11,7 @@ import {
 import { installFakeTheorem } from '@/stories/fake-theorem'
 import type { FakeRoutes } from '@/stories/fake-theorem'
 import { projectContextRoutes } from '@/stories/fixtures/project-context'
+import type { ProjectContextStory } from '@/stories/fixtures/project-context'
 import type { ProjectContextBody } from '@/lib/theorem/project-context'
 import {
   buttonNamed,
@@ -37,8 +38,11 @@ let sent: Sent[] = []
 let restore: () => void = () => {}
 
 /** The story's routes, with each write recorded as Theorem received it. */
-function routes(overrides: FakeRoutes = {}): FakeRoutes {
-  const story = projectContextRoutes(Date.now())
+function routes(
+  overrides: FakeRoutes = {},
+  told: ProjectContextStory = {},
+): FakeRoutes {
+  const story = projectContextRoutes(Date.now(), told)
   const put = story[CONTEXT]!
   return {
     ...bootstrap,
@@ -363,4 +367,105 @@ test('connections go back to every enabled one, or to a chosen few', async () =>
   )
   expect(sent[1]!.body.connections).toEqual(['google_gmail'])
   expect(sent[1]!.ifMatch).toBe('2')
+})
+
+test('a file goes up from the editor, is kept in the Library, and is saved as a project document', async () => {
+  const kept: string[] = []
+  const story = routes()
+  const retain = 'POST /api/chat/v1/library/uploads/:uploadId/retain'
+  const { container } = await mount({
+    ...story,
+    [retain]: (params, request) => {
+      kept.push(new URL(request.url).pathname)
+      return story[retain]!(params, request)
+    },
+  })
+  await click(container.querySelector('[aria-label="Edit documents"]')!)
+  const editor = await dialog()
+  await waitFor(() => editor.textContent.includes('Source track'))
+
+  const picker = editor.querySelector<HTMLInputElement>(
+    'input[aria-label="Upload files"]',
+  )!
+  const file = new File(['# Brief\n\nShip it.'], 'brief.md', {
+    type: 'text/markdown',
+  })
+  await act(async () => {
+    Object.defineProperty(picker, 'files', {
+      configurable: true,
+      value: [file],
+    })
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+
+  // Ticked as soon as it is up, and listed with what the project names.
+  await waitFor(() => editor.textContent.includes('brief.md'))
+  await waitFor(() => !editor.textContent.includes('Uploading'))
+  expect(kept).toEqual(['/api/chat/v1/library/uploads/upload-new-0/retain'])
+  const row = choice(editor, 'brief.md')
+  expect(row.querySelector('[data-checked]')).not.toBeNull()
+
+  await click(buttonNamed(editor, 'Save')!)
+  await waitFor(() => anchor(container, 'brief.md'))
+  expect(sent[0]!.body.documents.at(-1)).toEqual({
+    reference: { kind: 'upload', id: 'upload-new-0' },
+    title: 'brief.md',
+  })
+  expect(anchor(container, 'brief.md')?.getAttribute('href')).toBe(
+    '/api/chat/v1/uploads/upload-new-0/content',
+  )
+})
+
+test('a file over the intake bound is refused before it is sent', async () => {
+  let posted = 0
+  const { container } = await mount(
+    routes({
+      'POST /api/chat/v1/projects/:projectId/uploads': () => {
+        posted += 1
+        return { record: { uploadId: 'never', state: 'ready' } }
+      },
+    }),
+  )
+  await click(container.querySelector('[aria-label="Edit documents"]')!)
+  const editor = await dialog()
+  const picker = editor.querySelector<HTMLInputElement>(
+    'input[aria-label="Upload files"]',
+  )!
+  const file = new File(['x'], 'huge.pdf', { type: 'application/pdf' })
+  Object.defineProperty(file, 'size', { value: 16 * 1024 * 1024 + 1 })
+  await act(async () => {
+    Object.defineProperty(picker, 'files', {
+      configurable: true,
+      value: [file],
+    })
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  await waitFor(() => editor.querySelector('[role="alert"]'))
+  expect(editor.querySelector('[role="alert"]')!.textContent).toBe(
+    'huge.pdf is larger than 16 MB.',
+  )
+  expect(posted).toBe(0)
+})
+
+test('an entry the person no longer holds is said beside it and does not block another edit', async () => {
+  const { container } = await mount(
+    routes({}, { untracked: ['theorem-story/theorem'] }),
+  )
+  await waitFor(() => container.textContent.includes('not tracked'))
+  const row = anchor(container, 'theorem-story/theorem')!.closest('li')!
+  expect(row.textContent).toBe('theorem-story/theorem· not tracked')
+  // Nothing else is flagged.
+  expect(container.textContent.match(/· /g)).toHaveLength(1)
+
+  await click(container.querySelector('[aria-label="Edit links"]')!)
+  const editor = await dialog()
+  await type(field(editor, 'Address'), 'https://example.com/roadmap')
+  await click(buttonNamed(editor, 'Add link')!)
+  await click(buttonNamed(editor, 'Save')!)
+  // The write names the repository again and is accepted: only what a write adds is asked about.
+  await waitFor(() => anchor(container, 'example.com/roadmap'))
+  expect(sent[0]!.body.repositories).toEqual([
+    { fullName: 'theorem-story/theorem' },
+  ])
+  await waitFor(() => container.textContent.includes('not tracked'))
 })
