@@ -376,8 +376,9 @@
 /* A narrow composer (project home, a split pane) keeps one toolbar row: the
    Web and Plan chips drop to their marks (each keeps its aria-label and
    tooltip) and the model name drops "(default)", instead of the row breaking
-   into two with the name cut off. */
-.appearance-composer-toolbar {
+   into two with the name cut off. The box is measured, not the toolbar,
+   because the sidecar layout lays the toolbar out with display: contents. */
+.appearance-composer-box {
   container: composer-toolbar / inline-size;
 }
 @container composer-toolbar (inline-size < 34rem) {
@@ -749,22 +750,25 @@
    colour: the ring and the square on the destructive fill, and the mark in
    the recording red, and the resume arrows on theirs. Their fills are a
    faint wash of it. */
-:is(
-    .aui-composer-cancel-icon,
-    .aui-composer-stop-dictation-icon,
-    .aui-composer-resume-icon
-  ).rail-mark
-  > .icon-mask {
-  background-color: color-mix(in oklab, currentColor 22%, transparent);
-}
-:is(
-    .aui-composer-cancel-icon,
-    .aui-composer-stop-dictation-icon,
-    .aui-composer-resume-icon
-  ).rail-mark
-  > [data-layer='line'],
-.aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
-  background-color: currentColor;
+/* Masks only: without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > .icon-mask {
+    background-color: color-mix(in oklab, currentColor 22%, transparent);
+  }
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > [data-layer='line'],
+  .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
+    background-color: currentColor;
+  }
 }
 /* Keep paired action paints synchronized, including inherited SVG colors. */
 .appearance-composer-toolbar
