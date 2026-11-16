@@ -531,9 +531,17 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const cwd = row.cwd
       const owned = typeof extra.host === 'string' ? extra.host : undefined
       if (terminals.has(row.session)) {
-        // The binding owns the rest of its entry; the host's modes are still the host's to say.
-        if (held)
-          sessions.set(row.session, { ...held, ...(modes ? { modes } : {}) })
+        // The binding owns the rest of its entry; the host's modes, and what the terminal is called
+        // and where its program works, are still the host's to say.
+        if (held) {
+          const { name: _name, cwd: _cwd, ...rest } = held
+          sessions.set(row.session, {
+            ...rest,
+            ...(modes ? { modes } : {}),
+            ...(name ? { name } : {}),
+            ...(cwd ? { cwd } : {}),
+          })
+        }
         continue
       }
       sessions.set(row.session, {
@@ -650,14 +658,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       state.profile && profileById(state.profile.id)
         ? state.profile.id
         : (sessions.get(session)?.profile ?? profileLabel(backend))
+    const known = sessions.get(session)
     sessions.set(session, {
       session,
       profile,
       backend,
       workspace,
-      ...(sessions.get(session)?.modes
-        ? { modes: sessions.get(session)?.modes }
-        : {}),
+      ...(known?.modes ? { modes: known.modes } : {}),
+      // What the host called it and where it works: a binding knows neither, so they are kept.
+      ...(known?.name ? { name: known.name } : {}),
+      ...(known?.cwd ? { cwd: known.cwd } : {}),
       ...(state.programReport.kind !== 'unavailable'
         ? { programReport: state.programReport }
         : {}),
@@ -691,6 +701,11 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         // arrived late is then listed.
         adoption = event.data
         publishSessions()
+        void refreshList()
+        return
+      }
+      if (event.kind === 'terminal.unadmitted') {
+        // What the host offers to admit may have changed; the event carries no rows, the list does.
         void refreshList()
         return
       }

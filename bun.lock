@@ -1230,7 +1230,7 @@
 
     "@tanstack/virtual-file-routes": ["@tanstack/virtual-file-routes@1.162.0", "", {}, "sha512-uhOeFyxLcU41HzvrxsGpiWdcMbScY1EDgbZ5K7DVRMYInbLYWAC0EA/kx9wXAoSM8q82bUG2hRl8+EAjE6XAbA=="],
 
-    "@theoremharness/sdk": ["@theoremharness/sdk@vendor/theoremharness-sdk-0.6.0-alpha.10.tgz", { "dependencies": { "dequal": "2.0.3", "lossless-json": "4.3.3", "write-file-atomic": "6.0.0" }, "peerDependencies": { "@assistant-ui/core": ">=0.3.30 <0.4.0" }, "optionalPeers": ["@assistant-ui/core"] }, "sha512-KsrsBarZR4Z6cpfKcC9Me79+Rzp7BNhEgr8uYVTBfSSmlFRUTjKpzU7HhTXT+ZioaZ9MLuOqF2P4VcLQcvwvlw=="],
+    "@theoremharness/sdk": ["@theoremharness/sdk@vendor/theoremharness-sdk-0.6.0-alpha.10.tgz", { "dependencies": { "dequal": "2.0.3", "lossless-json": "4.3.3", "write-file-atomic": "6.0.0" }, "peerDependencies": { "@assistant-ui/core": ">=0.3.30 <0.4.0" }, "optionalPeers": ["@assistant-ui/core"] }, "sha512-LtvVaClZjVF+I99OpXnmp20BGGxioF0yYvtZ2jJstbiMgN9NvvDX2bpduA5ReFqyFhxtxNJm6ZetrXU+RktozA=="],
 
     "@tiptap/core": ["@tiptap/core@3.32.2", "", { "peerDependencies": { "@tiptap/pm": "3.32.2" } }, "sha512-EitM8KY3agYfnp/bqhfxcaReVq4CUqVzMqoSIl7xSfYABTGYoTDtVXUdYSGutcCBFjc86BbXjrOlDlqkgC8BsQ=="],
 

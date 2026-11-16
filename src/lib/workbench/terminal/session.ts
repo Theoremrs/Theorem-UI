@@ -1093,8 +1093,12 @@ export class TerminalSession {
 
   private onLive(event: TerminalLiveEvent): void {
     const state = this.current
-    // Adoption is the workspace's, not one terminal's: the adapter's session list reads it.
-    if (event.kind === 'terminal.adoption') {
+    // Adoption and what is on offer are the workspace's, not one terminal's: the adapter's session
+    // list reads them.
+    if (
+      event.kind === 'terminal.adoption' ||
+      event.kind === 'terminal.unadmitted'
+    ) {
       return
     }
     if (event.data.session !== state.terminalId || state.phase === 'detached') {

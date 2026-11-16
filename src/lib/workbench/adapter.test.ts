@@ -1861,6 +1861,88 @@ describe('host events', () => {
       expect(of('pty-1')).not.toHaveProperty('name')
     })
 
+    test('terminal.unadmitted: the list is read again, so a terminal its owner just started appears', async () => {
+      let answer = {
+        sessions: [] as unknown[],
+        adoption: { state: 'settled' },
+        unadmitted: [] as unknown[],
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer as unknown as TerminalListReply,
+        },
+      )
+      await t.settle()
+      expect(sessionLists(t).at(-1)!.sessions).toEqual([])
+      answer = {
+        ...answer,
+        unadmitted: [
+          {
+            session: 'hc-mine',
+            terminal: 't7',
+            backend: 'herdr',
+            state: 'running',
+            cols: 80,
+            rows: 24,
+            name: 'agent',
+          },
+        ],
+      }
+      t.announce({ kind: 'terminal.unadmitted', data: {} })
+      await t.settle()
+      expect(sessionLists(t).at(-1)!.sessions).toMatchObject([
+        { session: 'hc-mine', name: 'agent', admitted: false },
+      ])
+      // And when it ends, the same event takes it off the list.
+      answer = { ...answer, unadmitted: [] }
+      t.announce({ kind: 'terminal.unadmitted', data: {} })
+      await t.settle()
+      expect(sessionLists(t).at(-1)!.sessions).toEqual([])
+    })
+
+    test('a session this workbench holds keeps the name and directory the host gave it', async () => {
+      let answer: { sessions: unknown[]; adoption: { state: string } } = {
+        sessions: [{ ...row('t1', 'herdr'), name: 'agent', cwd: '/work' }],
+        adoption: { state: 'settled' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer as unknown as TerminalListReply,
+        },
+      )
+      await t.settle()
+      const mine = () =>
+        sessionLists(t)
+          .at(-1)!
+          .sessions.find((s) => s.session === 't1')!
+      expect(mine()).toMatchObject({ name: 'agent', cwd: '/work' })
+      // Bound here, the binding says its liveness and control; it knows no name.
+      t.adapter.perform(effectOf(1, 'terminalOpen'))
+      await t.settle()
+      expect(mine()).toMatchObject({ name: 'agent', cwd: '/work' })
+      // The host still says what it is called: a new word replaces the old, and none removes it.
+      answer = {
+        ...answer,
+        sessions: [{ ...row('t1', 'herdr'), name: 'reviewer', cwd: '/work' }],
+      }
+      t.announce({ kind: 'terminal.unadmitted', data: {} })
+      await t.settle()
+      expect(mine()).toMatchObject({ name: 'reviewer', cwd: '/work' })
+      answer = { ...answer, sessions: [row('t1', 'herdr')] }
+      t.announce({ kind: 'terminal.unadmitted', data: {} })
+      await t.settle()
+      expect(mine()).not.toHaveProperty('name')
+      expect(mine()).not.toHaveProperty('cwd')
+    })
+
     test('once admitted the same id is a session of the workspace, and a settled list drops what is no longer offered', async () => {
       const offered = {
         session: 'hc-mine',

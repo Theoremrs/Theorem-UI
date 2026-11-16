@@ -138,6 +138,7 @@ export interface WriteClaim {
 
 const TERMINAL_KINDS = [
   'terminal.adoption',
+  'terminal.unadmitted',
   'terminal.opened',
   'terminal.output',
   'terminal.resized',
