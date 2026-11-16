@@ -580,6 +580,8 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
     )
 
   const upload = async (files: readonly File[]) => {
+    // A save under way has already taken the list it writes, and closes the editor when it lands: a file sent now would reach the Library and miss the project.
+    if (save.isPending) return
     setUploadProblem(undefined)
     for (const file of files) {
       if (file.size > DOCUMENT_MAX_BYTES) {
@@ -685,7 +687,7 @@ function DocumentsEditor({ projectId, context, save, onDone }: EditorProps) {
         <Button
           type="button"
           variant="outline"
-          disabled={uploading !== undefined}
+          disabled={uploading !== undefined || save.isPending}
           onClick={() => picker.current?.click()}
         >
           <Upload aria-hidden data-icon="inline-start" />
@@ -897,9 +899,7 @@ function RepositoriesEditor({ context, save, onDone }: EditorProps) {
         problem={
           over
             ? `A project can name at most ${CONTEXT_LIMITS.repositories} repositories.`
-            : listed && untracked.length
-              ? 'Take out the repositories Theorem no longer tracks, or track them again in Settings → Connections.'
-              : undefined
+            : undefined
         }
       />
     </form>
@@ -1193,9 +1193,7 @@ function ConnectionsEditor({ context, save, onDone }: EditorProps) {
         problem={
           over
             ? `A project can name at most ${CONTEXT_LIMITS.connections} connections.`
-            : mode === 'chosen' && gone.length
-              ? 'Take out the connections that were removed.'
-              : undefined
+            : undefined
         }
       />
     </form>

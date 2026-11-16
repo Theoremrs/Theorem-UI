@@ -215,6 +215,8 @@ export type ProjectContextStory = {
   added?: LibraryItem[]
   /** Repositories the person stopped tracking after a project named them. */
   untracked?: string[]
+  /** Connections the person removed after a project named them. */
+  gone?: string[]
 }
 
 /**
@@ -224,7 +226,7 @@ export type ProjectContextStory = {
  */
 export function projectContextRoutes(
   now: number,
-  { added = [], untracked = [] }: ProjectContextStory = {},
+  { added = [], untracked = [], gone = [] }: ProjectContextStory = {},
 ): FakeRoutes {
   const contexts = new Map<string, ProjectContext>()
   const read = (projectId: string): ProjectContext =>
@@ -240,13 +242,24 @@ export function projectContextRoutes(
       }),
       updatedAtMs: now - 3 * 60 * 60_000,
     }
-  const github = storyGithub()
   const dropped = untracked.map((name) => name.toLowerCase())
-  const tracked = github.installations
-    .flatMap((i) =>
-      i.repos.filter((r) => r.tracked).map((r) => r.fullName.toLowerCase()),
-    )
-    .filter((name) => !dropped.includes(name))
+  const everything = storyGithub()
+  // The GitHub connection and the checks below answer from one list.
+  const github = {
+    ...everything,
+    installations: everything.installations.map((installation) => ({
+      ...installation,
+      repos: installation.repos.map((entry) =>
+        dropped.includes(entry.fullName.toLowerCase())
+          ? { ...entry, tracked: false }
+          : entry,
+      ),
+    })),
+  }
+  const tracked = github.installations.flatMap((i) =>
+    i.repos.filter((r) => r.tracked).map((r) => r.fullName.toLowerCase()),
+  )
+  const connections = storyConnections.filter((c) => !gone.includes(c.id))
   const library = (projectId: string) => [
     ...added.filter((item) => item.projectId === projectId),
     ...storyLibrary(projectId, now),
@@ -282,7 +295,7 @@ export function projectContextRoutes(
             ],
       ),
       ...(named.connections ?? []).flatMap((id): UnavailableEntry[] =>
-        storyConnections.some((c) => c.id === id)
+        connections.some((c) => c.id === id)
           ? []
           : [{ list: 'connections', id, reason: 'connection_unknown' }],
       ),
@@ -408,12 +421,12 @@ export function projectContextRoutes(
       retained: true,
     }),
     'GET /api/connections/v1': (): ConnectionList => ({
-      connections: storyConnections,
+      connections,
       stdioAvailable: false,
     }),
     'GET /api/connections/v1/github': () => github,
     'GET /api/connections/v1/tools': (): { groups: ToolGroup[] } => ({
-      groups: storyConnections.map((connection) => ({
+      groups: connections.map((connection) => ({
         connectionId: connection.id,
         label: connection.label,
         kind: connection.kind,

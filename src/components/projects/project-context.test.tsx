@@ -573,3 +573,90 @@ test('an entry the person no longer holds is said beside it and does not block a
   ])
   await waitFor(() => container.textContent.includes('not tracked'))
 })
+
+test('a repository no longer tracked stays in the project while another is added', async () => {
+  const { container } = await mount(
+    routes({}, { untracked: ['theorem-story/theorem'] }),
+  )
+  await click(container.querySelector('[aria-label="Edit repositories"]')!)
+  const editor = await dialog()
+  await waitFor(() => editor.textContent.includes('theorem-story/platinum'))
+  expect(choice(editor, 'theorem-story/theorem').textContent).toContain(
+    'No longer tracked',
+  )
+
+  await click(choice(editor, 'theorem-story/platinum'))
+  // The old entry is said beside its name and is not in the way.
+  expect(editor.querySelector('[role="alert"]')).toBeNull()
+  expect(buttonNamed(editor, 'Save')!.disabled).toBe(false)
+  await click(buttonNamed(editor, 'Save')!)
+  await waitFor(() => anchor(container, 'theorem-story/platinum'))
+  expect(sent[0]!.body.repositories).toEqual([
+    { fullName: 'theorem-story/theorem' },
+    { fullName: 'theorem-story/platinum' },
+  ])
+})
+
+test('a connection that was removed stays in the project while another is chosen', async () => {
+  const { container } = await mount(routes({}, { gone: ['mcp:linear'] }))
+  await click(container.querySelector('[aria-label="Edit connections"]')!)
+  const editor = await dialog()
+  await waitFor(() => editor.textContent.includes('Gmail'))
+  expect(choice(editor, 'mcp:linear').textContent).toContain('Removed')
+
+  await click(choice(editor, 'Gmail'))
+  expect(editor.querySelector('[role="alert"]')).toBeNull()
+  expect(buttonNamed(editor, 'Save')!.disabled).toBe(false)
+  await click(buttonNamed(editor, 'Save')!)
+  await waitFor(() => sent.length === 1)
+  expect(sent[0]!.body.connections).toEqual([
+    'github',
+    'mcp:linear',
+    'google_gmail',
+  ])
+})
+
+test('no file goes up while a save is on its way', async () => {
+  const story = routes()
+  const uploads = 'POST /api/chat/v1/projects/:projectId/uploads'
+  let sentUp = 0
+  let land: () => void = () => {}
+  const landed = new Promise<void>((resolve) => {
+    land = resolve
+  })
+  const { container } = await mount({
+    ...story,
+    [uploads]: (params, request) => {
+      sentUp += 1
+      return story[uploads]!(params, request)
+    },
+    [CONTEXT]: async (params, request) => {
+      await landed
+      return story[CONTEXT]!(params, request)
+    },
+  })
+  await click(container.querySelector('[aria-label="Edit documents"]')!)
+  const editor = await dialog()
+  await waitFor(() => editor.textContent.includes('Hello World!'))
+  await click(choice(editor, 'Hello World!'))
+  await click(buttonNamed(editor, 'Save')!)
+
+  // The save has taken its list; a file sent now would miss the project.
+  await waitFor(() => buttonNamed(editor, 'Save')!.disabled)
+  expect(buttonNamed(editor, 'Upload')!.disabled).toBe(true)
+  const picker = editor.querySelector<HTMLInputElement>(
+    'input[aria-label="Upload files"]',
+  )!
+  await act(async () => {
+    Object.defineProperty(picker, 'files', {
+      configurable: true,
+      value: [new File(['late'], 'late.md', { type: 'text/markdown' })],
+    })
+    picker.dispatchEvent(new Event('change', { bubbles: true }))
+  })
+  expect(sentUp).toBe(0)
+  expect(editor.textContent).not.toContain('late.md')
+
+  land()
+  await waitFor(() => anchor(container, 'Hello World!'))
+})
