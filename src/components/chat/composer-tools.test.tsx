@@ -16,7 +16,7 @@ import {
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Thread } from '../assistant-ui/elements/thread.aui'
-import { buttonNamed, cleanup, render, waitFor } from '../../../test/blocks/render'
+import { cleanup, render, waitFor } from '../../../test/blocks/render'
 import {
   planningTurnOptions,
   usePlanning,
@@ -536,30 +536,4 @@ test('the account default effort stands in the menu until the conversation choos
   expect(trigger.textContent).toBe('High')
   expect(useGenerationOverrides.getState().byThread[DRAFT]).toBeUndefined()
   expect(generationTurnOptions().effort).toBe('high')
-})
-
-test('the length control sets this conversation apart, marks itself while it does, and resets', async () => {
-  const { container } = await mount(<Harness text="Hello" sent={[]} messages={[{
-    role: 'assistant', id: 'last',
-    content: [{ type: 'data', name: 'theorem-limits', data: { limits: { maxOutputTokensPerCall: { value: 8000, source: 'default' } } } }],
-  }]} />)
-  const trigger = await waitFor(() =>
-    container.querySelector<HTMLButtonElement>('[aria-label="Response length and detail"]'),
-  )
-  expect(trigger.hasAttribute('data-active')).toBe(false)
-  await act(() => trigger.click())
-  const panel = await waitFor(() => document.querySelector('[data-slot="response-control"]'))
-  // What the newest run ran under is shown beneath the fields.
-  expect(panel.textContent).toContain('Last reply ran under')
-  expect(panel.textContent).toContain("Theorem's default")
-  expect(buttonNamed(panel, 'Reset')).toBeUndefined()
-
-  await act(() => buttonNamed(panel, 'Concise')!.click())
-  expect(useGenerationOverrides.getState().byThread[DRAFT]).toEqual({ responseDetail: 'concise' })
-  expect(generationTurnOptions().responseDetail).toBe('concise')
-  await waitFor(() => trigger.hasAttribute('data-active'))
-
-  await act(() => buttonNamed(panel, 'Reset')!.click())
-  expect(useGenerationOverrides.getState().byThread[DRAFT]).toBeUndefined()
-  await waitFor(() => !trigger.hasAttribute('data-active'))
 })

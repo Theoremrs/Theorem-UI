@@ -3,7 +3,7 @@ import { useAuiState } from '@assistant-ui/react'
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useDraggable } from '@dnd-kit/core'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { format, intlFormatDistance, isToday, isTomorrow } from 'date-fns'
+import { format, isToday, isTomorrow } from 'date-fns'
 import { useContext, createContext, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -81,8 +81,8 @@ const wakeLabel = (later: Later, views: OrganizedViews) => {
 
 /**
  * The row's trailing mark, as the owner's sidebar reference draws it: a dot
- * when it needs someone, a spinner while it runs, nothing at rest. When it
- * last moved is in the row's tooltip, not its line.
+ * when it needs someone, a spinner while it runs, nothing at rest. The row
+ * has no hover tooltip; its marks carry their meaning as screen-reader text.
  */
 function StatusMark({
   thread,
@@ -106,7 +106,6 @@ function StatusMark({
   if (reason)
     return (
       <span
-        title={reason.kind === 'failed' ? 'Failed' : attentionLabel(reason)}
         className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
       >
         <span aria-hidden className="size-2 rounded-full bg-attention" />
@@ -118,7 +117,6 @@ function StatusMark({
   if (running)
     return (
       <span
-        title="Running"
         className="flex size-5 shrink-0 items-center justify-center group-hover/thread:invisible group-has-data-popup-open/thread:invisible"
       >
         <span
@@ -129,12 +127,6 @@ function StatusMark({
       </span>
     )
   return null
-}
-
-/** When a session last moved, as its row's tooltip says it. */
-function useMovedLabel(at: number) {
-  const { readAtMs } = useTree()
-  return `${intlFormatDistance(at, Math.max(at, readAtMs), { numeric: 'always' })} · ${format(at, 'PPp')}`
 }
 
 export function RenameField({
@@ -212,7 +204,6 @@ export function ThreadRow({
   const isOpen = openId === thread.threadId
   const openHere = useAuiState((s) => s.thread.isRunning)
   const running = thread.attention.running || (isOpen && openHere)
-  const moved = useMovedLabel(thread.lastMessageAtMs ?? thread.createdAtMs)
 
   const ref = useRef<HTMLLIElement>(null)
   const seen = useSeen(ref)
@@ -337,7 +328,6 @@ export function ThreadRow({
                   'primary',
                   current ? 'selected' : 'navigation',
                 )}
-                title={`${thread.summary?.text ?? title}\n${moved}`}
                 className={cn(
                   'h-8 w-full translate-x-0 pe-1 data-[organize-row=also]:bg-hover sm:h-8',
                   'relative z-[1] hover:bg-hover',
@@ -378,7 +368,7 @@ export function ThreadRow({
                   )}
                 </span>
                 {unread && (
-                  <span className="shrink-0" title="Unread reply">
+                  <span className="shrink-0">
                     <Icon.Chat aria-hidden className="size-3.5" />
                     <span className="sr-only">, unread reply</span>
                   </span>
