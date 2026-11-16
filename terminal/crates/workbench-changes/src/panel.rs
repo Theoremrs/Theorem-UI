@@ -37,6 +37,8 @@ use crate::descriptors::AMEND_CAPABILITY;
 use crate::intent::{ActionKind, Intent, IntentId, Refusal, Side};
 use crate::layout::{Control, Hit, Verb};
 use crate::model::{Caret, Changes, Field, Focus, Mode, PromptKind};
+use crate::review::View;
+use crate::review_view::ReviewHit;
 use crate::semantics::actions;
 use crate::status::Section;
 use crate::styles::ChangesStyles;
@@ -126,6 +128,12 @@ impl ChangesPanel {
         let mut model = Changes::new();
         // A saved amend box is kept until the first message says what the host offers.
         model.set_amend_available(true);
+        // A panel with no saved view opens on the Review; a saved layout names its own.
+        let view = state
+            .get("view")
+            .and_then(|v| serde_json::from_value::<View>(v.clone()).ok())
+            .unwrap_or(View::Review);
+        model.set_view(view);
         if let Ok(saved) = serde_json::from_value::<ViewState>(state.clone()) {
             model.restore(&saved);
         }
@@ -428,6 +436,9 @@ impl ChangesPanel {
     // ---- what the user can ask for ----------------------------------------
 
     fn toggle_diff(&mut self, cx: &mut Ctx) {
+        if self.model.review_active() {
+            return self.model.review_enter();
+        }
         if let Ok(Some(intent)) = self.model.toggle_diff() {
             self.send(cx, intent);
         }
@@ -435,6 +446,9 @@ impl ChangesPanel {
 
     /// Reads the cursor file's diff: opens it, or reads it again.
     fn read_diff(&mut self, cx: &mut Ctx) {
+        if self.model.review_active() {
+            return self.model.review_enter();
+        }
         let Some(key) = self.model.cursor().cloned() else {
             return;
         };
@@ -586,6 +600,8 @@ impl ChangesPanel {
             } else {
                 self.model.scroll_by(delta);
             }
+        } else if self.model.review_active() && self.model.focus() == Focus::Files {
+            self.model.review_move(delta);
         } else {
             self.model.move_cursor(delta, false);
         }
@@ -603,6 +619,15 @@ impl ChangesPanel {
     }
 
     fn open_file(&mut self, cx: &mut Ctx) {
+        // A folder row of the Review's tree names no file to open.
+        if self.model.review_active()
+            && !matches!(
+                self.model.review_cursor(),
+                Some(crate::review::TreeSel::File(_))
+            )
+        {
+            return;
+        }
         if let Some(path) = self.model.cursor_path()
             && !path.ends_with('/')
         {
@@ -684,6 +709,8 @@ impl ChangesPanel {
             actions::TAKE_OURS => self.take_side(Side::Ours),
             actions::TAKE_THEIRS => self.take_side(Side::Theirs),
             actions::EDIT_CONFLICT => self.edit_conflict(cx),
+            actions::TOGGLE_VIEW => self.model.toggle_view(),
+            actions::TOGGLE_TREE => self.model.review_toggle_tree(),
             actions::CURSOR_UP => self.move_by(-1),
             actions::CURSOR_DOWN => self.move_by(1),
             actions::NEXT_GROUP => {
@@ -789,7 +816,31 @@ impl ChangesPanel {
         }
     }
 
+    /// The Review view's own keys: the tree's cursor, the diff's scrolling. The rest are
+    /// the Stage view's chords, which act on what the tree has selected.
+    fn review_key(&mut self, key: KeyInput, cx: &mut Ctx) -> bool {
+        let mods = key.mods();
+        let command = mods.intersects(Mods::CTRL | Mods::CMD);
+        match key.key() {
+            Key::Up => self.model.review_move(-1),
+            Key::Down => self.model.review_move(1),
+            Key::Left => self.model.review_left(),
+            Key::Right => self.model.review_right(),
+            Key::PageUp => self.model.review_page(-1),
+            Key::PageDown => self.model.review_page(1),
+            Key::Home => self.model.review_to_edge(false),
+            Key::End => self.model.review_to_edge(true),
+            Key::Enter if !command => self.model.review_enter(),
+            _ => return false,
+        }
+        let _ = cx;
+        true
+    }
+
     fn files_key(&mut self, key: KeyInput, cx: &mut Ctx) {
+        if self.model.review_active() && self.review_key(key, cx) {
+            return;
+        }
         let mods = key.mods();
         let command = mods.intersects(Mods::CTRL | Mods::CMD);
         let extend = mods.contains(Mods::SHIFT);
@@ -844,7 +895,13 @@ impl ChangesPanel {
     }
 
     fn files_char(&mut self, c: char, cx: &mut Ctx) {
+        // What needs the commit box or the log is in the Stage view: one key goes there.
+        if matches!(c, 'c' | 'a' | 'l') && self.model.review_active() {
+            self.model.set_view(View::Stage);
+        }
         match c {
+            'w' => self.model.toggle_view(),
+            'F' => self.model.review_toggle_tree(),
             ' ' => self.model.toggle_selected(),
             'e' => self.edit_conflict(cx),
             's' => {
@@ -1059,6 +1116,15 @@ impl ChangesPanel {
 
     fn on_pointer(&mut self, p: PanelPointer, cx: &mut Ctx) {
         match p.kind {
+            PointerKind::Wheel { dy, .. } if self.model.review_active() => {
+                let area = Rect::new(0, 0, self.area.width, self.area.height);
+                if p.x >= 0 && p.y >= 0 && self.model.review_over_tree(area, p.x as u16, p.y as u16)
+                {
+                    self.model.review_tree_scroll_by(isize::from(dy));
+                } else {
+                    self.model.review_scroll_by(isize::from(dy));
+                }
+            }
             PointerKind::Wheel { dy, .. } => self.model.scroll_by(isize::from(dy)),
             PointerKind::Down(Button::Left) => {
                 if p.x < 0 || p.y < 0 {
@@ -1090,6 +1156,9 @@ impl ChangesPanel {
         match hit {
             Hit::Nothing => {}
             Hit::Control(Control::Branch) => self.open_prompt(PromptKind::Switch, cx),
+            Hit::Control(Control::ViewReview) => self.model.set_view(View::Review),
+            Hit::Control(Control::ViewStage) => self.model.set_view(View::Stage),
+            Hit::Review(hit) => self.press_review(hit, p, cx),
             Hit::Control(Control::Fetch) => {
                 let d = self.model.fetch();
                 self.go(cx, d);
@@ -1160,6 +1229,32 @@ impl ChangesPanel {
         }
     }
 
+    fn press_review(&mut self, hit: ReviewHit, p: PanelPointer, cx: &mut Ctx) {
+        match hit {
+            ReviewHit::Nothing => {}
+            ReviewHit::Base => self.model.review_next_base(),
+            ReviewHit::Refresh => self.refresh(cx),
+            ReviewHit::TreeHead => self.model.review_toggle_tree(),
+            ReviewHit::Tree(index) => {
+                // A press on a file brings its diff up; the second of a double click opens
+                // the file in the editor, as in the Stage view.
+                if self.model.review_press_tree(index).is_some() && p.clicks >= 2 {
+                    self.open_file(cx);
+                }
+            }
+            ReviewHit::Header(file) | ReviewHit::Diff(file) => self.model.review_press_file(file),
+        }
+    }
+
+    /// Asks for the diffs the Review has come near: the files within reach of the viewport.
+    fn fetch_review(&mut self, cx: &mut Ctx) {
+        if !(self.shown && self.identity.is_set() && self.scm_ok) {
+            return;
+        }
+        let intents = self.model.review_wants();
+        self.send_all(cx, intents);
+    }
+
     fn verb(&mut self, verb: Verb, key: &crate::status::RowKey, cx: &mut Ctx) {
         match verb {
             Verb::Diff => {
@@ -1197,6 +1292,9 @@ impl Panel for ChangesPanel {
                 | PanelMsg::Workspace(_)
                 | PanelMsg::Documents(_)
         );
+        // A resize starts no status read, but a taller diff column can bring more files
+        // into view, and their diffs are asked for.
+        let reads = !quiet || matches!(msg, PanelMsg::Resize { .. });
         match msg {
             PanelMsg::Key(key) => self.on_key(key, cx),
             PanelMsg::Text(text) | PanelMsg::Paste(text) => self.insert_text(&text),
@@ -1230,6 +1328,9 @@ impl Panel for ChangesPanel {
         }
         if !quiet {
             self.pump(cx);
+        }
+        if reads {
+            self.fetch_review(cx);
         }
     }
 

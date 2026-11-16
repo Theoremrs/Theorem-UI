@@ -26,7 +26,7 @@ fn snapshot_of_a_small_status() {
     assert_eq!(
         render(&model, 44, 16),
         [
-            "main                          [fetch] [push]",
+            "main  Review  Stage           [fetch] [push]",
             " Staged 1                        unstage all",
             "    M main.rs  src",
             " Unstaged 1                        stage all",
@@ -94,7 +94,7 @@ fn snapshot_of_a_small_unified_diff() {
     assert_eq!(
         render(&model, 44, 16),
         [
-            "main                          [fetch] [push]",
+            "main  Review  Stage           [fetch] [push]",
             " Staged 1                        unstage all",
             "    M main.rs  src",
             "     @@ -1,4 +1,4 @@",
@@ -121,7 +121,7 @@ fn snapshot_of_a_small_split_diff() {
     assert_eq!(
         render(&model, 84, 16),
         [
-            "main                                                                  [fetch] [push]",
+            "main  Review  Stage                                                   [fetch] [push]",
             " Staged 1                                                                unstage all",
             "    M main.rs  src",
             "     @@ -1,4 +1,4 @@",

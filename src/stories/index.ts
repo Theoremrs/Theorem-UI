@@ -95,6 +95,18 @@ export const STORIES: readonly StoryMeta[] = [
     },
     evidenceDir: 'workbench-delta-parity',
   },
+  {
+    id: 'workbench-changes-review',
+    title: 'Workbench: the Changes panel as a Review, twelve invented files in five folders at the reference size',
+    lane: 'translation',
+    reference: 'workbench-changes-review@delta-2026-11-15.png',
+    viewport: { width: 1568, height: 914 },
+    tolerance: {
+      threshold: 0.2,
+      note: 'Layout reference, not a pixel target: the blurred frame shows where the diff, the tree and the sticky headers stand; contents and metrics differ by design. The differing share is reported, never a verdict.',
+    },
+    evidenceDir: 'workbench-changes-review',
+  },
   { id: 'workbench-delta-parity-before', title: 'Workbench: the same fixture as workbench-delta-parity in the colours from before the ladder', lane: 'translation', viewport: { width: 1568, height: 914 } },
   { id: 'workbench-threads-withheld', title: 'Workbench: the Threads panel where the host grants no delete, tags, pin or admission', lane: 'translation', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },

@@ -874,7 +874,7 @@ export function scenarios(h) {
           'the status says "8 files changed. Enter shows a file\'s before and after."': text.includes("8 files changed. Enter shows a file's before and after."),
           'the tree has eight list items with the words "modified", "added", "deleted" and "binary", the first selected': items.length === 8 && items[0].name === 'src/lib.ts, modified' && items[0].state.selected === true && items[1].name === 'src/new.ts, added' && items[2].name === 'src/old.ts, deleted' && /binary/.test(items[3].name) && items.slice(1).every((n) => !n.state.selected) && items[0].setSize === 8 && items[7].posInSet === 8,
           'the list asked the host for the delegation\'s changes once, with the two ids': reads.length === 1 && reads[0].payload.runId === 'run-1' && reads[0].payload.delegationId === 'd1',
-          'no other effect than the layout read, the file list and that one read so far': kinds.every((k) => ['layoutLoad', 'filesList', 'scmStatus', 'scmLog', 'delegationChanges', 'layoutSave'].includes(k)) && kinds.filter((k) => k === 'scmStatus' || k === 'scmLog').length <= 2,
+          'no other effect than the layout read, the file list and that one read so far': kinds.every((k) => ['layoutLoad', 'filesList', 'scmStatus', 'scmLog', 'scmDiff', 'delegationChanges', 'layoutSave'].includes(k)) && kinds.filter((k) => k === 'scmStatus' || k === 'scmLog').length <= 2,
           'its catalogue is the five actions refresh, open, back, next and previous, none human-only': catalogue.map((a) => a.action).sort().join() === 'delegation.back,delegation.next,delegation.open,delegation.previous,delegation.refresh' && catalogue.every((a) => a.humanOnly === false),
           'no catalogue entry or node action in the panel can change anything: only intents "start" (a read) and "local"': catalogue.every((a) => ['start', 'local'].includes(a.intent)) && offered.every((id) => ['delegation.open', 'delegation.refresh', 'delegation.back'].includes(id)) && !catalogue.some((a) => /save|edit|delete|discard|restore|apply|commit|stage|revert|accept|write|send/.test(a.action)),
         }
@@ -1059,7 +1059,7 @@ export function scenarios(h) {
           'r reads the delegation\'s changes again: one more delegationChanges and nothing else': afterR === beforeR + 1,
           'delegation.refresh by the agent entry is accepted and is the same read': refresh.outcome === 'accepted' && refresh.effects === 1,
           'across the whole scenario the only effects after the panel opened are delegationChanges and delegationContent': kinds.every((k) => k === 'delegationChanges' || k === 'delegationContent') && kinds.length >= 4,
-          'the whole run never asked for a document, a save, a file change, a terminal or a send': !all.some((k) => /^(document|files(Create|Rename|Copy|Delete)|terminal|conversationSend|run)/.test(k)) && all.every((k) => !/^scm/.test(k) || k === 'scmStatus' || k === 'scmLog'),
+          'the whole run never asked for a document, a save, a file change, a terminal or a send': !all.some((k) => /^(document|files(Create|Rename|Copy|Delete)|terminal|conversationSend|run)/.test(k)) && all.every((k) => !/^scm/.test(k) || k === 'scmStatus' || k === 'scmLog' || k === 'scmDiff'),  // the Review (Changes' default view) reads the diffs near its viewport: reads only
           'nothing was typed into the composer': (composerAfter ?? '') === '',
         }
       },
@@ -1273,6 +1273,230 @@ export function scenarios(h) {
     // the palette the page sent. `workbench-delta-parity` has the ladder on, `workbench-delta-parity-before` has it off.
     'workbench-delta-parity': [(page) => deltaParity(page, true)],
     'workbench-delta-parity-before': [(page) => deltaParity(page, false)],
+
+    // The Changes panel's Review (LEDGER L28): the tree of changed files, folder sums, one continuous diff under sticky
+    // headers, lazy diff requests, the Stage view's chords, and the layout by width. Real key presses and wheel and pointer
+    // events do everything; the page is read from the semantic tree and the effects the core asked the host for.
+    'workbench-changes-review': [
+      async (page) => {
+        const checks = {}
+        const NUMS = /\+(\d+) [−-](\d+)/
+        const counts = (name) => {
+          const m = NUMS.exec(name ?? '')
+          return m ? { add: Number(m[1]), del: Number(m[2]) } : null
+        }
+        const diffAsks = async () => (await effectsSince(page)).filter((k) => k === 'scmDiff').length
+        const cell = await page.evaluate(() => {
+          const grid = document.querySelector('[id$=_ratzilla_grid]')
+          const box = grid.children[0].children[0].getBoundingClientRect()
+          const origin = grid.getBoundingClientRect()
+          return { w: box.width, h: box.height, left: origin.left, top: origin.top }
+        })
+        const at = (rect) => ({ x: cell.left + (rect.x + Math.min(rect.width, 6) / 2) * cell.w, y: cell.top + (rect.y + rect.height / 2) * cell.h })
+        const all = () => nodes(page)
+        const byId = async (id) => (await all()).find((n) => n.id.endsWith(id))
+        const read = async () => {
+          const tree = await all()
+          const summary = tree.find((n) => n.id.endsWith('/review/summary'))
+          const files = tree.filter((n) => /\/rfile\//.test(n.id))
+          const dirs = tree.filter((n) => /\/dir\//.test(n.id))
+          const doc = tree.find((n) => /\/diff$/.test(n.id) && n.role === 'document')
+          const headers = tree.filter((n) => /\/header\//.test(n.id))
+          const current = files.find((f) => /the file the diff is showing/.test(f.state?.description ?? ''))
+          return { tree, summary, files, dirs, doc, headers, current }
+        }
+        await sees(page, 'Changes', 8000)
+        await page.waitForTimeout(1200)
+        // Every diff is read without a scroll (the viewport's first, three at a time), so the totals are whole on their own.
+        await recordEffects(page)
+        await page.keyboard.press(`${CHORD}g`)
+        await page.waitForTimeout(300)
+        const fixture = await page.evaluate(() => window.__reviewCounts)
+        const paths = Object.keys(fixture)
+        const sum = (prefix) => paths.filter((p) => !prefix || p.startsWith(`${prefix}/`)).reduce((t, p) => ({ add: t.add + fixture[p].add, del: t.del + fixture[p].del }), { add: 0, del: 0 })
+        const opening = await read()
+        checks['the Review is the view the panel opens on'] = (await byId('/view/review'))?.state?.selected === true
+        checks['it lists all twelve files'] = opening.files.length === 12
+        await snap(page, 'workbench-changes-review-open', 1568, 914)
+        for (let i = 0; i < 60; i++) {
+          if ((await read()).summary?.state?.busy !== true) break
+          await page.waitForTimeout(110)
+        }
+        const loaded = await read()
+        const asksAfter = await page.evaluate(() => (window.__workbenchEffects ?? []).filter((k) => k === 'scmDiff').length)
+        checks['every diff is read with no scroll: the header total closes on its own'] = loaded.summary?.state?.busy !== true && asksAfter >= 12
+        checks['and never more than one request per file side (at most 12 + a few re-reads)'] = asksAfter <= 16
+        const total = counts(loaded.summary?.name)
+        const expected = sum('')
+        checks['the header totals equal the sum of the fixture counts'] = total?.add === expected.add && total?.del === expected.del && loaded.summary?.state?.busy !== true
+        checks['the header counts the files'] = /12 files/.test(loaded.summary?.name ?? '')
+        const folderOk = loaded.dirs.every((d) => {
+          const path = d.id.slice(d.id.indexOf('/dir/') + 5)
+          const c = counts(d.name)
+          const e = sum(path)
+          return c?.add === e.add && c?.del === e.del
+        })
+        checks['every folder sums its files'] = loaded.dirs.length >= 5 && folderOk
+        const fileOk = loaded.files.every((f) => {
+          const path = f.id.slice(f.id.indexOf('/rfile/') + 7)
+          const c = counts(f.name)
+          return path === 'assets/logo-mark.png' || (c?.add === fixture[path].add && c?.del === fixture[path].del)
+        })
+        checks['every file shows its own counts (the binary one none)'] = fileOk
+        const letters = Object.fromEntries(loaded.files.map((f) => [f.id.slice(f.id.indexOf('/rfile/') + 7), f.name.split(' ')[0]]))
+        checks['state letters: A, M, D, R, U'] = letters['crates/engine/src/router.rs'] === 'A' && letters['crates/engine/src/planner.rs'] === 'M' && letters['crates/engine/src/legacy.rs'] === 'D' && letters['crates/store/src/index.rs'] === 'R' && letters['scripts/bench.sh'] === 'U'
+        const folderNames = loaded.dirs.map((d) => d.name)
+        checks['a chain of single-child folders reads as one name (docs/design, store/src)'] = folderNames.some((n) => n.startsWith('docs/design')) && folderNames.some((n) => n.startsWith('store/src'))
+
+        // Keys in the tree: Up/Down walk, Left closes a folder, Right opens it, and the sum stays.
+        await page.keyboard.press('Home')
+        await page.waitForTimeout(150)
+        const walk = async (want) => {
+          for (let i = 0; i < 30; i++) {
+            const f = (await read()).tree.find((n) => n.state?.selected && /\/(dir|rfile)\//.test(n.id))
+            if (f?.id.endsWith(want)) return f
+            await page.keyboard.press('ArrowDown')
+            await page.waitForTimeout(80)
+          }
+          return null
+        }
+        const crates = await walk('/dir/crates')
+        checks['the arrow keys walk to a folder'] = crates !== null
+        const sumBefore = counts(crates?.name)
+        await page.keyboard.press('ArrowLeft')
+        await page.waitForTimeout(250)
+        const closed = await read()
+        const cratesClosed = closed.dirs.find((d) => d.id.endsWith('/dir/crates'))
+        checks['Left closes the folder: its files are no longer listed'] = cratesClosed?.state?.expanded === false && !closed.files.some((f) => f.id.includes('/rfile/crates/'))
+        checks['and the closed folder keeps its sum'] = JSON.stringify(counts(cratesClosed?.name)) === JSON.stringify(sumBefore)
+        await snap(page, 'workbench-changes-review-collapsed', 1568, 914)
+        await page.keyboard.press('ArrowRight')
+        await page.waitForTimeout(250)
+        checks['Right opens it again'] = (await read()).files.some((f) => f.id.includes('/rfile/crates/'))
+
+        // A pointer click on a folder row toggles it; a click on a file row selects it.
+        const assets = (await read()).dirs.find((d) => d.id.endsWith('/dir/assets'))
+        const p = at(assets.rect)
+        await page.mouse.click(p.x, p.y)
+        await page.waitForTimeout(300)
+        checks['a click on a folder closes it'] = (await read()).dirs.find((d) => d.id.endsWith('/dir/assets'))?.state?.expanded === false
+        await page.mouse.click(p.x, p.y)
+        await page.waitForTimeout(300)
+        checks['and a second click opens it'] = (await read()).dirs.find((d) => d.id.endsWith('/dir/assets'))?.state?.expanded === true
+
+        // Enter on a file brings its header to the top of the diff.
+        const target = await walk('/rfile/crates/store/src/page.rs')
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(500)
+        const jumped = await read()
+        const head = jumped.headers.find((h) => h.id.endsWith('/header/crates/store/src/page.rs'))
+        checks['Enter on a file puts its header at the top of the diff'] = target !== null && head !== undefined && head.rect.y === jumped.doc.rect.y
+        checks['and that file is the current one, marked in the tree'] = jumped.current?.id.endsWith('/rfile/crates/store/src/page.rs') === true
+
+        // The wheel scrolls the diff: the current file changes and the current file's header stays at the top.
+        const docPoint = at({ x: jumped.doc.rect.x + 4, y: jumped.doc.rect.y + 8, width: 8, height: 1 })
+        const wasCurrent = jumped.current?.id
+        for (let i = 0; i < 6; i++) {
+          await page.mouse.move(docPoint.x, docPoint.y)
+          await page.mouse.wheel(0, 600)
+          await page.waitForTimeout(120)
+        }
+        await page.waitForTimeout(300)
+        const scrolled = await read()
+        checks['the wheel over the diff changes the current file'] = scrolled.current?.id !== undefined && scrolled.current.id !== wasCurrent
+        const stuck = scrolled.headers.find((h) => scrolled.current && h.id.endsWith(`/header/${scrolled.current.id.slice(scrolled.current.id.indexOf('/rfile/') + 7)}`))
+        checks['and its header is stuck at the top of the diff'] = stuck !== undefined && stuck.rect.y === scrolled.doc.rect.y
+        await snap(page, 'workbench-changes-review-scrolled', 1568, 914)
+        // Through the large file by keys: the current file is queue.rs while its rows pass.
+        // Up from the cursor to the first row, then down to the large file.
+        for (let i = 0; i < 20; i++) await page.keyboard.press('ArrowUp')
+        await page.waitForTimeout(150)
+        await walk('/rfile/crates/engine/src/queue.rs')
+        await page.keyboard.press('Enter')
+        await page.waitForTimeout(400)
+        const seen = new Set()
+        for (let i = 0; i < 14; i++) {
+          await page.keyboard.press('PageDown')
+          await page.waitForTimeout(90)
+          const c = (await read()).current?.id
+          if (c) seen.add(c.slice(c.indexOf('/rfile/') + 7))
+        }
+        checks['PageDown carries the scroll through the large file and on past it'] = seen.has('crates/engine/src/queue.rs') && seen.size >= 2
+
+        // The layout: here the panel is narrow, so the tree is stacked above the diff.
+        const geo = await read()
+        const tree = geo.tree.find((n) => /\/list$/.test(n.id) && n.role === 'tree')
+        checks['the narrow panel stacks the tree above the diff'] = tree.rect.y < geo.doc.rect.y && Math.abs(tree.rect.x - geo.doc.rect.x) <= 1 && tree.rect.height <= Math.ceil((geo.doc.rect.y + geo.doc.rect.height - tree.rect.y) / 3) + 1
+
+        // Wide: from a hundred columns the diff is on the left and the tree on the right; narrow again, stacked.
+        await page.setViewportSize({ width: 3800, height: 914 })
+        await page.waitForTimeout(1200)
+        const wideRead = await read()
+        const wideTree = wideRead.tree.find((n) => /\/list$/.test(n.id) && n.role === 'tree')
+        checks['a wide panel puts the tree on the right of the diff'] = wideRead.doc.rect.width + wideTree.rect.width >= 100 && wideTree.rect.x > wideRead.doc.rect.x + wideRead.doc.rect.width - 2 && wideTree.rect.y <= wideRead.doc.rect.y + 1
+        await snap(page, 'workbench-changes-review-wide', 3800, 914)
+        await page.setViewportSize({ width: 1568, height: 914 })
+        await page.waitForTimeout(1200)
+        const back = await read()
+        const backTree = back.tree.find((n) => /\/list$/.test(n.id) && n.role === 'tree')
+        checks['and narrow again it is stacked'] = backTree.rect.y < back.doc.rect.y
+        // The 390 px window: stacked too, with the tree no more than a third of the height.
+        await page.setViewportSize({ width: 390, height: 844 })
+        await page.waitForTimeout(1200)
+        const phone = await read()
+        const phoneTree = phone.tree.find((n) => /\/list$/.test(n.id) && n.role === 'tree')
+        checks['a 390 px window stacks the tree above the diff'] = phone.doc !== undefined && phoneTree !== undefined && phoneTree.rect.y < phone.doc.rect.y
+        await snap(page, 'workbench-changes-review-390', 390, 844)
+        await page.setViewportSize({ width: 1568, height: 914 })
+        await page.waitForTimeout(1200)
+
+        // The Stage view keeps stage, unstage and commit.
+        await page.keyboard.press('w')
+        await page.waitForTimeout(500)
+        const stage = await read()
+        checks['w switches to the Stage view: the Stage tab is selected and the list is the Stage list'] = (await byId('/view/stage'))?.state?.selected === true && stage.files.length === 0 && (await all()).some((n) => /\/changes\/file\/|\/file\//.test(n.id))
+        await snap(page, 'workbench-changes-review-stage', 1568, 914)
+        await recordEffects(page)
+        let guard = 0
+        const rows = async () => (await all()).filter((n) => n.role === 'treeItem' && /\/file\//.test(n.id) && !/\/rfile\//.test(n.id))
+        const focusedRow = async () => (await rows()).find((n) => n.state?.focused)
+        while (!/^M README\.md$/.test((await focusedRow())?.name ?? '') && guard++ < 30) {
+          await page.keyboard.press('ArrowDown')
+          await page.waitForTimeout(80)
+        }
+        const stagedBefore = Number(((await all()).find((n) => /^Staged \(\d+\)$/.test(n.name))?.name.match(/\d+/) ?? [])[0])
+        await page.keyboard.press('s')
+        await page.waitForTimeout(600)
+        const stagedAfter = Number(((await all()).find((n) => /^Staged \(\d+\)$/.test(n.name))?.name.match(/\d+/) ?? [])[0])
+        checks['s stages the file under the cursor in the Stage view'] = stagedAfter === stagedBefore + 1 && (await effectsSince(page)).includes('scmStage')
+        // Staging moves the cursor to the next row; walk back up to the file now under Staged.
+        for (let i = 0; i < 10 && !/\/Staged\/README\.md$/.test((await focusedRow())?.id ?? ''); i++) {
+          await page.keyboard.press('ArrowUp')
+          await page.waitForTimeout(80)
+        }
+        await page.keyboard.press('u')
+        await page.waitForTimeout(600)
+        const stagedBack = Number(((await all()).find((n) => /^Staged \(\d+\)$/.test(n.name))?.name.match(/\d+/) ?? [])[0])
+        checks['u unstages it again'] = stagedBack === stagedBefore && (await effectsSince(page)).includes('scmUnstage')
+        await page.keyboard.press('c')
+        await page.waitForTimeout(300)
+        await page.keyboard.type('fix(engine): drain the queue in order', { delay: 12 })
+        await page.waitForTimeout(200)
+        const draft = (await all()).find((n) => /commit/i.test(n.id) && n.text)?.text ?? ''
+        checks['c opens the commit box and the message is typed into it'] = /drain the queue/.test(draft) || (await pageText(page)).includes('drain the queue in order')
+        await snap(page, 'workbench-changes-review-commit', 1568, 914)
+        await recordEffects(page)
+        await page.keyboard.press('Control+Enter')
+        await page.waitForTimeout(700)
+        checks['Ctrl+Enter commits what is staged: the host is asked to commit'] = (await effectsSince(page)).includes('scmCommit')
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(200)
+        await page.keyboard.press('w')
+        await page.waitForTimeout(500)
+        checks['w returns to the Review'] = (await byId('/view/review'))?.state?.selected === true && (await read()).files.length > 0
+        return checks
+      },
+    ],
 
     // The Files panel's icons: a folder open or closed for every drop-down, a file icon by kind for the rows under them,
     // and nothing in front of a name that looks like an arrow. The tree is the story's (partial `docs`, an image, a symlink).
@@ -1729,7 +1953,7 @@ export function scenarios(h) {
           'every other row, thread, delegation and session, has a file icon': under.length >= 12 && under.every((r) => /^file/.test(r.icon ?? '')),
           'a thread is fileText and a session in the workspace is fileText': of('r:t:p-atlas:t-running')?.icon === 'fileText' && of('r:s:herdr-build')?.icon === 'fileText' && of('r:s:herdr-review')?.icon === 'fileText',
           'a session outside the workspace is the file with a plus (fileAdd)': of('r:s:herdr-agent')?.icon === 'fileAdd' && of('r:s:herdr-shell')?.icon === 'fileAdd',
-          'a section label has no icon': labels.length === 3 && labels.every((l) => !icons.some((i) => i.y === l.rect.y)),
+          'a section label has no icon': labels.length === 3 && labels.every((l) => !icons.some((i) => i.y === l.rect.y && i.x >= l.rect.x && i.x < l.rect.x + l.rect.width)),
           'no cell before a name shows v, >, ▸ or any other mark: only the icon\'s blanks and the state stripe': rows.length >= 18 && rows.every((r) => LEAD_BLANK.test(r.lead)),
           'the stripe, the state words and the unread dot are still drawn': (await pageText(page)).includes('\u258e') && (await pageText(page)).includes('running') && (await pageText(page)).includes('\u25cf'),
           'the semantic tree is unchanged: the open state is expanded, and no accessible name carries an icon name': of('r:p:p-atlas')?.expanded === true && of('r:t:p-atlas:t-parent')?.expanded === true && of('r:t:p-atlas:t-running')?.expanded === null && rows.every((r) => !/folder|file[A-Z]|imageFile/.test(r.name)),

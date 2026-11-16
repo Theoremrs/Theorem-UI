@@ -66,6 +66,8 @@ pub mod actions {
     pub const OPEN_FILE: &str = "changes.openFile";
     pub const CANCEL: &str = "changes.cancel";
     pub const DISMISS_NOTICES: &str = "changes.dismissNotices";
+    pub const TOGGLE_VIEW: &str = "changes.toggleView";
+    pub const TOGGLE_TREE: &str = "changes.toggleTree";
 }
 
 fn act(id: &str, reason: Option<String>) -> NodeAction {
@@ -130,6 +132,10 @@ impl Changes {
         }
         root.children.push(branch.id.clone());
         nodes.push(branch);
+        if let Some(tabs) = self.view_tabs(id, regions.branch) {
+            root.children.push(tabs[0].id.clone());
+            nodes.extend(tabs);
+        }
 
         let said = banners(self);
         let laid = banner_rows(self, regions.banners.width, area.height);
@@ -155,6 +161,16 @@ impl Changes {
             }
             root.children.push(node.id.clone());
             nodes.push(node);
+        }
+
+        if self.review_active() {
+            self.review_nodes(id, area, &mut root, &mut nodes, block);
+            let root_id: NodeId = root.id.clone();
+            nodes.insert(0, root);
+            return SemanticTree {
+                root: root_id,
+                nodes,
+            };
         }
 
         // The list.
@@ -497,7 +513,7 @@ impl Changes {
         }
     }
 
-    fn file_actions(&self, key: &RowKey, block: Option<String>) -> Vec<NodeAction> {
+    pub(crate) fn file_actions(&self, key: &RowKey, block: Option<String>) -> Vec<NodeAction> {
         let mut out = vec![act(
             actions::DIFF,
             (!key.section.can_diff())

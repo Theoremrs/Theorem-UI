@@ -19,6 +19,8 @@ mod intent;
 mod layout;
 mod model;
 mod panel;
+mod review;
+mod review_view;
 mod semantics;
 mod status;
 mod styles;
@@ -43,6 +45,7 @@ pub use model::{
     ReadView, SUBJECT,
 };
 pub use panel::{ChangesPanel, KIND, REPOSITORY, register};
+pub use review::{Base, MAX_DIFF_LINES, TreeSel, View, WIDE};
 pub use semantics::actions;
 pub use status::{
     Basis, Change, Groups, Head, LISTED, Loss, RowKey, Section, is_folder, letter, loss, shown,

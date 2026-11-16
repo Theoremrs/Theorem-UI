@@ -653,12 +653,15 @@ pub(crate) fn regions(model: &Changes, area: Rect) -> Regions {
     let branch_h = 1.min(height);
     // A banner never takes more than a third of the panel.
     let banner_h = banner_rows(model, area.width, height).rows.len() as u16;
-    let mut commit_h = if model.mode == Mode::Changes {
+    // The Review gives the whole list to the diff and the tree: the commit box and the log
+    // are the Stage view's.
+    let review = model.review_active();
+    let mut commit_h = if model.mode == Mode::Changes && !review {
         commit_rows(height)
     } else {
         0
     };
-    let mut log_h = if model.mode == Mode::Changes && height >= 20 {
+    let mut log_h = if model.mode == Mode::Changes && !review && height >= 20 {
         match &model.log {
             LogState::Idle | LogState::NoCommits => 0,
             LogState::Ready(entries) => (entries.len() as u16 + 1).min(7),
@@ -703,10 +706,15 @@ pub(crate) const LIMITS: (usize, usize) = SUBJECT;
 pub(crate) enum Control {
     /// The branch's name: opens the prompt that switches.
     Branch,
+    /// The view switch: the Review and the Stage view.
+    ViewReview,
+    ViewStage,
     Fetch,
     Push,
 }
 
+pub(crate) const TAB_REVIEW: &str = "Review";
+pub(crate) const TAB_STAGE: &str = "Stage";
 const FETCH_LABEL: &str = "[fetch]";
 const PUSH_LABEL: &str = "[push]";
 
@@ -719,13 +727,34 @@ pub(crate) fn branch_controls(model: &Changes, line_width: u16) -> Vec<(Control,
         return out;
     }
     let label = model.head().map(|h| h.label()).map_or(0, |l| width(&l)) as u16;
-    out.push((Control::Branch, 0, label.min(line_width)));
-    if !model.in_flight().is_empty() {
-        return out;
-    }
     let (fetch, push) = (width(FETCH_LABEL) as u16, width(PUSH_LABEL) as u16);
     let total = fetch + 1 + push;
-    if line_width > total + label.min(line_width) + 3 {
+    let idle = model.in_flight().is_empty();
+    let offered = idle && line_width > total + label.min(line_width) + 3;
+    // The view switch sits after the branch's name, which gives up room for it (down to twelve
+    // cells) before the switch is left out.
+    let tail = width(&model.busy_tail()) as u16;
+    let tabs = (width(TAB_REVIEW) + 2 + width(TAB_STAGE)) as u16;
+    let reserve =
+        tabs + 2 + if offered { total + 1 } else { 0 } + if tail > 0 { tail + 2 } else { 0 };
+    let room = line_width.saturating_sub(reserve);
+    let with_tabs = room >= label.min(12);
+    let branch_w = if with_tabs {
+        label.min(room)
+    } else {
+        label.min(line_width)
+    };
+    out.push((Control::Branch, 0, branch_w));
+    if with_tabs {
+        let review = width(TAB_REVIEW) as u16;
+        out.push((Control::ViewReview, branch_w + 2, review));
+        out.push((
+            Control::ViewStage,
+            branch_w + 2 + review + 2,
+            width(TAB_STAGE) as u16,
+        ));
+    }
+    if offered {
         let at = line_width - total;
         out.push((Control::Fetch, at, fetch));
         out.push((Control::Push, at + fetch + 1, push));
@@ -736,6 +765,8 @@ pub(crate) fn branch_controls(model: &Changes, line_width: u16) -> Vec<(Control,
 pub(crate) fn control_label(control: Control) -> &'static str {
     match control {
         Control::Branch => "",
+        Control::ViewReview => TAB_REVIEW,
+        Control::ViewStage => TAB_STAGE,
         Control::Fetch => FETCH_LABEL,
         Control::Push => PUSH_LABEL,
     }
@@ -800,6 +831,8 @@ pub(crate) enum Hit {
     Commit(usize),
     /// A branch the prompt offers.
     Branch(usize),
+    /// Something in the Review view's list region.
+    Review(crate::review_view::ReviewHit),
 }
 
 impl Changes {
@@ -833,6 +866,9 @@ impl Changes {
                 .find(|(_, first, rows)| line >= *first && line < first + rows)
                 .map_or(0, |(i, ..)| *i);
             return Hit::Banner(banner);
+        }
+        if inside(regions.list) && self.review_active() {
+            return Hit::Review(self.review_hit(area, x, y));
         }
         if inside(regions.list) {
             return self.hit_list(

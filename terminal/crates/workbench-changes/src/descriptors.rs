@@ -160,6 +160,11 @@ pub fn descriptors() -> Vec<ActionDescriptor> {
             "Close the prompt, decline the question, or leave the read view",
         ),
         local(id::DISMISS_NOTICES, "Dismiss the notices"),
+        local(id::TOGGLE_VIEW, "Switch between the Review and Stage views"),
+        local(
+            id::TOGGLE_TREE,
+            "Fold the Review's file tree to its heading line, or open it",
+        ),
         start(id::FETCH, "Fetch from the remote", ScmFetch),
         start(id::PUSH, "Push to the remote", ScmPush),
         // These three ask for the branch name in a prompt, which lists the branches the

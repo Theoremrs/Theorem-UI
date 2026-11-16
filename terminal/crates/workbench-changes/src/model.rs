@@ -34,6 +34,7 @@ pub use read::{Caret, Field, Prompt, PromptKind, ReadBody, ReadKind, ReadView};
 use crate::diff::{Hunk, Parsed, parse};
 use crate::documents::{Landed, OpenDocument, Receipt};
 use crate::intent::{ActionKind, Intent, IntentId, IntentKind, Refusal, Side};
+use crate::review::{ReviewState, View};
 use crate::status::{Basis, Change, Groups, Head, RowKey, Section, is_folder, loss, shown};
 use crate::text::Withheld;
 use theorem_workbench_text::visible::visible;
@@ -178,7 +179,7 @@ pub struct DiffView {
 }
 
 impl DiffView {
-    fn new(state: DiffState, basis: Option<Basis>, request: Option<IntentId>) -> Self {
+    pub(crate) fn new(state: DiffState, basis: Option<Basis>, request: Option<IntentId>) -> Self {
         Self {
             state,
             stale: false,
@@ -376,6 +377,10 @@ pub struct Changes {
     pub(crate) anchor: Option<RowKey>,
     pub(crate) selected: BTreeSet<RowKey>,
     pub(crate) diffs: BTreeMap<RowKey, DiffView>,
+    /// Which of the two views the panel shows.
+    pub(crate) view: View,
+    /// What the Review view keeps: its own diffs, its tree and its scroll.
+    pub(crate) review: ReviewState,
     pub(crate) layout: DiffLayout,
     pub(crate) subject: String,
     pub(crate) body: String,
@@ -426,6 +431,7 @@ impl std::fmt::Debug for Changes {
             .field("generation", &self.generation)
             .field("state", &self.state())
             .field("mode", &self.mode)
+            .field("view", &self.view)
             .field("focus", &self.focus)
             .field("subject", &Withheld(self.subject.len()))
             .field("body", &Withheld(self.body.len()))
@@ -461,6 +467,10 @@ impl Changes {
             anchor: None,
             selected: BTreeSet::new(),
             diffs: BTreeMap::new(),
+            // A bare model starts on the Stage view; the mounted panel opens on the Review
+            // unless its saved state says otherwise (see `ChangesPanel::restore`).
+            view: View::Stage,
+            review: ReviewState::default(),
             layout: DiffLayout::Unified,
             subject: String::new(),
             body: String::new(),
@@ -717,6 +727,7 @@ impl Changes {
         self.width = width;
         self.height = height;
         self.reveal_cursor();
+        self.review_clamp();
     }
 
     pub fn set_subject(&mut self, subject: impl Into<String>) {
@@ -1068,6 +1079,56 @@ impl Changes {
         }
         self.diffs.insert(key.clone(), view);
         Ok(Some(intent))
+    }
+
+    /// Asks for one row's diff for the Review view. A diff that has gone stale keeps its
+    /// lines until the new ones arrive. A row with nothing to compare, or an untracked
+    /// folder, gets its answer at once and sends nothing.
+    pub(crate) fn review_open(&mut self, key: &RowKey) -> Option<Intent> {
+        let snapshot = self.snapshot.as_ref()?;
+        let change = snapshot.groups.find(key)?;
+        let basis = Basis {
+            state: snapshot.state.clone(),
+            head: snapshot.oid.clone(),
+            change: change.clone(),
+        };
+        let settled = if !key.section.can_diff() {
+            Some(DiffState::NoStatus)
+        } else if key.section == Section::Untracked && is_folder(&key.path) {
+            Some(DiffState::Folder)
+        } else {
+            None
+        };
+        if let Some(state) = settled {
+            self.review
+                .diffs
+                .insert(key.clone(), DiffView::new(state, Some(basis), None));
+            return None;
+        }
+        let kind = IntentKind::Diff {
+            path: key.path.clone(),
+            staged: key.section.diff_staged(),
+        };
+        let pending = Pending {
+            action: ActionKind::Diff,
+            generation: 0,
+            subject: Some(key.path.clone()),
+            key: Some(key.clone()),
+            sent: None,
+            then_commit: None,
+        };
+        let intent = self.issue(kind, pending);
+        let view = match self.review.diffs.remove(key) {
+            Some(mut old) if matches!(old.state, DiffState::Hunks(_)) => {
+                old.request = Some(intent.id);
+                old.basis = Some(basis);
+                old.stale = true;
+                old
+            }
+            _ => DiffView::new(DiffState::Loading, Some(basis), Some(intent.id)),
+        };
+        self.review.diffs.insert(key.clone(), view);
+        Some(intent)
     }
 
     /// Moves to the next or previous hunk of the cursor file's open diff.
@@ -1562,6 +1623,7 @@ impl Changes {
         if self.log_cursor >= self.log_len() {
             self.log_cursor = 0;
         }
+        self.review_after_status();
         self.reveal_cursor();
     }
 
@@ -1597,18 +1659,23 @@ impl Changes {
             self.counters.stale_dropped += 1;
             return;
         };
-        let current = self.diffs.get(&key).and_then(|v| v.request) == Some(id);
+        let in_review = self.review.diffs.get(&key).and_then(|v| v.request) == Some(id);
+        let current = in_review || self.diffs.get(&key).and_then(|v| v.request) == Some(id);
         if !current {
             // Closed, or asked for again since: this answer no longer applies.
             self.counters.stale_dropped += 1;
             return;
         }
         if self.older(pending) {
-            if let Some(view) = self.diffs.get_mut(&key) {
+            if in_review {
+                // The Review asks again, at the new generation, once the file is in view.
+                self.review.diffs.remove(&key);
+            } else if let Some(view) = self.diffs.get_mut(&key) {
                 view.state = DiffState::Outdated;
             }
             return;
         }
+        let anchor = in_review.then(|| self.review_anchor()).flatten();
         let state = match (outcome, payload) {
             (Outcome::Accepted, Some(CompletionPayload::ScmDiff(result))) => {
                 if self.state_moved(result.state.as_ref()) {
@@ -1623,12 +1690,20 @@ impl Changes {
             }
             (other, _) => DiffState::Problem(Problem::of(other).expect("not accepted")),
         };
-        if let Some(view) = self.diffs.get_mut(&key) {
+        let diffs = if in_review {
+            &mut self.review.diffs
+        } else {
+            &mut self.diffs
+        };
+        if let Some(view) = diffs.get_mut(&key) {
             view.state = state;
             view.stale = false;
             view.hunk = 0;
             view.folded.clear();
             view.request = None;
+        }
+        if in_review {
+            self.review_restore(anchor);
         }
     }
 

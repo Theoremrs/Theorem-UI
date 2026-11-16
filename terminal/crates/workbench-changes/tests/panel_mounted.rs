@@ -129,7 +129,19 @@ fn factories(slot: &Slot) -> PanelFactories {
     factories.register_opener("document", |t| matches!(t, OpenTarget::File { .. }));
     let slot = slot.clone();
     factories.register("changes", move |state, _| {
-        let panel = Rc::new(RefCell::new(ChangesPanel::restore(state)));
+        // These tests are about the Stage view; the panel opens on the Review unless a
+        // saved state names a view, so they name it. The Review has its own tests.
+        let mut state = state.clone();
+        if state.get("view").is_none() {
+            state = match state {
+                Value::Object(mut map) => {
+                    map.insert("view".into(), Value::String("stage".into()));
+                    Value::Object(map)
+                }
+                _ => serde_json::json!({ "view": "stage" }),
+            };
+        }
+        let panel = Rc::new(RefCell::new(ChangesPanel::restore(&state)));
         *slot.borrow_mut() = Some(panel.clone());
         Box::new(Probe(panel))
     });
@@ -1095,7 +1107,7 @@ fn the_actions_are_in_the_catalog_with_a_reason_when_unavailable() {
         .iter()
         .map(|d| d.id.as_str().to_owned())
         .collect();
-    assert_eq!(ids.len(), 44);
+    assert_eq!(ids.len(), 46);
     let with = registry.agent_catalog(&Capabilities::of(CAPS_AMEND));
     let without = registry.agent_catalog(&Capabilities::of(["files"]));
     for id in &ids {

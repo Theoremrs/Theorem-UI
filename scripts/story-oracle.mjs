@@ -691,7 +691,8 @@ const SCENARIOS = {
         'the input names itself and holds focus': start.held && (await attr(page, 'body:p1', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workbench input',
         'the composer is where focus starts': start.role === 'textbox' && start.name === 'Message to Theo',
         'focus moves to Files with its chord and lands on its first row, input still focused': files.held && files.node === 'p3/f:.github' && files.role === 'treeitem',
-        'focus moves to Changes with its chord': changes.held && changes.role === 'group' && /Cargo\.toml/.test(changes.name ?? ''),
+        // Changes opens on the Review, so focus lands on its tree's first row (a file); in the Stage view it was the group named by its first file.
+        'focus moves to Changes with its chord': changes.held && ((changes.role === 'group' && /Cargo\.toml/.test(changes.name ?? '')) || (changes.role === 'treeitem' && /^[AMDRU!] /.test(changes.name ?? ''))),
         'the Files tab and the Changes tab each appear once': (await countByRole(page, 'tab', 'Files')) === 1 && (await countByRole(page, 'tab', 'Changes')) === 1 && (await countByRole(page, 'textbox', 'Workbench input')) === 1,
         'no element id is repeated': ids.all === ids.unique,
       }
@@ -754,8 +755,16 @@ const SCENARIOS = {
     async (page) => {
       await page.keyboard.press(`${CHORD}g`)
       // Changes reads the repository before it lists anything: wait for the list, not for a fixed time.
+      // Changes opens on the Review: its tree is "Changed files". What the overlay says of it is read first, then `w` switches
+      // to the Stage view, whose "Changes list" is what the rest of this step reads.
+      await overlayBox(page).getByRole('tree', { name: 'Changed files' }).waitFor({ timeout: 20_000 })
+      await page.waitForTimeout(500)
+      const review = await treeText(page)
+      await page.keyboard.press('w')
       await overlayBox(page).getByRole('tree', { name: 'Changes list' }).waitFor({ timeout: 20_000 })
       await page.waitForTimeout(500)
+      await page.keyboard.press('Home')
+      await page.waitForTimeout(200)
       for (let i = 0; i < 3; i++) {
         await page.keyboard.press('ArrowDown')
         await page.waitForTimeout(200)
@@ -765,6 +774,7 @@ const SCENARIOS = {
       const tree = await treeText(page)
       const commit = overlayBox(page).getByRole('button', { name: /^Commit to/ })
       return {
+        'the Review names its tree, its folders (with their state), its files, the base, the view switch and the file headers': /tree "Changed files"/.test(review) && /treeitem "[^"]+" \[expanded\]/.test(review) && /treeitem "[AMDRU] [^"]+"/.test(review) && /button "Base: [^"]+"/.test(review) && /tablist "Changes view"/.test(review) && /tab "Review" \[selected\]/.test(review) && /heading "[^"]+/.test(review),
         'the changes list is a tree of groups': /tree "Changes list"/.test(tree) && /treeitem "Staged \(2\)" \[expanded\]/.test(tree),
         'a file opens a diff the tree names': /document "Diff of src\/main\.rs"/.test(tree),
         'the commit button is disabled': (await commit.getAttribute('aria-disabled')) === 'true',
@@ -995,6 +1005,9 @@ const SCENARIOS = {
       documented('changes.open', 'Mod+Alt+G')
       await press(`${CHORD}g`)
       await arrive('9 Changes by its chord (Mod+Alt+G)', 'Changes')
+      // Changes opens on the Review, whose rows carry their counts; this journey walks the Stage list, one key (w) away.
+      await press('w')
+      await page.waitForTimeout(400)
       const file = await walkTo(page, (leaf) => leaf === 'treeItem:M src/main.rs')
       checks['10 ArrowDown walks the list to M src/main.rs'] = file.reached
       await press('Enter')
@@ -1604,7 +1617,8 @@ const SCENARIOS = {
       // a. read the tree
       const tree = await ask('run_a', 'workbench.read')
       await snapNow('read-tree')
-      const tabs = tree.result.nodes.filter((n) => n.role === 'tab')
+      // The Changes panel's own Review/Stage switch is a tab list inside the panel, not a workbench tab: left out.
+      const tabs = tree.result.nodes.filter((n) => n.role === 'tab' && !/\/changes\/view\//.test(n.id))
       // b. read the catalogue
       const catalog = await ask('run_a', 'workbench.read', { part: 'catalog' })
       const listed = catalog.result.actions

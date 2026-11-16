@@ -8,6 +8,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{Changes, DiffLayout, Focus};
+use crate::review::View;
 use crate::status::RowKey;
 use crate::text::Withheld;
 
@@ -27,6 +28,9 @@ pub struct ViewState {
     pub amend: bool,
     pub layout: DiffLayout,
     pub focus: Focus,
+    /// Which view the panel was on. A layout saved before the Review view existed has
+    /// none, and opens on the Review.
+    pub view: View,
 }
 
 // The draft message is the person's words: `Debug` counts it.
@@ -41,6 +45,7 @@ impl std::fmt::Debug for ViewState {
             .field("amend", &self.amend)
             .field("layout", &self.layout)
             .field("focus", &self.focus)
+            .field("view", &self.view)
             .finish_non_exhaustive()
     }
 }
@@ -63,6 +68,7 @@ impl Changes {
             amend: self.amend,
             layout: self.layout,
             focus: self.focus,
+            view: self.view,
         }
     }
 
@@ -77,6 +83,7 @@ impl Changes {
         self.body = state.body.clone();
         self.layout = state.layout;
         self.focus = state.focus;
+        self.view = state.view;
         self.amend = state.amend && self.amend_available();
         self.scroll = state.scroll;
         self.cursor = state.cursor.clone();

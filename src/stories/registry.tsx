@@ -129,6 +129,7 @@ import {
   WorkbenchDeltaParityBeforeStory,
   WorkbenchDeltaParityStory,
 } from '@/components/workbench/workbench-delta-parity-story'
+import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-review-story'
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(
@@ -838,6 +839,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
   'workbench-delta-parity': WorkbenchDeltaParityStory,
   'workbench-delta-parity-before': WorkbenchDeltaParityBeforeStory,
+  'workbench-changes-review': WorkbenchChangesReviewStory,
   'workbench-terminal': WorkbenchTerminalStory,
   'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
   'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,

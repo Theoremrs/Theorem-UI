@@ -595,6 +595,9 @@ export function WorkbenchChangesStory() {
       script={[
         { chord: 'g' },
         { see: 'Cargo.toml' },
+        // Changes opens on the Review; this story is the Stage view's (staged and unstaged groups, a diff, a commit box).
+        { key: 'w' },
+        { see: 'Staged' },
         { key: 'ArrowDown' },
         { key: 'Enter' },
         { see: '@@' },

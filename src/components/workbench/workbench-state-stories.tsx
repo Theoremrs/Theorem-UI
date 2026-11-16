@@ -76,7 +76,8 @@ export function WorkbenchChangesBinaryConflictStory() {
       width={1280}
       height={640}
       options={{ granted: EVERY_TOOL, binaryConflict: true }}
-      script={[{ chord: 'g' }, { see: 'logo.png' }, WIDEN_TOOLS]}
+      // Changes opens on the Review; opening a conflict's sides is the Stage view's, so the story switches to it first.
+      script={[{ chord: 'g' }, { see: 'logo.png' }, { key: 'w' }, WIDEN_TOOLS]}
       wait={['logo.png']}
     />
   )

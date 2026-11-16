@@ -44,6 +44,17 @@ fn tone(styles: &ChangesStyles, tone: Tone) -> Style {
     }
 }
 
+/// The style of a state letter for a file seen across sections.
+pub(crate) fn file_letter_style(styles: &ChangesStyles, c: char) -> Style {
+    match c {
+        '!' => styles.letter_conflict,
+        'U' | '?' => styles.letter_untracked,
+        'A' => styles.letter_added,
+        'D' => styles.letter_deleted,
+        _ => styles.letter_changed,
+    }
+}
+
 pub(crate) fn letter_style(styles: &ChangesStyles, section: Section, c: char) -> Style {
     match (section, c) {
         (Section::Conflicted, _) => styles.letter_conflict,
@@ -76,6 +87,20 @@ impl Changes {
         self.layout == DiffLayout::Split && width >= SPLIT_MIN
     }
 
+    /// What the branch line says is running, in words; nothing when nothing is.
+    pub(crate) fn busy_tail(&self) -> String {
+        let busy: Vec<&str> = self
+            .in_flight()
+            .into_iter()
+            .map(|action| action.label())
+            .collect();
+        if busy.is_empty() {
+            String::new()
+        } else {
+            format!("working: {}", busy.join(", "))
+        }
+    }
+
     pub fn draw(&self, area: Rect, buf: &mut Buffer, styles: &ChangesStyles) {
         let area = area.intersection(buf.area);
         if area.width == 0 || area.height == 0 {
@@ -85,7 +110,11 @@ impl Changes {
         let regions = regions(self, area);
         self.draw_branch(regions.branch, buf, styles);
         self.draw_banners(regions.banners, area.height, buf, styles);
-        self.draw_list(regions.list, buf, styles);
+        if self.review_active() {
+            self.draw_review(area, buf, styles);
+        } else {
+            self.draw_list(regions.list, buf, styles);
+        }
         self.draw_commit(regions.commit, buf, styles);
         self.draw_log(regions.log, buf, styles);
     }
@@ -177,23 +206,18 @@ impl Changes {
             Some(head) => head.label(),
             None => "reading...".to_owned(),
         };
-        let busy: Vec<&str> = self
-            .in_flight()
-            .into_iter()
-            .map(|action| action.label())
-            .collect();
-        let tail = if busy.is_empty() {
-            String::new()
-        } else {
-            format!("working: {}", busy.join(", "))
-        };
+        let tail = self.busy_tail();
         let room = rect.width as usize;
         let controls = branch_controls(self, rect.width);
         let tail_w = width(&tail);
-        let label_room = if tail_w > 0 && room > tail_w + 6 {
-            room - tail_w - 2
-        } else {
-            room
+        // With the view switch beside it the name has the room the switch left.
+        let tabbed = controls
+            .iter()
+            .any(|(c, ..)| *c == crate::layout::Control::ViewReview);
+        let label_room = match controls.first() {
+            Some((crate::layout::Control::Branch, _, w)) if tabbed => usize::from(*w),
+            _ if tail_w > 0 && room > tail_w + 6 => room - tail_w - 2,
+            _ => room,
         };
         put(
             buf,
@@ -215,8 +239,20 @@ impl Changes {
         }
         for (control, at, w) in controls {
             let label = control_label(control);
+            let style = match control {
+                crate::layout::Control::ViewReview if self.view == crate::review::View::Review => {
+                    styles.cursor
+                }
+                crate::layout::Control::ViewStage if self.view == crate::review::View::Stage => {
+                    styles.cursor
+                }
+                crate::layout::Control::ViewReview | crate::layout::Control::ViewStage => {
+                    styles.muted
+                }
+                _ => styles.button,
+            };
             if !label.is_empty() {
-                put(buf, rect.x + at, rect.y, w as usize, label, styles.button);
+                put(buf, rect.x + at, rect.y, w as usize, label, style);
             }
         }
     }
@@ -416,7 +452,9 @@ impl Changes {
                 let header = fit(&printable(&header), w.saturating_sub(5));
                 put(buf, rect.x + 5, rect.y, w.saturating_sub(5), &header, style);
             }
-            Row::Line { line, digits, .. } => self.draw_unified(line, *digits, rect, buf, styles),
+            Row::Line { line, digits, .. } => {
+                self.draw_unified(line, *digits, rect, buf, styles, "-")
+            }
             Row::Pair {
                 left,
                 right,
@@ -473,13 +511,16 @@ impl Changes {
         }
     }
 
-    fn draw_unified(
+    /// A unified diff line: both line numbers, the sign (`minus` for a removed line) and the
+    /// text with its changed words marked.
+    pub(crate) fn draw_unified(
         &self,
         line: &DiffLine,
         digits: usize,
         rect: Rect,
         buf: &mut Buffer,
         styles: &ChangesStyles,
+        minus: &str,
     ) {
         let (base, words) = Self::line_style(styles, line.kind);
         paint(buf, rect, base);
@@ -495,7 +536,7 @@ impl Changes {
         let sign = match line.kind {
             LineKind::Same => " ",
             LineKind::Added => "+",
-            LineKind::Removed => "-",
+            LineKind::Removed => minus,
         };
         if w > gutter_w {
             put(buf, x0 + gutter_w as u16, rect.y, 1, sign, base);
