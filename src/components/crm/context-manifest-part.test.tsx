@@ -198,3 +198,37 @@ test('a record with no saved revision is not listed as used', () => {
   )
   expect(manifestSummary(manifest)).toBe('Used 4 saved records · 1 held back')
 })
+
+test('records Theorem asked for itself are shown as looked up, with what it asked for', async () => {
+  const data = {
+    ...payload(),
+    lookUp: { names: ['Kiln Street Studio'], recordIds: [], types: ['Person'] },
+  }
+  const mentioned = data.manifest.included.find(
+    (record) => (record.why as { kind: string }).kind === 'mentioned',
+  )
+  Object.assign(data.manifest.included[data.manifest.included.length - 1]!, {
+    why: { kind: 'listed' },
+  })
+  expect(manifestSummary(decodeManifestPart(data)!)).toBe(
+    'Looked up 5 saved records · 1 held back',
+  )
+  const view = await part(data)
+  await click(view.container.querySelector('button')!)
+  await waitFor(() =>
+    view.container.textContent.includes('Looked up while answering'),
+  )
+  const text = view.container.textContent
+  expect(text).not.toContain('Used in this response')
+  expect(text).toContain('Theorem asked for every record of this type')
+  if (mentioned) expect(text).not.toContain('Your message says')
+
+  // A look-up that found nothing is still shown: Theorem did ask.
+  const nothing = { ...payload(), lookUp: { names: ['Nobody'] } }
+  Object.assign(nothing.manifest, { included: [], withheld: [] })
+  expect(manifestSummary(decodeManifestPart(nothing)!)).toBe(
+    'Looked up saved records and found none',
+  )
+  const empty = await part(nothing)
+  expect(empty.container.querySelector('button')).not.toBeNull()
+})

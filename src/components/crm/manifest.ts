@@ -21,6 +21,7 @@ export type ManifestWhy =
   | { kind: 'you' }
   | { kind: 'focus' }
   | { kind: 'mentioned'; phrase: string }
+  | { kind: 'listed' }
   | { kind: 'standing'; through?: string }
   | { kind: 'related_from' | 'related_to'; recordId: string; through?: string }
   /** A reason this client does not know: shown as no reason, never guessed. */
@@ -61,6 +62,11 @@ export type ContextManifest = {
   estimatedTokens: number | undefined
   /** How the token figure was reached; it is an estimate, and says so. */
   method: string | undefined
+  /**
+   * Set when Theorem asked for these records itself while answering, with
+   * what it asked for. Absent for the records the reply began with.
+   */
+  lookUp: { names: string[]; recordIds: string[]; types: string[] } | undefined
 }
 
 function decodeWhy(raw: unknown): ManifestWhy {
@@ -69,6 +75,7 @@ function decodeWhy(raw: unknown): ManifestWhy {
   switch (raw.kind) {
     case 'you':
     case 'focus':
+    case 'listed':
       return { kind: raw.kind }
     case 'mentioned': {
       const phrase = text(raw.phrase)
@@ -159,6 +166,13 @@ export function decodeManifestPart(data: unknown): ContextManifest | undefined {
     estimatedTokens:
       count(delivery.estimatedTokens) ?? count(accounting.estimated_tokens),
     method: text(delivery.method) ?? text(accounting.method),
+    lookUp: isObject(part.lookUp)
+      ? {
+          names: texts(part.lookUp.names),
+          recordIds: texts(part.lookUp.recordIds),
+          types: texts(part.lookUp.types),
+        }
+      : undefined,
   }
 }
 
@@ -168,19 +182,26 @@ export const manifestSaysSomething = (manifest: ContextManifest) =>
   manifest.withheld.length > 0 ||
   manifest.ambiguous.length > 0 ||
   manifest.degraded.length > 0 ||
-  manifest.overBudget > 0
+  manifest.overBudget > 0 ||
+  manifest.lookUp !== undefined
 
 const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`
 
-/** "Used 5 saved records · 1 held back". */
+/**
+ * "Used 5 saved records · 1 held back", or "Looked up 2 saved records" for
+ * records Theorem asked for itself while answering.
+ */
 export function manifestSummary(manifest: ContextManifest) {
   const used = manifest.included.length
   const held = manifest.withheld.length
+  const verb = manifest.lookUp ? 'Looked up' : 'Used'
   const parts = [
     used
-      ? `Used ${plural(used, 'saved record', 'saved records')}`
-      : 'Used no saved records',
+      ? `${verb} ${plural(used, 'saved record', 'saved records')}`
+      : manifest.lookUp
+        ? 'Looked up saved records and found none'
+        : 'Used no saved records',
   ]
   if (held) parts.push(`${held} held back`)
   if (manifest.overBudget)
@@ -199,6 +220,9 @@ const listOf = (words: string[]) =>
     ? (words[0] ?? '')
     : `${words.slice(0, -1).join(', ')} and ${words[words.length - 1]}`
 
+const mentionWords = (phrase: string, lookedUp: boolean) =>
+  lookedUp ? `Theorem asked for “${phrase}”` : `Your message says “${phrase}”`
+
 /**
  * Why a record was used, in plain words. `labelOf` names another record of
  * the same reply; `type` is the record's own type and `otherType` the type of
@@ -209,15 +233,20 @@ export function whyWords(
   labelOf: (recordId: string) => string | undefined,
   type: ObjectType | undefined,
   typeOf: (recordId: string) => ObjectType | undefined,
+  lookedUp = false,
 ): string | undefined {
   const why = record.why
   switch (why.kind) {
     case 'you':
       return 'This is you'
     case 'focus':
-      return 'You pointed Theorem at it'
+      return lookedUp
+        ? 'Theorem asked for this record'
+        : 'You pointed Theorem at it'
     case 'mentioned':
-      return `Your message says “${why.phrase}”`
+      return mentionWords(why.phrase, lookedUp)
+    case 'listed':
+      return 'Theorem asked for every record of this type'
     case 'standing':
       return 'It always applies to you'
     case 'related_from': {

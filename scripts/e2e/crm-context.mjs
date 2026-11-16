@@ -35,6 +35,7 @@ const PHONE = '555-0100'
 const PRIVATE_NOTE = 'Noor mentioned the studio may close'
 const OTHER_WORKSPACE = "Blake's landlord"
 const QUESTION = 'When is the materials list for Noor due?'
+const LIST = 'List my interactions'
 const FOLLOW_UP =
   'Has that changed? When is the materials list for Noor due now?'
 const RECORD_SOURCE = 'life_context_record'
@@ -602,6 +603,81 @@ check(
     !usedText.includes(PHONE),
 )
 await shot('6-used-in-this-response')
+
+// Asked for something the turn was not given, Theorem looks it up itself:
+// the scripted provider calls the look-up tool the request offers, and
+// answers from what the tool returned.
+await fetch(`${STANDIN}/__requests`, { method: 'DELETE' })
+await chat.send(LIST)
+const listed = await chat.ended()
+check(
+  'the look-up turn finishes',
+  listed?.outcome === 'completed',
+  listed?.outcome,
+)
+const lookUps = asked(await requests(), LIST)
+const [offer, afterLookUp] = lookUps
+const planning = id('interaction:planning')
+check(
+  'the turn began without the planning call and was offered the look-up',
+  lookUps.length === 2 &&
+    !spanOf(offer, planning) &&
+    (offer.body.tools ?? []).some(
+      (tool) => (tool.function?.name ?? tool.name) === 'saved_records_look_up',
+    ),
+  `${lookUps.length} provider requests`,
+)
+const toolResults = (afterLookUp?.body.messages ?? [])
+  .filter((message) => message.role === 'tool')
+  .flatMap((message) => {
+    try {
+      return [JSON.parse(message.content)]
+    } catch {
+      return []
+    }
+  })
+const found = toolResults[0]?.records ?? []
+const foundPlanning = found.find((entry) =>
+  entry.reference?.startsWith(`record:Interaction/${planning}@`),
+)
+check(
+  'the look-up returned the planning call at its saved revision',
+  Boolean(foundPlanning),
+  foundPlanning?.reference,
+)
+check(
+  'and counted the private one without naming it',
+  toolResults[0]?.held_back >= 1 &&
+    !JSON.stringify(lookUps.map((request) => request.body)).includes(
+      PRIVATE_NOTE,
+    ) &&
+    !JSON.stringify(toolResults).includes(id('interaction:private')),
+  `held back: ${toolResults[0]?.held_back}`,
+)
+check(
+  'with what its fields mean',
+  typeof toolResults[0]?.about_these_records?.data_model?.fields?.Interaction
+    ?.notes === 'string',
+)
+await page.getByText('I looked these up.').first().waitFor({ timeout: 60_000 })
+check('and the answer on the page is from what was looked up', true)
+const lookedUp = page
+  .locator('[data-part="theorem-context_manifest"]')
+  .filter({ hasText: 'Looked up' })
+  .last()
+await lookedUp.waitFor({ timeout: 60_000 })
+await lookedUp.getByRole('button').first().click()
+const lookedUpText = await lookedUp.innerText()
+check(
+  'the reply says what Theorem looked up, and that one record was held back',
+  lookedUpText.includes('Looked up while answering') &&
+    lookedUpText.includes('Planning call for the workshop') &&
+    lookedUpText.includes('held back') &&
+    !lookedUpText.includes(PRIVATE_NOTE),
+  lookedUpText.slice(0, 200),
+)
+await shot('7-looked-up')
+everyRequest.push(...lookUps)
 
 writeFileSync(
   join(DATA_DIR, 'crm-context-requests.json'),

@@ -7,6 +7,9 @@
 // names only what the admitted saved records say. An answer that changes when
 // a saved record changes therefore changed because the request did.
 //
+// Asked to "list my <type>", it calls Theorem's look-up tool when the request
+// offers it, and answers from what the tool returned.
+//
 // It keeps whole requests, so it is for synthetic data only. Nothing here
 // reaches a real provider and no real key is involved.
 import { createServer } from 'node:http'
@@ -73,16 +76,55 @@ function spansOf(body, sourceType) {
   return spans
 }
 
-/** One sentence per admitted record, from its serialized content and nothing else. */
-function reply(body) {
-  const lines = []
-  for (const span of recordSpans(body)) {
-    let record
+const LOOK_UP = 'saved_records_look_up'
+
+/** The messages after the person's latest one. */
+function sinceAsked(body) {
+  const messages = body?.messages ?? []
+  const asked = messages.map((message) => message.role).lastIndexOf('user')
+  return { asked: messages[asked], after: messages.slice(asked + 1) }
+}
+
+/** The look-up to make for this request, when it asks for one and has none yet. */
+function lookUpFor(body) {
+  const offered = (body?.tools ?? []).some(
+    (tool) => (tool?.function?.name ?? tool?.name) === LOOK_UP,
+  )
+  const { asked, after } = sinceAsked(body)
+  if (!offered || after.some((message) => message.role === 'tool')) return
+  const type = /list (?:all )?my (\w+)/i.exec(text(asked?.content))?.[1]
+  return type ? { types: [type] } : undefined
+}
+
+/** The records a look-up returned to this request, if it made one. */
+function lookedUp(body) {
+  const records = []
+  for (const message of sinceAsked(body).after) {
+    if (message.role !== 'tool') continue
     try {
-      record = JSON.parse(span.content)
+      for (const entry of JSON.parse(text(message.content)).records ?? [])
+        if (entry?.record) records.push(entry.record)
     } catch {
       continue
     }
+  }
+  return records
+}
+
+/** One sentence per admitted record, from its serialized content and nothing else. */
+function reply(body) {
+  const found = lookedUp(body)
+  const given = found.length
+    ? found
+    : recordSpans(body).flatMap((span) => {
+        try {
+          return [JSON.parse(span.content)]
+        } catch {
+          return []
+        }
+      })
+  const lines = []
+  for (const record of given) {
     const fields = record.fields ?? {}
     const name =
       fields.title ?? fields.name ?? fields.statement ?? fields.summary
@@ -93,9 +135,8 @@ function reply(body) {
       lines.push(`"${name}" is due ${fields.due}.`)
     else lines.push(`${record.type}: ${name}.`)
   }
-  return lines.length
-    ? `From your saved records. ${lines.join(' ')}`
-    : 'I have no saved record about that.'
+  if (!lines.length) return 'I have no saved record about that.'
+  return `${found.length ? 'I looked these up.' : 'From your saved records.'} ${lines.join(' ')}`
 }
 
 createServer(async (req, res) => {
@@ -123,15 +164,24 @@ createServer(async (req, res) => {
     recordSpans: recordSpans(body),
     modelSpans: modelSpans(body),
   })
-  const content = reply(body)
+  const lookUp = lookUpFor(body)
+  const call = lookUp && {
+    id: `call-${requests.length}`,
+    type: 'function',
+    function: { name: LOOK_UP, arguments: JSON.stringify(lookUp) },
+  }
+  const content = call ? null : reply(body)
+  const finish = call ? 'tool_calls' : 'stop'
   const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   if (!body.stream)
     return answer(res, 200, {
       choices: [
         {
           index: 0,
-          message: { role: 'assistant', content },
-          finish_reason: 'stop',
+          message: call
+            ? { role: 'assistant', content, tool_calls: [call] }
+            : { role: 'assistant', content },
+          finish_reason: finish,
         },
       ],
       usage,
@@ -142,9 +192,15 @@ createServer(async (req, res) => {
   const event = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`)
   event({
     choices: [
-      { index: 0, delta: { role: 'assistant', content }, finish_reason: null },
+      {
+        index: 0,
+        delta: call
+          ? { role: 'assistant', tool_calls: [{ index: 0, ...call }] }
+          : { role: 'assistant', content },
+        finish_reason: null,
+      },
     ],
   })
-  event({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })
+  event({ choices: [{ index: 0, delta: {}, finish_reason: finish }], usage })
   res.end('data: [DONE]\n\n')
 }).listen(PORT, '127.0.0.1')

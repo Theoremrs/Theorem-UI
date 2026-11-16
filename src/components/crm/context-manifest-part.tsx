@@ -111,7 +111,9 @@ export function ContextManifestView({
       <CollapsiblePanel>
         <div className="flex flex-col gap-3 border-t border-separator px-2.5 py-2.5">
           <h4 className="text-xs font-medium text-ink">
-            Used in this response
+            {manifest.lookUp
+              ? 'Looked up while answering'
+              : 'Used in this response'}
           </h4>
 
           {manifest.included.length > 0 && (
@@ -121,7 +123,13 @@ export function ContextManifestView({
             >
               {manifest.included.map((record) => {
                 const type = typeOfName(record.objectTypeId, record.objectType)
-                const why = whyWords(record, labelOf, type, typeOf)
+                const why = whyWords(
+                  record,
+                  labelOf,
+                  type,
+                  typeOf,
+                  manifest.lookUp !== undefined,
+                )
                 return (
                   <li key={record.recordId} className="flex gap-2">
                     <TypeIcon
