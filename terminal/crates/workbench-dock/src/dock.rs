@@ -6,7 +6,9 @@
 use std::collections::BTreeMap;
 
 use ratatui::layout::{Direction, Rect};
-use theorem_workbench_layout::{MAX_RATIO, MIN_RATIO, PaneInfo, TileLayout, find_in_direction};
+use theorem_workbench_layout::{
+    MAX_RATIO, MIN_RATIO, NavDirection, PaneInfo, TileLayout, find_in_direction,
+};
 
 use crate::types::*;
 
@@ -435,6 +437,35 @@ impl Dock {
         metrics: CellMetrics,
     ) -> Result<GroupId, DockError> {
         let frame = self.solve(area, metrics);
+        if frame.presentation == crate::solve::Presentation::Principal {
+            // One group fills the area: the groups behind it have no rectangle to be near, so
+            // a key goes to the next group with tabs in that direction, in the order they sit.
+            let order: Vec<GroupId> =
+                self.layout
+                    .pane_ids()
+                    .into_iter()
+                    .filter(|id| self.groups.get(id).is_some_and(|g| !g.tabs.is_empty()))
+                    .filter(|id| {
+                        frame.groups.iter().any(|g| g.id == *id)
+                            || frame.suppressed.iter().any(|(s, why)| {
+                                s == id && *why == crate::solve::Suppressed::Collapsed
+                            })
+                    })
+                    .collect();
+            let at = frame
+                .groups
+                .first()
+                .and_then(|g| order.iter().position(|id| *id == g.id));
+            let to = at.and_then(|i| match dir {
+                NavDirection::Left | NavDirection::Up => i.checked_sub(1),
+                NavDirection::Right | NavDirection::Down => Some(i + 1),
+            });
+            let to = to
+                .and_then(|i| order.get(i).copied())
+                .ok_or(DockError::NoNeighbour(dir))?;
+            self.layout.focus_pane(to);
+            return Ok(to);
+        }
         let panes: Vec<PaneInfo> = frame
             .groups
             .iter()

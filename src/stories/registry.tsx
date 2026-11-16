@@ -97,6 +97,7 @@ import {
   WorkbenchThreadsStory,
   WorkbenchFilesStory,
   WorkbenchThreadsWithheldStory,
+  WorkbenchDefaultArrangementStory,
 } from '@/components/workbench/workbench-feature-stories'
 import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
 import { WorkbenchKeyboardJourneyStory } from '@/components/workbench/workbench-keyboard-journey-story'
@@ -830,6 +831,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-files': WorkbenchFilesStory,
   'workbench-threads': WorkbenchThreadsStory,
   'workbench-threads-withheld': WorkbenchThreadsWithheldStory,
+  'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
   'workbench-terminal': WorkbenchTerminalStory,
   'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
   'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,

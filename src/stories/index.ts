@@ -71,6 +71,18 @@ export const STORIES: readonly StoryMeta[] = [
     },
     evidenceDir: 'workbench-threads',
   },
+  {
+    id: 'workbench-default-arrangement',
+    title: 'Workbench: a fresh workbench with every capability granted: Threads on the left, Theo in the middle, Changes then Files on the right',
+    lane: 'translation',
+    reference: 'workbench-default-arrangement@delta-2026-11-15.png',
+    viewport: { width: 1280, height: 640 },
+    tolerance: {
+      threshold: 0.2,
+      note: 'Arrangement reference, not a pixel target: the blurred frame shows which groups stand where and roughly how wide; contents, colors and metrics differ by design. The differing share is reported, never a verdict.',
+    },
+    evidenceDir: 'workbench-default-arrangement',
+  },
   { id: 'workbench-threads-withheld', title: 'Workbench: the Threads panel where the host grants no delete, tags, pin or admission', lane: 'translation', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal-adoption-pending', title: 'Workbench: the Shell chooser while the host is still looking for terminals', lane: 'original', viewport: { width: 1600, height: 640 } },

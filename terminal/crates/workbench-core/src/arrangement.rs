@@ -322,6 +322,10 @@ struct Live {
     tab: Tab,
 }
 
+/// The kinds the default preset seats by their own placement, in the order their tabs stand:
+/// Changes before Files, so Changes is the tab that shows over it.
+const DEFAULT_SEATED: [&str; 4] = ["theo", "threads", "changes", "files"];
+
 enum Target {
     Preset(Preset),
     Saved(Value),
@@ -719,6 +723,10 @@ impl Model {
         // A saved arrangement brings its own focus; a preset keeps where the
         // keyboard is.
         let keep_focus = matches!(target, Target::Preset(_));
+        let target_preset = match &target {
+            Target::Preset(preset) => Some(*preset),
+            Target::Saved(_) => None,
+        };
         let mut claims: BTreeMap<PanelId, PanelInstanceId> = BTreeMap::new();
         let mut states: BTreeMap<PanelId, serde_json::Value> = BTreeMap::new();
 
@@ -819,11 +827,44 @@ impl Model {
             placed.push(id.clone());
             entries.insert(id, entry);
         }
-        for l in &live {
+        // The default preset seats the panels it is made of where their kinds open (Threads
+        // first, Changes then Files, Changes showing), and lets a resting picker go when Changes
+        // or Files stand where it waited.
+        let default = matches!(target_preset, Some(Preset::Default));
+        let seated = |kind: &str| default && DEFAULT_SEATED.contains(&kind);
+        let tools_stand = default
+            && live
+                .iter()
+                .any(|l| matches!(l.kind.as_str(), "changes" | "files"));
+        let mut order: Vec<&Live> = live.iter().collect();
+        if default {
+            let rank = |l: &Live| {
+                DEFAULT_SEATED
+                    .iter()
+                    .position(|k| *k == l.kind)
+                    .unwrap_or(0)
+            };
+            order.sort_by_key(|l| rank(l));
+        }
+        for l in order {
             if placed.contains(&l.id) {
                 continue;
             }
-            let at = visible_group(&dock, l.role);
+            if tools_stand && l.kind == PICKER_KIND {
+                continue;
+            }
+            let role = match seated(&l.kind) {
+                true => self
+                    .registry
+                    .get(&PanelKind::new(l.kind.as_str()))
+                    .map_or(l.role, |d| match d.default_placement {
+                        crate::registry::Placement::Left => DockRole::Files,
+                        crate::registry::Placement::Main => DockRole::Main,
+                        crate::registry::Placement::Tools => DockRole::Tools,
+                    }),
+                false => l.role,
+            };
+            let at = visible_group(&dock, role);
             let mut tab = l.tab.clone();
             tab.panel = PanelId(l.id.as_str().to_owned());
             if let Some(group) = at {
@@ -832,6 +873,9 @@ impl Model {
             if let Some(entry) = self.panels.remove(&l.id) {
                 entries.insert(l.id.clone(), entry);
             }
+        }
+        if default && let Some(changes) = live.iter().find(|l| l.kind == "changes") {
+            let _ = dock.focus_panel(&PanelId(changes.id.as_str().to_owned()));
         }
         if keep_focus
             && let Some(panel) = &focused
@@ -843,6 +887,9 @@ impl Model {
         let has_picker = entries.values().any(|e| e.kind.as_str() == PICKER_KIND);
         self.dock = dock;
         self.panels = entries;
+        if tools_stand {
+            self.dismiss_resting_picker();
+        }
         self.drag = None;
         self.capture = None;
         self.announced_focus = None;

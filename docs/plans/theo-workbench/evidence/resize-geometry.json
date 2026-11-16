@@ -74,15 +74,15 @@
       ],
       "tabs": [
         {
-          "name": "Files",
-          "visible": true
-        },
-        {
           "name": "Theo",
           "visible": true
         },
         {
-          "name": "Add tool",
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
           "visible": true
         },
         {
@@ -164,16 +164,16 @@
           "visible": true
         },
         {
-          "name": "Add tool",
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
           "visible": true
         },
         {
           "name": "notes.txt",
           "visible": true
-        },
-        {
-          "name": "Files",
-          "visible": false
         }
       ],
       "coverage": {
@@ -237,7 +237,11 @@
       ],
       "tabs": [
         {
-          "name": "Add tool",
+          "name": "Changes",
+          "visible": true
+        },
+        {
+          "name": "Files",
           "visible": true
         },
         {
@@ -246,10 +250,6 @@
         },
         {
           "name": "Theo",
-          "visible": false
-        },
-        {
-          "name": "Files",
           "visible": false
         }
       ],
@@ -264,7 +264,7 @@
       "1024x768": 2,
       "390x844": 1
     },
-    "narrowStrip": " Add tool ×  notes.txt ×                      1 more",
+    "narrowStrip": " Changes ×  Files ×  notes.txt ×              1 more",
     "filesChordAlone": {
       "filesTreeOnScreen": true,
       "theoOnScreen": true
@@ -342,15 +342,15 @@
         ],
         "tabs": [
           {
-            "name": "Files",
-            "visible": true
-          },
-          {
             "name": "Theo",
             "visible": true
           },
           {
-            "name": "Add tool",
+            "name": "Changes",
+            "visible": true
+          },
+          {
+            "name": "Files",
             "visible": true
           },
           {
@@ -431,15 +431,15 @@
         ],
         "tabs": [
           {
-            "name": "Files",
-            "visible": true
-          },
-          {
             "name": "Theo",
             "visible": true
           },
           {
-            "name": "Add tool",
+            "name": "Changes",
+            "visible": true
+          },
+          {
+            "name": "Files",
             "visible": true
           },
           {

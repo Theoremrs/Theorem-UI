@@ -551,6 +551,29 @@ export function WorkbenchThreadsWithheldStory() {
   )
 }
 
+/**
+ * `workbench-default-arrangement`: a fresh workbench with every capability granted, as the default arrangement
+ * lays it out: Threads alone on the left, Theo in the middle with the keyboard, Changes then Files on the right
+ * with Changes showing, and no picker resting. It is the story the owner's "Delta" reference is held against.
+ */
+export function WorkbenchDefaultArrangementStory() {
+  return (
+    <FeatureStory
+      id="workbench-default-arrangement"
+      options={{
+        granted: THREADS_CAPS,
+        transcript: true,
+        idle: true,
+        threads: true,
+        terminal: true,
+        terminalAdoption: { state: 'settled' },
+      }}
+      script={[]}
+      wait={['Threads', 'Changes', 'Files']}
+    />
+  )
+}
+
 /** `workbench-files`: the tree with a symlink, an ignored and a hidden entry, a partial listing and an image, opened a level down. It has the oracle's hooks: its scenario reads each row's icon against the semantic tree. */
 export function WorkbenchFilesStory() {
   return (

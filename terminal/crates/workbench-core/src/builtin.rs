@@ -73,7 +73,7 @@ pub fn registry() -> Registry {
             title: "Files",
             icon: "folder",
             binding: R::Workspace,
-            placement: Left,
+            placement: Tools,
             min: (20, 6),
             role: Role::Tree,
             theme_roles: CHROME,

@@ -680,9 +680,9 @@ const SCENARIOS = {
         return { all: all.length, unique: new Set(all).size }
       })
       return {
-        'the tab strip is a tablist of named tabs': /tablist "Main tabs"/.test(tree) && /tab "Theo" \[selected\]/.test(tree) && /tab "Files" \[selected\]/.test(tree),
+        'the tab strip is a tablist of named tabs': /tablist "Main tabs"/.test(tree) && /tab "Theo" \[selected\]/.test(tree) && /tab "Changes" \[selected\]/.test(tree) && /tab "Files"/.test(tree),
         'the grid host stays aria-hidden': await page.evaluate(() => !!document.querySelector('[id$=_ratzilla_grid]')?.closest('[aria-hidden="true"]')),
-        'the input names itself and holds focus': start.held && (await attr(page, 'body:p3', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workbench input',
+        'the input names itself and holds focus': start.held && (await attr(page, 'body:p1', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workbench input',
         'the composer is where focus starts': start.role === 'textbox' && start.name === 'Message to Theo',
         'focus moves to Files with its chord and lands on its first row, input still focused': files.held && files.node === 'p3/f:.github' && files.role === 'treeitem',
         'focus moves to Changes with its chord': changes.held && changes.role === 'group' && /Cargo\.toml/.test(changes.name ?? ''),
@@ -709,7 +709,7 @@ const SCENARIOS = {
       await page.keyboard.type('Sh')
       await page.waitForFunction(() => document.querySelectorAll('[role=listbox][aria-label="Tools"] [role=option]').length === 1, null, { timeout: 10_000 }).catch(() => {})
       const filtered = await list.getByRole('option').evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))
-      const typed = await page.evaluate(() => document.querySelector('[data-node="p2/filter"]')?.textContent ?? null)
+      const typed = await page.evaluate(() => document.querySelector('[data-node$="/filter"]')?.textContent ?? null)
       await page.keyboard.press('Escape')
       await list.waitFor({ state: 'detached', timeout: 10_000 }).catch(() => {})
       await page.waitForTimeout(400)
@@ -845,8 +845,8 @@ const SCENARIOS = {
       }
       const withOverlay = await frame('')
       const covering = await page.locator('[data-workbench-story] [data-node]').count()
-      // A real mouse press at the middle of the "Add tool" tab's overlay element, after Changes took the front.
-      const tab = overlayBox(page).getByRole('tab', { name: 'Add tool' })
+      // A real mouse press at the middle of the Files tab's overlay element, after Changes took the front (the picker no longer rests as a tab).
+      const tab = overlayBox(page).getByRole('tab', { name: 'Files' })
       const box = await tab.boundingBox()
       const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 }
       const hit = await page.evaluate(({ x, y }) => {
@@ -1562,7 +1562,7 @@ const SCENARIOS = {
       const afterDelete = await pageText(page)
       await snap(page, 'workbench-layouts-page-deleted')
       return {
-        'arranged: Changes beside Theo, Shell in its own group, Changes focused': same(arranged.groups.map((g) => g.tabs.join('|')), ['Files', 'Theo|Changes', 'Add tool|Shell']) && arranged.focused === 'Changes',
+        'arranged: Changes beside Theo, Shell beside Files in the last group, Changes focused': same(arranged.groups.map((g) => g.tabs.join('|')), ['Theo|Changes', 'Files|Shell']) && arranged.focused === 'Changes',
         'the group sizes were changed from the defaults before saving': !same(arranged.dividers, defaults),
         'Mod+Alt+B asks for a name': asking,
         'saving Mine says so': savedNotice.includes('Layout: Mine saved'),
@@ -1812,22 +1812,27 @@ const SCENARIOS = {
       const namesWide = new Set(wide.tabs.map((t) => t.name))
       const namesNarrow = new Set(narrow.tabs.map((t) => t.name))
       checks['e: every panel open at 1440x900 is still named by a tab in the tree at 390x844'] = [...namesWide].every((n) => namesNarrow.has(n))
-      checks['e: the shown group at 390x844 lists its own tabs (the document and the picker)'] = (await has(page, 'notes.txt')) && (await has(page, 'Add tool'))
-      // Reachable by keyboard. Files' chord moves focus to Files, which is collapsed to a drawer that nothing opens
-      // (no key, control or tree action sends OpenDrawer), so the one group shown falls back to Main (Theo); then
-      // Mod+Alt+M maximises the focused group, which shows Files whole.
+      checks['e: the shown group at 390x844 lists its own tabs (Changes, Files and the document)'] = (await has(page, 'notes.txt')) && (await has(page, 'Changes')) && (await has(page, 'Files'))
+      // Reachable by keyboard. Files sits in the last group, the one shown at this width, so its chord shows it;
+      // the chord that moves focus a group left shows Theo (the Main group); then Files' chord and
+      // Mod+Alt+M maximise the focused group, which shows Files whole.
       await page.keyboard.press(`${CHORD}e`)
       await page.waitForTimeout(700)
-      report.filesChordAlone = { filesTreeOnScreen: await has(page, 'README.md'), theoOnScreen: await has(page, 'Enter steers the run') }
-      checks['e: Theo is reachable at 390x844 (Files\' chord leaves the Main group shown)'] = report.filesChordAlone.theoOnScreen
+      report.filesChordAlone = { filesTreeOnScreen: await has(page, 'README.md'), theoOnScreen: false }
+      await page.keyboard.press(`${CHORD}ArrowLeft`)
+      await page.waitForTimeout(700)
+      report.filesChordAlone.theoOnScreen = await has(page, 'Enter steers the run')
+      checks['e: Theo is reachable at 390x844 (the chord a group left shows the Main group)'] = report.filesChordAlone.theoOnScreen
       await page.screenshot({ path: renderPath('workbench-resize-390x844-theo') })
+      await page.keyboard.press(`${CHORD}e`)
+      await page.waitForTimeout(700)
       await page.keyboard.press(`${CHORD}m`)
       await page.waitForTimeout(700)
       checks['e: Files is reachable at 390x844 (its chord, then maximise the group)'] = await has(page, 'README.md')
       await page.screenshot({ path: renderPath('workbench-resize-390x844-files') })
       await page.keyboard.press(`${CHORD}m`)
       await page.waitForTimeout(500)
-      checks['e: the collapsed Files drawer opens from its chord alone'] = report.filesChordAlone.filesTreeOnScreen
+      checks['e: Files shows from its chord alone, with no drawer to open'] = report.filesChordAlone.filesTreeOnScreen
       // f. the person's text size: the Code size scale of Settings > Appearance, through the appearance store.
       await page.setViewportSize({ width: 1440, height: 900 })
       const before = await settled(1440, 900)

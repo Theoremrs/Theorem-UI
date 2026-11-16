@@ -7084,10 +7084,24 @@ fn tree_text(m: &Model) -> String {
         .join("\n")
 }
 
+/// The Files panel in the left group, where a saved arrangement can put it (the default
+/// arrangement opens it in the last group): these tests are about that group's drawer.
+fn files_on_the_left(m: &mut Model) {
+    // The conversation keeps the main group alive, as in a real workbench.
+    action(m, "theo.focus");
+    action(m, "files.focus");
+    action(m, "workbench.move.left");
+    action(m, "workbench.move.left");
+    assert_eq!(
+        m.dock().group(m.dock().focused()).map(|g| g.role()),
+        Some(theorem_workbench_dock::Role::Files)
+    );
+}
+
 #[test]
 fn the_files_chord_opens_a_collapsed_drawer_and_moving_focus_away_closes_it() {
     let (mut m, _log) = new_model();
-    action(&mut m, "files.focus");
+    files_on_the_left(&mut m);
     let files_group = m.dock().focused();
     action(&mut m, "note.open");
     let note_group = m.dock().focused();
@@ -7135,7 +7149,7 @@ fn the_files_chord_opens_a_collapsed_drawer_and_moving_focus_away_closes_it() {
 #[test]
 fn tab_focus_from_an_agent_opens_the_collapsed_drawer_too() {
     let (mut m, _) = new_model();
-    action(&mut m, "files.focus");
+    files_on_the_left(&mut m);
     let files = m.focus().panel.unwrap();
     let files_group = m.dock().focused();
     action(&mut m, "note.open");
@@ -7156,7 +7170,7 @@ fn tab_focus_from_an_agent_opens_the_collapsed_drawer_too() {
 #[test]
 fn at_single_panel_width_focusing_files_shows_files_without_maximise() {
     let (mut m, _) = new_model();
-    action(&mut m, "files.focus");
+    files_on_the_left(&mut m);
     let files_group = m.dock().focused();
     action(&mut m, "note.open");
     let note_group = m.dock().focused();
@@ -7184,9 +7198,36 @@ fn at_single_panel_width_focusing_files_shows_files_without_maximise() {
 }
 
 #[test]
+fn at_single_panel_width_the_chords_a_group_left_and_right_walk_the_groups_behind_the_shown_one() {
+    use theorem_workbench_dock::Role;
+    let (mut m, _) = new_model();
+    action(&mut m, "theo.focus");
+    action(&mut m, "files.focus");
+    let tools = m.dock().focused();
+    resize_to(&mut m, 48, 30);
+    assert_eq!(
+        m.frame().unwrap().presentation,
+        theorem_workbench_dock::Presentation::Principal
+    );
+    assert_eq!(m.dock().group(tools).map(|g| g.role()), Some(Role::Tools));
+    // Theo sits behind the shown group; the chord a group left reaches it.
+    key(&mut m, Key::Left, Mods::CTRL | Mods::ALT);
+    assert_eq!(
+        m.dock().group(m.dock().focused()).map(|g| g.role()),
+        Some(Role::Main)
+    );
+    assert!(m.frame().unwrap().group(m.dock().focused()).is_some());
+    // And the chord a group right comes back; there is nothing beyond the last group.
+    key(&mut m, Key::Right, Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().focused(), tools);
+    key(&mut m, Key::Right, Mods::CTRL | Mods::ALT);
+    assert_eq!(m.dock().focused(), tools);
+}
+
+#[test]
 fn escape_closes_a_drawer_that_focus_opened_and_does_not_reopen_it() {
     let (mut m, _) = new_model();
-    action(&mut m, "files.focus");
+    files_on_the_left(&mut m);
     let files_group = m.dock().focused();
     action(&mut m, "note.open");
     let note = m.focus().panel.unwrap();
@@ -7214,7 +7255,7 @@ fn escape_closes_a_drawer_that_focus_opened_and_does_not_reopen_it() {
 #[test]
 fn growing_the_window_back_leaves_no_drawer_and_files_is_tiled_again() {
     let (mut m, _) = new_model();
-    action(&mut m, "files.focus");
+    files_on_the_left(&mut m);
     let files_group = m.dock().focused();
     action(&mut m, "note.open");
     collapse_width(&mut m);

@@ -3289,10 +3289,11 @@ fn paragraphs(n: usize) -> String {
 }
 
 impl Rig {
-    /// Give the keyboard to the Files panel and follow run `r1`.
+    /// Give the keyboard to the conversation, away from the document (Files shares the
+    /// document's group, so focusing it would cover the document), and follow run `r1`.
     fn follow(&mut self) {
         self.send(Msg::Action {
-            id: ActionId::new("files.focus"),
+            id: ActionId::new("theo.focus"),
             actor: Actor::Human,
         });
         self.send(Msg::Host(HostMessage::FollowedRuns {

@@ -26,7 +26,7 @@ use serde_json::{Value, json};
 use theorem_workbench_core::{
     ActionId, Actor, ArrangementMsg, Button, Capability, Caret, CaretPhase, CaretShape,
     Composition, Effect, Inbound, Model, Msg, PanelFactories, PlacedIcon, Pointer, PointerKind,
-    Theme,
+    RestoreError, Theme,
     agent::{AgentOutcome, action_msg, agent_outcome, agent_request},
     builtin,
     ids::ResourceKind,
@@ -569,11 +569,12 @@ struct Core {
     touched: bool,
     /// The grid was rebuilt blank or the theme changed: draw whatever the model says.
     repaint: bool,
-    /// The default layout's Files panel has been asked for (or a saved layout
-    /// replaced the default), so it is not asked for again.
+    /// The default arrangement's Files panel has been asked for (or a saved
+    /// layout replaced the default), so it is not asked for again.
     files_opened: bool,
-    /// The default layout's Threads panel has been asked for (or a saved layout
-    /// replaced the default). It is the first tab of the left dock.
+    /// The same for Changes, which opens beside Files and shows over it.
+    changes_opened: bool,
+    /// The same for Threads, alone in the first group.
     threads_opened: bool,
     /// Theo, the main region's principal panel, has been asked for (or a saved
     /// layout replaced the default).
@@ -633,6 +634,7 @@ impl Core {
             touched: true,
             repaint: true,
             files_opened: false,
+            changes_opened: false,
             threads_opened: false,
             theo_opened: false,
             conversations,
@@ -651,6 +653,16 @@ impl Core {
         }
         self.conversations.observe(&msg);
         update(&mut self.model, msg)
+    }
+
+    /// A saved layout replaces the default arrangement, which is then never opened.
+    fn restore(&mut self, value: Value) -> Result<(), RestoreError> {
+        self.touched = true;
+        self.files_opened = true;
+        self.changes_opened = true;
+        self.threads_opened = true;
+        self.theo_opened = true;
+        self.model.restore(value).map(|_| ())
     }
 
     /// Ask for a panel by its own focus action, as a person's key would.
@@ -779,35 +791,46 @@ impl Core {
     /// coalesced into one redraw still publish every change.
     fn step(&mut self, area: Rect, cell: CellMetrics, theme: Theme) -> Step {
         let mut effects = self.resize(area, cell);
-        // Files is open in the default layout as soon as the host can serve it:
-        // the action is the core's own and is refused until `files` is granted.
+        let has = |core: &Self, name: &str| core.model.capabilities().has(&Capability::new(name));
+        // The default arrangement: Threads alone in the first group; Changes with Files beside
+        // it in the last, Changes showing. Each opens as soon as the host grants what it needs
+        // (the focus action is the core's own and is refused until then). All are asked for in
+        // one step when the host serves them together, so Changes is the first tab whichever
+        // answer reached the page first.
+        let threads = !self.threads_opened && has(self, "threads");
+        let changes = !self.changes_opened && has(self, "scm");
+        let files = !self.files_opened && has(self, "files");
         if !self.theo_opened {
             self.theo_opened = true;
             effects.extend(self.focus("theo.focus"));
-            // A fresh workbench (a restored layout sets `theo_opened`) shows the picker in the
-            // tool group without taking keys: the composer keeps the focus.
-            self.model.rest_picker();
+            // A fresh workbench (a restored layout sets `theo_opened`) whose last group has
+            // nothing to show rests the picker there without taking keys, so it is never a dead
+            // end: the composer keeps the focus.
+            if !(changes || files) {
+                self.model.rest_picker();
+            }
         }
-        // The left dock holds Threads first and Files second, Threads showing.
-        // Both are asked for in one step when the host serves both, so Threads
-        // is the first tab whichever answer reached the page first.
-        let has = |core: &Self, name: &str| core.model.capabilities().has(&Capability::new(name));
-        if !self.files_opened && has(self, "files") {
-            self.files_opened = true;
-            let threads = !self.threads_opened && has(self, "threads");
-            if threads {
-                self.threads_opened = true;
-                effects.extend(self.focus("threads.focus"));
-            }
-            effects.extend(self.focus("files.focus"));
-            if threads {
-                effects.extend(self.focus("threads.focus"));
-            }
-            // The conversation keeps the focus: it is the principal panel.
-            effects.extend(self.focus("theo.focus"));
-        } else if !self.threads_opened && has(self, "threads") {
+        if threads {
             self.threads_opened = true;
             effects.extend(self.focus("threads.focus"));
+        }
+        if changes {
+            self.changes_opened = true;
+            effects.extend(self.focus("changes.open"));
+        }
+        if files {
+            self.files_opened = true;
+            effects.extend(self.focus("files.focus"));
+            if changes {
+                effects.extend(self.focus("changes.open"));
+            }
+        }
+        if threads || changes || files {
+            if changes || files {
+                // Real tools stand where the picker waited.
+                self.model.dismiss_resting_picker();
+            }
+            // The conversation keeps the focus: it is the principal panel.
             effects.extend(self.focus("theo.focus"));
         }
         effects.extend(self.update(Msg::Tick));
@@ -1238,12 +1261,7 @@ impl WorkbenchHandle {
     /// it here.
     pub fn restore(&self, json: &str) -> Result<(), JsValue> {
         let value: Value = serde_json::from_str(json).map_err(js_error)?;
-        let mut core = self.core.borrow_mut();
-        core.touched = true;
-        core.files_opened = true;
-        core.threads_opened = true;
-        core.theo_opened = true;
-        core.model.restore(value).map(|_| ()).map_err(js_error)
+        self.core.borrow_mut().restore(value).map_err(js_error)
     }
 
     /// Rebuilds the key table from the person's overrides (JSON: `{version,
@@ -1313,6 +1331,14 @@ mod tests {
         x: 0,
         y: 0,
         width: 120,
+        height: 40,
+    };
+
+    /// Wide enough for the three groups side by side (224 + 480 + 320 px).
+    const WIDE: Rect = Rect {
+        x: 0,
+        y: 0,
+        width: 200,
         height: 40,
     };
 
@@ -1605,44 +1631,193 @@ mod tests {
         assert_eq!(core.model.panel_ids().count(), count);
     }
 
+    /// The tabs of each group, left to right, as `(role, kinds, kind showing)`.
+    fn groups(core: &Core) -> Vec<(theorem_workbench_dock::Role, Vec<String>, Option<String>)> {
+        let dock = core.model.dock();
+        let mut shown: Vec<_> = dock
+            .group_ids()
+            .into_iter()
+            .filter_map(|g| dock.group(g))
+            .map(|g| {
+                (
+                    g.role(),
+                    g.tabs().iter().map(|t| t.kind.name.clone()).collect(),
+                    g.active().map(|t| t.kind.name.clone()),
+                )
+            })
+            .collect();
+        // Left to right: Files, Main, Tools, as the preset lays them out.
+        shown.sort_by_key(|(role, _, _)| match role {
+            theorem_workbench_dock::Role::Files => 0,
+            theorem_workbench_dock::Role::Main => 1,
+            theorem_workbench_dock::Role::Tools => 2,
+        });
+        shown
+    }
+
+    fn focused_kind(core: &Core) -> Option<String> {
+        let focused = core.model.focus().panel?;
+        core.model
+            .panel_ids()
+            .find(|(id, _)| **id == focused)
+            .map(|(_, k)| k.as_str().to_owned())
+    }
+
+    fn tools_of(core: &Core) -> (Vec<String>, Option<String>) {
+        let (_, tabs, showing) = groups(core).pop().expect("a last group");
+        (tabs, showing)
+    }
+
     #[test]
-    fn threads_is_the_first_tab_of_the_left_dock_and_shows_when_files_follows_it() {
+    fn a_fresh_workbench_has_threads_alone_on_the_left_and_changes_then_files_on_the_right() {
+        use theorem_workbench_dock::Role;
         let mut core = core();
-        core.update(Msg::Host(HostMessage::CapabilitiesChanged {
-            capabilities: Capabilities::of(["files", "threads"]),
-        }));
+        granted(&mut core, &["files", "threads", "scm", "conversation"]);
         core.step(AREA, CELL, Theme::plain());
-        let id_of = |core: &Core, kind: &str| {
-            core.model
-                .panel_ids()
-                .find(|(_, k)| k.as_str() == kind)
-                .map(|(id, _)| id.as_str().to_owned())
-                .unwrap_or_else(|| panic!("no {kind} panel"))
-        };
-        let (threads, files) = (id_of(&core, "threads"), id_of(&core, "files"));
-        let tree = semantics(&core.model);
-        let at = |name: String| {
-            tree.nodes
-                .iter()
-                .position(|n| n.id.as_str() == name)
-                .unwrap_or_else(|| panic!("no {name}"))
-        };
-        assert!(
-            at(format!("tab:{threads}")) < at(format!("tab:{files}")),
-            "Threads is the first tab"
+        let g = groups(&core);
+        assert_eq!(g[0].0, Role::Files);
+        assert_eq!(
+            g[0].1,
+            vec!["threads"],
+            "Threads is the left group's only tab"
         );
-        // Threads is the tab that shows.
-        let selected = |name: &str| {
-            tree.nodes
-                .iter()
-                .find(|n| n.id.as_str() == format!("tab:{name}"))
-                .map(|n| n.state.selected)
-        };
-        assert_eq!(selected(&threads), Some(true));
-        assert_eq!(selected(&files), Some(false));
-        // Theo keeps the keys.
-        let focused = core.model.focus().panel.expect("something has the focus");
-        assert_eq!(focused.as_str(), id_of(&core, "theo"));
+        assert_eq!(g[1].1, vec!["theo"]);
+        assert_eq!(g[2].1, vec!["changes", "files"]);
+        assert_eq!(g[2].2.as_deref(), Some("changes"), "Changes shows");
+        assert!(
+            !kinds(&core).contains(&"picker".to_owned()),
+            "no picker rests: {:?}",
+            kinds(&core)
+        );
+        assert!(!core.model.picker().is_open());
+        assert_eq!(focused_kind(&core).as_deref(), Some("theo"));
+    }
+
+    #[test]
+    fn files_shows_alone_when_changes_cannot_open() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads"]);
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(groups(&core)[0].1, vec!["threads"]);
+        assert_eq!(
+            tools_of(&core),
+            (vec!["files".to_owned()], Some("files".to_owned()))
+        );
+        assert!(!core.model.picker().is_open());
+        assert_eq!(focused_kind(&core).as_deref(), Some("theo"));
+    }
+
+    #[test]
+    fn changes_shows_alone_when_files_cannot_open() {
+        let mut core = core();
+        granted(&mut core, &["scm"]);
+        core.step(AREA, CELL, Theme::plain());
+        assert!(
+            groups(&core)[0].1.is_empty(),
+            "no Threads without the grant"
+        );
+        assert_eq!(
+            tools_of(&core),
+            (vec!["changes".to_owned()], Some("changes".to_owned()))
+        );
+        assert!(!core.model.picker().is_open());
+    }
+
+    #[test]
+    fn the_picker_rests_in_the_last_group_when_neither_changes_nor_files_can_open() {
+        let mut core = core();
+        granted(&mut core, &["threads", "conversation"]);
+        core.step(AREA, CELL, Theme::plain());
+        assert_eq!(groups(&core)[0].1, vec!["threads"]);
+        assert_eq!(
+            tools_of(&core),
+            (vec!["picker".to_owned()], Some("picker".to_owned()))
+        );
+        assert!(core.model.picker().is_resting());
+        assert_eq!(focused_kind(&core).as_deref(), Some("theo"));
+    }
+
+    #[test]
+    fn a_picker_the_person_opened_stays_when_changes_and_files_arrive() {
+        let mut core = core();
+        core.focus("picker.open");
+        assert!(core.model.picker().holds_keys());
+        granted(&mut core, &["files", "scm"]);
+        core.step(AREA, CELL, Theme::plain());
+        assert!(
+            core.model.picker().holds_keys(),
+            "the open picker keeps the keys"
+        );
+    }
+
+    #[test]
+    fn a_restored_layout_is_not_given_the_default_arrangement() {
+        use theorem_workbench_dock::Role;
+        let mut saved = core();
+        granted(&mut saved, &["files", "threads", "scm"]);
+        saved.step(WIDE, CELL, Theme::plain());
+        // Someone moves Files to the left beside Threads and saves.
+        saved.focus("files.focus");
+        saved.focus("workbench.move.left");
+        saved.focus("workbench.move.left");
+        let moved = groups(&saved);
+        assert_eq!(moved[0].0, Role::Files);
+        assert!(moved[0].1.contains(&"files".to_owned()), "{moved:?}");
+        let doc = saved.model.document();
+        let mut fresh = core();
+        fresh.restore(doc).unwrap();
+        granted(&mut fresh, &["files", "threads", "scm"]);
+        fresh.step(WIDE, CELL, Theme::plain());
+        fresh.step(WIDE, CELL, Theme::plain());
+        let g = groups(&fresh);
+        assert_eq!(
+            g[0].1, moved[0].1,
+            "the saved arrangement comes back as saved"
+        );
+        assert_eq!(g[2].1, moved[2].1);
+    }
+
+    #[test]
+    fn every_panel_of_the_default_arrangement_still_moves_and_closes() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads", "scm"]);
+        core.step(WIDE, CELL, Theme::plain());
+        core.focus("threads.focus");
+        core.focus("workbench.move.right");
+        let in_main = groups(&core)
+            .into_iter()
+            .find(|g| g.0 == theorem_workbench_dock::Role::Main)
+            .map(|g| g.1)
+            .unwrap_or_default();
+        assert!(in_main.contains(&"threads".to_owned()), "{in_main:?}");
+        let files = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "files")
+            .map(|(id, _)| id.as_str().to_owned())
+            .unwrap();
+        core.focus(&format!("tab.close.{files}"));
+        assert!(!kinds(&core).contains(&"files".to_owned()));
+    }
+
+    #[test]
+    fn the_default_preset_seats_the_panels_of_a_running_workbench_as_a_fresh_one() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads", "scm"]);
+        core.step(WIDE, CELL, Theme::plain());
+        let fresh = groups(&core);
+        // Scatter: Files to the left, Threads to the right, and a picker resting beside them.
+        core.focus("files.focus");
+        core.focus("workbench.move.left");
+        core.focus("threads.focus");
+        core.focus("workbench.move.right");
+        assert_ne!(groups(&core), fresh);
+        core.focus("workbench.layout.default");
+        let g = groups(&core);
+        assert_eq!(g[0].1, vec!["threads"], "{g:?}");
+        assert_eq!(g[2].1, vec!["changes", "files"], "{g:?}");
+        assert_eq!(g[2].2.as_deref(), Some("changes"));
+        assert_eq!(g[1].1, vec!["theo"]);
     }
 
     #[test]
@@ -1775,13 +1950,10 @@ mod tests {
         let mut core = core();
         granted(&mut core, &["files", "conversation"]);
         core.step(AREA, CELL, Theme::plain());
+        assert!(!core.model.focus().modal, "no picker holds the keys");
         assert!(
-            !core.model.focus().modal,
-            "the picker rests and takes no keys"
-        );
-        assert!(
-            core.model.picker().is_resting(),
-            "the picker rests in the tool group"
+            !core.model.picker().is_open(),
+            "Files stands where the picker waited"
         );
         let (consumed, _) = core.key(press("h"));
         assert!(

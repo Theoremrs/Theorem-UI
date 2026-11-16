@@ -650,7 +650,7 @@ export function scenarios(h) {
           'Esc leaves the chooser and nothing is sent': closedChooser,
           'the chooser opens with the cursor on the one showing now, Markdown (the selected row)': rowsBefore.map((r) => `${r.name}:${r.state.selected}`).join() === 'Page:false,Markdown:true',
           'Left to Page and Enter swaps to the editor: the document shows its numbered source': /1 --- 2 title: Workbench guide/.test(editorText),
-          'the swap is in place: the same tab in the same group at the same position, the keyboard still on it': editorAt.group === startedAt.group && editorAt.at === startedAt.at && startedAt.tabs === 'lines.txt,guide.md' && editorAt.tabs === startedAt.tabs && editorAt.focused === 'guide.md' && startedAt.focused === 'guide.md',
+          'the swap is in place: the same tab in the same group at the same position, the keyboard still on it': editorAt.group === startedAt.group && editorAt.at === startedAt.at && startedAt.tabs === 'Changes,Files,lines.txt,guide.md' && editorAt.tabs === startedAt.tabs && editorAt.focused === 'guide.md' && startedAt.focused === 'guide.md',
           'the tab now says "Shown as Page (version 1)" and the editor is bound to docs/guide.md': toEditor.state.description === 'Shown as Page (version 1)' && editorBound,
           'the effects of the swap are a close then an open and nothing else': editorKinds.join() === 'documentClose,documentOpen',
           'the chooser now opens on Page, and marks it, with Markdown listed unmarked': marked.includes('● Page') && !marked.includes('● Markdown') && marked.includes('Markdown') && rowsAfter.map((r) => `${r.name}:${r.state.selected}`).join() === 'Page:true,Markdown:false',
@@ -779,7 +779,7 @@ export function scenarios(h) {
           'the status says "8 files changed. Enter shows a file\'s before and after."': text.includes("8 files changed. Enter shows a file's before and after."),
           'the tree has eight list items with the words "modified", "added", "deleted" and "binary", the first selected': items.length === 8 && items[0].name === 'src/lib.ts, modified' && items[0].state.selected === true && items[1].name === 'src/new.ts, added' && items[2].name === 'src/old.ts, deleted' && /binary/.test(items[3].name) && items.slice(1).every((n) => !n.state.selected) && items[0].setSize === 8 && items[7].posInSet === 8,
           'the list asked the host for the delegation\'s changes once, with the two ids': reads.length === 1 && reads[0].payload.runId === 'run-1' && reads[0].payload.delegationId === 'd1',
-          'no other effect than the layout read, the file list and that one read so far': kinds.every((k) => ['layoutLoad', 'filesList', 'delegationChanges', 'layoutSave'].includes(k)),
+          'no other effect than the layout read, the file list and that one read so far': kinds.every((k) => ['layoutLoad', 'filesList', 'scmStatus', 'scmLog', 'delegationChanges', 'layoutSave'].includes(k)) && kinds.filter((k) => k === 'scmStatus' || k === 'scmLog').length <= 2,
           'its catalogue is the five actions refresh, open, back, next and previous, none human-only': catalogue.map((a) => a.action).sort().join() === 'delegation.back,delegation.next,delegation.open,delegation.previous,delegation.refresh' && catalogue.every((a) => a.humanOnly === false),
           'no catalogue entry or node action in the panel can change anything: only intents "start" (a read) and "local"': catalogue.every((a) => ['start', 'local'].includes(a.intent)) && offered.every((id) => ['delegation.open', 'delegation.refresh', 'delegation.back'].includes(id)) && !catalogue.some((a) => /save|edit|delete|discard|restore|apply|commit|stage|revert|accept|write|send/.test(a.action)),
         }
@@ -964,7 +964,7 @@ export function scenarios(h) {
           'r reads the delegation\'s changes again: one more delegationChanges and nothing else': afterR === beforeR + 1,
           'delegation.refresh by the agent entry is accepted and is the same read': refresh.outcome === 'accepted' && refresh.effects === 1,
           'across the whole scenario the only effects after the panel opened are delegationChanges and delegationContent': kinds.every((k) => k === 'delegationChanges' || k === 'delegationContent') && kinds.length >= 4,
-          'the whole run never asked for a document, a save, a file change, a terminal or a send': !all.some((k) => /^(document|scm|files(Create|Rename|Copy|Delete)|terminal|conversationSend|run)/.test(k)),
+          'the whole run never asked for a document, a save, a file change, a terminal or a send': !all.some((k) => /^(document|files(Create|Rename|Copy|Delete)|terminal|conversationSend|run)/.test(k)) && all.every((k) => !/^scm/.test(k) || k === 'scmStatus' || k === 'scmLog'),
           'nothing was typed into the composer': (composerAfter ?? '') === '',
         }
       },
@@ -1175,6 +1175,84 @@ export function scenarios(h) {
 
     // The Files panel's icons: a folder open or closed for every drop-down, a file icon by kind for the rows under them,
     // and nothing in front of a name that looks like an arrow. The tree is the story's (partial `docs`, an image, a symlink).
+    // The default arrangement (LEDGER L26): Threads alone on the left, Theo in the middle with the keyboard, Changes then Files
+    // on the right with Changes showing, no picker resting, and every panel still free to move and close.
+    'workbench-default-arrangement': [
+      async (page) => {
+        await sees(page, 'Changes', 8000)
+        await page.waitForTimeout(1500)
+        /** The groups left to right: each with its tabs (name, selected) and its cell rectangle. */
+        const columns = async () => {
+          const tree = await nodes(page)
+          return tree
+            .filter((n) => /^group:\d+$/.test(n.id))
+            .map((g) => {
+              const strip = tree.find((n) => n.id === g.id.replace('group:', 'tabs:'))
+              const tabs = (strip?.children ?? []).map((id) => tree.find((n) => n.id === id)).filter(Boolean)
+              return { name: g.name, rect: g.rect, tabs: tabs.map((t) => ({ id: t.id, name: t.name, selected: t.state.selected })) }
+            })
+            .sort((a, b) => a.rect.x - b.rect.x)
+        }
+        const names = (c) => c.tabs.map((t) => t.name)
+        const cell = await page.evaluate(() => {
+          const grid = document.querySelector('[id$=_ratzilla_grid]')
+          const box = grid.children[0].children[0].getBoundingClientRect()
+          const origin = grid.getBoundingClientRect()
+          return { w: box.width, h: box.height, left: origin.left, top: origin.top, cols: grid.children[0].children.length }
+        })
+        const fresh = await columns()
+        await snap(page, 'workbench-default-arrangement')
+        const [left, mid, right] = fresh
+        const leftPx = left ? left.rect.width * cell.w : 0
+        // Focus is in the composer, and a typed character lands there (real key presses).
+        const focusedBox = async () => (await nodes(page)).find((n) => n.state?.focused && n.role === 'textBox')
+        const before = await focusedBox()
+        await page.keyboard.type('hello', { delay: 40 })
+        await page.waitForTimeout(400)
+        const typed = (await nodes(page)).find((n) => /composer:text$/.test(n.id))
+        const afterTyping = await columns()
+        // The picker opens on its key and closes on Escape; while it is open it is a tab like the others.
+        await page.keyboard.press(`${CHORD}t`)
+        await page.waitForTimeout(600)
+        const opened = await columns()
+        await snap(page, 'workbench-default-arrangement-picker')
+        await page.keyboard.press('Escape')
+        await page.waitForTimeout(600)
+        const closed = await columns()
+        // Fully modular: Files moves to the next group on its key and is closed by its own mark.
+        await page.keyboard.press(`${CHORD}e`)
+        await page.waitForTimeout(500)
+        await page.keyboard.press(`${CHORD}Shift+ArrowLeft`)
+        await page.waitForTimeout(600)
+        const moved = await columns()
+        const filesNow = moved.find((c) => names(c).includes('Files'))
+        await snap(page, 'workbench-default-arrangement-moved')
+        const filesTab = filesNow?.tabs.find((t) => t.name === 'Files')
+        const tabNode = (await nodes(page)).find((n) => n.id === filesTab?.id)
+        if (tabNode?.rect) {
+          await page.mouse.click(cell.left + (tabNode.rect.x + tabNode.rect.width - 1.5) * cell.w, cell.top + (tabNode.rect.y + 0.5) * cell.h)
+          await page.waitForTimeout(600)
+        }
+        const gone = await columns()
+        return {
+          'three groups stand side by side, left to right': fresh.length === 3 && left.rect.x < mid.rect.x && mid.rect.x < right.rect.x,
+          'Threads is the left group only tab': names(left).join() === 'Threads' && left.tabs[0].selected,
+          'Theo is the middle group only tab': mid.tabs.length === 1 && /theo/i.test(mid.tabs[0].name),
+          'the right group tabs are Changes then Files': names(right).join() === 'Changes,Files',
+          'Changes is the tab showing on the right': right.tabs[0].selected && !right.tabs[1].selected,
+          'no Add tool tab rests anywhere': fresh.every((c) => !names(c).includes('Add tool')),
+          'focus is in the composer after mount': before?.name === 'Message to Theo',
+          'a typed character lands in the composer': /hello/.test(typed?.text ?? ''),
+          'typing opened nothing and moved nothing': JSON.stringify(afterTyping.map(names)) === JSON.stringify(fresh.map(names)),
+          'the picker opens on its key as a tab of the right group': names(opened[2]).includes('Add tool'),
+          'Escape closes the picker and its tab goes': closed.every((c) => !names(c).includes('Add tool')) && names(closed[2]).join() === 'Changes,Files',
+          'Files moves to another group on its key': filesNow !== undefined && filesNow.rect.x < right.rect.x && !names(moved[moved.length - 1]).includes('Files'),
+          'a tab closes by its own mark': gone.every((c) => !names(c).includes('Files')),
+          'columns at 1280px: the left group is the pinned width, the groups meet and the last reaches the right edge':
+            leftPx >= 200 && leftPx <= 260 && Math.abs(left.rect.x + left.rect.width - mid.rect.x) <= 1 && Math.abs(mid.rect.x + mid.rect.width - right.rect.x) <= 1 && right.rect.x + right.rect.width >= cell.cols - 1,
+        }
+      },
+    ],
     'workbench-files': [
       // Every row's icon, by what the row is.
       async (page) => {
@@ -1247,7 +1325,10 @@ export function scenarios(h) {
       // The composer's file list, typed: each suggestion leads with its file icon and a blank cell; the chosen one is told by its letters.
       async (page) => {
         await page.waitForTimeout(500)
+        // Files sits in the group right of Theo now: the chord goes there, and its opposite brings the keys back to the composer.
         await page.keyboard.press(`${CHORD}ArrowRight`)
+        await page.waitForTimeout(400)
+        await page.keyboard.press(`${CHORD}ArrowLeft`)
         await page.waitForTimeout(400)
         const inComposer = (await node(page, 'composer:text'))?.state.focused === true
         await page.keyboard.type('@s', { delay: 60 })

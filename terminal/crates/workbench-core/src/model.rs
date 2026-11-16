@@ -683,6 +683,17 @@ impl Model {
         self.dirty = true;
     }
 
+    /// Take a picker that only rests (nobody has used it) out of the dock: the
+    /// default arrangement has real tools to show where it waited. A picker the
+    /// person opened keeps the keys and stays.
+    pub fn dismiss_resting_picker(&mut self) {
+        if self.picker.is_resting() {
+            let _ = self.picker_msg(crate::picker::PickerMsg::Close);
+            self.settle();
+            self.dirty = true;
+        }
+    }
+
     /// As [`rest_picker`](Self::rest_picker), saying whether the picker is
     /// now resting.
     pub fn rest_picker_now(&mut self) -> bool {
