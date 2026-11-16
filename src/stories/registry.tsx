@@ -125,6 +125,10 @@ import { PlanGraph } from '@/components/chat/plan-graph'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+import {
+  WorkbenchDeltaParityCurrentStory,
+  WorkbenchDeltaParityStory,
+} from '@/components/workbench/workbench-delta-parity-story'
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(
@@ -832,6 +836,8 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-threads': WorkbenchThreadsStory,
   'workbench-threads-withheld': WorkbenchThreadsWithheldStory,
   'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
+  'workbench-delta-parity': WorkbenchDeltaParityStory,
+  'workbench-delta-parity-current': WorkbenchDeltaParityCurrentStory,
   'workbench-terminal': WorkbenchTerminalStory,
   'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
   'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,

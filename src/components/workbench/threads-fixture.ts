@@ -146,16 +146,28 @@ const seedSessions = (): TerminalSessionInfo[] => [
   },
 ]
 
+/** An account other than the default: its projects, threads (as `thread()` builds them) and the one open. */
+export interface ThreadsSeed {
+  projects: Array<{ id: string; name: string }>
+  threads: ThreadItem[]
+  open: { projectId: string; threadId: string }
+  /** The Herdr sessions beside the threads; none when absent. */
+  sessions?: TerminalSessionInfo[]
+}
+
+/** A thread as the listing carries it, for a seed of one's own. */
+export const seedThread = thread
+
 /** The account's mutable state. */
-export function createThreadsFixture() {
-  let threads = seedThreads()
-  let sessions = seedSessions()
-  let open = { projectId: 'p-atlas', threadId: 't-parent' }
+export function createThreadsFixture(seed?: ThreadsSeed) {
+  let threads = seed ? seed.threads : seedThreads()
+  let sessions = seed ? (seed.sessions ?? []) : seedSessions()
+  let open = seed ? seed.open : { projectId: 'p-atlas', threadId: 't-parent' }
   let created = 0
   const tags = new Map<string, ThreadTag>()
 
   const listing = (): ThreadListing => ({
-    projects: THREAD_PROJECTS,
+    projects: seed ? seed.projects : THREAD_PROJECTS,
     threads: threads.map((item) => ({
       ...item,
       ...(tags.has(item.id) ? { tag: tags.get(item.id) } : {}),

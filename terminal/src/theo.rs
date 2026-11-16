@@ -2084,8 +2084,9 @@ impl Panel for TheoPanel {
         self.area.set(area);
         self.focused.set(cx.focused);
         let p = palette();
+        // The conversation sits on the canvas, a step below the panels it stands between.
         Block::new()
-            .style(Style::new().bg(p.bg).fg(p.ink))
+            .style(Style::new().bg(p.canvas()).fg(p.ink))
             .render(area, buf);
         if self.kind == Kind::Side && !self.bound() {
             draw_chooser(

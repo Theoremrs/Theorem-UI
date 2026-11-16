@@ -219,6 +219,18 @@ fn theme_of(p: &Palette) -> Theme {
         field_focus: filled,
         control: filled,
         hunk_current: mark,
+        // The roles that did not exist before the Delta-parity proposal: each is what the
+        // panels drew until the page sends a value for it (the `Palette` accessors).
+        canvas: Style::new().fg(p.ink).bg(p.canvas()),
+        selected_region: p
+            .selected_row
+            .map_or_else(Style::new, |bg| Style::new().bg(bg)),
+        text_disabled: fg(p.text_disabled()),
+        info: p.info.map_or_else(Style::new, fg),
+        diff_added_mark: fg(p.diff_added_mark()),
+        diff_removed_mark: fg(p.diff_removed_mark()),
+        // Where the gutter and a time are low-value metadata, not secondary text.
+        gutter: fg(p.text_disabled()),
         ..theme
     }
 }
@@ -1551,6 +1563,57 @@ mod tests {
         // A popup's rows are text on a surface of their own: readable over what they cover.
         assert_eq!(theme.popup, Style::new().fg(p.ink).bg(p.raised));
         assert_ne!(theme.popup.fg, Some(p.line));
+    }
+
+    #[test]
+    fn the_semantic_roles_draw_what_was_drawn_until_the_page_sends_them() {
+        let p = Palette::default();
+        let theme = theme_of(&p);
+        assert_eq!(theme.canvas, Style::new().fg(p.ink).bg(p.bg));
+        assert_eq!(theme.canvas.bg, theme.bg.bg);
+        assert_eq!(theme.selected_region, Style::new());
+        assert_eq!(theme.text_disabled, theme.muted);
+        assert_eq!(theme.gutter, theme.muted);
+        assert_eq!(theme.info, Style::new());
+        // The marks of a diff's lines are the code colours Theo drew them in.
+        assert_eq!(theme.diff_added_mark, Style::new().fg(p.syntax_tag));
+        assert_eq!(theme.diff_removed_mark, Style::new().fg(p.syntax_keyword));
+        // The transcript's roles resolve to the raised ground and the bright name it drew.
+        assert_eq!(p.completed_row(), p.raised);
+        assert_eq!(p.running_row(), p.raised);
+        assert_eq!(p.pending_row(), p.raised);
+        assert_eq!(p.failed_row(), p.raised);
+        assert_eq!(p.completed_ink(), p.bright);
+        assert_eq!(p.text_disabled(), p.muted);
+        assert_eq!(p.diff_added_mark(), p.syntax_tag);
+        assert_eq!(p.diff_removed_mark(), p.syntax_keyword);
+    }
+
+    #[test]
+    fn a_page_that_sends_the_semantic_roles_changes_them_and_nothing_else() {
+        let sent: Palette = serde_json::from_str(
+            r##"{"canvas":"#101820","selectedRow":"#34445a","completedRow":"#101820",
+                 "textDisabled":"#7a828a","info":"#58a6ff"}"##,
+        )
+        .expect("the roles parse beside the legacy keys");
+        let base = Palette::default();
+        let theme = theme_of(&sent);
+        assert_eq!(theme.canvas.bg, Some(Color::Rgb(0x10, 0x18, 0x20)));
+        // The panels keep their own ground; only the conversation's moves.
+        assert_eq!(theme.bg, theme_of(&base).bg);
+        assert_eq!(
+            theme.selected_region,
+            Style::new().bg(Color::Rgb(0x34, 0x44, 0x5a))
+        );
+        assert_eq!(sent.completed_row(), Color::Rgb(0x10, 0x18, 0x20));
+        assert_eq!(sent.running_row(), base.raised);
+        assert_eq!(theme.text_disabled.fg, Some(Color::Rgb(0x7a, 0x82, 0x8a)));
+        assert_eq!(theme.gutter, theme.text_disabled);
+        assert_eq!(theme.muted, theme_of(&base).muted);
+        assert_eq!(theme.info.fg, Some(Color::Rgb(0x58, 0xa6, 0xff)));
+        // A role sent as null is the same as one left out.
+        let nulled: Palette = serde_json::from_str(r#"{"canvas":null}"#).expect("null parses");
+        assert!(nulled == base);
     }
 
     #[test]

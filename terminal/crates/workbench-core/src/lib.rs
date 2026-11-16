@@ -60,7 +60,7 @@ pub use panel::{
     Button, Caret, CaretPhase, CaretShape, Composition, Ctx, EmitError, OpenDocumentState,
     OpenTarget, Panel, PanelMsg, PanelPointer, PickerView, PointerKind, TabLabel, ViewCtx,
 };
-pub use theme::Theme;
+pub use theme::{Roles, Theme};
 pub use tree::semantics;
 pub use update::update;
 pub use view::view;

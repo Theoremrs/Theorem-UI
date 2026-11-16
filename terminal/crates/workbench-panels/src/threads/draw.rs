@@ -235,11 +235,13 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
             Row::Thread { idx, .. } => p.listing.as_ref().map(|l| &l.threads[*idx]),
             _ => None,
         };
+        // A chosen row is its letters (the focus register when the panel holds the keyboard)
+        // on the selected band, when the theme draws one.
         let line = if here {
             if cx.focused {
-                theme.focus
+                theme.focus.patch(theme.selected_region)
             } else {
-                theme.selected
+                theme.selected.patch(theme.selected_region)
             }
         } else {
             theme
@@ -321,12 +323,15 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 } else if let Some(why) = &t.needs_you {
                     (fit(&visible(why), 14), base.patch(theme.warning))
                 } else if t.unread {
-                    ("\u{25cf}".to_owned(), base.add_modifier(Modifier::BOLD))
+                    (
+                        "\u{25cf}".to_owned(),
+                        base.add_modifier(Modifier::BOLD).patch(theme.info),
+                    )
                 } else {
                     let ms = t.last_message_ms.or(t.created_ms);
                     (
                         ms.map(|m| relative(now, m)).unwrap_or_default(),
-                        base.patch(theme.muted),
+                        base.patch(theme.text_disabled),
                     )
                 };
                 let lw = width(&label) as u16;

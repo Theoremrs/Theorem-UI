@@ -98,6 +98,101 @@ export function scenarios(h) {
   const sends = async (page) => (await effects(page)).filter((e) => e.kind === 'conversationSend')
 
 
+
+  // ---- Delta parity: measure the colour roles off the drawn cells ----------------------------
+  const parseRgb = (css) => {
+    const m = /rgba?\(([^)]+)\)/.exec(css)
+    return m ? m[1].split(',').slice(0, 3).map((v) => Number(v)) : [0, 0, 0]
+  }
+  /** WCAG relative luminance of a computed `rgb(...)`: the one number the ladder's steps are ordered by. */
+  const luma = (css) => {
+    const [r, g, b] = parseRgb(css).map((v) => {
+      const c = v / 255
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+    })
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+  }
+  /** The computed background and colour of the cell at row `y`, column `x` of the grid. */
+  const cellAt = (page, y, x) =>
+    page.evaluate(([row, col]) => {
+      const cell = document.querySelector('[id$=_ratzilla_grid]').children[row]?.children[col]
+      if (!cell) return null
+      const style = getComputedStyle(cell)
+      return { bg: style.backgroundColor, fg: style.color, ch: cell.textContent }
+    }, [y, x])
+  /** Every grid row as its text, so a row and the column a word starts at can be found. */
+  const parityRows = (page) =>
+    page.evaluate(() => [...document.querySelector('[id$=_ratzilla_grid]').children].map((r) => [...r.children].map((c) => c.textContent || ' ').join('')))
+  /** The first cell where `needle` starts at or after column `from`, or null. */
+  const find = async (page, needle, { from = 0, where = () => true } = {}) => {
+    const rows = await parityRows(page)
+    for (let y = 0; y < rows.length; y++) {
+      if (!where(rows[y])) continue
+      const x = rows[y].indexOf(needle, from)
+      if (x >= 0) return { y, x, ...(await cellAt(page, y, x)) }
+    }
+    return null
+  }
+
+  const deltaParity = async (page, proposed) => {
+    await sees(page, 'Changes', 8000)
+    await sees(page, 'edit_file', 8000)
+    await page.waitForTimeout(1500)
+    const hook = await page.evaluate(() => window.__parityLadder ?? null)
+    const groups = (await nodes(page)).filter((n) => /^group:\d+$/.test(n.id)).sort((a, b) => a.rect.x - b.rect.x)
+    const [left, mid] = groups
+    const rows = await parityRows(page)
+    // The four surfaces: the canvas is Theo's empty ground, the panel Threads' empty ground, the raised surface the
+    // running command's block, the selected one the open thread's row in Threads.
+    const emptyY = rows.findIndex((r, y) => y > 30 && r.slice(mid.rect.x, mid.rect.x + 40).trim() === '')
+    const canvas = await cellAt(page, emptyY, mid.rect.x + 12)
+    const panel = await cellAt(page, emptyY, left.rect.x + 3)
+    const running = await find(page, 'run_command', { from: mid.rect.x })
+    const selected = await find(page, 'Design the sync', { from: left.rect.x, where: (r) => r.slice(0, 30).includes('Design') })
+    // Tool rows: a name's cell against the canvas shows whether the row is a block. Every tool row in the transcript.
+    const names = ['read_file', 'grep', 'apply_patch', 'run_command', 'edit_file']
+    const tools = {}
+    for (const name of names) tools[name] = await find(page, name, { from: mid.rect.x })
+    const glyphOf = async (t) => cellAt(page, t.y, t.x - 2)
+    const pendingGlyph = await glyphOf(tools.edit_file)
+    const blocks = names.filter((n) => tools[n].bg !== canvas.bg)
+    // Diff rows: a removed row and an added row of the patch the transcript shows, a cell in the code.
+    const removed = await find(page, 'out.insert(key, entry);', { from: mid.rect.x, where: (r) => !r.includes('newer') && !r.includes('if newer') })
+    const added = await find(page, 'let newer', { from: mid.rect.x })
+    // The mark is the `-` or `+` the row starts with, in the gutter before the code.
+    const markOf = async (row, glyph) => cellAt(page, row.y, rows[row.y].indexOf(glyph, mid.rect.x))
+    const removedGutter = await markOf(removed, '-')
+    const addedGutter = await markOf(added, '+')
+    // Secondary text: a project's name under a pinned thread; disabled text: a thread's age.
+    const secondary = await find(page, 'Quarry', { from: left.rect.x, where: (r) => r.slice(0, 30).trim() === 'Quarry' })
+    const disabled = await find(page, '4m', { from: left.rect.x, where: (r) => r.slice(0, 30).includes('Design the sync') })
+    await snap(page, proposed ? 'workbench-delta-parity' : 'workbench-delta-parity-current')
+    const same = (a, b) => a.bg === b.bg
+    const distinct = (...v) => new Set(v).size === v.length
+    if (process.env.PARITY_DEBUG) console.error(JSON.stringify({ hook, canvas, panel, running, selected, tools, pendingGlyph, blocks, removed, added, removedGutter, addedGutter, secondary, disabled }, null, 1))
+    if (!proposed)
+      return {
+        'the story has the proposal off': hook?.proposed === false,
+        'the canvas is the panel colour (one ground, as today)': same(canvas, panel),
+        'every finished and the running tool row is a block (as today)': ['read_file', 'grep', 'apply_patch', 'run_command'].every((n) => tools[n].bg !== canvas.bg),
+        'the open thread is not on a band of its own (as today)': selected.bg === panel.bg || luma(selected.bg) - luma(panel.bg) < 0.002,
+      }
+    return {
+      'the story has the proposal on': hook?.proposed === true,
+      'canvas, panel, raised and selected are four different backgrounds': distinct(canvas.bg, panel.bg, running.bg, selected.bg),
+      'and they ascend in lightness: canvas, panel, raised, selected': luma(canvas.bg) < luma(panel.bg) && luma(panel.bg) < luma(running.bg) && luma(running.bg) < luma(selected.bg),
+      'the selected row and the pending approval share no colour': distinct(selected.bg, tools.edit_file.bg) && pendingGlyph.fg !== selected.bg && pendingGlyph.fg !== selected.fg,
+      'finished tool calls have no block, and the running one is the raised block': ['read_file', 'grep', 'apply_patch'].every((n) => tools[n].bg === canvas.bg) && blocks.includes('run_command'),
+      'the waiting approval is on a ground of its own: not the canvas, the running block, the selected band or a diff row': distinct(tools.edit_file.bg, canvas.bg, running.bg, selected.bg, removed.bg, added.bg),
+      'and its glyph is the approval register, not the colour of the running one': pendingGlyph.ch === '?' && pendingGlyph.fg !== (await glyphOf(tools.run_command)).fg,
+      'the added and removed diff rows differ from each other': removed.bg !== added.bg,
+      'and each differs from the panel and from the canvas': distinct(removed.bg, panel.bg, canvas.bg) && distinct(added.bg, panel.bg, canvas.bg),
+      'the diff gutter marks are two colours as well': removedGutter.fg !== addedGutter.fg,
+      'secondary and disabled text are different colours': secondary.fg !== disabled.fg,
+      'and both differ from the primary text of the open thread': distinct(secondary.fg, disabled.fg, selected.fg),
+    }
+  }
+
   // ---- Threads ------------------------------------------------------------------------------
   const HOSTILE_RAW = /[\u0000-\u0008\u000b-\u001f\u007f\u202a-\u202e\u2066-\u2069]/
   /** The row the Threads panel's cursor is on: its node id without the panel prefix (`r:t:p-atlas:t-parent`). */
@@ -1172,6 +1267,12 @@ export function scenarios(h) {
         }
       },
     ],
+
+    // The Delta-parity colour ladder (docs/plans/theo-workbench/LEDGER.md L27): the proposal is a different palette sent to the
+    // same Rust terminal, so everything is measured from the cells the browser drew (computed style of the cell spans), never from
+    // the palette the page sent. `workbench-delta-parity` has the proposal on, `workbench-delta-parity-current` has it off.
+    'workbench-delta-parity': [(page) => deltaParity(page, true)],
+    'workbench-delta-parity-current': [(page) => deltaParity(page, false)],
 
     // The Files panel's icons: a folder open or closed for every drop-down, a file icon by kind for the rows under them,
     // and nothing in front of a name that looks like an arrow. The tree is the story's (partial `docs`, an image, a symlink).

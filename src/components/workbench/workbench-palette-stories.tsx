@@ -94,7 +94,7 @@ const OPEN_TERMINAL: Step[] = [
  * holds its children back until the root has the palette and the terminal's own colours have followed it.
  * `window.__setPaletteProfile` puts the page in another profile live, for an oracle to measure a switch.
  */
-function PaletteProfileGate({
+export function PaletteProfileGate({
   profile,
   children,
 }: {

@@ -142,6 +142,74 @@ struct Palette {
     syntax_tag: Color,
     #[serde(deserialize_with = "colour")]
     syntax_comment: Color,
+    // The semantic colour roles that did not exist before the Delta-parity
+    // proposal. Each is optional and, left out, resolves (through the accessor
+    // under `impl Palette`) to exactly what the thing drew before, so a page that
+    // sends none of them draws what it drew. The proposal (a derived ladder,
+    // src/components/terminal/terminal-ladder.ts) sends them.
+    /// The conversation's ground, a step below the panels'.
+    #[serde(deserialize_with = "optional_colour")]
+    canvas: Option<Color>,
+    /// The band behind a selected row; none draws no band.
+    #[serde(deserialize_with = "optional_colour")]
+    selected_row: Option<Color>,
+    /// A completed tool call's row ground.
+    #[serde(deserialize_with = "optional_colour")]
+    completed_row: Option<Color>,
+    /// A running operation's block.
+    #[serde(deserialize_with = "optional_colour")]
+    running_row: Option<Color>,
+    /// A tool call that waits on the person's decision.
+    #[serde(deserialize_with = "optional_colour")]
+    pending_row: Option<Color>,
+    /// A tool call that failed.
+    #[serde(deserialize_with = "optional_colour")]
+    failed_row: Option<Color>,
+    /// The name of a completed tool call.
+    #[serde(deserialize_with = "optional_colour")]
+    completed_ink: Option<Color>,
+    /// Informational marks (the unread dot).
+    #[serde(deserialize_with = "optional_colour")]
+    info: Option<Color>,
+    /// Low-value metadata: a time, a line number.
+    #[serde(deserialize_with = "optional_colour")]
+    text_disabled: Option<Color>,
+    /// The mark in front of an added and a removed diff line.
+    #[serde(deserialize_with = "optional_colour")]
+    diff_added_mark: Option<Color>,
+    #[serde(deserialize_with = "optional_colour")]
+    diff_removed_mark: Option<Color>,
+}
+
+impl Palette {
+    /// Where Theo's transcript and composer sit: the panels' own ground unless the page sends a canvas.
+    fn canvas(&self) -> Color {
+        self.canvas.unwrap_or(self.bg)
+    }
+    fn completed_row(&self) -> Color {
+        self.completed_row.unwrap_or(self.raised)
+    }
+    fn running_row(&self) -> Color {
+        self.running_row.unwrap_or(self.raised)
+    }
+    fn pending_row(&self) -> Color {
+        self.pending_row.unwrap_or(self.raised)
+    }
+    fn failed_row(&self) -> Color {
+        self.failed_row.unwrap_or(self.raised)
+    }
+    fn completed_ink(&self) -> Color {
+        self.completed_ink.unwrap_or(self.bright)
+    }
+    fn text_disabled(&self) -> Color {
+        self.text_disabled.unwrap_or(self.muted)
+    }
+    fn diff_added_mark(&self) -> Color {
+        self.diff_added_mark.unwrap_or(self.syntax_tag)
+    }
+    fn diff_removed_mark(&self) -> Color {
+        self.diff_removed_mark.unwrap_or(self.syntax_keyword)
+    }
 }
 
 // pi's slate as it is drawn in GitHub Sharp, where every other palette's
@@ -198,6 +266,17 @@ const SLATE: Palette = Palette {
     syntax_type: Color::Rgb(0xff, 0xa6, 0x57),
     syntax_tag: Color::Rgb(0x7e, 0xe7, 0x87),
     syntax_comment: Color::Rgb(0x8e, 0x98, 0xa2), // #8b949e, lifted to read on the raised slate
+    canvas: None,
+    selected_row: None,
+    completed_row: None,
+    running_row: None,
+    pending_row: None,
+    failed_row: None,
+    completed_ink: None,
+    info: None,
+    text_disabled: None,
+    diff_added_mark: None,
+    diff_removed_mark: None,
 };
 
 impl Default for Palette {
@@ -216,6 +295,15 @@ fn colour<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Color, D:
     String::deserialize(deserializer)?
         .parse()
         .map_err(serde::de::Error::custom)
+}
+
+/// An optional palette colour: a `#rrggbb` string or nothing.
+fn optional_colour<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<Color>, D::Error> {
+    Option::<String>::deserialize(deserializer)?
+        .map(|text| text.parse().map_err(serde::de::Error::custom))
+        .transpose()
 }
 
 /// The colours to draw in.
@@ -704,13 +792,13 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
             let (marker, mark, fill, words) = match line.k.as_str() {
                 "del" => (
                     "-",
-                    palette().syntax_keyword,
+                    palette().diff_removed_mark(),
                     Some(palette().removed_line),
                     palette().removed_words,
                 ),
                 "add" => (
                     "+",
-                    palette().syntax_tag,
+                    palette().diff_added_mark(),
                     Some(palette().added_line),
                     palette().added_words,
                 ),
@@ -1731,12 +1819,17 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
 /// One tool's row. A row that opens a file underlines its summary, as a
 /// terminal draws a hyperlink.
 fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> Line<'static> {
-    let (glyph, color) = match status {
-        "complete" => ("✓", palette().success),
-        "error" => ("✗", palette().error),
-        "approval" => ("?", palette().approval),
-        "interrupted" => ("⊘", palette().warning),
-        _ => ("◌", palette().accent),
+    // A row's state is a register (the glyph) on a ground (the row): a finished or
+    // interrupted call sits on the completed ground, one that waits on a decision on the
+    // pending ground, one that failed on the failed ground, and a running one is the
+    // accent on the running block.
+    let p = palette();
+    let (glyph, color, ground, name_ink) = match status {
+        "complete" => ("✓", p.success, p.completed_row(), p.completed_ink()),
+        "error" => ("✗", p.error, p.failed_row(), p.bright),
+        "approval" => ("?", p.approval, p.pending_row(), p.bright),
+        "interrupted" => ("⊘", p.warning, p.completed_row(), p.bright),
+        _ => ("◌", p.accent, p.running_row(), p.bright),
     };
     let lead = format!("{INDENT}{glyph} ");
     let used = lead.chars().count() + name.chars().count() + 2;
@@ -1752,21 +1845,19 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
     let fill = (width as usize).saturating_sub(used + summary.chars().count());
     Line::from(vec![
         Span::styled(lead, Style::new().fg(color)),
-        Span::styled(name.to_owned(), Style::new().fg(palette().bright).bold()),
+        Span::styled(name.to_owned(), Style::new().fg(name_ink).bold()),
         Span::raw("  "),
         Span::styled(
             summary,
             if link {
-                Style::new()
-                    .fg(palette().muted)
-                    .add_modifier(Modifier::UNDERLINED)
+                Style::new().fg(p.muted).add_modifier(Modifier::UNDERLINED)
             } else {
-                Style::new().fg(palette().muted)
+                Style::new().fg(p.muted)
             },
         ),
         Span::raw(" ".repeat(fill)),
     ])
-    .style(Style::new().bg(palette().raised))
+    .style(Style::new().bg(ground))
 }
 
 /// The terminal's tabs, one session each, and what spans them: focus, the

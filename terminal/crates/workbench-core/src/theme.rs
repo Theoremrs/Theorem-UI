@@ -145,10 +145,57 @@ pub struct Theme {
     /// The field of a form that holds focus.
     pub field_focus: Style,
 
+    // --- semantic roles (the Delta-parity colour roles) ---
+    // The role set is: canvas, panel, raised, selected, focused, primary text,
+    // secondary text, disabled text, informational, success, warning/approval,
+    // failure, diff addition, diff deletion, brand accent. Most already exist
+    // above under another name (see [`Roles`]); these are the ones that did not.
+    // Each defaults to what the panels drew before it existed, so a host that
+    // sets none of them draws what it drew.
+    /// The conversation's ground: where Theo's transcript and composer sit.
+    /// Default: the same ground as every panel (`bg`).
+    pub canvas: Style,
+    /// The band behind a selected row (a thread, a changed file). Default: none,
+    /// a selected row is told by its letters alone.
+    pub selected_region: Style,
+    /// Low-value metadata that is allowed to be quiet: a time, a line number.
+    /// Default: `muted`, which is what those drew.
+    pub text_disabled: Style,
+    /// Informational marks, such as the unread dot. Default: no colour.
+    pub info: Style,
+    /// The mark in front of an added line. Default: `success`.
+    pub diff_added_mark: Style,
+    /// The mark in front of a removed line. Default: `error`.
+    pub diff_removed_mark: Style,
+
     // --- terminal ---
     /// The 16 ANSI colors a terminal pane remaps. `Color::Reset` until the
     /// host sets them.
     pub ansi: [Color; 16],
+}
+
+/// The colour roles by their semantic names: one view over the fields that
+/// carry them, so a component can say "approval + raised" without knowing which
+/// field holds it. Built by [`Theme::roles`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Roles {
+    pub canvas: Style,
+    pub panel: Style,
+    pub raised: Style,
+    pub selected: Style,
+    pub focused: Style,
+    pub text_primary: Style,
+    pub text_secondary: Style,
+    pub text_disabled: Style,
+    pub informational: Style,
+    pub success: Style,
+    pub approval: Style,
+    pub failure: Style,
+    pub diff_addition: Style,
+    pub diff_deletion: Style,
+    pub diff_addition_mark: Style,
+    pub diff_deletion_mark: Style,
+    pub brand: Style,
 }
 
 impl Theme {
@@ -215,6 +262,12 @@ impl Theme {
             control: none,
             control_disabled: none,
             field_focus: none,
+            canvas: none,
+            selected_region: none,
+            text_disabled: none,
+            info: none,
+            diff_added_mark: none,
+            diff_removed_mark: none,
             ansi: [Color::Reset; 16],
             bg: Style::default(),
             text: Style::default(),
@@ -330,7 +383,44 @@ impl Theme {
         self.control = self.focus;
         self.control_disabled = self.muted;
         self.field_focus = self.focus;
+
+        self.canvas = self.bg;
+        self.selected_region = Style::default();
+        self.text_disabled = self.muted;
+        self.info = Style::default();
+        self.diff_added_mark = self.success;
+        self.diff_removed_mark = self.error;
         self
+    }
+
+    /// The colour roles by their semantic names, read from the fields that hold
+    /// them. `panel` is the ground every panel draws on, `raised` is the popup's
+    /// surface, `selected` the band behind a selected row (empty when the theme
+    /// draws none), `focused` the focus register and `brand` its letters.
+    pub fn roles(&self) -> Roles {
+        let fg = |role: Style| {
+            role.fg
+                .map_or_else(Style::default, |c| Style::default().fg(c))
+        };
+        Roles {
+            canvas: self.canvas,
+            panel: self.bg,
+            raised: self.popup,
+            selected: self.selected_region,
+            focused: self.focus,
+            text_primary: self.text,
+            text_secondary: self.muted,
+            text_disabled: self.text_disabled,
+            informational: self.info,
+            success: self.success,
+            approval: self.warning,
+            failure: self.error,
+            diff_addition: self.added_line,
+            diff_deletion: self.removed_line,
+            diff_addition_mark: self.diff_added_mark,
+            diff_deletion_mark: self.diff_removed_mark,
+            brand: fg(self.focus),
+        }
     }
 
     /// Set `state.error`, `state.warning` and `state.success`.
@@ -356,6 +446,8 @@ impl Theme {
         self.change_changed = derived.change_changed;
         self.change_deleted = derived.change_deleted;
         self.change_conflict = derived.change_conflict;
+        self.diff_added_mark = derived.diff_added_mark;
+        self.diff_removed_mark = derived.diff_removed_mark;
         self
     }
 
@@ -554,5 +646,43 @@ mod tests {
         assert_eq!(t.syntax_name, cyan);
         // The default is the plain theme's own.
         assert_eq!(Theme::default().gutter, Theme::plain().muted);
+    }
+
+    #[test]
+    fn the_semantic_roles_default_to_what_the_panels_drew_before_they_existed() {
+        let red = Style::new().fg(Color::Red);
+        let green = Style::new().fg(Color::Green);
+        let grey = Style::new().fg(Color::DarkGray);
+        let blue = Style::new().fg(Color::Blue).bg(Color::Black);
+        let t = Theme::chrome(red, green, grey, grey, blue, red).with_state(red, green, blue);
+        // The new fields default to the field that drew the thing.
+        assert_eq!(t.canvas, t.bg);
+        assert_eq!(t.selected_region, Style::default());
+        assert_eq!(t.text_disabled, t.muted);
+        assert_eq!(t.info, Style::default());
+        assert_eq!((t.diff_added_mark, t.diff_removed_mark), (blue, red));
+        // The role view names the same fields.
+        let r = t.roles();
+        assert_eq!(r.panel, t.bg);
+        assert_eq!(r.text_primary, t.text);
+        assert_eq!(r.text_secondary, t.muted);
+        assert_eq!(
+            (r.success, r.approval, r.failure),
+            (t.success, t.warning, t.error)
+        );
+        assert_eq!(
+            (r.diff_addition, r.diff_deletion),
+            (t.added_line, t.removed_line)
+        );
+        assert_eq!(r.focused, t.focus);
+        assert_eq!(r.brand, Style::new().fg(Color::Blue));
+    }
+
+    #[test]
+    fn a_state_change_moves_the_diff_marks_with_it() {
+        let red = Style::new().fg(Color::Red);
+        let cyan = Style::new().fg(Color::Cyan);
+        let t = Theme::plain().with_state(red, red, cyan);
+        assert_eq!((t.diff_added_mark, t.diff_removed_mark), (cyan, red));
     }
 }

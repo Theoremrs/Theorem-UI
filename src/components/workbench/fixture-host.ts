@@ -8,6 +8,7 @@ import {
 import type { ConversationSnapshot } from '@/lib/workbench/conversation/conversation'
 import type {
   DelegationChange,
+  ScmDiffResult,
   Completion,
   CompletionPayload,
   DraftAttachment,
@@ -48,6 +49,7 @@ import type { Listing } from './fixtures'
 import type { Dispatch } from './workbench'
 import { createClipboardPort } from './ports'
 import { createThreadsFixture } from './threads-fixture'
+import type { ThreadsSeed } from './threads-fixture'
 
 export interface FixtureOptions {
   granted: string[]
@@ -100,6 +102,15 @@ export interface FixtureOptions {
    * `DraftStore` (`documents/local.ts`) keeps a record under `theorem-workbench:draft:<workspace>:<path>`.
    */
   holdEdits?: boolean
+  /** The conversation the transcript shows, in place of `STORY_CONVERSATION`. */
+  conversation?: ConversationSnapshot
+  /** The threads the Threads panel lists, in place of the default account (needs `threads`). */
+  threadsSeed?: ThreadsSeed
+  /** The repository's changes and the diff each shows, in place of `CHANGES` and `diffOf`. */
+  repository?: {
+    changes: ScmChange[]
+    diff: (path: string, staged: boolean) => ScmDiffResult
+  }
   /** The thread is at rest (no working run, no approval waiting): a message is a new turn, not a steer. */
   idle?: boolean
   /** The conversation's last assistant message also carries these delegations (`theorem-delegation` parts). */
@@ -389,8 +400,9 @@ export function createFixtureHost(
     { resource: ResourceRef; cols: number; rows: number } | undefined
   /** The branch of the thread the transcript shows, and the revision of the last snapshot sent. */
   let branch = 'root'
-  let revision = STORY_CONVERSATION.revision
-  const conversationId = STORY_CONVERSATION.conversationId
+  const story = options.conversation ?? STORY_CONVERSATION
+  let revision = story.revision
+  const conversationId = story.conversationId
   /** The draft's attachments, and the model and effort the next turn runs on. */
   let attachments: DraftAttachment[] = []
   let model = 'deepseek-v4-flash'
@@ -416,7 +428,7 @@ export function createFixtureHost(
 
   /** The transcript of the selected branch: the second branch answers with a different first line. */
   const thread = (): ConversationSnapshot => ({
-    ...STORY_CONVERSATION,
+    ...story,
     revision,
     context: { usedTokens: 18_400, windowTokens: 128_000 },
     // A thread with branches is shown at rest, so the status row can say which branch it is on.
@@ -424,7 +436,7 @@ export function createFixtureHost(
       run: { state: 'idle' },
       approval: undefined,
     }),
-    messages: STORY_CONVERSATION.messages.map((message, at, all) => ({
+    messages: story.messages.map((message, at, all) => ({
       ...message,
       parts: [
         ...message.parts,
@@ -457,7 +469,9 @@ export function createFixtureHost(
   })
 
   const clipboard = createClipboardPort()
-  const account_threads = options.threads ? createThreadsFixture() : undefined
+  const account_threads = options.threads
+    ? createThreadsFixture(options.threadsSeed)
+    : undefined
   const later = (task: () => void) =>
     queueMicrotask(() => {
       if (live) task()
@@ -480,10 +494,13 @@ export function createFixtureHost(
   const accept = (effect: Effect, payload?: CompletionPayload) =>
     complete(effect, { status: 'accepted' }, payload)
   const changes = (
-    options.binaryConflict
-      ? [...CHANGES.filter(({ conflict }) => !conflict), BINARY_CONFLICT]
-      : CHANGES
+    options.repository
+      ? options.repository.changes
+      : options.binaryConflict
+        ? [...CHANGES.filter(({ conflict }) => !conflict), BINARY_CONFLICT]
+        : CHANGES
   ).map((change) => ({ ...change }))
+  const diffFor = options.repository?.diff ?? diffOf
   const refuse = (effect: Effect, reason: string, code = 'owner_unavailable') =>
     complete(effect, { status: 'refused', code, reason })
 
@@ -1007,7 +1024,7 @@ export function createFixtureHost(
       case 'scmDiff':
         return accept(effect, {
           type: 'scmDiff',
-          ...diffOf(effect.payload.path ?? '', effect.payload.staged),
+          ...diffFor(effect.payload.path ?? '', effect.payload.staged),
         })
       case 'scmLog':
         return accept(effect, {
