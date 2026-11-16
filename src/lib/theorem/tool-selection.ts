@@ -70,6 +70,7 @@ function build(
   connections: ReadonlySet<string>,
   tools: ReadonlySet<string>,
   base: ToolSelection | undefined,
+  defaultKnown = true,
 ): ToolSelection | undefined {
   const listed = roster.filter((group) => connections.has(group.connectionId))
   const everyTool = listed.every((group) =>
@@ -77,6 +78,7 @@ function build(
   )
   const byDefault = connectionsOn(roster, base)
   const isDefault =
+    defaultKnown &&
     everyTool &&
     listed.length === connections.size &&
     listed.length === byDefault.size &&
@@ -127,18 +129,27 @@ export function changeSelection(
 /**
  * A stored selection rewritten against the roster as it is now: ids that are
  * gone drop out, and a choice that matches the default is no choice.
+ *
+ * While the default is not known yet (`defaultKnown` false: the project's
+ * choice is still on its way) a choice stays a choice. Otherwise one that
+ * names every enabled connection would be dropped as the default, and the
+ * conversation would follow a narrower project choice once it arrived.
  */
 export const reconcile = (
   roster: readonly RosterGroup[],
   selection: ToolSelection | undefined,
   base?: ToolSelection,
+  defaultKnown = true,
 ) =>
-  build(
-    roster,
-    connectionsOn(roster, selection ?? base),
-    toolsOn(roster, selection ?? base),
-    base,
-  )
+  !defaultKnown && !selection
+    ? undefined
+    : build(
+        roster,
+        connectionsOn(roster, selection ?? base),
+        toolsOn(roster, selection ?? base),
+        base,
+        defaultKnown,
+      )
 
 /** A project's connections as the selection its conversations start from; null names none, so every enabled one. */
 export const projectBase = (

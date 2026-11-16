@@ -12,6 +12,7 @@ import { installFakeTheorem } from '@/stories/fake-theorem'
 import type { FakeRoutes } from '@/stories/fake-theorem'
 import { projectContextRoutes } from '@/stories/fixtures/project-context'
 import type { ProjectContextStory } from '@/stories/fixtures/project-context'
+import { projectContextApi } from '@/lib/theorem/project-context'
 import type { ProjectContextBody } from '@/lib/theorem/project-context'
 import {
   buttonNamed,
@@ -20,7 +21,7 @@ import {
   render,
   waitFor,
 } from '../../../test/blocks/render'
-import { ProjectContextList } from './project-context'
+import { connectionsAfter, ProjectContextList } from './project-context'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -58,9 +59,11 @@ function routes(
   }
 }
 
+let client: QueryClient
+
 async function mount(table: FakeRoutes, projectId = 'project-theorem') {
   restore = installFakeTheorem(table)
-  const client = new QueryClient({
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   })
   const root = createRootRoute({
@@ -339,6 +342,107 @@ test('Theorem refusing a write says why in the editor and keeps it open', async 
     'theorem-story/platinum',
   )
   expect(document.querySelector('[role="dialog"]')).not.toBeNull()
+})
+
+/** The context as Theorem holds it now. */
+const readContext = () => projectContextApi.get('project-theorem')
+
+/** Another writer saves `body` at `revision`, as a session or a second window would. */
+const elsewhere = (
+  story: FakeRoutes,
+  revision: number,
+  body: ProjectContextBody,
+) =>
+  story[CONTEXT]!(
+    { projectId: 'project-theorem' },
+    new Request(
+      'http://localhost:3000/api/chat/v1/projects/project-theorem/context',
+      {
+        method: 'PUT',
+        headers: {
+          'if-match': String(revision),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      },
+    ),
+  )
+
+test('a link someone else adds while the editor is open is not taken for one removed', async () => {
+  const story = routes()
+  const { container } = await mount(story)
+  await click(container.querySelector('[aria-label="Edit links"]')!)
+  const editor = await dialog()
+
+  // A session adds a link, and the page reads the context again, all while the editor is open.
+  const theirs = { url: 'https://example.com/from-a-session' }
+  const { documents, repositories, links, connections } = await readContext()
+  await elsewhere(story, 1, {
+    documents,
+    repositories,
+    links: [...links, theirs],
+    connections,
+  })
+  sent = []
+  await act(() => client.invalidateQueries())
+  await waitFor(() => anchor(container, 'example.com/from-a-session'))
+
+  await type(field(editor, 'Address'), 'https://example.com/roadmap')
+  await click(buttonNamed(editor, 'Save')!)
+  await waitFor(() => anchor(container, 'example.com/roadmap'))
+  expect(sent).toHaveLength(1)
+  expect(sent[0]!.ifMatch).toBe('2')
+  expect(sent[0]!.body.links).toEqual([
+    ...links,
+    theirs,
+    { url: 'https://example.com/roadmap' },
+  ])
+})
+
+test('a connection turned off is taken out of the list as it stands, keeping one chosen meanwhile', async () => {
+  const story = routes()
+  let raced = false
+  const { container } = await mount({
+    ...story,
+    [CONTEXT]: async (params, request) => {
+      if (!raced) {
+        raced = true
+        // Someone else chooses Gmail as well and saves first.
+        const current = await readContext()
+        await elsewhere(story, 1, {
+          documents: current.documents,
+          repositories: current.repositories,
+          links: current.links,
+          connections: [...(current.connections ?? []), 'google_gmail'],
+        })
+        sent = []
+      }
+      return story[CONTEXT]!(params, request)
+    },
+  })
+  await click(container.querySelector('[aria-label="Edit connections"]')!)
+  const editor = await dialog()
+  await waitFor(() => editor.textContent.includes('Gmail'))
+  await click(choice(editor, 'Linear'))
+  await click(buttonNamed(editor, 'Save')!)
+  await waitFor(() => sent.length === 2)
+  expect(sent.map((write) => write.ifMatch)).toEqual(['1', '2'])
+  // Linear goes, as the person asked; Gmail, which the other writer chose, stays.
+  expect(sent[1]!.body.connections).toEqual(['github', 'google_gmail'])
+})
+
+test('a connections edit changes only what the person turned on or off', () => {
+  // Between two lists: what was turned off goes, what was turned on is added, the rest stays as it is now.
+  expect(connectionsAfter(['a', 'b'], ['a', 'c'], ['a', 'b', 'd'])).toEqual([
+    'a',
+    'd',
+    'c',
+  ])
+  expect(connectionsAfter(['a'], ['a', 'b'], ['a', 'b'])).toEqual(['a', 'b'])
+  // Every connection, either way, is the whole answer.
+  expect(connectionsAfter(['a'], null, ['a', 'b'])).toBeNull()
+  expect(connectionsAfter(null, ['a'], ['a', 'b'])).toEqual(['a'])
+  expect(connectionsAfter(['a', 'b'], ['a'], null)).toEqual(['a'])
 })
 
 test('connections go back to every enabled one, or to a chosen few', async () => {

@@ -348,6 +348,45 @@ test("turning on more than the project names is sent, and Use the project's conn
   expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 1 on')
 })
 
+test("a choice made before the project's connections arrive is kept when they do", async () => {
+  let arrive: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    arrive = resolve
+  })
+  const answer = projectContext(['github'])[
+    'GET /api/chat/v1/projects/:projectId/context'
+  ]!
+  const { container } = await mount(
+    {
+      'GET /api/connections/v1/tools': () => ({ groups: roster }),
+      'GET /api/chat/v1/projects/:projectId/context': async (params, request) => {
+        await held
+        return answer(params, request)
+      },
+    },
+    false,
+  )
+  await waitFor(() => chip(container) !== null)
+  // The thread key is only known once something is kept under it.
+  await open(container)
+  await click(named('GitHub available in this conversation')!)
+  const [key] = Object.keys(useToolSelections.getState().byThread)
+  // Every enabled connection: the default only if the project names none, which is not known yet.
+  const everything = { connections: ['github', 'mcp:abc'] }
+  await act(async () => {
+    useToolSelections.getState().set(key!, everything)
+  })
+  await act(() => new Promise((resolve) => setTimeout(resolve)))
+  expect(chosen()).toEqual([everything])
+
+  await act(async () => arrive())
+  await waitFor(() => !client.isFetching())
+  await act(() => new Promise((resolve) => setTimeout(resolve)))
+  // The project names fewer, so this is the person's own choice and still sent.
+  expect(chosen()).toEqual([everything])
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 2 on')
+})
+
 test('a project that names none leaves every enabled connection on', async () => {
   const { container } = await mount({
     'GET /api/connections/v1/tools': () => ({ groups: roster }),

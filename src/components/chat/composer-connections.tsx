@@ -56,10 +56,17 @@ export function ComposerConnections() {
   const threadKey = useAuiState(
     (state) => state.threadListItem.remoteId ?? state.threadListItem.id,
   )
-  const projectId = useConversationProject(remoteId)
+  const project = useConversationProject(remoteId)
+  const context = useProjectContext(project.projectId)
   // React Query keeps an unchanged answer's identity, so the base changes only when the project's choice does.
-  const chosen = useProjectContext(projectId).data?.connections
+  const chosen = context.data?.connections
   const base = useMemo(() => projectBase(chosen), [chosen])
+  // A Theorem from before project context answers 404, which settles it: no project names anything.
+  const baseKnown =
+    project.known &&
+    (project.projectId === undefined ||
+      context.isSuccess ||
+      (context.isError && isNotServed(context.error)))
   const tools = useConnectionTools()
   if (tools.isPending || (tools.error && isNotServed(tools.error))) return null
   return (
@@ -68,6 +75,7 @@ export function ComposerConnections() {
       threadKey={threadKey}
       roster={tools.data}
       base={base}
+      baseKnown={baseKnown}
       error={tools.error}
       retry={() => void tools.refetch()}
     />
@@ -77,20 +85,29 @@ export function ComposerConnections() {
 /**
  * The project whose connections a conversation starts from: the one Theorem
  * reads, the thread's home project, or for a conversation not sent yet the
- * project it will be created in.
+ * project it will be created in. `known` is false until Theorem has said which
+ * project that is: while the lists load, and for a conversation just sent that
+ * the organization does not list yet.
  */
-function useConversationProject(remoteId: string | undefined) {
-  const { data: organization } = useOrganization()
-  const { project } = useActiveProject()
-  if (remoteId === undefined) return project?.projectId
-  return organization?.threads.find((thread) => thread.threadId === remoteId)
-    ?.homeProjectId
+function useConversationProject(remoteId: string | undefined): {
+  projectId: string | undefined
+  known: boolean
+} {
+  const organization = useOrganization()
+  const active = useActiveProject()
+  if (remoteId === undefined)
+    return { projectId: active.project?.projectId, known: !active.isPending }
+  const thread = organization.data?.threads.find(
+    (entry) => entry.threadId === remoteId,
+  )
+  return { projectId: thread?.homeProjectId, known: thread !== undefined }
 }
 
 function Control({
   threadKey,
   roster,
   base,
+  baseKnown,
   error,
   retry,
 }: {
@@ -98,6 +115,8 @@ function Control({
   roster: ToolGroup[] | undefined
   /** The project's choice, which a conversation with none of its own follows. */
   base: ToolSelection | undefined
+  /** False while the project's choice is still loading, when `base` says nothing yet. */
+  baseKnown: boolean
   error: unknown
   retry: () => void
 }) {
@@ -105,8 +124,8 @@ function Control({
   const stored = useToolSelections((state) => state.byThread[threadKey])
   const save = useToolSelections((state) => state.set)
   const selection = useMemo(
-    () => (roster ? reconcile(roster, stored, base) : stored),
-    [roster, stored, base],
+    () => (roster ? reconcile(roster, stored, base, baseKnown) : stored),
+    [roster, stored, base, baseKnown],
   )
 
   // A connection removed since the choice was made drops out of it, so a send never names one that is gone.

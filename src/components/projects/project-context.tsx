@@ -451,7 +451,11 @@ function Editor({
 }) {
   const save = useEditProjectContext(projectId)
   const { title, description } = TITLES[kind]
-  const props = { projectId, context, save, onDone }
+  // The context as it stood at opening. Each editor saves what the person
+  // changed from it, so an entry someone else adds while it is open (a session,
+  // another window) is not taken for one the person removed.
+  const [opened] = useState(context)
+  const props = { projectId, context: opened, save, onDone }
   return (
     <div className="flex min-h-0 flex-col gap-4">
       <DialogHeader>
@@ -470,6 +474,7 @@ function Editor({
 
 type EditorProps = {
   projectId: string
+  /** The context as it stood when the editor opened. */
   context: ProjectContext
   save: ReturnType<typeof useEditProjectContext>
   onDone: () => void
@@ -1049,6 +1054,28 @@ function LinksEditor({ context, save, onDone }: EditorProps) {
   )
 }
 
+/**
+ * The project's connections after the person's edit, applied to the list as
+ * Theorem holds it now. Between two lists only what the person turned on or off
+ * changes, so a connection someone else chose meanwhile stays. Choosing every
+ * connection, or choosing a list where every connection was on, is the whole
+ * answer.
+ */
+export function connectionsAfter(
+  before: readonly string[] | null,
+  next: readonly string[] | null,
+  current: readonly string[] | null,
+): string[] | null {
+  if (next === null) return null
+  if (before === null || current === null) return [...next]
+  const removed = before.filter((id) => !next.includes(id))
+  const kept = current.filter((id) => !removed.includes(id))
+  return [
+    ...kept,
+    ...next.filter((id) => !before.includes(id) && !kept.includes(id)),
+  ]
+}
+
 function ConnectionsEditor({ context, save, onDone }: EditorProps) {
   const connections = useConnections()
   const [mode, setMode] = useState<'all' | 'chosen'>(
@@ -1073,9 +1100,13 @@ function ConnectionsEditor({ context, save, onDone }: EditorProps) {
         : next.length === before.length &&
           next.every((id) => before.includes(id))
     if (same) return onDone()
-    save.mutate((current) => ({ ...current, connections: next }), {
-      onSuccess: onDone,
-    })
+    save.mutate(
+      (current) => ({
+        ...current,
+        connections: connectionsAfter(before, next, current.connections),
+      }),
+      { onSuccess: onDone },
+    )
   }
 
   const over = mode === 'chosen' && chosen.length > CONTEXT_LIMITS.connections

@@ -181,6 +181,25 @@ describe("a project's connections as the default", () => {
     expect(reconcile(roster, undefined, base)).toBeUndefined()
   })
 
+  test("until the project's choice is known a choice stays a choice", () => {
+    const everything = { connections: ['github', 'mcp:abc'] }
+    // Known and with no project choice, every enabled connection is the default and nothing is kept.
+    expect(reconcile(roster, everything)).toBeUndefined()
+    // Not known yet: the project may name fewer, so it is kept, without ids that are gone.
+    expect(reconcile(roster, everything, undefined, false)).toEqual(everything)
+    expect(
+      reconcile(
+        roster,
+        { connections: ['github', 'mcp:abc', 'mcp:gone'] },
+        undefined,
+        false,
+      ),
+    ).toEqual(everything)
+    expect(reconcile(roster, undefined, undefined, false)).toBeUndefined()
+    // Once the project's narrower choice is known it is still the person's own.
+    expect(reconcile(roster, everything, base)).toEqual(everything)
+  })
+
   test("a change starts from the project's connections, not from every connection", () => {
     expect(
       changeSelection(
