@@ -1,10 +1,10 @@
-// SOURCING: the existing workbench story pieces (FixtureStory over the real wasm workbench, the Hooks the oracle reads, PaletteProfileGate for the profile) and the terminal's own loadWasm, so the proposal reaches the Rust palette through the same set_palette the page uses; the ladder itself is terminal-ladder.ts. This file adds only the two stories and the switch that sends the proposed palette.
+// SOURCING: the existing workbench story pieces (FixtureStory over the real wasm workbench, the Hooks the oracle reads, PaletteProfileGate for the profile) and the terminal's own loadWasm, so each palette reaches the Rust terminal through the same set_palette the page uses; the ladder itself is terminal-ladder.ts. This file adds only the two stories and the switch between the ladder and the colours from before it.
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useWorkbenchAgent } from '@/lib/workbench/agent/store'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
-import { proposedPalette } from '@/components/terminal/terminal-ladder'
+import { ladderPalette } from '@/components/terminal/terminal-ladder'
 import { wasmPalette } from '@/components/terminal/terminal-roles'
 import { PALETTE_PROFILES } from '@/stories/palette-matrix'
 import { PaletteProfileGate } from './workbench-palette-stories'
@@ -20,21 +20,22 @@ import { FixtureStory } from './workbench-story'
 
 declare global {
   interface Window {
-    /** The colours the Rust terminal was last given by the parity story: `proposed` says which set. */
-    __parityLadder?: { proposed: boolean }
+    /** The colours the Rust terminal was last given by the parity story: the ladder, or the ones from before it. */
+    __parityLadder?: { ladder: boolean }
   }
 }
 
 /**
- * Sends the Rust terminal either the proposed ladder (`proposed`) or what the page always sends. The page's own
+ * Sends the Rust terminal either the ladder (what the page sends by default) or the role palette alone, which is
+ * what every terminal drew in before the ladder. The page's own
  * paint runs first (loadWasm subscribes before this does), so the choice is the last word on every theme change.
  * Children wait until the first paint is made.
  */
 function LadderGate({
-  proposed,
+  ladder,
   children,
 }: {
-  proposed: boolean
+  ladder: boolean
   children: ReactNode
 }) {
   const [ready, setReady] = useState(false)
@@ -46,9 +47,9 @@ function LadderGate({
       const paint = () => {
         const { roles } = useTerminalTheme.getState()
         wasm.set_palette(
-          JSON.stringify(proposed ? proposedPalette(roles) : wasmPalette(roles)),
+          JSON.stringify(ladder ? ladderPalette(roles) : wasmPalette(roles)),
         )
-        window.__parityLadder = { proposed }
+        window.__parityLadder = { ladder }
       }
       paint()
       stop = useTerminalTheme.subscribe(paint)
@@ -59,7 +60,7 @@ function LadderGate({
       stop()
       window.__parityLadder = undefined
     }
-  }, [proposed])
+  }, [ladder])
   return ready ? children : <div data-story-pending="" />
 }
 
@@ -77,15 +78,33 @@ function Hooks() {
   return null
 }
 
-function ParityStory({ id, proposed }: { id: string; proposed: boolean }) {
+export function ParityStory({
+  id,
+  ladder,
+  repository = { changes: PARITY_CHANGES, diff: parityDiff },
+  hooks,
+  fill,
+}: {
+  id: string
+  ladder: boolean
+  /** The repository the Changes panel reads, in place of the parity fixture's. */
+  repository?: {
+    changes: typeof PARITY_CHANGES
+    diff: typeof parityDiff
+  }
+  /** Extra page hooks the story's oracle scenario reads. */
+  hooks?: ReactNode
+  /** The frame fills the window, so a scenario can resize it (the size is still the reference's at the story's own viewport). */
+  fill?: boolean
+}) {
   const profile = PALETTE_PROFILES.find((p) => p.id === 'github-sharp-dark')!
   return (
     <PaletteProfileGate profile={profile}>
-      <LadderGate proposed={proposed}>
+      <LadderGate ladder={ladder}>
         <FixtureStory
           id={id}
-          width={PARITY_VIEWPORT.width}
-          height={PARITY_VIEWPORT.height}
+          width={fill ? '100vw' : PARITY_VIEWPORT.width}
+          height={fill ? '100dvh' : PARITY_VIEWPORT.height}
           options={{
             granted: THREADS_CAPS,
             transcript: true,
@@ -94,11 +113,16 @@ function ParityStory({ id, proposed }: { id: string; proposed: boolean }) {
             terminal: false,
             conversation: PARITY_CONVERSATION,
             threadsSeed: PARITY_THREADS,
-            repository: { changes: PARITY_CHANGES, diff: parityDiff },
+            repository,
           }}
           script={[]}
           wait={['Threads', 'Changes']}
-          extra={<Hooks />}
+          extra={
+            <>
+              <Hooks />
+              {hooks}
+            </>
+          }
         />
       </LadderGate>
     </PaletteProfileGate>
@@ -107,13 +131,13 @@ function ParityStory({ id, proposed }: { id: string; proposed: boolean }) {
 
 /**
  * `workbench-delta-parity`: today's panels (Threads, Theo, Changes) over an invented fixture at the reference
- * frame's size, drawn in the proposed colour ladder. Held against the blurred reference; the ladder is opt-in.
+ * frame's size, drawn in the colour ladder. Held against the blurred reference.
  */
 export function WorkbenchDeltaParityStory() {
-  return <ParityStory id="workbench-delta-parity" proposed />
+  return <ParityStory id="workbench-delta-parity" ladder />
 }
 
-/** `workbench-delta-parity-current`: the same fixture with the proposal off, for the comparison. */
-export function WorkbenchDeltaParityCurrentStory() {
-  return <ParityStory id="workbench-delta-parity-current" proposed={false} />
+/** `workbench-delta-parity-before`: the same fixture in the colours from before the ladder, for the comparison. */
+export function WorkbenchDeltaParityBeforeStory() {
+  return <ParityStory id="workbench-delta-parity-before" ladder={false} />
 }

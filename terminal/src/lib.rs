@@ -142,11 +142,10 @@ struct Palette {
     syntax_tag: Color,
     #[serde(deserialize_with = "colour")]
     syntax_comment: Color,
-    // The semantic colour roles that did not exist before the Delta-parity
-    // proposal. Each is optional and, left out, resolves (through the accessor
-    // under `impl Palette`) to exactly what the thing drew before, so a page that
-    // sends none of them draws what it drew. The proposal (a derived ladder,
-    // src/components/terminal/terminal-ladder.ts) sends them.
+    // The roles the surface ladder adds (src/components/terminal/terminal-ladder.ts,
+    // which the page sends by default). Each is optional and, left out, resolves
+    // (through the accessor under `impl Palette`) to exactly what the thing drew
+    // before the ladder, so a host that sends none of them still draws.
     /// The conversation's ground, a step below the panels'.
     #[serde(deserialize_with = "optional_colour")]
     canvas: Option<Color>,
@@ -802,7 +801,7 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
                     Some(palette().added_line),
                     palette().added_words,
                 ),
-                "ctx" => (" ", palette().muted, None, palette().bg),
+                "ctx" => (" ", palette().muted, None, palette().canvas()),
                 // A file it changes, then each hunk's header.
                 quiet => {
                     let style = if quiet == "file" {
@@ -1935,8 +1934,9 @@ impl App {
 
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        // The conversation sits on the canvas, as Theo does in the workbench.
         frame.render_widget(
-            Block::new().style(Style::new().bg(palette().bg).fg(palette().ink)),
+            Block::new().style(Style::new().bg(palette().canvas()).fg(palette().ink)),
             area,
         );
         let referenced = self
@@ -2671,6 +2671,24 @@ mod tests {
         let mut session = Session::new("t".into(), "T".into(), false);
         session.snapshot = serde_json::from_str(json).unwrap();
         session
+    }
+
+    /// The ground colour of an empty classic terminal's last cell.
+    fn ground() -> Color {
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(40, 12)).unwrap();
+        let mut app = App::new(false);
+        terminal.draw(|frame| app.draw(frame)).unwrap();
+        terminal.backend().buffer()[(39, 0)].bg
+    }
+
+    #[test]
+    fn the_classic_terminal_sits_on_the_canvas_and_on_the_panel_ground_without_one() {
+        assert_eq!(ground(), palette().bg);
+        let mut laddered = palette();
+        laddered.canvas = Some(Color::Rgb(0x10, 0x18, 0x20));
+        PALETTE.set(laddered);
+        assert_eq!(ground(), Color::Rgb(0x10, 0x18, 0x20));
     }
 
     #[test]

@@ -1,5 +1,5 @@
 {
-  "about": "Token-pair contrast of the proposed Delta-parity ladder, derived by terminal-ladder.ts from each theme. WCAG 2 ratio. `applicable` marks the surfaces a role is drawn on; `pass` is the ratio against `needs` (4.5 for text, 3 for disabled). Token pairs only: not a rendered-accessibility claim.",
+  "about": "Token-pair contrast of the Delta-parity ladder, derived by terminal-ladder.ts from each theme. WCAG 2 ratio. `applicable` marks the surfaces a role is drawn on; `pass` is the ratio against `needs` (4.5 for text, 3 for disabled). Token pairs only: not a rendered-accessibility claim.",
   "rule": {
     "canvasStepL": -0.06,
     "selectedStepL": 0.06,
@@ -75,7 +75,7 @@
       },
       "brand": "#f49250",
       "secondaryMinusDisabledLightness": 0.0928,
-      "today": {
+      "before": {
         "secondary": "#8f98a0",
         "disabled": "#6c747c",
         "secondaryMinusDisabledLightness": 0.12,
@@ -900,7 +900,7 @@
       },
       "brand": "#f68f57",
       "secondaryMinusDisabledLightness": 0.0896,
-      "today": {
+      "before": {
         "secondary": "#92989c",
         "disabled": "#6e7478",
         "secondaryMinusDisabledLightness": 0.1209,
@@ -1725,7 +1725,7 @@
       },
       "brand": "#2ab8d9",
       "secondaryMinusDisabledLightness": 0.0901,
-      "today": {
+      "before": {
         "secondary": "#999695",
         "disabled": "#757270",
         "secondaryMinusDisabledLightness": 0.1212,
@@ -2550,7 +2550,7 @@
       },
       "brand": "#27b0da",
       "secondaryMinusDisabledLightness": 0.0841,
-      "today": {
+      "before": {
         "secondary": "#949291",
         "disabled": "#6e6d6c",
         "secondaryMinusDisabledLightness": 0.126,
@@ -3375,7 +3375,7 @@
       },
       "brand": "#f188bf",
       "secondaryMinusDisabledLightness": 0.0892,
-      "today": {
+      "before": {
         "secondary": "#959898",
         "disabled": "#717373",
         "secondaryMinusDisabledLightness": 0.1234,
@@ -4200,7 +4200,7 @@
       },
       "brand": "#9da1ff",
       "secondaryMinusDisabledLightness": 0.09,
-      "today": {
+      "before": {
         "secondary": "#989796",
         "disabled": "#737372",
         "secondaryMinusDisabledLightness": 0.1217,

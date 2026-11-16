@@ -126,7 +126,7 @@ import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
 import {
-  WorkbenchDeltaParityCurrentStory,
+  WorkbenchDeltaParityBeforeStory,
   WorkbenchDeltaParityStory,
 } from '@/components/workbench/workbench-delta-parity-story'
 
@@ -837,7 +837,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-threads-withheld': WorkbenchThreadsWithheldStory,
   'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
   'workbench-delta-parity': WorkbenchDeltaParityStory,
-  'workbench-delta-parity-current': WorkbenchDeltaParityCurrentStory,
+  'workbench-delta-parity-before': WorkbenchDeltaParityBeforeStory,
   'workbench-terminal': WorkbenchTerminalStory,
   'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
   'workbench-terminal-adoption-unavailable': WorkbenchTerminalAdoptionUnavailableStory,

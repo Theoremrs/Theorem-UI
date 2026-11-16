@@ -1,9 +1,9 @@
-// SOURCING: culori (OKLCH, WCAG contrast) and the repo's own terminal-ladder.ts (the proposal) over scripts/palettes.ts, the spec every palette's tokens come from. The design-oracles skill's evaluate.py is policy-driven over rendered observations; this measures token pairs only, which is all this file claims.
+// SOURCING: culori (OKLCH, WCAG contrast) and the repo's own terminal-ladder.ts (the surface ladder) over scripts/palettes.ts, the spec every palette's tokens come from. The design-oracles skill's evaluate.py is policy-driven over rendered observations; this measures token pairs only, which is all this file claims.
 //
 //   bun scripts/delta-parity-contrast.ts
 //
 // Writes docs/plans/theo-workbench/evidence/delta-parity-contrast.json: for each of the six themes, the
-// proposed ladder against the colours the workbench draws today, and every text role on every surface it can
+// ladder against the colours the workbench drew before it, and every text role on every surface it can
 // sit on with its WCAG 2 ratio.
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -18,7 +18,7 @@ import {
   READ,
   REGISTER_CHROMA,
   SELECTED_STEP,
-  proposedPalette,
+  ladderPalette,
   terminalLadder,
 } from '../src/components/terminal/terminal-ladder'
 
@@ -59,11 +59,11 @@ for (const [name, selector] of THEMES) {
   const mode = modes.find((m) => m.selector === selector)!
   const roles = terminalRoles(workspaceOf((token) => modeTokens(mode)[token]!))
   const ladder = terminalLadder(roles)
-  const proposed = proposedPalette(roles)
+  const laddered = ladderPalette(roles)
   const { surfaces } = ladder
 
-  // Today's colours: the legacy palette the workbench draws with.
-  const today = {
+  // The colours from before the ladder: the role palette alone.
+  const before = {
     canvas: roles.chrome.bg,
     panel: roles.chrome.bg,
     raised: roles.chrome.raised,
@@ -141,14 +141,14 @@ for (const [name, selector] of THEMES) {
         pass,
       })
     }
-  // Today's secondary and disabled, on today's surfaces, for the comparison the critique makes.
-  const todayPairs = (['secondary', 'disabled'] as const).flatMap((role) =>
+  // Secondary and disabled as they were before the ladder, on the surfaces of that time, for the comparison the critique makes.
+  const beforePairs = (['secondary', 'disabled'] as const).flatMap((role) =>
     (['panel', 'raised'] as const).map((surface) => ({
       text: role,
       surface,
-      textColour: today[role],
-      surfaceColour: today[surface],
-      wcag: Number(wcagContrast(today[role], today[surface]).toFixed(2)),
+      textColour: before[role],
+      surfaceColour: before[surface],
+      wcag: Number(wcagContrast(before[role], before[surface]).toFixed(2)),
     })),
   )
   const gap = (a: string, b: string) =>
@@ -175,14 +175,14 @@ for (const [name, selector] of THEMES) {
       ladder.text.secondary,
       ladder.text.disabled,
     ),
-    today: {
-      secondary: today.secondary,
-      disabled: today.disabled,
-      secondaryMinusDisabledLightness: gap(today.secondary, today.disabled),
-      pairs: todayPairs,
+    before: {
+      secondary: before.secondary,
+      disabled: before.disabled,
+      secondaryMinusDisabledLightness: gap(before.secondary, before.disabled),
+      pairs: beforePairs,
     },
     paletteOverrides: Object.fromEntries(
-      Object.entries(proposed).filter(([key]) =>
+      Object.entries(laddered).filter(([key]) =>
         [
           'canvas',
           'selectedRow',
@@ -208,7 +208,7 @@ writeFileSync(
   JSON.stringify(
     {
       about:
-        'Token-pair contrast of the proposed Delta-parity ladder, derived by terminal-ladder.ts from each theme. WCAG 2 ratio. `applicable` marks the surfaces a role is drawn on; `pass` is the ratio against `needs` (4.5 for text, 3 for disabled). Token pairs only: not a rendered-accessibility claim.',
+        'Token-pair contrast of the Delta-parity ladder, derived by terminal-ladder.ts from each theme. WCAG 2 ratio. `applicable` marks the surfaces a role is drawn on; `pass` is the ratio against `needs` (4.5 for text, 3 for disabled). Token pairs only: not a rendered-accessibility claim.',
       rule: {
         canvasStepL: CANVAS_STEP,
         selectedStepL: SELECTED_STEP,

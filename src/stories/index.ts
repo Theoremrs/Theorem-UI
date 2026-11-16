@@ -85,7 +85,7 @@ export const STORIES: readonly StoryMeta[] = [
   },
   {
     id: 'workbench-delta-parity',
-    title: 'Workbench: Threads, Theo and Changes over an invented fixture at the reference size, in the proposed colour ladder',
+    title: 'Workbench: Threads, Theo and Changes over an invented fixture at the reference size, in the colour ladder',
     lane: 'translation',
     reference: 'workbench-delta-parity@delta-2026-11-15.png',
     viewport: { width: 1568, height: 914 },
@@ -95,7 +95,7 @@ export const STORIES: readonly StoryMeta[] = [
     },
     evidenceDir: 'workbench-delta-parity',
   },
-  { id: 'workbench-delta-parity-current', title: 'Workbench: the same fixture as workbench-delta-parity with the proposed ladder off', lane: 'translation', viewport: { width: 1568, height: 914 } },
+  { id: 'workbench-delta-parity-before', title: 'Workbench: the same fixture as workbench-delta-parity in the colours from before the ladder', lane: 'translation', viewport: { width: 1568, height: 914 } },
   { id: 'workbench-threads-withheld', title: 'Workbench: the Threads panel where the host grants no delete, tags, pin or admission', lane: 'translation', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal', title: 'Workbench: a recorded terminal session with an alternate screen and a resize', lane: 'original', viewport: { width: 1280, height: 640 } },
   { id: 'workbench-terminal-adoption-pending', title: 'Workbench: the Shell chooser while the host is still looking for terminals', lane: 'original', viewport: { width: 1600, height: 640 } },

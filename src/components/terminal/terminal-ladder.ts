@@ -1,11 +1,12 @@
 // SOURCING: culori (OKLCH conversion, gamut clamping, WCAG contrast, hex output), the library terminal-theme.ts and terminal-roles.ts already derive every terminal colour with.
 //
-// The proposed neutral ladder and semantic registers for the workbench
-// (the "Delta-parity" proposal), derived per palette by ONE rule from the
-// colours the palette's terminal already has: its background, raised surface,
-// bright, muted, mark and state hues. It is opt-in: `proposedPalette` is the
-// legacy palette the Rust terminal reads (wasmPalette) with the proposal's
-// values laid over it; a page that never calls it draws what it always drew.
+// The neutral surface ladder and semantic registers every terminal draws in,
+// derived per palette by ONE rule from the colours the palette's terminal
+// roles already have: its background, raised surface, bright, muted, mark and
+// state hues. `ladderPalette` is what the page sends the Rust terminal
+// (terminal-screen.tsx `loadWasm`): the role palette of `wasmPalette` with the
+// ladder's values laid over it. The owner chose it as the default on
+// 2026-11-15, from renders of all six themes (LEDGER L27).
 //
 // The rule, in OKLCH, so every palette steps the same way:
 // - surfaces: the panel is the palette's own background. The canvas, where the
@@ -220,17 +221,15 @@ export function terminalLadder(roles: TerminalRoles): Ladder {
 }
 
 /**
- * What the Rust terminal reads (terminal/src/lib.rs `Palette`): the legacy
- * palette of `wasmPalette` with the ladder laid over it. Replacing the
- * default with the proposal is `loadWasm` sending this instead of
- * `wasmPalette(roles)`.
+ * What the Rust terminal reads (terminal/src/lib.rs `Palette`): the role
+ * palette of `wasmPalette` with the ladder laid over it.
  */
-export function proposedPalette(roles: TerminalRoles) {
+export function ladderPalette(roles: TerminalRoles) {
   const ladder = terminalLadder(roles)
   const { surfaces, text, registers, brand } = ladder
   return {
     ...wasmPalette(roles),
-    // Existing roles that take the proposal's value.
+    // Roles of the base palette that take the ladder's value.
     bright: text.primary,
     muted: text.secondary,
     disabled: text.disabled,
@@ -243,7 +242,7 @@ export function proposedPalette(roles: TerminalRoles) {
     mark: brand,
     addedLine: surfaces.diffAddition,
     removedLine: surfaces.diffDeletion,
-    // Roles the proposal adds.
+    // Roles the ladder adds.
     canvas: surfaces.canvas,
     selectedRow: surfaces.selected,
     // A finished call is recessive: no block and a secondary name. The running one is the

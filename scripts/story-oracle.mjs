@@ -332,7 +332,7 @@ const markedAt = (page, rect) =>
   page.evaluate((r) => {
     const grid = document.querySelector('[id$=_ratzilla_grid]')
     const row = grid.children[r.y]
-    if (!row) return { marked: 0, band: 0 }
+    if (!row) return { marked: 0, band: 0, bands: 0, lifted: false }
     const counts = new Map()
     for (const line of grid.children) for (const c of [...line.children].slice(r.x, r.x + r.width)) counts.set(c.style.backgroundColor, (counts.get(c.style.backgroundColor) ?? 0) + 1)
     const base = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
@@ -341,9 +341,15 @@ const markedAt = (page, rect) =>
       const rgb = (color.match(/\d+/g) ?? []).slice(0, 3).map(Number)
       return Math.max(...rgb) - Math.min(...rgb)
     }
+    const light = (color) => (color.match(/\d+/g) ?? []).slice(0, 3).map(Number).reduce((sum, n) => sum + n, 0)
+    const banded = cells.filter((c) => c.style.backgroundColor !== base)
+    const surfaces = new Set(banded.map((c) => c.style.backgroundColor))
     return {
       marked: cells.filter((c) => c.textContent.trim() && Number(getComputedStyle(c).fontWeight) >= 600 && chroma(getComputedStyle(c).color) >= 60).length,
-      band: cells.filter((c) => c.style.backgroundColor !== base).length,
+      band: banded.length,
+      // The surfaces behind the row other than the panel's own, and whether each is lighter than it (the ladder's selected step).
+      bands: surfaces.size,
+      lifted: [...surfaces].every((color) => light(color) > light(base)),
     }
   }, rect)
 const walkTo = async (page, wanted, key = 'ArrowDown', max = 30) => {
@@ -934,7 +940,10 @@ const SCENARIOS = {
         if (where.leafRect && where.leaf?.startsWith('treeItem') | where.leaf?.startsWith('menuItem'))
         {
           const row = await markedAt(page, where.leafRect)
-          checks[`${label}: the focused row is in the mark colour, bold, with no band behind it`] = row.marked > 0 && row.band === 0
+          // The surface ladder puts a chosen row on its selected step in the panels that keep a selection (Threads, Changes);
+          // what it never is: unmarked, or striped with more than one surface, or darker than the panel.
+          checks[`${label}: the focused row is in the mark colour, bold, on the panel or one lighter selected surface`] =
+            row.marked > 0 && row.bands <= 1 && row.lifted
         }
         return where
       }

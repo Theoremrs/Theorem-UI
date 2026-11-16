@@ -134,7 +134,7 @@ export function scenarios(h) {
     return null
   }
 
-  const deltaParity = async (page, proposed) => {
+  const deltaParity = async (page, ladder) => {
     await sees(page, 'Changes', 8000)
     await sees(page, 'edit_file', 8000)
     await page.waitForTimeout(1500)
@@ -166,19 +166,19 @@ export function scenarios(h) {
     // Secondary text: a project's name under a pinned thread; disabled text: a thread's age.
     const secondary = await find(page, 'Quarry', { from: left.rect.x, where: (r) => r.slice(0, 30).trim() === 'Quarry' })
     const disabled = await find(page, '4m', { from: left.rect.x, where: (r) => r.slice(0, 30).includes('Design the sync') })
-    await snap(page, proposed ? 'workbench-delta-parity' : 'workbench-delta-parity-current')
+    await snap(page, ladder ? 'workbench-delta-parity' : 'workbench-delta-parity-before')
     const same = (a, b) => a.bg === b.bg
     const distinct = (...v) => new Set(v).size === v.length
     if (process.env.PARITY_DEBUG) console.error(JSON.stringify({ hook, canvas, panel, running, selected, tools, pendingGlyph, blocks, removed, added, removedGutter, addedGutter, secondary, disabled }, null, 1))
-    if (!proposed)
+    if (!ladder)
       return {
-        'the story has the proposal off': hook?.proposed === false,
-        'the canvas is the panel colour (one ground, as today)': same(canvas, panel),
-        'every finished and the running tool row is a block (as today)': ['read_file', 'grep', 'apply_patch', 'run_command'].every((n) => tools[n].bg !== canvas.bg),
-        'the open thread is not on a band of its own (as today)': selected.bg === panel.bg || luma(selected.bg) - luma(panel.bg) < 0.002,
+        'the story has the ladder off': hook?.ladder === false,
+        'the canvas is the panel colour (one ground, as before the ladder)': same(canvas, panel),
+        'every finished and the running tool row is a block (as before the ladder)': ['read_file', 'grep', 'apply_patch', 'run_command'].every((n) => tools[n].bg !== canvas.bg),
+        'the open thread is not on a band of its own (as before the ladder)': selected.bg === panel.bg || luma(selected.bg) - luma(panel.bg) < 0.002,
       }
     return {
-      'the story has the proposal on': hook?.proposed === true,
+      'the story has the ladder on': hook?.ladder === true,
       'canvas, panel, raised and selected are four different backgrounds': distinct(canvas.bg, panel.bg, running.bg, selected.bg),
       'and they ascend in lightness: canvas, panel, raised, selected': luma(canvas.bg) < luma(panel.bg) && luma(panel.bg) < luma(running.bg) && luma(running.bg) < luma(selected.bg),
       'the selected row and the pending approval share no colour': distinct(selected.bg, tools.edit_file.bg) && pendingGlyph.fg !== selected.bg && pendingGlyph.fg !== selected.fg,
@@ -1268,11 +1268,11 @@ export function scenarios(h) {
       },
     ],
 
-    // The Delta-parity colour ladder (docs/plans/theo-workbench/LEDGER.md L27): the proposal is a different palette sent to the
+    // The Delta-parity colour ladder (docs/plans/theo-workbench/LEDGER.md L27): the colours from before it are a different palette sent to the
     // same Rust terminal, so everything is measured from the cells the browser drew (computed style of the cell spans), never from
-    // the palette the page sent. `workbench-delta-parity` has the proposal on, `workbench-delta-parity-current` has it off.
+    // the palette the page sent. `workbench-delta-parity` has the ladder on, `workbench-delta-parity-before` has it off.
     'workbench-delta-parity': [(page) => deltaParity(page, true)],
-    'workbench-delta-parity-current': [(page) => deltaParity(page, false)],
+    'workbench-delta-parity-before': [(page) => deltaParity(page, false)],
 
     // The Files panel's icons: a folder open or closed for every drop-down, a file icon by kind for the rows under them,
     // and nothing in front of a name that looks like an arrow. The tree is the story's (partial `docs`, an image, a symlink).

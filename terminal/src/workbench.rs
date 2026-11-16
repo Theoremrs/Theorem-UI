@@ -219,8 +219,8 @@ fn theme_of(p: &Palette) -> Theme {
         field_focus: filled,
         control: filled,
         hunk_current: mark,
-        // The roles that did not exist before the Delta-parity proposal: each is what the
-        // panels drew until the page sends a value for it (the `Palette` accessors).
+        // The surface ladder's roles: each is what the panels drew before the ladder
+        // until the page sends a value for it (the `Palette` accessors).
         canvas: Style::new().fg(p.ink).bg(p.canvas()),
         selected_region: p
             .selected_row

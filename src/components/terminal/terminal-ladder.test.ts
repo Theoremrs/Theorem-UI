@@ -1,16 +1,16 @@
-// The proposed ladder (terminal-ladder.ts) in all six themes: every role reads where it is drawn, the four surfaces
-// ascend by a step you can tell apart, and a page that never asks for the proposal is sent what it always was.
+// The ladder (terminal-ladder.ts) in all six themes: every role reads where it is drawn, the four surfaces
+// ascend by a step you can tell apart, and the role palette under it (wasmPalette) is unchanged by it.
 import { describe, expect, test } from 'bun:test'
 import { converter, wcagContrast } from 'culori'
 import { modeTokens, modes } from '../../../scripts/palettes'
 import { workspaceOf } from './terminal-theme'
 import { terminalRoles, wasmPalette } from './terminal-roles'
-import { proposedPalette, terminalLadder } from './terminal-ladder'
+import { ladderPalette, terminalLadder } from './terminal-ladder'
 
 const oklch = converter('oklch')
 const SIX = modes.slice(0, 6)
 
-describe('the proposed ladder', () => {
+describe('the ladder', () => {
   for (const mode of SIX) {
     const roles = terminalRoles(workspaceOf((t) => modeTokens(mode)[t]!))
     const ladder = terminalLadder(roles)
@@ -41,29 +41,29 @@ describe('the proposed ladder', () => {
       expect(wcagContrast(registers.approval, s.approvalRow)).toBeGreaterThanOrEqual(4.5)
       expect(wcagContrast(text.primary, s.failureRow)).toBeGreaterThanOrEqual(4.5)
       expect(wcagContrast(registers.failure, s.failureRow)).toBeGreaterThanOrEqual(4.5)
-      const proposed = proposedPalette(roles)
-      expect(proposed.pendingRow).toBe(s.approvalRow)
-      expect(proposed.failedRow).toBe(s.failureRow)
-      expect(proposed.runningRow).toBe(s.raised)
+      const laddered = ladderPalette(roles)
+      expect(laddered.pendingRow).toBe(s.approvalRow)
+      expect(laddered.failedRow).toBe(s.failureRow)
+      expect(laddered.runningRow).toBe(s.raised)
     })
 
     test(`${mode.selector}: secondary and disabled are two colours`, () => {
       expect(text.secondary).not.toBe(text.disabled)
     })
 
-    test(`${mode.selector}: the proposal only adds to what the page sends today`, () => {
-      const today = wasmPalette(roles)
-      const proposed = proposedPalette(roles) as Record<string, unknown>
-      expect(proposed.bg).toBe(today.bg)
-      expect(proposed.raised).toBe(today.raised)
-      expect(proposed.canvas).toBe(s.canvas)
+    test(`${mode.selector}: the ladder keeps the role palette's panel and raised surfaces`, () => {
+      const before = wasmPalette(roles)
+      const laddered = ladderPalette(roles) as Record<string, unknown>
+      expect(laddered.bg).toBe(before.bg)
+      expect(laddered.raised).toBe(before.raised)
+      expect(laddered.canvas).toBe(s.canvas)
     })
   }
 
-  test('the palette a page that never asks for the proposal sends carries none of the new keys', () => {
+  test('the role palette alone carries none of the keys the ladder adds', () => {
     const roles = terminalRoles(workspaceOf((t) => modeTokens(SIX[0]!)[t]!))
-    const today = wasmPalette(roles) as Record<string, unknown>
+    const before = wasmPalette(roles) as Record<string, unknown>
     for (const key of ['canvas', 'selectedRow', 'completedRow', 'runningRow', 'pendingRow', 'failedRow', 'completedInk', 'info', 'textDisabled', 'diffAddedMark', 'diffRemovedMark'])
-      expect(key in today).toBe(false)
+      expect(key in before).toBe(false)
   })
 })
