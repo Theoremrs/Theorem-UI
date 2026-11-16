@@ -165,6 +165,29 @@ fn choosing(p: &ProcessPanel, area: Rect) -> Vec<Node> {
     out
 }
 
+/// The most screen rows the terminal node's text carries, from the bottom.
+pub(crate) const SCREEN_ROWS: usize = 60;
+
+/// The process's state in words, first in the terminal node's description:
+/// whether a coding agent there is still running.
+fn process_words(b: &Bound) -> String {
+    match &b.status {
+        Status::Running if b.attaching() => "Attaching to the terminal.".to_owned(),
+        Status::Running => "The program is running.".to_owned(),
+        Status::Exited {
+            code: Some(code), ..
+        } => format!("The program exited with code {code}."),
+        Status::Exited { reason, .. } if !reason.is_empty() => {
+            format!("The program ended: {}.", visible(reason))
+        }
+        Status::Exited { .. } => "The program ended.".to_owned(),
+        Status::Lost { link: true, .. } => {
+            "The connection to the terminal is lost; the program may still run.".to_owned()
+        }
+        Status::Lost { .. } => "The program's fate is not known.".to_owned(),
+    }
+}
+
 /// Why a pane that is not running cannot act: a lost connection is not an
 /// ended program.
 fn not_running(b: &Bound) -> &'static str {
@@ -202,16 +225,23 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     // What a person sees, so assistive technology and the agent read the same
     // screen; the node's text follows each frame because the tree is rebuilt
     // from the screen.
+    // The last rows only, so a tall window cannot make the node unbounded:
+    // what a coding agent printed most recently is at the bottom.
     let screen = b.screen.contents();
+    let rows: Vec<&str> = screen.split('\n').collect();
+    let from = rows.len().saturating_sub(SCREEN_ROWS);
     term = term.with_text(
-        &screen
-            .split('\n')
-            .map(visible)
+        &rows[from..]
+            .iter()
+            .map(|row| visible(row))
             .collect::<Vec<_>>()
             .join("\n"),
     );
     let (row, col) = b.screen.cursor_position();
-    let mut notes = vec![format!("Cursor at row {}, column {}.", row + 1, col + 1)];
+    let mut notes = vec![
+        process_words(b),
+        format!("Cursor at row {}, column {}.", row + 1, col + 1),
+    ];
     if !b.screen.cursor_visible() {
         notes.push("The program hid the cursor.".into());
     }

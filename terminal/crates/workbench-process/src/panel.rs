@@ -23,6 +23,10 @@ use theorem_workbench_vt::{
     MouseProtocolMode, Pos, SelectionKind, encode_key, encode_mouse, encode_paste,
 };
 
+use theorem_workbench_core::panels::{
+    ACTION_CODE_SEND, ACTION_CODE_START, ACTION_CODE_STOP, CODING_PROFILES,
+};
+
 use crate::bound::{AttachFailure, Block, Bound, EndAsk, Note, Purpose, Tone, Want, Why};
 use crate::catalog::{Catalog, CatalogData};
 use crate::chooser::{self, Row, RowKind};
@@ -986,7 +990,97 @@ impl ProcessPanel {
                     b.end_process(cx);
                 }
             }
+            ACTION_CODE_START => self.start_coding(cx),
+            ACTION_CODE_SEND => self.type_coding(cx, true),
+            ACTION_CODE_STOP => self.type_coding(cx, false),
             _ => {}
+        }
+    }
+
+    /// `code.start`: open the coding CLI's profile with the task as its last
+    /// argument. Only a profile the host lists and offers here; never a
+    /// native shell in its place.
+    fn start_coding(&mut self, cx: &mut Ctx) {
+        let Some(task) = cx.args().input().map(str::to_owned) else {
+            cx.refuse("code.start needs the task as input.");
+            return;
+        };
+        let Some(profile) = CODING_PROFILES
+            .iter()
+            .find(|(name, _)| Some(*name) == cx.args().option())
+            .map(|(_, profile)| *profile)
+        else {
+            cx.refuse("A shell runs the claude or codex coding agent only.");
+            return;
+        };
+        if !matches!(self.stage, Stage::Choosing) {
+            cx.refuse("This shell is already bound to a terminal.");
+            return;
+        }
+        let rows = self.rows();
+        let Some((p, row)) = rows.iter().find_map(|row| match &row.kind {
+            RowKind::Profile(p) if p.id == profile => Some((p, row)),
+            _ => None,
+        }) else {
+            cx.refuse(format!(
+                "The host does not offer the {profile} profile here."
+            ));
+            return;
+        };
+        if !row.enabled {
+            cx.refuse(
+                row.reason
+                    .clone()
+                    .unwrap_or_else(|| format!("{profile} is unavailable here.")),
+            );
+            return;
+        }
+        let Some(mut argv) = p.argv.clone() else {
+            cx.refuse(format!("{profile} names no program to give the task to."));
+            return;
+        };
+        argv.push(task);
+        let choice = Choice {
+            id: p.id.clone(),
+            label: p.label.clone(),
+            backend: p.backend,
+            argv: Some(argv),
+        };
+        self.open(cx, choice, None);
+        if !matches!(self.stage, Stage::Opening(_)) {
+            let why = self.note.clone().unwrap_or_else(|| "Not started.".into());
+            cx.refuse(why);
+        }
+    }
+
+    /// `code.send` pastes the words and presses Enter; `code.stop` sends
+    /// Ctrl-C, which asks the program to stop and never ends the process.
+    fn type_coding(&mut self, cx: &mut Ctx, send: bool) {
+        let text = cx.args().input().map(str::to_owned);
+        let Some(b) = self.bound_mut() else {
+            cx.refuse("This shell is not attached to a terminal.");
+            return;
+        };
+        if b.end == EndAsk::Asking {
+            cx.refuse("The person is being asked whether to end this process.");
+            return;
+        }
+        let bytes: Vec<Vec<u8>> = if send {
+            let Some(text) = text else {
+                cx.refuse("code.send needs the words to send as input.");
+                return;
+            };
+            vec![encode_paste(&text, &b.screen.input_modes()), b"\r".to_vec()]
+        } else {
+            vec![b"\x03".to_vec()]
+        };
+        for chunk in bytes {
+            if let Err(block) = b.send(cx, &chunk, InputKind::Human) {
+                let note = block_note(&block);
+                cx.refuse(note.text.clone());
+                b.notice = Some(note);
+                return;
+            }
         }
     }
 

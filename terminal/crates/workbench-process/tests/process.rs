@@ -3943,3 +3943,229 @@ fn a_session_name_and_a_reason_with_control_or_hidden_characters_are_spelled_out
     let screen = r.screen();
     assert!(screen.contains(&format!("tricky{spelled}")), "{screen}");
 }
+
+// ---- 5. a coding agent in a shell, for an agent ----------------------------
+
+use theorem_workbench_core::agent::{AgentOutcome, RefusalCode, agent_outcome, agent_request};
+
+/// Run `action` for agent run `run-7` the way the wasm handle does.
+fn act(
+    m: &mut Model,
+    action: &str,
+    panel: Option<&str>,
+    args: Option<&str>,
+) -> (AgentOutcome, Vec<Effect>) {
+    let msg = match agent_request(action, "run-7", panel, args) {
+        Ok(msg) => msg,
+        Err(refused) => return (refused, vec![]),
+    };
+    m.capture_notices();
+    let effects = update(m, msg);
+    let notices = m.take_captured();
+    let acted = m.take_acted_panel();
+    (
+        agent_outcome(&notices, effects.len(), acted.as_ref()),
+        effects,
+    )
+}
+
+fn agent() -> Actor {
+    Actor::Agent {
+        run_id: "run-7".into(),
+    }
+}
+
+fn coding_profile(available: bool) -> TerminalProfileInfo {
+    TerminalProfileInfo {
+        id: "Claude Code (Herdr)".into(),
+        label: "Claude Code".into(),
+        backend: TerminalBackend::Herdr,
+        argv: Some(vec!["claude".into()]),
+        available,
+        unavailable_reason: (!available).then(|| "herdr is not running on devbox".to_owned()),
+    }
+}
+
+/// Workspace `w` whose host offers the Claude Code profile and a native shell.
+fn coding_model(available: bool) -> Model {
+    let mut m = model("w");
+    update(
+        &mut m,
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![
+                coding_profile(available),
+                profile("native-zsh", TerminalBackend::Native, true),
+            ],
+            sessions: vec![session("s1", TerminalBackend::Herdr)],
+            adoption: None,
+        }),
+    );
+    m
+}
+
+fn shells(m: &Model) -> usize {
+    m.panel_ids().filter(|(_, k)| k.as_str() == "shell").count()
+}
+
+#[test]
+fn code_start_opens_the_coding_profile_with_the_task_for_the_agent() {
+    let mut m = coding_model(true);
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix the failing test","option":"claude"}"#),
+    );
+    let AgentOutcome::Accepted { panel, .. } = &outcome else {
+        panic!("refused: {outcome:?}")
+    };
+    assert_eq!(panel.as_deref(), Some(shell_id(&m).as_str()));
+    assert_eq!(kinds(&fx), vec!["open"]);
+    let EffectBody::TerminalOpen(open) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(open.backend, TerminalBackend::Herdr);
+    assert_eq!(
+        open.argv.as_deref(),
+        Some(&["claude".to_owned(), "fix the failing test".to_owned()][..])
+    );
+    assert_eq!(fx[0].actor, agent());
+}
+
+#[test]
+fn an_unavailable_coding_profile_is_refused_with_the_reason_and_no_shell_is_left() {
+    let mut m = coding_model(false);
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(fx.is_empty(), "nothing opens in its place: {fx:?}");
+    let AgentOutcome::Refused { code, reason } = &outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert_eq!(*code, RefusalCode::Unavailable);
+    assert!(
+        reason.contains("herdr is not running on devbox"),
+        "{reason}"
+    );
+    assert_eq!(shells(&m), 0, "the empty chooser is closed");
+
+    // Codex is not listed at all: refused by name, no native shell instead.
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"codex"}"#),
+    );
+    assert!(fx.is_empty());
+    let AgentOutcome::Refused { reason, .. } = &outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert!(reason.contains("Codex (Herdr)"), "{reason}");
+    assert_eq!(shells(&m), 0);
+}
+
+#[test]
+fn code_send_pastes_then_presses_enter_and_code_stop_sends_ctrl_c() {
+    let mut r = rig();
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(sent, vec!["run the tests".to_owned(), "\r".to_owned()]);
+    assert!(fx.iter().all(|e| e.actor == agent()));
+
+    // Once the program asks for bracketed paste, the words go bracketed.
+    r.bytes(1, 0, b"\x1b[?2004h");
+    let (_, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(
+        sent,
+        vec!["\x1b[200~y\x1b[201~".to_owned(), "\r".to_owned()]
+    );
+
+    let (outcome, fx) = act(&mut r.m, "code.stop", Some(&id), None);
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        kinds(&fx),
+        vec!["input"],
+        "Ctrl-C, never the end of the process"
+    );
+    assert_eq!(inputs(&fx)[0].0, "\x03");
+}
+
+#[test]
+fn code_send_is_refused_without_words_and_on_an_observer() {
+    let mut r = rig();
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), None);
+    assert!(fx.is_empty());
+    assert!(
+        matches!(
+            &outcome,
+            AgentOutcome::Refused {
+                code: RefusalCode::InvalidArgs,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+
+    let mut r = observing();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(fx.is_empty(), "an observer types nothing: {fx:?}");
+    assert!(
+        matches!(
+            &outcome,
+            AgentOutcome::Refused {
+                code: RefusalCode::Unavailable,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn the_terminal_node_leads_with_the_process_state_and_keeps_the_last_sixty_rows() {
+    let mut r = rig();
+    let fx = r.key(Key::Enter);
+    let attach = only_attach(&fx);
+    // A tall grid the host confirmed: more rows than the tree carries.
+    r.accept_attach(&attach, opened(1, 1, 80, 100, "reattached"));
+    let text: String = (1..=100).map(|n| format!("row {n}\r\n")).collect();
+    r.bytes(1, 0, text.as_bytes());
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .expect("a terminal node");
+    let description = term.state.description.as_deref().unwrap_or_default();
+    assert!(
+        description.starts_with("The program is running."),
+        "{description}"
+    );
+    let shown = term.text.as_deref().unwrap_or_default();
+    let rows: Vec<&str> = shown.split('\n').collect();
+    assert_eq!(rows.len(), 60, "{shown}");
+    assert!(shown.contains("row 100"), "{shown}");
+    assert!(!rows.iter().any(|row| row.trim() == "row 1"), "{shown}");
+}

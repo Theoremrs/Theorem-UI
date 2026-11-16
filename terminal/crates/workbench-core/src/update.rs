@@ -1668,7 +1668,9 @@ impl Model {
                 Some(o) => {
                     return invalid(
                         self,
-                        format!("code.start takes the option theorem, claude or codex, not \"{o}\"."),
+                        format!(
+                            "code.start takes the option theorem, claude or codex, not \"{o}\"."
+                        ),
                     );
                 }
             };
@@ -1684,6 +1686,10 @@ impl Model {
                 return vec![];
             };
             self.note_acted(&panel);
+            // The new panel is told the workspace, the retained session and
+            // thread lists and its size now, as the end of this update would,
+            // so it acts knowing what the host offers and where.
+            self.settle();
             let effects = self.call(&panel, Mode::Normal, |p, cx| {
                 p.update(PanelMsg::Action(id), cx)
             });
@@ -1696,7 +1702,10 @@ impl Model {
         }
         let Some(target) = on.or_else(|| self.focus_owner()) else {
             self.notify(Notice::Refused(Refusal::Unavailable {
-                reason: format!("{} needs the side chat or shell panel to act on.", id.as_str()),
+                reason: format!(
+                    "{} needs the side chat or shell panel to act on.",
+                    id.as_str()
+                ),
             }));
             return vec![];
         };
