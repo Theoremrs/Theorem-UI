@@ -25,9 +25,6 @@ export type OpenDatabase = Pick<
 export type OpenDatabaseAt = (directory: string) => Promise<OpenDatabase>
 
 /**
- * Nothing reads control events for an App's data, so none are written.
- */
-/**
  * Days of past versions an App database keeps. Its current records are always
  * kept; versions older than this are dropped when the database is compacted.
  */
@@ -38,7 +35,9 @@ const DAY_MS = 86_400_000
 /**
  * Compact `database` when it holds versions more than a day older than the
  * window it was opened with, so a database opened daily is rewritten about
- * once a day at most, and one with nothing to drop is left alone. A failure
+ * once a day at most, and one with nothing to drop is left alone. Compaction
+ * always keeps the current version, so a database holding only that one has
+ * nothing to drop however old it is. A failure
  * leaves the database as it was, so it is reported and otherwise ignored.
  */
 export async function compactWhenHistoryIsOld(
@@ -49,6 +48,7 @@ export async function compactWhenHistoryIsOld(
     const { history, historyDays } = await database.inspect()
     if (
       !history ||
+      history.commits <= 1 ||
       historyDays === null ||
       history.oldestMs >= now - (historyDays + 1) * DAY_MS
     )
@@ -75,6 +75,7 @@ export async function openAppDatabase(
     import('@rustyreddb/browser/rustyred.wasm?url'),
   ])
   const database = await open(directory, {
+    // Nothing reads control events for an App's data, so none are written.
     controlEvents: false,
     historyDays,
     // Another tab showing this App uses the same database: one tab holds its

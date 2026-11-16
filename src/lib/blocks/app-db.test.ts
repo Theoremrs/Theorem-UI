@@ -303,6 +303,7 @@ describe('the history window', () => {
     oldestMs: number | null,
     compactFails = false,
     historyDays: number | null = APP_HISTORY_DAYS,
+    commits = 3,
   ) => {
     const calls: string[] = []
     return {
@@ -314,7 +315,7 @@ describe('the history window', () => {
           version: 3,
           nodes: 1,
           edges: 0,
-          history: oldestMs === null ? null : { commits: 3, oldestMs },
+          history: oldestMs === null ? null : { commits, oldestMs },
           historyDays,
         }
       },
@@ -338,6 +339,12 @@ describe('the history window', () => {
       expect(await compactWhenHistoryIsOld(recent, now)).toBe(false)
       expect(recent.calls).toEqual(['inspect'])
     }
+  })
+
+  test('a lone old version is not rewritten, because compaction keeps the current one', async () => {
+    const unchanged = database(now - 400 * DAY, false, APP_HISTORY_DAYS, 1)
+    expect(await compactWhenHistoryIsOld(unchanged, now)).toBe(false)
+    expect(unchanged.calls).toEqual(['inspect'])
   })
 
   test('the window is the one the database was opened with', async () => {
