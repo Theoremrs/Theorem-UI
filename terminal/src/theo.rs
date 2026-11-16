@@ -39,7 +39,7 @@ use theorem_workbench_composer::{
     Response as ComposerResponse, SubmitMode,
 };
 use theorem_workbench_core::{
-    ActionId, Capability, Completion, Ctx, Effect, EffectBody, EffectId, HostMessage, ModelChoice,
+    ActionId, Actor, Capability, Completion, Ctx, Effect, EffectBody, EffectId, HostMessage, ModelChoice,
     Msg, OpenTarget, Outcome, Panel, PanelMsg, PanelPointer, PointerKind, ResourceRef, Revision,
     SourceReference, ViewCtx,
     completion::{CompletionPayload, FileKind, SideChatInfo},
@@ -61,6 +61,88 @@ use crate::{
     Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot, Token, now,
     palette,
 };
+
+// ---- the transcript as text, for the semantic tree ----------------------------------------
+
+/// The most recent messages the transcript node's text carries.
+const RECENT_MESSAGES: usize = 12;
+/// The most bytes of transcript text the node carries, kept from the end.
+const RECENT_BYTES: usize = 8 * 1024;
+
+/// The end of the conversation as plain lines, for the semantic tree: who
+/// spoke, their words, and each tool call with its state. Every line goes
+/// through `visible`, and the whole is cut from the front to a bound, so the
+/// newest words are the ones kept.
+fn recent_transcript(messages: &[OwnerMessage]) -> String {
+    let from = messages.len().saturating_sub(RECENT_MESSAGES);
+    let mut lines = Vec::new();
+    for message in &messages[from..] {
+        let who = match message.role.as_str() {
+            "user" => "You",
+            "assistant" => "Theo",
+            other => other,
+        };
+        let words: Vec<&str> = message
+            .parts
+            .iter()
+            .filter_map(|part| match part {
+                OwnerPart::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        let mut said = words.join("\n");
+        if message.status == "running" {
+            said.push_str(" \u{2026}");
+        }
+        let mut text = said.lines();
+        lines.push(format!(
+            "{}: {}",
+            visible(who),
+            visible(text.next().unwrap_or(""))
+        ));
+        lines.extend(text.map(|l| format!("  {}", visible(l))));
+        for part in &message.parts {
+            if let OwnerPart::Tool { name, status, .. } = part {
+                lines.push(format!("  [{} {}]", visible(name), visible(status)));
+            }
+        }
+    }
+    let all = lines.join("\n");
+    if all.len() <= RECENT_BYTES {
+        return all;
+    }
+    let mut start = all.len() - RECENT_BYTES;
+    while !all.is_char_boundary(start) {
+        start += 1;
+    }
+    format!("\u{2026}{}", &all[start..])
+}
+
+/// The run's state in words: working (and on what), waiting for a person,
+/// stopped, failed, or idle.
+fn run_words(owner: &Owner) -> String {
+    let run = &owner.run;
+    match run.state.as_str() {
+        "streaming" => match run.activity.as_deref().filter(|a| !a.is_empty()) {
+            Some(activity) => format!("Working: {}.", visible(activity)),
+            None => "Working.".to_owned(),
+        },
+        "waiting_approval" => match &owner.approval {
+            Some(approval) => format!(
+                "Waiting for a person to approve {}.",
+                visible(&approval.tool_name)
+            ),
+            None => "Waiting for a person's approval.".to_owned(),
+        },
+        "stopped" => "Stopped.".to_owned(),
+        "failed" => match run.error.as_deref().filter(|e| !e.is_empty()) {
+            Some(error) => format!("Failed: {}.", visible(error)),
+            None => "Failed.".to_owned(),
+        },
+        _ if owner.loading => "Loading.".to_owned(),
+        _ => "Idle.".to_owned(),
+    }
+}
 
 // ---- the owner's snapshot ---------------------------------------------------------------
 
@@ -876,6 +958,10 @@ pub(crate) struct TheoPanel {
     existing: Vec<SideChatInfo>,
     /// The owner has been asked which side chats exist.
     listed: bool,
+    /// The task `code.start` gave a side chat that is still being made, and
+    /// the agent run that asked: sent as the first message once the owner
+    /// names the conversation.
+    first_task: Option<(String, Actor)>,
     kind: Kind,
     directory: Directory,
     session: RefCell<Session>,
@@ -978,6 +1064,7 @@ impl TheoPanel {
             choice: 0,
             existing: Vec::new(),
             listed: false,
+            first_task: None,
             kind,
             directory,
             session: RefCell::new(session),
@@ -1606,14 +1693,27 @@ impl TheoPanel {
                 .notify("that message is not one to send again");
             return;
         };
-        let text = row.text.clone();
+        match self.send_words(row.text.clone(), None, cx) {
+            Ok(()) => {
+                self.remove_queued(&row.id);
+            }
+            Err(reason) => self.session.borrow_mut().notify(reason),
+        }
+    }
+
+    /// Send `text` as a message of its own, never through the composer, so a
+    /// draft the person is writing stays as it is: input for a working run,
+    /// else a new turn. `actor` is the agent run an earlier action was for,
+    /// when the words wait on an answer before they go; otherwise the call's
+    /// own actor sends them. Says why when nothing was sent.
+    fn send_words(&mut self, text: String, actor: Option<Actor>, cx: &mut Ctx) -> Result<(), String> {
+        if !self.bound() {
+            return Err("not connected to a conversation yet".into());
+        }
         let id = self.mint();
         let body = if self.owner.working() {
             let Some(run_id) = self.owner.run.run_id.clone() else {
-                self.session
-                    .borrow_mut()
-                    .notify("the run has no id to send input to");
-                return;
+                return Err("the run has no id to send input to".into());
             };
             EffectBody::ConversationInput(ConversationInput {
                 run_id,
@@ -1628,15 +1728,90 @@ impl TheoPanel {
                 references: Vec::new(),
             })
         };
-        if self.emit(cx, body, Tracked::Turn(id.clone())) {
-            self.remove_queued(&row.id);
-            self.pending.push(Pending {
-                client_message_id: id,
-                text,
-                state: PendingState::Sending,
-                draft: None,
-                editing: None,
+        let resource = self.resource();
+        let build = |effect| Effect::new(effect, resource, body);
+        let sent = match actor {
+            Some(actor) => cx.emit_as(actor, build),
+            None => cx.emit(build),
+        };
+        let effect = sent.map_err(|error| error.to_string())?;
+        self.tracked.insert(effect, Tracked::Turn(id.clone()));
+        self.pending.push(Pending {
+            client_message_id: id,
+            text,
+            state: PendingState::Sending,
+            draft: None,
+            editing: None,
+        });
+        Ok(())
+    }
+
+    /// `code.start` on a side chat that has no conversation yet: ask for a
+    /// fresh one, and send the task as its first message once it exists.
+    fn start_coding(&mut self, cx: &mut Ctx) {
+        let Some(task) = cx.args().input().map(str::to_owned) else {
+            cx.refuse("code.start needs the task as input.");
+            return;
+        };
+        if self.kind != Kind::Side || self.bound() || self.first_task.is_some() {
+            cx.refuse("code.start makes a new side chat; this one already has a conversation.");
+            return;
+        }
+        if self.directory.project().is_none() && self.project.is_empty() {
+            cx.refuse("The project is not known yet, so no side chat can be made.");
+            return;
+        }
+        match self.new_side_chat(SideChatScope::Fresh, cx) {
+            Ok(()) => self.first_task = Some((task, cx.actor().clone())),
+            Err(reason) => cx.refuse(format!("No side chat was made: {reason}.")),
+        }
+    }
+
+    /// `code.send`: the words go to this side chat as a message, or as input
+    /// for its working run. The composer and its draft are not touched.
+    fn send_coding(&mut self, cx: &mut Ctx) {
+        let Some(text) = cx.args().input().map(str::to_owned) else {
+            cx.refuse("code.send needs the words to send as input.");
+            return;
+        };
+        if self.kind == Kind::Side && !self.bound() {
+            cx.refuse(if self.first_task.is_some() {
+                "The side chat is still being made; send again once it has its conversation."
+            } else {
+                "This side chat has no conversation yet."
             });
+            return;
+        }
+        if let Err(reason) = self.send_words(text, None, cx) {
+            cx.refuse(format!("Not sent: {reason}."));
+        }
+    }
+
+    /// `code.stop`: stop this side chat's working run.
+    fn stop_coding(&mut self, cx: &mut Ctx) {
+        if !self.owner.working() {
+            cx.refuse("No run is working in this side chat.");
+            return;
+        }
+        self.stop(cx);
+    }
+
+    /// The side chat a `code.start` asked for now exists (or was refused):
+    /// its task goes as the first message, for the run that asked.
+    fn send_first_task(&mut self, cx: &mut Ctx) {
+        let Some((task, actor)) = self.first_task.take() else {
+            return;
+        };
+        if !self.bound() {
+            self.session
+                .borrow_mut()
+                .notify("no side chat was made, so the coding task was not sent");
+            return;
+        }
+        if let Err(reason) = self.send_words(task, Some(actor), cx) {
+            self.session
+                .borrow_mut()
+                .notify(format!("the coding task was not sent: {reason}"));
         }
     }
 
@@ -2334,17 +2509,22 @@ impl TheoPanel {
 
     /// Ask the owner for a side chat of the scope the person chose. The effect
     /// names the project and no thread: the owner makes the id.
-    fn new_side_chat(&mut self, scope: SideChatScope, cx: &mut Ctx) {
+    fn new_side_chat(&mut self, scope: SideChatScope, cx: &mut Ctx) -> Result<(), String> {
         if self.side_project().is_none() {
-            return;
+            return Err("the project is not known yet".into());
         }
         let resource = self.resource();
         let open = SideChatOpen { scope: Some(scope) };
         match cx.emit(|id| Effect::new(id, resource, EffectBody::ConversationSideChat(open))) {
             Ok(id) => {
                 self.tracked.insert(id, Tracked::NewSideChat);
+                Ok(())
             }
-            Err(error) => self.session.borrow_mut().notify(error.to_string()),
+            Err(error) => {
+                let reason = error.to_string();
+                self.session.borrow_mut().notify(reason.clone());
+                Err(reason)
+            }
         }
     }
 
@@ -2375,7 +2555,9 @@ impl TheoPanel {
     /// Do what the chosen row says: ask for a new chat, or join one that exists.
     fn choose_row(&mut self, row: usize, cx: &mut Ctx) {
         match self.rows().get(row).copied() {
-            Some(ChooserRow::New(scope)) => self.new_side_chat(scope, cx),
+            Some(ChooserRow::New(scope)) => {
+                let _ = self.new_side_chat(scope, cx);
+            }
             Some(ChooserRow::Existing(at)) => {
                 let Some(chat) = self.existing.get(at).cloned() else {
                     return;
@@ -3084,7 +3266,13 @@ impl Panel for TheoPanel {
             PanelMsg::Reference(reference) => self.refer(reference),
             PanelMsg::Focus(focused) => self.composer.borrow_mut().set_window_focused(focused),
             PanelMsg::Pointer(p) => self.on_pointer(p, cx),
-            PanelMsg::Completion(c) => self.completed(c),
+            PanelMsg::Completion(c) => {
+                let opening = matches!(self.tracked.get(&c.effect), Some(Tracked::NewSideChat));
+                self.completed(c);
+                if opening {
+                    self.send_first_task(cx);
+                }
+            }
             PanelMsg::Host(HostMessage::ConversationSnapshot {
                 resource: ResourceRef::Conversation { project, thread },
                 revision: Revision::Seq(revision),
@@ -3186,6 +3374,9 @@ impl Panel for TheoPanel {
                     self.choose_row(self.choice, cx);
                 }
                 "side-chat.create" => {}
+                "code.start" => self.start_coding(cx),
+                "code.send" => self.send_coding(cx),
+                "code.stop" => self.stop_coding(cx),
                 _ => {}
             },
             PanelMsg::Tick => {
@@ -3496,9 +3687,13 @@ impl Panel for TheoPanel {
 
         // The transcript: one node per message, in order, each with the rows it
         // takes on screen (clamped to the body when it is scrolled off).
-        let mut log = Node::new("log", Role::Log, "Conversation", body);
+        let mut log = Node::new("log", Role::Log, "Conversation", body)
+            .with_text(&recent_transcript(&self.owner.messages));
         log.binding = resource.clone();
         log.state.busy = self.owner.working();
+        // What the run is doing, first, so an agent reading the tree knows
+        // whether to wait, steer or stop before it reads the transcript.
+        log.state.description = Some(run_words(&self.owner));
         let count = self.owner.messages.len();
         for (index, message) in self.owner.messages.iter().enumerate() {
             let first = session.starts.get(index).and_then(|l| session.rows.get(*l));
@@ -5470,6 +5665,309 @@ mod tests {
                 thread: "side-1".into()
             }
         );
+    }
+
+    // ---- the coding actions, for an agent ----
+
+    /// An agent run's action, as the wasm handle runs it.
+    fn agent_act(
+        r: &mut Rig,
+        action: &str,
+        panel: Option<&str>,
+        args: Option<&str>,
+    ) -> (theorem_workbench_core::agent::AgentOutcome, Vec<Effect>) {
+        use theorem_workbench_core::agent::{agent_outcome, agent_request};
+        let msg = agent_request(action, "run-a", panel, args).expect("a request");
+        r.m.capture_notices();
+        let fx = r.send(msg);
+        let notices = r.m.take_captured();
+        let acted = r.m.take_acted_panel();
+        (agent_outcome(&notices, fx.len(), acted.as_ref()), fx)
+    }
+
+    fn the_agent() -> Actor {
+        Actor::Agent {
+            run_id: "run-a".into(),
+        }
+    }
+
+    fn refusal(outcome: &theorem_workbench_core::agent::AgentOutcome) -> Option<String> {
+        match outcome {
+            theorem_workbench_core::agent::AgentOutcome::Refused { reason, .. } => {
+                Some(reason.clone())
+            }
+            theorem_workbench_core::agent::AgentOutcome::Accepted { .. } => None,
+        }
+    }
+
+    /// `code.start` for Theorem's own agent, and the owner's answer naming
+    /// `side-1`: the side chat's panel id.
+    fn started_side_chat(r: &mut Rig, task: &str) -> String {
+        r.show(1, "t1", json!({"messages": [user("m1", "main talk")]}));
+        let args = json!({ "input": task }).to_string();
+        let (outcome, fx) = agent_act(r, "code.start", None, Some(&args));
+        let theorem_workbench_core::agent::AgentOutcome::Accepted {
+            panel: Some(panel), ..
+        } = outcome
+        else {
+            panic!("{outcome:?}")
+        };
+        let open = fx
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::ConversationSideChat(_)))
+            .cloned()
+            .expect("a side chat is asked for");
+        let mut done = Completion::new(open.id, open.resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::ConversationSideOpened(
+            theorem_workbench_core::completion::ConversationOpened {
+                conversation_id: "side-1".into(),
+            },
+        ));
+        r.send(Msg::Completion(done));
+        panel
+    }
+
+    #[test]
+    fn code_start_makes_a_fresh_side_chat_and_sends_the_task_first_for_the_agent() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let (outcome, fx) = agent_act(
+            &mut r,
+            "code.start",
+            None,
+            Some(r#"{"input":"fix the flaky test"}"#),
+        );
+        let theorem_workbench_core::agent::AgentOutcome::Accepted {
+            panel: Some(panel), ..
+        } = &outcome
+        else {
+            panic!("{outcome:?}")
+        };
+        let kind = r
+            .m
+            .panel_ids()
+            .find(|(id, _)| id.as_str() == panel)
+            .map(|(_, k)| k.as_str().to_owned());
+        assert_eq!(kind.as_deref(), Some("side-chat"));
+        assert_eq!(fx.len(), 1, "{fx:?}");
+        let EffectBody::ConversationSideChat(open) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(open.scope, Some(SideChatScope::Fresh));
+        assert_eq!(fx[0].actor, the_agent());
+        // Nothing is said until the chat exists.
+        assert!(fx.iter().all(|e| !matches!(
+            e.kind(),
+            EffectKind::ConversationSend | EffectKind::ConversationInput
+        )));
+
+        let mut done = Completion::new(fx[0].id, fx[0].resource.clone(), Outcome::Accepted);
+        done.payload = Some(CompletionPayload::ConversationSideOpened(
+            theorem_workbench_core::completion::ConversationOpened {
+                conversation_id: "side-1".into(),
+            },
+        ));
+        let fx = r.send(Msg::Completion(done));
+        let sent = conversation_effects(&fx);
+        assert_eq!(sent.len(), 1, "{fx:?}");
+        let EffectBody::ConversationSend(send) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(send.text, "fix the flaky test");
+        assert_eq!(sent[0].actor, the_agent(), "the run that asked sends it");
+        assert_eq!(
+            sent[0].resource,
+            ResourceRef::Conversation {
+                project: PROJECT.into(),
+                thread: "side-1".into()
+            }
+        );
+        // And only once.
+        r.send(Msg::Tick);
+        assert_eq!(
+            r.seen
+                .iter()
+                .filter(|e| matches!(e.body, EffectBody::ConversationSend(_)))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_side_chat_the_owner_would_not_make_sends_no_task() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let (_, fx) = agent_act(&mut r, "code.start", None, Some(r#"{"input":"x"}"#));
+        let done = Completion::new(
+            fx[0].id,
+            fx[0].resource.clone(),
+            Outcome::Failed {
+                reason: "no side chats today".into(),
+            },
+        );
+        let fx = r.send(Msg::Completion(done));
+        assert!(conversation_effects(&fx).is_empty(), "{fx:?}");
+    }
+
+    #[test]
+    fn code_send_steers_a_working_side_chat_and_leaves_the_persons_draft() {
+        let mut r = rig();
+        let side = started_side_chat(&mut r, "start");
+        r.send(snapshot(
+            5,
+            "side-1",
+            json!({"messages": [user("s1", "start")], "run": {"state": "streaming", "runId": "r-9"}}),
+        ));
+        // The person has begun a draft in the side chat.
+        r.send(Msg::Action {
+            id: ActionId::new(&format!("tab.focus.{side}")),
+            actor: Actor::Human,
+        });
+        r.typed("half a thought");
+        let before = r.m.panel(&PanelInstanceId::new(&side)).unwrap().serialize()["draft"].clone();
+        let (outcome, fx) = agent_act(
+            &mut r,
+            "code.send",
+            Some(&side),
+            Some(r#"{"input":"also cover the docs"}"#),
+        );
+        assert_eq!(refusal(&outcome), None);
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationInput(input) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!((input.run_id.as_str(), input.text.as_str()), ("r-9", "also cover the docs"));
+        assert_eq!(sent[0].actor, the_agent());
+        let after = r.m.panel(&PanelInstanceId::new(&side)).unwrap().serialize()["draft"].clone();
+        assert_eq!(before, after, "the draft is the person's");
+        assert!(before.to_string().contains("half a thought"), "{before}");
+
+        // Idle, the words are a new turn.
+        r.send(snapshot(
+            6,
+            "side-1",
+            json!({"messages": [user("s1", "start")], "run": {"state": "idle"}}),
+        ));
+        let (_, fx) = agent_act(&mut r, "code.send", Some(&side), Some(r#"{"input":"next"}"#));
+        assert!(matches!(
+            conversation_effects(&fx)[0].body,
+            EffectBody::ConversationSend(_)
+        ));
+    }
+
+    #[test]
+    fn code_stop_stops_a_working_side_chat_and_refuses_an_idle_one() {
+        let mut r = rig();
+        let side = started_side_chat(&mut r, "start");
+        let (outcome, fx) = agent_act(&mut r, "code.stop", Some(&side), None);
+        assert!(refusal(&outcome).is_some_and(|r| r.contains("No run is working")), "{outcome:?}");
+        assert!(fx.is_empty());
+        r.send(snapshot(
+            5,
+            "side-1",
+            json!({"run": {"state": "streaming", "runId": "r-9"}}),
+        ));
+        let (outcome, fx) = agent_act(&mut r, "code.stop", Some(&side), None);
+        assert_eq!(refusal(&outcome), None);
+        let EffectBody::ConversationCancel(cancel) = &conversation_effects(&fx)[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(cancel.run_id.as_deref(), Some("r-9"));
+        assert_eq!(fx[0].actor, the_agent());
+    }
+
+    #[test]
+    fn code_send_to_a_side_chat_still_being_made_is_refused_with_why() {
+        let mut r = rig();
+        r.show(1, "t1", json!({}));
+        let (outcome, _) = agent_act(&mut r, "code.start", None, Some(r#"{"input":"x"}"#));
+        let theorem_workbench_core::agent::AgentOutcome::Accepted {
+            panel: Some(side), ..
+        } = outcome
+        else {
+            panic!("{outcome:?}")
+        };
+        let (outcome, fx) = agent_act(&mut r, "code.send", Some(&side), Some(r#"{"input":"y"}"#));
+        assert!(
+            refusal(&outcome).is_some_and(|r| r.contains("still being made")),
+            "{outcome:?}"
+        );
+        assert!(fx.is_empty());
+    }
+
+    #[test]
+    fn code_start_without_a_project_is_refused_and_leaves_no_empty_side_chat() {
+        let mut r = rig();
+        let (outcome, fx) = agent_act(&mut r, "code.start", None, Some(r#"{"input":"x"}"#));
+        assert!(
+            refusal(&outcome).is_some_and(|r| r.contains("project is not known")),
+            "{outcome:?}"
+        );
+        assert!(fx.is_empty());
+        assert!(!r.m.panel_ids().any(|(_, k)| k.as_str() == "side-chat"));
+    }
+
+    #[test]
+    fn the_tree_carries_a_side_chats_recent_words_and_run_state_as_plain_text() {
+        let mut r = rig();
+        let side = started_side_chat(&mut r, "start");
+        r.send(snapshot(
+            5,
+            "side-1",
+            json!({
+                "messages": [
+                    user("s1", "fix it"),
+                    assistant("s2", json!([
+                        {"type": "text", "text": "on it\u{1b}[31m red\u{202e}"},
+                        {"type": "tool", "id": "c1", "name": "run_command", "status": "running"}
+                    ]), "running"),
+                ],
+                "run": {"state": "streaming", "runId": "r-9", "activity": "running tests"},
+            }),
+        ));
+        let tree = r.tree();
+        let log = tree
+            .nodes
+            .iter()
+            .find(|n| {
+                n.role == Role::Log
+                    && n.binding
+                        == ResourceRef::Conversation {
+                            project: PROJECT.into(),
+                            thread: "side-1".into(),
+                        }
+            })
+            .unwrap_or_else(|| panic!("the side chat {side} has a transcript node"));
+        let text = log.text.clone().unwrap_or_default();
+        assert!(text.contains("You: fix it"), "{text}");
+        assert!(text.contains("Theo: on it"), "{text}");
+        assert!(text.contains("[run_command running]"), "{text}");
+        assert!(
+            !text.chars().any(|c| c == '\u{1b}' || c == '\u{202e}'),
+            "control characters are spelled out: {text:?}"
+        );
+        assert_eq!(
+            log.state.description.as_deref(),
+            Some("Working: running tests.")
+        );
+    }
+
+    #[test]
+    fn the_transcript_text_keeps_the_newest_words_within_its_bound() {
+        let many: Vec<OwnerMessage> = (0..40)
+            .map(|i| OwnerMessage {
+                id: format!("m{i}"),
+                role: "user".into(),
+                parts: vec![OwnerPart::Text {
+                    text: format!("{i}: {}", "word ".repeat(400)),
+                }],
+                ..Default::default()
+            })
+            .collect();
+        let text = recent_transcript(&many);
+        assert!(text.len() <= RECENT_BYTES + '\u{2026}'.len_utf8());
+        assert!(text.contains("39: word"), "the newest is kept");
+        assert!(!text.contains("27: word"), "only the last few messages");
     }
 
     #[test]
