@@ -403,7 +403,16 @@ try {
     layout: 'sidecar',
   })
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  // The dialog returns focus to its trigger as it closes; refocus after that.
+  await dialog.waitFor({ state: 'hidden' })
   await input.focus()
+  // ProseMirror puts its selection back on a short timer after focus. Give it
+  // that time; a selection the change really lost still fails below.
+  await page
+    .waitForFunction(() => Boolean(window.getSelection()?.toString()), null, {
+      timeout: 2000,
+    })
+    .catch(() => {})
   const after = await assertDomIdentity()
   const sameTile = await tile.evaluate(
     (element) => element === window.__appearanceAttachment,
