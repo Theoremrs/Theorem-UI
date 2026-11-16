@@ -68,7 +68,7 @@ test('open to the side adds a pane to the right of the focused one', () => {
   openInFocus(api, 'doc-a')
   openBeside(api, 'doc-b')
   const { root, orientation } = api.toJSON().grid
-  expect(orientation).toBe('HORIZONTAL')
+  expect<string>(orientation).toBe('HORIZONTAL')
   expect(Array.isArray(root.data) && root.data.map((leaf) => leaf.data)).toEqual([
     expect.objectContaining({ views: [notePaneId('doc-a')] }),
     expect.objectContaining({ views: [notePaneId('doc-b')] }),

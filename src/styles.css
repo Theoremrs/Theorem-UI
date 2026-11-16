@@ -246,6 +246,7 @@
   padding-inline-start: 10px;
   pointer-events: auto;
 }
+.notes-dock .dv-left-actions-container,
 .notes-dock .dv-right-actions-container {
   pointer-events: auto;
 }
@@ -253,8 +254,8 @@
 .notes-pill {
   border: 1px solid var(--line-separator);
   border-radius: 9999px;
-  background: color-mix(in oklab, var(--notes-pane) 86%, transparent);
-  backdrop-filter: blur(12px);
+  /* Solid: the page scrolls under the pills and must not read through them. */
+  background: var(--notes-pane);
   box-shadow: 0 1px 2px color-mix(in oklab, var(--ink) 6%, transparent);
 }
 .notes-dock .dv-tab {
@@ -271,6 +272,26 @@
 }
 .notes-dock .dv-tabs-container > .dv-tab:not(:first-child)::before {
   display: none;
+}
+/* A title gives way before the tools do: it shortens to an ellipsis, and in a
+   pane too narrow for both the tools step aside (`/` still opens the blocks). */
+.notes-dock .dv-groupview {
+  container-type: inline-size;
+}
+.notes-dock .dv-tab {
+  flex: 0 1 auto;
+  min-width: 84px;
+}
+@container (width < 480px) {
+  .notes-pane-tools {
+    display: none;
+  }
+}
+/* The block menu opens inside the page, and dockview sets a pane's page in an
+   overlay under the pills. While the menu is open that page stands over
+   them, so the menu is never cut by a pill. */
+.notes-dock .dv-render-overlay:has(.milkdown-slash-menu[data-show='true']) {
+  z-index: 3;
 }
 .notes-dock .dv-groupview.dv-active-group {
   border-color: color-mix(in oklab, var(--ink) 18%, var(--line-separator));

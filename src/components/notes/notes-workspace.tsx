@@ -22,6 +22,7 @@ import { Icon } from '@/components/icons'
 import { useNote } from '@/lib/theorem/notes'
 import { NoteMenu } from './note-actions'
 import { NoteStatus } from './note-panel'
+import { NoteToolbox } from './note-toolbox'
 import { NoNoteOpen, OpenNote } from './open-note'
 import {
   documentOfPane,
@@ -109,18 +110,33 @@ function useTopRight(group: IDockviewHeaderActionsProps['group'], api: DockviewA
   })
 }
 
-/** The pill at a pane's top right: the note's save state and Close, and in the corner pane the shell's controls. */
-function PaneActions({ group, containerApi }: IDockviewHeaderActionsProps) {
-  const shell = useContext(ShellActions)
-  const corner = useTopRight(group, containerApi)
+/** The note showing in `group`, when it has one. */
+function useShownNote(group: IDockviewHeaderActionsProps['group']) {
   const active = useSyncExternalStore(
     subscribe(group.api.onDidActivePanelChange),
     () => group.activePanel,
   )
-  const documentId = active && documentOfPane(active.id)
+  return { active, documentId: active && documentOfPane(active.id) }
+}
+
+/** The pill after a pane's titles: the tools of the note it shows. */
+function PaneTools({ group }: IDockviewHeaderActionsProps) {
+  const { documentId } = useShownNote(group)
+  return documentId ? (
+    <div className="notes-pane-tools flex h-full items-center ps-1.5">
+      <NoteToolbox documentId={documentId} />
+    </div>
+  ) : null
+}
+
+/** The pill at a pane's top right: the note's save state and Close, and in the corner pane the shell's controls. */
+function PaneActions({ group, containerApi }: IDockviewHeaderActionsProps) {
+  const shell = useContext(ShellActions)
+  const corner = useTopRight(group, containerApi)
+  const { active, documentId } = useShownNote(group)
   return (
     <div className="flex h-full items-center gap-1.5 pe-2.5">
-      {documentId && (
+      {active && documentId && (
         <div className="notes-pill flex h-8 items-center gap-1 ps-3 pe-1">
           <NoteStatus documentId={documentId} />
           <button
@@ -217,6 +233,7 @@ export function NotesWorkspace({ actions }: { actions?: ReactNode }) {
           components={components}
           tabComponents={tabComponents}
           defaultTabComponent={NoteTab}
+          leftHeaderActionsComponent={PaneTools}
           rightHeaderActionsComponent={PaneActions}
           defaultRenderer="always"
           onReady={onReady}
