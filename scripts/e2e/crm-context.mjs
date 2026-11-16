@@ -282,8 +282,25 @@ check(
 
 // Before the edit: an ordinary conversation is given Wednesday.
 await fetch(`${STANDIN}/__requests`, { method: 'DELETE' })
-await page.goto(UI, { waitUntil: 'domcontentloaded', timeout: 120_000 })
-await page.getByRole('textbox').first().waitFor({ timeout: 120_000 })
+// A full load of the dev server sometimes comes up blank; load it again.
+async function home() {
+  for (let loads = 1; ; loads++) {
+    dropped.length = 0
+    await page.goto(UI, { waitUntil: 'domcontentloaded', timeout: 120_000 })
+    const ready = await page
+      .getByRole('textbox')
+      .first()
+      .waitFor({ timeout: 45_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    if (ready) return
+    log('Home did not load; requests that failed:', dropped.slice(0, 5))
+    if (loads === 4) throw new Error('Home never showed the composer')
+  }
+}
+await home()
 await chat.send(QUESTION)
 const before = await chat.ended()
 check(
@@ -429,8 +446,7 @@ await shot('5b-same-conversation')
 
 // And in a new conversation: an ordinary turn is given Friday, at the new revision.
 await fetch(`${STANDIN}/__requests`, { method: 'DELETE' })
-await page.goto(UI, { waitUntil: 'domcontentloaded', timeout: 120_000 })
-await page.getByRole('textbox').first().waitFor({ timeout: 120_000 })
+await home()
 await chat.send(QUESTION)
 const after = await chat.ended()
 check(

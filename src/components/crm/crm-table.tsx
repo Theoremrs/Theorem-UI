@@ -1,4 +1,4 @@
-// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. Hand-laid rows, not TanStack Table: the columns here are fixed-width, pinned once and neither resized nor reordered
+// SOURCING: Twenty's record table for the anatomy and the measurements Theorem's spec fixes (a 44 px page header, a 40 px view bar, a sticky 32 px header row with field-type icons, 36 px rows, a 32 px checkbox column, a 220 px pinned identifier column, an "Add new" row, a count footer, a 420 px record preview); the ported Twenty primitives (./twenty); coss ui Menu; the schema register's inline editors (components/records/fields); the WAI-ARIA grid pattern for the roles and the roving cell focus. TanStack Table v9 through the app's kit hook (components/data-table/table-hook, vendored from TanStack's kitchen-sink-shadcn-base example) owns the columns, their widths and pinning, sorting, the filter, hidden columns and the marked rows; the rows it returns are drawn here to Twenty's measurements
 import {
   ArrowDown,
   ArrowUp,
@@ -10,6 +10,10 @@ import {
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
+import {
+  createAppColumnHelper,
+  useAppTable,
+} from '@/components/data-table/table-hook'
 import {
   Menu,
   MenuCheckboxItem,
@@ -85,6 +89,11 @@ const CHECK = 32
 const IDENTIFIER = 220
 /** Rows drawn at first, and added by "Show more". */
 const STEP = 200
+/** The checkbox column's id; no field is named this. */
+const SELECT = '__select'
+/** Every row at once: the table pages by "Show more", not by TanStack's pager. */
+const ALL_ROWS = { pageIndex: 0, pageSize: Number.MAX_SAFE_INTEGER }
+const columnHelper = createAppColumnHelper<CrmRecord>()
 
 type Sort = { key: string; descending: boolean }
 type Editing = {
@@ -216,41 +225,123 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const [deleteReport, setDeleteReport] = useState<string | null>(null)
   const grid = useRef<HTMLDivElement>(null)
 
-  const columns = useMemo(() => {
+  // TanStack Table holds the columns and the row model. The checkbox column
+  // and the identifier are pinned at the start; a record with nothing to
+  // sort by goes last whichever way the sort runs.
+  const fields = useMemo(() => {
     const rest = shownFields(type).filter(
-      (field) => field.key !== identifier?.key && !hidden.has(field.key),
+      (field) => field.key !== identifier?.key,
     )
     return identifier ? [identifier, ...rest] : rest
-  }, [type, identifier, hidden])
-  const widthOf = (field: FieldSpec) =>
-    field.key === identifier?.key
-      ? IDENTIFIER
-      : KIND[field.field_type.kind].width
-  const totalWidth =
-    CHECK + columns.reduce((sum, field) => sum + widthOf(field), 0)
+  }, [type, identifier])
+  const tableColumns = useMemo(
+    () =>
+      columnHelper.columns([
+        columnHelper.display({
+          id: SELECT,
+          size: CHECK,
+          minSize: CHECK,
+          enableResizing: false,
+          enableHiding: false,
+          enableSorting: false,
+        }),
+        ...fields.map((field) =>
+          columnHelper.accessor(
+            (record) => {
+              const value = sortValue(record, field, titleOf)
+              const empty =
+                value === null ||
+                value === undefined ||
+                value === '' ||
+                (Array.isArray(value) && value.length === 0)
+              return empty ? undefined : value
+            },
+            {
+              id: field.key,
+              header: field.label,
+              size:
+                field.key === identifier?.key
+                  ? IDENTIFIER
+                  : KIND[field.field_type.kind].width,
+              enableResizing: false,
+              enableHiding: field.key !== identifier?.key,
+              sortUndefined: 'last',
+              sortFn: (a, b, columnId) =>
+                compare(a.getValue(columnId), b.getValue(columnId)),
+              // The filter is over a record's name, whichever column holds it.
+              filterFn: (row, _columnId, needle) =>
+                recordTitle(type, row.original)
+                  .toLowerCase()
+                  .includes(String(needle)),
+            },
+          ),
+        ),
+      ]),
+    [fields, identifier?.key, titleOf, type],
+  )
 
   const records = page.data?.records
   const loaded = records?.length ?? 0
   const total = page.data?.count ?? 0
-  const rows = useMemo(() => {
-    let list = records ?? []
-    const needle = filter.trim().toLowerCase()
-    if (needle)
-      list = list.filter((record) =>
-        recordTitle(type, record).toLowerCase().includes(needle),
-      )
-    const by = sort && type.fields.find((field) => field.key === sort.key)
-    if (sort && by) {
-      const sign = sort.descending ? -1 : 1
-      list = [...list].sort((a, b) => {
-        const [x, y] = [sortValue(a, by, titleOf), sortValue(b, by, titleOf)]
-        const empties =
-          (x === null || x === undefined) !== (y === null || y === undefined)
-        return empties ? compare(x, y) : sign * compare(x, y)
-      })
-    }
-    return list
-  }, [records, filter, sort, type, titleOf])
+  const data = useMemo(() => records ?? [], [records])
+  const needle = filter.trim().toLowerCase()
+  const table = useAppTable({
+    columns: tableColumns,
+    data,
+    getRowId: (record) => record.id,
+    state: {
+      sorting: sort ? [{ id: sort.key, desc: sort.descending }] : [],
+      columnFilters:
+        needle && fields[0] ? [{ id: fields[0].key, value: needle }] : [],
+      columnVisibility: Object.fromEntries(
+        [...hidden].map((key) => [key, false]),
+      ),
+      columnPinning: {
+        start: identifier ? [SELECT, identifier.key] : [SELECT],
+        end: [],
+      },
+      rowSelection: Object.fromEntries(
+        [...selected].map((id) => [id, true as const]),
+      ),
+      pagination: ALL_ROWS,
+    },
+    onSortingChange: (updater) => {
+      const held = sort ? [{ id: sort.key, desc: sort.descending }] : []
+      const [next] = typeof updater === 'function' ? updater(held) : updater
+      setSort(next ? { key: next.id, descending: next.desc } : null)
+    },
+    onColumnVisibilityChange: (updater) =>
+      setHidden((held) => {
+        const before = Object.fromEntries([...held].map((key) => [key, false]))
+        const after = typeof updater === 'function' ? updater(before) : updater
+        return new Set(Object.keys(after).filter((key) => after[key] === false))
+      }),
+    onRowSelectionChange: (updater) =>
+      setSelected((held) => {
+        const before = Object.fromEntries(
+          [...held].map((id) => [id, true as const]),
+        )
+        const after = typeof updater === 'function' ? updater(before) : updater
+        return new Set(Object.keys(after).filter((id) => after[id]))
+      }),
+    enableRowSelection: true,
+    enableMultiSort: false,
+    autoResetPageIndex: false,
+  })
+  const fieldOf = useMemo(
+    () => new Map(type.fields.map((field) => [field.key, field])),
+    [type.fields],
+  )
+  const leaf = [
+    ...table.getStartVisibleLeafColumns(),
+    ...table.getCenterVisibleLeafColumns(),
+    ...table.getEndVisibleLeafColumns(),
+  ]
+  const columns = leaf.flatMap((column) => fieldOf.get(column.id) ?? [])
+  const widthOf = (field: FieldSpec) =>
+    table.getColumn(field.key)?.getSize() ?? KIND[field.field_type.kind].width
+  const totalWidth = table.getTotalSize()
+  const rows = table.getRowModel().rows.map((row) => row.original)
   const shown = rows.slice(0, limit)
   const previewed = previewId
     ? records?.find((record) => record.id === previewId)
@@ -428,12 +519,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
 
   // Selection
 
-  const toggleSelected = (id: string) =>
-    setSelected((held) => {
-      const next = new Set(held)
-      if (!next.delete(id)) next.add(id)
-      return next
-    })
+  const toggleSelected = (id: string) => table.getRow(id).toggleSelected()
   const allSelected =
     shown.length > 0 && shown.every((record) => selected.has(record.id))
   const someSelected = shown.some((record) => selected.has(record.id))
@@ -729,12 +815,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
                         disabled={field.key === identifier?.key}
                         checked={!hidden.has(field.key)}
                         onCheckedChange={(checked) =>
-                          setHidden((held) => {
-                            const next = new Set(held)
-                            if (checked) next.delete(field.key)
-                            else next.add(field.key)
-                            return next
-                          })
+                          table.getColumn(field.key)?.toggleVisibility(checked)
                         }
                       >
                         {field.label}
@@ -872,13 +953,12 @@ export function CrmTable({ type }: { type: ObjectType }) {
                           type="button"
                           title={field.description}
                           onClick={() =>
-                            setSort(
-                              sorted
-                                ? sort.descending
-                                  ? null
-                                  : { key: field.key, descending: true }
-                                : { key: field.key, descending: false },
-                            )
+                            // Ascending, then descending, then unsorted.
+                            sorted && sort.descending
+                              ? table.getColumn(field.key)?.clearSorting()
+                              : table
+                                  .getColumn(field.key)
+                                  ?.toggleSorting(sorted)
                           }
                           className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                         >
