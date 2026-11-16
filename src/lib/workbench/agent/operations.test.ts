@@ -196,6 +196,32 @@ describe('workbench.read', () => {
     expect(result.nodes.map((n) => n.id)).toEqual(['files', 'row'])
   })
 
+  test('reads a panel by the id workbench.act gave it, as its body node', async () => {
+    const withPanel = {
+      root: 'app',
+      nodes: [
+        node('app', ['tab:p4', 'body:p4']),
+        node('tab:p4'),
+        node('body:p4', ['log']),
+        node('log'),
+      ],
+    }
+    const answer = await answerWorkbenchRequest(
+      request(WORKBENCH_READ, { panel: 'p4' }),
+      {
+        handle: fakeHandle({ semantics: () => JSON.stringify(withPanel) })
+          .handle,
+      },
+    )
+    expect(answer.outcome).toBe('applied')
+    const result = answer.result as {
+      root: string
+      nodes: Array<{ id: string }>
+    }
+    expect(result.nodes.map((n) => n.id)).toEqual(['body:p4', 'log'])
+    expect(result.root).toBe('body:p4')
+  })
+
   test('an unknown panel is rejected with a reason', async () => {
     const answer = await answerWorkbenchRequest(
       request(WORKBENCH_READ, { panel: 'nope' }),
