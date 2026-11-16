@@ -75,6 +75,7 @@ import {
 import type { EditorRead } from './queries'
 import { ReadOnlyNote, UnsavedEdits, crmErrorText } from './record-fields'
 import { RecordPreview } from './record-preview'
+import { BulkUpdatePanel } from './bulk-update'
 import { Checkbox } from './twenty/checkbox'
 import { TypeIcon } from './type-icons'
 
@@ -211,6 +212,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const draftLeft = useRef(false)
   const [createError, setCreateError] = useState<unknown>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [bulk, setBulk] = useState(false)
   const [deleteReport, setDeleteReport] = useState<string | null>(null)
   const grid = useRef<HTMLDivElement>(null)
 
@@ -435,9 +437,14 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const allSelected =
     shown.length > 0 && shown.every((record) => selected.has(record.id))
   const someSelected = shown.some((record) => selected.has(record.id))
+  // The marked records as they are read now; a mark on a record that has
+  // gone is not among them.
+  const chosen = useMemo(
+    () => (records ?? []).filter((record) => selected.has(record.id)),
+    [records, selected],
+  )
   const deleteSelected = async () => {
     setConfirmDelete(false)
-    const chosen = (records ?? []).filter((record) => selected.has(record.id))
     let deleted = 0
     const refused: string[] = []
     for (const record of chosen)
@@ -576,6 +583,14 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   <span className="text-xs text-ink-muted tabular-nums">
                     {selected.size} selected
                   </span>
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    aria-pressed={bulk}
+                    onClick={() => setBulk(true)}
+                  >
+                    Update
+                  </Button>
                   <Button
                     size="xs"
                     variant="ghost"
@@ -1148,7 +1163,16 @@ export function CrmTable({ type }: { type: ObjectType }) {
         )}
       </section>
 
-      {previewed && (
+      {bulk && access.write ? (
+        <BulkUpdatePanel
+          type={type}
+          selected={chosen}
+          writes={writes}
+          onMark={(ids) => setSelected(new Set(ids))}
+          onClose={() => setBulk(false)}
+        />
+      ) : null}
+      {!bulk && previewed && (
         <RecordPreview
           key={previewed.id}
           type={type}

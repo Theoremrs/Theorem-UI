@@ -518,6 +518,29 @@ export function useCrmWrites(objectType: ObjectType) {
     [],
   )
 
+  /**
+   * Change several fields of one record in one write, against the revision
+   * it was read at. It resolves with the saved record and rejects with the
+   * refusal, for a caller that reports each record itself (the bulk update).
+   */
+  const patch = useCallback(
+    (recordId: string, readRevision: number, values: Record<string, unknown>) =>
+      enqueue(recordId, async () => {
+        const expected = followOwnWrites(recordId, readRevision)
+        const record = await api.updateCrmRecord(
+          objectTypeId,
+          recordId,
+          values,
+          expected,
+        )
+        recordOwnWrite(recordId, expected, record.version)
+        storeRecord(client, objectType, record)
+        void client.invalidateQueries({ queryKey: crmKeys.changes(recordId) })
+        return record
+      }),
+    [client, objectType, objectTypeId],
+  )
+
   /** Delete a record as it was read; one that moved on is refused. */
   const remove = useCallback(
     (record: CrmRecord) =>
@@ -535,7 +558,7 @@ export function useCrmWrites(objectType: ObjectType) {
     [client, objectType, objectTypeId],
   )
 
-  return { save, saveFrom, reload, apply, discard, remove }
+  return { save, saveFrom, patch, reload, apply, discard, remove }
 }
 
 export type CrmWrites = ReturnType<typeof useCrmWrites>

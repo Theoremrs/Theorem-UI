@@ -507,19 +507,149 @@ try {
     bar?.height ?? null,
     within(bar?.height, 39, 41),
   )
+  await shot('5-selected')
+
+  // The update panel for the marked records.
+  const org = types.Organization.object_type_id
+  const marked = [added[0].id, added[1].id]
+  const untouched = added[2].id
+  const revisions = async (ids) =>
+    Object.fromEntries(
+      await Promise.all(
+        ids.map(async (id) => {
+          const found = await verb(org, 'find_one', { id })
+          return [
+            id,
+            {
+              revision: found.version,
+              location: found.properties?.location ?? null,
+            },
+          ]
+        }),
+      ),
+    )
+  const before = await revisions([...marked, untouched])
+  await page
+    .locator('[data-crm-region="view-bar"]')
+    .getByRole('button', { name: 'Update', exact: true })
+    .click()
+  const update = page.locator('[data-crm-region="bulk-update"]')
+  const opened = await update
+    .waitFor({ timeout: 15_000 })
+    .then(() => true)
+    .catch(() => false)
   record(
     'selection.bounded-update',
     'target',
     'a bounded update panel for the selected records, as in M02',
-    await page.locator('[data-crm-region="view-bar"]').innerText(),
-    'fail',
-    'only a count and Delete are offered; there is no bulk update',
+    opened ? await update.getAttribute('aria-label') : null,
+    opened ? 'pass' : 'fail',
   )
-  await shot('5-selected')
-  for (const name of ['Alder Press 1', 'Birch Pottery 2'])
-    await page
-      .getByRole('checkbox', { name: `Select ${name}`, exact: true })
-      .click()
+  if (opened) {
+    const panel = await box('[data-crm-region="bulk-update"]')
+    const table = await box('section[aria-label="Organizations"]')
+    exactly(
+      'selection.bounded-update.width',
+      'the update panel is 420 px wide, as the record preview is',
+      panel?.width ?? null,
+      420,
+    )
+    exactly(
+      'selection.bounded-update.header',
+      'the update panel header is 44 px',
+      (await box('[data-crm-region="bulk-update"] > header'))?.height ?? null,
+      44,
+    )
+    const stillMarked = await page
+      .locator('[role="grid"] [role="row"][aria-selected="true"]')
+      .count()
+    record(
+      'selection.bounded-update.table-retained',
+      'contract',
+      'the table stays beside the panel with its two rows still marked',
+      {
+        tableRight: table ? table.x + table.width : null,
+        panelLeft: panel?.x ?? null,
+        marked: stillMarked,
+      },
+      table && panel
+        ? Math.abs(table.x + table.width - panel.x) <= 1 && stillMarked === 2
+          ? 'pass'
+          : 'fail'
+        : 'not_measurable',
+    )
+    const actions = await update
+      .locator('footer')
+      .getByRole('button')
+      .allInnerTexts()
+    record(
+      'selection.bounded-update.actions',
+      'target',
+      'the panel ends in Cancel and Apply, as in M02',
+      actions,
+      actions.join(',') === 'Cancel,Apply' ? 'pass' : 'fail',
+    )
+    await update.getByRole('button', { name: 'Set Location' }).click()
+    await update.locator('input').fill('Leeds')
+    await update.locator('input').press('Enter')
+    await update
+      .getByText('Changes 2 of 2')
+      .first()
+      .waitFor({ timeout: 15_000 })
+    await shot('5-update-panel')
+    const chosen = await revisions([...marked, untouched])
+    record(
+      'selection.bounded-update.nothing-saved-before-apply',
+      'contract',
+      'marking rows and choosing a value saves nothing',
+      { before, chosen },
+      JSON.stringify(before) === JSON.stringify(chosen) ? 'pass' : 'fail',
+    )
+    await update.getByRole('button', { name: 'Apply', exact: true }).click()
+    await update
+      .getByRole('button', { name: 'Done', exact: true })
+      .waitFor({ timeout: 60_000 })
+    const after = await revisions([...marked, untouched])
+    const said = await update.locator('li').allInnerTexts()
+    record(
+      'selection.bounded-update.exact-targets',
+      'contract',
+      'Apply changes the two marked records and no other; each is saved at a later revision',
+      { before, after },
+      marked.every(
+        (id) =>
+          after[id].location === 'Leeds' &&
+          after[id].revision > before[id].revision,
+      ) &&
+        JSON.stringify(after[untouched]) === JSON.stringify(before[untouched])
+        ? 'pass'
+        : 'fail',
+    )
+    record(
+      'selection.bounded-update.per-record-outcome',
+      'contract',
+      'the panel says what happened to each record, with the revisions it moved between',
+      said,
+      said.length === 2 &&
+        marked.every((id) =>
+          said.some(
+            (line) =>
+              line.includes(`revision ${before[id].revision}`) &&
+              line.includes(String(after[id].revision)),
+          ),
+        )
+        ? 'pass'
+        : 'fail',
+    )
+    await shot('5-update-report')
+    await update.getByRole('button', { name: 'Done', exact: true }).click()
+    await update.waitFor({ state: 'detached', timeout: 15_000 })
+  }
+  // Nothing was refused, so closing the report leaves nothing marked.
+  for (const mark of await page
+    .getByRole('checkbox', { name: /^Select (Alder Press 1|Birch Pottery 2)$/ })
+    .all())
+    if (await mark.isChecked()) await mark.click()
 
   // 3. People with the preview (reference M04).
   await visit('People', () =>
