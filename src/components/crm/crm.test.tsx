@@ -205,6 +205,33 @@ test('a change keeps what moved, who moved it and the revision it was made again
   ).toBeUndefined()
 })
 
+test('a change made from a proposal keeps where it came from; an unknown origin is dropped', () => {
+  const base = { id: 'c2', record_id: 'r', kind: 'updated' }
+  const origin = {
+    kind: 'proposal',
+    proposal_id: 'proposal:1',
+    thread_id: 'thread:9',
+    run_id: 'run:2',
+    proposed_by: 'theorem',
+    reason: 'Noor moved the date',
+    evidence: ['record:Interaction/interaction:planning@12'],
+  }
+  expect(decodeRecordChange({ ...base, origin })?.origin).toEqual({
+    kind: 'proposal',
+    proposalId: 'proposal:1',
+    threadId: 'thread:9',
+    runId: 'run:2',
+    proposedBy: 'theorem',
+    reason: 'Noor moved the date',
+    evidence: ['record:Interaction/interaction:planning@12'],
+  })
+  expect(decodeRecordChange(base)).not.toHaveProperty('origin')
+  expect(
+    decodeRecordChange({ ...base, origin: { kind: 'something_new' } }),
+  ).not.toHaveProperty('origin')
+  expect(decodeRecordChange({ ...base, origin: 'x' })?.kind).toBe('updated')
+})
+
 // Refusals
 
 test('a revision conflict names the revision the record is at now', () => {

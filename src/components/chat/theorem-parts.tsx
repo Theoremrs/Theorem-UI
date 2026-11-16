@@ -40,6 +40,10 @@ import {
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
 import { ContextManifestPart } from '@/components/crm/context-manifest-part'
+import {
+  RecordChangeOutcomePart,
+  RecordChangeProposalPart,
+} from '@/components/crm/record-change-proposal-part'
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
@@ -823,12 +827,20 @@ export const Activity: FC<{
         </span>
       )}
       <div className="flex min-h-6 flex-wrap items-center gap-x-2">
-        {speaker && <span data-appearance-recipe="ui.section" {...appearancePair("primary", "assistant-reading")} className="text-ink">{speaker}</span>}
+        {speaker && (
+          <span
+            data-appearance-recipe="ui.section"
+            {...appearancePair('primary', 'assistant-reading')}
+            className="text-ink"
+          >
+            {speaker}
+          </span>
+        )}
         {notes.length > 0 && (
           <span
             data-slot="activity-line"
             data-appearance-recipe="metadata"
-            {...appearancePair("secondary", "assistant-reading")}
+            {...appearancePair('secondary', 'assistant-reading')}
             className="flex min-w-0 items-center gap-x-2 text-sm text-ink-muted"
           >
             {notes.map((note, index) => (
@@ -1109,6 +1121,9 @@ const RENDERERS = (
     ['theorem-completion', CompletionFooter],
     // The saved records a reply was given, each at its saved revision, and what was held back.
     ['theorem-context_manifest', ContextManifestPart],
+    // A change the assistant proposes to a saved record: nothing is saved until the person approves.
+    ['theorem-record_change_proposal', RecordChangeProposalPart],
+    ['theorem-record_change_outcome', RecordChangeOutcomePart],
     ...DELEGATION_RENDERERS,
   ] satisfies Array<[string, DataMessagePartComponent]>
 )

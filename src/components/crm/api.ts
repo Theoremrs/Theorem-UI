@@ -6,6 +6,8 @@
 import { mutate } from '@/lib/theorem/client'
 import { GraphQLRequestError, graphql as post } from '@/lib/theorem/graphql'
 import type { RecordRow } from '@/components/records/contract'
+import { decodeOrigin } from './proposal'
+import type { ChangeOrigin } from './proposal'
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -457,6 +459,8 @@ export type RecordChange = {
   changed: Record<string, { from: unknown; to: unknown }>
   actor: string | null
   atMs: number
+  /** Where the change came from, when the server says: a proposal the person approved. */
+  origin?: ChangeOrigin
 }
 
 export function decodeRecordChange(raw: unknown): RecordChange | undefined {
@@ -475,6 +479,7 @@ export function decodeRecordChange(raw: unknown): RecordChange | undefined {
     for (const [key, change] of Object.entries(raw.changed))
       if (isObject(change)) changed[key] = { from: change.from, to: change.to }
   const at = Number(either(raw, 'atMs', 'at_ms'))
+  const origin = decodeOrigin(raw.origin)
   return {
     id,
     recordId,
@@ -485,6 +490,7 @@ export function decodeRecordChange(raw: unknown): RecordChange | undefined {
     changed,
     actor: text(raw.actor) ?? null,
     atMs: Number.isFinite(at) ? at : 0,
+    ...(origin ? { origin } : {}),
   }
 }
 

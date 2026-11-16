@@ -31,7 +31,7 @@ const LINK =
   'rounded-sm font-medium text-ink underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'
 
 /** A link to a record's page; the type's own slug where the type is known. */
-function RecordLink({
+export function RecordLink({
   type,
   typeName,
   recordId,

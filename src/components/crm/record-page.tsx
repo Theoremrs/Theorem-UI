@@ -1,4 +1,5 @@
 // SOURCING: Twenty's record page for the anatomy (a 300 px property column beside tabbed content); coss ui Tabs; the pieces shared with the preview (./record-fields); the change log Theorem keeps for every record (recordChanges) for the Timeline; the relation fields of the schema register for Related. Two tabs only: Theorem has no tasks, notes or files on a record to fill others with
+import { Link } from '@tanstack/react-router'
 import { ChevronLeft } from 'lucide-react'
 import { useState } from 'react'
 import { Tabs, TabsList, TabsPanel, TabsTab } from '@/components/coss/tabs'
@@ -290,6 +291,19 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
               ) : (
                 <p className="text-[13px] leading-5 text-ink">
                   {actorName(change.actor, life?.actor)} {VERB[change.kind]}
+                </p>
+              )}
+              {change.origin && (
+                <p className="text-xs leading-5 text-ink-muted">
+                  Proposed by Theorem, approved by you
+                  {change.origin.reason && `: ${change.origin.reason}`}{' '}
+                  <Link
+                    to="/c/$threadId"
+                    params={{ threadId: change.origin.threadId }}
+                    className="rounded-sm font-medium text-ink underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+                  >
+                    See the conversation
+                  </Link>
                 </p>
               )}
               <p className="text-xs leading-5 text-ink-muted tabular-nums">
