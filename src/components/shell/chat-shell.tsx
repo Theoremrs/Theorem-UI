@@ -177,7 +177,8 @@ const CONVERSATION_EDGE = {
 function GlassPanel() {
   const ref = useRef<HTMLDivElement>(null)
   const material = useSurfaceMaterial('navigation')
-  const liquid = material === 'liquid'
+  // Both glass choices run the liquid renderer, as the composer's do.
+  const liquid = material === 'liquid' || material === 'glass'
   useLiquidGlass(ref, liquid, CONVERSATION_EDGE)
   return (
     <div
@@ -189,7 +190,6 @@ function GlassPanel() {
       {...appearancePair('primary', 'navigation')}
       className={cn(
         'appearance-surface h-full',
-        material === 'glass' && 'glass-panel',
         liquid && 'glass-panel glass-panel-liquid',
       )}
     >

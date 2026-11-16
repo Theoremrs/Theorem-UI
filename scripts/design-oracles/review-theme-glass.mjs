@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { PNG } from 'pngjs'
 import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides } from './browser-controls.mjs'
 
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
 await mkdir(reviewOutput, { recursive: true })
@@ -245,7 +245,7 @@ try {
     .first()
     .click()
   await page.waitForURL('**/settings/appearance')
-  await chooseOption(page, page, 'Composer material', 'Frosted glass')
+  await applyOverrides(page, page, { materials: { composer: 'glass' } })
   await page.waitForFunction(
     () => document.documentElement.dataset.materialComposer === 'glass',
   )

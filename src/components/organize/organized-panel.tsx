@@ -316,7 +316,6 @@ function ProjectNode({
     data: { projectId: project.projectId } satisfies DropTarget,
   })
   const accepting = isOver && takes(active, project.projectId)
-  const sessions = `${threads.length} ${threads.length === 1 ? 'session' : 'sessions'}`
   return (
     <Collapsible
       open={open}
@@ -342,7 +341,6 @@ function ProjectNode({
               data-appearance-recipe="ui.label"
               data-organize-row={current ? 'primary' : undefined}
               aria-current={current ? 'page' : undefined}
-              title={`${project.state?.text ?? project.title}\n${sessions}`}
               className="relative z-[1] ps-8 pe-8 hover:bg-hover"
               render={
                 <Link

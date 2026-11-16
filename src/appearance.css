@@ -168,7 +168,7 @@
    reading planes; forced colors below still wins. */
 :where(
     :root:not([data-palette='custom'])
-      [data-surface-role='composer']:is(
+      :is([data-surface-role='composer'], [data-surface-role='navigation']):is(
         [data-material='glass'],
         [data-material='liquid']
       )
@@ -745,6 +745,23 @@
 .aui-composer-send-icon .icon-mask {
   background-color: currentColor;
 }
+/* Send has no tile: the plane is filled with the accent the tile used to be,
+   under the ink outline, so it reads in light and dark alike. Masks only:
+   without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-send:is(:hover, :focus-visible)
+    .aui-composer-send-icon
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-send:active .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
 /* The stop mark on a filled action (Cancel, Stop generating) and the
    microphone-off of a running dictation are drawn in their button's own
    colour: the ring and the square on the destructive fill, and the mark in
@@ -768,6 +785,22 @@
     > [data-layer='line'],
   .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
     background-color: currentColor;
+  }
+  /* Resume has no tile either: its arrows take the accent, like Send. Refresh
+     is a soft mark, so its arrows are drawn as the paper layer. */
+  .aui-composer-resume-icon.rail-mark > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-resume:is(:hover, :focus-visible)
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-resume:active
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
   }
 }
 /* Keep paired action paints synchronized, including inherited SVG colors. */

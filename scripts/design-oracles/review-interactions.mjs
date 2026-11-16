@@ -1,4 +1,4 @@
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides, chooseOption } from './browser-controls.mjs'
 // Human-review companion: operate the same visible settings a user operates,
 // keeping the real editor mounted. Deliberately separate from token checks.
 import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
@@ -151,25 +151,25 @@ try {
     ],
     [
       'paper composer',
-      () => chooseOption(page, dialog, 'Composer material', 'Paper'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'paper' } }),
       true,
       true,
     ],
     [
       'glass composer',
-      () => chooseOption(page, dialog, 'Composer material', 'Frosted glass'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'glass' } }),
       true,
       true,
     ],
     [
       'liquid composer',
-      () => chooseOption(page, dialog, 'Composer material', 'Liquid glass'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'liquid' } }),
       true,
       true,
     ],
     [
       'flat composer',
-      () => chooseOption(page, dialog, 'Composer material', 'Flat'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'flat' } }),
       true,
       true,
     ],
@@ -207,10 +207,7 @@ try {
     ],
     [
       'sidecar layout',
-      () =>
-        dialog
-          .getByRole('button', { name: 'Tools above editor', exact: true })
-          .click(),
+      () => applyOverrides(page, dialog, { layout: 'sidecar' }),
       false,
       true,
     ],
@@ -218,10 +215,10 @@ try {
       '200% text',
       async () => {
         const input = dialog.getByRole('textbox', {
-          name: 'Content size',
+          name: 'Text size',
           exact: true,
         })
-        await input.fill('200')
+        await input.fill('32')
         await input.press('Tab')
       },
       false,

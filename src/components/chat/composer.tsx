@@ -337,10 +337,11 @@ export const ComposerPrimaryActions: FC<{
             disabled={sendDisabled}
             variant="default"
             size="icon"
-            className="aui-composer-send bg-redwood text-on-redwood hover:bg-redwood-hover active:bg-redwood-pressed disabled:opacity-40"
+            // No tile: the plane itself carries the accent, under an ink outline.
+            className="aui-composer-send text-ink hover:bg-hover active:bg-selected bg-transparent disabled:opacity-40"
             data-appearance-part="composer-primary-action"
             data-appearance-radius-role="control"
-            {...appearancePair('on-accent', 'accent')}
+            {...appearancePair('primary', 'composer')}
             aria-label={
               review
                 ? 'Send feedback'
@@ -365,10 +366,11 @@ export const ComposerPrimaryActions: FC<{
                 type="button"
                 variant="default"
                 size="icon"
-                className="aui-composer-resume bg-redwood text-on-redwood hover:bg-redwood-hover active:bg-redwood-pressed size-9 rounded-lg disabled:opacity-40 p-2"
+                // No tile, as Send: the arrows carry the accent under an ink outline.
+                className="aui-composer-resume text-ink hover:bg-hover active:bg-selected bg-transparent disabled:opacity-40"
                 data-appearance-part="composer-primary-action"
                 data-appearance-radius-role="control"
-                {...appearancePair('on-accent', 'accent')}
+                {...appearancePair('primary', 'composer')}
                 aria-label="Resume generating"
               />
             }

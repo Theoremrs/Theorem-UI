@@ -122,6 +122,12 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
   },
   {
+    id: 'face-feel',
+    title: 'Tuning how Theo moves',
+    lane: 'original',
+    viewport: { width: 900, height: 1000 },
+  },
+  {
     id: 'shell-compare',
     title: 'Shell with Compare open',
     lane: 'translation',
