@@ -6,7 +6,9 @@
   --appearance-scale-content: 1;
   --appearance-scale-ui: 1;
   --appearance-scale-code: 1;
-  --appearance-prose-line-height: calc(1.5rem * var(--appearance-scale-content));
+  --appearance-prose-line-height: calc(
+    1.5rem * var(--appearance-scale-content)
+  );
   --recipe-prose: 400 1rem / 1.5 var(--font-sans);
   --recipe-composer-content: var(--recipe-prose);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
@@ -113,8 +115,7 @@
   letter-spacing: normal;
 }
 
-/* A role can decorate its perimeter. Every reading plane has opaque paint,
-   including over live refraction and across all animation frames. */
+/* Surface roles provide the solid fallback paint for their reading planes. */
 [data-surface-role='canvas'],
 [data-surface-role='assistant-reading'] {
   --appearance-surface-fill: var(--surface-neutral);
@@ -137,8 +138,15 @@
 [data-appearance-part='artifact'] {
   --appearance-surface-fill: var(--surface-artifact);
 }
+/* The status note is a tint of the error container over what it sits on, so a
+   failed reply reads as a margin note rather than a slab (owner review,
+   2026-11-16). Error ink keeps 4.5:1 against it in every palette. */
 [data-surface-role='status'] {
-  --appearance-surface-fill: var(--error-container);
+  --appearance-surface-fill: color-mix(
+    in oklab,
+    var(--error-container) 45%,
+    transparent
+  );
 }
 
 .appearance-surface[data-material='flat'],
@@ -151,6 +159,51 @@
   --foreground: var(--appearance-ink);
   --muted-foreground: var(--appearance-ink-muted);
   color: var(--appearance-ink);
+}
+
+/* Let the established glass renderer paint the whole composer, and the side
+   panel's frost (styles.css glass-panel) paint the whole panel, so the Life
+   field shows through both. Interior paint hid the refraction and replaced the
+   renderer's stronger ink. Custom palettes retain their validated solid
+   reading planes; forced colors below still wins. */
+:where(
+    :root:not([data-palette='custom'])
+      :is([data-surface-role='composer'], [data-surface-role='navigation']):is(
+        [data-material='glass'],
+        [data-material='liquid']
+      )
+  )
+  .appearance-reading-plane {
+  background: transparent;
+  --ink: inherit;
+  --ink-muted: inherit;
+  --foreground: inherit;
+  --muted-foreground: inherit;
+  color: inherit;
+}
+
+/* The transcript shares the canvas paint. A separate solid reading rectangle
+   hides Expressive's sheet gradient; Calm already supplies a flat canvas.
+   Composer, navigation and floating surfaces keep their own reading planes. */
+.appearance-reading-plane[data-surface-role='assistant-reading'],
+[data-slot='aui_assistant-message-footer'].appearance-reading-plane {
+  background: transparent;
+}
+
+/* Custom palettes validate ink against their surfaces, not the built-in sheet
+   stops. Keep the whole shared canvas on that validated surface, including the
+   dark-mode vignette. CSS aliases follow palette edits and mode changes; the
+   scroll-responsive faint text uses the same validated secondary ink. */
+:root[data-palette='custom'] {
+  --surface-raised: var(--popover);
+  --surface-frame: var(--surface-sidebar);
+  --surface-rail: var(--surface-sidebar);
+  --sheet-from: var(--surface-neutral);
+  --sheet-to: var(--surface-neutral);
+  --sheet-shade: var(--surface-neutral);
+  --ink-faint: var(--ink-muted);
+  --ink-faint-top: var(--ink-muted);
+  --ink-faint-bottom: var(--ink-muted);
 }
 
 .appearance-surface.surface-paper {
@@ -182,12 +235,32 @@
 .appearance-surface[data-surface-role='user-message'] {
   border-color: var(--line-control);
 }
+/* The composer is focused nearly always (it takes focus on load and after
+   every send), so its focus edge is a quiet step up from rest rather than the
+   accent: the caret is the focus mark, and an accent ring that never goes
+   away reads as decoration. Glass and liquid keep their own edges (styles.css
+   --glass-edge-focus). Forced colors still draws Highlight below. */
 .appearance-surface[data-surface-role='composer']:focus-within {
-  border-color: var(--focus);
+  border-color: color-mix(in oklab, var(--line-control), var(--ink) 22%);
 }
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ) {
+  border-color: var(--glass-edge);
+}
+.appearance-surface[data-surface-role='composer']:is(
+    [data-material='glass'],
+    [data-material='liquid']
+  ):focus-within {
+  border-color: var(--glass-edge-focus);
+}
+/* The person's turn is a soft fill with no outline: the reply beside it is
+   the heavier of the two. The border stays, transparent, so the box keeps its
+   size and forced colors can still draw it. */
 .appearance-surface[data-surface-role='user-message'] {
   background: var(--surface-user-message);
-  border-color: var(--line-separator);
+  border-color: transparent;
   border-radius: var(--appearance-radius-message);
   font: var(--recipe-prose);
 }
@@ -299,6 +372,20 @@
 .appearance-composer-actions {
   margin-inline-start: auto;
   flex: 0 0 auto;
+}
+/* A narrow composer (project home, a split pane) keeps one toolbar row: the
+   Web and Plan chips drop to their marks (each keeps its aria-label and
+   tooltip) and the model name drops "(default)", instead of the row breaking
+   into two with the name cut off. The box is measured, not the toolbar,
+   because the sidecar layout lays the toolbar out with display: contents. */
+.appearance-composer-box {
+  container: composer-toolbar / inline-size;
+}
+@container composer-toolbar (inline-size < 34rem) {
+  .composer-chip-label,
+  .model-picker-default {
+    display: none;
+  }
 }
 .appearance-composer-toolbar :is(button, [role='button']) {
   font: var(--recipe-ui-label);
@@ -521,6 +608,8 @@
 @media (forced-colors: active) {
   .appearance-surface,
   .appearance-reading-plane,
+  .appearance-reading-plane[data-surface-role='assistant-reading'],
+  [data-slot='aui_assistant-message-footer'].appearance-reading-plane,
   [data-appearance-part='popover'] {
     background: Canvas;
     color: CanvasText;
@@ -542,25 +631,15 @@
   }
 }
 
-.appearance-select {
-  font: var(--recipe-ui-label);
-  letter-spacing: 0.01em;
-  max-inline-size: 100%;
-  min-block-size: var(--appearance-control-min);
-  border: 1px solid var(--line-control);
-  border-radius: var(--appearance-radius-field);
-  background: var(--surface-raised);
-  color: var(--ink);
-  padding-inline: 0.5rem;
-}
-.appearance-select:focus-visible,
 .appearance-import :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 .appearance-composer-toolbar [data-slot='combobox-trigger'] {
   min-inline-size: var(--appearance-control-min);
-  max-inline-size: min(12rem, 100%);
+  /* Room for a default model's name and its "(default)" note; it still
+     shrinks first when the composer is narrow. */
+  max-inline-size: min(15rem, 100%);
 }
 .appearance-composer-toolbar > :is(div) {
   max-inline-size: 100%;
@@ -573,11 +652,17 @@
 }
 
 /* Non-composer roles have opaque paint. Texture, frost and liquid accents
-   affect their perimeter without putting text over a changing backdrop. */
-.appearance-surface:is(
-  [data-surface-role='navigation'],
-  [data-surface-role='user-message']
-),
+   affect their perimeter without putting text over a changing backdrop. The
+   side panel is the exception: as glass it is the sheet frosted over the Life
+   field (styles.css glass-panel draws its veil), unless a custom palette asks
+   for its validated solid fill. */
+.appearance-surface[data-surface-role='user-message'],
+.appearance-surface[data-surface-role='navigation']:not(
+    [data-material='glass'],
+    [data-material='liquid']
+  ),
+:root[data-palette='custom']
+  .appearance-surface[data-surface-role='navigation'],
 [data-appearance-part='popover'],
 [data-appearance-part='tooltip'],
 [data-appearance-part='artifact'],
@@ -591,10 +676,7 @@
   position: relative;
   z-index: 1;
 }
-.appearance-surface:is(
-    [data-surface-role='navigation'],
-    [data-surface-role='user-message']
-  )[data-material='paper'],
+.appearance-surface[data-surface-role='navigation'][data-material='paper'],
 :root[data-material-popover='paper']
   :is([data-appearance-part='popover'], [data-appearance-part='tooltip']),
 :root[data-material-artifact='paper'] [data-appearance-part='artifact'],
@@ -648,18 +730,6 @@
 :root[data-material-canvas='liquid'] .bg-sheet {
   box-shadow: var(--liquid-elevation);
 }
-:root[data-material-assistant-reading='paper'] .appearance-assistant-prose {
-  box-shadow: inset 0 -1px var(--line-separator);
-}
-:root[data-material-assistant-reading='glass'] .appearance-assistant-prose {
-  box-shadow: inset 0 -1px var(--glass-shade);
-  backdrop-filter: blur(var(--glass-blur));
-}
-:root[data-material-assistant-reading='liquid'] .appearance-assistant-prose {
-  box-shadow:
-    inset 0 -1px var(--glass-rim),
-    var(--liquid-elevation);
-}
 
 .appearance-composer-tools :is(button, [role='button']) {
   gap: var(--appearance-gap-within);
@@ -675,11 +745,70 @@
 .aui-composer-send-icon .icon-mask {
   background-color: currentColor;
 }
+/* Send has no tile: the plane is filled with the accent the tile used to be,
+   under the ink outline, so it reads in light and dark alike. Masks only:
+   without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-send:is(:hover, :focus-visible)
+    .aui-composer-send-icon
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-send:active .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
+/* The stop mark on a filled action (Cancel, Stop generating) and the
+   microphone-off of a running dictation are drawn in their button's own
+   colour: the ring and the square on the destructive fill, and the mark in
+   the recording red, and the resume arrows on theirs. Their fills are a
+   faint wash of it. */
+/* Masks only: without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > .icon-mask {
+    background-color: color-mix(in oklab, currentColor 22%, transparent);
+  }
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > [data-layer='line'],
+  .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
+    background-color: currentColor;
+  }
+  /* Resume has no tile either: its arrows take the accent, like Send. Refresh
+     is a soft mark, so its arrows are drawn as the paper layer. */
+  .aui-composer-resume-icon.rail-mark > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-resume:is(:hover, :focus-visible)
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-resume:active
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
 /* Keep paired action paints synchronized, including inherited SVG colors. */
 .appearance-composer-toolbar
   :is(.aui-composer-send, .appearance-destructive-action),
 .appearance-composer-toolbar
-  :is(.aui-composer-send, .appearance-destructive-action) * {
+  :is(.aui-composer-send, .appearance-destructive-action)
+  * {
   transition-property: transform, scale, rotate, translate, box-shadow;
 }
 .appearance-composer-toolbar .appearance-destructive-action {
@@ -734,7 +863,9 @@
   overflow-wrap: anywhere;
 }
 
-@container (max-width: 28rem) {
+/* Only a phone-width toolbar gives the tools a row of their own; from 25rem
+   the chips' marks, the settings and the send fit on one row. */
+@container (max-width: 25rem) {
   .appearance-composer-toolbar {
     align-items: flex-end;
   }

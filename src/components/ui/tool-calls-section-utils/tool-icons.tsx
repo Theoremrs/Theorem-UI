@@ -33,7 +33,9 @@ export interface IconProps {
 	color?: string;
 }
 
-// Category-specific icons with colors
+// Category-specific icons. Theorem: every category mark is muted ink, like
+// the app's other icons at rest (owner review, 2026-11-15); only an
+// integration's own logo keeps its colours.
 export interface IconConfig {
 	// Theorem: a component draws one of the app's own painted marks.
 	icon: IconSvgElement | string | ComponentType<{ style?: CSSProperties }>;
@@ -141,40 +143,40 @@ const iconConfigs: Record<string, IconConfig> = {
 	// Category icons (use HugeIcons components)
 	todos: {
 		icon: CheckListIcon,
-		iconColor: "text-emerald-400",
+		iconColor: "text-ink-muted",
 	},
 	reminders: {
 		icon: AlarmClockIcon,
-		iconColor: "text-blue-400",
+		iconColor: "text-ink-muted",
 	},
 	documents: {
 		icon: File02Icon,
-		iconColor: "text-orange-400",
+		iconColor: "text-ink-muted",
 	},
 	development: {
 		icon: SourceCodeCircleIcon,
-		iconColor: "text-cyan-400",
+		iconColor: "text-ink-muted",
 	},
 	memory: {
 		// Theorem: the owner's Streamline mark for memory, not Brain02Icon.
 		icon: Icon.Memory,
-		iconColor: "text-indigo-400",
+		iconColor: "text-ink-muted",
 	},
 	creative: {
 		icon: Image02Icon,
-		iconColor: "text-pink-400",
+		iconColor: "text-ink-muted",
 	},
 	goal_tracking: {
 		icon: Target02Icon,
-		iconColor: "text-emerald-400",
+		iconColor: "text-ink-muted",
 	},
 	notifications: {
 		icon: Notification03Icon,
-		iconColor: "text-yellow-400",
+		iconColor: "text-ink-muted",
 	},
 	support: {
 		icon: InformationCircleIcon,
-		iconColor: "text-blue-400",
+		iconColor: "text-ink-muted",
 	},
 	general: {
 		icon: InformationCircleIcon,
@@ -188,29 +190,29 @@ const iconConfigs: Record<string, IconConfig> = {
 	// Theorem's own host functions that no category above covers
 	history: {
 		icon: BubbleChatIcon,
-		iconColor: "text-sky-400",
+		iconColor: "text-ink-muted",
 	},
 	web: {
 		icon: Globe02Icon,
-		iconColor: "text-teal-400",
+		iconColor: "text-ink-muted",
 	},
 	kit: {
 		icon: SparklesIcon,
-		iconColor: "text-orange-400",
+		iconColor: "text-ink-muted",
 	},
 
 	// Agent tool call categories
 	handoff: {
 		icon: SquareArrowUpRight02Icon,
-		iconColor: "text-sky-400",
+		iconColor: "text-ink-muted",
 	},
 	retrieve_tools: {
 		icon: PackageOpenIcon,
-		iconColor: "text-indigo-400",
+		iconColor: "text-ink-muted",
 	},
 	executor: {
 		icon: ComputerProgramming01Icon,
-		iconColor: "text-teal-400",
+		iconColor: "text-ink-muted",
 	},
 	unknown: {
 		icon: ToolsIcon,

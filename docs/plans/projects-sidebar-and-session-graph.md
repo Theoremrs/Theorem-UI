@@ -221,13 +221,55 @@ chat header and the sessions panel when that session was.
   opened at. The sessions are read fresh each time. Saved views are listed in
   the Canvas sidebar under "Session graphs", with Rename and Delete in the
   view's menu.
-- **Layout:** `src/lib/theorem/session-graph-layout.ts`, ELK layered, from
-  the fork, continuation, made and called edges, so each runs one column out.
+  - A save sends the revision this canvas's edits build on: the one the view
+    was opened at, or the one its last save here returned. A reload that
+    brings a revision saved elsewhere does not change it, so saving over
+    that revision is refused rather than overwriting it.
+  - Each edit counts, and the view reads unsaved while an edit is newer than
+    the last save, including an edit made while that save was on its way.
+- **Refresh:** the graph is read again every 15 seconds, and every 4 while a
+  session is running, so runs, outputs and messages that land on the server
+  appear. Layout stability below keeps a refresh from moving anything.
+- **Layout:** ELK layered, from the fork, continuation, made and called
+  edges, so each runs one column out. The ELK call and `arrange` are
+  `src/lib/graph-layout.ts`, shared with plans and programs (Shared layout,
+  below); the session graph's policy, its layout shape and re-rooting are
+  `src/lib/theorem/session-graph-layout.ts`.
   Messages are drawn over the layout as arcs (a floating edge between the two
   cards) and never pull a fork out of its column. A new view runs left to
   right unless running down fits its panel at least 15% larger; the choice is
   kept, and saved with the view, so showing or hiding a facet does not turn
   it. The projection's node order is kept, so a refresh does not reshuffle it.
+- **Layout stability:** a person keeps their mental map of the graph only if
+  what is on screen stays put, so `arrange` in `src/lib/graph-layout.ts`
+  decides which nodes ELK may move, and ELK only proposes places.
+  - ELK runs only when the layout's shape changes: the nodes, their sizes, the
+    laid-out edges and each tree's main. A refetch that changes a status, a
+    time or a message count gives the same shape and lays nothing out.
+  - Nodes already drawn keep their places. A new node goes beside a parent or
+    child already on screen, as far from it as ELK put it; a group with
+    nothing on screen to hang from goes after everything.
+  - Dragged nodes never move, and anything placed later is moved clear of
+    them along the cross axis.
+  - Every node's last place is remembered, including nodes hidden since, so
+    hiding and showing a facet moves nothing, and neither does switching to
+    the list and back.
+  - Make main chat re-forms only that tree, around the corner it occupied,
+    and other trees stay.
+  - "Lay the graph out again" (the canvas controls) lays everything out
+    fresh, and the dragged nodes join the layout again, which marks a saved
+    view unsaved.
+  - A re-formed tree glides to its new places on `springs.shift` from
+    `lib/motion`: anime.js, 220ms (DESIGN.md's structural band), critically
+    damped (stiffness 815.7, damping 57.1, mass 1), so it is about 99% of the
+    way there at 220ms and never overshoots. A glide that is interrupted turns
+    from where each node is drawn. Under reduced motion the new places are
+    shown at once.
+- **Edges:** forks, continuations and outputs are drawn on the tracks ELK's
+  orthogonal router gave them, with 8px corners, while both ends are where
+  they were laid out. An edge whose end has been dragged, or is part way
+  through a glide, is a step path between its handles until the graph is
+  laid out again. Message arcs are not routed.
 - **View:** `src/components/sessions/session-graph-canvas.tsx`, React Flow 12.
   - Nodes can be dragged; a moved node marks the view unsaved. Nothing can be
     connected, and Delete does nothing.
@@ -249,6 +291,7 @@ chat header and the sessions panel when that session was.
 | Pins | Per browser, in zustand persist | Theorem has no per-user pin route yet. The UI says pins are kept in this browser. |
 | Unserved facets | Present in Show, labelled with Theorem's reason | A facet that draws something made up would break VIEW-03. |
 | Lone sessions in a project graph | Counted, not drawn | A graph is of relations; a project of mostly unforked sessions would otherwise be a grid of unconnected cards. |
+| Session graph algorithm | ELK layered, not mrtree | Compared on the story fixture (Shared layout, below): mrtree has no orthogonal router, so its edges are diagonals that do not match the canvas's step edges; running down, it spaces rows 72px apart rather than 108px and reports a size 18px short of its tallest node; and it fits a phone worse (0.34 against 0.39). Its edges are shorter. Neither crosses an edge or overlaps a node. |
 
 ## Not in this change
 
@@ -262,3 +305,68 @@ fabricated here:
 - Per-user pins (§5.2): NAV-06 holds today only within one browser.
 - Project documents, repositories, links and connections (§8.2).
 - Graph editing, organization presets and governance (slices D and E).
+
+Not in the shared layout below:
+
+- Program wires are not drawn on ELK's routes. ELK lays programs out node to
+  node, while their wires run port to port and keep the person's waypoints;
+  routing them would need ELK ports placed where the handles are drawn.
+- The program canvas was not run in a browser for this change: no story
+  mounts it, and it opens only against a backend with a saved program. Its
+  placement is tested at `layoutProgram` and `ghostPlaces`.
+
+## Shared layout
+
+`src/lib/graph-layout.ts` is the one layout module for the node graphs drawn
+on React Flow. Each graph keeps its policy beside its own data:
+
+| Graph | Policy | Placement |
+| --- | --- | --- |
+| Session graph (`lib/theorem/session-graph-layout.ts`, `sessionLayout`) | layered, running across or down, padding 16, 20 between nodes, 56 between layers, model order kept | `arrange`: what is on screen stays (Layout stability, above) |
+| Plans (`lib/theorem/plans.ts`, `planLayout`) | layered, across or down by fit, padding 8, 24 between nodes, 64 between layers, edge spacing for its own tracks, model order kept | ELK's places, except tasks a person dragged |
+| Programs (`lib/program/flow.ts`, `PROGRAM_LAYOUT`) | layered, left to right, 48 between nodes, 96 between layers; groups as compound nodes with 48/24/24/24 insets for "Lay the program out again" | saved places stay; `arrange` places the rest |
+
+- **`layout(graph, policy)`** runs ELK and returns positions, group boxes,
+  routes and size. Routes are in the graph's own coordinates
+  (`json.edgeCoords: ROOT`), including edges inside a group, whose members are
+  positioned relative to it.
+- **`arrange`** is the session graph's placement rules, unchanged and now
+  shared.
+- **`heldRoutes`** keeps a route for each edge whose two ends moved together
+  from ELK's places, moved with them. **`routeHolds`** tells an edge view
+  whether its ends are still where it was routed, and **`routePath`** draws
+  it with rounded corners. Plans and the session graph both draw edges this
+  way.
+- **Program canvas:** a node with no saved place (one an agent added to the
+  definition, say) went to where a fresh layout of the whole program put it,
+  which could be on top of a saved node. It now goes beside a saved node it
+  is wired to, as far from it as ELK put it, and is moved down until it is
+  clear of every node, group and note. A node wired to nothing saved goes
+  below everything. A saved place inside a group is relative to the group, so
+  it is turned into a canvas place for the check and back after.
+- **Proposal ghosts** still go below everything on the canvas, now counting
+  groups and notes: a grouped node's place is relative to its group and had
+  been read as if it were the canvas's.
+- Behaviour is otherwise unchanged. Before the change, the old code and the
+  new were run side by side on the fixtures and gave identical results:
+  - session graph: positions, routes, size and `arrange`'s places, across and
+    down;
+  - plans: both plan fixtures, across and down;
+  - programs: a fresh layout, a fully saved one, and "Lay the program out
+    again" with no groups and with groups, one of them empty.
+
+mrtree against layered, on the session-graph story fixture (9 nodes, 8 laid
+out edges; the fixture's project graph is the same tree). Fit is the zoom at
+which the graph fits a panel, with the canvas's header and margins.
+
+| Layout | Size | Fit, 1180×860 | Fit, 390×700 | Crossings | Edges through nodes | Overlaps | Bends | Edge length | Main first |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| layered, across | 1096×241 | 1.00 | 0.30 | 0 | 0 | 0 | 8 | 778 | yes |
+| layered, down | 829×476 | 1.00 | 0.39 | 0 | 0 | 0 | 8 | 1409 | yes |
+| mrtree, across | 1004×305 | 1.00 | 0.32 | 0 | 0 | 0 | 9 | 390 | yes |
+| mrtree, down | 964×334 | 1.00 | 0.34 | 0 | 0 | 0 | 14 | 960 | yes |
+
+`evidence/projects-sidebar-graph/mrtree-vs-layered.png` draws the four
+layouts as ELK returned them (boxes and routes only). Running down, mrtree's
+rows sit 72px apart (layered's 108px), and its reported height (334) stops
+18px short of the Tools card's bottom (352).

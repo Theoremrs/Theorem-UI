@@ -109,7 +109,10 @@ export type ThreadComponents = {
   ReasoningGroup?:
     ComponentType<PropsWithChildren<{ group: ThreadGroupPart }>> | undefined
   TaskGroup?: ComponentType<{ group: ThreadGroupPart }> | undefined
-  MessageMetadata?: ComponentType<{ speaker?: string | undefined; work?: ReactNode }>
+  MessageMetadata?: ComponentType<{
+    speaker?: string | undefined
+    work?: ReactNode
+  }>
   MessageActions?: ComponentType
 }
 
@@ -270,9 +273,7 @@ const ThreadRoot: FC<{
   }, [isEmpty])
 
   return (
-    <ThreadPrimitive.Root
-      className="aui-root aui-thread-root @container flex h-full min-w-0 flex-col"
-    >
+    <ThreadPrimitive.Root className="aui-root aui-thread-root @container flex h-full min-w-0 flex-col">
       <ThreadPrimitive.Viewport
         ref={viewport}
         turnAnchor="top"
@@ -320,13 +321,17 @@ const ThreadRoot: FC<{
                 {
                   flat: 'appearance-flat-footer',
                   paper: 'bg-sheet rounded-t-(--composer-radius) bg-bottom',
-                  glass: 'glass-footer',
+                  glass: 'liquid-footer',
                   liquid: 'liquid-footer',
                 }[surface],
             )}
           >
             <ThreadScrollToBottom />
-            <Composer autoFocus={autoFocus} layout={composerLayout} slots={composerSlots} />
+            <Composer
+              autoFocus={autoFocus}
+              layout={composerLayout}
+              slots={composerSlots}
+            />
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
@@ -342,17 +347,30 @@ function useAppearanceScrollAnchor(ref: { current: HTMLDivElement | null }) {
       const viewport = ref.current
       if (!viewport || !viewport.clientHeight) return
       const edge = viewport.getBoundingClientRect().top
-      const message = Array.from(viewport.querySelectorAll<HTMLElement>('[data-role="assistant"], [data-role="user"]'))
-        .find((item) => item.getBoundingClientRect().bottom > edge)
+      const message = Array.from(
+        viewport.querySelectorAll<HTMLElement>(
+          '[data-role="assistant"], [data-role="user"]',
+        ),
+      ).find((item) => item.getBoundingClientRect().bottom > edge)
       if (!message) return
-      const anchor = Array.from(message.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6'))
-        .find((block) => block.getClientRects().length > 0 && block.getBoundingClientRect().bottom > edge) ?? message
+      const anchor =
+        Array.from(
+          message.querySelectorAll<HTMLElement>('p, h1, h2, h3, h4, h5, h6'),
+        ).find(
+          (block) =>
+            block.getClientRects().length > 0 &&
+            block.getBoundingClientRect().bottom > edge,
+        ) ?? message
       const offset = anchor.getBoundingClientRect().top - edge
       const current = ++revision
       const correct = () => {
         if (current !== revision || !anchor.isConnected) return
-        const delta = anchor.getBoundingClientRect().top - viewport.getBoundingClientRect().top - offset
-        if (Math.abs(delta) > 0.5) viewport.scrollBy({ top: delta, behavior: 'instant' })
+        const delta =
+          anchor.getBoundingClientRect().top -
+          viewport.getBoundingClientRect().top -
+          offset
+        if (Math.abs(delta) > 0.5)
+          viewport.scrollBy({ top: delta, behavior: 'instant' })
       }
       cancelAnimationFrame(frame)
       frame = requestAnimationFrame(() => {
@@ -591,9 +609,15 @@ const MessageError: FC = () => {
     )
   })
   if (hasErrorPart) return null
+  // A note in the reply's margin, not a filled slab: the header already says
+  // the reply did not finish, so the reason only needs to be legible.
   return (
     <MessagePrimitive.Error>
-      <ErrorPrimitive.Root data-surface-role="status" {...appearancePair('error', 'status')} className="aui-message-error-root bg-error-container text-error-ink mt-2 rounded-lg px-4 py-3 text-sm">
+      <ErrorPrimitive.Root
+        data-surface-role="status"
+        {...appearancePair('error', 'status')}
+        className="aui-message-error-root text-error-ink border-error-ink/35 mt-2 border-l-2 py-0.5 pl-3 text-sm"
+      >
         <ErrorPrimitive.Message className="aui-message-error-message break-words" />
       </ErrorPrimitive.Root>
     </MessagePrimitive.Error>
@@ -699,9 +723,10 @@ const MessageParts: FC<{ work?: boolean }> = ({ work = false }) => {
 export const AssistantMessageContent: FC<{ speaker?: string }> = ({
   speaker,
 }) => {
-  const { TaskGroup, MessageMetadata = Activity } = useContext(ThreadComponentsContext)
+  const { TaskGroup, MessageMetadata = Activity } = useContext(
+    ThreadComponentsContext,
+  )
   const messageId = useAuiState((state) => state.message.id)
-  const material = useSurfaceMaterial('assistant-reading')
   const groupBy = TaskGroup ? taskAwareGroupBy : messageGroupBy
   const parts = useAuiState((s) => s.message.parts)
   const toolUIs = useAuiState((s) => s.tools.toolUIs)
@@ -713,7 +738,6 @@ export const AssistantMessageContent: FC<{ speaker?: string }> = ({
   return (
     <div
       data-surface-role="assistant-reading"
-      data-surface-material={material}
       className="appearance-reading-plane"
     >
       <MessageMetadata
@@ -759,7 +783,9 @@ function useKitSurface() {
 
 const AssistantMessage: FC = () => {
   const live = useArrivedLive()
-  const { MessageActions = AssistantActionBar } = useContext(ThreadComponentsContext)
+  const { MessageActions = AssistantActionBar } = useContext(
+    ThreadComponentsContext,
+  )
   const surface = useKitSurface()
   const ACTION_BAR_PT = 'pt-1.5'
   // Keep the action bar inside the contained root's paint box, then cancel its reserved space in flow.
@@ -776,13 +802,21 @@ const AssistantMessage: FC = () => {
         'data-live:animate-in data-live:fade-in data-live:slide-in-from-bottom-3 data-live:ease-settle data-live:duration-(--duration-settle) relative -mb-7.5 pb-7.5',
       )}
     >
-      <div data-appearance-part="avatar-gutter" className="appearance-avatar-gutter"><FaceSlot /></div>
+      <div
+        data-appearance-part="avatar-gutter"
+        className="appearance-avatar-gutter"
+      >
+        <FaceSlot />
+      </div>
       <div className="appearance-message-prose min-w-0">
         <AssistantMessageContent speaker="Theorem" />
 
         <div
           data-slot="aui_assistant-message-footer"
-          className={cn('appearance-reading-plane flex items-center', ACTION_BAR_HEIGHT)}
+          className={cn(
+            'appearance-reading-plane flex items-center',
+            ACTION_BAR_HEIGHT,
+          )}
         >
           <BranchPicker />
           <MessageActions />
@@ -929,7 +963,9 @@ const UserMessage: FC = () => {
 
   return (
     // The person speaks from the right of the column, across from the agent,
-    // on the composer's paper the message rose from.
+    // on the composer's paper the message rose from: a soft fill with no
+    // outline or drop shadow, as Claude's own turns sit, so the reply is the
+    // heavier of the two.
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
       {...surface}
@@ -948,7 +984,11 @@ const UserMessage: FC = () => {
           data-surface-role="user-message"
           data-material={material}
           {...appearancePair('primary', 'user-message')}
-          className={cn('appearance-surface aui-user-message-content text-ink min-w-0 border border-separator px-3 py-2 whitespace-pre-wrap wrap-break-word empty:hidden', composerSurface(material))}
+          className={cn(
+            'appearance-surface aui-user-message-content text-ink min-w-0 border px-3.5 py-2 whitespace-pre-wrap wrap-break-word empty:hidden',
+            composerSurface(material),
+            'border-transparent',
+          )}
         >
           <MessagePrimitive.Parts
             components={{
@@ -1009,7 +1049,7 @@ const UserActionBar: FC = () => {
 const EditComposer: FC = () => {
   const surface = useComposerSurface()
   const rootRef = useRef<HTMLFormElement>(null)
-  useLiquidGlass(rootRef, surface === 'liquid')
+  useLiquidGlass(rootRef, surface === 'liquid' || surface === 'glass')
   return (
     // No content-visibility here, unlike the message rows: its paint
     // containment would clip the composer's shadow and glow, and only the
@@ -1032,7 +1072,7 @@ const EditComposer: FC = () => {
             data-material={surface}
             className={cn(
               'appearance-surface aui-edit-composer-root flex w-full cursor-text flex-col rounded-(--composer-radius) border transition-[border-color] duration-100',
-              composerSurface(surface),
+              composerSurface(surface === 'glass' ? 'liquid' : surface),
             )}
           >
             <ComposerToolTrigger />

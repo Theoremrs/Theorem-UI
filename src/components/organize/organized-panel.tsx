@@ -316,7 +316,6 @@ function ProjectNode({
     data: { projectId: project.projectId } satisfies DropTarget,
   })
   const accepting = isOver && takes(active, project.projectId)
-  const sessions = `${threads.length} ${threads.length === 1 ? 'session' : 'sessions'}`
   return (
     <Collapsible
       open={open}
@@ -342,7 +341,6 @@ function ProjectNode({
               data-appearance-recipe="ui.label"
               data-organize-row={current ? 'primary' : undefined}
               aria-current={current ? 'page' : undefined}
-              title={`${project.state?.text ?? project.title}\n${sessions}`}
               className="relative z-[1] ps-8 pe-8 hover:bg-hover"
               render={
                 <Link
@@ -426,11 +424,11 @@ function ProjectNode({
         open={editingState}
         onOpenChange={setEditingState}
       />
-      {/* The project's new thread sits where a count would: the count is in the row's tooltip. */}
+      {/* The project's new thread sits where a count would: the count is in the row's tooltip. It shows under the pointer or keyboard, as Linear's and Claude's row actions do, so a list of projects is not a column of repeated buttons. */}
       <SidebarMenuAction
         aria-label={`New thread in ${project.title}`}
         title={`New thread in ${project.title}`}
-        className="top-0.5 text-ink-muted hover:bg-selected hover:text-ink"
+        className="top-0.5 text-ink-muted transition-opacity hover:bg-selected hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:opacity-0 pointer-coarse:opacity-100"
         onClick={() => onNewThread(project.projectId)}
       >
         <Icon.NewChat className="size-3.5" />
@@ -541,6 +539,15 @@ function PinnedGroup({
 }) {
   const pins = useSidebarPrefs((s) => s.pins)
   const [open, setOpen] = useSectionOpen('pinned', true)
+  // Shown once something is pinned, as Linear shows Favorites: an empty
+  // heading and a standing hint cost a sidebar row on every visit, and Pin is
+  // in every row's menu.
+  const shown = pins.some((pin) =>
+    pin.kind === 'project'
+      ? projects.some((p) => p.projectId === pin.id)
+      : byId.has(pin.id),
+  )
+  if (!shown) return null
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <SidebarGroup className={GROUP}>
@@ -587,12 +594,6 @@ function PinnedGroup({
                 )
               )
             })}
-            {pins.length === 0 && (
-              <li className="px-2 py-1 text-xs text-ink-muted">
-                Pin a session or project from its menu. Pins are kept in this
-                browser.
-              </li>
-            )}
           </SidebarMenuSub>
         </CollapsiblePanel>
       </SidebarGroup>

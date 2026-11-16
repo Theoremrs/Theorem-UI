@@ -1,14 +1,14 @@
 // Observe the real Milkdown DOM, browser composition events, settings form and
 // persisted document. Store actions are the existing commands, not a test runtime.
-import { chromium, firefox, webkit } from 'playwright-core'
+import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 
 const engine = process.env.ORACLE_BROWSER ?? 'chromium'
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
-const output = resolve('docs/plans/composable-appearance/evidence/review')
-const browser = await { chromium, firefox, webkit }[engine].launch()
+const output = reviewOutput
+const browser = await launchReviewBrowser(engine)
 const context = await browser.newContext({
   viewport: { width: 1440, height: 900 },
   reducedMotion: 'reduce',
@@ -172,16 +172,14 @@ try {
       },
     )
   }
-  // Exercise data portability through the visible form, then inspect persisted
-  // values and the freshly loaded renderer rather than calling its schema.
-  await page
-    .getByRole('button', { name: 'Appearance', exact: true })
-    .filter({ visible: true })
-    .first()
-    .click()
-  const dialog = page.getByRole('dialog', { name: 'Appearance settings' })
-  await dialog.getByText('Custom appearance', { exact: true }).click()
-  const field = dialog.getByRole('textbox', { name: 'Custom appearance JSON' })
+  // Continuity is established above. Portability belongs to the product's
+  // dedicated settings route, not the development-only mounted-form harness.
+  await page.goto(`${base}/settings/appearance`)
+  const settings = page
+  await settings.getByText('Custom appearance', { exact: true }).click()
+  const field = settings.getByRole('textbox', {
+    name: 'Custom appearance JSON',
+  })
   const data = {
     version: 1,
     preset: 'calm',
@@ -197,10 +195,10 @@ try {
     },
   }
   await field.fill(JSON.stringify(data))
-  await dialog
+  await settings
     .getByRole('button', { name: 'Apply custom appearance', exact: true })
     .click()
-  await dialog
+  await settings
     .getByText('Appearance settings applied.', { exact: true })
     .waitFor()
   const exported = JSON.parse(await field.inputValue())
@@ -210,7 +208,9 @@ try {
     { input: data, exported },
   )
   await page.reload()
-  await page.locator('[data-story-ready]').waitFor({ state: 'attached' })
+  await settings
+    .getByRole('textbox', { name: 'Text size', exact: true })
+    .waitFor()
   await attach()
   const persisted = await page.evaluate(() => ({
     appearance: JSON.parse(localStorage.getItem('theorem-ui:appearance')),
@@ -229,12 +229,7 @@ try {
       persisted.life.state.shown === false,
     persisted,
   )
-  await page
-    .getByRole('button', { name: 'Appearance', exact: true })
-    .filter({ visible: true })
-    .first()
-    .click()
-  await dialog
+  await settings
     .getByRole('button', { name: 'Reset appearance', exact: true })
     .click()
   const reset = await page.evaluate(() =>
@@ -287,6 +282,15 @@ try {
   await legacyContext.close()
   check('No runtime errors', errors.length === 0, errors)
 } catch (error) {
+  console.error(error.stack, ...errors)
+  await mkdir(output, { recursive: true })
+  await page.screenshot({
+    path: resolve(output, `${engine}-continuity-failure.png`),
+  })
+  await writeFile(
+    resolve(output, `${engine}-continuity-failure.txt`),
+    await page.locator('body').innerText(),
+  )
   check('Continuity runner completed', false, String(error.stack))
 } finally {
   await mkdir(output, { recursive: true })

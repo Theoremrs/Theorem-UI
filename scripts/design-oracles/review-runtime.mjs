@@ -1,18 +1,19 @@
+import { applyOverrides } from './browser-controls.mjs'
 // Real browser, shell, editor, attachment adapter, Theorem runtime and SDK.
 // Only selected responses of the existing story transport are controlled.
 import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { chromium } from 'playwright-core'
+import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
 
 const origin = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
 const out =
   process.env.ORACLE_RUNTIME_OUT ??
-  'docs/plans/composable-appearance/evidence/review/runtime.json'
+  `${reviewOutput}/runtime.json`
 const codeFamily =
   process.env.ORACLE_RUNTIME_CODE_FAMILY ??
   (process.platform === 'darwin' ? 'Menlo' : 'JetBrains Mono Variable')
 await mkdir(dirname(out), { recursive: true })
-const browser = await chromium.launch()
+const browser = await launchReviewBrowser()
 const page = await browser.newPage({
   viewport: { width: 1440, height: 900 },
   reducedMotion: 'reduce',
@@ -358,7 +359,8 @@ try {
     'F08 long translated running row retains name and disclosure without widening its panel',
     row.name.includes(translatedTitle) &&
       row.name.includes('running') &&
-      row.title === translatedTitle &&
+      // The full name lives in the accessible name; rows carry no hover tooltip.
+      row.title === '' &&
       row.scrollWidth <= row.clientWidth + 1,
     row,
   )
@@ -396,14 +398,21 @@ try {
   const before = await assertDomIdentity()
   const dialog = page.getByRole('dialog', { name: 'Appearance settings' })
   await control('Appearance').click()
-  await dialog
-    .getByRole('combobox', { name: 'Composer material' })
-    .selectOption('glass')
-  await dialog
-    .getByRole('button', { name: 'Tools above editor', exact: true })
-    .click()
+  await applyOverrides(page, dialog, {
+    materials: { composer: 'glass' },
+    layout: 'sidecar',
+  })
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  // The dialog returns focus to its trigger as it closes; refocus after that.
+  await dialog.waitFor({ state: 'hidden' })
   await input.focus()
+  // ProseMirror puts its selection back on a short timer after focus. Give it
+  // that time; a selection the change really lost still fails below.
+  await page
+    .waitForFunction(() => Boolean(window.getSelection()?.toString()), null, {
+      timeout: 2000,
+    })
+    .catch(() => {})
   const after = await assertDomIdentity()
   const sameTile = await tile.evaluate(
     (element) => element === window.__appearanceAttachment,

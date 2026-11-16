@@ -1,9 +1,22 @@
-// SOURCING: next-themes (light/dark), lib/palette (colours), lib/surfaces (what the composer is made of), lib/life/store (the field behind the chat), lib/figures (Kit and Theo), components/face/face-feel (how Theo moves), coss ui SegmentedControl, the settings frame
+// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), lib/figures (Kit and Theo), coss ui SegmentedControl, the settings frame
 import { createFileRoute } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard'
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/coss/select'
+import {
+  NumberField,
+  NumberFieldGroup,
+  NumberFieldInput,
+} from '@/components/coss/number-field'
+import { Textarea } from '@/components/coss/textarea'
 import {
   SegmentedControl,
   SegmentedControlItem,
@@ -15,20 +28,15 @@ import {
   SettingsRow,
   SettingsSection,
 } from '@/components/settings/settings-frame'
-import { FaceFeel } from '@/components/face/face-feel'
 import { FaceMark } from '@/components/face/face-mark'
 import { VISORS, useFigures } from '@/lib/figures'
 import { useLifeControls, useLifeShown } from '@/lib/life/store'
-import {
-  PALETTES,
-  SURFACE_ROLES,
-  CALM_COLORS,
-  COLOR_ROLES,
-} from '@/lib/appearance-policy'
+import { PALETTES, CALM_COLORS, COLOR_ROLES } from '@/lib/appearance-policy'
 import {
   APPEARANCE_VERSION,
   appearanceDocumentSchema,
   appearanceOverridesSchema,
+  customCssSchema,
   customFontInputSchema,
   useAppearance,
 } from '@/lib/appearance'
@@ -39,7 +47,6 @@ import type {
   AppearanceInput,
 } from '@/lib/appearance'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
-import { COMPOSER_SURFACES } from '@/lib/surfaces'
 
 export const Route = createFileRoute('/settings/appearance')({
   component: AppearanceSettings,
@@ -115,7 +122,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Sun}
             title="Theme"
             description="Light, dark, or whatever the system uses."
           >
@@ -131,58 +137,86 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Layout}
             title="Colors"
             description="The palette for both display modes."
           >
-            <select
-              aria-label="Colors"
-              className="appearance-select"
+            <Select
+              items={[
+                ...PALETTES,
+                ...(appearance.customPalette
+                  ? [{ value: 'custom', label: appearance.customPalette.name }]
+                  : []),
+              ]}
               value={appearance.palette}
-              onChange={(event) => {
-                const value = event.currentTarget.value
+              onValueChange={(value) => {
                 const palette = PALETTES.find((item) => item.value === value)
                 if (palette) setOverrides({ palette: palette.value })
                 else if (value === 'custom' && appearance.customPalette)
                   setOverrides({ palette: 'custom' })
               }}
             >
-              {PALETTES.map(({ value, label }) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-              {appearance.customPalette && (
-                <option value="custom">{appearance.customPalette.name}</option>
-              )}
-            </select>
+              <SelectTrigger
+                aria-label="Colors"
+                data-appearance-recipe="ui.label"
+                className="w-48 max-w-full min-h-[max(2.25rem,var(--appearance-control-min))]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                {PALETTES.map(({ value, label }) => (
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    data-appearance-recipe="ui.label"
+                  >
+                    {label}
+                  </SelectItem>
+                ))}
+                {appearance.customPalette && (
+                  <SelectItem value="custom" data-appearance-recipe="ui.label">
+                    {appearance.customPalette.name}
+                  </SelectItem>
+                )}
+              </SelectPopup>
+            </Select>
           </SettingsRow>
           <SettingsRow
-            title="Content size"
+            title="Text size"
             description="Conversation, headings, and the message editor."
           >
-            <ScaleControl
-              label="Content size"
+            <TextSizeControl
+              label="Text size"
               value={appearance.scales.content}
               onChange={(content) => setOverrides({ scales: { content } })}
             />
           </SettingsRow>
           <SettingsRow title="Density" description="Spacing and control sizes.">
-            <select
-              aria-label="Density"
-              className="appearance-select"
+            <Select
+              items={DENSITY_OPTIONS}
               value={appearance.density}
-              onChange={(event) =>
-                setOverrides({
-                  density: event.currentTarget
-                    .value as AppearanceOverrides['density'],
-                })
-              }
+              onValueChange={(density) => {
+                if (density) setOverrides({ density })
+              }}
             >
-              <option value="compact">Compact</option>
-              <option value="comfortable">Comfortable</option>
-              <option value="touch">Touch</option>
-            </select>
+              <SelectTrigger
+                aria-label="Density"
+                data-appearance-recipe="ui.label"
+                className="w-48 max-w-full min-h-[max(2.25rem,var(--appearance-control-min))]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectPopup>
+                {DENSITY_OPTIONS.map(({ value, label }) => (
+                  <SelectItem
+                    key={value}
+                    value={value}
+                    data-appearance-recipe="ui.label"
+                  >
+                    {label}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           </SettingsRow>
           <SettingsRow
             title="Reading width"
@@ -202,7 +236,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Grip}
             title="Life field"
             description="A Game of Life behind the chat that quickens as the model works. Right-click empty space for its controls."
           >
@@ -220,88 +253,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
         </SettingsBox>
-      </SettingsSection>
-      <SettingsSection
-        title="Materials"
-        description="Choose how each surface is painted."
-      >
-        <SettingsBox>
-          {SURFACE_ROLES.map((role) => (
-            <SettingsRow key={role} title={SURFACE_LABELS[role]}>
-              <select
-                aria-label={`${SURFACE_LABELS[role]} material`}
-                className="appearance-select"
-                value={appearance.materials[role]}
-                onChange={(event) => {
-                  const value = event.currentTarget.value
-                  const material = COMPOSER_SURFACES.find(
-                    (item) => item.value === value,
-                  )
-                  if (material)
-                    setOverrides({ materials: { [role]: material.value } })
-                }}
-              >
-                {COMPOSER_SURFACES.map(({ value, label }) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </SettingsRow>
-          ))}
-        </SettingsBox>
-      </SettingsSection>
-      <SettingsSection title="Advanced">
-        <SettingsBox>
-          <SettingsRow title="Interface text size">
-            <ScaleControl
-              label="Interface text size"
-              value={appearance.scales.ui}
-              onChange={(ui) => setOverrides({ scales: { ui } })}
-            />
-          </SettingsRow>
-          <SettingsRow title="Code text size">
-            <ScaleControl
-              label="Code text size"
-              value={appearance.scales.code}
-              onChange={(code) => setOverrides({ scales: { code } })}
-            />
-          </SettingsRow>
-          <SettingsRow title="Composer layout">
-            <SegmentedControl size="sm" aria-label="Composer layout">
-              <Choice
-                label="Conversation"
-                pressed={appearance.layout === 'conversation'}
-                onPress={() => setOverrides({ layout: 'conversation' })}
-              />
-              <Choice
-                label="Tools above editor"
-                pressed={appearance.layout === 'sidecar'}
-                onPress={() => setOverrides({ layout: 'sidecar' })}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-          <SettingsRow title="Motion">
-            <SegmentedControl size="sm" aria-label="Motion">
-              <Choice
-                label="System"
-                pressed={appearance.motion === 'system'}
-                onPress={() => setOverrides({ motion: 'system' })}
-              />
-              <Choice
-                label="Reduced"
-                pressed={appearance.motion === 'reduced'}
-                onPress={() => setOverrides({ motion: 'reduced' })}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-        </SettingsBox>
-        <AppearanceImport
-          selection={{ preset: appearance.preset, overrides }}
-          mode={theme as AppearanceMode | undefined}
-          life={lifeOverride}
-          onModeChange={setTheme}
-        />
       </SettingsSection>
       <SettingsSection title="Figures">
         <SettingsBox>
@@ -359,23 +310,41 @@ export function AppearanceSettings() {
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>
-      {figures.theo ? <FaceFeel /> : null}
+      <SettingsSection
+        title="Customize"
+        description="The preset chooses materials, layout and motion. Adjust anything else with a CSS snippet, or edit the full settings as JSON."
+      >
+        <CustomCss
+          value={appearance.css}
+          onApply={(css) => setOverrides({ css })}
+        />
+        <AppearanceImport
+          selection={{ preset: appearance.preset, overrides }}
+          mode={theme as AppearanceMode | undefined}
+          life={lifeOverride}
+          onModeChange={setTheme}
+        />
+      </SettingsSection>
     </SettingsPage>
   )
 }
 
-const SURFACE_LABELS = {
-  canvas: 'Canvas',
-  navigation: 'Navigation',
-  composer: 'Composer',
-  'user-message': 'Sent messages',
-  'assistant-reading': 'Replies',
-  popover: 'Menus and tooltips',
-  artifact: 'Artifacts',
-  status: 'Status feedback',
-} as const
+const DENSITY_OPTIONS = [
+  { value: 'compact', label: 'Compact' },
+  { value: 'comfortable', label: 'Comfortable' },
+  { value: 'touch', label: 'Touch' },
+] as const
 
-function ScaleControl({
+/** The scale's limits (appearance.ts) and the body text's size at 1 (1rem). */
+const MIN_SCALE = 0.75
+const MAX_SCALE = 2
+
+/**
+ * The size body text renders at, in pixels. It is stored as a multiple of
+ * the browser's own text size, so a reader who enlarged that keeps it; the
+ * field shows and takes what that multiple comes to on this device.
+ */
+function TextSizeControl({
   label,
   value,
   onChange,
@@ -384,27 +353,125 @@ function ScaleControl({
   value: number
   onChange: (value: number) => void
 }) {
+  const base =
+    typeof window === 'undefined'
+      ? 16
+      : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
   return (
-    <input
-      className="appearance-select w-24"
-      type="number"
-      aria-label={label}
-      min={75}
-      max={200}
-      step={5}
-      key={value}
-      defaultValue={Math.round(value * 100)}
-      onBlur={(event) => {
-        const input = event.currentTarget
-        const next = input.valueAsNumber / 100
-        if (Number.isFinite(next) && next >= 0.75 && next <= 2) onChange(next)
-        else input.value = String(Math.round(value * 100))
-      }}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter') event.currentTarget.blur()
-      }}
-      aria-description="Percentage of browser text size"
-    />
+    <div className="flex items-center gap-2">
+      <NumberField
+        className="w-24"
+        min={Math.ceil(base * MIN_SCALE)}
+        max={Math.floor(base * MAX_SCALE)}
+        step={1}
+        value={Math.round(value * base)}
+        format={{ maximumFractionDigits: 0 }}
+        onValueCommitted={(next) => {
+          if (next !== null) onChange(next / base)
+        }}
+      >
+        <NumberFieldGroup>
+          <NumberFieldInput
+            aria-label={label}
+            aria-description="Pixels"
+            data-appearance-recipe="ui.label"
+            className="h-auto min-h-(--appearance-control-min) py-1 sm:h-auto"
+          />
+        </NumberFieldGroup>
+      </NumberField>
+      <span data-appearance-recipe="ui.label" className="text-ink-muted">
+        px
+      </span>
+    </div>
+  )
+}
+
+const CSS_EXAMPLE = `/* Applied after Theorem's own styles. Examples: */
+:root {
+  --appearance-scale-ui: 1.1;     /* sidebar and controls, 1 = 14px */
+  --appearance-scale-code: 0.95;  /* code, 1 = 13px */
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+}
+:root.dark {
+  --redwood: #e0703a;             /* the accent, in dark */
+}`
+
+/**
+ * A CSS snippet for what the page has no control for: interface and code
+ * text size, fonts, colours, blur, anything a selector reaches. It is saved
+ * with the rest of the appearance and goes into the export.
+ */
+function CustomCss({
+  value,
+  onApply,
+}: {
+  value: string
+  onApply: (css: string) => void
+}) {
+  const [text, setText] = useState<string>()
+  const [message, setMessage] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const apply = (css: string) => {
+    const parsed = customCssSchema.safeParse(css)
+    if (!parsed.success) {
+      setInvalid(true)
+      setMessage(parsed.error.issues.map((issue) => issue.message).join(' '))
+      return
+    }
+    onApply(parsed.data)
+    setText(undefined)
+    setInvalid(false)
+    setMessage(parsed.data ? 'Custom CSS applied.' : 'Custom CSS removed.')
+  }
+  return (
+    <details
+      className="appearance-import rounded-lg border border-separator p-3"
+      open={value ? true : undefined}
+    >
+      <summary className="cursor-pointer" data-appearance-recipe="ui.label">
+        Custom CSS
+      </summary>
+      <div className="mt-3 flex min-w-0 flex-col gap-3">
+        <p data-appearance-recipe="metadata" className="text-ink-muted">
+          Applied after Theorem’s own styles and saved with your appearance.
+          Fonts must be installed on this device; only data: URLs load.
+        </p>
+        <Textarea
+          className="w-full min-w-0 [&_textarea]:min-h-40"
+          data-appearance-recipe="code"
+          aria-label="Custom CSS"
+          spellCheck={false}
+          placeholder={CSS_EXAMPLE}
+          value={text ?? value}
+          onChange={(event) => setText(event.currentTarget.value)}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => apply(text ?? value)}>Apply CSS</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setText(CSS_EXAMPLE)
+              setMessage('')
+            }}
+          >
+            Load example
+          </Button>
+          {value ? (
+            <Button variant="outline" onClick={() => apply('')}>
+              Remove CSS
+            </Button>
+          ) : null}
+        </div>
+        {message && (
+          <p
+            role={invalid ? 'alert' : 'status'}
+            data-appearance-recipe="metadata"
+          >
+            {message}
+          </p>
+        )}
+      </div>
+    </details>
   )
 }
 
@@ -488,8 +555,8 @@ function AppearanceImport({
           a profile. Copy current settings exports the active appearance without
           changing your JSON draft.
         </p>
-        <textarea
-          className="min-h-32 w-full min-w-0 rounded-lg border border-control p-2"
+        <Textarea
+          className="w-full min-w-0 [&_textarea]:min-h-32"
           data-appearance-recipe="code"
           aria-label="Custom appearance JSON"
           value={text ?? documentText}

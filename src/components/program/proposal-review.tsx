@@ -79,11 +79,13 @@ export function ProposalReview() {
       return
     }
     let live = true
-    void ghostPlaces(pending.proposal.proposed_program, doc.positions).then(
-      (places) => {
-        if (live) useProgramDoc.getState().showProposal(pending, places)
-      },
-    )
+    void ghostPlaces(
+      pending.proposal.proposed_program,
+      doc.positions,
+      doc.layout,
+    ).then((places) => {
+      if (live) useProgramDoc.getState().showProposal(pending, places)
+    })
     return () => {
       live = false
     }

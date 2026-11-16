@@ -265,6 +265,12 @@ export const STORIES: readonly StoryMeta[] = [
     threadId: 'thread-app-gallery',
   },
   {
+    id: 'face-feel',
+    title: 'Tuning how Theo moves',
+    lane: 'original',
+    viewport: { width: 900, height: 1000 },
+  },
+  {
     id: 'shell-compare',
     title: 'Shell with Compare open',
     lane: 'translation',
@@ -277,6 +283,12 @@ export const STORIES: readonly StoryMeta[] = [
     title: 'Phone navigation across Vault and Notes',
     lane: 'original',
     viewport: { width: 390, height: 844 },
+  },
+  {
+    id: 'settings-ai',
+    title: 'AI settings and model table',
+    lane: 'original',
+    viewport: { width: 1920, height: 1080 },
   },
   {
     id: 'cpu-gpu-tradeoff',

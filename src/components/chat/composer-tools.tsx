@@ -1,14 +1,15 @@
 // SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover, with its TriggerAdapter and TriggerMatcher seams; the default directive formatter writes the pick into the message; the native tool catalog from lib/theorem/tools; zustand (the Web toggle and the per-conversation Plan toggle state the composer and the runtime share, Plan keyed by the thread as useAuiState names it), Base UI Toggle (the Web and Plan chips), ui/tooltip over Base UI Tooltip, the shared useSpin over anime.js; the SDK's webResearch option requests research without narrowing the turn's tools; planning independently requests a durable plan through draft_plan
-import { useAuiState } from '@assistant-ui/react'
+import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
 import type {
   TriggerAdapter,
   TriggerItem,
   TriggerMatcher,
 } from '@assistant-ui/react'
 import { Toggle } from '@base-ui/react/toggle'
-import { useMemo, useRef } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { ComposerTriggerPopover } from '@/components/assistant-ui/elements/composer-trigger-popover.aui'
+import { OutputSettingsDialog } from '@/components/chat/response-control'
 import { Icon } from '@/components/icons'
 import { useSpin } from '@/components/motion'
 import {
@@ -129,7 +130,7 @@ export function ComposerWebToggle() {
           }
         >
           <WebMark className="size-4" />
-          <span className="pe-0.5">Web</span>
+          <span className="composer-chip-label pe-0.5">Web</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {on
@@ -164,7 +165,7 @@ export function ComposerPlanToggle() {
           }
         >
           <Icon.Plan className="size-4" />
-          <span className="pe-0.5">Plan</span>
+          <span className="composer-chip-label pe-0.5">Plan</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {on
@@ -201,8 +202,19 @@ const EMPTY: Readonly<Record<ToolCatalogState['status'], string>> = {
   failed: 'Tools could not be loaded.',
 }
 
-/** The default formatter: a pick reads `:tool[name]` in the message. */
-const DIRECTIVE = {}
+/** Local commands open settings; native tool picks retain their directive in the message. */
+const OUTPUT_COMMANDS: TriggerItem[] = [
+  {
+    id: 'output-style', type: 'command', label: 'output-style',
+    description: 'Choose how Theorem writes its replies.',
+  },
+  {
+    id: 'output-settings', type: 'command', label: 'output-settings',
+    description: 'Response detail and optional limits for this conversation.',
+  },
+]
+const outputCommands = (query: string) =>
+  OUTPUT_COMMANDS.filter((item) => item.id.startsWith(query.toLowerCase()))
 
 /** A slash that starts the text or follows a space, up to the caret. */
 const SLASH = /(?:^|\s)\/(\S*)$/u
@@ -219,7 +231,8 @@ function slashMatcher(
   return (text, _char, cursor) => {
     const query = SLASH.exec(text.slice(0, cursor))?.[1]
     if (query === undefined) return null
-    if (query && status !== 'loading' && !searchTools(tools, query).length)
+    if (query && status !== 'loading' &&
+      !outputCommands(query).length && !searchTools(tools, query).length)
       return null
     return { query, offset: cursor - query.length - 1, endOffset: cursor }
   }
@@ -227,34 +240,59 @@ function slashMatcher(
 
 /**
  * The "/" list in a composer: Theorem's native tools, filtered as the person
- * types. A pick writes `:tool[name]` into the message, so the turn and the
+ * types, plus local output commands. A tool pick writes `:tool[name]` into
+ * the message, so the turn and the
  * transcript both say which tool was asked for. It names intent and leaves
  * the turn's capability scope alone, which would otherwise shut out the other
  * tools the turn may need.
  */
 export function ComposerToolTrigger() {
   const { status, tools } = useToolCatalog()
+  const [outputDialog, setOutputDialog] = useState<string>()
   const adapter = useMemo<TriggerAdapter>(
     () => ({
       categories: () => [],
       categoryItems: () => [],
-      search: (query) => searchTools(tools, query).map(toItem),
+      search: (query) => [
+        ...searchTools(tools, query).map(toItem), ...outputCommands(query),
+      ],
     }),
     [tools],
   )
   const matcher = useMemo(() => slashMatcher(status, tools), [status, tools])
   return (
-    <ComposerTriggerPopover
-      char="/"
-      adapter={adapter}
-      matcher={matcher}
-      isLoading={status === 'loading'}
-      directive={DIRECTIVE}
-      heading="Theorem tools"
-      itemTag={tagOf}
-      emptyItemsLabel={EMPTY[status]}
-      loadingLabel={EMPTY.loading}
-      className="w-md"
-    />
+    <>
+      <ComposerTriggerPopover
+        char="/"
+        adapter={adapter}
+        matcher={matcher}
+        isLoading={status === 'loading'}
+        directive={{
+          formatter: {
+            ...defaultDirectiveFormatter,
+            serialize: (item) => item.type === 'command'
+              ? '' : defaultDirectiveFormatter.serialize(item),
+          },
+          onInserted: (item) => {
+            if (item.type === 'command') setOutputDialog(item.id)
+          },
+        }}
+        heading={<>
+          <div>Theorem tools and commands</div>
+          {status !== 'ready' && <p>{EMPTY[status]}</p>}
+        </>}
+        itemTag={tagOf}
+        emptyItemsLabel={EMPTY[status]}
+        loadingLabel={EMPTY.loading}
+        className="w-md"
+      />
+      {outputDialog && (
+        <OutputSettingsDialog
+          open
+          onOpenChange={(open) => { if (!open) setOutputDialog(undefined) }}
+          stylesOnly={outputDialog === 'output-style'}
+        />
+      )}
+    </>
   )
 }

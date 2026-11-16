@@ -51,6 +51,9 @@ function rgb(value: string): Rgb {
 
 function readMaterial(element: Element) {
   const style = getComputedStyle(element)
+  const backdropBlur =
+    CSS.supports('backdrop-filter', 'blur(1px)') ||
+    CSS.supports('-webkit-backdrop-filter', 'blur(1px)')
   const value = (name: string) => style.getPropertyValue(name).trim()
   const number = (name: string, fallback: number) => {
     const parsed = Number.parseFloat(value(name))
@@ -74,7 +77,7 @@ function readMaterial(element: Element) {
       sheen: number('--lg-sheen', 0),
       stroke: number('--lg-stroke', 0.1),
       shade: number('--lg-shade', 0.2),
-      show: number('--lg-show', 0),
+      show: backdropBlur ? number('--lg-show', 0) : 0,
     },
   }
 }

@@ -1,9 +1,12 @@
-// SOURCING: @xyflow/react node and edge types, elkjs (layered layout with
-// per-port routing, the layout React Flow's own docs pair with handles). The
+// SOURCING: @xyflow/react node and edge types, lib/graph-layout (the shared
+// elkjs layout: layered, the layout React Flow's own docs pair with handles,
+// groups as compound nodes; and `arrange`, so a node with no saved place goes
+// beside what it is wired to instead of onto what is already there). The
 // mapping from Theorem's ProgramDefinition onto them is ours: nothing upstream
 // knows this format, and the definition stays the only format.
-import ELK from 'elkjs/lib/elk.bundled.js'
 import type { Edge, Node } from '@xyflow/react'
+import { arrange, layout as layOut } from '@/lib/graph-layout'
+import type { Box, LayoutLeaf, LayoutPolicy, Point } from '@/lib/graph-layout'
 import type {
   ProcessLiveness,
   ProgramDefinition,
@@ -101,40 +104,94 @@ export const showsSchema = (node: ProgramNode) =>
   (node.kind === 'source' && node.selector.plane === 'tenant_graph') ||
   [...node.inputs, ...node.outputs].some((port) => port.column_contract)
 
-const elk = new ELK()
+/** Programs run left to right, with room between columns for their wires. */
+export const PROGRAM_LAYOUT: LayoutPolicy = {
+  algorithm: 'layered',
+  direction: 'RIGHT',
+  spacing: { node: 48, layers: 96 },
+}
 
-/** Place nodes that have no saved position; saved ones stay where people left them. */
+const box = (node: ProgramNode): LayoutLeaf => ({
+  id: node.id,
+  width: NODE_WIDTH,
+  height: nodeHeight(node),
+})
+
+const wires = (program: ProgramDefinition) =>
+  program.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.from_node,
+    target: edge.to_node,
+  }))
+
+/** Everything already on the canvas that a new node must not land on: groups and notes. */
+const boxesOf = (
+  layout: ProgramLayout | null | undefined,
+): Array<Box & { id: string }> => [
+  ...(layout?.groups ?? []),
+  ...(layout?.notes ?? []),
+]
+
+/**
+ * Place nodes that have no saved position; saved ones stay where people left
+ * them. A new node goes beside a saved node it is wired to, where ELK would
+ * put it relative to that node, moved down until it is clear of every node,
+ * group and note on the canvas; one wired to nothing saved goes below them.
+ */
 export async function layoutProgram(
   program: ProgramDefinition,
   layout: ProgramLayout | null,
-): Promise<Record<string, { x: number; y: number }>> {
+): Promise<Record<string, Point>> {
   const saved = layout?.nodes ?? {}
   if (program.nodes.every((node) => saved[node.id])) return saved
-  const graph = await elk.layout({
-    id: 'program',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '96',
-      'elk.spacing.nodeNode': '48',
-    },
-    children: program.nodes.map((node) => ({
-      id: node.id,
-      width: NODE_WIDTH,
-      height: nodeHeight(node),
-    })),
-    edges: program.edges.map((edge) => ({
-      id: edge.id,
-      sources: [edge.from_node],
-      targets: [edge.to_node],
-    })),
-  })
-  const placed: Record<string, { x: number; y: number }> = {}
-  for (const child of graph.children ?? []) {
-    placed[child.id] = saved[child.id] ?? { x: child.x ?? 0, y: child.y ?? 0 }
+  const fresh = await layOut(
+    { nodes: program.nodes.map(box), edges: wires(program) },
+    PROGRAM_LAYOUT,
+  )
+  // A group member is saved relative to its group; `arrange` places everything
+  // in the canvas's own coordinates.
+  const groupOf = new Map(
+    (layout?.groups ?? []).flatMap((group) =>
+      group.members.map((member) => [member, group] as const),
+    ),
+  )
+  const onCanvas = (id: string, at: Point) => {
+    const group = groupOf.get(id)
+    return group ? { x: at.x + group.x, y: at.y + group.y } : at
   }
-  return placed
+  const fixed = boxesOf(layout)
+  const previous: Record<string, Point> = {}
+  for (const node of program.nodes) {
+    const at = saved[node.id]
+    if (at) previous[node.id] = onCanvas(node.id, at)
+  }
+  for (const item of fixed) previous[item.id] = { x: item.x, y: item.y }
+  const placed = arrange({
+    graph: {
+      nodes: [
+        ...program.nodes.map(box),
+        ...fixed.map(({ id, width, height }) => ({ id, width, height })),
+      ],
+      edges: wires(program),
+    },
+    fresh: fresh.positions,
+    previous,
+    pinned: {},
+    relayout: new Set(),
+    across: true,
+  })
+  return Object.fromEntries(
+    program.nodes.map((node) => {
+      const at = saved[node.id]
+      if (at) return [node.id, at]
+      const group = groupOf.get(node.id)
+      const place = placed[node.id]!
+      return [
+        node.id,
+        group ? { x: place.x - group.x, y: place.y - group.y } : place,
+      ]
+    }),
+  )
 }
 
 /** Everything a muted node feeds, through any path. Bypassed nodes pass values, so they do not count. */
@@ -282,20 +339,24 @@ export function ghostFlow(
   return { nodes, edges }
 }
 
-/** Places a proposal's new nodes below everything already on the canvas. */
+/** Places a proposal's new nodes below everything already on the canvas: its nodes, groups and notes. */
 export async function ghostPlaces(
   proposed: ProgramDefinition,
   positions: Record<string, { x: number; y: number }>,
+  layout?: ProgramLayout,
 ) {
   const placed = await layoutProgram(proposed, null)
   const fresh = proposed.nodes.filter((node) => !positions[node.id])
   if (fresh.length === 0) return {}
+  // A group's members are inside it, and positioned relative to it.
+  const grouped = new Set(layout?.groups?.flatMap((group) => group.members))
   const floor = Math.max(
     0,
     ...proposed.nodes.flatMap((node) => {
       const at = positions[node.id]
-      return at ? [at.y + nodeHeight(node)] : []
+      return at && !grouped.has(node.id) ? [at.y + nodeHeight(node)] : []
     }),
+    ...boxesOf(layout).map((item) => item.y + item.height),
   )
   const top = Math.min(...fresh.map((node) => placed[node.id]?.y ?? 0))
   return Object.fromEntries(
@@ -339,6 +400,9 @@ export function insertWaypoint(
   return [...route.slice(0, best), at, ...route.slice(best)]
 }
 
+/** Room for a group's label above its members, and a margin around them. */
+const GROUP_INSETS = { top: 48, left: 24, bottom: 24, right: 24 }
+
 /**
  * The relayout command: ELK lays out everything again, groups as compound nodes
  * so members stay inside them. Waypoints belong to the old routes, so they go.
@@ -349,59 +413,26 @@ export async function relayoutProgram(
 ) {
   const groups = layout.groups ?? []
   const grouped = new Set(groups.flatMap((group) => group.members))
-  const box = (node: ProgramNode) => ({
-    id: node.id,
-    width: NODE_WIDTH,
-    height: nodeHeight(node),
-  })
-  const graph = await elk.layout({
-    id: 'program',
-    layoutOptions: {
-      'elk.algorithm': 'layered',
-      'elk.direction': 'RIGHT',
-      'elk.edgeRouting': 'ORTHOGONAL',
-      'elk.hierarchyHandling': 'INCLUDE_CHILDREN',
-      'elk.layered.spacing.nodeNodeBetweenLayers': '96',
-      'elk.spacing.nodeNode': '48',
+  const laid = await layOut(
+    {
+      nodes: [
+        ...groups.map((group) => ({
+          id: group.id,
+          members: program.nodes
+            .filter((node) => group.members.includes(node.id))
+            .map(box),
+        })),
+        ...program.nodes.filter((node) => !grouped.has(node.id)).map(box),
+      ],
+      edges: wires(program),
     },
-    children: [
-      ...groups.map((group) => ({
-        id: group.id,
-        layoutOptions: {
-          'elk.padding': '[top=48,left=24,bottom=24,right=24]',
-        },
-        children: program.nodes
-          .filter((node) => group.members.includes(node.id))
-          .map(box),
-      })),
-      ...program.nodes.filter((node) => !grouped.has(node.id)).map(box),
-    ],
-    edges: program.edges.map((edge) => ({
-      id: edge.id,
-      sources: [edge.from_node],
-      targets: [edge.to_node],
-    })),
+    { ...PROGRAM_LAYOUT, groupPadding: GROUP_INSETS },
+  )
+  const placedGroups: Array<CanvasGroup> = groups.flatMap((group) => {
+    const at = laid.groups[group.id]
+    return at ? [{ ...group, ...at }] : []
   })
-  const positions: Record<string, { x: number; y: number }> = {}
-  const placedGroups: Array<CanvasGroup> = []
-  for (const child of graph.children ?? []) {
-    const group = groups.find((candidate) => candidate.id === child.id)
-    if (!group) {
-      positions[child.id] = { x: child.x ?? 0, y: child.y ?? 0 }
-      continue
-    }
-    for (const member of child.children ?? []) {
-      positions[member.id] = { x: member.x ?? 0, y: member.y ?? 0 }
-    }
-    placedGroups.push({
-      ...group,
-      x: child.x ?? 0,
-      y: child.y ?? 0,
-      width: child.width ?? group.width,
-      height: child.height ?? group.height,
-    })
-  }
-  return { positions, groups: placedGroups }
+  return { positions: laid.positions, groups: placedGroups }
 }
 
 /** The node the palette inserts for a catalog entry, with the fields its kind requires. */

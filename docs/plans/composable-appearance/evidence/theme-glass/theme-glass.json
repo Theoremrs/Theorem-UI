@@ -1,0 +1,149 @@
+{
+  "checks": [
+    {
+      "material": "glass",
+      "dark": true,
+      "paint": {
+        "material": "glass",
+        "ink": "rgb(206, 204, 202)",
+        "backdrop": "blur(8px) saturate(1.7)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          }
+        ],
+        "canvas": null
+      }
+    },
+    {
+      "material": "glass",
+      "dark": false,
+      "paint": {
+        "material": "glass",
+        "ink": "rgb(50, 48, 46)",
+        "backdrop": "blur(5px) saturate(2)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          }
+        ],
+        "canvas": null
+      }
+    },
+    {
+      "material": "liquid",
+      "dark": true,
+      "paint": {
+        "material": "liquid",
+        "live": "live",
+        "ink": "rgb(206, 204, 202)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(206, 204, 202)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        }
+      }
+    },
+    {
+      "material": "liquid",
+      "dark": false,
+      "paint": {
+        "material": "liquid",
+        "live": "live",
+        "ink": "rgb(50, 48, 46)",
+        "backdrop": "blur(6px)",
+        "planes": [
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          },
+          {
+            "background": "rgba(0, 0, 0, 0)",
+            "ink": "rgb(50, 48, 46)"
+          }
+        ],
+        "canvas": {
+          "width": 598,
+          "height": 90
+        }
+      }
+    },
+    {
+      "forcedColors": "opaque reading plane retained"
+    },
+    {
+      "phone": "Header toggles only mode and preserves the draft"
+    },
+    {
+      "settings": "Account → Settings → Appearance controls update the real preferences"
+    }
+  ]
+}

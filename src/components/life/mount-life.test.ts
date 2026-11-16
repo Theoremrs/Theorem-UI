@@ -5,15 +5,24 @@
 import { afterEach, beforeEach, expect, spyOn, test } from 'bun:test'
 import { textmode } from 'textmode.js'
 import type { Textmodifier } from 'textmode.js'
-import { useLifeCounts } from '@/lib/life/store'
+import { useLifeControls, useLifeCounts } from '@/lib/life/store'
+import { onLifeFrame } from './frames'
 import { mountLife } from './mount-life'
 
 let setup: () => void
+let drawOverlay: () => void
 let disposed = false
 let createSpy: ReturnType<typeof spyOn>
 
 const fake = {
-  layers: { add: () => ({ draw() {} }) },
+  layers: {
+    add: () => ({
+      draw(callback: () => void) {
+        drawOverlay = callback
+      },
+    }),
+  },
+  clear() {},
   grid: { cols: 8, rows: 8 },
   setup: (callback: () => void) => {
     setup = callback
@@ -58,4 +67,24 @@ test('a field destroyed while textmode.js loads does nothing when setup arrives'
   expect(() => setup()).not.toThrow()
 
   expect(useLifeCounts.getState().population).toBe(-1)
+})
+
+test('glass receives the background frame when the companion is off', () => {
+  const before = useLifeControls.getState().companion
+  useLifeControls.setState({ companion: false })
+  const frames: HTMLCanvasElement[] = []
+  const stop = onLifeFrame((canvas) => frames.push(canvas))
+  const field = mountLife(document.createElement('div'), {
+    reducedMotion: true,
+  })
+  try {
+    setup()
+    drawOverlay()
+    expect(frames).toHaveLength(1)
+    expect(frames[0]).toBeInstanceOf(HTMLCanvasElement)
+  } finally {
+    stop()
+    field.destroy()
+    useLifeControls.setState({ companion: before })
+  }
 })

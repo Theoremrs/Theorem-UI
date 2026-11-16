@@ -1,84 +1,90 @@
-// SOURCING: elkjs (elk.bundled, as lib/theorem/plans and lib/program/flow load it): layered for the session graph (the main at the left, forks running right), with mrtree and stress kept for tree and related layouts, each keeping the projection's node order so a refresh does not reshuffle the graph. ELK is the one layout engine here; the node renderer does not depend on it.
-import ELK from 'elkjs/lib/elk.bundled.js'
-import type { ElkNode } from 'elkjs/lib/elk-api'
+// SOURCING: lib/graph-layout (the shared ELK layout and `arrange`), with the session graph's policy: layered, the main at the left (or top) and forks running out from it, keeping the projection's node order so a refresh does not reshuffle the graph. What a layout depends on, and which nodes a re-rooted tree moves, are decided here; where everything else goes is `arrange`'s (docs/plans/projects-sidebar-and-session-graph.md §9, Layout stability).
+import type { Direction, LayoutPolicy, Size } from '@/lib/graph-layout'
+import type { GraphNode, ProjectedGraph, Relation } from './session-graph'
 
-/** How a graph is laid out: by ELK algorithm and direction. */
-export type LensLayout = {
-  algorithm: 'layered' | 'mrtree' | 'stress'
-  direction?: 'RIGHT' | 'DOWN'
+/** The session graph's layout: each fork one layer out from the chat it came from. */
+export const sessionLayout = (direction: Direction): LayoutPolicy => ({
+  algorithm: 'layered',
+  direction,
+  padding: 16,
+  spacing: { node: 20, layers: 56, edgeNodeBetweenLayers: 16, edges: 12 },
+  keepOrder: true,
+})
+
+/**
+ * What a layout depends on, and nothing else: the nodes at their sizes, in
+ * the projection's order, the edges ELK lays out, and each tree's main.
+ * Status, titles and times are left out, so a refetch that changes only those
+ * gives the same shape and the graph is not laid out again.
+ */
+export type LayoutShape = {
+  nodes: readonly { id: string; width: number; height: number }[]
+  edges: readonly { id: string; source: string; target: string }[]
+  /** Each drawn tree's main, by node id. */
+  mains: Readonly<Record<string, string>>
 }
 
-type Point = { x: number; y: number }
-type Size = { width: number; height: number }
+/**
+ * The relations that shape the layout: each runs one column out from the chat
+ * it starts at. Messages pass between any two chats of a tree, so they are
+ * drawn over the layout, not allowed to pull a fork out of its column.
+ */
+export const LAID_OUT: ReadonlySet<Relation> = new Set([
+  'fork',
+  'continued',
+  'made',
+  'used',
+])
 
-export type GraphLayout = {
-  positions: Record<string, Point>
-  /** Each edge as the router drew it, source to target. */
-  routes: Record<string, Point[]>
-  width: number
-  height: number
-}
-
-const elk = new ELK()
-
-function options({ algorithm, direction }: LensLayout): Record<string, string> {
-  const common = {
-    'elk.algorithm': algorithm,
-    'elk.padding': '[top=16,left=16,bottom=16,right=16]',
-    'elk.spacing.nodeNode': '20',
-  }
-  if (algorithm === 'stress')
-    return { ...common, 'elk.stress.desiredEdgeLength': '160' }
-  if (algorithm === 'mrtree')
-    return { ...common, 'elk.direction': direction ?? 'DOWN' }
+/** The shape a projected graph is laid out by, with each node at its drawn size. */
+export function layoutShape(
+  graph: ProjectedGraph,
+  sizeOf: (node: GraphNode) => Size,
+): LayoutShape {
+  const mains: Record<string, string> = {}
+  for (const node of graph.nodes)
+    if (node.kind === 'session' && node.isMain && node.treeId)
+      mains[node.treeId] = node.id
   return {
-    ...common,
-    'elk.direction': direction ?? 'RIGHT',
-    'elk.edgeRouting': 'ORTHOGONAL',
-    'elk.layered.spacing.nodeNodeBetweenLayers': '56',
-    'elk.layered.spacing.edgeNodeBetweenLayers': '16',
-    'elk.spacing.edgeEdge': '12',
-    'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
+    nodes: graph.nodes.map((node) => ({ id: node.id, ...sizeOf(node) })),
+    edges: graph.edges
+      .filter((edge) => LAID_OUT.has(edge.relation))
+      .map(({ id, source, target }) => ({ id, source, target })),
+    mains,
   }
 }
 
-/** Places the nodes at the sizes they measured and routes the edges between them. */
-export async function layoutGraph(
-  nodes: readonly { id: string }[],
-  edges: readonly { id: string; source: string; target: string }[],
-  sizes: Readonly<Record<string, Size>>,
-  layout: LensLayout,
-): Promise<GraphLayout> {
-  const ids = new Set(nodes.map((node) => node.id))
-  const input: ElkNode = {
-    id: 'sessions',
-    layoutOptions: options(layout),
-    children: nodes.map((node) => ({
-      id: node.id,
-      ...(sizes[node.id] ?? { width: 220, height: 44 }),
-    })),
-    edges: edges
-      .filter((e) => ids.has(e.source) && ids.has(e.target))
-      .map((e) => ({ id: e.id, sources: [e.source], targets: [e.target] })),
+/**
+ * The nodes a re-rooted tree re-forms: when a tree drawn before has a new
+ * main, everything joined to it moves to where ELK now puts it. Nothing else
+ * that was on screen moves on its own.
+ */
+export function rerooted(before: LayoutShape, after: LayoutShape): Set<string> {
+  const moving = new Set<string>()
+  const neighbours = new Map<string, string[]>()
+  for (const edge of after.edges) {
+    neighbours.set(edge.source, [
+      ...(neighbours.get(edge.source) ?? []),
+      edge.target,
+    ])
+    neighbours.set(edge.target, [
+      ...(neighbours.get(edge.target) ?? []),
+      edge.source,
+    ])
   }
-  const graph = await elk.layout(input)
-  const positions: Record<string, Point> = {}
-  for (const child of graph.children ?? [])
-    positions[child.id] = { x: child.x ?? 0, y: child.y ?? 0 }
-  const routes: Record<string, Point[]> = {}
-  for (const edge of graph.edges ?? []) {
-    const section = edge.sections?.[0]
-    if (section)
-      routes[edge.id] = [
-        section.startPoint,
-        ...(section.bendPoints ?? []),
-        section.endPoint,
-      ]
+  for (const [tree, main] of Object.entries(after.mains)) {
+    const was = before.mains[tree]
+    if (was === undefined || was === main) continue
+    const queue = [main]
+    moving.add(main)
+    while (queue.length) {
+      const at = queue.shift()!
+      for (const next of neighbours.get(at) ?? [])
+        if (!moving.has(next)) {
+          moving.add(next)
+          queue.push(next)
+        }
+    }
   }
-  return {
-    positions,
-    routes,
-    width: graph.width ?? 0,
-    height: graph.height ?? 0,
-  }
+  return moving
 }

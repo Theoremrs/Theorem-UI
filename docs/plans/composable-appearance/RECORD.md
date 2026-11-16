@@ -1,5 +1,23 @@
 # Composable appearance implementation
 
+## Live appearance repairs — November 14, 2026
+
+### PR #104 review: custom background contrast and CI readiness
+
+Verified the open PR and local branch both pointed to `c8f1a631`. The custom-palette finding is valid: a browser regression using reversed light/dark palettes failed with a validated dark neutral of `#1c1d1e` behind light ink, while the sheet still started at `#ffffff`. Custom sheet stops and the dark-mode vignette now alias the validated neutral surface. Faint text and legacy raised/frame/rail surfaces alias their matching validated roles. These CSS relationships update on palette edits and light/dark changes without painting a separate reply rectangle. Built-in gradient stops and the existing scroll-responsive text-clipping utility are unchanged.
+
+The Composer CI log at that head passed native composer, policy and color checks, then failed in `oracle:interactions` before its first control assertion. The runner hid its exception in a report file; it now prints it, and CI prints the Vite log on failure. Local cold-start attempts timed out waiting for `data-story-ready`; one also hit host disk exhaustion, so these do not establish the exact CI failure. The newly added AI settings/table story is now lazy-loaded, and the interaction runner uses the same 60-second fixture-readiness allowance as the Expressive runner. Interaction assertions remain intact. The reversed custom-theme browser checks pass in light/dark/light, including primary, secondary, link and faint ink against the shared canvas and legacy raised/rail surfaces; TypeScript, affected-file lint and all 28 appearance tests pass. `oracle:custom-background` adds light/dark/light rendered checks for reversed-brightness custom themes and runs in CI; evidence lives in `evidence/custom-background`. The final local runs pass all 56 interaction checks and all 11 Expressive/settings checks. CI verification remains pending the pushed revision.
+
+PR #101 was verified merged into `main` at `2a479ca3`. These follow-up repairs use `Travis-Gilbert/appearance-live-repairs` in the existing checkout. The user's live feedback revises the original separate-reading-plane requirement: preserve the existing gradient and use one background for the canvas and assistant replies. No gradient tokens or Life rendering were changed.
+
+- Assistant content and its footer now expose the canvas instead of painting a solid rectangle. The Replies material control and its blur/shadow rules are removed. Version 1 saved/imported themes still validate; only the obsolete reply material override is discarded, preserving other preferences. Forced colors still supplies a system Canvas.
+- Unrecognized SDK data parts stay in the runtime and retain a hidden diagnostic name instead of producing unsupported-content bubbles. Known artifact/scene rendering failures still report a notice. A red SDK/runtime regression reproduced two bubbles before the fix. The supplied live conversation was inspected read-only after completion and had no visible fallback notices, so its original streaming part types remain unconfirmed.
+- The AI model table already uses the vendored TanStack table and shared controls. Its page now allows 1280px instead of 680px, with wrapping settings rows at narrow widths. Appearance's custom select/number/textarea controls now use installed coss components. No replacement table engine or new control implementation was introduced.
+
+Validation: 699 composer/runtime tests, 28 appearance/oracle tests, and 22 focused appearance/activity/AI tests passed; TypeScript and focused production ESLint passed. The Chromium reports in `evidence/live-repairs` record 56 control checks, seven phone-navigation/theme-export checks, 15 asynchronous SDK runtime checks, and 11 Expressive/settings checks. The latter covers all three built-in palettes in light/dark mode, Calm/Expressive round trips, unchanged draft/editor identity, transparent reply/footer paint, retired legacy overrides, keyboard/numeric controls, model filtering and 320/390px settings layouts. It is included in CI as `oracle:expressive`.
+
+Screenshots: `expressive-light.png`, `expressive-dark.png`, and `ai-settings-wide.png` under `evidence/live-repairs`. The two gradient endpoints meet the measured text contrast threshold; this does not establish every possible animated backdrop frame or custom palette. Earlier full-matrix evidence is historical and has not been reclassified for this revised background contract. These are local fixture/runtime results, not deployment acceptance. No live settings or messages were changed and no deployment was performed.
+
 ## Scope and source
 
 Implement `SPEC.md` (theorem-appearance-v1), supplied by the user on November 13, 2026. The requested result is independently composable appearance, resilient typography, reusable behavioral parts, and independent rendered evidence. Attached prose is supporting specification content, not separate operational authorization.
@@ -112,3 +130,173 @@ Verified origin `Travis-Gilbert/Theorem-UI`, branch `Travis-Gilbert/composable-a
 Validation: 21 shell/appearance unit tests and four story transport tests passed; TypeScript, focused ESLint and formatting checks passed. `PLAYWRIGHT_BROWSERS_PATH=/tmp/theorem-appearance-browsers bun run oracle:navigation-export` passed all seven Chromium checks with no uncaught browser errors. It checks Vault close/reopen, keyboard activation, Escape, Notes/Home navigation at 320px and 390px; note A → B → A selection and visible editors; desktop rail/header behavior; pristine JSON Apply, live export after import/control changes, draft-preserving clipboard export, and invalid JSON retention. The regression command is included in the existing browser CI step.
 
 Evidence: [browser results](evidence/review/navigation-export.json) and [390px Vault navigation screenshot](evidence/review/vault-phone-navigation.png). The fixture uses the real components, router, editors and SDK with deterministic story transport; it does not establish live backend acceptance. Earlier full-matrix evidence and its native input verification limits remain unchanged. The existing worktree is retained for this PR and the remaining acceptance checks; no new worktree was created.
+
+
+### PR #104 follow-up: settings location, glass and main integration (2026-11-15)
+
+Verified the existing Theorem-UI origin and `Travis-Gilbert/appearance-live-repairs`
+branch at `9db8dbc5` before merging `origin/main` (`4e7dc0f2`). Resolved the
+browser-runner conflicts by keeping main's shared full-Chromium launcher and
+temporary evidence directory, the existing coss control helpers, and both log
+and artifact diagnostics. No new PR or branch was created.
+
+The rail and phone header now reuse a next-themes light/dark toggle. Full
+appearance controls remain on the real Settings → Appearance route; duplicate
+Theme/Colors groups were removed from the account menu. The old dialog is now
+only a development story harness for exercising the real form while verifying
+mounted-editor and streaming continuity. It is absent from the product shell.
+A separate browser check follows Account → Settings → Appearance and operates
+the actual page; the story-only harness is hidden during that product check.
+
+History confirms that `361d7191` introduced CSS Frosted glass; the later Liquid
+glass renderer adapts `ybouane/liquidglass`. Both still exist. The redesign's
+opaque composer reading planes hid their interior and replaced Liquid glass's
+stronger ink. Built-in glass composers now let the existing renderer paint the
+whole surface and inherit its foreground. Validated custom palettes retain
+solid reading planes; forced colors and reduced transparency retain their
+solid fallback. No glass renderer, gradient, or material preference was replaced.
+
+Validation: 703 composer/runtime tests and 28 appearance tests passed; TypeScript
+and focused production lint passed. Browser runs passed 56 real-form interaction
+checks, 15 upload/stream/runtime checks, nine reflow/forced-color checks, and
+seven new theme/glass/settings checks. The latter covers desktop and phone
+mode toggles, draft/DOM continuity, both glass materials in light/dark mode,
+active Liquid glass canvas dimensions, transparent interiors, and the dedicated
+settings route. These use local real components with fixture data, not a live
+production backend. One evidence write hit transient local disk exhaustion;
+follow-up evidence uses the external SSD. See [glass evidence](evidence/theme-glass/theme-glass.json)
+and [Liquid glass light](evidence/theme-glass/composer-liquid-light.png).
+
+The remaining browser reruns passed: seven navigation/export checks, 11
+Expressive/settings checks and three reversed custom-palette checks. The
+production Vite build and all 10 built composer interaction checks passed.
+
+The first GitHub run at `cbc4d12a` passed unit, built composer, palette and all
+56 interaction checks, then timed out locating Custom appearance in the
+continuity harness dialog. Its saved artifact confirmed the failing locator;
+the same run passed locally. Portability coverage now follows the dedicated
+`/settings/appearance` route after the editor/IME assertions, including actual
+page reload and reset. All 14 continuity checks pass locally with this change.
+Failures also print their exception and save a screenshot and visible text.
+See [route continuity evidence](evidence/theme-glass/chromium-continuity.json).
+
+
+### Glass and catalog deployment follow-up (2026-11-15)
+
+PRs #104 and Theorem #1076 were verified merged before editing. Reused the
+existing clean UI checkout and branched `Travis-Gilbert/glass-catalog-followup`
+from `origin/main` at `ebacffe7`.
+
+The light/dark and terminal controls now use the existing Base UI Button with
+accessible names and no tooltip wrappers. Both persisted composer glass choices
+now use the existing ybouane/liquidglass-derived renderer and its original
+material parameters and footer. No replacement CSS effect or new renderer was
+introduced. The field now publishes frames when the companion is off; previously
+that return bypassed the glass frame listener. The renderer only exposes the
+conversation through its body where the browser supports backdrop blur.
+
+The background-frame regression fails on the original early return (zero frames)
+and passes with the fix. All three Life mount tests, 731 composer/runtime tests,
+TypeScript, affected-file ESLint and the production Vite build pass. The terminal
+WASM bindings were rebuilt from current main before TypeScript validation.
+Nine rendered checks verify tooltip absence, field publication with the companion
+off, both glass choices in light/dark mode for the main and edit composers,
+forced colors, phone toggling and the dedicated settings route. The glass check now compares screenshot pixels over
+red and blue backdrops: the interior transmits both, rather than merely asserting
+a canvas exists. It retains the mounted editor and draft checks. Screenshots and
+measurements: [glass follow-up evidence](evidence/glass-followup/theme-glass.json).
+Custom palettes retain their existing validated opaque reading planes.
+
+Production diagnosis: the UI Worker deploy `16f4d66f-d1d6-473c-a911-c08c58e059fe`
+is dated 2026-11-15T20:54:40Z, and the served CSS includes #104's built-in glass
+transparency rule. Its API authority is `travis-theorem-personal.fly.dev`. Both
+Fly machines still run revision `2421231c8fd7c73041fcfe5b92bfcfcc625337c6`, image
+`sha256:f1cf90aa009c82bcd4fbed66dfb83524b0e204e1f4111517c8a0df6ea6e6bd78`,
+updated November 13. This predates the merged catalog repair in #1076. No live
+backend rollout was performed. After the user signed in, the real AI settings
+page confirmed **8 of 8 models**. That browser uses Stone / Expressive / Dark
+with Paper selected for the composer. A temporary Liquid selection mounted the
+live renderer, used `blur(6px)`, and had transparent shell and all five interior
+planes. Paper was restored afterward. Preferences are per device, so this does
+not establish the state of the browser used for the earlier screenshot. The
+earlier 384-row UI fixture remains consumer evidence, not proof of a repaired
+deployed catalog.
+
+PR #114 review caught the separate edit-message composer. Its renderer enablement
+and interior transparency now follow the main composer; the browser check opens
+and cancels editing in all four material/mode cases without changing the main
+draft or editor instance. Sent-message material mapping is left intact. The
+updated checks, 731 composer tests, TypeScript, focused lint and production build
+pass after that repair.
+
+Composer CI run `43773083944` passed types, unit/native composer checks, colors,
+controls, continuity and navigation/export, then sampled 16px prose in the 200%
+root-text reflow assertion after restoring page zoom. Width, text and draft were
+preserved. The same runner passed locally before adjustment; a persistent layout
+defect has not been reproduced. It now waits up to five seconds for the actual
+32px root and prose computed sizes, retaining the original size/content/overflow
+assertions and recording root size in diagnostics. A failure to reach that size
+still fails. All nine reflow checks pass locally with the readiness condition;
+CI on the updated revision is the remaining confirmation.
+
+Theorem #1076 native verification resumed on its merged source revision
+`786364720ce27cec2d885eed87c1d32a3f1c804e`, using the required pooled Cargo
+target and `CARGO_BUILD_JOBS=2`. The previously blocked test binary built in
+25m 06s. `cargo nextest run --locked --manifest-path rustyredcore_THG/Cargo.toml
+-p rustyred-thg-server --lib -E
+'test(discovery_pages_reach_admission_and_pin_native_capabilities)'` passed
+its one test. The same command with `-E 'test(chat_model_binding::)'` then
+passed all 31 selected tests, including authenticated HTTP listing, default
+resolution, personal keys, saved models and discovery outage behavior. No
+backend source was changed. GitHub's backend root-selection check still reports
+that it never started because of failed payments/spending limits; local native
+results are separate evidence.
+
+The user approved the proposed relay rollout. That build stopped before image
+publication: its standalone harness-server lockfile is stale; the automatic
+retry also lost the builder connection. No production machine changed. Route
+inspection then corrected the deployment target: `theorem-mcp-server` forwards
+`/api/chat/v1/*rest` to the store; the catalog owner is `rustyred-thg-server` in
+`travis-theorem-personal-store`, not the relay named in the approval request.
+The store image is being prepared with `--build-only --push` from the same
+clean revision. Its one active data-bearing machine is `8147d9b9996e58`;
+the two stopped issuer machines must not be included in a rollout. Corrected
+approval must name this target and its restart/recovery interruption.
+
+Composer CI run `43774449311` passed all nine reflow checks, then found an
+outdated exact-title assertion in the runtime runner: the sidebar now adds a
+timestamp on the second line of its title. The captured row retained the full
+translated name and running/unread cues, with client and scroll widths both
+169px. The assertion now checks the complete first line and retains every
+geometry/status assertion. The focused local run passed all four sidebar checks
+before its separate attachment file-chooser wait timed out; full CI remains
+the acceptance gate for the updated runner.
+
+## Output styles and provider ceilings follow-up (2026-11-15)
+
+The reported DeepSeek Flash Latest cutoff was a backend discovery clamp:
+`top_provider.max_completion_tokens` was always reduced to at most 4,096.
+OpenRouter's public directory reported 943,718 for this alias during inspection.
+The screenshot reports a per-call model ceiling, one step and an uncapped run;
+it does not show a cumulative 4,096-token run budget. The backend repair lives
+in Theorem's `Travis-Gilbert/discovered-output-limits` branch.
+
+The shared composer no longer mounts the Length button. Its conversation
+controls remain available through `/output-settings`, retaining stored overrides,
+reset and the last run's limit facts. `/output-style` selects a real server-owned
+response style, via the existing response-styles API and mutation/CSRF helper.
+Existing conversations save their own selection; before a conversation exists,
+the dialog explicitly edits the account default. Settings > AI includes the
+account style selector beside response detail and optional output limits.
+Selecting a style does not change token limits. Loading and save failures remain
+visible, and failed saves do not replace the confirmed selection.
+
+Verification: 184 Bun tests passed across the affected chat, assistant-ui,
+generation and settings suites; TypeScript and focused ESLint passed.
+`PLAYWRIGHT_BROWSERS_PATH=/tmp/theorem-appearance-browsers node
+scripts/design-oracles/review-output-settings.mjs` passed at 390px and 1440px:
+no Length button, both slash dialogs, preserved draft, style selection and the
+real settings page. This is rendered fixture evidence, not a production rollout.
+Screenshots: [composer](evidence/output-settings/composer-390.png),
+[style dialog](evidence/output-settings/output-style-390.png),
+[settings](evidence/output-settings/settings-390.png).

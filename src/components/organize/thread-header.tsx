@@ -66,10 +66,7 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
                 title={project.state?.text}
                 className="max-w-48 shrink-0"
               >
-                <ProjectGlyph
-                  aria-hidden
-                  className="size-3.5 shrink-0"
-                />
+                <ProjectGlyph aria-hidden className="size-3.5 shrink-0" />
                 <span className="truncate">{project.title}</span>
               </BreadcrumbItem>
               <BreadcrumbSeparator className="text-ink-faint">
@@ -193,16 +190,15 @@ export function ProjectContextChip() {
   const first = withBrief?.[0]
   if (!withBrief || !first) return null
   return (
-    <p className="mb-4 flex min-h-10.5 items-center gap-2.5 rounded-lg bg-hover px-3 py-1.5 text-sm">
-      <ProjectGlyph
-        aria-hidden
-        className="size-4 shrink-0 text-ink-muted"
-      />
-      <span className="min-w-0 truncate">
+    // A quiet line above the first turn, not a banner: it says where the
+    // thread's context comes from without competing with the conversation.
+    <p className="mb-5 flex items-center gap-1.5 text-xs text-ink-muted">
+      <ProjectGlyph aria-hidden className="size-3.5 shrink-0" />
+      <span className="min-w-0 truncate font-medium text-ink">
         {withBrief.map((project) => project.title).join(', ')}
       </span>
-      <span aria-hidden className="h-4 w-px shrink-0 bg-separator" />
-      <span className="shrink-0 text-ink-muted">Project context attached</span>
+      <span aria-hidden>·</span>
+      <span className="shrink-0">Project context attached</span>
     </p>
   )
 }

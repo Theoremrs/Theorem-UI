@@ -27,10 +27,10 @@ export type SideDrawer = 'terminal' | 'outputs'
  * is the one place a sidebar's width is set: the phone drawer and the settings
  * sidebar take the default from here too.
  */
-export const PANEL_WIDTH = { min: 184, default: 210, max: 420 } as const
+export const PANEL_WIDTH = { min: 184, default: 240, max: 420 } as const
 
-/** Defaults before version 9 (354 before 7, 280 in 7, 248 in 8): a panel still at one was never dragged. */
-const OLD_PANEL_WIDTHS: readonly number[] = [354, 280, 248]
+/** Defaults before version 10 (354 before 7, 280 in 7, 248 in 8, 210 in 9): a panel still at one was never dragged. */
+const OLD_PANEL_WIDTHS: readonly number[] = [354, 280, 248, 210]
 
 type ShellState = {
   /** Project whose threads the sidebar lists. Falls back to the first project. */
@@ -295,10 +295,12 @@ export const useShell = create<ShellState>()(
       // whichever version 4 a layout was saved under. Version 6 gave the IDE
       // its own panel beside the rail: the IDE's collapsed flag had meant
       // Theia's explorer, so it moves to ideFilesOpen and the panel opens.
-      // Versions 7, 8 and 9 narrowed the default width: a panel left at an old
+      // Versions 7 to 10 moved the default width: a panel left at an old
       // default takes the new one, and a width the person dragged to is kept.
-      // Version 9 is the cabinet spec's 210px navigation.
-      version: 9,
+      // Version 9 was the cabinet spec's 210px navigation; version 10 opens at
+      // 240px, where the owner's review on 2026-11-15 found 210 cut thread
+      // titles short.
+      version: 10,
       partialize: ({
         projectId,
         layouts,
@@ -349,7 +351,7 @@ export const useShell = create<ShellState>()(
           OLD_PANEL_WIDTHS.includes(state.panelWidth)
             ? PANEL_WIDTH.default
             : state?.panelWidth
-        if (version >= 6 && version <= 8) return { ...state, panelWidth }
+        if (version >= 6 && version <= 9) return { ...state, panelWidth }
         if (version === 5) return { ...state, ...theia, panelWidth }
         if (version >= 2 && version <= 4) {
           const { filesShown: _, ...kept } = (state ?? {}) as ShellState

@@ -1,13 +1,14 @@
+import { applyOverrides, chooseOption } from './browser-controls.mjs'
 // Human-review companion: operate the same visible settings a user operates,
 // keeping the real editor mounted. Deliberately separate from token checks.
-import { chromium, firefox, webkit } from 'playwright-core'
+import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
-const out = resolve('docs/plans/composable-appearance/evidence/review')
+const out = reviewOutput
 await mkdir(out, { recursive: true })
 const engine = process.env.ORACLE_BROWSER ?? 'chromium'
-const browser = await { chromium, firefox, webkit }[engine].launch()
+const browser = await launchReviewBrowser(engine)
 const page = await browser.newPage({
   viewport: { width: 1440, height: 1000 },
   reducedMotion: 'reduce',
@@ -53,7 +54,9 @@ const settle = async () => {
 }
 try {
   await page.goto(`${base}/story/shell-compare`)
-  await page.locator('[data-story-ready]').waitFor({ state: 'attached' })
+  await page
+    .locator('[data-story-ready]')
+    .waitFor({ state: 'attached', timeout: 60_000 })
   const editor = page
     .locator('[data-appearance-part="main"] [contenteditable=true]')
     .first()
@@ -136,10 +139,7 @@ try {
   for (const [name, mutate, geometry, type] of [
     [
       'palette',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Colors', exact: true })
-          .selectOption('stone'),
+      () => chooseOption(page, dialog, 'Colors', 'Stone'),
       true,
       true,
     ],
@@ -151,37 +151,25 @@ try {
     ],
     [
       'paper composer',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Composer material', exact: true })
-          .selectOption('paper'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'paper' } }),
       true,
       true,
     ],
     [
       'glass composer',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Composer material', exact: true })
-          .selectOption('glass'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'glass' } }),
       true,
       true,
     ],
     [
       'liquid composer',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Composer material', exact: true })
-          .selectOption('liquid'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'liquid' } }),
       true,
       true,
     ],
     [
       'flat composer',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Composer material', exact: true })
-          .selectOption('flat'),
+      () => applyOverrides(page, dialog, { materials: { composer: 'flat' } }),
       true,
       true,
     ],
@@ -207,10 +195,7 @@ try {
     ],
     [
       'compact density',
-      () =>
-        dialog
-          .getByRole('combobox', { name: 'Density', exact: true })
-          .selectOption('compact'),
+      () => chooseOption(page, dialog, 'Density', 'Compact'),
       false,
       true,
     ],
@@ -222,21 +207,18 @@ try {
     ],
     [
       'sidecar layout',
-      () =>
-        dialog
-          .getByRole('button', { name: 'Tools above editor', exact: true })
-          .click(),
+      () => applyOverrides(page, dialog, { layout: 'sidecar' }),
       false,
       true,
     ],
     [
       '200% text',
       async () => {
-        const input = dialog.getByRole('spinbutton', {
-          name: 'Content size',
+        const input = dialog.getByRole('textbox', {
+          name: 'Text size',
           exact: true,
         })
-        await input.fill('200')
+        await input.fill('32')
         await input.press('Tab')
       },
       false,
@@ -393,6 +375,7 @@ try {
   await close()
   check('No runtime errors', errors.length === 0, errors)
 } catch (error) {
+  console.error(error.stack, ...errors)
   check('Review runner completed', false, String(error.stack))
 } finally {
   await writeFile(
