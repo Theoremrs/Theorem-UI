@@ -1,4 +1,5 @@
-// SOURCING: the pieces the record preview and the record page share — Twenty's record side panel for the anatomy (an editable title over label and value rows); the schema register's inline editors (components/records/fields); coss ui Switch; the app's Dialog and Button; the composer's reference store (components/chat/composer-references) for "Ask Theorem"; lucide-react marks
+// SOURCING: the pieces the record preview and the record page share — Twenty's record side panel for the anatomy (an editable title over label and value rows); the schema register's inline editors (components/records/fields); coss ui Switch; the app's Dialog and Button; the composer's reference store (components/chat/composer-references) and the shell's open conversation (components/shell/shell-state) for "Ask Theorem"; lucide-react marks
+import { useNavigate } from '@tanstack/react-router'
 import { Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -13,7 +14,7 @@ import {
   isEmptyValue,
   recordTitle,
 } from '@/components/records/model'
-import { useOpenMode } from '@/components/shell/modes'
+import { useShell } from '@/components/shell/shell-state'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -501,7 +502,15 @@ export function AskTheoremButton({
   record: CrmRecord
   size?: 'sm' | 'xs'
 }) {
-  const openMode = useOpenMode()
+  const navigate = useNavigate()
+  // The conversation that was open, as the rail's chat destination opens it.
+  // Read from the shell's state, not through shell/modes, which draws the CRM.
+  const openChat = () => {
+    const threadId = useShell.getState().chatThreadId
+    return threadId
+      ? navigate({ to: '/c/$threadId', params: { threadId } })
+      : navigate({ to: '/' })
+  }
   return (
     <Button
       variant="outline"
@@ -510,7 +519,7 @@ export function AskTheoremButton({
         useComposerReferences
           .getState()
           .add(recordReference(type.name_singular, record.id, recordTitle(type, record)))
-        void Promise.resolve(openMode('chat')).then(() =>
+        void openChat().then(() =>
           requestAnimationFrame(() => focusComposer()),
         )
       }}
