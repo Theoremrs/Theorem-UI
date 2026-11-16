@@ -399,9 +399,13 @@ with labels and properties, and edges between them.
   `getEdge`, `queryNodes` and `neighbors` read the graph. `query(cypher,
 params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
   reads current. A failure is a `DbError` with the database's own `code`, such
-  as `cypher_write_unsupported`.
-- **Where it lives.** The database is RustyRedDB (`@rustyreddb/browser`) in a
-  worker of the page, stored in the origin private file system. A sandboxed
+  as `cypher_write_unsupported`, or `owner_record` for a record another owner
+  keeps (a `ControlEvent` label, a reserved ID such as `statement:…`, or an
+  `ownership` property).
+- **Where it lives.** The database is Rusty Red's canonical engine
+  (`@rustyreddb/browser`, built from Theorem's `rustyred-thg-browser`) in a
+  worker of the page. It is one `.RR` file in the origin private file system,
+  the same format and Cypher engine as the native database. A sandboxed
   frame has no storage, so each call crosses the bridge and is checked against
   the declaration first (`bridge.ts`, `app-db.ts`).
 - **It belongs to the App, not a revision.** Its directory is named by the

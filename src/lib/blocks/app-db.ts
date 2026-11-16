@@ -25,8 +25,7 @@ export type OpenDatabase = Pick<
 export type OpenDatabaseAt = (directory: string) => Promise<OpenDatabase>
 
 /**
- * An App's data is not a history of itself and is not watched by anything
- * that reads control events, so neither is kept.
+ * Nothing reads control events for an App's data, so none are written.
  */
 const openInBrowser: OpenDatabaseAt = async (directory) => {
   const [{ open }, { default: wasm }] = await Promise.all([
@@ -35,7 +34,6 @@ const openInBrowser: OpenDatabaseAt = async (directory) => {
   ])
   return open(directory, {
     controlEvents: false,
-    keepHistory: false,
     // Another tab showing this App uses the same database: one tab holds its
     // file and the rest reach it through that tab.
     shared: true,
