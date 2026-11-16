@@ -49,8 +49,13 @@ import {
   isPrivate,
   shownFields,
 } from './model'
-import { useBindSelfPerson, useFieldEdit, useUnsavedEdits } from './queries'
-import type { CrmWrites, FieldEdit } from './queries'
+import {
+  editorRead,
+  useBindSelfPerson,
+  useFieldEdit,
+  useUnsavedEdits,
+} from './queries'
+import type { CrmWrites, EditorRead, FieldEdit } from './queries'
 import { recordReference } from './reference'
 
 /** A refusal or failure in words the person can act on. */
@@ -218,6 +223,8 @@ export function TitleField({
   const identifier = identifierField(type)
   const edit = useFieldEdit(record.id, identifier?.key ?? '')
   const [draft, setDraft] = useState<string | null>(null)
+  // What the record was when the title was opened for editing.
+  const read = useRef<EditorRead | null>(null)
   const left = useRef(false)
   const title =
     edit && typeof edit.value === 'string'
@@ -229,7 +236,13 @@ export function TitleField({
     const text = draft.trim()
     setDraft(null)
     // A record keeps a name: an emptied title is not sent.
-    if (text) void writes.save(record, identifier, text)
+    if (text)
+      void writes.saveFrom(
+        record,
+        identifier,
+        text,
+        read.current ?? editorRead(record, identifier, edit),
+      )
   }
   if (draft !== null)
     return (
@@ -265,7 +278,10 @@ export function TitleField({
         <button
           type="button"
           title={`Rename ${title}`}
-          onClick={() => setDraft(title === 'Untitled' ? '' : title)}
+          onClick={() => {
+            read.current = editorRead(record, identifier, edit)
+            setDraft(title === 'Untitled' ? '' : title)
+          }}
           className={cn(
             'min-w-0 truncate rounded-md px-1 text-start text-ink hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus',
             className,
@@ -303,7 +319,11 @@ function PropertyRow({
   onOpenRelated: (type: ObjectType, id: string) => void
 }) {
   const edit = useFieldEdit(record.id, field.key)
-  const [editing, setEditing] = useState(false)
+  // What the record was when this row's editor opened; null while it is shut.
+  const [opened, setOpened] = useState<EditorRead | null>(null)
+  const editing = opened !== null
+  const setEditing = (open: boolean) =>
+    setOpened(open ? editorRead(record, field, edit) : null)
   // The row, as an element the editor's popover is placed against.
   const [anchor, setAnchor] = useState<HTMLDivElement | null>(null)
   const value = edit ? edit.value : record.values[field.key]
@@ -312,7 +332,12 @@ function PropertyRow({
   const opens = canEdit && (style === 'inline' || style === 'popover')
   const commit = (next: unknown) => {
     setEditing(false)
-    void writes.save(record, field, next)
+    void writes.saveFrom(
+      record,
+      field,
+      next,
+      opened ?? editorRead(record, field, edit),
+    )
   }
   const empty = isEmptyValue(value) && field.field_type.kind !== 'boolean'
   // Plain writing, shown in full where there is a page to read it on. A cell

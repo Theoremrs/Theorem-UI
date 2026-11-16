@@ -199,16 +199,32 @@ async function invoke(
 /** The register serves at most this many records to one read. */
 export const PAGE_LIMIT = 1000
 
-export async function findRecords(
-  objectTypeId: string,
-  page: { limit?: number; offset?: number } = {},
-) {
+async function findRecordPage(objectTypeId: string, offset: number) {
   return decodeRecordPage(
-    await invoke(objectTypeId, 'find_many', {
-      limit: page.limit ?? PAGE_LIMIT,
-      offset: page.offset ?? 0,
-    }),
+    await invoke(objectTypeId, 'find_many', { limit: PAGE_LIMIT, offset }),
   )
+}
+
+/**
+ * Every record of a type. The register serves one page to a read, so pages
+ * are read until the count it reports is in hand; a type with more records
+ * than one page holds is not cut off at the first.
+ */
+export async function findRecords(objectTypeId: string) {
+  const first = await findRecordPage(objectTypeId, 0)
+  const byId = new Map(first.records.map((record) => [record.id, record]))
+  let count = first.count
+  let read = first.records.length
+  while (read < count) {
+    const next = await findRecordPage(objectTypeId, read)
+    if (!next.records.length) break
+    // A record written between two reads can appear in both.
+    for (const record of next.records) byId.set(record.id, record)
+    read += next.records.length
+    count = next.count
+  }
+  const records = [...byId.values()]
+  return { records, count: Math.max(count, records.length) }
 }
 
 /** One record at its saved revision; a record that is gone is a RecordMissingError. */

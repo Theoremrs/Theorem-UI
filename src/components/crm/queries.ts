@@ -23,6 +23,21 @@ import { accessFor, sameValue } from './model'
 const CRM = ['theorem', 'crm'] as const
 /** The schema register's model, as components/records/queries keys it. */
 const MODEL = ['theorem', 'records', 'model'] as const
+// The Records mode keeps the same saved records under keys of its own
+// (components/records/queries); a write here makes its copies stale.
+const RECORD_VIEW_ROWS = ['theorem', 'records', 'rows'] as const
+const RECORD_VIEW_RECORD = ['theorem', 'records', 'record'] as const
+
+function staleRecordViews(
+  client: QueryClient,
+  objectType: ObjectType,
+  id: string,
+) {
+  void client.invalidateQueries({
+    queryKey: [...RECORD_VIEW_ROWS, objectType.node_label],
+  })
+  void client.invalidateQueries({ queryKey: [...RECORD_VIEW_RECORD, id] })
+}
 
 export const crmKeys = {
   life: [...CRM, 'life'] as const,
@@ -201,9 +216,11 @@ export function storeRecord(
         : page
     },
   )
+  staleRecordViews(client, objectType, record.id)
 }
 
 function dropRecord(client: QueryClient, objectType: ObjectType, id: string) {
+  staleRecordViews(client, objectType, id)
   client.removeQueries({ queryKey: crmKeys.record(id) })
   client.removeQueries({ queryKey: crmKeys.changes(id) })
   client.setQueryData<CrmRecordPage>(
@@ -348,6 +365,21 @@ export function useUnsavedEdits(recordId?: string) {
 }
 
 /**
+ * What an editor opened on: the record's revision, and the value it showed,
+ * which is an edit still waiting if there is one and the saved value if not.
+ */
+export type EditorRead = { revision: number; shown: unknown }
+
+export const editorRead = (
+  record: CrmRecord,
+  field: FieldSpec,
+  waiting?: Pick<FieldEdit, 'value'>,
+): EditorRead => ({
+  revision: record.version,
+  shown: waiting ? waiting.value : record.values[field.key],
+})
+
+/**
  * Saving, re-reading and deleting a type's records. Every update and delete
  * names the revision the person was looking at; a refusal leaves their value
  * in `useCrmEdits`, never in the saved record.
@@ -360,6 +392,13 @@ export function useCrmWrites(objectType: ObjectType) {
     (edit: Omit<FieldEdit, 'status' | 'error'>) => {
       const { put, clear } = useCrmEdits.getState()
       put({ ...edit, status: 'saving' })
+      // A later value for the same field replaces this one in the store;
+      // this write must then leave that entry alone.
+      const replaced = () => {
+        const now =
+          useCrmEdits.getState().edits[editKey(edit.recordId, edit.fieldKey)]
+        return now !== undefined && !sameValue(now.value, edit.value)
+      }
       return enqueue(edit.recordId, async () => {
         const expected = followOwnWrites(edit.recordId, edit.readRevision)
         try {
@@ -371,18 +410,19 @@ export function useCrmWrites(objectType: ObjectType) {
           )
           recordOwnWrite(edit.recordId, expected, record.version)
           storeRecord(client, objectType, record)
-          clear(edit.recordId, edit.fieldKey)
+          if (!replaced()) clear(edit.recordId, edit.fieldKey)
           void client.invalidateQueries({
             queryKey: crmKeys.changes(edit.recordId),
           })
           return record
         } catch (error) {
-          put({
-            ...edit,
-            status:
-              error instanceof RevisionConflictError ? 'conflict' : 'failed',
-            error,
-          })
+          if (!replaced())
+            put({
+              ...edit,
+              status:
+                error instanceof RevisionConflictError ? 'conflict' : 'failed',
+              error,
+            })
           return undefined
         }
       })
@@ -398,7 +438,14 @@ export function useCrmWrites(objectType: ObjectType) {
       value: unknown,
       readRevision = record.version,
     ) => {
-      if (sameValue(record.values[field.key], value)) {
+      // A different value for this field may still be on its way. Then the
+      // saved value is about to change, and matching it now proves nothing:
+      // this one is sent after it.
+      const waiting =
+        useCrmEdits.getState().edits[editKey(record.id, field.key)]
+      const behind =
+        waiting?.status === 'saving' && !sameValue(waiting.value, value)
+      if (!behind && sameValue(record.values[field.key], value)) {
         useCrmEdits.getState().clear(record.id, field.key)
         return Promise.resolve(record)
       }
@@ -411,6 +458,21 @@ export function useCrmWrites(objectType: ObjectType) {
       })
     },
     [objectTypeId, send],
+  )
+
+  /**
+   * Save what an editor that stayed open ends with. The save names the
+   * revision the editor opened on, not the one the record has reached since,
+   * so a change someone else saved meanwhile is a conflict to look at and is
+   * never written over. An editor left showing what it opened with sends
+   * nothing.
+   */
+  const saveFrom = useCallback(
+    (record: CrmRecord, field: FieldSpec, value: unknown, read: EditorRead) =>
+      sameValue(read.shown, value)
+        ? Promise.resolve(record)
+        : save(record, field, value, read.revision),
+    [save],
   )
 
   /**
@@ -473,7 +535,7 @@ export function useCrmWrites(objectType: ObjectType) {
     [client, objectType, objectTypeId],
   )
 
-  return { save, reload, apply, discard, remove }
+  return { save, saveFrom, reload, apply, discard, remove }
 }
 
 export type CrmWrites = ReturnType<typeof useCrmWrites>

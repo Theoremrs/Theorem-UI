@@ -8,7 +8,7 @@ import {
   Settings2,
   X,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   Menu,
@@ -66,11 +66,13 @@ import {
 import { useCrmNavigate, useCrmTableSearch } from './navigation'
 import {
   editKey,
+  editorRead,
   useCreateCrmRecord,
   useCrmEdits,
   useCrmRecords,
   useCrmWrites,
 } from './queries'
+import type { EditorRead } from './queries'
 import { ReadOnlyNote, UnsavedEdits, crmErrorText } from './record-fields'
 import { RecordPreview } from './record-preview'
 import { Checkbox } from './twenty/checkbox'
@@ -89,9 +91,47 @@ type Editing = {
   col: string
   typed?: string
   anchor: Element | null
+  /** What the record was when the editor opened. */
+  read: EditorRead
 }
 
 const NUMBER = new Intl.NumberFormat('en-US')
+
+/** A sort as one string, so it can be compared with what the address holds. */
+const sortToText = (sort: Sort | null) =>
+  sort ? `${sort.descending ? '-' : '+'}${sort.key}` : ''
+const sortFromText = (text: string): Sort | null =>
+  text ? { key: text.slice(1), descending: text.startsWith('-') } : null
+
+/**
+ * A value set here and mirrored to the address. The control shows what was
+ * set at once and never waits on the router. The address can also change
+ * without this table (the navigator opens the type afresh, Back is pressed);
+ * such a change is taken up, while the address catching up with what was set
+ * here is not mistaken for one.
+ */
+function useMirrored(address: string, write: (value: string) => void) {
+  const [value, setValue] = useState(address)
+  const sent = useRef<string[]>([])
+  useEffect(() => {
+    const echo = sent.current.indexOf(address)
+    if (echo >= 0) {
+      sent.current = sent.current.slice(echo + 1)
+      return
+    }
+    sent.current = []
+    setValue(address)
+  }, [address])
+  const set = useCallback(
+    (next: string) => {
+      sent.current.push(next)
+      setValue(next)
+      write(next)
+    },
+    [write],
+  )
+  return [value, set] as const
+}
 
 function compare(a: unknown, b: unknown) {
   const empty = (v: unknown) =>
@@ -131,27 +171,33 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const identifier = identifierField(type)
   // Filter and sort are typed here and mirrored to the address, so the field
   // never waits on the router.
-  const [filter, setFilterText] = useState(view.q ?? '')
+  const [filter, setFilter] = useMirrored(
+    view.q ?? '',
+    useCallback(
+      (text: string) => void changeView({ q: text || undefined }),
+      [changeView],
+    ),
+  )
   const [filtering, setFiltering] = useState(false)
-  const [sort, setSortState] = useState<Sort | null>(
-    view.sort ? { key: view.sort, descending: view.desc === true } : null,
+  const [sortText, setSortText] = useMirrored(
+    sortToText(
+      view.sort ? { key: view.sort, descending: view.desc === true } : null,
+    ),
+    useCallback(
+      (text: string) => {
+        const next = sortFromText(text)
+        void changeView({
+          sort: next?.key,
+          desc: next?.descending ? true : undefined,
+        })
+      },
+      [changeView],
+    ),
   )
-  const setFilter = useCallback(
-    (text: string) => {
-      setFilterText(text)
-      void changeView({ q: text || undefined })
-    },
-    [changeView],
-  )
+  const sort = useMemo(() => sortFromText(sortText), [sortText])
   const setSort = useCallback(
-    (next: Sort | null) => {
-      setSortState(next)
-      void changeView({
-        sort: next?.key,
-        desc: next?.descending ? true : undefined,
-      })
-    },
-    [changeView],
+    (next: Sort | null) => setSortText(sortToText(next)),
+    [setSortText],
   )
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const [limit, setLimit] = useState(STEP)
@@ -268,8 +314,19 @@ export function CrmTable({ type }: { type: ObjectType }) {
       col: field.key,
       typed,
       anchor: cellAt(row, col) ?? null,
+      read: editorRead(record, field, edits[editKey(record.id, field.key)]),
     })
   }
+  /** Save what the open editor ends with, against what it opened on. */
+  const saveEdited = (record: CrmRecord, field: FieldSpec, value: unknown) =>
+    writes.saveFrom(
+      record,
+      field,
+      value,
+      editing?.rowId === record.id && editing.col === field.key
+        ? editing.read
+        : editorRead(record, field, edits[editKey(record.id, field.key)]),
+    )
   const commit = (
     record: CrmRecord,
     field: FieldSpec,
@@ -277,7 +334,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
     move?: Move,
   ) => {
     setEditing(null)
-    void writes.save(record, field, value)
+    void saveEdited(record, field, value)
     step(
       shown.findIndex((r) => r.id === record.id),
       columns.findIndex((f) => f.key === field.key),
@@ -1124,7 +1181,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
             }
             onCommitAway={(value) => {
               setEditing(null)
-              void writes.save(editingRow, editingField, value)
+              void saveEdited(editingRow, editingField, value)
             }}
             onDiscard={discard}
           />

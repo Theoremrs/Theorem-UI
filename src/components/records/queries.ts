@@ -20,6 +20,9 @@ import type {
 } from './contract'
 
 const RECORDS = ['theorem', 'records'] as const
+// The CRM mode keeps the same saved records under keys of its own
+// (components/crm/queries); a write here makes its copies stale.
+const CRM = ['theorem', 'crm'] as const
 const keys = {
   model: [...RECORDS, 'model'] as const,
   rows: (nodeLabel: string) => [...RECORDS, 'rows', nodeLabel] as const,
@@ -206,6 +209,7 @@ export function useUpdateRecord(objectType: ObjectType) {
       if (context?.before) client.setQueryData(rowsKey, context.before)
       if (context?.record) client.setQueryData(keys.record(id), context.record)
     },
+    onSettled: () => void client.invalidateQueries({ queryKey: CRM }),
   })
 }
 
@@ -218,6 +222,7 @@ export function useCreateRecord(objectType: ObjectType) {
       appendRow(client, objectType.node_label, row)
       // The model's record counts are now one short.
       void client.invalidateQueries({ queryKey: keys.model })
+      void client.invalidateQueries({ queryKey: CRM })
     },
   })
 }
@@ -242,7 +247,10 @@ export function useDeleteRecords(objectType: ObjectType) {
     onError: (_error, _ids, context) => {
       if (context?.before) client.setQueryData(rowsKey, context.before)
     },
-    onSettled: () => void client.invalidateQueries({ queryKey: keys.model }),
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: keys.model })
+      void client.invalidateQueries({ queryKey: CRM })
+    },
   })
 }
 

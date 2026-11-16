@@ -518,6 +518,25 @@ test('a sign-in that may only read is told so on a write, and can still read', a
   expect((error as RecordAccessError).action).toBe('write')
 })
 
+test('a type with more records than one read serves is read to the end', async () => {
+  const kept = server.state.nodes.find((n) => n.id === 'commitment:materials')!
+  for (let n = 0; n < 1_204; n++)
+    server.state.nodes.push({
+      ...kept,
+      id: `commitment:extra-${n}`,
+      properties: { ...kept.properties, title: `Extra ${n}` },
+    })
+  const page = await api.findRecords(FIXTURE_TYPE.commitment)
+  expect(page.count).toBe(1_205)
+  expect(page.records).toHaveLength(1_205)
+  expect(page.records.at(-1)!.id).toBe('commitment:extra-1203')
+  expect(
+    server.state.verbs
+      .filter((call) => call.verb === 'find_many')
+      .map((call) => call.input.offset),
+  ).toEqual([0, 1_000])
+})
+
 test('a type this sign-in may not read is a refusal, not an empty page', async () => {
   serve({ unreadable: ['commitments'] })
   const error = await api

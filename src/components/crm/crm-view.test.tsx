@@ -211,6 +211,92 @@ test('a record changed elsewhere is not overwritten: the edit stays, with Reload
   expect(cell(container, 'Due').textContent).toBe('Monday')
 })
 
+test('an editor left open saves against the revision it opened on, not one read since', async () => {
+  const { container, client } = await commitments()
+  const input = await editDue(container, 'Monday')
+  // Someone else saves the field, and the table re-reads while the editor is open.
+  server.changeElsewhere('commitment:materials', { due: 'Thursday' })
+  await act(() => client.refetchQueries())
+  await key(input, 'Enter')
+  const alert = await waitFor(() => container.querySelector('[role="alert"]'))
+  expect(alert.textContent).toContain('changed since')
+  expect(updates()).toHaveLength(1)
+  expect(updates()[0]!.input).toMatchObject({
+    due: 'Monday',
+    expected_revision: 9,
+  })
+  // Their value is still what is saved.
+  expect(
+    server.state.nodes.find((node) => node.id === 'commitment:materials')!
+      .properties.due,
+  ).toBe('Thursday')
+})
+
+// A name is changed, then changed back while the first change is still on
+// its way. The first save can land after the second editor closes, or while
+// it is open; either way the second change is sent, after the first.
+for (const firstLands of [
+  'after the second is entered',
+  'while the second editor is open',
+] as const)
+  test(`a name changed and changed back ends as it began (the first save lands ${firstLands})`, async () => {
+    // Hold every update until the test lets it through.
+    const answered = window.fetch
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    window.fetch = (async (...args: Parameters<typeof fetch>) => {
+      const [input, init] = args
+      const body =
+        input instanceof Request
+          ? await input.clone().text()
+          : String(init?.body ?? '')
+      if (body.includes('update_one')) await held
+      return answered(...args)
+    }) as typeof fetch
+    const land = async () => {
+      await act(async () => release())
+      await settle()
+      await settle()
+    }
+
+    const { container } = await view('/crm/people/person%3Anoor')
+    const title = () =>
+      container.querySelector<HTMLElement>('button[title^="Rename"]')
+    const open = async () => {
+      await click(await waitFor(title))
+      return waitFor(() =>
+        container.querySelector<HTMLInputElement>('input[aria-label="Name"]'),
+      )
+    }
+    const enter = async (input: HTMLInputElement, text: string) => {
+      await type(input, text)
+      await key(input, 'Enter')
+    }
+    await enter(await open(), 'Noor B')
+    const again = await open()
+    if (firstLands === 'while the second editor is open') {
+      await land()
+      await waitFor(() => updates().length === 1)
+    }
+    await enter(again, 'Noor')
+    await land()
+
+    await waitFor(() => updates().length === 2)
+    expect(updates().map((call) => call.input.name)).toEqual(['Noor B', 'Noor'])
+    // The second names the revision the first produced.
+    expect(updates()[1]!.input.expected_revision).toBe(
+      Number(updates()[0]!.input.expected_revision) + 1,
+    )
+    await waitFor(
+      () =>
+        server.state.nodes.find((node) => node.id === 'person:noor')!.properties
+          .name === 'Noor',
+    )
+    await waitFor(() => title()?.textContent === 'Noor')
+  })
+
 test('"Add new" creates the record and puts the cursor in its name', async () => {
   const { container } = await commitments()
   await click(buttonNamed(container, 'Add new')!)
@@ -494,6 +580,29 @@ test('the preview, the filter and the sort are in the address, and a table opene
       .querySelectorAll('[role="columnheader"]')
       [columns(again.container).indexOf('Name')]!.getAttribute('aria-sort'),
   ).toBe('ascending')
+})
+
+test('when the address drops the filter and the sort, so does the table', async () => {
+  const { container, router } = await view(
+    '/crm/people?q=noo&sort=name&desc=true',
+  )
+  const rows = () =>
+    container.querySelectorAll('[role="gridcell"][data-c="0"]').length
+  await waitFor(() => rows() === 1)
+  // As the navigator does when the type that is already open is chosen again.
+  await act(() =>
+    router.navigate({
+      to: '/crm/$objectType',
+      params: { objectType: 'people' },
+      search: {},
+    } as never),
+  )
+  await waitFor(() => rows() > 1)
+  expect(
+    container
+      .querySelectorAll('[role="columnheader"]')
+      [columns(container).indexOf('Name')]!.getAttribute('aria-sort'),
+  ).not.toBe('descending')
 })
 
 test('"Private to me" saves at the record\'s revision and marks the row', async () => {
