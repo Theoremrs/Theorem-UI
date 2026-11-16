@@ -76,6 +76,29 @@ const INSPECT = `<!doctype html>
   }, (error) => { document.getElementById('history').textContent = error.code })
 </script>`
 
+/** The same, for an App that keeps a year. */
+const INSPECT_YEAR = INSPECT.replace(
+  `db("records")`,
+  `db("records", { historyDays: 365 })`,
+)
+
+/** An App whose own records carry an `ownership` field. */
+const OWNED = `<!doctype html>
+<meta name="theorem:uses" content='db("owned")'>
+<p id="owner"></p>
+<script>
+  theorem.db('owned').then(async (db) => {
+    const node = { id: 'deal:1', labels: ['Deal'], properties: { ownership: 'Ana' } }
+    await db.mutate({ upsertNodes: [node] })
+    await db.mutate({ upsertNodes: [{ ...node, properties: { ownership: 'Ben' } }] })
+    const reserved = await db.mutate({ upsertNodes: [{ id: 'deal:2', labels: ['Deal'], properties: { _rr_id: 'x' } }] })
+      .then(() => 'accepted', (error) => error.code)
+    document.getElementById('owner').textContent =
+      JSON.stringify([(await db.getNode('deal:1')).properties.ownership, reserved])
+    document.body.dataset.count = 'owned'
+  }, (error) => { document.getElementById('owner').textContent = error.code })
+</script>`
+
 /**
  * An App written the way Theorem's builder is told to (builder_app.md in the
  * Theorem repo): render from subscribe, change one field by reading the node
@@ -261,11 +284,29 @@ try {
   await mount('inspect', INSPECT, { documentId: 'app-1' })
   await rows('inspect', 'inspected')
   check(
-    "an App's database keeps 30 days of past versions",
-    (await frame('inspect').textContent('#history')) === '[30,true]',
+    "an App's database keeps 90 days of past versions",
+    (await frame('inspect').textContent('#history')) === '[90,true]',
     await frame('inspect').textContent('#history'),
   )
   await unmount('inspect')
+  await mount('inspect-year', INSPECT_YEAR, { documentId: 'app-1' })
+  await rows('inspect-year', 'inspected')
+  check(
+    'an App that declares a year keeps a year',
+    (await frame('inspect-year').textContent('#history')) === '[365,true]',
+    await frame('inspect-year').textContent('#history'),
+  )
+  await unmount('inspect-year')
+
+  await mount('owned', OWNED, { documentId: 'app-1' })
+  await rows('owned', 'owned')
+  check(
+    "an App's records may carry ownership, and the other owner rules hold",
+    (await frame('owned').textContent('#owner')) ===
+      '["Ben","owner_record"]',
+    await frame('owned').textContent('#owner'),
+  )
+  await unmount('owned')
 
   const kept = await page.evaluate(() => window.oracle.retention())
   check(
@@ -275,7 +316,7 @@ try {
       kept.report.bytesRemoved > 0 &&
       kept.after.history.commits === 1 &&
       kept.reopened.history.commits === 1 &&
-      kept.reopened.historyDays === 30 &&
+      kept.reopened.historyDays === 90 &&
       kept.node?.properties.name === 'Cedar',
     kept,
   )

@@ -27,6 +27,7 @@ async function mount(
   await state.ready
   const databases = documentAppDatabases(options.documentId, {
     writable: options.writable ?? true,
+    historyDays: declarations.dbHistoryDays,
   })
   const page = await hostedAppDocument(html)
   const url = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
@@ -69,18 +70,18 @@ async function clear(): Promise<void> {
 }
 
 /**
- * Keep no past versions, write three, and compact: what the cut leaves, in the
- * file and after reopening it.
+ * Write three versions and compact keeping none of the past: what the cut
+ * leaves, in the file and after reopening it.
  */
 async function retention() {
   const directory = 'theorem-app.retention.records'
-  const db = await openAppDatabase(directory, { historyDays: 0 })
+  const db = await openAppDatabase(directory)
   for (const name of ['Alder', 'Birch', 'Cedar'])
     await db.mutate({
       upsertNodes: [{ id: 'org:a', labels: ['Org'], properties: { name } }],
     })
   const before = await db.inspect()
-  const report = await db.compact()
+  const report = await db.compact({ historyDays: 0 })
   const after = await db.inspect()
   await db.close()
   const again = await openAppDatabase(directory)

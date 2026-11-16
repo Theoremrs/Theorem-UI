@@ -112,6 +112,41 @@ describe('declaring a database', () => {
       expect(parseHtmlDeclarations([`db("${name}")`]).errors).toHaveLength(1)
   })
 
+  test('it may say how many days of history it keeps', () => {
+    const { capabilities, dbHistoryDays, errors } = parseHtmlDeclarations([
+      'db("crm", { historyDays: 365 }), db("log"), db("scratch", { "historyDays": 0.5 })',
+      'db("crm", { historyDays: 365 })',
+    ])
+    expect(errors).toEqual([])
+    expect(capabilities.db).toEqual(['crm', 'log', 'scratch'])
+    expect(dbHistoryDays).toEqual({ crm: 365, scratch: 0.5 })
+    const named = parseHtmlDeclarations(['db("constructor", { historyDays: 5 })'])
+    expect(named.errors).toEqual([])
+    expect(named.dbHistoryDays).toEqual({ constructor: 5 })
+  })
+
+  test('a window that is not a number of days is refused', () => {
+    for (const declaration of [
+      'db("crm", { historyDays: -1 })',
+      'db("crm", { historyDays: "90" })',
+      'db("crm", { history: 90 })',
+      'db("crm", { historyDays: 90, other: 1 })',
+      'db("crm", { [key]: 90 })',
+      'db("crm", 90)',
+      'state("view", { historyDays: 90 })',
+    ]) {
+      const { capabilities, errors } = parseHtmlDeclarations([declaration])
+      expect(errors).toHaveLength(1)
+      expect(capabilities.db).toEqual([])
+    }
+    const twice = parseHtmlDeclarations([
+      'db("crm", { historyDays: 90 }), db("crm", { historyDays: 30 })',
+    ])
+    expect(twice.errors).toEqual([
+      'db("crm") is declared with two windows, 90 and 30 days',
+    ])
+  })
+
   test('it is stored under the document, not a revision', () => {
     expect(appDatabaseDirectory('doc:app/7', 'records')).toBe(
       'theorem-app.doc_app_7.records',
@@ -299,12 +334,7 @@ describe("an App's database over the bridge", () => {
 describe('the history window', () => {
   const DAY = 86_400_000
   const now = 1_800_000_000_000
-  const database = (
-    oldestMs: number | null,
-    compactFails = false,
-    historyDays: number | null = APP_HISTORY_DAYS,
-    commits = 3,
-  ) => {
+  const database = (oldestMs: number | null, compactFails = false, commits = 3) => {
     const calls: string[] = []
     return {
       calls,
@@ -316,54 +346,128 @@ describe('the history window', () => {
           nodes: 1,
           edges: 0,
           history: oldestMs === null ? null : { commits, oldestMs },
-          historyDays,
+          historyDays: APP_HISTORY_DAYS,
         }
       },
-      compact: async () => {
-        calls.push('compact')
+      compact: async (options?: { historyDays?: number }) => {
+        calls.push(`compact ${options?.historyDays}`)
         if (compactFails) throw Object.assign(new Error('full'), { code: 'quota_exhausted' })
         return { generation: 2, chunksRemoved: 4, bytesRemoved: 400, commitsRemoved: 2 }
       },
     }
   }
 
+  test('an App keeps ninety days unless it says otherwise', () => {
+    expect(APP_HISTORY_DAYS).toBe(90)
+  })
+
   test('a database is compacted once it holds versions a day past the window', async () => {
     const old = database(now - (APP_HISTORY_DAYS + 2) * DAY)
-    expect(await compactWhenHistoryIsOld(old, now)).toBe(true)
-    expect(old.calls).toEqual(['inspect', 'compact'])
+    expect(await compactWhenHistoryIsOld(old, APP_HISTORY_DAYS, now)).toBe(true)
+    expect(old.calls).toEqual(['inspect', `compact ${APP_HISTORY_DAYS}`])
   })
 
   test('nothing is rewritten while every version is inside the window and its slack', async () => {
     for (const oldestMs of [now - APP_HISTORY_DAYS * DAY, now - (APP_HISTORY_DAYS + 1) * DAY, null]) {
       const recent = database(oldestMs)
-      expect(await compactWhenHistoryIsOld(recent, now)).toBe(false)
+      expect(await compactWhenHistoryIsOld(recent, APP_HISTORY_DAYS, now)).toBe(false)
       expect(recent.calls).toEqual(['inspect'])
     }
   })
 
   test('a lone old version is not rewritten, because compaction keeps the current one', async () => {
-    const unchanged = database(now - 400 * DAY, false, APP_HISTORY_DAYS, 1)
-    expect(await compactWhenHistoryIsOld(unchanged, now)).toBe(false)
+    const unchanged = database(now - 400 * DAY, false, 1)
+    expect(await compactWhenHistoryIsOld(unchanged, APP_HISTORY_DAYS, now)).toBe(false)
     expect(unchanged.calls).toEqual(['inspect'])
   })
 
-  test('the window is the one the database was opened with', async () => {
-    const weekly = database(now - 9 * DAY, false, 7)
-    expect(await compactWhenHistoryIsOld(weekly, now)).toBe(true)
-    const keepsAll = database(now - 900 * DAY, false, null)
-    expect(await compactWhenHistoryIsOld(keepsAll, now)).toBe(false)
-    expect(keepsAll.calls).toEqual(['inspect'])
+  test('the window is the one given, not the one the database was opened with', async () => {
+    const weekly = database(now - 9 * DAY)
+    expect(await compactWhenHistoryIsOld(weekly, 7, now)).toBe(true)
+    expect(weekly.calls).toEqual(['inspect', 'compact 7'])
+    const yearly = database(now - 200 * DAY)
+    expect(await compactWhenHistoryIsOld(yearly, 365, now)).toBe(false)
+    expect(yearly.calls).toEqual(['inspect'])
   })
 
   test('a compaction that fails leaves the database usable', async () => {
-    const failing = database(now - 90 * DAY, true)
+    const failing = database(now - 400 * DAY, true)
     const warn = console.warn
     console.warn = () => {}
     try {
-      expect(await compactWhenHistoryIsOld(failing, now)).toBe(false)
+      expect(await compactWhenHistoryIsOld(failing, APP_HISTORY_DAYS, now)).toBe(false)
     } finally {
       console.warn = warn
     }
-    expect(failing.calls).toEqual(['inspect', 'compact'])
+    expect(failing.calls).toEqual(['inspect', `compact ${APP_HISTORY_DAYS}`])
+  })
+
+  /** Storage whose databases all hold a version from 400 days ago. */
+  function oldStorage() {
+    const compactions: Array<[string, number | undefined]> = []
+    const opens: Array<string> = []
+    return {
+      compactions,
+      opens,
+      open: async (directory: string) => {
+        opens.push(directory)
+        const database = memoryDatabase()
+        return {
+          ...database,
+          inspect: async () => ({
+            ...(await database.inspect()),
+            history: { commits: 2, oldestMs: Date.now() - 400 * DAY },
+            historyDays: APP_HISTORY_DAYS,
+          }),
+          compact: async (options?: { historyDays?: number }) => {
+            compactions.push([directory, options?.historyDays])
+            return { generation: 2, chunksRemoved: 0, bytesRemoved: 0, commitsRemoved: 1 }
+          },
+        }
+      },
+    }
+  }
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
+
+  test('the open App compacts each database once, with the window it declares', async () => {
+    const browser = oldStorage()
+    const one = documentAppDatabases('doc-window', {
+      open: browser.open,
+      historyDays: { crm: 7 },
+    })
+    // The source changed before the App reached its databases.
+    one.setHistoryDays({ crm: 365 })
+    const two = documentAppDatabases('doc-window', { open: browser.open })
+    cleanups.push(one.dispose, two.dispose)
+    await one.call('crm', 'inspect', undefined)
+    await one.call('log', 'inspect', undefined)
+    await two.call('crm', 'inspect', undefined)
+    await settle()
+    expect(browser.compactions).toEqual([
+      [appDatabaseDirectory('doc-window', 'crm'), 365],
+      [appDatabaseDirectory('doc-window', 'log'), APP_HISTORY_DAYS],
+    ])
+  })
+
+  test('a saved revision never compacts, and reports the window it declares', async () => {
+    const browser = oldStorage()
+    const revision = documentAppDatabases('doc-revision-window', {
+      open: browser.open,
+      writable: false,
+      historyDays: { crm: 7 },
+    })
+    cleanups.push(revision.dispose)
+    const plain = (await revision.call('constructor', 'inspect', undefined)) as { historyDays: number }
+    expect(plain.historyDays).toBe(APP_HISTORY_DAYS)
+    const crm = (await revision.call('crm', 'inspect', undefined)) as { historyDays: number }
+    const log = (await revision.call('log', 'inspect', undefined)) as { historyDays: number }
+    await settle()
+    expect(browser.compactions).toEqual([])
+    expect(crm.historyDays).toBe(7)
+    expect(log.historyDays).toBe(APP_HISTORY_DAYS)
+    const seen = await new Promise<{ historyDays: number }>((resolve) =>
+      revision.subscribe('crm', { method: 'inspect', args: undefined }, resolve as never, () => {}),
+    )
+    expect(seen.historyDays).toBe(7)
   })
 })

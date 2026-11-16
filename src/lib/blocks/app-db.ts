@@ -19,41 +19,46 @@ export type OpenDatabase = Pick<
   | 'neighbors'
   | 'query'
   | 'subscribe'
+  | 'compact'
   | 'close'
 >
 
 export type OpenDatabaseAt = (directory: string) => Promise<OpenDatabase>
 
 /**
- * Days of past versions an App database keeps. Its current records are always
- * kept; versions older than this are dropped when the database is compacted.
+ * Days of past versions an App database keeps unless its declaration says
+ * otherwise. Its current records are always kept; versions older than this
+ * are dropped when the database is compacted.
  */
-export const APP_HISTORY_DAYS = 30
+export const APP_HISTORY_DAYS = 90
 
 const DAY_MS = 86_400_000
 
 /**
- * Compact `database` when it holds versions more than a day older than the
- * window it was opened with, so a database opened daily is rewritten about
- * once a day at most, and one with nothing to drop is left alone. Compaction
- * always keeps the current version, so a database holding only that one has
- * nothing to drop however old it is. A failure
- * leaves the database as it was, so it is reported and otherwise ignored.
+ * Compact `database`, keeping `historyDays` of past versions, when it holds
+ * versions more than a day older than that, so a database opened daily is
+ * rewritten about once a day at most, and one with nothing to drop is left
+ * alone. Compaction always keeps the current version, so a database holding
+ * only that one has nothing to drop however old it is. A failure leaves the
+ * database's records as they were, so it is reported and otherwise ignored.
+ *
+ * The window is given here, not taken from the handle: every view of an App
+ * shares one handle, and the open App's current source says what it keeps.
  */
 export async function compactWhenHistoryIsOld(
   database: Pick<Database, 'inspect' | 'compact'>,
+  historyDays: number,
   now: number = Date.now(),
 ): Promise<boolean> {
   try {
-    const { history, historyDays } = await database.inspect()
+    const { history } = await database.inspect()
     if (
       !history ||
       history.commits <= 1 ||
-      historyDays === null ||
       history.oldestMs >= now - (historyDays + 1) * DAY_MS
     )
       return false
-    await database.compact()
+    await database.compact({ historyDays })
     return true
   } catch (failure) {
     console.warn('An App database could not be compacted', failure)
@@ -62,22 +67,23 @@ export async function compactWhenHistoryIsOld(
 }
 
 /**
- * Open an App's database in this origin's private file system, keeping
- * `historyDays` of past versions, and compact it in the background when it
- * holds older ones.
+ * Open an App's database in this origin's private file system. The view that
+ * may change it compacts it (see `documentAppDatabases`), with the window its
+ * App declares.
  */
-export async function openAppDatabase(
-  directory: string,
-  { historyDays = APP_HISTORY_DAYS }: { historyDays?: number } = {},
-): Promise<Database> {
+export async function openAppDatabase(directory: string): Promise<Database> {
   const [{ open }, { default: wasm }] = await Promise.all([
     import('@rustyreddb/browser'),
     import('@rustyreddb/browser/rustyred.wasm?url'),
   ])
-  const database = await open(directory, {
+  return open(directory, {
     // Nothing reads control events for an App's data, so none are written.
     controlEvents: false,
-    historyDays,
+    // A compaction without a window of its own keeps this many days.
+    historyDays: APP_HISTORY_DAYS,
+    // No subsystem keeps records in an App's database, so `ownership` is
+    // one of the App's own properties. Every other owner rule still holds.
+    ownershipMarkers: false,
     // Another tab showing this App uses the same database: one tab holds its
     // file and the rest reach it through that tab.
     shared: true,
@@ -87,9 +93,6 @@ export async function openAppDatabase(
         type: 'module',
       }),
   })
-  // Calls made meanwhile wait behind it in the database's worker.
-  void compactWhenHistoryIsOld(database)
-  return database
 }
 
 const openInBrowser: OpenDatabaseAt = (directory) => openAppDatabase(directory)
@@ -119,6 +122,8 @@ interface Held {
   database: Promise<OpenDatabase>
   users: number
   closing?: ReturnType<typeof setTimeout>
+  /** Whether a view has checked it for history to drop since it opened. */
+  compacted?: boolean
 }
 
 /**
@@ -168,16 +173,25 @@ function release(directory: string): void {
   }, LINGER_MS)
 }
 
+/** `inspect`'s answer, with the window this view's App declares. */
+const withWindow = (report: unknown, historyDays: number): unknown => ({
+  ...(report as object),
+  historyDays,
+})
+
 function run(
   database: OpenDatabase,
   method: DbMethod,
   args: unknown,
+  historyDays: number,
 ): Promise<unknown> {
   // The database checks each argument's shape itself and names what is wrong.
   const value = (args ?? {}) as never
   switch (method) {
     case 'inspect':
-      return database.inspect()
+      return database
+        .inspect()
+        .then((report) => withWindow(report, historyDays))
     case 'mutate':
       return database.mutate(value)
     case 'getNode':
@@ -200,6 +214,11 @@ function run(
 }
 
 export interface DocumentDatabases extends AppDatabases {
+  /**
+   * Replaces the windows the view's source declares, by database name, when
+   * the source changes under a view that stays.
+   */
+  setHistoryDays: (windows: Record<string, number>) => void
   /** Lets go of every database this view opened. */
   dispose: () => void
 }
@@ -207,12 +226,23 @@ export interface DocumentDatabases extends AppDatabases {
 /**
  * The databases of one App document, for one view of it. `writable` false is
  * a saved revision: it reads the App's records and changes none.
+ * `historyDays` holds the windows the view's source declares, by database
+ * name; others keep `APP_HISTORY_DAYS`. A writable view compacts each database
+ * to its window when it first reaches it; a saved revision never compacts.
  */
 export function documentAppDatabases(
   documentId: string,
-  options: { writable?: boolean; open?: OpenDatabaseAt } = {},
+  options: {
+    writable?: boolean
+    open?: OpenDatabaseAt
+    historyDays?: Record<string, number>
+  } = {},
 ): DocumentDatabases {
   const { writable = true, open = openInBrowser } = options
+  let windows = options.historyDays ?? {}
+  // A database may be named `constructor`: only the record's own keys count.
+  const window = (name: string): number =>
+    Object.hasOwn(windows, name) ? windows[name]! : APP_HISTORY_DAYS
   const opened = new Map<string, Promise<OpenDatabase>>()
   let disposed = false
   const database = (name: string): Promise<OpenDatabase> => {
@@ -224,8 +254,18 @@ export function documentAppDatabases(
       )
     let mine = opened.get(name)
     if (!mine) {
-      mine = acquire(appDatabaseDirectory(documentId, name), open)
+      const directory = appDatabaseDirectory(documentId, name)
+      mine = acquire(directory, open)
       opened.set(name, mine)
+      const entry = held.get(directory)
+      if (writable && entry && !entry.compacted) {
+        entry.compacted = true
+        // Calls made meanwhile wait behind it in the database's worker.
+        void mine.then(
+          (db) => compactWhenHistoryIsOld(db, window(name)),
+          () => {},
+        )
+      }
     }
     return mine
   }
@@ -238,7 +278,7 @@ export function documentAppDatabases(
           ),
           { code: 'read_only' },
         )
-      return run(await database(name), method, args)
+      return run(await database(name), method, args, window(name))
     },
     subscribe(name, read: { method: DbRead; args: unknown }, next, error) {
       let stop: (() => void) | undefined
@@ -248,7 +288,9 @@ export function documentAppDatabases(
           if (stopped) return
           stop = db.subscribe(
             { method: read.method, args: read.args ?? undefined } as never,
-            next,
+            read.method === 'inspect'
+              ? (report) => next(withWindow(report, window(name)))
+              : next,
             (failure) =>
               error({ code: failure.code, message: failure.message }),
           )
@@ -267,6 +309,9 @@ export function documentAppDatabases(
         stopped = true
         stop?.()
       }
+    },
+    setHistoryDays(next) {
+      windows = next
     },
     dispose() {
       if (disposed) return

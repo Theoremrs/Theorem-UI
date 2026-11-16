@@ -43,8 +43,19 @@ export const isEffectful = (capabilities: Capabilities): boolean =>
 
 export interface Declarations {
   capabilities: Capabilities
+  /**
+   * Days of past versions a database keeps, by name, where its declaration
+   * gives a window: `db("crm", { historyDays: 365 })`. Others keep the default.
+   */
+  dbHistoryDays: Record<string, number>
   errors: Array<string>
 }
+
+const emptyDeclarations = (): Declarations => ({
+  capabilities: noCapabilities(),
+  dbHistoryDays: {},
+  errors: [],
+})
 
 const CALLS: Record<string, keyof Capabilities> = {
   'files.read': 'read',
@@ -82,6 +93,38 @@ function stringArgument(
   return null
 }
 
+/**
+ * The window in `db("name", { historyDays: n })`'s second argument, or what is
+ * wrong with it.
+ */
+function dbHistoryDays(
+  name: string,
+  node: Expression | SpreadElement,
+): number | string {
+  const usage = `db("${name}", …) takes { historyDays: n }, a number of days, zero or more`
+  if (node.type !== 'ObjectExpression') return usage
+  const [property, ...rest] = node.properties
+  if (!property || rest.length > 0 || property.type !== 'Property') return usage
+  const key =
+    property.key.type === 'Identifier'
+      ? property.key.name
+      : property.key.type === 'Literal'
+        ? property.key.value
+        : null
+  const value = property.value
+  if (
+    property.computed ||
+    property.kind !== 'init' ||
+    key !== 'historyDays' ||
+    value.type !== 'Literal' ||
+    typeof value.value !== 'number' ||
+    !Number.isFinite(value.value) ||
+    value.value < 0
+  )
+    return usage
+  return value.value
+}
+
 function validate(kind: keyof Capabilities, value: string): string | null {
   if (kind === 'net' && !HOST.test(value))
     return `net("${value}") needs a host name such as api.example.com`
@@ -100,7 +143,7 @@ function validate(kind: keyof Capabilities, value: string): string | null {
 /** Parses one list of declarations, `files.read("a.csv"), state("x")`. */
 export function parseDeclarationList(
   text: string,
-  into: Declarations = { capabilities: noCapabilities(), errors: [] },
+  into: Declarations = emptyDeclarations(),
 ): Declarations {
   if (!text.trim()) return into
   let expression: Expression
@@ -122,9 +165,11 @@ export function parseDeclarationList(
       call.type === 'CallExpression' && call.callee.type !== 'Super'
         ? CALLS[calleeName(call.callee) ?? '']
         : undefined
+    const args = call.type === 'CallExpression' ? call.arguments : []
+    // A database may also say how much history it keeps.
     const value =
-      call.type === 'CallExpression' && call.arguments.length === 1
-        ? stringArgument(call.arguments[0])
+      args.length === 1 || (kind === 'db' && args.length === 2)
+        ? stringArgument(args[0])
         : null
     if (!kind || value === null) {
       into.errors.push(
@@ -133,8 +178,29 @@ export function parseDeclarationList(
       continue
     }
     const problem = validate(kind, value)
-    if (problem) into.errors.push(problem)
-    else if (!into.capabilities[kind].includes(value))
+    if (problem) {
+      into.errors.push(problem)
+      continue
+    }
+    if (args[1]) {
+      const days = dbHistoryDays(value, args[1])
+      // A database may be named `constructor`: only own keys count.
+      const before = Object.hasOwn(into.dbHistoryDays, value)
+        ? into.dbHistoryDays[value]
+        : undefined
+      if (typeof days === 'string') {
+        into.errors.push(days)
+        continue
+      }
+      if (before !== undefined && before !== days) {
+        into.errors.push(
+          `db("${value}") is declared with two windows, ${before} and ${days} days`,
+        )
+        continue
+      }
+      into.dbHistoryDays[value] = days
+    }
+    if (!into.capabilities[kind].includes(value))
       into.capabilities[kind].push(value)
   }
   return into
@@ -151,10 +217,7 @@ const USES_LINE = /^\s*\/\/\s*uses:(.*)$/
  * Only the comment lines before the first line of code count.
  */
 export function parseCodeDeclarations(source: string): Declarations {
-  const declarations: Declarations = {
-    capabilities: noCapabilities(),
-    errors: [],
-  }
+  const declarations = emptyDeclarations()
   for (const line of source.split('\n')) {
     const uses = USES_LINE.exec(line)
     if (uses) parseDeclarationList(uses[1] ?? '', declarations)
@@ -165,10 +228,7 @@ export function parseCodeDeclarations(source: string): Declarations {
 
 /** The declarations of an HTML app, from `<meta name="theorem:uses" content="…">`. */
 export function parseHtmlDeclarations(contents: Array<string>): Declarations {
-  const declarations: Declarations = {
-    capabilities: noCapabilities(),
-    errors: [],
-  }
+  const declarations = emptyDeclarations()
   for (const content of contents) parseDeclarationList(content, declarations)
   return declarations
 }

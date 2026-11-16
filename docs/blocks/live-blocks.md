@@ -401,7 +401,8 @@ params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
   reads current. A failure is a `DbError` with the database's own `code`, such
   as `cypher_write_unsupported`, or `owner_record` for a record another owner
   keeps (a `ControlEvent` label, a reserved ID such as `statement:…`, or an
-  `ownership` property).
+  `_rr_` metadata key). `ownership` is an ordinary property here: no other
+  subsystem keeps records in an App's database.
 - **Where it lives.** The database is Rusty Red's canonical engine
   (`@rustyreddb/browser`, built from Theorem's `rustyred-thg-browser`) in a
   worker of the page. It is one `.RR` file in the origin private file system,
@@ -419,8 +420,15 @@ params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
 - **Several tabs.** Tabs showing the same App use one database. One tab holds
   its file and the others reach it through that tab; when it closes, another
   takes over.
-- **Not yet.** Full-text search and compaction are not in the browser
-  database. Folder HTML apps, cells and page modules have no `db`.
+- **History.** Every commit is kept as a past version for 90 days unless the
+  declaration says otherwise: `db("records", { historyDays: 365 })`, any
+  number of days, zero or more. The current records are always kept. When the
+  open App reaches a database holding versions more than a day past its
+  window, it compacts the file, cutting them and reclaiming their space; a
+  saved revision never compacts. `inspect()` reports the window as
+  `historyDays`.
+- **Not yet.** Full-text search is not in the browser database. Folder HTML
+  apps, cells and page modules have no `db`.
 
 `bun run e2e:app-db` runs this in headless Chromium without a Theorem server,
 and with `--built` against a production build.
