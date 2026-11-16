@@ -72,11 +72,13 @@ pub(super) fn view(p: &FilesPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx) {
             break;
         }
         let here = row.path().is_some() && row.path() == cursor.as_deref();
+        // A chosen row is its letters on the selected band, when the theme draws one (as in
+        // Threads and Changes).
         let line = if here {
             if cx.focused {
-                theme.focus
+                theme.focus.patch(theme.selected_region)
             } else {
-                theme.selected
+                theme.selected.patch(theme.selected_region)
             }
         } else {
             theme.text

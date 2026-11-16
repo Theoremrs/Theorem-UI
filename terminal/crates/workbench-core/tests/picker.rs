@@ -1356,3 +1356,29 @@ fn no_node_the_picker_publishes_has_a_rect_with_no_area() {
         }
     }
 }
+
+#[test]
+fn the_chosen_row_sits_on_the_selected_surface_when_the_theme_draws_one() {
+    use ratatui::style::{Color, Style};
+    let band = Color::Rgb(0x2a, 0x33, 0x3b);
+    let view = standalone(false, "");
+    let area = Rect::new(0, 0, 60, 16);
+    let mut theme = Theme::plain();
+    theme.selected_region = Style::default().bg(band);
+    let workspace = Default::default();
+    let mut cx = ViewCtx::new(&theme, &workspace);
+    cx.picker = Some(&view);
+    let mut buf = Buffer::empty(area);
+    PickerPanel.view(area, &mut buf, &cx);
+    let banded: Vec<u16> = (0..16)
+        .filter(|y| (0..60).any(|x| buf[(x, *y)].bg == band))
+        .collect();
+    assert_eq!(banded.len(), 1, "one row on the band");
+    // Without a selected surface in the theme nothing is banded.
+    let plain = Theme::plain();
+    let mut cx = ViewCtx::new(&plain, &workspace);
+    cx.picker = Some(&view);
+    let mut buf = Buffer::empty(area);
+    PickerPanel.view(area, &mut buf, &cx);
+    assert!((0..16).all(|y| (0..60).all(|x| buf[(x, y)].bg != band)));
+}

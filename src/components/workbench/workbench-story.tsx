@@ -331,8 +331,8 @@ export function WorkbenchDefaultStory() {
 }
 
 /**
- * `workbench-picker`: the tool picker in a tools pane wide enough for two columns (the core's fit
- * rule needs 86 cells), beside Files and the main page, every tool live.
+ * `workbench-picker`: the tool picker, opened on its key, in a tools pane wide enough for two columns
+ * (the core's fit rule needs 86 cells), beside the main page, every tool live.
  */
 export function WorkbenchPickerStory() {
   return (
@@ -341,8 +341,8 @@ export function WorkbenchPickerStory() {
       width={PICKER_WIDTH}
       height={PICKER_HEIGHT}
       options={{ granted: EVERY_TOOL }}
-      script={[]}
-      wait={['README.md', 'More tools']}
+      script={[{ chord: 't' }, { see: 'More tools' }]}
+      wait={['More tools']}
     />
   )
 }

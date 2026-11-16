@@ -2294,3 +2294,35 @@ fn a_cut_is_not_applied_after_the_edit_has_ended() {
     answer(&mut r, &write, Outcome::Accepted);
     assert!(r.screen().contains("a.txt"), "{}", r.screen());
 }
+
+#[test]
+fn the_cursor_row_sits_on_the_selected_surface_when_the_theme_draws_one() {
+    let band = Color::Rgb(0x2a, 0x33, 0x3b);
+    let theme = Theme {
+        bg: Style::default().bg(Color::Blue),
+        text: Style::default().fg(Color::White),
+        focus: Style::default()
+            .fg(Color::Cyan)
+            .add_modifier(Modifier::BOLD),
+        selected_region: Style::default().bg(band),
+        ..colored()
+    };
+    let mut r = rig();
+    r.open_root();
+    r.key(Key::Down);
+    for focused in [true, false] {
+        let buf = r.draw_in(&theme, 90, 20, focused);
+        let banded: Vec<u16> = (0..20)
+            .filter(|y| (0..90).any(|x| buf[(x, *y)].bg == band))
+            .collect();
+        assert_eq!(banded.len(), 1, "one row on the band: {}", r.screen());
+        let y = banded[0];
+        assert!(
+            (0..90).all(|x| buf[(x, y)].bg == band),
+            "the band runs the row's whole width"
+        );
+        if focused {
+            assert!((0..90).any(|x| buf[(x, y)].fg == Color::Cyan));
+        }
+    }
+}

@@ -150,16 +150,20 @@ impl Panel for PickerPanel {
         if let Some(empty) = layout.empty {
             draw(buf, empty, PAD, NO_MATCH, cx.theme.muted);
         }
-        // The chosen row is drawn in letters, never a band: the focus colour while this panel
-        // holds the keyboard, bright ink while it does not.
+        // The chosen row is its letters (the focus colour while this panel holds the keyboard,
+        // bright ink while it does not) on the selected band, when the theme draws one.
         let chosen_style = if cx.focused {
             cx.theme.focus
         } else {
             cx.theme.selected
-        };
+        }
+        .patch(cx.theme.selected_region);
         for cell in &layout.cells {
             let row = &view.rows[cell.index];
             let selected = cell.index == view.selected;
+            if selected {
+                buf.set_style(cell.rect, cx.theme.selected_region);
+            }
             let label = match (&row.availability, selected) {
                 (_, true) => chosen_style,
                 (Availability::Available, false) => cx.theme.text,
