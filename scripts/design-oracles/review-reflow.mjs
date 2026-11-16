@@ -64,6 +64,7 @@ const snapshot = () =>
       width: innerWidth,
       height: innerHeight,
       dpr: devicePixelRatio,
+      rootFontSize: getComputedStyle(document.documentElement).fontSize,
       pageWidth: document.documentElement.scrollWidth,
       text: [...document.querySelectorAll('.aui-md-p')]
         .map((p) => p.textContent)
@@ -128,6 +129,14 @@ try {
   })
   await page.waitForFunction(() => innerWidth === 1280)
   await page.evaluate(() => (document.documentElement.style.fontSize = '32px'))
+  // Zoom restoration and text layout need not finish in the same frame.
+  // Observe the required size instead of sampling once after two frames;
+  // a persistent failure to enlarge still fails this check.
+  await page.waitForFunction(() => {
+    const prose = document.querySelector('.aui-md-p')
+    return getComputedStyle(document.documentElement).fontSize === '32px' &&
+      prose && getComputedStyle(prose).fontSize === '32px'
+  }, undefined, { timeout: 5000 })
   await settle()
   const text200 = await snapshot()
   check(

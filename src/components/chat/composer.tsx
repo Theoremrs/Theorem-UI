@@ -99,7 +99,7 @@ export const Composer: FC<{
     actions: Actions = ComposerPrimaryActions,
     context: Context = ComposerContext,
   } = slots ?? {}
-  useLiquidGlass(shellRef, surface === 'liquid')
+  useLiquidGlass(shellRef, surface === 'liquid' || surface === 'glass')
   const busyInput = useBusyComposerInput({
     hasReferences: () => useComposerReferences.getState().references.length > 0,
     onError: (description) =>
@@ -166,7 +166,7 @@ export const Composer: FC<{
               data-kit-perch="composer"
               data-face-perch="composer"
               className={cn(
-                composerSurface(surface),
+                composerSurface(surface === 'glass' ? 'liquid' : surface),
                 'appearance-surface appearance-composer-box data-[dragging=true]:border-focus w-full cursor-text rounded-(--composer-radius) border transition-[border-color] duration-100 data-[dragging=true]:border-dashed',
               )}
             />
@@ -211,8 +211,9 @@ export const Composer: FC<{
 
 /**
  * The composer's material (Settings, Appearance): paper with its grain,
- * frosted glass, or liquid glass (glass/liquid-glass). Each sets the shell's
- * border colour at rest and while focused; live liquid glass draws its own
+ * or glass. Both persisted glass choices use the existing library renderer
+ * (glass/liquid-glass). Each sets the shell's border colour at rest and while
+ * focused; live glass draws its own
  * contour over the border instead (styles.css surface-liquid).
  */
 export const composerSurface = (surface: ComposerSurface) =>

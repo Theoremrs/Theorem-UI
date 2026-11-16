@@ -179,3 +179,95 @@ the same run passed locally. Portability coverage now follows the dedicated
 page reload and reset. All 14 continuity checks pass locally with this change.
 Failures also print their exception and save a screenshot and visible text.
 See [route continuity evidence](evidence/theme-glass/chromium-continuity.json).
+
+
+### Glass and catalog deployment follow-up (2026-11-15)
+
+PRs #104 and Theorem #1076 were verified merged before editing. Reused the
+existing clean UI checkout and branched `Travis-Gilbert/glass-catalog-followup`
+from `origin/main` at `ebacffe7`.
+
+The light/dark and terminal controls now use the existing Base UI Button with
+accessible names and no tooltip wrappers. Both persisted composer glass choices
+now use the existing ybouane/liquidglass-derived renderer and its original
+material parameters and footer. No replacement CSS effect or new renderer was
+introduced. The field now publishes frames when the companion is off; previously
+that return bypassed the glass frame listener. The renderer only exposes the
+conversation through its body where the browser supports backdrop blur.
+
+The background-frame regression fails on the original early return (zero frames)
+and passes with the fix. All three Life mount tests, 731 composer/runtime tests,
+TypeScript, affected-file ESLint and the production Vite build pass. The terminal
+WASM bindings were rebuilt from current main before TypeScript validation.
+Nine rendered checks verify tooltip absence, field publication with the companion
+off, both glass choices in light/dark mode for the main and edit composers,
+forced colors, phone toggling and the dedicated settings route. The glass check now compares screenshot pixels over
+red and blue backdrops: the interior transmits both, rather than merely asserting
+a canvas exists. It retains the mounted editor and draft checks. Screenshots and
+measurements: [glass follow-up evidence](evidence/glass-followup/theme-glass.json).
+Custom palettes retain their existing validated opaque reading planes.
+
+Production diagnosis: the UI Worker deploy `16f4d66f-d1d6-473c-a911-c08c58e059fe`
+is dated 2026-11-15T20:54:40Z, and the served CSS includes #104's built-in glass
+transparency rule. Its API authority is `travis-theorem-personal.fly.dev`. Both
+Fly machines still run revision `2421231c8fd7c73041fcfe5b92bfcfcc625337c6`, image
+`sha256:f1cf90aa009c82bcd4fbed66dfb83524b0e204e1f4111517c8a0df6ea6e6bd78`,
+updated November 13. This predates the merged catalog repair in #1076. No live
+backend rollout was performed. After the user signed in, the real AI settings
+page confirmed **8 of 8 models**. That browser uses Stone / Expressive / Dark
+with Paper selected for the composer. A temporary Liquid selection mounted the
+live renderer, used `blur(6px)`, and had transparent shell and all five interior
+planes. Paper was restored afterward. Preferences are per device, so this does
+not establish the state of the browser used for the earlier screenshot. The
+earlier 384-row UI fixture remains consumer evidence, not proof of a repaired
+deployed catalog.
+
+PR #114 review caught the separate edit-message composer. Its renderer enablement
+and interior transparency now follow the main composer; the browser check opens
+and cancels editing in all four material/mode cases without changing the main
+draft or editor instance. Sent-message material mapping is left intact. The
+updated checks, 731 composer tests, TypeScript, focused lint and production build
+pass after that repair.
+
+Composer CI run `43773083944` passed types, unit/native composer checks, colors,
+controls, continuity and navigation/export, then sampled 16px prose in the 200%
+root-text reflow assertion after restoring page zoom. Width, text and draft were
+preserved. The same runner passed locally before adjustment; a persistent layout
+defect has not been reproduced. It now waits up to five seconds for the actual
+32px root and prose computed sizes, retaining the original size/content/overflow
+assertions and recording root size in diagnostics. A failure to reach that size
+still fails. All nine reflow checks pass locally with the readiness condition;
+CI on the updated revision is the remaining confirmation.
+
+Theorem #1076 native verification resumed on its merged source revision
+`786364720ce27cec2d885eed87c1d32a3f1c804e`, using the required pooled Cargo
+target and `CARGO_BUILD_JOBS=2`. The previously blocked test binary built in
+25m 06s. `cargo nextest run --locked --manifest-path rustyredcore_THG/Cargo.toml
+-p rustyred-thg-server --lib -E
+'test(discovery_pages_reach_admission_and_pin_native_capabilities)'` passed
+its one test. The same command with `-E 'test(chat_model_binding::)'` then
+passed all 31 selected tests, including authenticated HTTP listing, default
+resolution, personal keys, saved models and discovery outage behavior. No
+backend source was changed. GitHub's backend root-selection check still reports
+that it never started because of failed payments/spending limits; local native
+results are separate evidence.
+
+The user approved the proposed relay rollout. That build stopped before image
+publication: its standalone harness-server lockfile is stale; the automatic
+retry also lost the builder connection. No production machine changed. Route
+inspection then corrected the deployment target: `theorem-mcp-server` forwards
+`/api/chat/v1/*rest` to the store; the catalog owner is `rustyred-thg-server` in
+`travis-theorem-personal-store`, not the relay named in the approval request.
+The store image is being prepared with `--build-only --push` from the same
+clean revision. Its one active data-bearing machine is `8147d9b9996e58`;
+the two stopped issuer machines must not be included in a rollout. Corrected
+approval must name this target and its restart/recovery interruption.
+
+Composer CI run `43774449311` passed all nine reflow checks, then found an
+outdated exact-title assertion in the runtime runner: the sidebar now adds a
+timestamp on the second line of its title. The captured row retained the full
+translated name and running/unread cues, with client and scroll widths both
+169px. The assertion now checks the complete first line and retains every
+geometry/status assertion. The focused local run passed all four sidebar checks
+before its separate attachment file-chooser wait timed out; full CI remains
+the acceptance gate for the updated runner.

@@ -321,7 +321,7 @@ const ThreadRoot: FC<{
                 {
                   flat: 'appearance-flat-footer',
                   paper: 'bg-sheet rounded-t-(--composer-radius) bg-bottom',
-                  glass: 'glass-footer',
+                  glass: 'liquid-footer',
                   liquid: 'liquid-footer',
                 }[surface],
             )}
@@ -1049,7 +1049,7 @@ const UserActionBar: FC = () => {
 const EditComposer: FC = () => {
   const surface = useComposerSurface()
   const rootRef = useRef<HTMLFormElement>(null)
-  useLiquidGlass(rootRef, surface === 'liquid')
+  useLiquidGlass(rootRef, surface === 'liquid' || surface === 'glass')
   return (
     // No content-visibility here, unlike the message rows: its paint
     // containment would clip the composer's shadow and glow, and only the
@@ -1072,7 +1072,7 @@ const EditComposer: FC = () => {
             data-material={surface}
             className={cn(
               'appearance-surface aui-edit-composer-root flex w-full cursor-text flex-col rounded-(--composer-radius) border transition-[border-color] duration-100',
-              composerSurface(surface),
+              composerSurface(surface === 'glass' ? 'liquid' : surface),
             )}
           >
             <ComposerToolTrigger />
