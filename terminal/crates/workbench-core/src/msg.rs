@@ -73,6 +73,10 @@ pub enum Msg {
     /// The person asked the system for reduced motion (or stopped asking).
     /// The root keeps it and tells each panel whose last word differs.
     ReducedMotion(bool),
+    /// Whether the workbench stands beside the conversation (docked at the
+    /// side or bottom of the sheet) rather than taking the whole sheet. A
+    /// companion leaves out what the sheet beside it already shows.
+    Companion(bool),
     Host(HostMessage),
     Completion(Completion),
     Action {

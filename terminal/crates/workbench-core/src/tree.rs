@@ -76,6 +76,11 @@ pub fn semantics(model: &Model) -> SemanticTree {
     // A group with no rectangle this frame is still on the tree, so the person
     // or agent who cannot see it can find it and say why it is not shown.
     for (id, why) in &frame.suppressed {
+        // What a companion leaves out is the conversation beside it, not a
+        // group to find and show.
+        if model.companion_hidden() == Some(*id) {
+            continue;
+        }
         let reason = match why {
             Suppressed::Hidden => "Hidden. Show the group to see it.",
             Suppressed::Collapsed => "Not shown: the window has no room for every panel.",

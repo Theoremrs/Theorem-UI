@@ -168,6 +168,19 @@ impl Dock {
         self.layout.focused()
     }
 
+    /// The focused group and the one focused before it.
+    pub fn focus_history(&self) -> (GroupId, Option<GroupId>) {
+        (self.layout.focused(), self.layout.prev_focused())
+    }
+
+    /// Put back a focus history read from `focus_history`. A group that has
+    /// since gone or is hidden is not focused.
+    pub fn restore_focus_history(&mut self, focus: GroupId, prev: Option<GroupId>) {
+        if self.groups.get(&focus).is_some_and(|g| !g.hidden) {
+            self.layout.restore_focus(focus, prev);
+        }
+    }
+
     pub fn maximized(&self) -> Option<GroupId> {
         self.maximized
     }

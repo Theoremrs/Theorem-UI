@@ -886,6 +886,8 @@ impl Model {
 
         let has_picker = entries.values().any(|e| e.kind.as_str() == PICKER_KIND);
         self.dock = dock;
+        // A new dock holds nothing a companion hid; settle looks again.
+        self.companion_hid = None;
         self.panels = entries;
         if tools_stand {
             self.dismiss_resting_picker();

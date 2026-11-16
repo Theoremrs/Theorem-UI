@@ -1151,6 +1151,14 @@ impl WorkbenchHandle {
         self.send(Msg::Focus(focused));
     }
 
+    /// Whether the workbench stands beside the conversation (docked at the
+    /// side or bottom of the sheet) rather than taking the whole sheet; call
+    /// it on mount and whenever the placement changes. The core decides what
+    /// a companion leaves out.
+    pub fn set_companion(&self, companion: bool) {
+        self.send(Msg::Companion(companion));
+    }
+
     /// The person's reduced-motion preference, from
     /// `matchMedia('(prefers-reduced-motion: reduce)')`; call it on mount and
     /// again whenever that query changes.
@@ -1917,6 +1925,80 @@ mod tests {
             .find(|(id, _)| **id == focused)
             .map(|(_, k)| k.as_str().to_owned());
         assert_eq!(kind.as_deref(), Some("theo"));
+    }
+
+    /// The kinds showing in the frame, one per drawn group.
+    fn shown_kinds(core: &Core) -> Vec<String> {
+        let frame = core.model.frame().expect("a solved frame");
+        frame
+            .groups
+            .iter()
+            .filter_map(|g| g.active.as_ref())
+            .filter_map(|panel| {
+                core.model
+                    .panel_ids()
+                    .find(|(id, _)| id.as_str() == panel.0)
+                    .map(|(_, k)| k.as_str().to_owned())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn beside_the_conversation_the_workbench_does_not_show_theo_again() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads", "conversation"]);
+        core.step(WIDE, CELL, Theme::plain());
+        assert!(shown_kinds(&core).contains(&"theo".to_owned()));
+        core.update(Msg::Companion(true));
+        core.step(WIDE, CELL, Theme::plain());
+        let shown = shown_kinds(&core);
+        assert!(!shown.contains(&"theo".to_owned()), "{shown:?}");
+        assert!(shown.contains(&"threads".to_owned()), "{shown:?}");
+        assert_ne!(focused_kind(&core).as_deref(), Some("theo"));
+        // Nor does the tree the agent reads list it, shown or not.
+        let tree = semantics(&core.model);
+        let theo = core
+            .model
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "theo")
+            .map(|(id, _)| id.as_str().to_owned())
+            .unwrap();
+        assert!(
+            !tree.nodes.iter().any(|n| n.id.as_str().contains(&theo)),
+            "{:?}",
+            tree.nodes.iter().map(|n| n.id.as_str()).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn the_saved_layout_keeps_theo_and_the_whole_sheet_brings_it_back() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads", "conversation"]);
+        core.step(WIDE, CELL, Theme::plain());
+        let whole = core.model.document();
+        core.update(Msg::Companion(true));
+        core.step(WIDE, CELL, Theme::plain());
+        assert_eq!(
+            core.model.document(),
+            whole,
+            "a companion writes no layout of its own"
+        );
+        core.update(Msg::Companion(false));
+        core.step(WIDE, CELL, Theme::plain());
+        assert!(shown_kinds(&core).contains(&"theo".to_owned()));
+        assert_eq!(focused_kind(&core).as_deref(), Some("theo"));
+        assert_eq!(core.model.document(), whole);
+    }
+
+    #[test]
+    fn a_layout_applied_beside_the_conversation_still_leaves_theo_out() {
+        let mut core = core();
+        granted(&mut core, &["files", "threads", "conversation"]);
+        core.update(Msg::Companion(true));
+        core.step(WIDE, CELL, Theme::plain());
+        core.focus("workbench.layout.default");
+        core.step(WIDE, CELL, Theme::plain());
+        assert!(!shown_kinds(&core).contains(&"theo".to_owned()));
     }
 
     #[test]

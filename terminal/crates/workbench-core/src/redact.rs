@@ -268,6 +268,7 @@ impl fmt::Debug for Msg {
                 .finish(),
             Self::Focus(on) => f.debug_tuple("Focus").field(on).finish(),
             Self::ReducedMotion(on) => f.debug_tuple("ReducedMotion").field(on).finish(),
+            Self::Companion(on) => f.debug_tuple("Companion").field(on).finish(),
             Self::Host(m) => f.debug_tuple("Host").field(m).finish(),
             Self::Completion(c) => f.debug_tuple("Completion").field(c).finish(),
             Self::Action { id, actor } => f

@@ -94,6 +94,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Vec<Effect> {
             model.reduced_motion = reduced;
             vec![]
         }
+        Msg::Companion(on) => {
+            model.companion = on;
+            vec![]
+        }
         Msg::Host(message) => model.on_host(message),
         Msg::Completion(completion) => model.on_completion(completion),
         Msg::Action { id, actor } => model.run_action(id, actor, None),
@@ -323,6 +327,7 @@ impl Model {
     /// Re-solve the dock and tell panels what changed around them: their body,
     /// and whether they own the keyboard. Neither can start work.
     pub(crate) fn settle(&mut self) {
+        self.keep_companion();
         self.announce_workspace();
         self.announce_motion();
         self.announce_documents();

@@ -295,6 +295,16 @@ pub struct FollowStatus {
     pub runs: usize,
 }
 
+/// What a companion changed to leave Theo out: the group it hid, the focus
+/// history before, and where hiding moved the focus.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CompanionHold {
+    pub(crate) group: GroupId,
+    pub(crate) focus: GroupId,
+    pub(crate) prev: Option<GroupId>,
+    pub(crate) moved_to: GroupId,
+}
+
 pub struct Model {
     pub(crate) registry: Registry,
     pub(crate) factories: PanelFactories,
@@ -343,6 +353,11 @@ pub struct Model {
     /// The panel that owned the keyboard when the last frame settled, so a
     /// drawer that opens because focus moved into it knows where focus was.
     pub(crate) settled_focus: Option<PanelInstanceId>,
+    /// Whether the host stands the workbench beside the conversation.
+    pub(crate) companion: bool,
+    /// The conversation panel's group a companion hid, and the focus history
+    /// from before, so the saved layout and the whole sheet get both back.
+    pub(crate) companion_hid: Option<CompanionHold>,
     /// The highest panel number minted, so a closed panel's id is not reused.
     pub(crate) panel_seq: u64,
     /// The account's saved arrangements, and the layout effects the root has
@@ -423,6 +438,8 @@ impl Model {
             drag: None,
             before_drawer: None,
             settled_focus: None,
+            companion: false,
+            companion_hid: None,
             panel_seq: 0,
             arrangements: Default::default(),
             layout_pending: BTreeMap::new(),
@@ -690,6 +707,59 @@ impl Model {
         std::mem::take(&mut self.dirty)
     }
 
+    /// The group a companion hid, if it holds one.
+    pub fn companion_hidden(&self) -> Option<GroupId> {
+        self.companion_hid.as_ref().map(|h| h.group)
+    }
+
+    /// A companion stands beside the conversation, so it leaves out the
+    /// conversation panel (Theo) the sheet beside it already shows: Theo's
+    /// group is hidden on screen only. `document` writes it as shown, and
+    /// the whole sheet shows it again with the focus it had. Theo sharing its
+    /// group with other tabs is left as it is. Runs on every settle, so a
+    /// layout applied or restored meanwhile is treated the same way.
+    pub(crate) fn keep_companion(&mut self) {
+        let theo = self.theo_alone();
+        if let Some(hold) = self.companion_hid.take() {
+            let hidden = self.dock.group(hold.group).is_some_and(|g| g.is_hidden());
+            if self.companion && theo == Some(hold.group) && hidden {
+                self.companion_hid = Some(hold);
+                return;
+            }
+            if hidden {
+                let _ = self.dock.show_group(hold.group);
+                if !self.companion && self.dock.focused() == hold.moved_to {
+                    self.dock.restore_focus_history(hold.focus, hold.prev);
+                }
+            }
+        }
+        let Some(group) = theo.filter(|_| self.companion) else {
+            return;
+        };
+        if self.dock.group(group).is_some_and(|g| g.is_hidden()) {
+            // Hidden by the person; not this companion's to show again.
+            return;
+        }
+        let (focus, prev) = self.dock.focus_history();
+        if self.dock.hide_group(group).is_ok() {
+            self.companion_hid = Some(CompanionHold {
+                group,
+                focus,
+                prev,
+                moved_to: self.dock.focused(),
+            });
+        }
+    }
+
+    /// The group holding Theo as its only tab.
+    fn theo_alone(&self) -> Option<GroupId> {
+        self.dock.group_ids().into_iter().find(|id| {
+            self.dock.group(*id).is_some_and(
+                |g| matches!(g.tabs(), [tab] if tab.kind.name == crate::panels::THEO_KIND),
+            )
+        })
+    }
+
     pub(crate) fn focus_owner(&self) -> Option<PanelInstanceId> {
         let group = self.dock.group(self.dock.focused())?;
         let tab = group.active()?;
@@ -794,6 +864,16 @@ impl Model {
     /// and each available panel's kind at the version this build serves.
     pub fn document(&self) -> Value {
         let mut dock = self.dock.document();
+        // What a companion hid on screen is saved as the whole sheet had it.
+        if let Some(hold) = &self.companion_hid
+            && let Some(group) = dock.groups.get_mut(&hold.group)
+        {
+            group.hidden = false;
+            if self.dock.focused() == hold.moved_to {
+                dock.layout.focus = hold.focus;
+                dock.layout.prev_focus = hold.prev;
+            }
+        }
         for group in dock.groups.values_mut() {
             for tab in &mut group.tabs {
                 let Some(entry) = self.panels.get(&PanelInstanceId::new(tab.panel.0.clone()))
@@ -886,6 +966,8 @@ impl Model {
         }
 
         self.dock = dock;
+        // A new dock holds nothing a companion hid; settle looks again.
+        self.companion_hid = None;
         self.panels = panels;
         self.in_flight = InFlight::new(IN_FLIGHT_LIMIT);
         self.origins.clear();

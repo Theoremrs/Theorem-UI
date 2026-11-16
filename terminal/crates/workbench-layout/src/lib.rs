@@ -351,6 +351,17 @@ impl TileLayout {
         }
     }
 
+    /// Put back a focus and the pane focused before it, as they were read
+    /// from `focused` and `prev_focused`. Panes no longer in the layout are
+    /// left as they are.
+    pub fn restore_focus(&mut self, focus: PaneId, prev: Option<PaneId>) {
+        let panes = self.pane_ids();
+        if panes.contains(&focus) {
+            self.focus = focus;
+            self.prev_focus = prev.filter(|p| panes.contains(p));
+        }
+    }
+
     /// Swap two pane ids in the layout tree while preserving split shape and
     /// ratios. Returns true only when both panes exist and are different.
     pub fn swap_panes(&mut self, first: PaneId, second: PaneId) -> bool {
