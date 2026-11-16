@@ -303,6 +303,7 @@ test('output commands stay available when the tools route is unavailable', async
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
   await waitFor(() => options().length === 2)
+  expect(container.textContent).toContain('This Theorem does not list its tools yet.')
   expect(options().map((item) => item.textContent)).toEqual([
     'output-styleChoose how Theorem writes its replies.',
     'output-settingsResponse detail and optional limits for this conversation.',

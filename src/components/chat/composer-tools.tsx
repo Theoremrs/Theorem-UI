@@ -277,7 +277,10 @@ export function ComposerToolTrigger() {
             if (item.type === 'command') setOutputDialog(item.id)
           },
         }}
-        heading="Theorem tools and commands"
+        heading={<>
+          <div>Theorem tools and commands</div>
+          {status !== 'ready' && <p>{EMPTY[status]}</p>}
+        </>}
         itemTag={tagOf}
         emptyItemsLabel={EMPTY[status]}
         loadingLabel={EMPTY.loading}
