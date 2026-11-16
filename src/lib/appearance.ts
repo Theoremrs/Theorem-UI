@@ -404,13 +404,15 @@ function applyCustomCss(css: string) {
     style.id = CUSTOM_CSS_ID
   }
   if (style.textContent !== css) style.textContent = css
+  // The DOM types call body non-null, but it is null until the parser reaches it.
+  const body = () => document.body as HTMLElement | null
   const place = () => {
-    const parent = document.body ?? document.head
+    const parent = body() ?? document.head
     if (style.parentNode !== parent || style.nextElementSibling)
       parent.append(style)
   }
   place()
-  if (!document.body)
+  if (!body())
     document.addEventListener('DOMContentLoaded', place, { once: true })
 }
 

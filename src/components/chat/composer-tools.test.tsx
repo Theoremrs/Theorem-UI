@@ -16,7 +16,7 @@ import {
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Thread } from '../assistant-ui/elements/thread.aui'
-import { cleanup, render, waitFor } from '../../../test/blocks/render'
+import { buttonNamed, cleanup, render, waitFor } from '../../../test/blocks/render'
 import {
   planningTurnOptions,
   usePlanning,
@@ -189,7 +189,7 @@ const options = () => [
 test('a slash lists the native tools, with their first sentence and what they change', async () => {
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 4)
+  await waitFor(() => options().length === 6)
   expect(container.textContent).toContain('Theorem tools')
   const rows = options().map((option) => option.textContent)
   expect(rows).toEqual([
@@ -197,6 +197,8 @@ test('a slash lists the native tools, with their first sentence and what they ch
     'recallRecall prior memory for a query.',
     'rememberwritesStore a memory for this person.',
     'rustyweb_searchSearch the web.',
+    'output-styleChoose how Theorem writes its replies.',
+    'output-settingsResponse detail and optional limits for this conversation.',
   ])
   expect(
     requests.filter(({ pathname }) => pathname.includes('/environment/')),
@@ -214,7 +216,7 @@ test('the tools heading shows only while the slash list is open', async () => {
   const { container } = await mount(<Harness text="" sent={[]} />)
   expect(container.textContent).not.toContain('Theorem tools')
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 4)
+  await waitFor(() => options().length === 6)
   expect(container.textContent).toContain('Theorem tools')
   await type(inputOf(container), 'Hello')
   await waitFor(() => !options().length)
@@ -296,14 +298,16 @@ test('a slash that names no tool stays text, and Ctrl+Enter sends it', async () 
   expect(sentText(sent[0]!)).toBe('/usr/bin')
 })
 
-test('a Theorem without the tools route says so instead of an empty list', async () => {
+test('output commands stay available when the tools route is unavailable', async () => {
   toolsStatus = 404
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
-  await waitFor(() =>
-    container.textContent.includes('This Theorem does not list its tools yet.'),
-  )
-  expect(options()).toHaveLength(0)
+  await waitFor(() => options().length === 2)
+  expect(container.textContent).toContain('This Theorem does not list its tools yet.')
+  expect(options().map((item) => item.textContent)).toEqual([
+    'output-styleChoose how Theorem writes its replies.',
+    'output-settingsResponse detail and optional limits for this conversation.',
+  ])
 })
 
 test('a sent message shows the tool it asked for as a chip', async () => {
@@ -388,7 +392,7 @@ test('the arrow keys move through the tools, and Escape closes the list and keep
   const { container } = await mount(<Harness text="" sent={[]} />)
   const input = inputOf(container)
   await type(input, '/')
-  await waitFor(() => options().length === 4)
+  await waitFor(() => options().length === 6)
   expect(input.getAttribute('aria-expanded')).toBe('true')
   const first = input.getAttribute('aria-activedescendant')
   await press(input, 'ArrowDown')
@@ -398,7 +402,7 @@ test('the arrow keys move through the tools, and Escape closes the list and keep
   expect(composerText()).toStartWith(':tool[recall]')
 
   await type(input, 'see /')
-  await waitFor(() => options().length === 4)
+  await waitFor(() => options().length === 6)
   await press(input, 'Escape')
   await waitFor(() => !options().length)
   expect(input.hasAttribute('aria-expanded')).toBe(false)
@@ -567,4 +571,32 @@ test('the effort menu offers no limits reset while the conversation has none of 
   await act(() => trigger.click())
   await waitFor(() => document.querySelector('[role="menuitemradio"]'))
   expect(document.querySelector('[role="menuitem"]')).toBeNull()
+})
+
+test('output settings open only through a slash command and preserve conversation overrides', async () => {
+  const { container } = await mount(<Harness text="Hello" sent={[]} messages={[{
+    role: 'assistant', id: 'last',
+    content: [{ type: 'data', name: 'theorem-limits', data: { limits: { maxOutputTokensPerCall: { value: 8000, source: 'default' } } } }],
+  }]} />)
+  expect(container.querySelector('[aria-label="Response length and detail"]')).toBeNull()
+  const input = inputOf(container)
+  await type(input, 'Hello /output-settings')
+  await waitFor(() => options().length === 1)
+  await press(input, 'Enter')
+  await waitFor(() => document.querySelector('[role="dialog"]'))
+  expect(composerText().trim()).toBe('Hello')
+  const panel = await waitFor(() => document.querySelector('[data-slot="response-control"]'))
+  // What the newest run ran under is shown beneath the fields.
+  expect(panel.textContent).toContain('Last reply ran under')
+  expect(panel.textContent).toContain("Theorem's default")
+  expect(buttonNamed(panel, 'Reset')).toBeUndefined()
+
+  await act(() => buttonNamed(panel, 'Concise')!.click())
+  expect(useGenerationOverrides.getState().byThread[DRAFT]).toEqual({ responseDetail: 'concise' })
+  expect(generationTurnOptions().responseDetail).toBe('concise')
+  await waitFor(() => buttonNamed(panel, 'Reset'))
+
+  await act(() => buttonNamed(panel, 'Reset')!.click())
+  expect(useGenerationOverrides.getState().byThread[DRAFT]).toBeUndefined()
+  await waitFor(() => !buttonNamed(panel, 'Reset'))
 })
