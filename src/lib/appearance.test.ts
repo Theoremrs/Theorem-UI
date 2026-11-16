@@ -5,6 +5,7 @@ import {
   APPEARANCE_VERSION,
   appearanceDocumentSchema,
   appearanceOverridesSchema,
+  customCssSchema,
   DEFAULT_APPEARANCE,
   migrateLegacyAppearance,
   resolveAppearance,
@@ -196,6 +197,34 @@ describe('appearance selection', () => {
           expect(wcagContrast(ink, fill)).toBeGreaterThanOrEqual(minimum)
         }
       }
+    }
+  })
+})
+
+describe('custom CSS', () => {
+  const ok = (css: string) => customCssSchema.safeParse(css).success
+
+  test('takes plain rules and data: URLs', () => {
+    expect(ok('.aui-composer { border-radius: 4px; }')).toBe(true)
+    expect(ok('body { background: url("data:image/png;base64,AAAA"); }')).toBe(true)
+    expect(ok("body { background: url( 'data:image/svg+xml,<svg/>' ); }")).toBe(true)
+  })
+
+  test('refuses anything that could reach the network, however it is spelled', () => {
+    for (const css of [
+      '@import "https://example.test/theme.css";',
+      '@IMPORT url(https://example.test/theme.css);',
+      '@\\69 mport "https://example.test/theme.css";',
+      'body { background: u\\72l(https://example.test/a.png); }',
+      'body { background: url(https://example.test/a.png); }',
+      'body { background: url( "//example.test/a.png"); }',
+      '@font-face { font-family: X; src: url(https://example.test/x.woff2); }',
+      'body { background: src("https://example.test/a.png"); }',
+      'body { background: image-set("https://example.test/a.png" 1x); }',
+      'body { background: -webkit-image-set("https://example.test/a.png" 1x); }',
+      'body { content: "\\2014"; }',
+    ]) {
+      expect({ css, ok: ok(css) }).toEqual({ css, ok: false })
     }
   })
 })

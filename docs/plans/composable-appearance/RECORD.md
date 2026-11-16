@@ -271,3 +271,32 @@ translated name and running/unread cues, with client and scroll widths both
 geometry/status assertion. The focused local run passed all four sidebar checks
 before its separate attachment file-chooser wait timed out; full CI remains
 the acceptance gate for the updated runner.
+
+## Output styles and provider ceilings follow-up (2026-11-15)
+
+The reported DeepSeek Flash Latest cutoff was a backend discovery clamp:
+`top_provider.max_completion_tokens` was always reduced to at most 4,096.
+OpenRouter's public directory reported 943,718 for this alias during inspection.
+The screenshot reports a per-call model ceiling, one step and an uncapped run;
+it does not show a cumulative 4,096-token run budget. The backend repair lives
+in Theorem's `Travis-Gilbert/discovered-output-limits` branch.
+
+The shared composer no longer mounts the Length button. Its conversation
+controls remain available through `/output-settings`, retaining stored overrides,
+reset and the last run's limit facts. `/output-style` selects a real server-owned
+response style, via the existing response-styles API and mutation/CSRF helper.
+Existing conversations save their own selection; before a conversation exists,
+the dialog explicitly edits the account default. Settings > AI includes the
+account style selector beside response detail and optional output limits.
+Selecting a style does not change token limits. Loading and save failures remain
+visible, and failed saves do not replace the confirmed selection.
+
+Verification: 184 Bun tests passed across the affected chat, assistant-ui,
+generation and settings suites; TypeScript and focused ESLint passed.
+`PLAYWRIGHT_BROWSERS_PATH=/tmp/theorem-appearance-browsers node
+scripts/design-oracles/review-output-settings.mjs` passed at 390px and 1440px:
+no Length button, both slash dialogs, preserved draft, style selection and the
+real settings page. This is rendered fixture evidence, not a production rollout.
+Screenshots: [composer](evidence/output-settings/composer-390.png),
+[style dialog](evidence/output-settings/output-style-390.png),
+[settings](evidence/output-settings/settings-390.png).

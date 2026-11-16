@@ -38,6 +38,12 @@ export type StoryRouteOptions = { reviewless?: boolean }
 export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeRoutes {
   const organization = organizationFixture(now)
   let review: Review = reviewFixture(now)
+  let outputStyle: string | null = null
+  const conversationStyles = new Map<string, string | null>()
+  const styleSelection = (threadId?: string | null) => ({
+    account: outputStyle, conversation: threadId ? conversationStyles.get(threadId) ?? null : null,
+    effective: { style: (threadId && conversationStyles.get(threadId)) || outputStyle || 'normal', name: 'Normal', source: 'account' },
+  })
   const projects = organization.projects.map((project) => ({
     schema: 'theorem.chat.project.v1',
     projectId: project.projectId,
@@ -103,6 +109,19 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   return {
     ...sessionGraphRoutes(now),
     ...projectContextRoutes(now, { added }),
+    [`GET ${BASE}/response-styles`]: (_params, request) => ({
+      styles: [
+        { id: 'normal', name: 'Normal', description: 'Direct, conversational replies.' },
+        { id: 'explanatory', name: 'Explanatory', description: 'Explain concepts and the reasoning behind them.' },
+      ],
+      selection: styleSelection(new URL(request.url).searchParams.get('threadId')),
+    }),
+    [`PUT ${BASE}/response-styles/selection`]: async (_params, request) => {
+      const body = await request.json() as { scope: string; threadId?: string; style: string | null }
+      if (body.scope === 'conversation' && body.threadId) conversationStyles.set(body.threadId, body.style)
+      else outputStyle = body.style
+      return styleSelection(body.threadId)
+    },
     [`GET ${BASE}/models`]: () => ({
       defaultRef: 'example/research',
       models: ['Research', 'Writing', 'Code', 'Vision', 'Fast', 'Reasoning', 'Local', 'Compact'].map((name) => ({

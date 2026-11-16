@@ -1130,6 +1130,12 @@
 @utility glass-panel-liquid {
   --lg-tone: var(--surface-sidebar);
   --lg-show: 0;
+  /* The field's ink is faint, so the panel keeps the frost's light hand
+     (glass-panel below): the cells soften to moving blots behind the list
+     instead of vanishing under the composer's heavier body. */
+  --lg-blur: var(--glass-panel-pane-blur);
+  --lg-body: var(--glass-panel-pane-body);
+  --lg-rim-body: var(--glass-panel-pane-body);
 
   /* The pane draws the veil and the frost glass-panel paints. */
   &[data-liquid='live'] {
@@ -1182,10 +1188,17 @@
 :root {
   --glass-panel-blur: 3px;
   --glass-panel-veil: 0.24;
+  /* The liquid pane over the same field. Light cells are pale on a pale
+     sheet, so in light the pane barely blurs or tints them to keep them
+     visible; dark cells hold up under more. */
+  --glass-panel-pane-blur: 1;
+  --glass-panel-pane-body: 0.1;
 }
 
 .dark {
   --glass-panel-veil: 0.3;
+  --glass-panel-pane-blur: 3;
+  --glass-panel-pane-body: 0.3;
 }
 
 @utility glass-panel {

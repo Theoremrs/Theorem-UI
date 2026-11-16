@@ -38,6 +38,29 @@ const measure = z.number().min(20).max(100)
 const opaqueHex = z
   .string()
   .regex(/^#[0-9a-f]{6}$/i, 'Use an opaque, six-digit sRGB hex color.')
+/** The snippet with its comments taken out, so a comment cannot split a word the checks look for. */
+const uncommented = (css: string) => css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
+
+/**
+ * A custom CSS snippet, applied after the app's own styles. It travels with
+ * an exported appearance, so it may not reach the network: no @import, and no
+ * url() or src() but data: URLs. A browser decodes CSS escapes before it
+ * reads a word (`@\69 mport` is `@import`), so the snippet may hold none,
+ * and the functions that take a bare string as an address are refused.
+ */
+export const customCssSchema = z
+  .string()
+  .max(20_000, 'Keep custom CSS under 20,000 characters.')
+  .refine((css) => !css.includes('\\'), 'Custom CSS cannot use backslash escapes.')
+  .refine((css) => !/@import/i.test(uncommented(css)), 'Custom CSS cannot use @import.')
+  .refine(
+    (css) => !/(?:url|src)\((?!\s*['"]?\s*data:)/i.test(uncommented(css)),
+    'Custom CSS can only use data: URLs.',
+  )
+  .refine(
+    (css) => !/(?:image-set|image|cross-fade)\(/i.test(uncommented(css)),
+    'Custom CSS cannot use image-set(), image() or cross-fade(); use url() with a data: URL.',
+  )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
 const customColors = z.record(customColorRoles, opaqueHex)
 
@@ -96,6 +119,7 @@ const appearanceOptionsSchema = z
     layout,
     motion,
     preview: previewPreferenceSchema,
+    css: customCssSchema,
     scales: z
       .strictObject({ content: scale, ui: scale, code: scale })
       .partial(),
@@ -183,6 +207,7 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
     reading: overrides.reading ?? 'comfortable',
     layout: overrides.layout ?? 'conversation',
     motion: overrides.motion ?? 'system',
+    css: overrides.css ?? '',
     scales: { content: 1, ui: 1, code: 1, ...overrides.scales },
     materials: {
       ...defaults.materials,
@@ -321,8 +346,13 @@ function applyAppearance(appearance: ResolvedAppearance) {
   root.dataset.appearanceState = JSON.stringify(appearance)
   for (const role of SURFACE_ROLES)
     root.setAttribute(`data-material-${role}`, appearance.materials[role])
-  for (const [name, value] of Object.entries(appearance.scales))
-    root.style.setProperty(`--appearance-scale-${name}`, `${value}`)
+  // Only a chosen size goes on the root, so custom CSS can set the rest
+  // (appearance.css holds the defaults).
+  for (const [name, value] of Object.entries(appearance.scales)) {
+    if (value === 1) root.style.removeProperty(`--appearance-scale-${name}`)
+    else root.style.setProperty(`--appearance-scale-${name}`, `${value}`)
+  }
+  applyCustomCss(appearance.css)
   const { font, customPalette } = appearance
   const properties = {
     '--appearance-prose-line-height': `calc(${TEXT_RECIPES.prose.size * (font?.contentLineHeight ?? TEXT_RECIPES.prose.lineHeight)}rem * var(--appearance-scale-content))`,
@@ -355,6 +385,35 @@ function applyAppearance(appearance: ResolvedAppearance) {
       else root.style.removeProperty(name)
     }
   }
+}
+
+const CUSTOM_CSS_ID = 'theorem-custom-css'
+
+/**
+ * The snippet goes last in the document, after every stylesheet the app
+ * loads, so a rule of equal weight to the app's own wins.
+ */
+function applyCustomCss(css: string) {
+  let style = document.getElementById(CUSTOM_CSS_ID)
+  if (!css) {
+    style?.remove()
+    return
+  }
+  if (!style) {
+    style = document.createElement('style')
+    style.id = CUSTOM_CSS_ID
+  }
+  if (style.textContent !== css) style.textContent = css
+  // The DOM types call body non-null, but it is null until the parser reaches it.
+  const body = () => document.body as HTMLElement | null
+  const place = () => {
+    const parent = body() ?? document.head
+    if (style.parentNode !== parent || style.nextElementSibling)
+      parent.append(style)
+  }
+  place()
+  if (!body())
+    document.addEventListener('DOMContentLoaded', place, { once: true })
 }
 
 if (typeof window !== 'undefined') {
