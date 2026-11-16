@@ -280,8 +280,22 @@ const due = page
   .first()
 await due.fill('Friday')
 await due.press('Enter')
+// A revision is the store's own counter, not the last one plus one: read the
+// one the edit was saved at, then see the screen name the same one.
+const findCommitment = () =>
+  api.verb(types.Commitment.object_type_id, 'find_one', { id: commitment })
+let reread = await findCommitment()
+for (let i = 0; i < 60 && reread.version === saved.version; i++) {
+  await page.waitForTimeout(500)
+  reread = await findCommitment()
+}
+check(
+  'the edit was saved at a new revision',
+  reread.version !== saved.version && reread.properties.due === 'Friday',
+  `revision ${saved.version} then ${reread.version}`,
+)
 await page
-  .getByText(`Saved revision ${saved.version + 1}`)
+  .getByText(`Saved revision ${reread.version}`)
   .first()
   .waitFor({ timeout: 60_000 })
 check('the screen shows the new saved revision', true)
@@ -290,7 +304,7 @@ await shot('4-edited')
 // Reopened, the record is the edited one.
 await page.reload({ waitUntil: 'domcontentloaded' })
 await page
-  .getByText(`Saved revision ${saved.version + 1}`)
+  .getByText(`Saved revision ${reread.version}`)
   .first()
   .waitFor({ timeout: 120_000 })
 check(
@@ -309,14 +323,6 @@ check(
   'and its history shows Wednesday becoming Friday',
   history.includes('Wednesday') && history.includes('Friday'),
   history.slice(0, 160),
-)
-const reread = await api.verb(types.Commitment.object_type_id, 'find_one', {
-  id: commitment,
-})
-check(
-  'Theorem holds it at that revision',
-  reread.version === saved.version + 1 && reread.properties.due === 'Friday',
-  `revision ${reread.version}`,
 )
 await shot('5-reopened')
 

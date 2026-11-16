@@ -8,7 +8,7 @@ import {
   Settings2,
   X,
 } from 'lucide-react'
-import { useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   Menu,
@@ -63,7 +63,7 @@ import {
   contextPolicy,
   shownFields,
 } from './model'
-import { useCrmNavigate, useCrmPreview } from './navigation'
+import { useCrmNavigate, useCrmTableSearch } from './navigation'
 import {
   editKey,
   useCreateCrmRecord,
@@ -119,14 +119,40 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const create = useCreateCrmRecord(type)
   const declare = useDeclareObjectType()
   const { openRecord } = useCrmNavigate()
-  const previewId = useCrmPreview((s) => s.preview[type.object_type_id])
-  const setPreview = useCrmPreview((s) => s.open)
+  const view = useCrmTableSearch(type)
+  const previewId = view.record
+  const changeView = view.change
+  const setPreview = useCallback(
+    (recordId: string | undefined) => void changeView({ record: recordId }),
+    [changeView],
+  )
   const edits = useCrmEdits((s) => s.edits)
 
   const identifier = identifierField(type)
-  const [filter, setFilter] = useState('')
+  // Filter and sort are typed here and mirrored to the address, so the field
+  // never waits on the router.
+  const [filter, setFilterText] = useState(view.q ?? '')
   const [filtering, setFiltering] = useState(false)
-  const [sort, setSort] = useState<Sort | null>(null)
+  const [sort, setSortState] = useState<Sort | null>(
+    view.sort ? { key: view.sort, descending: view.desc === true } : null,
+  )
+  const setFilter = useCallback(
+    (text: string) => {
+      setFilterText(text)
+      void changeView({ q: text || undefined })
+    },
+    [changeView],
+  )
+  const setSort = useCallback(
+    (next: Sort | null) => {
+      setSortState(next)
+      void changeView({
+        sort: next?.key,
+        desc: next?.descending ? true : undefined,
+      })
+    },
+    [changeView],
+  )
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const [limit, setLimit] = useState(STEP)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
@@ -288,11 +314,11 @@ export function CrmTable({ type }: { type: ObjectType }) {
       startEdit(row, col)
     } else if (event.key === ' ') {
       event.preventDefault()
-      if (record) setPreview(type.object_type_id, record.id)
+      if (record) setPreview(record.id)
     } else if (event.key === 'Escape') {
       if (previewId) {
         event.preventDefault()
-        setPreview(type.object_type_id, undefined)
+        setPreview(undefined)
       }
     } else if (
       event.key.length === 1 &&
@@ -814,7 +840,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
                       aria-rowindex={row + 2}
                       aria-selected={isSelected}
                       aria-current={isPreviewed ? 'true' : undefined}
-                      onClick={() => setPreview(type.object_type_id, record.id)}
+                      onClick={() => setPreview(record.id)}
                       className={cn(
                         'group/tr flex cursor-default border-b border-separator',
                         ground,
@@ -1067,7 +1093,7 @@ export function CrmTable({ type }: { type: ObjectType }) {
           writes={writes}
           writable={access.write}
           onClose={() => {
-            setPreview(type.object_type_id, undefined)
+            setPreview(undefined)
             step(focus.row, focus.col)
           }}
         />

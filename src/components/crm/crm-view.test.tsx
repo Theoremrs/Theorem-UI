@@ -19,7 +19,6 @@ import { CrmPanel } from './crm-panel'
 import { CrmView } from './crm-view'
 import { FIXTURE_TYPE, createFixtureServer, fixtureFetch } from './fixture'
 import type { FixtureServer } from './fixture'
-import { useCrmPreview } from './navigation'
 import { resetCrmWrites } from './queries'
 import { mountAt } from './test-harness'
 
@@ -37,7 +36,6 @@ const serve = (options?: Parameters<typeof createFixtureServer>[0]) => {
 }
 beforeEach(() => {
   resetCrmWrites()
-  useCrmPreview.setState({ preview: {} })
   useComposerReferences.setState({ references: [] })
   serve()
 })
@@ -461,6 +459,41 @@ test('a row opens the preview: saved revision, private switch, and the ways on',
     () =>
       decodeURIComponent(path()) === '/crm/commitments/commitment:materials',
   )
+})
+
+test('the preview, the filter and the sort are in the address, and a table opened there shows them', async () => {
+  const first = await view('/crm/people')
+  await waitFor(() =>
+    first.container.querySelector('[role="grid"] [data-r="1"]'),
+  )
+  await click(buttonNamed(first.container, 'Filter')!)
+  const input = await waitFor(() =>
+    first.container.querySelector<HTMLInputElement>(
+      'input[aria-label^="Filter people"]',
+    ),
+  )
+  await type(input, 'noo')
+  await click(cell(first.container, 'Name'))
+  await waitFor(() => first.container.querySelector('aside'))
+  const search = () => first.router.state.location.search as object
+  await waitFor(() => 'record' in search())
+  expect(search()).toEqual({ q: 'noo', record: 'person:noor' })
+  // Changing the view replaces the entry: it is still one place.
+  expect(first.visited.every((place) => place === '/crm/people')).toBe(true)
+  await cleanup()
+
+  // Reloaded, or come back to from the record's page.
+  const again = await view('/crm/people?q=noo&record=person%3Anoor&sort=name')
+  const preview = await waitFor(() => again.container.querySelector('aside'))
+  expect(preview.getAttribute('aria-label')).toBe('Person: Noor')
+  expect(
+    again.container.querySelectorAll('[role="gridcell"][data-c="0"]'),
+  ).toHaveLength(1)
+  expect(
+    again.container
+      .querySelectorAll('[role="columnheader"]')
+      [columns(again.container).indexOf('Name')]!.getAttribute('aria-sort'),
+  ).toBe('ascending')
 })
 
 test('"Private to me" saves at the record\'s revision and marks the row', async () => {
