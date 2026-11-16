@@ -258,19 +258,22 @@ export const painted = (
 /**
  * The folder and the file as the notes tree draws them. A project in the
  * sidebar and an entry in the file explorer are the same two marks, so a
- * folder is one thing wherever it is listed. Their colours are their own:
- * a caller's text colour does not repaint them.
+ * folder is one thing wherever it is listed. Both are outlines in the muted
+ * ink, as Obsidian's and Linear's trees draw them: the accent is kept for
+ * state (selection, focus, the send action), not repeated down every row.
  */
 const Folder: SvgMark = ({ className, ...props }) => (
   <LucideFolder
     aria-hidden="true"
+    strokeWidth={1.75}
     {...props}
-    className={cn('size-4 shrink-0', className, 'fill-folder text-folder')}
+    className={cn('size-4 shrink-0', className, 'text-folder')}
   />
 )
 const FileEntry: SvgMark = ({ className, ...props }) => (
   <LucideFile
     aria-hidden="true"
+    strokeWidth={1.75}
     {...props}
     className={cn('size-4 shrink-0', className, 'text-ink-muted')}
   />
