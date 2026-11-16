@@ -422,11 +422,12 @@ params)` runs read-only Cypher. `subscribe(read, next)` keeps one of those
   takes over.
 - **History.** Every commit is kept as a past version for 90 days unless the
   declaration says otherwise: `db("records", { historyDays: 365 })`, any
-  number of days, zero or more. The current records are always kept. When the
-  open App reaches a database holding versions more than a day past its
-  window, it compacts the file, cutting them and reclaiming their space; a
-  saved revision never compacts. `inspect()` reports the window as
-  `historyDays`.
+  number of days, zero or more; two different windows for one name are a
+  declaration error. The current records are always kept. Each opening of
+  the App compacts a database once, when it holds versions more than a day
+  past the window its current source declares, cutting them and reclaiming
+  their space; a saved revision never compacts. `inspect()` reports the
+  window as `historyDays`.
 - **Not yet.** Full-text search is not in the browser database. Folder HTML
   apps, cells and page modules have no `db`.
 

@@ -226,14 +226,16 @@ Open, in the order they matter:
    has been exercised by a model yet: that needs the deployed stack.
 2. **Bounded history in the browser store: built 2026-11-16.** App
    databases run on Theorem's canonical engine (`@rustyreddb/browser` 0.2.0,
-   built from `rustyred-thg-browser`). Each opens with a 30-day history
-   window (`APP_HISTORY_DAYS` in `src/lib/blocks/app-db.ts`): the current
-   records are always kept, and versions older than the window are cut when
-   the database is compacted, which this app does on open once there is
-   something more than a day past the window. The window is a setting of the
-   handle; `openAppDatabase` takes another, but an App cannot choose its own
-   yet. Letting it would need a way to declare it, such as an option on
-   `db("name")`.
+   built from `rustyred-thg-browser`). Each keeps 90 days of past versions
+   (`APP_HISTORY_DAYS` in `src/lib/blocks/app-db.ts`) unless its declaration
+   chooses a window: `db("crm", { historyDays: 365 })`, any number of days,
+   zero or more. Two different windows for one name are a declaration
+   error. The current records are always kept. Each opening of the App
+   compacts each database once, with the window its current source declares,
+   when its oldest version is more than a day past the window; a saved
+   revision never compacts. A check's in-memory databases open under the
+   same rules as the App on screen (`appDatabaseRules`), so `ownership` is
+   an ordinary property in a check as it is live.
 3. **The phone measurement** of the checker.
 4. **Component plugins and style books.** Not started, and it needs decisions:
    where a library's source lives, how an App names the one it uses, and how
