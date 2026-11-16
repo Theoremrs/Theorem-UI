@@ -78,7 +78,6 @@ import {
 } from './queries'
 import type { EditorRead } from './queries'
 import { ReadOnlyNote, UnsavedEdits, crmErrorText } from './record-fields'
-import { RecordPreview } from './record-preview'
 import { BulkUpdatePanel } from './bulk-update'
 import { Checkbox } from './twenty/checkbox'
 import { TypeIcon } from './type-icons'
@@ -159,8 +158,18 @@ function compare(a: unknown, b: unknown) {
   })
 }
 
-/** One type's records as a table, with the record preview beside it. */
-export function CrmTable({ type }: { type: ObjectType }) {
+/**
+ * One type's records as a table. A record previewed from it is the Index's
+ * open item, shown in the working pane beside the view.
+ */
+export function CrmTable({
+  type,
+  fieldKeys,
+}: {
+  type: ObjectType
+  /** The columns to show, in order, when a view picks them; else every shown field. */
+  fieldKeys?: string[]
+}) {
   const scope = useCrmScope()
   const { life, titleOf } = scope
   const access = accessFor(life, type)
@@ -228,12 +237,15 @@ export function CrmTable({ type }: { type: ObjectType }) {
   // TanStack Table holds the columns and the row model. The checkbox column
   // and the identifier are pinned at the start; a record with nothing to
   // sort by goes last whichever way the sort runs.
+  const picked = fieldKeys?.join('\u0000')
   const fields = useMemo(() => {
-    const rest = shownFields(type).filter(
-      (field) => field.key !== identifier?.key,
-    )
+    const keys = picked?.split('\u0000')
+    const shown = keys
+      ? keys.flatMap((key) => shownFields(type).filter((f) => f.key === key))
+      : shownFields(type)
+    const rest = shown.filter((field) => field.key !== identifier?.key)
     return identifier ? [identifier, ...rest] : rest
-  }, [type, identifier])
+  }, [type, identifier, picked])
   const tableColumns = useMemo(
     () =>
       columnHelper.columns([
@@ -343,9 +355,6 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const totalWidth = table.getTotalSize()
   const rows = table.getRowModel().rows.map((row) => row.original)
   const shown = rows.slice(0, limit)
-  const previewed = previewId
-    ? records?.find((record) => record.id === previewId)
-    : undefined
 
   // Cell focus
 
@@ -1252,20 +1261,6 @@ export function CrmTable({ type }: { type: ObjectType }) {
           onClose={() => setBulk(false)}
         />
       ) : null}
-      {!bulk && previewed && (
-        <RecordPreview
-          key={previewed.id}
-          type={type}
-          record={previewed}
-          writes={writes}
-          writable={access.write}
-          onClose={() => {
-            setPreview(undefined)
-            step(focus.row, focus.col)
-          }}
-        />
-      )}
-
       {editing &&
         editingRow &&
         editingField &&

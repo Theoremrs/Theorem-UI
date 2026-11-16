@@ -1,82 +1,102 @@
-// SOURCING: @tanstack/react-router (the CRM's place is the route: /crm, /crm/$objectType, /crm/$objectType/$recordId), with the table's view (previewed record, filter, sort) in the address's search so Back and reload return to it
-import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
-import { useCallback } from 'react'
+// SOURCING: the Index's place (components/index/navigation): the CRM lives in the Index, so a type's table is the Index view `default:records:<name>`, a record's page is `default:record:<name>/<id>`, and the record previewed beside a table is the Index's open item `record:<name>/<id>`; the table's filter and sort are the place's too, so Back and reload return to the same view. Opening a record is observed as the Index observes any item
+import { useSearch } from '@tanstack/react-router'
+import { useMemo } from 'react'
+import {
+  indexSearch,
+  useIndexNavigate,
+  useMaybeIndexPlace,
+} from '@/components/index/navigation'
+import type { IndexSearch, TableSearch } from '@/components/index/navigation'
+import { observer } from '@/components/index/observe'
+import {
+  RECORDS_PREFIX,
+  parseRecordPageViewId,
+  recordPageViewId,
+  recordsViewId,
+} from '@/components/index/programs'
+import type { Scope } from '@/components/index/contract'
 import type { ObjectType } from '@/components/records/contract'
-import { typeSlug } from './model'
+import { parseRecordItemId, recordItemId } from '@/components/records/model'
 
-/** Where the CRM is: a type's table, or one record's page. */
-export function useCrmPlace() {
-  const params = useParams({ strict: false })
-  return { slug: params.objectType, recordId: params.recordId }
+const HOME: Scope = { kind: 'home' }
+
+/** The Index search the CRM is drawn from: its place's, else the URL's. */
+function useSearchHere(): IndexSearch {
+  const place = useMaybeIndexPlace()
+  const url = useSearch({ strict: false })
+  return place?.search ?? indexSearch(url)
+}
+
+/** Where the CRM is: a type's table or one record's page, by the type's name. */
+export function useCrmPlace(): { nameSingular?: string; recordId?: string } {
+  const { view } = useSearchHere()
+  const page = parseRecordPageViewId(view)
+  if (page) return page
+  if (view?.startsWith(RECORDS_PREFIX))
+    return { nameSingular: view.slice(RECORDS_PREFIX.length) }
+  return {}
 }
 
 export function useCrmNavigate() {
-  const navigate = useNavigate()
-  const openType = useCallback(
-    (type: ObjectType, options?: { replace?: boolean }) =>
-      navigate({
-        to: '/crm/$objectType',
-        params: { objectType: typeSlug(type) },
-        replace: options?.replace,
-      }),
-    [navigate],
-  )
-  const openRecord = useCallback(
-    (type: ObjectType, recordId: string) =>
-      navigate({
-        to: '/crm/$objectType/$recordId',
-        params: { objectType: typeSlug(type), recordId },
-      }),
-    [navigate],
-  )
-  return { openType, openRecord }
+  const place = useMaybeIndexPlace()
+  const url = useIndexNavigate()
+  const navigate = place?.navigate ?? url
+  const scope = place?.search.scope ?? HOME
+  const viewId = place?.search.view
+  return useMemo(() => {
+    const opened = (subject: string) =>
+      observer().record({
+        kind: 'item_opened',
+        scope,
+        viewId,
+        subjects: [subject],
+      })
+    return {
+      openType: (type: ObjectType, options?: { replace?: boolean }) =>
+        navigate.openView(recordsViewId(type.name_singular), HOME, {
+          closeItem: true,
+          replace: options?.replace,
+        }),
+      openRecord: (type: ObjectType, recordId: string) => {
+        opened(recordItemId(type, recordId))
+        navigate.openView(recordPageViewId(type.name_singular, recordId), HOME, {
+          closeItem: true,
+        })
+      },
+      /** Opens a record beside the table, or closes the one that is open. */
+      preview: (type: ObjectType, recordId: string | undefined) => {
+        if (!recordId) return navigate.closeItem()
+        const item = recordItemId(type, recordId)
+        opened(item)
+        navigate.openItem(item)
+      },
+      setTable: (patch: TableSearch) => navigate.setTable(patch),
+    }
+  }, [navigate, scope, viewId])
 }
 
 /**
- * What a table is showing, kept in its address so a reload, a shared link and
- * Back from a record's page all return to the same view: the record previewed
- * beside it, the text it is filtered by, and the field it is sorted by.
+ * What a table is showing: the record previewed beside it (the Index's open
+ * item, when it is one of this type's records), the text it is filtered by,
+ * and the field it is sorted by.
  */
-export type CrmTableSearch = {
-  record?: string
-  q?: string
-  sort?: string
-  desc?: boolean
-}
+export type CrmTableSearch = TableSearch & { record?: string }
 
-/** Reads a table's view out of a location's search, ignoring anything else. */
-export function crmTableSearch(
-  search: Readonly<Record<string, unknown>>,
-): CrmTableSearch {
-  const out: CrmTableSearch = {}
-  for (const key of ['record', 'q', 'sort'] as const) {
-    const value = search[key]
-    if (typeof value === 'string' && value) out[key] = value
-    // The router reads an all-digit value back as a number.
-    else if (typeof value === 'number') out[key] = String(value)
-  }
-  if (search.desc === true || search.desc === 'true') out.desc = true
-  return out
-}
-
-/**
- * A type's table view and the way to change it. A change replaces the current
- * history entry: the view is one place, however it is filtered.
- */
+/** A type's table view and the way to change it. */
 export function useCrmTableSearch(type: ObjectType) {
-  const navigate = useNavigate()
-  const raw = useSearch({ strict: false })
-  const { record, q, sort, desc } = crmTableSearch(raw)
-  const slug = typeSlug(type)
-  const change = useCallback(
-    (patch: CrmTableSearch) =>
-      navigate({
-        to: '/crm/$objectType',
-        params: { objectType: slug },
-        search: (now) => crmTableSearch({ ...now, ...patch }),
-        replace: true,
-      }),
-    [navigate, slug],
+  const search = useSearchHere()
+  const { preview, setTable } = useCrmNavigate()
+  const open = parseRecordItemId(search.item ?? '')
+  const record =
+    open?.nameSingular === type.name_singular ? open.recordId : undefined
+  const change = useMemo(
+    () =>
+      (patch: CrmTableSearch) => {
+        const { record: next, ...table } = patch
+        if ('record' in patch && next !== record) preview(type, next)
+        if (Object.keys(table).length) setTable(table)
+      },
+    [preview, setTable, type, record],
   )
-  return { record, q, sort, desc, change }
+  return { record, q: search.q, sort: search.sort, desc: search.desc, change }
 }

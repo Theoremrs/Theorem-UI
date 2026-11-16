@@ -1,21 +1,33 @@
-// SOURCING: @tanstack/react-router search params (in Index mode the open view, item and collection are the /index URL; an Index view on any other page keeps a place of its own in React state), assistant-ui's composer (Ask Theorem drafts into the conversation, as the IDE frame does), the shell's mode navigation
+// SOURCING: @tanstack/react-router search params (in Index mode the open view, item, collection and a record table's filter and sort are the /index URL; an Index view on any other page keeps a place of its own in React state), assistant-ui's composer (Ask Theorem drafts into the conversation, as the IDE frame does), the shell's mode navigation
 import { useAui } from '@assistant-ui/react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
 import { createContext, useContext, useMemo, useState } from 'react'
 import { focusComposer } from '@/components/chat/composer-references'
 import { useOpenMode } from '@/components/shell/modes'
 import type { Scope } from './contract'
+import { indexSearch } from './search'
+import type { IndexSearch, TableSearch } from './search'
 
-export type IndexSearch = { view?: string; item?: string; collection?: string }
+export { indexSearch } from './search'
+export type { IndexSearch, TableSearch } from './search'
 
 /** Moves through the Index: a scope, a view in it, an item open beside it. */
 export interface IndexNavigator {
   openHome: () => void
   openCollection: (collection: string) => void
-  /** A view belongs to a scope; opening it keeps the item that is open. */
-  openView: (view: string, scope: Scope) => void
+  /**
+   * A view belongs to a scope; opening it keeps the item that is open,
+   * unless `closeItem` is set (a record's page has no preview beside it).
+   */
+  openView: (
+    view: string,
+    scope: Scope,
+    options?: { closeItem?: boolean; replace?: boolean },
+  ) => void
   openItem: (item: string) => void
   closeItem: () => void
+  /** Changes the open table's filter or sort, in place of the current entry. */
+  setTable: (patch: TableSearch) => void
 }
 
 /**
@@ -34,20 +46,25 @@ const scopeOf = (search: IndexSearch): Scope =>
     : { kind: 'home' }
 
 function navigatorFor(
-  go: (next: (prev: IndexSearch) => IndexSearch) => void,
+  go: (
+    next: (prev: IndexSearch) => IndexSearch,
+    options?: { replace?: boolean },
+  ) => void,
 ): IndexNavigator {
   return {
     openHome: () => go(() => ({})),
     openCollection: (collection) => go(() => ({ collection })),
-    openView: (view, scope) =>
+    openView: (view, scope, options) =>
       go((prev) => ({
         view,
-        item: prev.item,
+        item: options?.closeItem ? undefined : prev.item,
         collection:
           scope.kind === 'collection' ? scope.collectionId : undefined,
-      })),
+      }), { replace: options?.replace }),
     openItem: (item) => go((prev) => ({ ...prev, item })),
     closeItem: () => go((prev) => ({ ...prev, item: undefined })),
+    setTable: (patch) =>
+      go((prev) => indexSearch({ ...prev, ...patch }), { replace: true }),
   }
 }
 
@@ -61,7 +78,11 @@ export function useIndexSearch(): IndexSearch & { scope: Scope } {
 export function useIndexNavigate(): IndexNavigator {
   const navigate = useNavigate()
   return useMemo(
-    () => navigatorFor((search) => void navigate({ to: '/index', search })),
+    () =>
+      navigatorFor(
+        (search, options) =>
+          void navigate({ to: '/index', search, replace: options?.replace }),
+      ),
     [navigate],
   )
 }
@@ -74,7 +95,10 @@ export function useUrlIndexPlace(): IndexPlace {
 /** A place of its own, starting at `start`. */
 export function useLocalIndexPlace(start: IndexSearch): IndexPlace {
   const [search, setSearch] = useState<IndexSearch>(start)
-  const navigate = useMemo(() => navigatorFor(setSearch), [])
+  const navigate = useMemo(
+    () => navigatorFor((next) => setSearch(next)),
+    [],
+  )
   return { search: { ...search, scope: scopeOf(search) }, navigate }
 }
 
@@ -83,6 +107,9 @@ export function useLocalIndexPlace(start: IndexSearch): IndexPlace {
  * view on a page provides its own.
  */
 export const IndexPlaceContext = createContext<IndexPlace | null>(null)
+
+/** The place an Index column is in, when it is in one. */
+export const useMaybeIndexPlace = () => useContext(IndexPlaceContext)
 
 export function useIndexPlace(): IndexPlace {
   const place = useContext(IndexPlaceContext)

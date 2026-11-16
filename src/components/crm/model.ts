@@ -54,19 +54,6 @@ export function crmTypes(model: DataModel | undefined): ObjectType[] {
   })
 }
 
-/** A type's place in the URL: its plural name, lowercased (`/crm/people`). */
-export const typeSlug = (type: ObjectType) =>
-  encodeURIComponent(type.name_plural.toLowerCase())
-
-export function typeBySlug(types: ObjectType[], slug: string | undefined) {
-  if (!slug) return undefined
-  const wanted = decodeURIComponent(slug).toLowerCase()
-  return (
-    types.find((type) => type.name_plural.toLowerCase() === wanted) ??
-    types.find((type) => type.name_singular.toLowerCase() === wanted)
-  )
-}
-
 export const personType = (types: ObjectType[]) =>
   types.find((type) => type.name_singular.toLowerCase() === 'person')
 

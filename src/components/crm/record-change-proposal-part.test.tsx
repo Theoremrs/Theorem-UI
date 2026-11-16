@@ -1,4 +1,5 @@
 // SOURCING: bun:test rendering the `record_change_proposal` part with React into happy-dom, against a stand-in Theorem (the fixture's CRM plus the proposal and thread routes); the payload has the server's ProposalView shape
+import { recordPageViewId } from '@/components/index/programs'
 import {
   afterAll,
   afterEach,
@@ -134,8 +135,12 @@ test('it links to the record and to what the proposal rests on', async () => {
   const hrefs = [...container.querySelectorAll('a')].map((a) =>
     decodeURIComponent(a.getAttribute('href')!),
   )
-  expect(hrefs).toContain('/crm/commitments/commitment:materials')
-  expect(hrefs).toContain('/crm/interactions/interaction:planning')
+  expect(hrefs).toContain(
+    `/index?view=${recordPageViewId('Commitment', 'commitment:materials')}`,
+  )
+  expect(hrefs).toContain(
+    `/index?view=${recordPageViewId('Interaction', 'interaction:planning')}`,
+  )
 })
 
 test('approve sends the decision with the thread revision, CSRF and a fresh idempotency key', async () => {

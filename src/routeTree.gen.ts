@@ -19,7 +19,6 @@ import { Route as ChatChar91indexChar93RouteImport } from './routes/_chat/[index
 import { Route as DotwellKnownAppleAppSiteAssociationRouteImport } from './routes/[.]well-known/apple-app-site-association'
 import { Route as ChatIndexRouteImport } from './routes/_chat/index'
 import { Route as ChatCanvasRouteImport } from './routes/_chat/canvas'
-import { Route as ChatCrmRouteImport } from './routes/_chat/crm'
 import { Route as ChatIdeRouteImport } from './routes/_chat/ide'
 import { Route as ChatNotesRouteImport } from './routes/_chat/notes'
 import { Route as ChatPagesRouteImport } from './routes/_chat/pages'
@@ -42,7 +41,6 @@ import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
 import { Route as TheiaSplatRouteImport } from './routes/theia/$'
 import { Route as ChatCThreadIdRouteImport } from './routes/_chat/c.$threadId'
-import { Route as ChatCrmObjectTypeRouteImport } from './routes/_chat/crm.$objectType'
 import { Route as ChatNotesDocumentIdRouteImport } from './routes/_chat/notes.$documentId'
 import { Route as ChatPagesPageIdRouteImport } from './routes/_chat/pages.$pageId'
 import { Route as ChatProjectsProjectIdRouteImport } from './routes/_chat/projects.$projectId'
@@ -55,7 +53,6 @@ import { Route as DesktopBlocksIndexRouteImport } from './routes/desktop/blocks/
 import { Route as DesktopBlocksAppTokenRouteImport } from './routes/desktop/blocks/app-token'
 import { Route as DesktopWorkspaceIndexRouteImport } from './routes/desktop/workspace/index'
 import { Route as SettingsObserveIndexRouteImport } from './routes/settings/observe/index'
-import { Route as ChatCrmObjectTypeRecordIdRouteImport } from './routes/_chat/crm.$objectType.$recordId'
 import { Route as ApiArtifactsV1SplatRouteImport } from './routes/api/artifacts/v1/$'
 import { Route as ApiCapabilitiesV1SplatRouteImport } from './routes/api/capabilities/v1/$'
 import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
@@ -136,11 +133,6 @@ const ChatIndexRoute = ChatIndexRouteImport.update({
 const ChatCanvasRoute = ChatCanvasRouteImport.update({
   id: '/canvas',
   path: '/canvas',
-  getParentRoute: () => ChatRoute,
-} as any)
-const ChatCrmRoute = ChatCrmRouteImport.update({
-  id: '/crm',
-  path: '/crm',
   getParentRoute: () => ChatRoute,
 } as any)
 const ChatIdeRoute = ChatIdeRouteImport.update({
@@ -253,11 +245,6 @@ const ChatCThreadIdRoute = ChatCThreadIdRouteImport.update({
   path: '/c/$threadId',
   getParentRoute: () => ChatRoute,
 } as any)
-const ChatCrmObjectTypeRoute = ChatCrmObjectTypeRouteImport.update({
-  id: '/$objectType',
-  path: '/$objectType',
-  getParentRoute: () => ChatCrmRoute,
-} as any)
 const ChatNotesDocumentIdRoute = ChatNotesDocumentIdRouteImport.update({
   id: '/$documentId',
   path: '/$documentId',
@@ -318,12 +305,6 @@ const SettingsObserveIndexRoute = SettingsObserveIndexRouteImport.update({
   path: '/observe/',
   getParentRoute: () => SettingsRoute,
 } as any)
-const ChatCrmObjectTypeRecordIdRoute =
-  ChatCrmObjectTypeRecordIdRouteImport.update({
-    id: '/$recordId',
-    path: '/$recordId',
-    getParentRoute: () => ChatCrmObjectTypeRoute,
-  } as any)
 const ApiArtifactsV1SplatRoute = ApiArtifactsV1SplatRouteImport.update({
   id: '/api/artifacts/v1/$',
   path: '/api/artifacts/v1/$',
@@ -510,7 +491,6 @@ export interface FileRoutesByFullPath {
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/canvas': typeof ChatCanvasRoute
-  '/crm': typeof ChatCrmRouteWithChildren
   '/ide': typeof ChatIdeRoute
   '/index': typeof ChatChar91indexChar93Route
   '/notes': typeof ChatNotesRouteWithChildren
@@ -534,7 +514,6 @@ export interface FileRoutesByFullPath {
   '/theia/$': typeof TheiaSplatRoute
   '/settings/': typeof SettingsIndexRoute
   '/c/$threadId': typeof ChatCThreadIdRoute
-  '/crm/$objectType': typeof ChatCrmObjectTypeRouteWithChildren
   '/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/pages/$pageId': typeof ChatPagesPageIdRoute
   '/projects/$projectId': typeof ChatProjectsProjectIdRoute
@@ -547,7 +526,6 @@ export interface FileRoutesByFullPath {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
-  '/crm/$objectType/$recordId': typeof ChatCrmObjectTypeRecordIdRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -587,7 +565,6 @@ export interface FileRoutesByTo {
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/canvas': typeof ChatCanvasRoute
-  '/crm': typeof ChatCrmRouteWithChildren
   '/ide': typeof ChatIdeRoute
   '/index': typeof ChatChar91indexChar93Route
   '/notes': typeof ChatNotesRouteWithChildren
@@ -612,7 +589,6 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/c/$threadId': typeof ChatCThreadIdRoute
-  '/crm/$objectType': typeof ChatCrmObjectTypeRouteWithChildren
   '/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/pages/$pageId': typeof ChatPagesPageIdRoute
   '/projects/$projectId': typeof ChatProjectsProjectIdRoute
@@ -625,7 +601,6 @@ export interface FileRoutesByTo {
   '/desktop/blocks': typeof DesktopBlocksIndexRoute
   '/desktop/workspace': typeof DesktopWorkspaceIndexRoute
   '/settings/observe': typeof SettingsObserveIndexRoute
-  '/crm/$objectType/$recordId': typeof ChatCrmObjectTypeRecordIdRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -668,7 +643,6 @@ export interface FileRoutesById {
   '/stories.json': typeof StoriesDotjsonRoute
   '/.well-known/apple-app-site-association': typeof DotwellKnownAppleAppSiteAssociationRoute
   '/_chat/canvas': typeof ChatCanvasRoute
-  '/_chat/crm': typeof ChatCrmRouteWithChildren
   '/_chat/ide': typeof ChatIdeRoute
   '/_chat/index': typeof ChatChar91indexChar93Route
   '/_chat/notes': typeof ChatNotesRouteWithChildren
@@ -693,7 +667,6 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/_chat/c/$threadId': typeof ChatCThreadIdRoute
-  '/_chat/crm/$objectType': typeof ChatCrmObjectTypeRouteWithChildren
   '/_chat/notes/$documentId': typeof ChatNotesDocumentIdRoute
   '/_chat/pages/$pageId': typeof ChatPagesPageIdRoute
   '/_chat/projects/$projectId': typeof ChatProjectsProjectIdRoute
@@ -706,7 +679,6 @@ export interface FileRoutesById {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
-  '/_chat/crm/$objectType/$recordId': typeof ChatCrmObjectTypeRecordIdRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -750,7 +722,6 @@ export interface FileRouteTypes {
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
     | '/canvas'
-    | '/crm'
     | '/ide'
     | '/index'
     | '/notes'
@@ -774,7 +745,6 @@ export interface FileRouteTypes {
     | '/theia/$'
     | '/settings/'
     | '/c/$threadId'
-    | '/crm/$objectType'
     | '/notes/$documentId'
     | '/pages/$pageId'
     | '/projects/$projectId'
@@ -787,7 +757,6 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
-    | '/crm/$objectType/$recordId'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -827,7 +796,6 @@ export interface FileRouteTypes {
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
     | '/canvas'
-    | '/crm'
     | '/ide'
     | '/index'
     | '/notes'
@@ -852,7 +820,6 @@ export interface FileRouteTypes {
     | '/'
     | '/settings'
     | '/c/$threadId'
-    | '/crm/$objectType'
     | '/notes/$documentId'
     | '/pages/$pageId'
     | '/projects/$projectId'
@@ -865,7 +832,6 @@ export interface FileRouteTypes {
     | '/desktop/blocks'
     | '/desktop/workspace'
     | '/settings/observe'
-    | '/crm/$objectType/$recordId'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -907,7 +873,6 @@ export interface FileRouteTypes {
     | '/stories.json'
     | '/.well-known/apple-app-site-association'
     | '/_chat/canvas'
-    | '/_chat/crm'
     | '/_chat/ide'
     | '/_chat/index'
     | '/_chat/notes'
@@ -932,7 +897,6 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/settings/'
     | '/_chat/c/$threadId'
-    | '/_chat/crm/$objectType'
     | '/_chat/notes/$documentId'
     | '/_chat/pages/$pageId'
     | '/_chat/projects/$projectId'
@@ -945,7 +909,6 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
-    | '/_chat/crm/$objectType/$recordId'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -1107,13 +1070,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatCanvasRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/_chat/crm': {
-      id: '/_chat/crm'
-      path: '/crm'
-      fullPath: '/crm'
-      preLoaderRoute: typeof ChatCrmRouteImport
-      parentRoute: typeof ChatRoute
-    }
     '/_chat/ide': {
       id: '/_chat/ide'
       path: '/ide'
@@ -1268,13 +1224,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatCThreadIdRouteImport
       parentRoute: typeof ChatRoute
     }
-    '/_chat/crm/$objectType': {
-      id: '/_chat/crm/$objectType'
-      path: '/$objectType'
-      fullPath: '/crm/$objectType'
-      preLoaderRoute: typeof ChatCrmObjectTypeRouteImport
-      parentRoute: typeof ChatCrmRoute
-    }
     '/_chat/notes/$documentId': {
       id: '/_chat/notes/$documentId'
       path: '/$documentId'
@@ -1358,13 +1307,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/observe/'
       preLoaderRoute: typeof SettingsObserveIndexRouteImport
       parentRoute: typeof SettingsRoute
-    }
-    '/_chat/crm/$objectType/$recordId': {
-      id: '/_chat/crm/$objectType/$recordId'
-      path: '/$recordId'
-      fullPath: '/crm/$objectType/$recordId'
-      preLoaderRoute: typeof ChatCrmObjectTypeRecordIdRouteImport
-      parentRoute: typeof ChatCrmObjectTypeRoute
     }
     '/api/artifacts/v1/$': {
       id: '/api/artifacts/v1/$'
@@ -1586,28 +1528,6 @@ declare module '@tanstack/react-router' {
   }
 }
 
-interface ChatCrmObjectTypeRouteChildren {
-  ChatCrmObjectTypeRecordIdRoute: typeof ChatCrmObjectTypeRecordIdRoute
-}
-
-const ChatCrmObjectTypeRouteChildren: ChatCrmObjectTypeRouteChildren = {
-  ChatCrmObjectTypeRecordIdRoute: ChatCrmObjectTypeRecordIdRoute,
-}
-
-const ChatCrmObjectTypeRouteWithChildren =
-  ChatCrmObjectTypeRoute._addFileChildren(ChatCrmObjectTypeRouteChildren)
-
-interface ChatCrmRouteChildren {
-  ChatCrmObjectTypeRoute: typeof ChatCrmObjectTypeRouteWithChildren
-}
-
-const ChatCrmRouteChildren: ChatCrmRouteChildren = {
-  ChatCrmObjectTypeRoute: ChatCrmObjectTypeRouteWithChildren,
-}
-
-const ChatCrmRouteWithChildren =
-  ChatCrmRoute._addFileChildren(ChatCrmRouteChildren)
-
 interface ChatNotesRouteChildren {
   ChatNotesDocumentIdRoute: typeof ChatNotesDocumentIdRoute
 }
@@ -1634,7 +1554,6 @@ const ChatPagesRouteWithChildren = ChatPagesRoute._addFileChildren(
 
 interface ChatRouteChildren {
   ChatCanvasRoute: typeof ChatCanvasRoute
-  ChatCrmRoute: typeof ChatCrmRouteWithChildren
   ChatIdeRoute: typeof ChatIdeRoute
   ChatChar91indexChar93Route: typeof ChatChar91indexChar93Route
   ChatNotesRoute: typeof ChatNotesRouteWithChildren
@@ -1648,7 +1567,6 @@ interface ChatRouteChildren {
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatCanvasRoute: ChatCanvasRoute,
-  ChatCrmRoute: ChatCrmRouteWithChildren,
   ChatIdeRoute: ChatIdeRoute,
   ChatChar91indexChar93Route: ChatChar91indexChar93Route,
   ChatNotesRoute: ChatNotesRouteWithChildren,

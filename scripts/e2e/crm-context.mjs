@@ -1,6 +1,6 @@
 // SOURCING: playwright-core through ./lib, the stack's own typed APIs through the signed-in browser, and scripts/e2e/context-standin.mjs as the model provider.
 //
-// The CRM's central claim, whole and mounted: an edit made in the CRM screen
+// The CRM's central claim, whole and mounted: an edit made in the Index's record screens
 // changes what an ordinary conversation sends to the model, at the exact saved
 // revision, and what is kept from Theorem never leaves.
 //
@@ -48,7 +48,7 @@ const spanOf = (request, recordId) =>
 
 // Another person's workspace holds a contact of the same name. It is created
 // first, so it is there to be leaked for the whole run.
-const other = await open('/crm', { account: OTHER_ACCOUNT })
+const other = await open('/index', { account: OTHER_ACCOUNT })
 const otherApi = records(other)
 const otherTypes = await reset(otherApi)
 const run = randomUUID().slice(0, 8)
@@ -60,7 +60,7 @@ await otherApi.verb(otherTypes.Person.object_type_id, 'create_one', {
 check('another workspace holds a contact named Noor', true)
 await other.browser.close()
 
-const session = await open('/crm')
+const session = await open('/index')
 const { page, problems } = session
 const api = records(session)
 const chat = turns(session)
@@ -176,10 +176,13 @@ await create('Relationship', {
 log('fixture saved; the commitment is at revision', saved.version)
 
 // The screen shows the saved records.
-await page.goto(`${UI}/crm/people`, {
-  waitUntil: 'domcontentloaded',
-  timeout: 120_000,
-})
+await page.goto(
+  `${UI}/index?view=${encodeURIComponent('default:records:person')}`,
+  {
+    waitUntil: 'domcontentloaded',
+    timeout: 120_000,
+  },
+)
 await page
   .getByRole('grid', { name: 'All People' })
   .waitFor({ timeout: 120_000 })
@@ -336,13 +339,16 @@ check(
 await shot('3-answer-wednesday')
 const firstThread = page.url()
 
-// The edit, in the CRM screen: the due day moves from Wednesday to Friday.
+// The edit, on the record's page in the Index: the due day moves from Wednesday to Friday.
 const opened = await shows(
   () =>
-    page.goto(`${UI}/crm/commitments/${encodeURIComponent(commitment)}`, {
-      waitUntil: 'domcontentloaded',
-      timeout: 120_000,
-    }),
+    page.goto(
+      `${UI}/index?view=${encodeURIComponent(`default:record:commitment/${commitment}`)}`,
+      {
+        waitUntil: 'domcontentloaded',
+        timeout: 120_000,
+      },
+    ),
   saved.version,
 )
 await page.getByRole('button', { name: 'Edit Due' }).click()

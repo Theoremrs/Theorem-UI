@@ -54,3 +54,29 @@ Index is a fourth mode on the rail, at `/index`.
 | Library publication | The UI publishes `library.prompt()`, component and callable names to `/api/index/v1/library` when its digest changes                         | Theorem composes candidates against exactly the components this build renders                                                             |
 | Atlas               | A library component over the `map` binding (`AtlasSnapshot` v2)                                                                              | The map is one optional way to see the material, never its identity                                                                       |
 | Tests               | `bun test` over the pure modules: bindings, observation batching, default programs parsed by the real parser                                 | No new test runner                                                                                                                        |
+
+## Records in the Index (2026-11-16)
+
+The CRM moved into the Index (see `record-table-data-model.md`): a type's
+table, a record page and the records home are built-in views, and an open
+record is the Index's item `record:<name>/<id>`. Opening a record page from
+anywhere goes through the Index navigator, which records an `item_opened`
+observation with the record's id, so record use reaches the same learning
+signal as documents.
+
+The owner set the order in which records join the self-organizing loop:
+
+1. **Records in views and used together.** The Index's observations and its
+   used-together relation accept record ids; a view binding can list records;
+   a prepared view can place records beside the documents they are used with.
+   Started on the UI side (observations carry record ids); the server side is
+   not.
+2. **Filing documents to records.** The filing engine proposes the record a
+   document is about, with the same tier, confidence, correction and undo as
+   filing to a collection.
+3. **Extraction from filed material.** A filed document can lead to a change
+   to a record, made only as a proposal the person approves (the agent's
+   record change proposals in Theorem are the model).
+
+Self-describing fields (a field linked to the places it belongs) were
+discussed and deferred.

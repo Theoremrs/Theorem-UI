@@ -1,4 +1,4 @@
-// SOURCING: React context — one reading of the schema register's types, what this sign-in may do, and the loaded records of every listed type, shared by the CRM's table, preview and record page so a relation's label and a record's "Related" list come from the same records
+// SOURCING: React context — one reading of the schema register's types, what this sign-in may do, and the loaded records of every listed type, shared by the CRM's table, preview and record page in the Index so a relation's label and a record's "Related" list come from the same records
 import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import type {
@@ -71,4 +71,18 @@ export function useCrmScope(): CrmScope {
   const scope = useContext(Context)
   if (!scope) throw new Error('useCrmScope needs a CrmScopeProvider')
   return scope
+}
+
+function OwnScope({ children }: { children: ReactNode }) {
+  const value = useCrmScopeValue()
+  return <Context.Provider value={value}>{children}</Context.Provider>
+}
+
+/**
+ * The CRM's reading for what is inside: the one already provided around it
+ * (Index mode builds one for the panel and the view), else its own.
+ */
+export function CrmBoundary({ children }: { children: ReactNode }) {
+  const scope = useContext(Context)
+  return scope ? children : <OwnScope>{children}</OwnScope>
 }

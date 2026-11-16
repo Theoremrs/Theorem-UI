@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui data part renderer for Theorem's `context_manifest` part (see ./manifest for the decoding and the words); coss ui Collapsible for the closed line that opens into the list; @tanstack/react-router Link to each record's page in the CRM; the CRM's type marks; lucide-react marks
+// SOURCING: assistant-ui data part renderer for Theorem's `context_manifest` part (see ./manifest for the decoding and the words); coss ui Collapsible for the closed line that opens into the list; @tanstack/react-router Link to each record's page in the Index; the CRM's type marks; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
 import { Link } from '@tanstack/react-router'
 import { ChevronRight, CircleAlert, EyeOff, Layers } from 'lucide-react'
@@ -22,7 +22,7 @@ import {
   withheldWords,
 } from './manifest'
 import type { ContextManifest } from './manifest'
-import { typeSlug } from './model'
+import { recordPageViewId } from '@/components/index/programs'
 import { TypeIcon } from './type-icons'
 
 const article = (word: string) => (/^[aeiou]/i.test(word) ? 'An' : 'A')
@@ -30,7 +30,10 @@ const article = (word: string) => (/^[aeiou]/i.test(word) ? 'An' : 'A')
 const LINK =
   'rounded-sm font-medium text-ink underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus'
 
-/** A link to a record's page; the type's own slug where the type is known. */
+/**
+ * A link to a record's page in the Index, by the type's singular name: the
+ * declared type's where it is known, else the name the part carries.
+ */
 export function RecordLink({
   type,
   typeName,
@@ -44,12 +47,12 @@ export function RecordLink({
   children: string
   className?: string
 }) {
-  const slug = type ? typeSlug(type) : typeName?.toLowerCase()
-  if (!slug) return <span className={className}>{children}</span>
+  const name = type?.name_singular ?? typeName?.toLowerCase()
+  if (!name) return <span className={className}>{children}</span>
   return (
     <Link
-      to="/crm/$objectType/$recordId"
-      params={{ objectType: slug, recordId }}
+      to="/index"
+      search={{ view: recordPageViewId(name, recordId) }}
       className={cn(LINK, className)}
     >
       {children}

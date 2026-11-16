@@ -17,15 +17,12 @@ import { z } from 'zod/v4'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
-import { DataModelView } from '@/components/records/data-model'
 import {
-  objectTypeByName,
-  parseRecordItemId,
-  recordItemId,
-} from '@/components/records/model'
-import { useDataModel } from '@/components/records/queries'
-import { RecordTable as RecordTableView } from '@/components/records/record-table'
-import { describeError } from '@/lib/theorem/client'
+  CrmRecordPageView,
+  CrmTableView,
+  RecordsHome as RecordsHome_,
+} from '@/components/crm/index-views'
+import { DataModelView } from '@/components/records/data-model'
 import { WORK_COMPONENT_NAMES, workComponents } from '@/components/work/library'
 import { AtlasMap } from './atlas'
 import { dataModelViewId, recordsViewId } from './programs'
@@ -779,42 +776,51 @@ const Atlas = defineComponent({
 
 // Records
 
+// A record table or page fills the view when it is the whole program, and
+// takes a fixed height among other components.
+const RECORD_FRAME = 'h-full min-h-[32rem] overflow-hidden'
+
 const RecordTable = defineComponent({
   name: 'RecordTable',
   description:
-    "One declared object's records as an editable table: sort, filter, hide and reorder columns, a Calculate footer, and records opened beside it. object is the type's name_singular; fields picks and orders the columns. Reads Theorem's schema itself; it takes no Query.",
+    "One declared object's records as the CRM's editable table: filter, sort, hide columns, add, update and delete in bulk, and a record opened beside it. object is the type's name_singular; fields picks and orders the columns. Reads Theorem's schema itself; it takes no Query.",
   props: z.object({
     object: z.string(),
     fields: z.array(z.string()).optional(),
   }),
   component: function RecordTableComponent({ props }) {
-    const host = useHost()
-    const model = useDataModel()
-    const type = objectTypeByName(model.data, props.object)
-    if (model.isPending)
-      return <div className="h-80 animate-pulse rounded-lg bg-raised" />
-    if (!model.data || !type)
-      return (
-        <p className="text-sm text-ink-muted">
-          {model.error
-            ? describeError(model.error)
-            : `There is no "${props.object}" object in the schema.`}
-        </p>
-      )
-    const open = parseRecordItemId(host.selectedId ?? '')
     return (
-      <RecordTableView
-        objectType={type}
-        model={model.data}
-        viewKey={host.viewId}
-        fieldKeys={props.fields}
-        activeRecordId={
-          open?.nameSingular === type.name_singular ? open.recordId : undefined
-        }
-        onOpenRecord={(id) => host.openItem(recordItemId(type, id))}
-        onOpenRelated={(name, id) => host.openItem(`record:${name}/${id}`)}
-        onEditFields={() => host.openView(dataModelViewId(type.name_singular))}
-      />
+      <div className={RECORD_FRAME}>
+        <CrmTableView object={props.object} fields={props.fields} />
+      </div>
+    )
+  },
+})
+
+const RecordPage = defineComponent({
+  name: 'RecordPage',
+  description:
+    "One record in full: its properties, a timeline of what changed and who changed it, and the records tied to it. object is the type's name_singular, record the record's id. Reads Theorem's schema itself; it takes no Query.",
+  props: z.object({ object: z.string(), record: z.string() }),
+  component: function RecordPageComponent({ props }) {
+    return (
+      <div className={RECORD_FRAME}>
+        <CrmRecordPageView object={props.object} recordId={props.record} />
+      </div>
+    )
+  },
+})
+
+const RecordsHome = defineComponent({
+  name: 'RecordsHome',
+  description:
+    'Where records begin: the people, organizations and promises Theorem can keep, and adding them; once added, the first record type\'s table. Takes no props.',
+  props: z.object({}),
+  component: function RecordsHomeComponent() {
+    return (
+      <div className={RECORD_FRAME}>
+        <RecordsHome_ />
+      </div>
     )
   },
 })
@@ -924,6 +930,8 @@ function buildLibrary(withWork: boolean) {
       FilingList,
       Atlas,
       RecordTable,
+      RecordPage,
+      RecordsHome,
       DataModel,
       ActionButton,
       ...(withWork ? WORK_COMPONENTS() : []),
@@ -945,7 +953,10 @@ function buildLibrary(withWork: boolean) {
           'Atlas',
         ],
       },
-      { name: 'Records', components: ['RecordTable', 'DataModel'] },
+      {
+        name: 'Records',
+        components: ['RecordTable', 'RecordPage', 'RecordsHome', 'DataModel'],
+      },
       ...(withWork
         ? [{ name: 'Work', components: [...WORK_COMPONENT_NAMES] }]
         : []),
@@ -1002,7 +1013,7 @@ const PROMPT_RULES = [
   'Results: items and used_together bindings return {items, total}; collections returns {collections}; filing_history returns {receipts}; map returns {snapshot}.',
   'Keep views calm: one primary list or comparison, a search field when the material is long, at most one Callout.',
   'Never invent document ids; use the ids the request gives you.',
-  'RecordTable("<object>") and DataModel() read Theorem\'s schema register themselves and take no Query; name objects by their name_singular.',
+  'RecordTable("<object>"), RecordPage("<object>", "<record id>"), RecordsHome() and DataModel() read Theorem\'s schema register themselves and take no Query; name objects by their name_singular.',
 ]
 
 const WORK_RULE =

@@ -1,11 +1,12 @@
 // SOURCING: @puckeditor/core 0.24's Render (a mode's page in use, as a page
 // is), Base UI useMediaQuery (the phone keeps the Index's own overlay), the
-// Index's navigation (the /index URL is Index mode's place) and its library
-// publication. A mode's page is `Modes/<mode>.page.json` in the vault, else
+// Index's navigation (the /index URL is Index mode's place), its library
+// publication, and the CRM's shared reading of the records (components/crm/context). A mode's page is `Modes/<mode>.page.json` in the vault, else
 // its template (lib/modules/templates.ts); it is arranged in Pages.
 import { useMediaQuery } from '@base-ui/react/unstable-use-media-query'
 import { Render } from '@puckeditor/core'
 import { useMemo, useState } from 'react'
+import { CrmScopeProvider, useCrmScopeValue } from '@/components/crm/context'
 import { PhoneIndex } from '@/components/index/index-surface'
 import {
   IndexPlaceContext,
@@ -153,9 +154,13 @@ export function IndexMode() {
   useLibraryPublication()
   const place = useUrlIndexPlace()
   const desktop = useMediaQuery('(min-width: 1024px)', { noSsr: true })
+  // One reading of the records for every record view and preview in it.
+  const records = useCrmScopeValue()
   return (
     <IndexPlaceContext.Provider value={place}>
-      {desktop ? <ModePage mode="index" /> : <PhoneIndex />}
+      <CrmScopeProvider value={records}>
+        {desktop ? <ModePage mode="index" /> : <PhoneIndex />}
+      </CrmScopeProvider>
     </IndexPlaceContext.Provider>
   )
 }

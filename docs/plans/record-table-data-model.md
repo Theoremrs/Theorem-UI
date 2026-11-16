@@ -4,6 +4,46 @@ Twenty's record table and data model settings, rebuilt over Theorem's schema
 register and placed in the Index as two library components a view program
 composes like any other. The checklist is `record-table-data-model.checklist.json`.
 
+## Replaced by the CRM table (2026-11-16)
+
+The owner decided that the CRM's table replaces this plan's generic records
+table everywhere, and that the CRM lives in the Index rather than at its own
+`/crm` route. `src/components/records/record-table.tsx` and
+`record-inspector.tsx` were removed. The data model and the work tracker
+still use this plan's other modules (`aggregate.ts`, `view-state.ts`,
+`layout.ts`, `fields.tsx`, `data-model.tsx`).
+
+- `RecordTable("<name>")` in a view program and the built-in
+  `default:records:<name>` draw `src/components/crm/crm-table.tsx`.
+- A record page is the built-in view `default:record:<name>/<id>`
+  (`src/components/crm/record-page.tsx`), and `default:records` is the records
+  home (first run, then the first listed type).
+- The open item `record:<name>/<id>` is shown by the CRM's record preview in
+  the Index inspector, on the desktop Index page and on the phone.
+- The Index panel's Records section is the CRM's list ("Me", each type with
+  its count, and installing missing built-in types).
+- Pages' records module (`theorem.records.table`) draws the CRM table and
+  opens record pages in the Index.
+
+What the generic table had that the CRM table does not, so a person loses it
+with the replacement (the checklist rows say which):
+
+- the per-column menu (filter, sort, move, hide) and the "+" column for
+  showing hidden fields and customizing them;
+- the Calculate footer (the CRM footer is the dataset count);
+- search of any field and and/or filter rules (the CRM filters on the
+  identifier field), multi-sort, field order, reset and CSV export;
+- shift-range selection and export of the selection;
+- column resize by drag and virtualized rows;
+- Tab across cells and Backspace to clear;
+- the arrangement kept per view in localStorage (the CRM keeps filter, sort
+  and the open record in the address, and nothing per view).
+
+The CRM table brings revision-checked writes with visible stale refusals,
+bounded update of marked records, the record page with history, and the
+measurements of Theorem's CRM spec. Which of the losses to bring back is the
+owner's call; none was ported in this change.
+
 ## Sources
 
 - Twenty (fork `Travis-Gilbert/twenty` at `ffca6cee`): `packages/twenty-front`

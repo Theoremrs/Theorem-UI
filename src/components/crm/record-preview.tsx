@@ -22,21 +22,28 @@ import {
 /** Spec width of the record preview beside a table. */
 export const PREVIEW_WIDTH = 420
 
-/** One record beside its table: read it, change it, or open it in full. */
+/** One record beside its view: read it, change it, or open it in full. */
 export function RecordPreview({
   type,
   record,
   writes,
   writable,
   onClose,
+  onOpenRelated,
+  fill = false,
 }: {
   type: ObjectType
   record: CrmRecord
   writes: CrmWrites
   writable: boolean
   onClose: () => void
+  /** Where a related record opens; its full page unless said otherwise. */
+  onOpenRelated?: (type: ObjectType, recordId: string) => void
+  /** Fill the pane it is in (the Index's working pane) instead of 420 px. */
+  fill?: boolean
 }) {
   const { openRecord } = useCrmNavigate()
+  const openRelated = onOpenRelated ?? openRecord
   const panel = useRef<HTMLElement>(null)
   const title = recordTitle(type, record)
 
@@ -59,8 +66,12 @@ export function RecordPreview({
     <aside
       ref={panel}
       aria-label={`${type.label_singular}: ${title}`}
-      className="flex h-full shrink-0 flex-col border-s border-separator bg-background"
-      style={{ width: PREVIEW_WIDTH }}
+      className={
+        fill
+          ? 'flex h-full w-full flex-col bg-background'
+          : 'flex h-full shrink-0 flex-col border-s border-separator bg-background'
+      }
+      style={fill ? undefined : { width: PREVIEW_WIDTH }}
     >
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-separator ps-3 pe-2">
         <span className="min-w-0 flex-1 truncate text-xs text-ink-muted">
@@ -110,7 +121,7 @@ export function RecordPreview({
             record={record}
             writes={writes}
             writable={writable}
-            onOpenRelated={(target, id) => void openRecord(target, id)}
+            onOpenRelated={(target, id) => void openRelated(target, id)}
           />
         </div>
 

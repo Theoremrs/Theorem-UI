@@ -9,8 +9,12 @@ import { describeError, isSignedOut } from '@/lib/theorem/client'
 import { cn } from '@/lib/utils'
 import { scopeKey } from './contract'
 import type { IndexView, ViewOrigin, ViewRevision } from './contract'
-import { RecordInspector } from '@/components/records/record-inspector'
-import { objectTypeByName, parseRecordItemId } from '@/components/records/model'
+import { CrmRecordInspector } from '@/components/crm/index-views'
+import {
+  objectTypeByName,
+  parseRecordItemId,
+  recordItemId,
+} from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
 import { WorkInspector } from '@/components/work/inspector'
 import { isWorkView, parseWorkItemId, workItemId } from '@/components/work/route'
@@ -20,9 +24,9 @@ import type { IndexHost } from './library'
 import { useAskTheorem, useIndexPlace } from './navigation'
 import { observer } from './observe'
 import {
-  dataModelViewId,
   defaultViewFor,
   isDefaultView,
+  isFullBleedProgram,
   isWideProgram,
   resolveDefaultView,
   revisionOnScreen,
@@ -81,7 +85,13 @@ function useOpenView() {
     setHeld({ scope: scopeKey(scope), viewId: fallback })
   const viewId = viewParam ?? heldHere ?? fallback
   const builtIn = isDefaultView(viewId)
-    ? resolveDefaultView(viewId, collectionName, objectLabel)
+    ? resolveDefaultView(
+        viewId,
+        collectionName,
+        objectLabel,
+        (nameSingular) =>
+          objectTypeByName(dataModel.data, nameSingular)?.label_singular,
+      )
     : undefined
   const stored = useStoredView(builtIn ? undefined : viewId)
   // Until the scope's views arrive the pinned one is unknown; opening the
@@ -365,6 +375,29 @@ export function ViewColumn() {
       />
     )
 
+  // A record table or page is the whole view: it draws its own header,
+  // scrolls inside itself, and a record previewed beside it is the item.
+  if (isFullBleedProgram(revision.program))
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="shrink-0 px-3 empty:hidden [&>*]:mt-3 [&>*]:mb-0">
+          <ProposalNotices
+            scope={open.scope}
+            viewId={open.viewId}
+            onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
+          />
+        </div>
+        <div className="min-h-0 flex-1">
+          <ViewRenderer
+            definition={revision}
+            host={host}
+            actions={actions}
+            fill
+          />
+        </div>
+      </div>
+    )
+
   return (
     <div className="h-full overflow-y-auto">
       <div
@@ -437,20 +470,17 @@ export function InspectorColumn({ className }: { className?: string }) {
   const record = parseRecordItemId(item)
   if (record)
     return (
-      <RecordInspector
+      <CrmRecordInspector
         key={item}
         nameSingular={record.nameSingular}
         recordId={record.recordId}
-        onOpenRecord={(nameSingular, recordId) => {
-          const opened = `record:${nameSingular}/${recordId}`
+        onOpenRelated={(type, recordId) => {
+          const opened = recordItemId(type, recordId)
           observer().record({ kind: 'item_opened', scope, subjects: [opened] })
           navigate.openItem(opened)
         }}
-        onEditFields={(nameSingular) =>
-          navigate.openView(dataModelViewId(nameSingular), scope)
-        }
         onClose={navigate.closeItem}
-        className={className}
+        className={cn('h-full', className)}
       />
     )
   return (

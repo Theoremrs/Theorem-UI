@@ -1,7 +1,7 @@
 // SOURCING: the surfaces Theorem already has, each wrapped as a module rather
 // than rebuilt: the Index's own columns (ViewColumn, with its header,
 // proposals and held revision, at an IndexPlace) and its document Inspector,
-// the records' RecordInspector and RecordTable, assistant-ui's Thread on the
+// the CRM's record preview and table (components/crm/index-views), assistant-ui's Thread on the
 // one shared runtime, WorkspaceFilePanel for a vault file, DocumentApp for a
 // conversation App, the IDE frame (browser-only Theia) and the tabbed agent
 // terminal (terminal-screen over side-terminal's useTerminalTabs, the tabs the
@@ -29,19 +29,14 @@ import { ViewColumn } from '@/components/index/index-surface'
 import { Inspector } from '@/components/index/inspector'
 import {
   IndexPlaceContext,
+  useIndexNavigate,
   useLocalIndexPlace,
 } from '@/components/index/navigation'
 import type { IndexPlace } from '@/components/index/navigation'
 import { observer } from '@/components/index/observe'
 import { dataModelViewId } from '@/components/index/programs'
-import {
-  objectTypeByName,
-  parseRecordItemId,
-  recordItemId,
-} from '@/components/records/model'
-import { useDataModel } from '@/components/records/queries'
-import { RecordInspector } from '@/components/records/record-inspector'
-import { RecordTable } from '@/components/records/record-table'
+import { parseRecordItemId, recordItemId } from '@/components/records/model'
+import { CrmRecordInspector, CrmTableView } from '@/components/crm/index-views'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
 import {
@@ -62,7 +57,6 @@ import type { ModuleDefinition, ModuleViewProps } from '@/lib/modules/registry'
 import type { PageRuntime } from '@/lib/modules/runtime'
 import { useVaultClient } from '@/lib/modules/store'
 import { isItem, isReference } from '@/lib/modules/values'
-import { describeError } from '@/lib/theorem/client'
 import { useNothingToShow } from './layout-parts'
 import { useModuleAction, usePageRuntime } from './page-runtime'
 import { WORK_MODULES } from './work-modules'
@@ -247,12 +241,11 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   const record = parseRecordItemId(current.id)
   if (record)
     return (
-      <RecordInspector
+      <CrmRecordInspector
         key={current.id}
         nameSingular={record.nameSingular}
         recordId={record.recordId}
-        onOpenRecord={(name, id) => open(`record:${name}/${id}`)}
-        onEditFields={(name) => emit('editFields', name)}
+        onOpenRelated={(type, id) => open(recordItemId(type, id))}
         onClose={close}
         className="h-full"
       />
@@ -269,47 +262,37 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   )
 }
 
-function RecordsModule({
-  settings,
-  output,
-  emit,
-  instanceId,
-}: ModuleViewProps) {
-  const model = useDataModel()
+function RecordsModule({ settings, output, emit }: ModuleViewProps) {
   const name = text(settings.object)
-  const type = objectTypeByName(model.data, name)
-  const [active, setActive] = useState<string>()
-  if (!name) return <Empty>Choose an object in its settings.</Empty>
-  if (model.isPending)
-    return <div className="m-3 h-40 animate-pulse rounded-lg bg-raised" />
-  if (!model.data || !type)
-    return (
-      <Empty>
-        {model.error
-          ? describeError(model.error)
-          : `There is no "${name}" object in the schema.`}
-      </Empty>
-    )
-  const send = (id: string) => {
-    const item = indexItem(id)
-    output('selected', item)
-    emit('opened', item)
+  // The table keeps a place of its own on the page; a record opened from it
+  // is this module's selection, for an inspector connected to it.
+  const place = useLocalIndexPlace({})
+  const index = useIndexNavigate()
+  const reporting: IndexPlace = {
+    search: place.search,
+    navigate: {
+      ...place.navigate,
+      // A record's page, or another type's table, opens in the Index.
+      openView: index.openView,
+      openItem: (id) => {
+        place.navigate.openItem(id)
+        const item = indexItem(id)
+        output('selected', item)
+        emit('opened', item)
+      },
+      closeItem: () => {
+        place.navigate.closeItem()
+        output('selected', undefined)
+      },
+    },
   }
+  if (!name) return <Empty>Choose an object in its settings.</Empty>
   return (
-    <div className="p-3">
-      <RecordTable
-        objectType={type}
-        model={model.data}
-        viewKey={`page:${instanceId}`}
-        activeRecordId={active}
-        onOpenRecord={(id) => {
-          setActive(id)
-          send(recordItemId(type, id))
-        }}
-        onOpenRelated={(related, id) => send(`record:${related}/${id}`)}
-        onEditFields={() => undefined}
-      />
-    </div>
+    <IndexPlaceContext.Provider value={reporting}>
+      <div className="h-full min-h-[24rem]">
+        <CrmTableView object={name} />
+      </div>
+    </IndexPlaceContext.Provider>
   )
 }
 

@@ -93,7 +93,6 @@ test('the rail keeps the order destinations were dragged into', () => {
   expect(modes([])).toEqual([
     'chat',
     'index',
-    'crm',
     'notes',
     'pages',
     'vault',
@@ -107,11 +106,24 @@ test('the rail keeps the order destinations were dragged into', () => {
     'chat',
     'canvas',
     'index',
-    'crm',
     'notes',
     'pages',
     'vault',
     'spaces',
+  ])
+  // Records moved into the Index; an order saved while the CRM had its own
+  // place on the rail still lists only the destinations there are.
+  expect(
+    modes(['crm' as Parameters<typeof orderModes>[0][number], 'ide']),
+  ).toEqual([
+    'ide',
+    'chat',
+    'index',
+    'notes',
+    'pages',
+    'vault',
+    'spaces',
+    'canvas',
   ])
 })
 

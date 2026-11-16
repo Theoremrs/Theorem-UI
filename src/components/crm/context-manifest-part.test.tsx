@@ -1,4 +1,5 @@
 // SOURCING: bun:test rendering the `context_manifest` part with React into happy-dom, from the fixture's part (./fixture), which has the server's shape
+import { recordPageViewId } from '@/components/index/programs'
 import {
   afterAll,
   afterEach,
@@ -106,13 +107,13 @@ test('it says which record types Theorem was told about, when the data model was
   expect(plain.container.textContent).not.toContain('how your records are')
 })
 
-test('a used record links to its page in the CRM', async () => {
+test('a used record links to its page in the Index', async () => {
   const { container } = await opened(payload())
   const link = [...container.querySelectorAll('a')].find(
     (a) => a.textContent === 'Send Noor the materials list',
   )!
   expect(decodeURIComponent(link.getAttribute('href')!)).toBe(
-    '/crm/commitments/commitment:materials',
+    `/index?view=${recordPageViewId('Commitment', 'commitment:materials')}`,
   )
 })
 

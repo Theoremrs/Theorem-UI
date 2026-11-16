@@ -43,8 +43,7 @@ import {
   relatedGroups,
   revisionStep,
   shownFields,
-  typeBySlug,
-  typeSlug,
+  typeByName,
 } from './model'
 import {
   editKey,
@@ -344,11 +343,10 @@ test('built-in types come first in their order, then the rest by label', () => {
   ])
 })
 
-test('a type is found by its place in the URL', () => {
-  expect(typeSlug(person)).toBe('people')
-  expect(typeBySlug(types, 'people')).toBe(person)
-  expect(typeBySlug(types, 'Commitments')).toBe(commitment)
-  expect(typeBySlug(types, 'nothing')).toBeUndefined()
+test('a type is found by the singular name its Index view carries', () => {
+  expect(typeByName(types, 'person')).toBe(person)
+  expect(typeByName(types, 'Commitment')).toBe(commitment)
+  expect(typeByName(types, 'nothing')).toBeUndefined()
 })
 
 test('access comes from what the server reported; an unreported type is tried', () => {

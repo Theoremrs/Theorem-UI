@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the CRM; @tanstack/react-router Link to the conversation; lucide-react marks
+// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, CircleAlert, FilePen } from 'lucide-react'

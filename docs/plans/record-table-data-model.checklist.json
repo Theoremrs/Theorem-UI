@@ -15,41 +15,47 @@
     {
       "id": "record-writes",
       "requirement": "Create, edit and delete records through the register's record verbs",
-      "status": "blocked",
+      "status": "done",
       "evidence": [
-        "UI side done: api.ts invokeRecordVerb, optimistic writes with rollback in queries.ts",
-        "Blocked on Theorem: rustyred-thg-mcp GraphQL has no invokeRecordVerb mutation; until then the table shows that writes are unavailable"
+        "src/components/crm/queries.ts (useCrmWrites): invokeRecordVerb with expected_revision on update and delete; a stale write is refused and shown",
+        "Theorem: invokeRecordVerb on /graphql, with a signed-in person's read and write default (Theorem docs/plans/theorem-crm-life-context/README.md)"
       ]
     },
     {
       "id": "table-core",
       "requirement": "Checkbox column, pinned identifier column, typed headers, resize, virtualized rows, sticky header, active row for the open record",
-      "status": "done",
+      "status": "partial",
       "evidence": [
-        "src/components/records/record-table.tsx",
-        "Verified against a local mock authority"
+        "Replaced: the Index's records table is now the CRM table (src/components/crm/crm-table.tsx), and record-table.tsx was removed. It has the checkbox column, the pinned identifier column, typed headers, a sticky header and the active row for the previewed record.",
+        "Not in the CRM table: column resize by drag and virtualized rows (it draws every loaded row)"
       ]
     },
     {
       "id": "column-menu",
       "requirement": "Filter, Sort, Move left, Move right, Hide; the identifier column only Filter and Sort",
-      "status": "done",
-      "evidence": ["record-table.tsx HeaderMenu"]
+      "status": "not-started",
+      "evidence": [
+        "Replaced: the Index's records table is now the CRM table (src/components/crm/crm-table.tsx), and record-table.tsx was removed. The CRM table has no per-column menu; sort is chosen from the view bar's Sort menu and hidden fields from its field list.",
+        "record-table.tsx HeaderMenu was removed with the generic table"
+      ]
     },
     {
       "id": "plus-column",
       "requirement": "\"+\" column lists hidden fields to show, with Customize fields",
-      "status": "done",
-      "evidence": ["record-table.tsx AddFieldMenu"]
+      "status": "not-started",
+      "evidence": [
+        "Replaced: the Index's records table is now the CRM table (src/components/crm/crm-table.tsx), and record-table.tsx was removed. The CRM table has no \"+\" column; fields are added in the data model.",
+        "record-table.tsx AddFieldMenu was removed with the generic table"
+      ]
     },
     {
       "id": "focus-edit",
       "requirement": "Cell focus with arrows, Enter edits, typing a character opens the editor with it, Enter saves and moves down, Tab across, Escape cancels the edit and leaves the saved value (changed from Twenty's Escape-saves when the CRM mode was added, so the two tables agree), Backspace clears, Cmd/Ctrl+Enter opens the record",
-      "status": "done",
+      "status": "partial",
       "evidence": [
-        "record-table.tsx onGridKeyDown, fields.tsx commitKeys",
-        "Verified: type-to-edit, Enter moves down",
-        "fields.test.tsx: Escape cancels: nothing is saved, and the editor is asked to close; Escape in a text editor restores the value; Enter saves it"
+        "src/components/crm/crm-table.tsx onGridKeyDown: arrows, Enter edits, typing a character opens the editor with it, Escape, Cmd/Ctrl+Enter opens the record; fields.tsx commitKeys",
+        "fields.test.tsx: Escape cancels: nothing is saved, and the editor is asked to close; Escape in a text editor restores the value; Enter saves it",
+        "Not in the CRM table since it replaced record-table.tsx: Tab across cells and Backspace to clear"
       ]
     },
     {
@@ -65,24 +71,26 @@
       "id": "add-new",
       "requirement": "Add New row and empty states (Add your first {Object}, No {Object} found)",
       "status": "done",
-      "evidence": ["record-table.tsx draft row and EmptyState"]
+      "evidence": [
+        "src/components/crm/crm-table.tsx: the Add new row and the empty states"
+      ]
     },
     {
       "id": "selection-bulk",
       "requirement": "Select all, shift-range selection, N selected, delete and export the selection",
       "status": "partial",
       "evidence": [
-        "record-table.tsx",
-        "Not yet: rectangle drag-select, x hotkey, bulk Update records side panel"
+        "src/components/crm/crm-table.tsx: marked rows, Delete of the marked rows with a report of each refusal; bulk-update.tsx: Update records, one revision-checked write per marked record",
+        "Not in the CRM table: shift-range selection, export of the selection, rectangle drag-select, x hotkey"
       ]
     },
     {
       "id": "calculate-footer",
       "requirement": "Per-column Calculate: Count, Percent, Date and More options, saved per view",
-      "status": "partial",
+      "status": "not-started",
       "evidence": [
-        "aggregate.ts with tests",
-        "Computed over loaded rows; server-side aggregates via the Aggregate verb are not wired"
+        "Replaced: the Index's records table is now the CRM table (src/components/crm/crm-table.tsx), and record-table.tsx was removed. The CRM table's footer is the dataset count only.",
+        "aggregate.ts and its tests remain; nothing in the Index's records table uses them now"
       ]
     },
     {
@@ -90,8 +98,8 @@
       "requirement": "Search any field, filter list with and/or, sort list, fields visibility and order, export, reset",
       "status": "partial",
       "evidence": [
-        "Kit FilterList, SortList, ViewOptions",
-        "Not yet: saved named views per object, view picker, advanced filter rule groups"
+        "src/components/crm/crm-table.tsx: filter on the identifier field and one sort, both kept in the address (q, sort, desc); hidden fields",
+        "Not in the CRM table: search of any field, and/or filter rules, multi-sort, field order, export, reset, saved named views"
       ]
     },
     {
@@ -99,7 +107,7 @@
       "requirement": "A view's arrangement kept in Theorem so it follows the person",
       "status": "not-started",
       "evidence": [
-        "view-state.ts keeps it in localStorage; Theorem has dataViews/upsertDataView to build on"
+        "The CRM table keeps filter and sort in the address, not localStorage; nothing is kept in Theorem. Theorem has dataViews/upsertDataView to build on"
       ]
     },
     {
@@ -107,8 +115,8 @@
       "requirement": "Record beside the table: editable title, every field inline, relations, records that point here (tasks, notes), delete",
       "status": "done",
       "evidence": [
-        "record-inspector.tsx",
-        "Verified: Anthropic opens with People, Opportunities and Tasks sections"
+        "src/components/crm/record-preview.tsx in the Index inspector (CrmRecordInspector in index-views.tsx) for the open item record:<name>/<id>; src/components/crm/record-page.tsx as the built-in view default:record:<name>/<id> with relations, records that point here, history and delete",
+        "record-inspector.tsx was removed"
       ]
     },
     {
@@ -116,7 +124,7 @@
       "requirement": "What records carry beyond their declaration: shown, promoted, or added as a field with a proposed type",
       "status": "partial",
       "evidence": [
-        "data-model.tsx Not in the schema yet, record-inspector.tsx Not in the schema",
+        "data-model.tsx Not in the schema yet, record-inspector.tsx Not in the schema (removed with the generic inspector)",
         "proposeFieldType in schema-edit.ts is left for the person to write"
       ]
     },

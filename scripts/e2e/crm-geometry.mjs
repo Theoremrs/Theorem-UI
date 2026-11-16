@@ -1,6 +1,6 @@
 // SOURCING: playwright-core through ./lib and the Chrome DevTools Protocol (CSS.getPlatformFontsForNode for the face a node was really drawn in); the WCAG 2.2 relative-luminance contrast formula; the geometry targets of SPEC-THEOREM-CRM-LIFE-CONTEXT-1.0's design references.
 //
-// Measures the mounted CRM against the geometry the spec takes from Twenty's
+// Measures the mounted CRM (the Index's record views and its panel's records list) against the geometry the spec takes from Twenty's
 // record screens. Each check is reported on its own as pass, fail, review or
 // not_measurable; there is no overall score, and a number that matches is not
 // a judgment that the screen looks right. The reference screenshots are
@@ -21,7 +21,9 @@ import { READ, SHOTS, log, open } from './lib.mjs'
 import { turns } from './turns.mjs'
 
 const LONG_TABLE = 40
-const session = await open('/crm/people')
+const session = await open(
+  `/index?view=${encodeURIComponent('default:records:person')}`,
+)
 const { page, context, problems } = session
 const { writing } = turns(session)
 const report = []
@@ -205,7 +207,7 @@ const shot = async (name) => {
 }
 // Screens are reached the way a person reaches them, inside the loaded app.
 // A second full page load of the unbundled dev server can crash the browser.
-const navigator = page.locator('nav[aria-label="CRM"]')
+const navigator = page.locator('nav[aria-label="Index"]')
 const visit = async (plural, ready) => {
   await navigator
     .getByRole('button', { name: new RegExp(`^${plural}\\b`) })
@@ -264,7 +266,7 @@ try {
     .first()
     .waitFor({ timeout: 120_000 })
   const viewport = page.viewportSize()
-  const nav = await box('nav[aria-label="CRM"]')
+  const nav = await box('nav[aria-label="Index"]')
   const main = await box('section[aria-label="People"]')
   record(
     'navigator.width',
@@ -356,7 +358,7 @@ try {
     cellType?.size ?? null,
     within(cellType?.size, 13, 14),
   )
-  const navRow = await type('nav[aria-label="CRM"] button')
+  const navRow = await type('nav[aria-label="Index"] button')
   record(
     'type.navigator.size',
     'target',
@@ -384,7 +386,7 @@ try {
       'contrast.view-bar.count',
       '[data-crm-region="view-bar"] span:nth-of-type(2)',
     ],
-    ['contrast.navigator.row', 'nav[aria-label="CRM"] button'],
+    ['contrast.navigator.row', 'nav[aria-label="Index"] button'],
   ]) {
     const ratio = await contrast(selector)
     record(

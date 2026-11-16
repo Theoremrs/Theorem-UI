@@ -11,14 +11,10 @@ test('Notes keeps its own folders, so its Trash closes the panel', () => {
   expect(filesUnderPanel('notes')).toBe(false)
 })
 
-test('the CRM lists records, so no file tree sits under its panel', () => {
-  expect(filesUnderPanel('crm')).toBe(false)
-})
-
 test('beside the threads the files fold into the panel instead', () => {
   const others = MODES.map((entry) => entry.mode).filter(
     (mode) =>
-      !['index', 'pages', 'spaces', 'canvas', 'notes', 'crm'].includes(mode),
+      !['index', 'pages', 'spaces', 'canvas', 'notes'].includes(mode),
   )
   for (const mode of others) expect(filesUnderPanel(mode)).toBe(false)
 })

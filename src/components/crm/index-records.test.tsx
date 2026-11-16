@@ -1,4 +1,4 @@
-// SOURCING: bun:test rendering the CRM's screens with React into happy-dom, inside a router that knows the CRM's places (./test-harness). window.fetch is the in-memory fixture (./fixture), which answers each record verb as the server does, as no Theorem is running
+// SOURCING: bun:test rendering the CRM's record views as the Index draws them (a type's table, a record's page, the records home, the record open beside a view, and the records part of the Index panel) with React into happy-dom, inside a router that knows the Index's place (./test-harness). window.fetch is the in-memory fixture (./fixture), which answers each record verb as the server does, as no Theorem is running
 import {
   afterAll,
   afterEach,
@@ -15,13 +15,23 @@ import {
   waitFor,
 } from '../../../test/blocks/render'
 import { useComposerReferences } from '@/components/chat/composer-references'
-import { CrmPanel } from './crm-panel'
-import { CrmView } from './crm-view'
+import {
+  RECORDS_HOME_VIEW_ID,
+  recordPageViewId,
+  recordsViewId,
+} from '@/components/index/programs'
 import { ProfileSettings } from './profile-settings'
 import { FIXTURE_TYPE, createFixtureServer, fixtureFetch } from './fixture'
 import type { FixtureServer } from './fixture'
 import { resetCrmWrites } from './queries'
-import { mountAt } from './test-harness'
+import {
+  IndexRecords,
+  homeAt,
+  itemOf,
+  mountAt,
+  pageAt,
+  tableAt,
+} from './test-harness'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -45,7 +55,7 @@ afterEach(async () => {
   window.fetch = realFetch
 })
 
-const view = (path: string) => mountAt(path, () => <CrmView />)
+const view = (path: string) => mountAt(path, () => <IndexRecords />)
 const settle = () =>
   act(() => new Promise((resolve) => setTimeout(resolve, 15)))
 const key = (element: Element, which: string, init: KeyboardEventInit = {}) =>
@@ -82,7 +92,7 @@ function cell(container: HTMLElement, column: string) {
     .querySelector('[role="row"]')!
   return row.querySelectorAll('[role="gridcell"]')[index] as HTMLElement
 }
-const commitments = async (path = '/crm/commitments') => {
+const commitments = async (path = tableAt('commitment')) => {
   const mounted = await view(path)
   await waitFor(() =>
     mounted.container.querySelector('[role="grid"] [data-r="0"]'),
@@ -103,26 +113,29 @@ async function editDue(container: HTMLElement, text: string) {
 
 test('before the types exist, it says what will be added and adds them on request', async () => {
   serve({ installed: false })
-  const { container, path } = await view('/crm')
+  const { container, search } = await view(homeAt())
   const add = await waitFor(() =>
     buttonNamed(container, 'Add people, organizations, commitments…'),
   )
   expect(container.querySelector('[role="grid"]')).toBeNull()
   await click(add)
-  // Once they exist, /crm is the first type's table.
-  await waitFor(() => path() === '/crm/people')
+  // Once they exist, the records home shows the first type's table in place.
   await waitFor(() => container.querySelector('[role="grid"]'))
+  expect(container.querySelector('h1')!.textContent).toBe('People')
+  expect(search().view).toBe(RECORDS_HOME_VIEW_ID)
   expect(server.state.installed).toBe(true)
 })
 
 test('a workspace set up before Relationships existed keeps its records and is offered the new type', async () => {
   serve({ missing: ['Relationship'] })
-  // It is not sent back to the first-run screen: /crm is still the table.
-  const { path } = await view('/crm')
-  await waitFor(() => path() === '/crm/people')
+  // It is not sent back to the first-run screen: the records home is still the table.
+  const home = await view(homeAt())
+  await waitFor(() => home.container.querySelector('[role="grid"]'))
+  expect(home.container.querySelector('h1')!.textContent).toBe('People')
+  await cleanup()
 
-  const { container } = await mountAt('/crm/people', () => (
-    <CrmPanel switcher={null} />
+  const { container } = await mountAt(tableAt('person'), () => (
+    <IndexRecords panel />
   ))
   const add = await waitFor(() =>
     buttonNamed(container, 'Add the Relationship type'),
@@ -136,17 +149,17 @@ test('a workspace set up before Relationships existed keeps its records and is o
   expect(server.state.missing.size).toBe(0)
 })
 
-test('/crm opens the first listed type', async () => {
-  const { path } = await view('/crm')
-  await waitFor(() => path() === '/crm/people')
+test('the records home opens the first listed type', async () => {
+  const { container, search } = await view(homeAt())
+  await waitFor(() => container.querySelector('[role="grid"]'))
+  expect(container.querySelector('h1')!.textContent).toBe('People')
+  expect(search().view).toBe(RECORDS_HOME_VIEW_ID)
 })
 
 test('a type that does not exist is said, not drawn as an empty table', async () => {
-  const { container } = await view('/crm/unicorns')
+  const { container } = await view(tableAt('unicorn'))
   await waitFor(() =>
-    container.textContent.includes(
-      'There is no record type called “unicorns”.',
-    ),
+    container.textContent.includes('There is no record type called “unicorn”.'),
   )
   expect(container.querySelector('[role="grid"]')).toBeNull()
 })
@@ -283,7 +296,7 @@ for (const firstLands of [
       await settle()
     }
 
-    const { container } = await view('/crm/people/person%3Anoor')
+    const { container } = await view(pageAt('person', 'person:noor'))
     const title = () =>
       container.querySelector<HTMLElement>('button[title^="Rename"]')
     const open = async () => {
@@ -359,7 +372,7 @@ test('Escape in the "Add new" row creates nothing', async () => {
 })
 
 test('the filter narrows by name and the footer says so', async () => {
-  const { container } = await view('/crm/people')
+  const { container } = await view(tableAt('person'))
   await waitFor(() => container.querySelector('[role="grid"] [data-r="1"]'))
   await click(buttonNamed(container, 'Filter')!)
   const input = await waitFor(() =>
@@ -377,7 +390,7 @@ test('the filter narrows by name and the footer says so', async () => {
 })
 
 test('a column header sorts, and says which way', async () => {
-  const { container } = await view('/crm/people')
+  const { container } = await view(tableAt('person'))
   await waitFor(() => container.querySelector('[role="grid"] [data-r="1"]'))
   const names = () =>
     [...container.querySelectorAll('[role="gridcell"][data-c="0"]')].map((c) =>
@@ -429,7 +442,7 @@ test('a type that can be read but not changed says so, and offers no editing', a
 
 test('a type that cannot be read is said plainly, with no table and no request for it', async () => {
   serve({ unreadable: ['commitments'] })
-  const { container } = await view('/crm/commitments')
+  const { container } = await view(tableAt('commitment'))
   await waitFor(() =>
     container.textContent.includes(
       'Commitments are not available to this sign-in.',
@@ -550,7 +563,7 @@ test('keeping one field from Theorem saves only that, and can be undone', async 
 // The preview
 
 test('a row opens the preview: saved revision, private switch, and the ways on', async () => {
-  const { container, path } = await commitments()
+  const { container, search } = await commitments()
   await click(cell(container, 'Commitment'))
   const preview = await waitFor(() => container.querySelector('aside'))
   expect(preview.getAttribute('aria-label')).toBe(
@@ -565,12 +578,12 @@ test('a row opens the preview: saved revision, private switch, and the ways on',
   await click(buttonNamed(preview, 'Open')!)
   await waitFor(
     () =>
-      decodeURIComponent(path()) === '/crm/commitments/commitment:materials',
+      search().view === recordPageViewId('Commitment', 'commitment:materials'),
   )
 })
 
 test('the preview, the filter and the sort are in the address, and a table opened there shows them', async () => {
-  const first = await view('/crm/people')
+  const first = await view(tableAt('person'))
   await waitFor(() =>
     first.container.querySelector('[role="grid"] [data-r="1"]'),
   )
@@ -583,15 +596,30 @@ test('the preview, the filter and the sort are in the address, and a table opene
   await type(input, 'noo')
   await click(cell(first.container, 'Name'))
   await waitFor(() => first.container.querySelector('aside'))
-  const search = () => first.router.state.location.search
-  await waitFor(() => 'record' in search())
-  expect(search()).toEqual({ q: 'noo', record: 'person:noor' })
+  await waitFor(() => first.search().item !== undefined)
+  expect(first.search()).toEqual({
+    view: recordsViewId('person'),
+    q: 'noo',
+    item: itemOf('Person', 'person:noor'),
+  })
   // Changing the view replaces the entry: it is still one place.
-  expect(first.visited.every((place) => place === '/crm/people')).toBe(true)
+  expect(
+    first.visited.every(
+      (href) =>
+        new URL(href, 'http://localhost').searchParams.get('view') ===
+        recordsViewId('person'),
+    ),
+  ).toBe(true)
   await cleanup()
 
   // Reloaded, or come back to from the record's page.
-  const again = await view('/crm/people?q=noo&record=person%3Anoor&sort=name')
+  const again = await view(
+    tableAt('person', {
+      q: 'noo',
+      item: itemOf('person', 'person:noor'),
+      sort: 'name',
+    }),
+  )
   const preview = await waitFor(() => again.container.querySelector('aside'))
   expect(preview.getAttribute('aria-label')).toBe('Person: Noor')
   expect(
@@ -605,8 +633,8 @@ test('the preview, the filter and the sort are in the address, and a table opene
 })
 
 test('when the address drops the filter and the sort, so does the table', async () => {
-  const { container, router } = await view(
-    '/crm/people?q=noo&sort=name&desc=true',
+  const { container, router, search } = await view(
+    tableAt('person', { q: 'noo', sort: 'name', desc: true }),
   )
   const rows = () =>
     container.querySelectorAll('[role="gridcell"][data-c="0"]').length
@@ -614,12 +642,13 @@ test('when the address drops the filter and the sort, so does the table', async 
   // As the navigator does when the type that is already open is chosen again.
   await act(() =>
     router.navigate({
-      to: '/crm/$objectType',
-      params: { objectType: 'people' },
-      search: {},
+      to: '/index',
+      search: { view: recordsViewId('person') },
     } as never),
   )
   await waitFor(() => rows() > 1)
+  expect(search().q).toBeUndefined()
+  expect(search().sort).toBeUndefined()
   expect(
     container
       .querySelectorAll('[role="columnheader"]')
@@ -649,7 +678,7 @@ test('"Private to me" saves at the record\'s revision and marks the row', async 
 
 test('a person who is not you carries no "This is me"; who you are is chosen in Settings, Profile', async () => {
   serve({ self: 'unbound' })
-  const { container } = await view('/crm/people')
+  const { container } = await view(tableAt('person'))
   const noor = await waitFor(() =>
     [
       ...container.querySelectorAll<HTMLElement>(
@@ -738,7 +767,7 @@ test('deleting asks first, and names the revision it deletes', async () => {
 // The record page
 
 test('a record page has its properties, its changes and what it is tied to', async () => {
-  const { container } = await view('/crm/commitments/commitment%3Amaterials')
+  const { container } = await view(pageAt('commitment', 'commitment:materials'))
   await waitFor(() => container.textContent.includes('Saved revision 9'))
   const tabs = [...container.querySelectorAll('[role="tab"]')].map(
     (tab) => tab.textContent,
@@ -761,7 +790,7 @@ test('a record page has its properties, its changes and what it is tied to', asy
 
 test('a record page shows a note whole; the preview keeps it to its first line', async () => {
   const second = 'She will confirm the kiln booking on Monday.'
-  const whole = await view('/crm/interactions/interaction%3Aplanning')
+  const whole = await view(pageAt('interaction', 'interaction:planning'))
   const properties = await waitFor(() =>
     whole.container.querySelector('[role="list"][aria-label="Properties"]'),
   )
@@ -770,7 +799,11 @@ test('a record page shows a note whole; the preview keeps it to its first line',
   )
   expect(properties.textContent).toContain(second)
 
-  const table = await view('/crm/interactions?record=interaction%3Aplanning')
+  const table = await view(
+    tableAt('interaction', {
+      item: itemOf('interaction', 'interaction:planning'),
+    }),
+  )
   const preview = await waitFor(() =>
     table.container.querySelector(
       'aside [role="list"][aria-label="Properties"]',
@@ -781,7 +814,7 @@ test('a record page shows a note whole; the preview keeps it to its first line',
 })
 
 test('a record that is not there says so', async () => {
-  const { container } = await view('/crm/commitments/commitment%3Agone')
+  const { container } = await view(pageAt('commitment', 'commitment:gone'))
   await waitFor(() =>
     container.textContent.includes('This commitment is not here.'),
   )
@@ -790,8 +823,8 @@ test('a record that is not there says so', async () => {
 // The panel
 
 test('the panel lists the types in order, with counts, the current one marked, and you', async () => {
-  const { container } = await mountAt('/crm/commitments', () => (
-    <CrmPanel switcher={null} />
+  const { container } = await mountAt(tableAt('commitment'), () => (
+    <IndexRecords panel />
   ))
   await waitFor(
     () =>
@@ -811,7 +844,8 @@ test('the panel lists the types in order, with counts, the current one marked, a
     'Goals',
     'Constraints',
   ])
-  expect(rows.at(-1)).toBe('Data model')
+  // The Index panel itself carries "Data model"; this section ends with the types.
+  expect(rows).toHaveLength(9)
   await waitFor(() =>
     [...container.querySelectorAll('nav button')].some(
       (row) => row.textContent === 'People2',
@@ -823,8 +857,8 @@ test('the panel lists the types in order, with counts, the current one marked, a
 
 test('with nobody marked as you, the panel says how to do it', async () => {
   serve({ self: 'unbound' })
-  const { container } = await mountAt('/crm/people', () => (
-    <CrmPanel switcher={null} />
+  const { container } = await mountAt(tableAt('person'), () => (
+    <IndexRecords panel />
   ))
   await waitFor(() =>
     container.textContent.includes('in Settings, under Profile'),

@@ -1,8 +1,7 @@
-// SOURCING: lucide-react (one line mark per built-in type and for the CRM's own controls; the app's Icon set has no person, building or handshake). The rail's other destinations are painted Streamline marks cut by scripts/rail-icons.mjs; there is no painted mark for the CRM yet, so its rail mark is a line icon that rests and wakes as the painted ones do
+// SOURCING: lucide-react (one line mark per built-in type and for the CRM's own controls; the app's Icon set has no person, building or handshake)
 import {
   Building2,
   CalendarRange,
-  Contact,
   Handshake,
   MessagesSquare,
   Shapes,
@@ -61,20 +60,6 @@ export function BuiltInIcon({
       aria-hidden
       strokeWidth={1.75}
       className={cn('size-4 shrink-0', className)}
-    />
-  )
-}
-
-/** The rail's mark for the CRM. */
-export function CrmRailMark({ className }: { className?: string }) {
-  return (
-    <Contact
-      aria-hidden
-      strokeWidth={1.6}
-      className={cn(
-        'text-ink opacity-75 group-hover/rail:opacity-100 group-aria-[current=page]/rail:opacity-100 group-aria-pressed/rail:opacity-100',
-        className,
-      )}
     />
   )
 }

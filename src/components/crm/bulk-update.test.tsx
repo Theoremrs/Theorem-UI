@@ -1,4 +1,4 @@
-// SOURCING: bun:test rendering the CRM table with React into happy-dom, inside a router that knows the CRM's places (./test-harness). window.fetch is the in-memory fixture (./fixture), which answers each record verb as the server does, as no Theorem is running
+// SOURCING: bun:test rendering the CRM table as the Index draws it, with React into happy-dom, inside a router that knows the Index's place (./test-harness). window.fetch is the in-memory fixture (./fixture), which answers each record verb as the server does, as no Theorem is running
 import {
   afterAll,
   afterEach,
@@ -14,11 +14,10 @@ import {
   click,
   waitFor,
 } from '../../../test/blocks/render'
-import { CrmView } from './crm-view'
 import { createFixtureServer, fixtureFetch } from './fixture'
 import type { FixtureServer } from './fixture'
 import { resetCrmWrites } from './queries'
-import { mountAt } from './test-harness'
+import { IndexRecords, mountAt, tableAt } from './test-harness'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -59,7 +58,7 @@ const updates = () =>
 const saved = (id: string) => server.state.nodes.find((node) => node.id === id)!
 
 const people = async () => {
-  const mounted = await mountAt('/crm/people', () => <CrmView />)
+  const mounted = await mountAt(tableAt('person'), () => <IndexRecords />)
   await waitFor(() =>
     mounted.container.querySelector('[role="grid"] [data-r="1"]'),
   )

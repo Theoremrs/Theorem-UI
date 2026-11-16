@@ -1,13 +1,14 @@
-// SOURCING: Twenty's navigation drawer for the anatomy (the workspace switcher, then one row per record type with its mark, plural label and count); the Index panel's rows for the geometry and states (components/index/index-panel), so the CRM's list reads as the app's other panels do; lucide-react marks
-import { useNavigate } from '@tanstack/react-router'
-import { Database, EyeOff, Plus, UserRound } from 'lucide-react'
+// SOURCING: Twenty's navigation drawer for the anatomy (one row per record type with its mark, plural label and count), drawn inside the Index panel (components/index/index-panel) with its rows' geometry and states; lucide-react marks
+import { useNavigate, useSearch } from '@tanstack/react-router'
+import { EyeOff, Plus, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { DATA_MODEL_VIEW_ID } from '@/components/index/programs'
+import { useIndexNavigate } from '@/components/index/navigation'
+import { RECORDS_HOME_VIEW_ID } from '@/components/index/programs'
 import type { ObjectType } from '@/components/records/contract'
 import { recordTitle } from '@/components/records/model'
 import { YouBadge } from './cells'
-import { CrmScopeProvider, useCrmScope, useCrmScopeValue } from './context'
-import { personType, typeBySlug } from './model'
+import { CrmBoundary, useCrmScope } from './context'
+import { personType, typeByName } from './model'
 import { useCrmNavigate, useCrmPlace } from './navigation'
 import { useInstallLifeContextTypes } from './queries'
 import { TypeIcon } from './type-icons'
@@ -27,26 +28,16 @@ function Heading({ children }: { children: ReactNode }) {
   )
 }
 
-/** The CRM's contextual navigation: who you are, the record types, the data model. */
-export function CrmPanel({ switcher }: { switcher: ReactNode }) {
-  const scope = useCrmScopeValue()
+/**
+ * The records part of the Index panel: who you are, each record type with its
+ * count, and adding the built-in types. Each opens in the Index.
+ */
+export function RecordsSection() {
   return (
-    <CrmScopeProvider value={scope}>
-      <div className="flex h-full flex-col">
-        <div className="flex h-12 shrink-0 items-center px-1.5">
-          <div className="min-w-0 flex-1">{switcher}</div>
-        </div>
-        <nav
-          aria-label="CRM"
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto px-2 pb-3"
-        >
-          <Me />
-          <Types />
-          <span className="min-h-3 flex-1" />
-          <DataModelLink />
-        </nav>
-      </div>
-    </CrmScopeProvider>
+    <CrmBoundary>
+      <Me />
+      <Types />
+    </CrmBoundary>
   )
 }
 
@@ -101,16 +92,38 @@ function Me() {
 
 function Types() {
   const { life, types, countOf, statusOf, model } = useCrmScope()
-  const { slug } = useCrmPlace()
+  const { nameSingular, recordId } = useCrmPlace()
   const { openType } = useCrmNavigate()
-  const current = typeBySlug(types, slug)
+  const navigate = useIndexNavigate()
+  const atHome = useSearch({ strict: false }).view === RECORDS_HOME_VIEW_ID
+  // A type's row is current at its table, not at one of its records' pages.
+  const current = recordId ? undefined : typeByName(types, nameSingular)
   if (!model)
     return (
       <p role="status" className="px-2 py-1 text-sm text-ink-faint-sheet">
         Loading
       </p>
     )
-  if (!life?.started && !types.length) return null
+  if (!life?.started && !types.length)
+    return (
+      <>
+        <Heading>Records</Heading>
+        <button
+          type="button"
+          className={ROW}
+          data-active={atHome || undefined}
+          aria-current={atHome ? 'page' : undefined}
+          onClick={() =>
+            void navigate.openView(RECORDS_HOME_VIEW_ID, { kind: 'home' })
+          }
+        >
+          <Plus aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            People, organizations, commitments…
+          </span>
+        </button>
+      </>
+    )
   return (
     <>
       <Heading>Records</Heading>
@@ -205,23 +218,6 @@ function TypeRow({
           </span>
         )
       )}
-    </button>
-  )
-}
-
-/** Where the types themselves are declared and changed. */
-function DataModelLink() {
-  const navigate = useNavigate()
-  return (
-    <button
-      type="button"
-      className={ROW}
-      onClick={() =>
-        void navigate({ to: '/index', search: { view: DATA_MODEL_VIEW_ID } })
-      }
-    >
-      <Database aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
-      <span className="min-w-0 flex-1 truncate">Data model</span>
     </button>
   )
 }
