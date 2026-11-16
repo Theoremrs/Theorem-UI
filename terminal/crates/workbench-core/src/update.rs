@@ -856,9 +856,11 @@ impl Model {
         }
         // A delegation row of the conversation: the panel that shows it opens
         // the changes panel, for a person's Enter and an agent's action alike.
+        // So do the conversation view's own actions on its blocks and activity level.
         if id
             .as_str()
             .starts_with(crate::panels::ACTION_DELEGATION_OPEN)
+            || id.as_str().starts_with(crate::builtin::ACTION_THEO_VIEW)
         {
             return self.delegation_node_action(id, on);
         }

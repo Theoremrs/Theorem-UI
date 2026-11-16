@@ -1995,6 +1995,7 @@ dependencies = [
  "theorem-workbench-dock",
  "theorem-workbench-editor",
  "theorem-workbench-ide",
+ "theorem-workbench-markdown",
  "theorem-workbench-markdown-panel",
  "theorem-workbench-panels",
  "theorem-workbench-process",

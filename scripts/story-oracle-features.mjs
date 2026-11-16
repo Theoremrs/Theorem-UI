@@ -2054,5 +2054,262 @@ export function scenarios(h) {
         }
       },
     ],
+    // L29, the Theo panel's transcript blocks: thinking, the summary of a finished turn, a running command, the
+    // code the agent writes, the person's message and a fenced block, all by real keys and pointer.
+    'workbench-theo-blocks': [
+      async (page) => {
+        const checks = {}
+        const theo = theoBlocks(page)
+        await theo.ready()
+        const at = await theo.cells()
+        const think = () => node(page, 'b:think:b4:0')
+        const summary = () => node(page, 'b:sum:b2:0')
+        const edit = () => node(page, 't:w-edit')
+        const REASONING = 'A test should pin both the empty case'
+        const opening = await pageText(page)
+        await snap(page, 'workbench-theo-blocks-headers', 1568, 914)
+
+        // Thinking: one header, its word and its duration, closed at the headers level.
+        const {
+          nodes: [header],
+          lines: [headerRow],
+        } = await theo.read(['b:think:b4:0'])
+        checks['thinking is one header line: "Thinking" and its duration, a button that is closed'] =
+          header.role === 'button' && header.rect.height === 1 && /^[\s│]*Thinking\s+6s\s+▸[\s│]*$/.test(headerRow) && header.state.expanded === false && !opening.includes(REASONING)
+        // Alt+Up gives the keys to the blocks (on the last one); Up walks to the thinking; Enter opens and closes it.
+        await keys(page, 'Alt+ArrowUp')
+        for (let i = 0; i < 6 && (await think()).state.selected !== true; i++) await keys(page, 'ArrowUp')
+        checks['the keys walk the blocks by Alt+Up and Up, and the header says it is the one in hand'] = (await think()).state.selected === true
+        await keys(page, 'Enter')
+        await page.waitForTimeout(200)
+        const enterOpened = (await think()).state.expanded === true && (await has(page, REASONING))
+        await snap(page, 'workbench-theo-blocks-thinking-open', 1568, 914)
+        await keys(page, 'Enter')
+        await page.waitForTimeout(200)
+        checks['Enter on the thinking opens it to its text, and Enter again closes it'] = enterOpened && (await think()).state.expanded === false && !(await has(page, REASONING))
+        await keys(page, 'Escape')
+        await page.mouse.click(...theo.point(at, (await think()).rect))
+        await page.waitForTimeout(250)
+        const clickOpened = (await think()).state.expanded === true && (await has(page, REASONING))
+        await page.mouse.click(...theo.point(at, (await think()).rect))
+        await page.waitForTimeout(250)
+        checks['a click on the thinking header opens it, and a second click closes it'] = clickOpened && (await think()).state.expanded === false && !(await has(page, REASONING))
+
+        // The finished turn: one plain-words line that opens to its headers.
+        const folded = await summary()
+        checks['the finished turn is one summary line in plain words, closed, naming what it holds'] =
+          folded.name === 'Thought twice, ran 2 commands, searched once' && folded.role === 'button' && folded.state.expanded === false && !opening.includes('ls data') && /run_command ls data: complete/.test(folded.state.description ?? '')
+        const calls = ['t:r-ls', 't:r-grep', 't:r-test']
+        checks['a call folded into the summary sits on the summary row and says it is not shown'] = (await Promise.all(calls.map((id) => node(page, id)))).every((n) => n.rect.y === folded.rect.y && n.rect.height === 1 && n.state.expanded === false)
+        await page.mouse.click(...theo.point(at, folded.rect))
+        await page.waitForTimeout(250)
+        const {
+          nodes: [opened, ...tools],
+          lines: [, ...toolRows],
+        } = await theo.read(['b:sum:b2:0', ...calls])
+        checks['the summary opens to one header per call, each one compact line saying what ran and how it ended'] =
+          opened.state.expanded === true &&
+          tools.every((n, i) => n.rect.height === 1 && n.rect.y > opened.rect.y && (i === 0 || n.rect.y > tools[i - 1].rect.y)) &&
+          /run_command\s+ls data/.test(toolRows[0]) && /grep\s+parse_date src/.test(toolRows[1]) && /run_command\s+cargo test -p importer rows/.test(toolRows[2]) &&
+          toolRows.every((r) => r.includes('✓') && /(\d+|<1)s\s*$/.test(r.trimEnd()))
+        checks['the opened summary shows the thinking of the turn as headers too'] = (await nodes(page)).filter((n) => /\/b:think:b2:/.test(n.id)).length === 2
+        await snap(page, 'workbench-theo-blocks-summary-open', 1568, 914)
+        await page.mouse.click(...theo.point(at, (await summary()).rect))
+        await page.waitForTimeout(250)
+        checks['and closes again on a second click'] = (await summary()).state.expanded === false && !(await has(page, 'ls data'))
+
+        // The running command: an outlined block, the tail of its output, and its elapsed time moving on.
+        const box = async () => {
+          const {
+            rows,
+            nodes: [r],
+          } = await theo.read(['t:w-run'])
+          const top = rows.findIndex((l) => /╭─ run_command cargo test -p importer ─+ \d+s ─╮/.test(l))
+          const bottom = rows.findIndex((l, i) => i > top && l.includes('╰'))
+          return { node: r, top, inside: rows.slice(top + 1, bottom).map((l) => l.replace(/[│]/g, '').trim()), edge: rows[top] ?? '' }
+        }
+        const secs = (s) => Number(/(\d+)s\s*─╮/.exec(s)?.[1] ?? /, (\d+)s$/.exec(s)?.[1] ?? NaN)
+        const before = await box()
+        await page.waitForTimeout(2600)
+        const after = await box()
+        checks['a running command is an outlined block: its command on the top edge and how long it has run'] = before.top >= 0 && before.node.role === 'status' && before.node.state.busy === true && Number.isFinite(secs(before.edge))
+        checks['the block shows only the tail of the output, at most six lines, the newest last'] = after.inside.length === 6 && after.inside.at(-1).startsWith('test ') && !after.inside.some((l) => l.includes('Compiling'))
+        checks['the output and the elapsed time move on as snapshots arrive'] = secs(after.edge) >= secs(before.edge) + 2 && secs(after.node.state.description) === secs(after.edge) && after.inside.join() !== before.inside.join()
+
+        // The code the agent writes: a diff block naming its file and counts, that closes, opens and opens the file.
+        const {
+          nodes: [diff],
+          lines: [diffRow],
+        } = await theo.read(['t:w-edit'])
+        checks['a write streams as a diff block: its path, + and − counts, and the hunk open'] =
+          /edit_file\s+src\/rows\.rs\s+\+4 −1/.test(diffRow) && diff.state.expanded === true && diff.role === 'button' && (await has(page, 'let date = match fields[1].trim() {'))
+        checks['the diff block names its file and counts'] = diff.state.description === 'edit_file src/rows.rs, 4 lines added, 1 removed' && /tests\/no_date\.rs, \d+ lines added, 0 removed/.test((await node(page, 't:w-write')).state.description ?? '')
+        await keys(page, 'Alt+ArrowUp')
+        for (let i = 0; i < 6 && (await edit()).state.selected !== true; i++) await keys(page, 'ArrowUp')
+        await keys(page, 'Enter')
+        await page.waitForTimeout(200)
+        const closed = (await edit()).state.expanded === false && !(await has(page, 'let date = match fields[1].trim() {'))
+        await snap(page, 'workbench-theo-blocks-diff-closed', 1568, 914)
+        await keys(page, 'Enter')
+        await page.waitForTimeout(200)
+        checks['Enter closes the diff block and opens it again'] = closed && (await edit()).state.expanded === true && (await has(page, 'let date = match fields[1].trim() {'))
+        await recordEffects(page)
+        const from = await page.evaluate(() => window.__workbenchEffectLog.length)
+        await page.keyboard.press('o')
+        await page.waitForTimeout(800)
+        const opens = await page.evaluate((n) => window.__workbenchEffectLog.slice(n).filter((e) => e.kind === 'documentOpen').map((e) => e.resource?.resourceId), from)
+        const placed = await sees(page, 'Ln 42, Col 1', 3000)
+        checks['o on the diff opens its file through the editor effect, once, at the place the edit is'] = opens.join() === 'src/rows.rs' && placed && !(await composer(page))
+        await snap(page, 'workbench-theo-blocks-file-open', 1568, 914)
+        // The path itself is a pointer target for the same open.
+        const {
+          nodes: [writeNode],
+          lines: [writeRow],
+        } = await theo.read(['t:w-write'])
+        const col = writeRow.indexOf('tests/no_date.rs')
+        const from2 = await page.evaluate(() => window.__workbenchEffectLog.length)
+        await page.mouse.click(...theo.point(at, { x: writeNode.rect.x + col + 2, y: writeNode.rect.y, width: 1, height: 1 }))
+        await page.waitForTimeout(800)
+        const clicked = await page.evaluate((n) => window.__workbenchEffectLog.slice(n).filter((e) => e.kind === 'documentOpen').map((e) => e.resource?.resourceId), from2)
+        checks['a click on the path of a diff block opens that file through the same effect'] = col > 0 && clicked.join() === 'tests/no_date.rs'
+
+        // The person's message, and a fenced block drawn with no fences.
+        const { userRow, codeRow, grounds } = await theo.grounds(at, header.rect.x + 40)
+        checks['the person\'s message is a block of its own: a ground of its own across the panel, and the prompt mark'] = userRow >= 0 && grounds[0] !== grounds[1]
+        checks['fenced code is a code block on its own ground, and no fence character is on screen'] = codeRow >= 0 && grounds[2] !== grounds[1] && !(await pageText(page)).includes('```') && !(await theo.rows()).some((l) => /^\s*csv\s*$/.test(l))
+
+        // The overlay: every header a button with its expanded state, the activity control named.
+        const tree = await nodes(page)
+        const headers = tree.filter((n) => /\/b:/.test(n.id))
+        const control = tree.find((n) => n.id.endsWith('/activity'))
+        checks['in the overlay every header is a button with an expanded state and the action that toggles it'] =
+          headers.length >= 2 && headers.every((n) => n.role === 'button' && typeof n.state.expanded === 'boolean' && n.actions.some((a) => a.id.startsWith('theo.view.block.')))
+        checks['the activity control is a named button with an action for each of the three levels'] =
+          control?.role === 'button' && control.name === 'Activity: headers' && ['theo.view.activity.everything', 'theo.view.activity.headers', 'theo.view.activity.summary'].every((id) => control.actions.some((a) => a.id === id))
+        return checks
+      },
+      // The three levels: each changes the drawing, from the keyboard and from the panel, and each survives a reload
+      // once the layout is saved (the way the workbench keeps its layout and appearance).
+      async (page) => {
+        const checks = {}
+        const theo = theoBlocks(page)
+        await theo.ready()
+        const at = await theo.cells()
+        const level = async () => (await node(page, 'activity'))?.name
+        const drawing = async () => (await theo.rows()).map((l) => l.replace(/\d+s\b/g, 'Ns').replace(/[+−]\d+/g, 'n')).filter((l) => !/^\s*(test |Compiling|Finished|Running|running \d)/.test(l.replace(/[│]/g, '').trim())).join('\n')
+        const looks = {
+          'Activity: headers': async () => (await has(page, 'Thought twice, ran 2 commands, searched once')) && (await node(page, 'b:think:b4:0'))?.name === 'Thinking, 6s' && !(await has(page, 'ls data')),
+          'Activity: summary': async () => (await has(page, 'Thought twice, ran 2 commands, searched once')) && (await node(page, 'b:sum:b4:0'))?.name === 'Thought once' && !(await node(page, 'b:think:b4:0')),
+          // Everything open is taller than the panel: it is read off the overlay, not the screen.
+          'Activity: everything': async () => !(await node(page, 'b:sum:b2:0')) && (await node(page, 'b:think:b4:0'))?.state.expanded === true && (await node(page, 'b:think:b2:0'))?.state.expanded === true && (await node(page, 't:r-ls'))?.state.expanded === true,
+        }
+        const drawn = {}
+        drawn['Activity: headers'] = await drawing()
+        checks['the panel starts at headers plus summary'] = (await level()) === 'Activity: headers' && (await looks['Activity: headers']())
+        // Alt+V from the keyboard takes summary only, then everything; a click on the status row's control takes headers.
+        await keys(page, 'Alt+v')
+        await page.waitForTimeout(250)
+        checks['Alt+V takes summary only, and the drawing changes'] = (await level()) === 'Activity: summary' && (await looks['Activity: summary']())
+        drawn['Activity: summary'] = await drawing()
+        await snap(page, 'workbench-theo-blocks-summary-only', 1568, 914)
+        await keys(page, 'Alt+v')
+        await page.waitForTimeout(250)
+        checks['Alt+V again takes everything open, and the drawing changes'] = (await level()) === 'Activity: everything' && (await looks['Activity: everything']())
+        drawn['Activity: everything'] = await drawing()
+        await snap(page, 'workbench-theo-blocks-everything', 1568, 914)
+        const statusWord = await theo.row((await node(page, 'activity')).rect.y)
+        await page.mouse.click(...theo.point(at, (await node(page, 'activity')).rect))
+        await page.waitForTimeout(250)
+        checks['the status row names the level, and a click on it takes the next one'] = /activity: everything/.test(statusWord) && (await level()) === 'Activity: headers' && (await looks['Activity: headers']())
+        checks['each of the three levels draws the transcript differently'] = new Set(Object.values(drawn)).size === 3
+        // Saved with the layout, each level is the one the panel comes back at after a reload.
+        let round = 0
+        for (const target of ['Activity: summary', 'Activity: everything', 'Activity: headers']) {
+          round += 1
+          for (let i = 0; i < 3 && (await level()) !== target; i++) await keys(page, 'Alt+v')
+          await page.keyboard.press(`${CHORD}b`)
+          await page.waitForTimeout(500)
+          await page.keyboard.type(`blocks ${round}`, { delay: 15 })
+          await page.keyboard.press('Enter')
+          await page.waitForTimeout(600)
+          await page.reload()
+          await theo.ready()
+          checks[`${target.slice(10)} survives a reload once the layout is saved`] = (await level()) === target && (await looks[target]())
+        }
+        return checks
+      },
+    ],
+  }
+}
+
+/** The pieces of `workbench-theo-blocks` read off the page: the grid's cells, the Theo column's rows, a row's ground. */
+function theoBlocks(page) {
+  /**
+   * Each grid row's cells across the Theo panel (its region node's columns), as text, and the nodes named by
+   * `ids` (by suffix) read in the same instant: the working turn scrolls the transcript every second.
+   */
+  const read = (ids = []) =>
+    page.evaluate((ids) => {
+      const tree = window.__workbenchTree().nodes
+      const region = tree.find((n) => n.id === 'p1/theo')?.rect
+      const grid = document.querySelector('[id$=_ratzilla_grid]')
+      const rows = !region || !grid ? [] : Array.from(grid.children, (row) =>
+        Array.from(row.children)
+          .slice(region.x, region.x + region.width)
+          .map((cell) => (cell.textContent || ' ').replace(/\u00a0/g, ' '))
+          .join(''),
+      )
+      const nodes = ids.map((id) => tree.find((n) => n.id.endsWith(`/${id}`)) ?? null)
+      return { rows, nodes, lines: nodes.map((n) => (n?.rect ? rows[n.rect.y] ?? '' : '')) }
+    }, ids)
+  const rows = async () => (await read()).rows
+  return {
+    read,
+    ready: async () => {
+      await page.waitForSelector('[data-story-ready]', { state: 'attached', timeout: 90000 })
+      for (let i = 0; i < 80; i++) {
+        if (await page.evaluate(() => !!window.__workbenchTree?.().nodes.some((n) => n.id.endsWith('/activity')))) break
+        await page.waitForTimeout(100)
+      }
+      await page.waitForTimeout(800)
+    },
+    cells: () =>
+      page.evaluate(() => {
+        const grid = document.querySelector('[id$=_ratzilla_grid]')
+        const box = grid.children[0].children[0].getBoundingClientRect()
+        const origin = grid.getBoundingClientRect()
+        return { w: box.width, h: box.height, left: origin.left, top: origin.top }
+      }),
+    /** The page point at the middle of a rect's first cells. */
+    point: (cell, rect) => [cell.left + (rect.x + Math.min(rect.width, 6) / 2) * cell.w, cell.top + (rect.y + 0.5) * cell.h],
+    rows,
+    /** The Theo column's text on grid row `y`. */
+    row: async (y) => (await rows())[y] ?? '',
+    /**
+     * In one instant: the row of the person's second message, a blank canvas row after it, the first row of the
+     * fenced block, and the background colour at column `x` of each.
+     */
+    grounds: (cell, x) =>
+      page.evaluate(
+        ({ x, cell }) => {
+          const region = window.__workbenchTree().nodes.find((n) => n.id === 'p1/theo').rect
+          const grid = document.querySelector('[id$=_ratzilla_grid]')
+          const rows = Array.from(grid.children, (row) =>
+            Array.from(row.children)
+              .slice(region.x, region.x + region.width)
+              .map((c) => (c.textContent || ' ').replace(/\u00a0/g, ' '))
+              .join(''),
+          )
+          const userRow = rows.findIndex((l) => /❯ Go ahead, and add a test for it\./.test(l))
+          const blankRow = rows.findIndex((l, i) => i > userRow && l.trim() === '' && rows[i + 1]?.trim() !== '')
+          const codeRow = rows.findIndex((l) => /^\s*id,date,amount\s*$/.test(l))
+          const ground = (y) => {
+            const at = document.elementFromPoint(cell.left + (x + 0.5) * cell.w, cell.top + (y + 0.5) * cell.h)
+            return at ? getComputedStyle(at).backgroundColor : null
+          }
+          return { userRow, codeRow, grounds: [userRow, blankRow, codeRow].map(ground) }
+        },
+        { x, cell },
+      ),
   }
 }

@@ -3068,7 +3068,8 @@ mod tests {
                 let id = offered.id.as_str();
                 let known = catalog.iter().any(|e| e.action.as_str() == id)
                     || id.starts_with("tab.")
-                    || id.starts_with("picker.");
+                    || id.starts_with("picker.")
+                    || id.starts_with(theorem_workbench_core::builtin::ACTION_THEO_VIEW);
                 assert!(
                     known,
                     "{id} on node {} is not runnable by an agent",

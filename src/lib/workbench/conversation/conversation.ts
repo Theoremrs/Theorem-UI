@@ -177,6 +177,8 @@ export interface ConversationSnapshot extends Transcript {
   history?: ConversationHistory
   /** How full the model's window was at its last request, as the run reported it; absent until a run reports both. */
   context?: { usedTokens: number; windowTokens: number }
+  /** The owner's clock when it made the snapshot, so a panel draws a running call's elapsed time without reading a clock. Not sent by the owner today. */
+  nowMs?: number
 }
 
 interface Request {

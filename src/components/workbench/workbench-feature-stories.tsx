@@ -43,12 +43,12 @@ declare global {
 }
 
 const log: Effect[] = []
-const record = (effect: Effect) => {
+export const record = (effect: Effect) => {
   log.push(effect)
 }
 
 /** The read-only hooks the oracle reads, for as long as a story is up. */
-function Hooks() {
+export function Hooks() {
   useEffect(() => {
     log.length = 0
     window.__workbenchEffectLog = log

@@ -55,6 +55,7 @@ use theorem_workbench_core::{
 };
 use theorem_workbench_text::visible::visible;
 
+use crate::blocks::{Activity, BlockKind};
 use crate::{
     Approval, Branches, DiffLine, Message, Open, Output, Part, Sent, Session, Snapshot, Token, now,
     palette,
@@ -77,6 +78,9 @@ struct Owner {
     history: Option<OwnerHistory>,
     /// How much of the model's window the thread uses, when the owner says.
     context: Option<OwnerContext>,
+    /// The owner's clock when it made this snapshot, so a running call's elapsed time is
+    /// the snapshot's own and the panel reads no clock.
+    now_ms: Option<f64>,
 }
 
 #[derive(Deserialize, Default)]
@@ -156,9 +160,19 @@ enum OwnerPart {
     },
     Reasoning {
         text: String,
+        /// When the thinking began and ended, when the owner says.
+        #[serde(default)]
+        started_at_ms: Option<f64>,
+        #[serde(default)]
+        ended_at_ms: Option<f64>,
     },
     Tool {
         id: String,
+        /// When the call began and ended, when the owner says.
+        #[serde(default)]
+        started_at_ms: Option<f64>,
+        #[serde(default)]
+        ended_at_ms: Option<f64>,
         name: String,
         #[serde(default)]
         args: String,
@@ -337,6 +351,7 @@ fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
         .messages
         .iter()
         .map(|message| Message {
+            id: (!message.id.is_empty()).then(|| message.id.clone()),
             role: message.role.clone(),
             parts: message.parts.iter().map(part_of).collect(),
             attachments: message.attachments.iter().map(|a| a.name.clone()).collect(),
@@ -367,6 +382,7 @@ fn drawn(project: &str, owner: &Owner, pending: &[Pending]) -> Snapshot {
         }
     }));
     Snapshot {
+        now_ms: owner.now_ms,
         running: working,
         project: project.to_owned(),
         error: match owner.run.state.as_str() {
@@ -410,9 +426,19 @@ fn part_of(part: &OwnerPart) -> Part {
     };
     match part {
         OwnerPart::Text { text } => Part::Text { text: text.clone() },
-        OwnerPart::Reasoning { text } => Part::Reasoning { text: text.clone() },
+        OwnerPart::Reasoning {
+            text,
+            started_at_ms,
+            ended_at_ms,
+        } => Part::Reasoning {
+            text: text.clone(),
+            started_at_ms: *started_at_ms,
+            ended_at_ms: *ended_at_ms,
+        },
         OwnerPart::Tool {
             id,
+            started_at_ms,
+            ended_at_ms,
             name,
             args,
             status,
@@ -455,6 +481,8 @@ fn part_of(part: &OwnerPart) -> Part {
                 output,
                 open: open.clone(),
                 id: Some(id.clone()),
+                started_at_ms: *started_at_ms,
+                ended_at_ms: *ended_at_ms,
             }
         }
         OwnerPart::Program { source, streaming } => Part::Program {
@@ -709,6 +737,9 @@ pub(crate) struct TheoPanel {
     /// opens, Esc gives them back to the composer), and the row chosen.
     in_list: bool,
     picked: usize,
+    /// Whether the transcript's blocks have the keys (Up and Down walk them, Enter opens or
+    /// closes one, `o` opens a diff's file, Esc gives the keys back to the composer).
+    in_blocks: bool,
     /// Where the list's rows were last drawn, in frame cells, and the index
     /// of the first one drawn.
     list_area: Cell<Rect>,
@@ -742,6 +773,11 @@ impl TheoPanel {
         composer.set_prompt('\u{276F}');
         composer.restore(&state["draft"]);
         session.expanded = state["allOutput"].as_bool().unwrap_or(false);
+        // How much activity shows is kept with the layout, as the rest of the panel's view is.
+        session.activity_control = true;
+        if let Some(level) = state["activity"].as_str().and_then(Activity::named) {
+            session.level = level;
+        }
         for id in state["expanded"].as_array().into_iter().flatten() {
             if let Some(id) = id.as_str() {
                 session.disclosed.insert(id.to_owned());
@@ -774,6 +810,7 @@ impl TheoPanel {
             composer_area: Cell::new(Rect::default()),
             in_list: false,
             picked: 0,
+            in_blocks: false,
             list_area: Cell::new(Rect::default()),
             list_first: Cell::new(0),
             models: Vec::new(),
@@ -1710,7 +1747,13 @@ impl TheoPanel {
     /// only say "this conversation has only one branch" or "a run is working",
     /// the character is left to be typed.
     fn takes_chord(&self, input: &KeyInput) -> bool {
-        (input.mods() == Mods::ALT && input.key() == Key::Char('d') && self.lists_delegations())
+        (input.mods() == Mods::ALT && input.key() == Key::Char('v'))
+            || (input.mods() == Mods::ALT
+                && input.key() == Key::Up
+                && !self.session.borrow().stops().is_empty())
+            || (input.mods() == Mods::ALT
+                && input.key() == Key::Char('d')
+                && self.lists_delegations())
             || (self.branch_step(input).is_some()
                 && !self.owner.working()
                 && self
@@ -1750,6 +1793,9 @@ impl TheoPanel {
         {
             return self.approve(c == 'y', cx);
         }
+        if self.block_key(input, cx) {
+            return;
+        }
         if self.compose(ComposerInput::Key(*input), cx) {
             return;
         }
@@ -1763,6 +1809,111 @@ impl TheoPanel {
                     self.session.borrow_mut().transcript_key(event);
                 }
             }
+        }
+    }
+
+    /// Alt+V changes how much activity shows; Alt+Up gives the keys to the transcript's
+    /// blocks, where Up and Down walk them, Enter opens or closes one and `o` opens the file a
+    /// diff wrote. Any other key gives them back and goes on to the composer.
+    fn block_key(&mut self, input: &KeyInput, cx: &mut Ctx) -> bool {
+        let mods = input.mods();
+        if mods == Mods::ALT && input.key() == Key::Char('v') {
+            self.cycle_level();
+            return true;
+        }
+        if mods == Mods::ALT && input.key() == Key::Up {
+            let mut session = self.session.borrow_mut();
+            if session.stops().is_empty() {
+                return false;
+            }
+            let step = if self.in_blocks { -1 } else { 0 };
+            self.in_blocks = true;
+            session.step_cursor(step);
+            return true;
+        }
+        if !self.in_blocks {
+            return false;
+        }
+        if !mods.intersects(Mods::CTRL | Mods::CMD | Mods::ALT) {
+            match input.key() {
+                Key::Up => {
+                    self.session.borrow_mut().step_cursor(-1);
+                    return true;
+                }
+                Key::Down => {
+                    self.session.borrow_mut().step_cursor(1);
+                    return true;
+                }
+                Key::Enter | Key::Char(' ') => {
+                    let key = self.session.borrow().cursor.clone();
+                    if let Some(key) = key {
+                        self.toggle_block(&key);
+                    }
+                    return true;
+                }
+                Key::Char('o') => {
+                    let key = self.session.borrow().cursor.clone();
+                    if let Some(key) = key {
+                        self.open_block(&key, cx);
+                    }
+                    return true;
+                }
+                Key::Esc => {
+                    self.leave_blocks();
+                    return true;
+                }
+                _ => {}
+            }
+        }
+        self.leave_blocks();
+        false
+    }
+
+    fn leave_blocks(&mut self) {
+        self.in_blocks = false;
+        self.session.borrow_mut().cursor = None;
+    }
+
+    /// The next activity level: headers, then summary only, then everything.
+    fn cycle_level(&mut self) {
+        let next = self.session.borrow().level.next();
+        self.set_level(next);
+    }
+
+    fn set_level(&mut self, level: Activity) {
+        let mut session = self.session.borrow_mut();
+        session.set_level(level);
+        session.notify(format!("activity shows {}", level.word()));
+    }
+
+    /// Open or close a block by its key, if it opens.
+    fn toggle_block(&mut self, key: &str) {
+        let mut session = self.session.borrow_mut();
+        if session
+            .blocks
+            .iter()
+            .any(|b| b.key == key && b.expanded.is_some())
+        {
+            session.toggle(key);
+        }
+    }
+
+    /// Open the file a block names, in the editor, at the lines it touched.
+    fn open_block(&mut self, key: &str, cx: &mut Ctx) {
+        let open = {
+            let session = self.session.borrow();
+            session
+                .blocks
+                .iter()
+                .find(|b| b.key == key)
+                .and_then(|b| b.open.clone())
+        };
+        match open {
+            Some(open) => open_file(open, cx),
+            None => self
+                .session
+                .borrow_mut()
+                .notify("this block names no file to open"),
         }
     }
 
@@ -1836,6 +1987,27 @@ impl TheoPanel {
                     return;
                 };
                 let cell = Position::new(area.x + x, area.y + y);
+                // The status row's activity level: a click takes the next one.
+                if self.session.borrow().level_area.contains(cell) {
+                    self.cycle_level();
+                    return;
+                }
+                // A thinking, summary or diff header opens or closes; a diff's path opens its
+                // file.
+                let block = {
+                    let session = self.session.borrow();
+                    session
+                        .block_at(cell)
+                        .filter(|(b, _)| b.kind != BlockKind::Tool && b.kind != BlockKind::Running)
+                        .map(|(b, on_path)| (b.key.clone(), b.open.clone(), on_path))
+                };
+                if let Some((key, open, on_path)) = block {
+                    match open {
+                        Some(open) if on_path => open_file(open, cx),
+                        _ => self.toggle_block(&key),
+                    }
+                    return;
+                }
                 let (toggle, open) = {
                     let session = self.session.borrow();
                     (
@@ -1852,27 +2024,38 @@ impl TheoPanel {
                     (Some(id), Some(_)) if clicks >= 2 => {
                         self.session.borrow_mut().toggle(&id);
                     }
-                    (_, Some(open)) => {
-                        let workspace = cx.workspace().workspace.clone();
-                        cx.open(match open.start {
-                            Some(line) => OpenTarget::FileAt {
-                                workspace,
-                                path: open.path,
-                                line,
-                                column: 1,
-                            },
-                            None => OpenTarget::File {
-                                workspace,
-                                path: open.path,
-                            },
-                        })
-                    }
+                    (_, Some(open)) => open_file(open, cx),
                     (None, None) => {}
                 }
             }
             _ => {}
         }
     }
+}
+
+/// The view's own actions (under `theo.view.`, which the core hands to this panel): the next
+/// activity level, one level by name, a block opened or closed, a block's file opened.
+const ACTION_ACTIVITY: &str = "theo.view.activity";
+const ACTION_ACTIVITY_LEVEL: &str = "theo.view.activity.";
+const ACTION_BLOCK: &str = "theo.view.block.";
+const ACTION_BLOCK_OPEN: &str = "theo.view.open.";
+
+/// Open a file a tool worked on in the editor, at its first touched line when known: the
+/// same open the Changes panel makes.
+fn open_file(open: Open, cx: &mut Ctx) {
+    let workspace = cx.workspace().workspace.clone();
+    cx.open(match open.start {
+        Some(line) => OpenTarget::FileAt {
+            workspace,
+            path: open.path,
+            line,
+            column: 1,
+        },
+        None => OpenTarget::File {
+            workspace,
+            path: open.path,
+        },
+    })
 }
 
 /// A key as the drawer's session reads it.
@@ -1914,9 +2097,24 @@ impl Panel for TheoPanel {
                     return;
                 }
                 let mut chars = text.chars();
+                let walking = self.in_blocks;
                 match (chars.next(), chars.next()) {
                     (Some(c), None) if self.answers_approval(c) => self.approve(c == 'y', cx),
+                    // In the browser a bare character arrives as typed text, not as a key: while
+                    // the keys walk the blocks, `o` and space are theirs as `block_key` reads them.
+                    (Some(c @ ('o' | ' ')), None) if walking => {
+                        let key = self.session.borrow().cursor.clone();
+                        if let Some(key) = key {
+                            if c == 'o' {
+                                self.open_block(&key, cx);
+                            } else {
+                                self.toggle_block(&key);
+                            }
+                        }
+                    }
                     _ => {
+                        // Any other typing gives the keys back to the composer.
+                        self.leave_blocks();
                         self.compose(ComposerInput::Text(text), cx);
                     }
                 }
@@ -2021,6 +2219,21 @@ impl Panel for TheoPanel {
                     .borrow_mut()
                     .notify("pick a conversation in the Threads panel"),
                 "theo.branch" => self.branch(1, cx),
+                ACTION_ACTIVITY => self.cycle_level(),
+                name if name.starts_with(ACTION_ACTIVITY_LEVEL) => {
+                    match Activity::named(&name[ACTION_ACTIVITY_LEVEL.len()..]) {
+                        Some(level) => self.set_level(level),
+                        None => self.session.borrow_mut().notify("no such activity level"),
+                    }
+                }
+                name if name.starts_with(ACTION_BLOCK_OPEN) => {
+                    let key = name[ACTION_BLOCK_OPEN.len()..].to_owned();
+                    self.open_block(&key, cx);
+                }
+                name if name.starts_with(ACTION_BLOCK) => {
+                    let key = name[ACTION_BLOCK.len()..].to_owned();
+                    self.toggle_block(&key);
+                }
                 name if name
                     .starts_with(theorem_workbench_core::panels::ACTION_DELEGATION_OPEN) =>
                 {
@@ -2337,6 +2550,47 @@ impl Panel for TheoPanel {
             }
             node.state.description = (!description.is_empty()).then_some(description);
             let mut kids = Vec::new();
+            // A block's header row on screen, clamped to the body when it is scrolled off.
+            let header = |line: usize| {
+                session.rows.get(line).map_or(rect, |&row| {
+                    Rect::new(body.x, edge(row, session.top), body.width, 1)
+                })
+            };
+            let act = |id: String, title: &str| NodeAction {
+                id: ActionId::new(id),
+                enabled: true,
+                reason: None,
+                title: Some(title.to_owned()),
+            };
+            let blocks: Vec<_> = session
+                .blocks
+                .iter()
+                .filter(|b| b.message == index)
+                .collect();
+            // Thinking and the summary of a folded turn: headers that open and close.
+            for block in blocks
+                .iter()
+                .filter(|b| matches!(b.kind, BlockKind::Thinking | BlockKind::Summary))
+            {
+                let mut kid = Node::new(
+                    &format!("b:{}", block.key),
+                    Role::Button,
+                    &block.name,
+                    header(block.line),
+                );
+                kid.state.expanded = block.expanded;
+                kid.state.selected = session.cursor.as_ref() == Some(&block.key);
+                kid.state.description = block.holds.clone();
+                kid.actions = vec![act(
+                    format!("{ACTION_BLOCK}{}", block.key),
+                    if block.expanded == Some(true) {
+                        "Close"
+                    } else {
+                        "Open"
+                    },
+                )];
+                kids.push(kid);
+            }
             for part in &message.parts {
                 let OwnerPart::Tool {
                     id,
@@ -2359,6 +2613,57 @@ impl Panel for TheoPanel {
                     .then(|| session.expanded || session.disclosed.contains(id));
                 tool.state.description = result.clone();
                 tool.state.busy = status == "running";
+                // A call drawn as its own header (not folded into a summary) says where that
+                // row is, whether it is open, and what opens it.
+                let keys = [id.clone(), format!("diff:{id}"), format!("run:{id}")];
+                let own = blocks.iter().find(|b| keys.contains(&b.key));
+                // A call folded into its turn's summary has no row of its own: it sits on the
+                // summary's row, the header that opens to it.
+                if own.is_none()
+                    && let Some(summary) = blocks.iter().find(|b| b.kind == BlockKind::Summary)
+                {
+                    tool.rect = Some(theorem_workbench_core::semantics::CellRect::of(header(
+                        summary.line,
+                    )));
+                    tool.state.expanded = Some(false);
+                }
+                if let Some(block) = own {
+                    let at = header(block.line);
+                    tool.rect = Some(theorem_workbench_core::semantics::CellRect::of(at));
+                    tool.state.expanded = block.expanded;
+                    tool.state.selected = session.cursor.as_ref() == Some(&block.key);
+                    if block.expanded.is_some() {
+                        tool.role = Role::Button;
+                        tool.actions = vec![act(
+                            format!("{ACTION_BLOCK}{}", block.key),
+                            if block.expanded == Some(true) {
+                                "Close"
+                            } else {
+                                "Open"
+                            },
+                        )];
+                    }
+                    if block.open.is_some() {
+                        tool.actions.push(act(
+                            format!("{ACTION_BLOCK_OPEN}{}", block.key),
+                            "Open the file in the editor",
+                        ));
+                    }
+                    match (block.kind, block.counts) {
+                        (BlockKind::Diff, Some((added, removed))) => {
+                            tool.state.description = Some(format!(
+                                "{}, {added} line{} added, {removed} removed",
+                                block.name,
+                                if added == 1 { "" } else { "s" }
+                            ));
+                        }
+                        (BlockKind::Running, _) => {
+                            tool.role = Role::Status;
+                            tool.state.description = Some(block.name.clone());
+                        }
+                        _ => {}
+                    }
+                }
                 kids.push(tool);
             }
             node.children = kids.iter().map(|k| k.id.clone()).collect();
@@ -2521,6 +2826,39 @@ impl Panel for TheoPanel {
                 },
             ),
         ];
+        // How much of the agent's activity shows; the action takes the next level, and each
+        // level can be asked for by name.
+        let level = session.level;
+        let mut activity = control(
+            "activity",
+            &format!("Activity: {}", level.word()),
+            ACTION_ACTIVITY,
+            true,
+            "",
+        );
+        activity.actions[0].title = Some("Show the next activity level".to_owned());
+        activity.state.description = Some(format!(
+            "Shows {}; alt+v takes the next level",
+            match level {
+                Activity::All => "every thinking, tool call and diff open",
+                Activity::Headers =>
+                    "one header per thinking and tool call, a finished turn folded to its summary",
+                Activity::Summary => "each turn's activity as its summary line",
+            }
+        ));
+        activity.shortcut = Some("Alt+V".to_owned());
+        activity
+            .actions
+            .extend(Activity::ALL.iter().map(|l| NodeAction {
+                id: ActionId::new(format!("{ACTION_ACTIVITY_LEVEL}{}", l.word())),
+                enabled: *l != level,
+                reason: (*l == level).then(|| "This is the level shown".to_owned()),
+                title: Some(format!("Show {}", l.word())),
+            }));
+        if let Some(area) = Some(session.level_area).filter(|a| a.width > 0) {
+            activity.rect = Some(theorem_workbench_core::semantics::CellRect::of(area));
+        }
+        buttons.push(activity);
         if self
             .owner
             .history
@@ -2636,6 +2974,7 @@ impl Panel for TheoPanel {
             "anchor": anchor,
             "expanded": session.disclosed.iter().collect::<Vec<_>>(),
             "allOutput": session.expanded,
+            "activity": session.level.word(),
             "draft": self.composer.borrow().serialize(),
         })
     }
@@ -2917,6 +3256,16 @@ mod tests {
 
         fn key(&mut self, key: Key, mods: Mods) -> Vec<Effect> {
             self.send(Msg::Key(KeyInput::new(key, mods)))
+        }
+
+        /// Run one of the view's own actions, as the tree names it.
+        fn act(&mut self, id: &str) -> Vec<Effect> {
+            // The blocks are the ones on screen, so the frame is drawn first.
+            let _ = self.drawn();
+            self.send(Msg::Action {
+                id: ActionId::new(id),
+                actor: Actor::Human,
+            })
         }
 
         fn tree(&self) -> SemanticTree {
@@ -3591,6 +3940,11 @@ mod tests {
             "complete",
         );
         r.show(1, "t1", json!({"messages": [asked, reply]}));
+        // The finished turn's activity is its summary line; the edit keeps its diff block.
+        let drawn = r.drawn();
+        assert!(drawn.contains("Read a file"), "{drawn}");
+        assert!(!drawn.contains("read_file"), "{drawn}");
+        r.act("theo.view.block.sum:m2:1");
         let drawn = r.drawn();
         assert!(drawn.contains("@build.log"), "{drawn}");
         assert!(drawn.contains("read_file"), "{drawn}");
@@ -3634,6 +3988,7 @@ mod tests {
             "complete",
         );
         r.show(1, "t1", json!({"messages": [user("m1", "x"), reply]}));
+        r.act("theo.view.block.sum:m2:0");
         assert!(!r.drawn().contains("second line"));
         let row = r
             .drawn()
@@ -3666,6 +4021,7 @@ mod tests {
             "complete",
         );
         r.show(1, "t1", json!({"messages": [user("m1", "x"), reply]}));
+        r.act("theo.view.block.sum:m2:0");
         assert!(!r.drawn().contains("hidden words"));
         r.key(Key::Char('o'), Mods::CTRL);
         assert!(r.drawn().contains("hidden words"));
@@ -3685,6 +4041,7 @@ mod tests {
             "complete",
         );
         r.show(1, "t1", json!({"messages": [user("m1", "x"), reply]}));
+        r.act("theo.view.block.sum:m2:0");
         let row = r
             .drawn()
             .lines()
@@ -4418,12 +4775,12 @@ mod tests {
 
     #[test]
     fn the_status_row_and_the_footer_never_say_the_same_thing() {
-        // Idle: the row is empty and the footer has the hint.
+        // Idle: the row names only the activity level, and the footer has the hint.
         let mut r = rig();
         r.show(1, "t1", json!({"messages": [user("m1", "hi")]}));
         let (status, footer) = rows_of(&r);
         eprintln!("idle: {status:?} | {footer:?}");
-        assert_eq!(status, "");
+        assert_eq!(status, "activity: headers");
         assert!(footer.starts_with("Enter sends"), "{footer}");
 
         // Working: the row has the activity, the footer has the hint.
@@ -4437,7 +4794,7 @@ mod tests {
         );
         let (status, footer) = rows_of(&r);
         eprintln!("working: {status:?} | {footer:?}");
-        assert!(status.ends_with("working"), "{status}");
+        assert!(status.contains("working"), "{status}");
         assert!(
             !status.contains("enter sends") && !status.contains("ctrl+c"),
             "{status}"
@@ -4460,7 +4817,10 @@ mod tests {
         let (status, footer) = rows_of(&r);
         eprintln!("approval: {status:?} | {footer:?}");
         assert!(status.starts_with("? shell ls"), "{status}");
-        assert!(status.ends_with("y allow \u{b7} n deny"), "{status}");
+        assert!(
+            status.ends_with("y allow \u{b7} n deny \u{b7} activity: headers"),
+            "{status}"
+        );
         assert!(!footer.contains("allow"), "{footer}");
 
         // Blocked: the reason is the footer's alone.
@@ -4488,7 +4848,7 @@ mod tests {
         r.key(Key::Up, Mods::NONE);
         let (status, footer) = rows_of(&r);
         eprintln!("editing: {status:?} | {footer:?}");
-        assert_eq!(status, "");
+        assert_eq!(status, "activity: headers");
         assert!(
             footer.starts_with("Enter sends the edit, Esc cancels"),
             "{footer}"
@@ -4621,6 +4981,323 @@ mod tests {
             &json!({"draft": "an old draft", "conversation": "t1", "project": "p1"}),
         );
         assert_eq!(old.serialize()["draft"]["text"], json!("an old draft"));
+    }
+
+    /// A turn that is still working: thinking, a finished search, a running command with
+    /// output, and a file edit streaming.
+    fn working_turn() -> Value {
+        json!({
+            "nowMs": 13_000.0,
+            "run": {"state": "streaming", "runId": "r1"},
+            "messages": [
+                user("m1", "tidy the merge"),
+                assistant("m2", json!([
+                    {"type": "reasoning", "text": "the merge keeps the older entry", "startedAtMs": 0.0, "endedAtMs": 4_000.0},
+                    {"type": "tool", "id": "c1", "name": "grep", "args": "merge_state", "status": "complete",
+                     "result": "src/merge.rs:41", "startedAtMs": 4_000.0, "endedAtMs": 5_000.0},
+                    {"type": "tool", "id": "c2", "name": "run_command", "args": "cargo test", "status": "running",
+                     "result": "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\nline 8", "startedAtMs": 1_000.0},
+                    {"type": "tool", "id": "c3", "name": "edit_file", "args": "src/merge.rs", "status": "running",
+                     "open": {"path": "src/merge.rs", "start": 40},
+                     "diff": [{"k": "del", "t": [{"t": "    out.insert(key, entry);"}]},
+                              {"k": "add", "t": [{"t": "    if newer { out.insert(key, entry); }"}]}]},
+                ]), "running"),
+            ],
+        })
+    }
+
+    #[test]
+    fn thinking_is_one_header_line_that_opens_by_enter_and_by_click() {
+        let mut r = rig();
+        r.show(1, "t1", working_turn());
+        let drawn = r.drawn();
+        let header = drawn
+            .lines()
+            .position(|l| l.contains("Thinking") && l.contains("4s"))
+            .unwrap_or_else(|| panic!("one header with its duration: {drawn}"));
+        assert!(
+            !drawn.contains("older entry"),
+            "closed at the headers level"
+        );
+        let node = r.node("Thinking, 4s").expect("a node for the header");
+        assert_eq!(node.role, Role::Button);
+        assert_eq!(node.state.expanded, Some(false));
+        // Alt+Up gives the keys to the blocks; Up walks to the thinking; Enter opens it.
+        r.key(Key::Up, Mods::ALT);
+        for _ in 0..4 {
+            r.key(Key::Up, Mods::NONE);
+        }
+        r.enter();
+        assert!(r.drawn().contains("older entry"), "{}", r.drawn());
+        assert!(
+            conversation_effects(&r.seen).is_empty(),
+            "Enter sent nothing"
+        );
+        r.key(Key::Esc, Mods::NONE);
+        // A click on the header closes it again.
+        let origin = main_body(&r);
+        r.send(Msg::Pointer(theorem_workbench_core::Pointer {
+            kind: PointerKind::Down(theorem_workbench_core::Button::Left),
+            x: origin.x + 4,
+            y: header as u16,
+            mods: Mods::NONE,
+            clicks: 1,
+        }));
+        assert!(!r.drawn().contains("older entry"), "{}", r.drawn());
+        assert_eq!(r.node("Thinking, 4s").unwrap().state.expanded, Some(false));
+    }
+
+    #[test]
+    fn a_running_command_is_an_outlined_block_with_its_tail_and_how_long_it_has_run() {
+        let mut r = rig();
+        r.show(1, "t1", working_turn());
+        let drawn = r.drawn();
+        assert!(drawn.contains("run_command"), "{drawn}");
+        assert!(
+            drawn.contains("12s"),
+            "elapsed from the snapshot's own clock: {drawn}"
+        );
+        assert!(
+            drawn.contains("line 8") && drawn.contains("line 3"),
+            "{drawn}"
+        );
+        assert!(!drawn.contains("line 2"), "only the tail: {drawn}");
+        assert!(
+            drawn.contains('\u{256D}') && drawn.contains('\u{2570}'),
+            "outlined"
+        );
+        // A later snapshot moves the time on.
+        let mut later = working_turn();
+        later["nowMs"] = json!(75_000.0);
+        r.show(2, "t1", later);
+        assert!(r.drawn().contains("1m 14s"), "{}", r.drawn());
+        // Once it ends, it folds to a header row like any finished call.
+        let mut done = working_turn();
+        done["messages"][1]["parts"][2]["status"] = json!("complete");
+        done["messages"][1]["parts"][2]["endedAtMs"] = json!(20_000.0);
+        r.show(3, "t1", done);
+        let drawn = r.drawn();
+        assert!(!drawn.contains("line 8"), "{drawn}");
+        let row = drawn.lines().find(|l| l.contains("run_command")).unwrap();
+        assert!(row.contains('\u{2713}') && row.contains("19s"), "{row}");
+    }
+
+    #[test]
+    fn code_the_agent_writes_is_a_diff_block_that_closes_and_opens_its_file() {
+        let mut r = rig();
+        r.send(Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: None,
+        }));
+        r.show(1, "t1", working_turn());
+        let drawn = r.drawn();
+        let row = drawn.lines().find(|l| l.contains("edit_file")).unwrap();
+        assert!(
+            row.contains("src/merge.rs") && row.contains("+1") && row.contains("\u{2212}1"),
+            "{row}"
+        );
+        assert!(drawn.contains("if newer"), "open while it streams: {drawn}");
+        let node = r.node("Tool edit_file: running").expect("the diff's node");
+        assert_eq!(node.state.expanded, Some(true));
+        assert!(
+            node.state
+                .description
+                .as_deref()
+                .is_some_and(|d| d.contains("src/merge.rs, 1 line added, 1 removed")),
+            "{:?}",
+            node.state.description
+        );
+        r.act("theo.view.block.diff:c3");
+        assert!(!r.drawn().contains("if newer"), "{}", r.drawn());
+        r.act("theo.view.block.diff:c3");
+        assert!(r.drawn().contains("if newer"));
+        let fx = r.act("theo.view.open.diff:c3");
+        assert!(conversation_effects(&fx).is_empty());
+        assert!(
+            r.m.panel_ids().any(|(_, k)| k.as_str() == "document"),
+            "the editor open went to the core"
+        );
+    }
+
+    #[test]
+    fn typed_o_and_space_belong_to_the_blocks_while_the_keys_walk_them() {
+        let mut r = rig();
+        r.send(Msg::Host(HostMessage::WorkspaceChanged {
+            workspace: "w".into(),
+            environment: None,
+        }));
+        r.show(1, "t1", working_turn());
+        r.drawn();
+        let selected = |r: &Rig| r.node("Tool edit_file: running").unwrap().state.selected;
+        // Any other typing gives the keys back and is typed into the composer.
+        r.key(Key::Up, Mods::ALT);
+        assert!(selected(&r), "Alt+Up lands on the last block, the diff");
+        r.send(Msg::Text("x".into()));
+        assert!(!selected(&r));
+        r.key(Key::Backspace, Mods::NONE);
+        let placeholder = r.drawn().contains("Message Theo");
+        assert!(placeholder, "the composer is empty again: {}", r.drawn());
+        // The browser sends a bare key as text: space closes the diff, o opens its file.
+        r.key(Key::Up, Mods::ALT);
+        r.send(Msg::Text(" ".into()));
+        assert!(!r.drawn().contains("if newer"), "space closed it");
+        r.send(Msg::Text("o".into()));
+        assert!(
+            r.m.panel_ids().any(|(_, k)| k.as_str() == "document"),
+            "o opened the file"
+        );
+        assert_eq!(
+            r.drawn().contains("Message Theo"),
+            placeholder,
+            "nothing was typed into the composer"
+        );
+    }
+
+    #[test]
+    fn a_finished_turn_folds_to_one_summary_that_opens_to_its_headers() {
+        let mut r = rig();
+        let mut done = working_turn();
+        done["run"] = json!({"state": "idle"});
+        done["messages"][1]["status"] = json!("complete");
+        done["messages"][1]["parts"][2]["status"] = json!("complete");
+        done["messages"][1]["parts"][3]["status"] = json!("complete");
+        done["messages"][1]["parts"].as_array_mut().unwrap().insert(
+            1,
+            json!({"type": "reasoning", "text": "and a second thought"}),
+        );
+        r.show(1, "t1", done);
+        let drawn = r.drawn();
+        assert!(
+            drawn.contains("Thought twice, ran a command, searched once"),
+            "{drawn}"
+        );
+        assert!(!drawn.contains("grep"), "{drawn}");
+        // The edit keeps its own header, open, at this level.
+        assert!(drawn.contains("edit_file"), "{drawn}");
+        let summary = r
+            .tree()
+            .nodes
+            .into_iter()
+            .find(|n| n.id.as_str().ends_with("b:sum:m2:0"))
+            .expect("the summary's node");
+        assert_eq!(summary.role, Role::Button);
+        assert_eq!(summary.state.expanded, Some(false));
+        r.act("theo.view.block.sum:m2:0");
+        let drawn = r.drawn();
+        assert!(
+            drawn.contains("grep") && drawn.contains("run_command"),
+            "{drawn}"
+        );
+        assert_eq!(drawn.matches("Thinking").count(), 2, "{drawn}");
+    }
+
+    #[test]
+    fn a_block_opened_while_the_transcript_follows_its_end_stays_where_it_was() {
+        let mut r = rig();
+        let mut done = working_turn();
+        done["run"] = json!({"state": "idle"});
+        done["messages"][1]["status"] = json!("complete");
+        done["messages"][1]["parts"][2]["status"] = json!("complete");
+        done["messages"][1]["parts"][3]["status"] = json!("complete");
+        r.show(1, "t1", done.clone());
+        r.drawn();
+        // A reply below it just long enough that the transcript scrolls, following its end,
+        // with the summary still on screen.
+        let row = |r: &Rig| {
+            r.node("Thought once, ran a command, searched once")
+                .and_then(|n| n.rect)
+        };
+        let mut before = None;
+        for n in 1..main_body(&r).height as usize {
+            let lines: Vec<String> = (0..n).map(|i| format!("line {i}")).collect();
+            let mut long = done.clone();
+            let messages = long["messages"].as_array_mut().unwrap();
+            messages.push(user("m3", "and then"));
+            messages.push(assistant(
+                "m4",
+                json!([{"type": "text", "text": lines.join("\n\n")}]),
+                "complete",
+            ));
+            r.show(n as u64 + 1, "t1", long);
+            let drawn = r.drawn();
+            if !drawn.contains("tidy the merge") {
+                before = row(&r).filter(|_| drawn.contains("Thought once"));
+                break;
+            }
+        }
+        let before = before.expect("the transcript scrolled with the summary on screen");
+        r.act("theo.view.block.sum:m2:0");
+        r.drawn();
+        assert_eq!(row(&r), Some(before), "the header stayed under the pointer");
+        assert!(r.drawn().contains("grep"), "it opened below its header");
+    }
+
+    #[test]
+    fn fenced_code_in_an_answer_is_drawn_without_its_fences() {
+        let mut r = rig();
+        let reply = assistant(
+            "m2",
+            json!([{"type": "text", "text": "Run this:\n\n```sh\ncargo test --workspace\n```\n\nThen look."}]),
+            "complete",
+        );
+        r.show(1, "t1", json!({"messages": [user("m1", "x"), reply]}));
+        let drawn = r.drawn();
+        assert!(drawn.contains("cargo test --workspace"), "{drawn}");
+        assert!(drawn.contains("Then look."), "{drawn}");
+        assert!(!drawn.contains("```"), "{drawn}");
+    }
+
+    #[test]
+    fn the_three_activity_levels_change_the_drawing_and_survive_a_reload() {
+        let mut r = rig();
+        r.show(1, "t1", working_turn());
+        // Headers (the default): one header each while the turn works.
+        assert!(r.drawn().contains("grep") && !r.drawn().contains("older entry"));
+        // Alt+V: summary only, even for the working turn.
+        r.key(Key::Char('v'), Mods::ALT);
+        let drawn = r.drawn();
+        assert!(drawn.contains("activity: summary"), "{drawn}");
+        assert!(
+            !drawn.contains("grep") && !drawn.contains("Thinking"),
+            "{drawn}"
+        );
+        assert!(
+            drawn.contains("edit_file") && !drawn.contains("if newer"),
+            "the diff is its header: {drawn}"
+        );
+        // Again: everything open.
+        r.key(Key::Char('v'), Mods::ALT);
+        let drawn = r.drawn();
+        assert!(drawn.contains("activity: everything"), "{drawn}");
+        assert!(
+            drawn.contains("older entry") && drawn.contains("src/merge.rs:41"),
+            "{drawn}"
+        );
+        // The level is kept with the layout and comes back with it.
+        let saved = r.m.document();
+        let directory = Directory::default();
+        let mut again = model(&directory);
+        again.restore(saved).expect("restores");
+        let id = again
+            .panel_ids()
+            .find(|(_, k)| k.as_str() == "theo")
+            .map(|(id, _)| id.clone())
+            .unwrap();
+        assert_eq!(
+            again.panel(&id).unwrap().serialize()["activity"],
+            json!("everything")
+        );
+        // By name, as the activity control's actions offer.
+        r.act("theo.view.activity.headers");
+        assert!(r.drawn().contains("activity: headers"));
+        let control = r.node("Activity: headers").expect("the activity control");
+        assert_eq!(control.role, Role::Button);
+        assert!(
+            control
+                .actions
+                .iter()
+                .any(|a| a.id.as_str() == "theo.view.activity.summary")
+        );
     }
 
     #[test]

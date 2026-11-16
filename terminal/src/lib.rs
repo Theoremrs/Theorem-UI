@@ -48,6 +48,7 @@ use theorem_workbench_text::visible::visible;
 use tui_markdown::{Options, StyleSheet};
 use wasm_bindgen::prelude::*;
 
+mod blocks;
 mod cabinet;
 mod cabinet_panel;
 pub mod preview;
@@ -335,8 +336,6 @@ const INDENT: &str = "  ";
 const NOTICE_MS: f64 = 4000.0;
 /// Columns at the right of the header bar left clear for the page's close button.
 const CLOSE_COLUMNS: u16 = 4;
-/// Finished tools in a row that fold into one line while output is hidden.
-const GROUP_AT: usize = 3;
 /// Marks where the agent is writing while its run works.
 const CARET: &str = "▍";
 /// The hollow cursor's blink half-period; it holds solid this long after a key.
@@ -398,6 +397,10 @@ struct Snapshot {
     references: Vec<String>,
     /// Where this reply's thread stands among its branches, when it has more than one.
     branches: Option<Branches>,
+    /// The owner's clock when it made the snapshot, in milliseconds since the
+    /// epoch: what a running call's time is counted to. The drawer has no clock of its own for it.
+    #[serde(default, rename = "nowMs")]
+    now_ms: Option<f64>,
 }
 
 impl Snapshot {
@@ -435,7 +438,7 @@ impl Snapshot {
             message.attachments.iter_mut().for_each(spell);
             for part in &mut message.parts {
                 match part {
-                    Part::Text { text } | Part::Reasoning { text } => spell(text),
+                    Part::Text { text } | Part::Reasoning { text, .. } => spell(text),
                     Part::Tool {
                         name,
                         summary,
@@ -489,6 +492,9 @@ struct Approval {
 
 #[derive(Deserialize)]
 struct Message {
+    /// The message's own id, which keeps what the person opened in it; the drawer's pages send none.
+    #[serde(default)]
+    id: Option<String>,
     role: String,
     parts: Vec<Part>,
     /// The files a user turn carried, by name. The workbench's conversation
@@ -505,6 +511,11 @@ enum Part {
     },
     Reasoning {
         text: String,
+        /// When the thinking began and ended, by the owner's clock, when it says.
+        #[serde(default, rename = "startedAtMs")]
+        started_at_ms: Option<f64>,
+        #[serde(default, rename = "endedAtMs")]
+        ended_at_ms: Option<f64>,
     },
     Tool {
         name: String,
@@ -523,6 +534,11 @@ enum Part {
         /// one result. The drawer's pages send none and keep ctrl+o only.
         #[serde(default)]
         id: Option<String>,
+        /// When the call began and ended, by the owner's clock, when it says.
+        #[serde(default, rename = "startedAtMs")]
+        started_at_ms: Option<f64>,
+        #[serde(default, rename = "endedAtMs")]
+        ended_at_ms: Option<f64>,
     },
     /// The program the native agent writes and runs, streaming as it types.
     Program {
@@ -567,7 +583,7 @@ struct DiffLine {
 }
 
 /// A file and the lines a tool touched in it, one-based, both ends included.
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 struct Open {
     path: String,
     #[serde(default)]
@@ -862,47 +878,53 @@ fn diff_lines(diff: &[DiffLine], lead: &str) -> Vec<(Line<'static>, Option<Color
         .collect()
 }
 
-/// Finished tools in a row as one line: how many, and which, in order.
-fn group_row(parts: &[Part], width: u16) -> Line<'static> {
-    let mut counts: Vec<(&str, usize)> = Vec::new();
-    for part in parts {
-        if let Part::Tool { name, .. } = part {
-            match counts.iter_mut().find(|(seen, _)| seen == name) {
-                Some((_, count)) => *count += 1,
-                None => counts.push((name, 1)),
-            }
-        }
-    }
-    let summary = counts
-        .iter()
-        .map(|(name, count)| {
-            if *count > 1 {
-                format!("{name} ×{count}")
-            } else {
-                (*name).to_owned()
-            }
-        })
-        .collect::<Vec<_>>()
-        .join(" · ");
-    tool_row(
-        &format!("{} tools", parts.len()),
-        &summary,
-        "complete",
-        false,
-        width,
-    )
+/// What a transcript build makes: its lines, the rows painted across, and what a click finds.
+#[derive(Default)]
+struct Built {
+    lines: Vec<Line<'static>>,
+    fills: Vec<(usize, Color)>,
+    toggles: Vec<(usize, String)>,
+    links: Vec<(usize, Open)>,
+    blocks: Vec<blocks::BlockRow>,
 }
 
-/// A code block between its fences, the opening one naming the language.
-/// A block still being written has no closing fence yet.
-fn code_lines(lang: &str, code: &[Vec<Token>], closed: bool) -> Vec<Line<'static>> {
-    let fence = Style::new().fg(palette().muted);
-    let mut lines = vec![Line::styled(format!("```{lang}"), fence)];
-    lines.extend(code.iter().map(|tokens| Line::from(token_line(tokens))));
-    if closed {
-        lines.push(Line::styled("```", fence));
+impl Built {
+    /// Lines whose rows carry a background, noting which.
+    fn filled(&mut self, rows: Vec<(Line<'static>, Option<Color>)>) {
+        for (line, fill) in rows {
+            if let Some(fill) = fill {
+                self.fills.push((self.lines.len(), fill));
+            }
+            self.lines.push(line);
+        }
     }
-    lines
+
+    /// A code block with no fences, on the raised surface.
+    fn code(&mut self, code: &[Vec<Token>]) {
+        let raised = palette().raised;
+        self.filled(
+            blocks::code_block(code)
+                .into_iter()
+                .map(|line| (line, Some(raised)))
+                .collect(),
+        );
+    }
+}
+
+/// Thinking, or a tool call that has ended: what a finished turn folds into its summary.
+fn is_activity(part: &Part) -> bool {
+    match part {
+        Part::Reasoning { .. } => true,
+        Part::Tool { status, .. } => {
+            matches!(status.as_str(), "complete" | "error" | "interrupted") && !is_diff(part)
+        }
+        _ => false,
+    }
+}
+
+/// A tool call that wrote code: one whose output is a diff.
+fn is_diff(part: &Part) -> bool {
+    matches!(part, Part::Tool { output: Some(output), .. } if !output.diff.is_empty())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -970,6 +992,21 @@ struct Session {
     body: Rect,
     top: usize,
     built_for: Option<(u16, Palette)>,
+    /// How much of the agent's activity shows.
+    level: blocks::Activity,
+    /// The transcript's blocks by line, at the last build.
+    blocks: Vec<blocks::BlockRow>,
+    /// The block the keys are on, by key, while they walk the transcript.
+    cursor: Option<String>,
+    /// Scroll the cursor's block into view at the next draw.
+    reveal: bool,
+    /// A block just opened or closed, by key, and the body row its header was on: the next
+    /// draw keeps it there, so what it opened grows below it and not under the pointer.
+    anchor: Option<(String, usize)>,
+    /// Whether the status row names the activity level, for a click to change it.
+    activity_control: bool,
+    /// Where the status row named the level at the last draw.
+    level_area: Rect,
 }
 
 impl Session {
@@ -1000,6 +1037,13 @@ impl Session {
             body: Rect::default(),
             top: 0,
             built_for: None,
+            level: blocks::Activity::default(),
+            blocks: Vec::new(),
+            cursor: None,
+            reveal: false,
+            anchor: None,
+            activity_control: false,
+            level_area: Rect::default(),
         }
     }
 
@@ -1019,27 +1063,210 @@ impl Session {
         self.notice = Some((escaped(&text.into()), now() + NOTICE_MS));
     }
 
+    /// Whether a block the person can open is open: the level's default, unless they flipped it.
+    fn is_open(&self, key: &str, default: bool) -> bool {
+        default != self.disclosed.contains(key)
+    }
+
+    /// Set how much of the agent's activity shows; what the person opened or closed under the
+    /// old level is let go, so the new one is what is seen.
+    fn set_level(&mut self, level: blocks::Activity) {
+        if self.level != level {
+            self.level = level;
+            self.disclosed.clear();
+            self.built_for = None;
+        }
+    }
+
+    /// One piece of activity as its header: thinking, or a finished tool call. Opened, its
+    /// prose or its output follows.
+    fn activity(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
+        let (message, key_of_message, place) = at;
+        let all = self.level == blocks::Activity::All;
+        match part {
+            Part::Reasoning {
+                text,
+                started_at_ms,
+                ended_at_ms,
+            } => {
+                let key = format!("think:{key_of_message}:{place}");
+                let open = self.is_open(&key, all);
+                let time = blocks::took(*started_at_ms, *ended_at_ms);
+                out.toggles.push((out.lines.len(), key.clone()));
+                out.blocks.push(blocks::BlockRow {
+                    line: out.lines.len(),
+                    key,
+                    kind: blocks::BlockKind::Thinking,
+                    name: match &time {
+                        Some(time) => format!("Thinking, {time}"),
+                        None => "Thinking".to_owned(),
+                    },
+                    expanded: Some(open),
+                    open: None,
+                    path_cols: None,
+                    message,
+                    counts: None,
+                    holds: None,
+                });
+                out.lines
+                    .push(blocks::quiet_header("Thinking", time.as_deref(), open));
+                if open {
+                    out.lines.extend(blocks::thought_lines(text));
+                }
+            }
+            Part::Tool {
+                name,
+                summary,
+                status,
+                output,
+                open,
+                id,
+                started_at_ms,
+                ended_at_ms,
+            } => {
+                if let Some(open) = open {
+                    out.links.push((out.lines.len(), open.clone()));
+                }
+                let toggled = id.as_ref().filter(|_| output.is_some());
+                let shown = match toggled {
+                    Some(id) => self.is_open(id, all || self.expanded),
+                    None => all || self.expanded,
+                };
+                if let Some(id) = toggled {
+                    out.toggles.push((out.lines.len(), id.clone()));
+                }
+                let time = blocks::took(*started_at_ms, *ended_at_ms);
+                out.blocks.push(blocks::BlockRow {
+                    line: out.lines.len(),
+                    key: id
+                        .clone()
+                        .unwrap_or_else(|| format!("{key_of_message}:{place}")),
+                    kind: blocks::BlockKind::Tool,
+                    name: format!(
+                        "{name} {}{}",
+                        match status.as_str() {
+                            "complete" => "finished",
+                            "error" => "failed",
+                            "interrupted" => "was interrupted",
+                            "approval" => "waits on your approval",
+                            _ => "is running",
+                        },
+                        time.as_ref()
+                            .map(|t| format!(" in {t}"))
+                            .unwrap_or_default()
+                    ),
+                    expanded: toggled.map(|_| shown),
+                    open: open.clone(),
+                    path_cols: None,
+                    message,
+                    counts: None,
+                    holds: None,
+                });
+                let extra = time
+                    .map(|t| {
+                        vec![Span::styled(
+                            format!("  {t}"),
+                            Style::new().fg(palette().text_disabled()),
+                        )]
+                    })
+                    .unwrap_or_default();
+                out.lines
+                    .push(tool_row_extra(name, summary, status, open.is_some(), width, extra).0);
+                if let Some(output) = output.as_ref().filter(|_| shown) {
+                    out.filled(output_lines(output, usize::MAX));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Code the agent writes: its header (what wrote it, the file, the lines added and
+    /// removed) and, open, the diff. A write still streaming shows its newest lines.
+    fn diff_block(&self, part: &Part, at: (usize, &str, usize), width: u16, out: &mut Built) {
+        let Part::Tool {
+            name,
+            summary,
+            status,
+            output: Some(output),
+            open,
+            id,
+            ..
+        } = part
+        else {
+            return;
+        };
+        let (message, key_of_message, place) = at;
+        let key = format!(
+            "diff:{}",
+            id.clone()
+                .unwrap_or_else(|| format!("{key_of_message}:{place}"))
+        );
+        let shown = self.is_open(&key, self.level != blocks::Activity::Summary);
+        let (added, removed) = blocks::counts(&output.diff);
+        let path = open.as_ref().map_or(summary.as_str(), |o| o.path.as_str());
+        let (header, cols) = tool_row_extra(
+            name,
+            path,
+            status,
+            open.is_some(),
+            width,
+            blocks::diff_extra(added, removed, shown),
+        );
+        out.toggles.push((out.lines.len(), key.clone()));
+        out.blocks.push(blocks::BlockRow {
+            line: out.lines.len(),
+            key,
+            kind: blocks::BlockKind::Diff,
+            name: format!("{name} {path}"),
+            expanded: Some(shown),
+            open: open.clone(),
+            path_cols: open.as_ref().map(|_| cols),
+            message,
+            counts: Some((added, removed)),
+            holds: None,
+        });
+        out.lines.push(header);
+        if !shown {
+            return;
+        }
+        let lead = format!("{INDENT}  ");
+        let every = self.level == blocks::Activity::All || self.expanded;
+        let total = output.diff.len();
+        let note = |count: usize, what: &str| {
+            (
+                Line::styled(
+                    format!(
+                        "{lead}… {count} {what} line{}",
+                        if count == 1 { "" } else { "s" }
+                    ),
+                    Style::new().fg(palette().muted),
+                ),
+                None,
+            )
+        };
+        if every || total <= DIFF_FOLD {
+            out.filled(diff_lines(&output.diff, &lead));
+            if output.more > 0 {
+                out.filled(vec![note(output.more, "more")]);
+            }
+        } else if status == "running" {
+            // A write still streaming: its newest lines, under how many came before.
+            let cut = total - DIFF_FOLD;
+            out.filled(vec![note(cut, "earlier")]);
+            out.filled(diff_lines(&output.diff[cut..], &lead));
+        } else {
+            out.filled(diff_lines(&output.diff[..DIFF_FOLD], &lead));
+            out.filled(vec![note(total - DIFF_FOLD + output.more, "more")]);
+        }
+    }
+
     fn build(&mut self, width: u16) {
-        let mut lines: Vec<Line<'static>> = Vec::new();
+        let mut out = Built::default();
         let options = Options::new(Markdown).table_width(width.saturating_sub(INDENT.len() as u16));
 
         let last_message = self.snapshot.messages.len().saturating_sub(1);
         let mut caret = None;
-        let mut links = Vec::new();
-        let mut toggles = Vec::new();
         let mut starts = Vec::new();
-        let mut fills = Vec::new();
-        // Pushes lines whose rows carry a background, noting which.
-        let filled = |lines: &mut Vec<Line<'static>>,
-                      fills: &mut Vec<(usize, Color)>,
-                      rows: Vec<(Line<'static>, Option<Color>)>| {
-            for (line, fill) in rows {
-                if let Some(fill) = fill {
-                    fills.push((lines.len(), fill));
-                }
-                lines.push(line);
-            }
-        };
         self.has_output = self
             .snapshot
             .messages
@@ -1057,8 +1284,12 @@ impl Session {
                     }
                 )
             });
+        let p = palette();
+        // The person's own words sit on a ground of their own: the panel's, a step above the
+        // canvas the conversation is on, or the raised surface where the two are one.
+        let own_ground = if p.canvas() != p.bg { p.bg } else { p.raised };
         for (index, message) in self.snapshot.messages.iter().enumerate() {
-            starts.push(lines.len());
+            starts.push(out.lines.len());
             if message.role == "user" {
                 let text: String = message
                     .parts
@@ -1069,49 +1300,97 @@ impl Session {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+                let mut rows = Vec::new();
                 for (index, row) in text.lines().enumerate() {
                     let lead = if index == 0 {
-                        Span::styled(PROMPT, Style::new().fg(palette().accent).bold())
+                        Span::styled(PROMPT, Style::new().fg(p.accent).bold())
                     } else {
                         Span::raw(INDENT)
                     };
-                    lines.push(Line::from(vec![
-                        lead,
-                        Span::styled(row.to_owned(), Style::new().fg(palette().bright)),
-                    ]));
+                    rows.push((
+                        Line::from(vec![
+                            lead,
+                            Span::styled(row.to_owned(), Style::new().fg(p.bright)),
+                        ]),
+                        Some(own_ground),
+                    ));
                 }
                 for name in &message.attachments {
-                    lines.push(Line::from(vec![
-                        Span::raw(INDENT),
-                        Span::styled(format!("@{name}"), Style::new().fg(palette().link)),
-                    ]));
+                    rows.push((
+                        Line::from(vec![
+                            Span::raw(INDENT),
+                            Span::styled(format!("@{name}"), Style::new().fg(p.link)),
+                        ]),
+                        Some(own_ground),
+                    ));
                 }
-                lines.push(Line::default());
+                out.filled(rows);
+                out.lines.push(Line::default());
                 continue;
             }
+            let key_of_message = message.id.clone().unwrap_or_else(|| index.to_string());
             let parts = &message.parts;
             let writing = self.snapshot.running && index == last_message;
+            // A finished turn's activity folds to its summary at the headers level; every
+            // turn's does at the summary level; nothing folds when everything shows.
+            let fold = match self.level {
+                blocks::Activity::All => false,
+                blocks::Activity::Headers => !writing,
+                blocks::Activity::Summary => true,
+            };
             // A code block keeps a blank line from what comes before and after it.
             let mut after_code = false;
             let mut at = 0;
             while at < parts.len() {
-                // Finished tools in a row fold into one line while output is
-                // hidden; an edit keeps its row, to show what it changed.
-                let finished = parts[at..]
-                    .iter()
-                    .take_while(|part| {
-                        matches!(part, Part::Tool { status, output, id, .. } if status == "complete"
-                            && output.as_ref().is_none_or(|output| output.diff.is_empty())
-                            && id.as_ref().is_none_or(|id| !self.disclosed.contains(id)))
-                    })
-                    .count();
-                if !self.expanded && finished >= GROUP_AT {
+                if fold && is_activity(&parts[at]) {
+                    let run = parts[at..].iter().take_while(|p| is_activity(p)).count();
+                    let group: Vec<&Part> = parts[at..at + run].iter().collect();
                     if after_code {
-                        separate(&mut lines);
+                        separate(&mut out.lines);
                         after_code = false;
                     }
-                    lines.push(group_row(&parts[at..at + finished], width));
-                    at += finished;
+                    let key = format!("sum:{key_of_message}:{at}");
+                    let shown = self.disclosed.contains(&key);
+                    let words = blocks::activity_words(&group);
+                    let holds = group
+                        .iter()
+                        .filter_map(|part| match part {
+                            Part::Reasoning { .. } => Some("Thinking".to_owned()),
+                            Part::Tool {
+                                name,
+                                summary,
+                                status,
+                                ..
+                            } => Some(format!("{name} {summary}: {status}")),
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    out.toggles.push((out.lines.len(), key.clone()));
+                    out.blocks.push(blocks::BlockRow {
+                        line: out.lines.len(),
+                        key,
+                        kind: blocks::BlockKind::Summary,
+                        name: words.clone(),
+                        expanded: Some(shown),
+                        open: None,
+                        path_cols: None,
+                        message: index,
+                        counts: None,
+                        holds: Some(holds),
+                    });
+                    out.lines.push(blocks::quiet_header(&words, None, shown));
+                    if shown {
+                        for (offset, part) in group.into_iter().enumerate() {
+                            self.activity(
+                                part,
+                                (index, &key_of_message, at + offset),
+                                width,
+                                &mut out,
+                            );
+                        }
+                    }
+                    at += run;
                     continue;
                 }
                 let part = &parts[at];
@@ -1119,110 +1398,131 @@ impl Session {
                 // A finished program folds to a row unless shown; the one being written shows.
                 let open_program = matches!(part, Part::Program { streaming, .. }
                     if *streaming || self.expanded || (writing && last_part));
-                let is_code = matches!(part, Part::Code { .. }) || open_program;
+                let running = matches!(part, Part::Tool { status, .. } if status == "running")
+                    && !is_diff(part);
+                let is_code = matches!(part, Part::Code { .. })
+                    || open_program
+                    || is_diff(part)
+                    || running
+                    || matches!(part, Part::Text { text } if text.contains("```") || text.contains("~~~"));
                 if is_code || after_code {
-                    separate(&mut lines);
+                    separate(&mut out.lines);
                 }
                 after_code = is_code;
-                let start = lines.len();
+                let start = out.lines.len();
+                let place = (index, key_of_message.as_str(), at);
                 match part {
                     Part::Text { text } => {
-                        let rendered = tui_markdown::from_str_with_options(text, &options);
-                        lines.extend(own(rendered).into_iter().map(indented));
+                        for piece in blocks::pieces(text) {
+                            match piece {
+                                blocks::Piece::Prose(prose) => {
+                                    let rendered =
+                                        tui_markdown::from_str_with_options(&prose, &options);
+                                    out.lines.extend(own(rendered).into_iter().map(indented));
+                                }
+                                blocks::Piece::Code(code) => {
+                                    separate(&mut out.lines);
+                                    out.code(&blocks::plain_tokens(&code));
+                                    out.lines.push(Line::default());
+                                }
+                            }
+                        }
+                        while out.lines.len() > start && blank(&out.lines[out.lines.len() - 1]) {
+                            out.lines.pop();
+                        }
                     }
-                    Part::Reasoning { text } => {
-                        let style = Style::new()
-                            .fg(palette().muted)
-                            .add_modifier(Modifier::ITALIC);
-                        lines.extend(
-                            text.lines()
-                                .map(|row| indented(Line::styled(row.to_owned(), style))),
-                        );
+                    Part::Reasoning { .. } => self.activity(part, place, width, &mut out),
+                    Part::Tool { .. } if is_diff(part) => {
+                        self.diff_block(part, place, width, &mut out)
                     }
                     Part::Tool {
                         name,
                         summary,
-                        status,
                         output,
-                        open,
                         id,
-                    } => {
-                        if let Some(open) = open {
-                            links.push((lines.len(), open.clone()));
-                        }
-                        let disclosed = id.as_ref().is_some_and(|id| self.disclosed.contains(id));
-                        if let (Some(id), Some(_)) = (id, output) {
-                            toggles.push((lines.len(), id.clone()));
-                        }
-                        lines.push(tool_row(name, summary, status, open.is_some(), width));
-                        // What an edit changed shows, folded; other output waits for ctrl+o
-                        // or for the person to show that one.
-                        let shown = match output {
-                            _ if self.expanded || disclosed => usize::MAX,
-                            Some(output) if !output.diff.is_empty() => DIFF_FOLD,
-                            _ => 0,
-                        };
-                        if let Some(output) = output.as_ref().filter(|_| shown > 0) {
-                            filled(&mut lines, &mut fills, output_lines(output, shown));
-                        }
+                        started_at_ms,
+                        ..
+                    } if running => {
+                        let elapsed = started_at_ms
+                            .zip(self.snapshot.now_ms)
+                            .map(|(from, to)| blocks::duration(to - from));
+                        let key = format!(
+                            "run:{}",
+                            id.clone()
+                                .unwrap_or_else(|| format!("{key_of_message}:{at}"))
+                        );
+                        out.blocks.push(blocks::BlockRow {
+                            line: out.lines.len(),
+                            key,
+                            kind: blocks::BlockKind::Running,
+                            name: format!(
+                                "{name} is running: {summary}{}",
+                                elapsed
+                                    .as_ref()
+                                    .map(|t| format!(", {t}"))
+                                    .unwrap_or_default()
+                            ),
+                            expanded: None,
+                            open: None,
+                            path_cols: None,
+                            message: index,
+                            counts: None,
+                            holds: None,
+                        });
+                        let tail = output.as_ref().map_or(&[][..], |o| o.lines.as_slice());
+                        out.lines.extend(blocks::running_block(
+                            name,
+                            summary,
+                            tail,
+                            elapsed.as_deref(),
+                            width,
+                        ));
                     }
-                    Part::Program {
-                        lines: code,
-                        streaming,
-                    } => {
+                    // A call that waits on the person is never folded away.
+                    Part::Tool { .. } => self.activity(part, place, width, &mut out),
+                    Part::Program { lines: code, .. } => {
                         if open_program {
-                            lines.extend(
-                                code_lines("program", code, !streaming)
-                                    .into_iter()
-                                    .map(indented),
-                            );
+                            out.code(code);
                         } else {
                             let count = code.len();
                             let summary =
                                 format!("{count} line{}", if count == 1 { "" } else { "s" });
-                            lines.push(tool_row("program", &summary, "complete", false, width));
+                            out.lines
+                                .push(tool_row("program", &summary, "complete", false, width));
                         }
                     }
                     Part::Input(sent) => {
-                        lines.extend(sent_lines(sent));
-                        lines.push(Line::default());
+                        out.lines.extend(sent_lines(sent));
+                        out.lines.push(Line::default());
                     }
-                    Part::Code {
-                        lang,
-                        lines: code,
-                        diff,
-                    } if !diff.is_empty() => {
-                        let fence = Style::new().fg(palette().muted);
-                        lines.push(indented(Line::styled(format!("```{lang}"), fence)));
-                        filled(&mut lines, &mut fills, diff_lines(diff, INDENT));
-                        lines.push(indented(Line::styled("```", fence)));
+                    Part::Code { diff, .. } if !diff.is_empty() => {
+                        out.filled(diff_lines(diff, INDENT));
                     }
-                    Part::Code {
-                        lang, lines: code, ..
-                    } => {
-                        lines.extend(code_lines(lang, code, true).into_iter().map(indented));
-                    }
+                    Part::Code { lines: code, .. } => out.code(code),
                     Part::Other => {}
                 }
                 if writing && last_part {
                     caret = match part {
-                        Part::Text { .. } => {
-                            (start..lines.len()).rev().find(|&row| !blank(&lines[row]))
-                        }
-                        // In a block, the line before its closing fence.
-                        Part::Code { .. } => lines.len().checked_sub(2),
-                        Part::Program {
-                            streaming: true, ..
-                        } => lines.len().checked_sub(1),
-                        Part::Program { .. } if open_program => lines.len().checked_sub(2),
+                        Part::Text { .. } => (start..out.lines.len())
+                            .rev()
+                            .find(|&row| !blank(&out.lines[row])),
+                        Part::Code { .. } => out.lines.len().checked_sub(1),
+                        Part::Program { .. } if open_program => out.lines.len().checked_sub(1),
                         _ => None,
                     };
                 }
                 at += 1;
             }
-            lines.push(Line::default());
+            out.lines.push(Line::default());
         }
 
+        let Built {
+            mut lines,
+            fills,
+            toggles,
+            links,
+            blocks,
+        } = out;
         if let Some(row) = caret {
             lines[row]
                 .spans
@@ -1289,8 +1589,54 @@ impl Session {
         self.toggles = toggles;
         self.starts = starts;
         self.fills = fills;
+        self.blocks = blocks;
         self.lines = lines;
         self.built_for = Some((width, palette()));
+    }
+
+    /// The block whose header a cell lands on, and the file it opens when the cell is on its path.
+    fn block_at(&self, cell: Position) -> Option<(&blocks::BlockRow, bool)> {
+        if !self.body.contains(cell) {
+            return None;
+        }
+        let row = self.top + usize::from(cell.y - self.body.y);
+        let column = cell.x - self.body.x;
+        self.blocks
+            .iter()
+            .find(|b| self.rows.get(b.line) == Some(&row))
+            .map(|b| {
+                let on_path = b
+                    .path_cols
+                    .is_some_and(|(from, to)| (from..to).contains(&column));
+                (b, on_path)
+            })
+    }
+
+    /// The blocks the keys can stop on: the ones that open or close, or open a file.
+    fn stops(&self) -> Vec<&blocks::BlockRow> {
+        self.blocks
+            .iter()
+            .filter(|b| b.expanded.is_some() || b.open.is_some())
+            .collect()
+    }
+
+    /// Move the transcript's cursor by `step` stops, from the last one when it has none.
+    fn step_cursor(&mut self, step: isize) {
+        let stops = self.stops();
+        if stops.is_empty() {
+            self.cursor = None;
+            return;
+        }
+        let at = self
+            .cursor
+            .as_ref()
+            .and_then(|key| stops.iter().position(|b| &b.key == key));
+        let next = match at {
+            None => stops.len() - 1,
+            Some(at) => at.saturating_add_signed(step).min(stops.len() - 1),
+        };
+        self.cursor = Some(stops[next].key.clone());
+        self.reveal = true;
     }
 
     /// The tool row a cell lands on, if a click opens it.
@@ -1322,6 +1668,14 @@ impl Session {
         if !self.disclosed.remove(id) {
             self.disclosed.insert(id.to_owned());
         }
+        let shown = self.top..self.top + usize::from(self.body.height);
+        self.anchor = self
+            .blocks
+            .iter()
+            .find(|b| b.key == id)
+            .and_then(|b| self.rows.get(b.line).copied())
+            .filter(|row| shown.contains(row))
+            .map(|row| (id.to_owned(), row - self.top));
         self.built_for = None;
     }
 
@@ -1356,6 +1710,31 @@ impl Session {
                 self.scroll_back = max_back.saturating_sub(row);
             }
         }
+        if let Some((key, offset)) = self.anchor.take() {
+            let row = self
+                .blocks
+                .iter()
+                .find(|b| b.key == key)
+                .and_then(|b| self.rows.get(b.line).copied());
+            if let Some(row) = row {
+                self.scroll_back = max_back.saturating_sub(row.saturating_sub(offset));
+            }
+        }
+        if std::mem::take(&mut self.reveal) {
+            let row = self
+                .cursor
+                .as_ref()
+                .and_then(|key| self.blocks.iter().find(|b| &b.key == key))
+                .and_then(|b| self.rows.get(b.line).copied());
+            if let Some(row) = row {
+                let top = max_back.saturating_sub(self.scroll_back.min(max_back));
+                if row < top {
+                    self.scroll_back = max_back.saturating_sub(row);
+                } else if row >= top + height {
+                    self.scroll_back = max_back.saturating_sub(row + 1 - height.max(1));
+                }
+            }
+        }
         self.scroll_back = self.scroll_back.min(max_back);
         let top = (max_back - self.scroll_back).min(u16::MAX as usize) as u16;
         self.body = inner;
@@ -1374,6 +1753,20 @@ impl Session {
             }
         }
         paragraph.scroll((top, 0)).render(inner, buf);
+        // The block the keys are on sits on the selected band, across its header row.
+        let row = self
+            .cursor
+            .as_ref()
+            .and_then(|key| self.blocks.iter().find(|b| &b.key == key))
+            .and_then(|b| self.rows.get(b.line).copied());
+        if let Some(row) = row.filter(|row| shown.contains(row)) {
+            let p = palette();
+            let y = inner.y + (row - shown.start) as u16;
+            buf.set_style(
+                Rect::new(inner.x, y, inner.width, 1),
+                Style::new().bg(p.selected_row.unwrap_or(p.selection)),
+            );
+        }
     }
 
     fn draw_status(&mut self, buf: &mut Buffer, area: Rect) {
@@ -1435,10 +1828,39 @@ impl Session {
         } else {
             String::new()
         };
+        // The panel names how much activity shows, after the hint, for a click to change it.
+        let label = if self.activity_control {
+            format!("{} ", self.level.label())
+        } else {
+            String::new()
+        };
+        let joint = if label.is_empty() || right.is_empty() {
+            ""
+        } else {
+            "· "
+        };
+        let cols = |text: &str| {
+            u16::try_from(unicode_width::UnicodeWidthStr::width(text)).unwrap_or(u16::MAX)
+        };
+        let label_cols = cols(&label);
+        self.level_area = if label.is_empty() {
+            Rect::default()
+        } else {
+            Rect::new(
+                area.right().saturating_sub(label_cols),
+                area.y,
+                label_cols.min(area.width),
+                1.min(area.height),
+            )
+        };
         // Span-styled: a styled Line would repaint the status drawn under it.
-        Line::from(Span::styled(right, Style::new().fg(palette().muted)))
-            .right_aligned()
-            .render(area, buf);
+        Line::from(vec![
+            Span::styled(right, Style::new().fg(palette().muted)),
+            Span::styled(joint, Style::new().fg(palette().muted)),
+            Span::styled(label, Style::new().fg(palette().muted)),
+        ])
+        .right_aligned()
+        .render(area, buf);
     }
 
     /// What the next turn carries, over the prompt.
@@ -1818,6 +2240,19 @@ fn sent_lines(sent: &Sent) -> Vec<Line<'static>> {
 /// One tool's row. A row that opens a file underlines its summary, as a
 /// terminal draws a hyperlink.
 fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> Line<'static> {
+    tool_row_extra(name, summary, status, link, width, Vec::new()).0
+}
+
+/// A tool row with spans after its summary (a time, a diff's counts), and the columns its
+/// summary spans, for a click on a path.
+fn tool_row_extra(
+    name: &str,
+    summary: &str,
+    status: &str,
+    link: bool,
+    width: u16,
+    extra: Vec<Span<'static>>,
+) -> (Line<'static>, (u16, u16)) {
     // A row's state is a register (the glyph) on a ground (the row): a finished or
     // interrupted call sits on the completed ground, one that waits on a decision on the
     // pending ground, one that failed on the failed ground, and a running one is the
@@ -1831,8 +2266,9 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
         _ => ("◌", p.accent, p.running_row(), p.bright),
     };
     let lead = format!("{INDENT}{glyph} ");
+    let extra_cols: usize = extra.iter().map(|span| span.content.chars().count()).sum();
     let used = lead.chars().count() + name.chars().count() + 2;
-    let room = (width as usize).saturating_sub(used);
+    let room = (width as usize).saturating_sub(used + extra_cols);
     let mut summary: String = summary.replace('\n', " ");
     if summary.chars().count() > room {
         summary = summary
@@ -1841,8 +2277,10 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
             .collect::<String>()
             + "…";
     }
-    let fill = (width as usize).saturating_sub(used + summary.chars().count());
-    Line::from(vec![
+    let from = used;
+    let to = used + summary.chars().count();
+    let fill = (width as usize).saturating_sub(to + extra_cols);
+    let mut spans = vec![
         Span::styled(lead, Style::new().fg(color)),
         Span::styled(name.to_owned(), Style::new().fg(name_ink).bold()),
         Span::raw("  "),
@@ -1854,9 +2292,14 @@ fn tool_row(name: &str, summary: &str, status: &str, link: bool, width: u16) -> 
                 Style::new().fg(p.muted)
             },
         ),
-        Span::raw(" ".repeat(fill)),
-    ])
-    .style(Style::new().bg(ground))
+    ];
+    spans.extend(extra);
+    spans.push(Span::raw(" ".repeat(fill)));
+    let cols = (
+        u16::try_from(from).unwrap_or(u16::MAX),
+        u16::try_from(to).unwrap_or(u16::MAX),
+    );
+    (Line::from(spans).style(Style::new().bg(ground)), cols)
 }
 
 /// The terminal's tabs, one session each, and what spans them: focus, the

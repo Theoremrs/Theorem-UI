@@ -13,6 +13,12 @@ use crate::registry::{
 };
 use crate::semantics::Role;
 
+/// The prefix of the conversation view's own actions, which the panel names per block on its
+/// semantic nodes: `theo.view.activity` takes the next activity level, `theo.view.activity.<level>`
+/// one by name, `theo.view.block.<key>` opens or closes a block, `theo.view.open.<key>` opens the
+/// file a block wrote. They change only what the panel shows, so they are not registered as tools.
+pub const ACTION_THEO_VIEW: &str = "theo.view.";
+
 struct Spec {
     kind: &'static str,
     title: &'static str,

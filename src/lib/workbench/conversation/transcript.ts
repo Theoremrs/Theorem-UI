@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), the chat's delegation part reader (working-runs readDelegation) and plainObjective, and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
+// SOURCING: @assistant-ui/react's ThreadMessage parts as the runtime holds them, data parts named per @theoremharness/sdk/assistant-ui (`theorem-user_input`, `theorem-program`, `theorem-host_call`, `theorem-progress`), the chat's delegation part reader (working-runs readDelegation) and plainObjective, and the chat's own readApproval / approvalOutcome, run-input's inputReceipt and client's describeError and terminal-code's argsDiff for the code a write or edit carries while it streams; the reading follows components/terminal/terminal-transcript.ts without its terminal-only highlighting, and adds the stable ids and run state the workbench needs
 
 import type { ThreadMessage } from '@assistant-ui/react'
 import { approvalOutcome, readApproval } from '@/lib/theorem/approval'
@@ -7,7 +7,12 @@ import { describeError } from '@/lib/theorem/client'
 import { plainObjective } from '@/lib/theorem/delegations'
 import { DELEGATION_PART, readDelegation } from '@/lib/theorem/working-runs'
 import { inputReceipt } from '@/lib/theorem/run-input'
-import { openOf, pathOf, toolOutput } from '@/components/terminal/terminal-code'
+import {
+  argsDiff,
+  openOf,
+  pathOf,
+  toolOutput,
+} from '@/components/terminal/terminal-code'
 import type { DiffLine, Open } from '@/components/terminal/terminal-code'
 
 /** A tool result is cut at this many characters so one huge output cannot stall a frame (R41). */
@@ -17,10 +22,20 @@ export type ToolStatus =
   'running' | 'complete' | 'error' | 'approval' | 'interrupted'
 
 export type TranscriptPart =
-  | { type: 'text' | 'reasoning'; text: string }
+  | { type: 'text'; text: string }
+  | {
+      type: 'reasoning'
+      text: string
+      /** When the thinking began and ended. Not sent today: the SDK's reasoning parts carry no times. */
+      startedAtMs?: number
+      endedAtMs?: number
+    }
   | {
       type: 'tool'
       id: string
+      /** When the call began and ended. Not sent today: the SDK's tool-call parts carry no times. */
+      startedAtMs?: number
+      endedAtMs?: number
       name: string
       args: string
       status: ToolStatus
@@ -220,8 +235,16 @@ export function transcriptOf(
       const shown =
         part.result === undefined ? undefined : resultText(part.result)
       const path = pathOf(part.args)
-      const diff = toolOutput(part.result, path)?.diff
-      const open = openOf(path, part.args, part.result)
+      // An edit's diff from its result when it returned one, else from the code its
+      // arguments carry, which is there while the call still streams.
+      const written = argsDiff(part.args, path)
+      const diff = toolOutput(part.result, path)?.diff ?? written?.diff
+      const found = openOf(path, part.args, part.result)
+      // A file written whole opens at its top.
+      const open =
+        found && written?.write && found.start === undefined
+          ? { ...found, start: 1 }
+          : found
       return [
         {
           type: 'tool',

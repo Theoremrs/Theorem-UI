@@ -1,14 +1,13 @@
 // SOURCING: the existing workbench story pieces (FixtureStory over the real wasm workbench, the Hooks the oracle reads, PaletteProfileGate for the profile) and the terminal's own loadWasm, so each palette reaches the Rust terminal through the same set_palette the page uses; the ladder itself is terminal-ladder.ts. This file adds only the two stories and the switch between the ladder and the colours from before it.
 import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useWorkbenchAgent } from '@/lib/workbench/agent/store'
 import { loadWasm } from '@/components/terminal/terminal-screen'
 import { useTerminalTheme } from '@/components/terminal/live-terminal-theme'
 import { ladderPalette } from '@/components/terminal/terminal-ladder'
 import { wasmPalette } from '@/components/terminal/terminal-roles'
 import { PALETTE_PROFILES } from '@/stories/palette-matrix'
 import { PaletteProfileGate } from './workbench-palette-stories'
-import { THREADS_CAPS } from './workbench-feature-stories'
+import { Hooks, record, THREADS_CAPS } from './workbench-feature-stories'
 import {
   PARITY_CHANGES,
   PARITY_CONVERSATION,
@@ -17,6 +16,7 @@ import {
   parityDiff,
 } from './delta-parity-fixture'
 import { FixtureStory } from './workbench-story'
+import type { FixtureOptions } from './fixture-host'
 
 declare global {
   interface Window {
@@ -64,26 +64,16 @@ function LadderGate({
   return ready ? children : <div data-story-pending="" />
 }
 
-/** The semantic tree, for the oracle, off the mounted handle. */
-function Hooks() {
-  useEffect(() => {
-    window.__workbenchTree = () =>
-      JSON.parse(
-        useWorkbenchAgent.getState().handle?.semantics() ?? '{"nodes":[]}',
-      )
-    return () => {
-      window.__workbenchTree = undefined
-    }
-  }, [])
-  return null
-}
-
 export function ParityStory({
   id,
   ladder,
   repository = { changes: PARITY_CHANGES, diff: parityDiff },
   hooks,
   fill,
+  conversation = PARITY_CONVERSATION,
+  liveConversation,
+  persistLayout,
+  documents,
 }: {
   id: string
   ladder: boolean
@@ -96,6 +86,14 @@ export function ParityStory({
   hooks?: ReactNode
   /** The frame fills the window, so a scenario can resize it (the size is still the reference's at the story's own viewport). */
   fill?: boolean
+  /** The conversation Theo shows, in place of the parity fixture's. */
+  conversation?: FixtureOptions['conversation']
+  /** The conversation keeps moving while the story runs, as a working run's does. */
+  liveConversation?: FixtureOptions['liveConversation']
+  /** The layout the person saves (each panel's view of it included) survives a reload of the story, and is loaded at start. */
+  persistLayout?: boolean
+  /** Texts the documents owner holds, by path, for a file the story opens. */
+  documents?: FixtureOptions['documents']
 }) {
   const profile = PALETTE_PROFILES.find((p) => p.id === 'github-sharp-dark')!
   return (
@@ -111,11 +109,16 @@ export function ParityStory({
             idle: false,
             threads: true,
             terminal: false,
-            conversation: PARITY_CONVERSATION,
+            conversation,
+            liveConversation,
+            persistLayout,
+            documents,
             threadsSeed: PARITY_THREADS,
             repository,
           }}
           script={[]}
+          onEffect={record}
+          arrangements={persistLayout}
           wait={['Threads', 'Changes']}
           extra={
             <>

@@ -104,6 +104,15 @@ export interface FixtureOptions {
   holdEdits?: boolean
   /** The conversation the transcript shows, in place of `STORY_CONVERSATION`. */
   conversation?: ConversationSnapshot
+  /**
+   * The conversation moves on while the story runs, as a working run's does: every `everyMs` the owner sends the
+   * snapshot `frame` makes for the next step from the story's own, at the next revision (a command's output growing,
+   * its clock moving on, a write streaming). Needs `transcript`.
+   */
+  liveConversation?: {
+    everyMs: number
+    frame: (step: number, story: ConversationSnapshot) => ConversationSnapshot
+  }
   /** The threads the Threads panel lists, in place of the default account (needs `threads`). */
   threadsSeed?: ThreadsSeed
   /** The repository's changes and the diff each shows, in place of `CHANGES` and `diffOf`. */
@@ -357,6 +366,8 @@ export function createFixtureHost(
   options: FixtureOptions,
 ): FixtureHost {
   let live = true
+  /** The live conversation's timer, while it runs. */
+  let ticker: ReturnType<typeof setInterval> | undefined
   /** `holdEdits`: the host is reachable again once a kept draft has been offered back. */
   let hostBack = false
   const tree = options.tree ?? TREE
@@ -400,7 +411,8 @@ export function createFixtureHost(
     { resource: ResourceRef; cols: number; rows: number } | undefined
   /** The branch of the thread the transcript shows, and the revision of the last snapshot sent. */
   let branch = 'root'
-  const story = options.conversation ?? STORY_CONVERSATION
+  const first = options.conversation ?? STORY_CONVERSATION
+  let story = first
   let revision = story.revision
   const conversationId = story.conversationId
   /** The draft's attachments, and the model and effort the next turn runs on. */
@@ -568,6 +580,21 @@ export function createFixtureHost(
         channel: 'host',
         ...snapshotMessage('story-project', thread()),
       })
+    // Then the snapshots of a run that keeps working, one per step.
+    const moving = options.liveConversation
+    if (options.transcript && moving) {
+      let step = 0
+      ticker = setInterval(() => {
+        if (!live) return
+        step += 1
+        story = moving.frame(step, first)
+        revision += 1
+        dispatch({
+          channel: 'host',
+          ...snapshotMessage('story-project', thread()),
+        })
+      }, moving.everyMs)
+    }
   })
 
   const clearDraft = (path: string) => {
@@ -1429,6 +1456,7 @@ export function createFixtureHost(
     },
     dispose() {
       live = false
+      if (ticker !== undefined) clearInterval(ticker)
     },
   }
 }
