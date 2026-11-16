@@ -34,6 +34,8 @@ const PHONE = '555-0100'
 const PRIVATE_NOTE = 'Noor mentioned the studio may close'
 const OTHER_WORKSPACE = "Blake's landlord"
 const QUESTION = 'When is the materials list for Noor due?'
+const FOLLOW_UP =
+  'Has that changed? When is the materials list for Noor due now?'
 const RECORD_SOURCE = 'life_context_record'
 
 const RECORD_VERB = `mutation RecordVerb($objectTypeId: String!, $verb: String!, $input: JSON!) {
@@ -123,6 +125,36 @@ const session = await open('/crm')
 const { page, problems } = session
 const api = records(session)
 const chat = turns(session)
+
+// The dev server serves the app as hundreds of separate modules, and now and
+// then a full page load after a turn comes up blank because one of them did
+// not arrive. That is a load to try again, not a result, so a record page is
+// opened through `shows`, which says what failed and how many loads it took.
+const dropped = []
+page.on('requestfailed', (request) =>
+  dropped.push(`${request.failure()?.errorText} ${request.url()}`),
+)
+async function arrives(load, text) {
+  for (let loads = 1; ; loads++) {
+    dropped.length = 0
+    await load()
+    const shown = await page
+      .getByText(text)
+      .first()
+      .waitFor({ timeout: 45_000 })
+      .then(
+        () => true,
+        () => false,
+      )
+    if (shown) return loads
+    log('the page did not load; requests that failed:', dropped.slice(0, 5))
+    if (loads === 4) {
+      await shot('load-failed')
+      throw new Error(`the page never showed "${text}"`)
+    }
+  }
+}
+const shows = (load, revision) => arrives(load, `Saved revision ${revision}`)
 const shot = (name) =>
   page.screenshot({ path: join(SHOTS, `crm-context-${name}.png`) })
 
@@ -194,13 +226,18 @@ await page.goto(`${UI}/crm/people`, {
 await page
   .getByRole('grid', { name: 'All People' })
   .waitFor({ timeout: 120_000 })
+// The grid is there before its rows are; wait for the row, not the frame.
 check(
   'the People table lists Noor',
   await page
     .getByRole('grid')
     .getByText('Noor', { exact: true })
     .first()
-    .isVisible(),
+    .waitFor({ timeout: 60_000 })
+    .then(
+      () => true,
+      () => false,
+    ),
 )
 check(
   'and says which record is the person signed in',
@@ -213,7 +250,23 @@ await page.getByRole('button', { name: 'Options' }).click()
 const keepPhone = page.getByRole('menuitemcheckbox', {
   name: 'Theorem may read Phone',
 })
-await keepPhone.click()
+await keepPhone.waitFor({ timeout: 30_000 })
+// An earlier run against the same store may have left the phone kept back
+// already; a click then would hand it over again.
+if ((await keepPhone.getAttribute('aria-checked')) === 'true')
+  await keepPhone.click()
+const personType = async () =>
+  (await api.types()).find((type) => type.name_singular === 'Person')
+const keptBack = (type) =>
+  (type.extensions?.['theorem.context']?.excluded_fields ?? []).includes(
+    'phone',
+  )
+// What counts is the saved type, not the menu: wait for the store to hold it.
+let personNow = await personType()
+for (let look = 0; look < 30 && !keptBack(personNow); look++) {
+  await page.waitForTimeout(1_000)
+  personNow = await personType()
+}
 await page.waitForFunction(
   (item) => item?.getAttribute('aria-checked') === 'false',
   await keepPhone.elementHandle(),
@@ -221,14 +274,9 @@ await page.waitForFunction(
 )
 await shot('2-phone-kept-back')
 await page.keyboard.press('Escape')
-const personNow = (await api.types()).find(
-  (type) => type.name_singular === 'Person',
-)
 check(
   'the Person type now keeps phone from Theorem',
-  (personNow.extensions?.['theorem.context']?.excluded_fields ?? []).includes(
-    'phone',
-  ),
+  keptBack(personNow),
   JSON.stringify(personNow.extensions?.['theorem.context']),
 )
 
@@ -263,16 +311,17 @@ check(
 await page.getByText('is due Wednesday').first().waitFor({ timeout: 60_000 })
 check('and the answer on the page says Wednesday', true)
 await shot('3-answer-wednesday')
+const firstThread = page.url()
 
 // The edit, in the CRM screen: the due day moves from Wednesday to Friday.
-await page.goto(`${UI}/crm/commitments/${encodeURIComponent(commitment)}`, {
-  waitUntil: 'domcontentloaded',
-  timeout: 120_000,
-})
-await page
-  .getByText(`Saved revision ${saved.version}`)
-  .first()
-  .waitFor({ timeout: 120_000 })
+const opened = await shows(
+  () =>
+    page.goto(`${UI}/crm/commitments/${encodeURIComponent(commitment)}`, {
+      waitUntil: 'domcontentloaded',
+      timeout: 120_000,
+    }),
+  saved.version,
+)
 await page.getByRole('button', { name: 'Edit Due' }).click()
 const due = page
   .getByRole('list', { name: 'Properties' })
@@ -302,11 +351,11 @@ check('the screen shows the new saved revision', true)
 await shot('4-edited')
 
 // Reopened, the record is the edited one.
-await page.reload({ waitUntil: 'domcontentloaded' })
-await page
-  .getByText(`Saved revision ${reread.version}`)
-  .first()
-  .waitFor({ timeout: 120_000 })
+const reopened = await shows(
+  () => page.reload({ waitUntil: 'domcontentloaded' }),
+  reread.version,
+)
+log('page loads needed: to open', opened, 'and to reopen', reopened)
 check(
   'reopened, the record still says Friday',
   await page
@@ -324,9 +373,61 @@ check(
   history.includes('Wednesday') && history.includes('Friday'),
   history.slice(0, 160),
 )
+check(
+  'between the two saved revisions, as the change of the person signed in',
+  history.includes(`revision ${saved.version} → ${reread.version}`) &&
+    history.includes('You changed Due'),
+  history.slice(0, 160),
+)
 await shot('5-reopened')
 
-// After the edit: the next ordinary turn is given Friday, at the new revision.
+// After the edit, in the same conversation. The thread still holds the answer
+// that said Wednesday; the turn is given Friday all the same.
+const beforeEdit = await requests()
+await fetch(`${STANDIN}/__requests`, { method: 'DELETE' })
+await arrives(
+  () =>
+    page.goto(firstThread, { waitUntil: 'domcontentloaded', timeout: 120_000 }),
+  'is due Wednesday',
+)
+await chat.send(FOLLOW_UP)
+const followed = await chat.ended()
+check(
+  'a follow-up in the first conversation finishes',
+  followed?.outcome === 'completed',
+  followed?.outcome,
+)
+const inThread = await requests()
+const followUp = asked(inThread, FOLLOW_UP).at(-1)
+const followSpan = spanOf(followUp, commitment)
+const followContent = JSON.parse(followSpan?.content ?? '{}')
+check(
+  'its request still carries the earlier answer that said Wednesday',
+  (followUp?.body.messages ?? []).some(
+    (message) =>
+      message.role === 'assistant' &&
+      JSON.stringify(message.content).includes('Wednesday'),
+  ),
+)
+check(
+  'and the commitment at the edited revision',
+  followSpan?.id === `record:Commitment/${commitment}@${reread.version}`,
+  followSpan?.id,
+)
+check(
+  'saying Friday, with Wednesday marked as replaced',
+  followContent.fields?.due === 'Friday' &&
+    JSON.stringify(followContent.superseded ?? {}).includes('Wednesday'),
+  JSON.stringify({
+    due: followContent.fields?.due,
+    superseded: followContent.superseded,
+  }),
+)
+await page.getByText('is due Friday').first().waitFor({ timeout: 60_000 })
+check('and the new answer in that conversation says Friday', true)
+await shot('5b-same-conversation')
+
+// And in a new conversation: an ordinary turn is given Friday, at the new revision.
 await fetch(`${STANDIN}/__requests`, { method: 'DELETE' })
 await page.goto(UI, { waitUntil: 'domcontentloaded', timeout: 120_000 })
 await page.getByRole('textbox').first().waitFor({ timeout: 120_000 })
@@ -372,8 +473,15 @@ check(
 await page.getByText('is due Friday').first().waitFor({ timeout: 60_000 })
 check('and the answer on the page says Friday', true)
 
-// What is kept from Theorem never left, in any request of the run.
-const sent = JSON.stringify(all.map((request) => request.body))
+// What is kept from Theorem never left, in any request of the run: those of
+// the first turn as much as those after the edit.
+const everyRequest = [...beforeEdit, ...inThread, ...all]
+const sent = JSON.stringify(everyRequest.map((request) => request.body))
+check(
+  'requests of all three turns were read',
+  beforeEdit.length > 0 && inThread.length > 0 && all.length > 0,
+  `${beforeEdit.length} before the edit, ${inThread.length} in the same conversation after it, ${all.length} in a new one`,
+)
 check(
   'no request holds the phone number kept from Theorem',
   !sent.includes(PHONE),
@@ -414,7 +522,13 @@ await shot('6-used-in-this-response')
 writeFileSync(
   join(DATA_DIR, 'crm-context-requests.json'),
   JSON.stringify(
-    { run, commitment, revision: reread.version, requests: all },
+    {
+      run,
+      commitment,
+      savedRevision: saved.version,
+      editedRevision: reread.version,
+      requests: everyRequest,
+    },
     null,
     2,
   ),

@@ -29,6 +29,25 @@ const text = (content) =>
       ? content.map((part) => part?.text ?? '').join('')
       : ''
 
+/**
+ * Where the JSON object opening at `start` closes. The brief is one object in
+ * the middle of the system message, with prose before it and after it.
+ */
+function objectEnd(source, start) {
+  let depth = 0
+  let quoted = false
+  for (let at = start; at < source.length; at++) {
+    const char = source[at]
+    if (quoted) {
+      if (char === '\\') at++
+      else if (char === '"') quoted = false
+    } else if (char === '"') quoted = true
+    else if (char === '{') depth++
+    else if (char === '}' && --depth === 0) return at + 1
+  }
+  return source.length
+}
+
 /** The saved-record spans of the context brief in a request's system messages. */
 function recordSpans(body) {
   const spans = []
@@ -39,7 +58,7 @@ function recordSpans(body) {
     if (start < 0) continue
     let brief
     try {
-      brief = JSON.parse(system.slice(start))
+      brief = JSON.parse(system.slice(start, objectEnd(system, start)))
     } catch {
       continue
     }

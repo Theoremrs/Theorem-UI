@@ -1,0 +1,508 @@
+{
+  "run": "815b6803",
+  "commitment": "commitment:materials-815b6803",
+  "savedRevision": 10915,
+  "editedRevision": 11551,
+  "requests": [
+    {
+      "turn": 1,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 177819,
+        "sha256": "4697fb98fffe3a26d7669589bcbde07de9c28a5426ef2b9d6adb93569695321c"
+      },
+      "messageRoles": [
+        "system",
+        "user"
+      ],
+      "systemMessageBytes": 118203,
+      "userMessages": [
+        "When is the materials list for Noor due?"
+      ],
+      "earlierAnswersInHistory": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-815b6803@10897",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-815b6803@10897\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-815b6803@10897",
+          "provenance": {
+            "recordId": "person:avery-815b6803",
+            "objectType": "Person",
+            "revision": 10897,
+            "contentDigest": "75eab411184bcb328422eba2efe44f2d58dca0289896d0955d42a6449bdf7def"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-815b6803@10919",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-815b6803@10919\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-815b6803@10919",
+          "provenance": {
+            "recordId": "constraint:mornings-815b6803",
+            "objectType": "Constraint",
+            "revision": 10919,
+            "contentDigest": "55ec8ac3c5bad12832641dc62b187d56b4179e27bffbf18f522fdd40185dadd0"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 65
+        },
+        {
+          "id": "record:Person/person:noor-815b6803@10907",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-815b6803@10907\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-815b6803@10907",
+          "provenance": {
+            "recordId": "person:noor-815b6803",
+            "objectType": "Person",
+            "revision": 10907,
+            "contentDigest": "da593bbcbedc9c253b20e9021404c493108c4e66091df584a1e83c2b4d91d077"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-815b6803@10903",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-815b6803@10903",
+          "provenance": {
+            "recordId": "org:kiln-815b6803",
+            "objectType": "Organization",
+            "revision": 10903,
+            "contentDigest": "e4b25f647dd7103319b19a4d769824faf830c6d0da5506fbfaf6802db5b27fd8"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 30
+        },
+        {
+          "id": "record:Interaction/interaction:planning-815b6803@10923",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-815b6803@10923\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-815b6803@10923",
+          "provenance": {
+            "recordId": "interaction:planning-815b6803",
+            "objectType": "Interaction",
+            "revision": 10923,
+            "contentDigest": "9f2ccbf8f23e15c189328ecddcdd2d0d0b16a914bba341ee539520e2169b542c"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 105
+        },
+        {
+          "id": "record:Commitment/commitment:materials-815b6803@10915",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-815b6803@10915\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Wednesday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}],\"owed_to\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-815b6803@10915",
+          "provenance": {
+            "recordId": "commitment:materials-815b6803",
+            "objectType": "Commitment",
+            "revision": 10915,
+            "contentDigest": "793167ac2e45758aec849047633e0b9ff587ee0c3a8b9189f26ad8addc85e52f"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 114
+        },
+        {
+          "id": "record:Activity/activity:workshop-815b6803@10911",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-815b6803@10911",
+          "provenance": {
+            "recordId": "activity:workshop-815b6803",
+            "objectType": "Activity",
+            "revision": 10911,
+            "contentDigest": "ab295e52cbc9813edef93da94093fb1e6102a142b7f09479189f6fc08d8e0fc5"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 76
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-815b6803",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-815b6803",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 2,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 178261,
+        "sha256": "5e1f6992187ea6aac83adce505abcfb85af1f7c11b3b3aab9c6bc32a624d631d"
+      },
+      "messageRoles": [
+        "system",
+        "user",
+        "assistant",
+        "user"
+      ],
+      "systemMessageBytes": 118271,
+      "userMessages": [
+        "When is the materials list for Noor due?",
+        "Has that changed? When is the materials list for Noor due now?"
+      ],
+      "earlierAnswersInHistory": [
+        "From your saved records. Person: Avery Quinn. Constraint: No calls before 10am. Person: Noor. Organization: Kiln Street Studio. Interaction: Planning call for the workshop. \"Send Noor the materials list\" is due Wednesday. Activity: Glaze workshop."
+      ],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-815b6803@10897",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-815b6803@10897\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-815b6803@10897",
+          "provenance": {
+            "recordId": "person:avery-815b6803",
+            "objectType": "Person",
+            "revision": 10897,
+            "contentDigest": "75eab411184bcb328422eba2efe44f2d58dca0289896d0955d42a6449bdf7def"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-815b6803@10919",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-815b6803@10919\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-815b6803@10919",
+          "provenance": {
+            "recordId": "constraint:mornings-815b6803",
+            "objectType": "Constraint",
+            "revision": 10919,
+            "contentDigest": "55ec8ac3c5bad12832641dc62b187d56b4179e27bffbf18f522fdd40185dadd0"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 65
+        },
+        {
+          "id": "record:Person/person:noor-815b6803@10907",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-815b6803@10907\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-815b6803@10907",
+          "provenance": {
+            "recordId": "person:noor-815b6803",
+            "objectType": "Person",
+            "revision": 10907,
+            "contentDigest": "da593bbcbedc9c253b20e9021404c493108c4e66091df584a1e83c2b4d91d077"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-815b6803@10903",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-815b6803@10903",
+          "provenance": {
+            "recordId": "org:kiln-815b6803",
+            "objectType": "Organization",
+            "revision": 10903,
+            "contentDigest": "e4b25f647dd7103319b19a4d769824faf830c6d0da5506fbfaf6802db5b27fd8"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 30
+        },
+        {
+          "id": "record:Commitment/commitment:materials-815b6803@11551",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-815b6803@11551\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Friday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}],\"owed_to\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]},\"superseded\":{\"due\":{\"previous\":\"Wednesday\"}}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-815b6803@11551",
+          "provenance": {
+            "recordId": "commitment:materials-815b6803",
+            "objectType": "Commitment",
+            "revision": 11551,
+            "contentDigest": "c21bc5c177513945282b1f35b8a4fc39882c9fd9b30b9d24aa1f82ce3b2dde43"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 125
+        },
+        {
+          "id": "record:Interaction/interaction:planning-815b6803@10923",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-815b6803@10923\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-815b6803@10923",
+          "provenance": {
+            "recordId": "interaction:planning-815b6803",
+            "objectType": "Interaction",
+            "revision": 10923,
+            "contentDigest": "9f2ccbf8f23e15c189328ecddcdd2d0d0b16a914bba341ee539520e2169b542c"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 105
+        },
+        {
+          "id": "record:Activity/activity:workshop-815b6803@10911",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-815b6803@10911",
+          "provenance": {
+            "recordId": "activity:workshop-815b6803",
+            "objectType": "Activity",
+            "revision": 10911,
+            "contentDigest": "ab295e52cbc9813edef93da94093fb1e6102a142b7f09479189f6fc08d8e0fc5"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 76
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-815b6803",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-815b6803",
+          "found": false
+        }
+      }
+    },
+    {
+      "turn": 3,
+      "path": "/api/v1/chat/completions",
+      "bodyKeys": [
+        "model",
+        "messages",
+        "max_completion_tokens",
+        "temperature",
+        "top_p",
+        "tools",
+        "stream",
+        "stream_options"
+      ],
+      "model": "thinkingmachines/inkling",
+      "serializedBody": {
+        "note": "The body as the stand-in parsed it, serialized again with JSON.stringify.",
+        "bytes": 177656,
+        "sha256": "2dd2c4c26a6fbdb339c94cb78e2e7ea8abc55f9d95fff6471fc694da9d1eaf1f"
+      },
+      "messageRoles": [
+        "system",
+        "user"
+      ],
+      "systemMessageBytes": 118040,
+      "userMessages": [
+        "When is the materials list for Noor due?"
+      ],
+      "earlierAnswersInHistory": [],
+      "recordSpans": [
+        {
+          "id": "record:Person/person:avery-815b6803@10897",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:avery-815b6803@10897\",\"type\":\"Person\",\"is_the_person_asking\":true,\"fields\":{\"name\":\"Avery Quinn\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:avery-815b6803@10897",
+          "provenance": {
+            "recordId": "person:avery-815b6803",
+            "objectType": "Person",
+            "revision": 10897,
+            "contentDigest": "75eab411184bcb328422eba2efe44f2d58dca0289896d0955d42a6449bdf7def"
+          },
+          "schema_valid": true,
+          "why_included": "The saved record of the person asking.",
+          "estimated_tokens": 33
+        },
+        {
+          "id": "record:Constraint/constraint:mornings-815b6803@10919",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Constraint/constraint:mornings-815b6803@10919\",\"type\":\"Constraint\",\"fields\":{\"statement\":\"No calls before 10am\",\"kind\":\"availability\"},\"relations\":{\"applies_to\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Constraint/constraint:mornings-815b6803@10919",
+          "provenance": {
+            "recordId": "constraint:mornings-815b6803",
+            "objectType": "Constraint",
+            "revision": 10919,
+            "contentDigest": "55ec8ac3c5bad12832641dc62b187d56b4179e27bffbf18f522fdd40185dadd0"
+          },
+          "schema_valid": true,
+          "why_included": "A standing saved record about the person asking.",
+          "estimated_tokens": 65
+        },
+        {
+          "id": "record:Person/person:noor-815b6803@10907",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Person/person:noor-815b6803@10907\",\"type\":\"Person\",\"fields\":{\"name\":\"Noor\",\"role\":\"Runs the glaze workshop with me\"},\"relations\":{\"organization\":[{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"label\":\"Kiln Street Studio\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Person/person:noor-815b6803@10907",
+          "provenance": {
+            "recordId": "person:noor-815b6803",
+            "objectType": "Person",
+            "revision": 10907,
+            "contentDigest": "da593bbcbedc9c253b20e9021404c493108c4e66091df584a1e83c2b4d91d077"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record the person's message names.",
+          "estimated_tokens": 63
+        },
+        {
+          "id": "record:Organization/org:kiln-815b6803@10903",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Organization/org:kiln-815b6803@10903\",\"type\":\"Organization\",\"fields\":{\"name\":\"Kiln Street Studio\"}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Organization/org:kiln-815b6803@10903",
+          "provenance": {
+            "recordId": "org:kiln-815b6803",
+            "objectType": "Organization",
+            "revision": 10903,
+            "contentDigest": "e4b25f647dd7103319b19a4d769824faf830c6d0da5506fbfaf6802db5b27fd8"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `organization`.",
+          "estimated_tokens": 30
+        },
+        {
+          "id": "record:Commitment/commitment:materials-815b6803@11551",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Commitment/commitment:materials-815b6803@11551\",\"type\":\"Commitment\",\"fields\":{\"title\":\"Send Noor the materials list\",\"due\":\"Friday\",\"status\":\"open\"},\"relations\":{\"owed_by\":[{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}],\"owed_to\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]},\"superseded\":{\"due\":{\"previous\":\"Wednesday\"}}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Commitment/commitment:materials-815b6803@11551",
+          "provenance": {
+            "recordId": "commitment:materials-815b6803",
+            "objectType": "Commitment",
+            "revision": 11551,
+            "contentDigest": "c21bc5c177513945282b1f35b8a4fc39882c9fd9b30b9d24aa1f82ce3b2dde43"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `owed_to`.",
+          "estimated_tokens": 125
+        },
+        {
+          "id": "record:Interaction/interaction:planning-815b6803@10923",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Interaction/interaction:planning-815b6803@10923\",\"type\":\"Interaction\",\"fields\":{\"summary\":\"Planning call for the workshop\",\"kind\":\"call\",\"notes\":\"Noor asked for the materials list before she orders glaze.\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"}],\"activity\":[{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"label\":\"Glaze workshop\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Interaction/interaction:planning-815b6803@10923",
+          "provenance": {
+            "recordId": "interaction:planning-815b6803",
+            "objectType": "Interaction",
+            "revision": 10923,
+            "contentDigest": "9f2ccbf8f23e15c189328ecddcdd2d0d0b16a914bba341ee539520e2169b542c"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 105
+        },
+        {
+          "id": "record:Activity/activity:workshop-815b6803@10911",
+          "register": "evidence",
+          "content": "{\"record\":\"record:Activity/activity:workshop-815b6803@10911\",\"type\":\"Activity\",\"fields\":{\"name\":\"Glaze workshop\",\"status\":\"planned\"},\"relations\":{\"people\":[{\"record\":\"record:Person/person:noor-815b6803@10907\",\"label\":\"Noor\"},{\"record\":\"record:Person/person:avery-815b6803@10897\",\"label\":\"Avery Quinn\"}]}}",
+          "source_type": "life_context_record",
+          "derivation_ref": "record:Activity/activity:workshop-815b6803@10911",
+          "provenance": {
+            "recordId": "activity:workshop-815b6803",
+            "objectType": "Activity",
+            "revision": 10911,
+            "contentDigest": "ab295e52cbc9813edef93da94093fb1e6102a142b7f09479189f6fc08d8e0fc5"
+          },
+          "schema_valid": true,
+          "why_included": "A saved record related to another included record through `people`.",
+          "estimated_tokens": 76
+        }
+      ],
+      "searchedForInWholeBody": {
+        "phone number kept from Theorem": {
+          "text": "555-0100",
+          "found": false
+        },
+        "private note": {
+          "text": "Noor mentioned the studio may close",
+          "found": false
+        },
+        "other workspace's contact": {
+          "text": "Blake's landlord",
+          "found": false
+        },
+        "other workspace's record id": {
+          "text": "person:noor-other-815b6803",
+          "found": false
+        },
+        "private record's id": {
+          "text": "interaction:private-815b6803",
+          "found": false
+        }
+      }
+    }
+  ]
+}

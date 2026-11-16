@@ -1,0 +1,405 @@
+{
+  "viewport": {
+    "width": 1440,
+    "height": 900,
+    "zoom": "100%"
+  },
+  "appearance": "dark",
+  "browser": "153.0.8010.12",
+  "note": "Each check stands alone. There is no overall score.",
+  "checks": [
+    {
+      "id": "navigator.width",
+      "authority": "target",
+      "expectation": "256 px, between 220 and 300",
+      "measured": 240,
+      "result": "pass",
+      "note": "the shell panel is the person's to resize; this is its width in a fresh profile"
+    },
+    {
+      "id": "width.budget",
+      "authority": "contract",
+      "expectation": "rail + navigator + table + sheet inset = viewport width, with nothing left over",
+      "measured": {
+        "rail": 44,
+        "navigator": 240,
+        "table": 1153,
+        "sheetInset": 3,
+        "viewport": 1440
+      },
+      "result": "pass",
+      "note": "the inset is the shell's, a Theorem adaptation: the sheet floats inside the window"
+    },
+    {
+      "id": "table.page-header.height",
+      "authority": "target",
+      "expectation": "44 px",
+      "measured": 44,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "table.view-bar.height",
+      "authority": "target",
+      "expectation": "40 px",
+      "measured": 40,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "table.row.height",
+      "authority": "target",
+      "expectation": "36 px (dense)",
+      "measured": 36,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "table.header-row.height",
+      "authority": "diagnostic",
+      "expectation": "no target in the spec; Twenty draws 32 px",
+      "measured": 32,
+      "result": "review",
+      "note": ""
+    },
+    {
+      "id": "table.identifier-column.width",
+      "authority": "target",
+      "expectation": "220 px",
+      "measured": 220,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "type.table.face",
+      "authority": "target",
+      "expectation": "IBM Plex Sans is the face drawn",
+      "measured": {
+        "declared": "\"IBM Plex Sans Variable\", \"IBM Plex Sans\", ui-sans-serif, system-ui, sans-serif",
+        "drawn": [
+          {
+            "family": "IBM Plex Sans",
+            "glyphs": 1
+          }
+        ]
+      },
+      "result": "pass",
+      "note": "the drawn face is read from the browser, not from the stylesheet"
+    },
+    {
+      "id": "type.table.size",
+      "authority": "target",
+      "expectation": "13 to 14 px",
+      "measured": 13,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "type.navigator.size",
+      "authority": "target",
+      "expectation": "13 to 14 px",
+      "measured": 13,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "type.metadata.size",
+      "authority": "target",
+      "expectation": "12 px",
+      "measured": 12,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "contrast.table.cell",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 9.83,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "contrast.table.column-header",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 8.63,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "contrast.table.count",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 6.82,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "contrast.view-bar.count",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 6.82,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "contrast.navigator.row",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 9.83,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "freshness.navigator-count",
+      "authority": "diagnostic",
+      "expectation": "records added outside the screen are counted",
+      "measured": {
+        "shown": "11",
+        "saved": 41,
+        "secondsSinceTheyWereAdded": 2
+      },
+      "result": "review",
+      "note": "a read is kept for 15 s and nothing tells the screen about a write made elsewhere"
+    },
+    {
+      "id": "table.long.rows-uniform",
+      "authority": "contract",
+      "expectation": "every row 36 px, at least 40 rows",
+      "measured": {
+        "rows": 41,
+        "heights": [
+          36
+        ]
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "table.long.header-stays",
+      "authority": "contract",
+      "expectation": "the column headers stay in place while the rows scroll",
+      "measured": {
+        "scrolledBy": 802,
+        "headerTopBefore": 123,
+        "headerTopAfter": 123
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "table.long.count-is-the-dataset",
+      "authority": "contract",
+      "expectation": "the count shown is the number saved, not the number drawn",
+      "measured": {
+        "shown": "41 organizations",
+        "saved": 41
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bar.height",
+      "authority": "contract",
+      "expectation": "selecting records does not change the view bar's 40 px",
+      "measured": 40,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "selection.bounded-update",
+      "authority": "target",
+      "expectation": "a bounded update panel for the selected records, as in M02",
+      "measured": "All Organizations\n· 41\n2 selected\nDelete\nFilter\nSort\nOptions",
+      "result": "fail",
+      "note": "only a count and Delete are offered; there is no bulk update"
+    },
+    {
+      "id": "preview.width",
+      "authority": "target",
+      "expectation": "420 px",
+      "measured": 420,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "preview.header.height",
+      "authority": "target",
+      "expectation": "44 px, level with the table's",
+      "measured": 44,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "preview.width.budget",
+      "authority": "contract",
+      "expectation": "table + preview reach the sheet's edge, with nothing left over",
+      "measured": {
+        "table": 733,
+        "preview": 420
+      },
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "preview.no-page-scroll",
+      "authority": "contract",
+      "expectation": "the page does not scroll sideways",
+      "measured": 0,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "record.property-column.width",
+      "authority": "target",
+      "expectation": "300 px",
+      "measured": 300,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "record.page-header.height",
+      "authority": "target",
+      "expectation": "44 px",
+      "measured": 44,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "record.tab-bar.height",
+      "authority": "target",
+      "expectation": "40 px",
+      "measured": 40,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "type.record-title.size",
+      "authority": "target",
+      "expectation": "18 to 20 px",
+      "measured": 20,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "contrast.record.property-label",
+      "authority": "standard",
+      "expectation": "WCAG 2.2 AA, at least 4.5:1",
+      "measured": 6.82,
+      "result": "pass",
+      "note": "dark appearance, resting state, from computed colors"
+    },
+    {
+      "id": "record.writing-shown-whole",
+      "authority": "contract",
+      "expectation": "no written value on the record page is cut off",
+      "measured": [],
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "record.related-names-shown-whole",
+      "authority": "diagnostic",
+      "expectation": "the name of a related record fits beside its label",
+      "measured": [
+        "Kiln Street Studio"
+      ],
+      "result": "review",
+      "note": "a name that does not fit is shortened; it opens the record it names"
+    },
+    {
+      "id": "responsive.1024x768.no-page-scroll",
+      "authority": "contract",
+      "expectation": "the page does not scroll sideways",
+      "measured": 0,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "responsive.1024x768.table-usable",
+      "authority": "target",
+      "expectation": "the table is on screen and at least 280 px wide",
+      "measured": {
+        "x": 284,
+        "width": 737
+      },
+      "result": "pass",
+      "note": "whether this layout is good at this size is for a person to say from the capture"
+    },
+    {
+      "id": "responsive.390x844.no-page-scroll",
+      "authority": "contract",
+      "expectation": "the page does not scroll sideways",
+      "measured": 0,
+      "result": "pass",
+      "note": ""
+    },
+    {
+      "id": "responsive.390x844.table-usable",
+      "authority": "target",
+      "expectation": "the table is on screen and at least 280 px wide",
+      "measured": {
+        "x": 0,
+        "width": 390
+      },
+      "result": "pass",
+      "note": "whether this layout is good at this size is for a person to say from the capture"
+    },
+    {
+      "id": "matrix.6.data-model",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "the Data model screen is the existing Index view; it was not compared with M06 and M07"
+    },
+    {
+      "id": "matrix.7.inline-edit",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "an inline edit was exercised by crm-context.mjs but not captured against M08"
+    },
+    {
+      "id": "matrix.9.states",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "proposal, conflict, stale, disconnected and permission-denied states were not mounted"
+    },
+    {
+      "id": "matrix.10.light",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "the light appearance was not captured"
+    },
+    {
+      "id": "matrix.10.keyboard-focus",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "focus rings were not captured"
+    },
+    {
+      "id": "matrix.10.text-size",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "increased text size was not tried"
+    },
+    {
+      "id": "matrix.10.reduced-motion",
+      "authority": "target",
+      "expectation": "a mounted capture compared with its reference",
+      "measured": null,
+      "result": "not_measurable",
+      "note": "reduced motion was not tried"
+    }
+  ]
+}

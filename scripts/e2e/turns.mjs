@@ -69,7 +69,8 @@ export function turns({ context, page }) {
     const box = page.getByRole('textbox').first()
     await box.click()
     await box.fill(text)
-    await page.keyboard.press('Enter')
+    // Enter edits the message; the composer sends on Control+Enter.
+    await page.keyboard.press('Control+Enter')
     for (let look = 0; look < LOOKS; look++) {
       const run = await lastRunOf().catch(() => undefined)
       if (run?.runId && run.runId !== before) {

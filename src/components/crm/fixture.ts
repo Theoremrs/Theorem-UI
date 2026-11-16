@@ -197,6 +197,7 @@ type Change = {
   object_type_id: string
   kind: 'created' | 'updated' | 'deleted'
   previous_revision: number | null
+  revision: number | null
   changed: Record<string, { from: unknown; to: unknown }>
   actor: string | null
   at_ms: number
@@ -256,6 +257,8 @@ function fixtureNodes(): Node[] {
       people: ['person:noor', 'person:avery'],
       activity: 'activity:workshop',
       occurred: 'Last Thursday',
+      notes:
+        'Noor asked for the materials list before she orders glaze.\nShe will confirm the kiln booking on Monday.',
     }),
   ]
 }
@@ -268,6 +271,7 @@ function fixtureChanges(): Change[] {
       object_type_id: FIXTURE_TYPE.commitment,
       kind: 'updated',
       previous_revision: 8,
+      revision: 9,
       changed: { due: { from: 'Wednesday', to: 'Friday' } },
       actor: 'user:avery',
       at_ms: FIXTURE_NOW - 2 * HOUR,
@@ -278,6 +282,7 @@ function fixtureChanges(): Change[] {
       object_type_id: FIXTURE_TYPE.commitment,
       kind: 'created',
       previous_revision: null,
+      revision: 8,
       changed: {
         title: { from: null, to: 'Send Noor the materials list' },
         due: { from: null, to: 'Wednesday' },
@@ -348,6 +353,8 @@ export function createFixtureServer(options: FixtureOptions = {}) {
               personRecordId: state.self,
               updatedAt: '2026-11-02T08:00:00Z',
             },
+    // Avery is the person signed in, where the sign-in names one.
+    actor: state.self === undefined ? null : 'user:avery',
     access: state.installed
       ? types.map((type) => ({
           objectTypeId: type.object_type_id,
@@ -379,12 +386,15 @@ export function createFixtureServer(options: FixtureOptions = {}) {
     previous: number | null,
     changed: Change['changed'],
   ) =>
+    // As the server does: a delete saves no revision, any other write saves
+    // the one the record is now at.
     state.changes.unshift({
       id: `change:${record.id}:${state.changes.length + 1}`,
       record_id: record.id,
       object_type_id: type.object_type_id,
       kind,
       previous_revision: previous,
+      revision: kind === 'deleted' ? null : record.version,
       changed,
       actor: 'user:avery',
       at_ms: (state.clock += 60_000),

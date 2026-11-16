@@ -130,7 +130,10 @@ function LoadedRecord({
       aria-label={type.label_singular}
       className="flex h-full min-w-0 flex-col bg-background"
     >
-      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-separator ps-2 pe-3">
+      <header
+        data-crm-region="page-header"
+        className="flex h-11 shrink-0 items-center gap-2 border-b border-separator ps-2 pe-3"
+      >
         <Button size="xs" variant="ghost" onClick={() => void openType(type)}>
           <ChevronLeft aria-hidden />
           <TypeIcon type={type} className="text-ink-muted" />
@@ -150,6 +153,7 @@ function LoadedRecord({
       <div className="flex min-h-0 flex-1">
         {/* Properties: 300 px */}
         <div
+          data-crm-region="property-column"
           className="flex shrink-0 flex-col overflow-y-auto border-e border-separator"
           style={{ width: PROPERTY_COLUMN }}
         >
@@ -176,6 +180,7 @@ function LoadedRecord({
               record={record}
               writes={writes}
               writable={writable}
+              whole
               onOpenRelated={(target, id) => void openRecord(target, id)}
             />
           </div>
@@ -196,7 +201,10 @@ function LoadedRecord({
           onValueChange={(next) => setTab(String(next))}
           className="min-w-0 flex-1 gap-0"
         >
-          <div className="flex h-10 shrink-0 items-center border-b border-separator px-3">
+          <div
+            data-crm-region="view-bar"
+            className="flex h-10 shrink-0 items-center border-b border-separator px-3"
+          >
             <TabsList variant="underline">
               <TabsTab value="timeline">Timeline</TabsTab>
               <TabsTab value="related">Related</TabsTab>
@@ -223,7 +231,7 @@ const VERB: Record<RecordChange['kind'], string> = {
 }
 
 function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
-  const { titleOf } = useCrmScope()
+  const { titleOf, life } = useCrmScope()
   const changes = useRecordChanges(record.id)
   if (changes.isPending)
     return (
@@ -260,7 +268,9 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
     <ol aria-label="Changes, newest first" className="flex flex-col px-4 py-3">
       {list.map((change) => {
         const lines =
-          change.kind === 'updated' ? changeLines(change, type, titleOf) : []
+          change.kind === 'updated'
+            ? changeLines(change, type, titleOf, life?.actor)
+            : []
         const step = revisionStep(change)
         return (
           <li
@@ -279,7 +289,7 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
                 ))
               ) : (
                 <p className="text-[13px] leading-5 text-ink">
-                  {actorName(change.actor)} {VERB[change.kind]}
+                  {actorName(change.actor, life?.actor)} {VERB[change.kind]}
                 </p>
               )}
               <p className="text-xs leading-5 text-ink-muted tabular-nums">

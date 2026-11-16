@@ -262,16 +262,16 @@ export function changeValue(
   return String(value)
 }
 
-/** `user:avery` reads "Avery"; a change nobody is named on reads "Someone". */
-export function actorName(actor: string | null) {
+/**
+ * `user:avery` reads "Avery"; a change nobody is named on reads "Someone";
+ * and a change made under the reader's own sign-in (`me`) reads "You".
+ */
+export function actorName(actor: string | null, me?: string | null) {
   if (!actor) return 'Someone'
+  if (me && actor === me) return 'You'
   const name = actor.includes(':') ? actor.slice(actor.indexOf(':') + 1) : actor
   return name ? name.charAt(0).toUpperCase() + name.slice(1) : 'Someone'
 }
-
-/** The revision a change left the record at. */
-export const revisionAfter = (change: RecordChange) =>
-  change.previousRevision === null ? null : change.previousRevision + 1
 
 export type ChangeLine = { fieldKey: string; text: string }
 
@@ -283,8 +283,9 @@ export function changeLines(
   change: RecordChange,
   type: ObjectType | undefined,
   titleOf: (field: FieldSpec, id: string) => string,
+  me?: string | null,
 ): ChangeLine[] {
-  const who = actorName(change.actor)
+  const who = actorName(change.actor, me)
   return Object.entries(change.changed).map(([key, { from, to }]) => {
     if (key === CONTEXT_USE_FIELD)
       return {
@@ -311,14 +312,17 @@ export function changeLines(
   })
 }
 
-/** "revision 6 → 7", or nothing when the change does not say. */
+/**
+ * "revision 6 → 9": the revision the change replaced and the one it saved,
+ * both as the server reports them, never counted from one another. Nothing
+ * when the change says neither.
+ */
 export function revisionStep(change: RecordChange) {
-  const after = revisionAfter(change)
-  if (change.kind === 'created')
-    return after === null ? 'revision 1' : `revision ${after}`
+  const { previousRevision: before, revision: after } = change
+  if (before === null) return after === null ? undefined : `revision ${after}`
   return after === null
-    ? undefined
-    : `revision ${change.previousRevision} → ${after}`
+    ? `was revision ${before}`
+    : `revision ${before} → ${after}`
 }
 
 /** A record's title under its type, for labels and sentences. */

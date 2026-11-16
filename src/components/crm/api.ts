@@ -289,6 +289,8 @@ export type LifeContext = {
   types: { nameSingular: string; declared: boolean }[]
   self: SelfBinding
   access: TypeAccess[]
+  /** The name this sign-in's own writes carry in a record's history. */
+  actor: string | null
 }
 
 function decodeSelf(raw: unknown): SelfBinding {
@@ -323,6 +325,7 @@ export function decodeLifeContext(raw: unknown): LifeContext {
         : []
     }),
     self: decodeSelf(value.self),
+    actor: text(value.actor) ?? null,
     access: (Array.isArray(value.access) ? value.access : []).flatMap(
       (entry) => {
         if (!isObject(entry)) return []
@@ -416,8 +419,14 @@ export type RecordChange = {
   recordId: string
   objectTypeId: string
   kind: 'created' | 'updated' | 'deleted'
-  /** The revision the change was made against; the change produced the next one. */
+  /** The revision the change was made against; none for a record's first. */
   previousRevision: number | null
+  /**
+   * The revision the change left the record at, as the server read it back.
+   * Revisions are the store's own counter, so this is not the last one plus
+   * one. None for a delete, or where the server does not say.
+   */
+  revision: number | null
   changed: Record<string, { from: unknown; to: unknown }>
   actor: string | null
   atMs: number
@@ -432,6 +441,8 @@ export function decodeRecordChange(raw: unknown): RecordChange | undefined {
   if (kind !== 'created' && kind !== 'updated' && kind !== 'deleted')
     return undefined
   const previous = either(raw, 'previousRevision', 'previous_revision')
+  const whole = (value: unknown) =>
+    typeof value === 'number' && Number.isFinite(value) ? value : null
   const changed: RecordChange['changed'] = {}
   if (isObject(raw.changed))
     for (const [key, change] of Object.entries(raw.changed))
@@ -442,10 +453,8 @@ export function decodeRecordChange(raw: unknown): RecordChange | undefined {
     recordId,
     objectTypeId: text(either(raw, 'objectTypeId', 'object_type_id')) ?? '',
     kind,
-    previousRevision:
-      typeof previous === 'number' && Number.isFinite(previous)
-        ? previous
-        : null,
+    previousRevision: whole(previous),
+    revision: whole(raw.revision),
     changed,
     actor: text(raw.actor) ?? null,
     atMs: Number.isFinite(at) ? at : 0,

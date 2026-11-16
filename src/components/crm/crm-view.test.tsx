@@ -475,7 +475,7 @@ test('the preview, the filter and the sort are in the address, and a table opene
   await type(input, 'noo')
   await click(cell(first.container, 'Name'))
   await waitFor(() => first.container.querySelector('aside'))
-  const search = () => first.router.state.location.search as object
+  const search = () => first.router.state.location.search
   await waitFor(() => 'record' in search())
   expect(search()).toEqual({ q: 'noo', record: 'person:noor' })
   // Changing the view replaces the entry: it is still one place.
@@ -593,7 +593,7 @@ test('a record page has its properties, its changes and what it is tied to', asy
     container.querySelector('ol[aria-label="Changes, newest first"]'),
   )
   expect(timeline.textContent).toContain(
-    'Avery changed Due from Wednesday to Friday',
+    'You changed Due from Wednesday to Friday',
   )
   expect(timeline.textContent).toContain('revision 8 → 9')
 
@@ -602,6 +602,27 @@ test('a record page has its properties, its changes and what it is tied to', asy
     container.querySelector('section[aria-label="People, Owed to"]'),
   )
   expect(related.textContent).toContain('Noor')
+})
+
+test('a record page shows a note whole; the preview keeps it to its first line', async () => {
+  const second = 'She will confirm the kiln booking on Monday.'
+  const whole = await view('/crm/interactions/interaction%3Aplanning')
+  const properties = await waitFor(() =>
+    whole.container.querySelector('[role="list"][aria-label="Properties"]'),
+  )
+  expect(properties.textContent).toContain(
+    'Noor asked for the materials list before she orders glaze.',
+  )
+  expect(properties.textContent).toContain(second)
+
+  const table = await view('/crm/interactions?record=interaction%3Aplanning')
+  const preview = await waitFor(() =>
+    table.container.querySelector(
+      'aside [role="list"][aria-label="Properties"]',
+    ),
+  )
+  expect(preview.textContent).toContain('Noor asked for the materials list')
+  expect(preview.textContent).not.toContain(second)
 })
 
 test('a record that is not there says so', async () => {

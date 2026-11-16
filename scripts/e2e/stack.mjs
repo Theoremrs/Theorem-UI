@@ -258,13 +258,20 @@ if (process.env.E2E_CONTEXT_STANDIN) {
   })
   await ready('standin', `${STANDIN}/__requests`)
   const endpoint = { endpoint: `${STANDIN}/api/v1` }
+  // An override may only re-point a model the server's own catalog ships: one
+  // it does not know is read as a whole new entry, fails to parse, and takes
+  // the model list down with it. A server built from an older catalog names
+  // the ones it has in E2E_STANDIN_MODELS.
+  const models = process.env.E2E_STANDIN_MODELS
+    ? process.env.E2E_STANDIN_MODELS.split(',').map((model) => model.trim())
+    : STANDIN_MODELS
   serverEnv.THEOREM_MODELS_JSON = join(DATA_DIR, 'context-models.json')
   writeFileSync(
     serverEnv.THEOREM_MODELS_JSON,
     JSON.stringify({
       models: {
         openrouter: Object.fromEntries(
-          STANDIN_MODELS.map((model) => [model, endpoint]),
+          models.map((model) => [model, endpoint]),
         ),
       },
     }),

@@ -184,6 +184,7 @@ test('a change keeps what moved, who moved it and the revision it was made again
       object_type_id: FIXTURE_TYPE.commitment,
       kind: 'updated',
       previous_revision: 8,
+      revision: 31,
       changed: { due: { from: 'Wednesday', to: 'Friday' } },
       actor: 'user:avery',
       at_ms: 12,
@@ -194,6 +195,7 @@ test('a change keeps what moved, who moved it and the revision it was made again
     objectTypeId: FIXTURE_TYPE.commitment,
     kind: 'updated',
     previousRevision: 8,
+    revision: 31,
     changed: { due: { from: 'Wednesday', to: 'Friday' } },
     actor: 'user:avery',
     atMs: 12,
@@ -360,7 +362,22 @@ test('a change reads as a sentence, with the revisions it moved between', () => 
   expect(changeLines(change, commitment, (_field, id) => id)).toEqual([
     { fieldKey: 'due', text: 'Avery changed Due from Wednesday to Friday' },
   ])
+  // The reader's own change says so.
+  expect(
+    changeLines(change, commitment, (_field, id) => id, 'user:avery'),
+  ).toEqual([
+    { fieldKey: 'due', text: 'You changed Due from Wednesday to Friday' },
+  ])
   expect(revisionStep(change)).toBe('revision 8 → 9')
+  // The saved revision is the one the server reports, not the last plus one.
+  expect(revisionStep({ ...change, revision: 31 })).toBe('revision 8 → 31')
+  expect(revisionStep({ ...change, revision: null })).toBe('was revision 8')
+  expect(
+    revisionStep({ ...change, previousRevision: null, revision: 31 }),
+  ).toBe('revision 31')
+  expect(
+    revisionStep({ ...change, previousRevision: null, revision: null }),
+  ).toBeUndefined()
   const hidden = {
     ...change,
     changed: { context_use: { from: null, to: 'private' } },

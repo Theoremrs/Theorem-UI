@@ -475,7 +475,10 @@ export function CrmTable({ type }: { type: ObjectType }) {
         className="flex h-full min-w-0 flex-1 flex-col bg-background"
       >
         {/* Page header: 44 px */}
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b border-separator px-3">
+        <header
+          data-crm-region="page-header"
+          className="flex h-11 shrink-0 items-center gap-2 border-b border-separator px-3"
+        >
           <TypeIcon type={type} className="text-ink-muted" />
           <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
             {plural}
@@ -493,7 +496,10 @@ export function CrmTable({ type }: { type: ObjectType }) {
         ) : (
           <>
             {/* View bar: 40 px */}
-            <div className="flex h-10 shrink-0 items-center gap-1 border-b border-separator px-3 text-[13px]">
+            <div
+              data-crm-region="view-bar"
+              className="flex h-10 shrink-0 items-center gap-1 border-b border-separator px-3 text-[13px]"
+            >
               <span className="font-medium text-ink">All {plural}</span>
               {page.data && (
                 <span className="text-ink-muted tabular-nums">

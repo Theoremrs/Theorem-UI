@@ -1,0 +1,78 @@
+PASS another workspace holds a contact named Noor
+09:07:12 fixture saved; the commitment is at revision 10915
+PASS the People table lists Noor
+PASS and says which record is the person signed in
+PASS the Person type now keeps phone from Theorem  {"assistance":"available","excluded_fields":["phone"],"mention_fields":["aliases"],"version":1}
+PASS the first turn finishes  completed
+PASS the provider was sent the commitment  7 record spans
+PASS at the revision that was saved  record:Commitment/commitment:materials-815b6803@10915
+PASS saying Wednesday
+PASS and the answer on the page says Wednesday
+09:08:19 the page did not load; requests that failed: [
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/assets/icons/streamline/control/layers/memory-paper.svg?import',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/assets/icons/streamline/control/layers/approval-line.svg?import',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/assets/icons/streamline/control/layers/approval-accent.svg?import',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/assets/icons/streamline/control/layers/approval-tint.svg?import',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/assets/icons/streamline/control/layers/approval-paper.svg?import'
+]
+PASS the edit was saved at a new revision  revision 10915 then 11551
+PASS the screen shows the new saved revision
+09:08:34 page loads needed: to open 2 and to reopen 1
+PASS reopened, the record still says Friday
+PASS and its history shows Wednesday becoming Friday  You changed Due from Wednesday to Friday
+
+Nov 16, 2026, 9:08 AM · revision 10915 → 11551
+
+You added this
+
+Nov 16, 2026, 9:07 AM · revision 10915
+PASS between the two saved revisions, as the change of the person signed in  You changed Due from Wednesday to Friday
+
+Nov 16, 2026, 9:08 AM · revision 10915 → 11551
+
+You added this
+
+Nov 16, 2026, 9:07 AM · revision 10915
+PASS a follow-up in the first conversation finishes  completed
+PASS its request still carries the earlier answer that said Wednesday
+PASS and the commitment at the edited revision  record:Commitment/commitment:materials-815b6803@11551
+PASS saying Friday, with Wednesday marked as replaced  {"due":"Friday","superseded":{"due":{"previous":"Wednesday"}}}
+PASS and the new answer in that conversation says Friday
+PASS the second turn finishes  completed
+PASS the provider was sent the edited revision  record:Commitment/commitment:materials-815b6803@11551
+PASS saying Friday  Friday
+PASS with the day it replaced marked as replaced  {"due":{"previous":"Wednesday"}}
+PASS every saved-record span names its record and revision  7 spans
+PASS Noor is among them
+PASS and so is when Avery can be called
+PASS and the answer on the page says Friday
+PASS requests of all three turns were read  1 before the edit, 1 in the same conversation after it, 1 in a new one
+PASS no request holds the phone number kept from Theorem
+PASS no request holds the private note
+PASS no request holds the other workspace's contact
+PASS the private record is in no span
+PASS the reply says which saved records it used
+PASS naming the commitment and its revision  Used 7 saved records · 1 held back
+Used in this response
+
+Avery Quinn · Person · revision 10897
+
+This is you
+
+No calls before 10am · Constraint · revision 10919
+
+It always applies to you
+
+Noor · Perso
+PASS and that something was held back, without saying what it holds
+09:09:00 provider requests written to /tmp/claude-0/-home-user/ab33e1ed-a1c3-5ca1-823c-9ec8aa80fa88/scratchpad/e2e-data/crm-context-requests.json
+09:09:00 page problems 41
+Errors seen:
+  404 GET /api/artifacts/v1/libraries/theorem-artifacts
+  503 GET /api/project-files/v1/projects/chatproj_sha256%3A07af2d77bf3efe816508e8160
+  404 PUT /api/artifacts/v1/libraries/theorem-artifacts 
+  404 GET /api/chat/v1/threads/chatthread_sha256%3Aa7e2421c88e5589bee4029c9e/reviews
+  TypeError: Failed to fetch dynamically imported module: http://localhost:3102/node_modules/@tanstack/react-start/dist/plugin/default-entry/client.tsx
+  404 GET /api/chat/v1/threads/chatthread_sha256%3A9623662f4b8f36508f3b8acb9/reviews
+All checks passed
+exit 0

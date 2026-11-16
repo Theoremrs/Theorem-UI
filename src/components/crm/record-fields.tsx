@@ -291,6 +291,7 @@ function PropertyRow({
   field,
   writes,
   writable,
+  whole,
   onOpenRelated,
 }: {
   type: ObjectType
@@ -298,6 +299,7 @@ function PropertyRow({
   field: FieldSpec
   writes: CrmWrites
   writable: boolean
+  whole: boolean
   onOpenRelated: (type: ObjectType, id: string) => void
 }) {
   const edit = useFieldEdit(record.id, field.key)
@@ -313,6 +315,14 @@ function PropertyRow({
     void writes.save(record, field, next)
   }
   const empty = isEmptyValue(value) && field.field_type.kind !== 'boolean'
+  // Plain writing, shown in full where there is a page to read it on. A cell
+  // and the preview keep one line; a link or a rating keeps its own drawing.
+  const kind = field.field_type.kind
+  const written =
+    whole &&
+    typeof value === 'string' &&
+    (kind === 'long_text' ||
+      (kind === 'text' && !displayHint(type, field.key)?.display))
   return (
     <div role="listitem" className="group/row flex min-h-8 items-start gap-2">
       <div
@@ -325,7 +335,8 @@ function PropertyRow({
       <div
         ref={setAnchor}
         className={cn(
-          'flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-sm text-ink',
+          'flex min-h-8 min-w-0 flex-1 gap-1.5 rounded-md px-1.5 text-sm text-ink',
+          written && !editing ? 'items-start' : 'items-center',
           opens && !editing && 'cursor-text hover:bg-hover',
           editing &&
             style === 'inline' &&
@@ -349,6 +360,10 @@ function PropertyRow({
                 <span className="text-ink-faint">
                   {opens ? 'Empty' : 'Not set'}
                 </span>
+              ) : written ? (
+                <span className="min-w-0 py-1.5 leading-5 break-words whitespace-pre-wrap">
+                  {value}
+                </span>
               ) : (
                 <CrmFieldValue
                   type={type}
@@ -369,7 +384,10 @@ function PropertyRow({
                   event.stopPropagation()
                   setEditing(true)
                 }}
-                className="flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-faint opacity-0 group-hover/row:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus"
+                className={cn(
+                  'flex size-5 shrink-0 items-center justify-center rounded-sm text-ink-faint opacity-0 group-hover/row:opacity-100 hover:bg-hover hover:text-ink focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-focus',
+                  written && 'mt-1.5',
+                )}
               >
                 <Pencil aria-hidden className="size-3" />
               </button>
@@ -398,12 +416,15 @@ export function PropertyList({
   record,
   writes,
   writable,
+  whole = false,
   onOpenRelated,
 }: {
   type: ObjectType
   record: CrmRecord
   writes: CrmWrites
   writable: boolean
+  /** Show writing in full, on as many lines as it takes. */
+  whole?: boolean
   onOpenRelated: (type: ObjectType, id: string) => void
 }) {
   const identifier = identifierField(type)
@@ -420,6 +441,7 @@ export function PropertyList({
           field={field}
           writes={writes}
           writable={writable}
+          whole={whole}
           onOpenRelated={onOpenRelated}
         />
       ))}
