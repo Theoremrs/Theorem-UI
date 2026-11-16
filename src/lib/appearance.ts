@@ -38,18 +38,28 @@ const measure = z.number().min(20).max(100)
 const opaqueHex = z
   .string()
   .regex(/^#[0-9a-f]{6}$/i, 'Use an opaque, six-digit sRGB hex color.')
+/** The snippet with its comments taken out, so a comment cannot split a word the checks look for. */
+const uncommented = (css: string) => css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' ')
+
 /**
  * A custom CSS snippet, applied after the app's own styles. It travels with
- * an exported appearance, so it may not reach the network: no @import and no
- * url() but data: URLs.
+ * an exported appearance, so it may not reach the network: no @import, and no
+ * url() or src() but data: URLs. A browser decodes CSS escapes before it
+ * reads a word (`@\69 mport` is `@import`), so the snippet may hold none,
+ * and the functions that take a bare string as an address are refused.
  */
 export const customCssSchema = z
   .string()
   .max(20_000, 'Keep custom CSS under 20,000 characters.')
-  .refine((css) => !/@import/i.test(css), 'Custom CSS cannot use @import.')
+  .refine((css) => !css.includes('\\'), 'Custom CSS cannot use backslash escapes.')
+  .refine((css) => !/@import/i.test(uncommented(css)), 'Custom CSS cannot use @import.')
   .refine(
-    (css) => !/url\(\s*(?!['"]?data:)/i.test(css),
+    (css) => !/(?:url|src)\((?!\s*['"]?\s*data:)/i.test(uncommented(css)),
     'Custom CSS can only use data: URLs.',
+  )
+  .refine(
+    (css) => !/(?:image-set|image|cross-fade)\(/i.test(uncommented(css)),
+    'Custom CSS cannot use image-set(), image() or cross-fade(); use url() with a data: URL.',
   )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
 const customColors = z.record(customColorRoles, opaqueHex)
