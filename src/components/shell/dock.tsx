@@ -14,6 +14,7 @@ import {
   Suspense,
   lazy,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -69,6 +70,8 @@ import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
 import { cn } from '@/lib/utils'
+import { sheetShown } from '@/components/workbench/placement'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 
 import { DelegationPanel } from '@/components/chat/delegation-panel'
 import { ComparePane } from '@/components/review/compare-pane'
@@ -136,7 +139,11 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     api.group.header.hidden = inChat && alone
   }, [api, inChat, alone])
   return (
-    <div data-appearance-part="main" data-appearance-width-role="main" className="flex h-full min-w-0 flex-col">
+    <div
+      data-appearance-part="main"
+      data-appearance-width-role="main"
+      className="flex h-full min-w-0 flex-col"
+    >
       {inChat && (
         <ThreadHeader
           actions={
@@ -725,6 +732,15 @@ export function DockShell({
   }, [dock])
   /** Conversation the layout's artifact panels belong to. */
   const layoutThread = useRef<string | undefined>(undefined)
+  // A full-screen workbench covers this dock: a review asked for there (its
+  // Artifacts panel, its conversation's review card) brings the sheet back
+  // beside it so the review can be seen and used.
+  const { placement } = useWorkbenchPlacement()
+  const showSheet = useEffectEvent(() => {
+    const shell = useShell.getState()
+    const moved = sheetShown(placement, shell.lastCompanion)
+    if (moved) shell.setWorkbench(moved)
+  })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = useShell.getState().layouts[projectId]
@@ -777,8 +793,11 @@ export function DockShell({
       open: (delegationId, title) => openDelegation(dock, delegationId, title),
     })
     useReviewDock.setState({
-      open: (reviewId, options) =>
-        openReviewPanel(dock, reviewId, options?.quiet),
+      open: (reviewId, options) => {
+        // A quiet open is the dock noticing a new review, not someone asking.
+        if (!options?.quiet) showSheet()
+        openReviewPanel(dock, reviewId, options?.quiet)
+      },
       close: (reviewId) => {
         const panel = dock.getPanel(reviewPanelId(reviewId))
         if (panel) dock.removePanel(panel)

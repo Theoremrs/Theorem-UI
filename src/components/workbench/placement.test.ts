@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { placementOf, toggledPlacement } from './placement'
+import { placementOf, sheetShown, toggledPlacement } from './placement'
 
 describe('placementOf', () => {
   test('with no choice, the delivery switch puts the workbench full screen in chat mode only', () => {
@@ -38,5 +38,17 @@ describe('toggledPlacement', () => {
 
   test('from full screen, a toggle brings the conversation back beside it', () => {
     expect(toggledPlacement('full', 'side')).toBe('side')
+  })
+})
+
+describe('sheetShown', () => {
+  test('from full screen, the workbench moves beside the conversation so the sheet behind it shows', () => {
+    expect(sheetShown('full', 'bottom')).toBe('bottom')
+  })
+
+  test('anywhere else the sheet already shows, so nothing moves', () => {
+    expect(sheetShown('side', 'bottom')).toBeUndefined()
+    expect(sheetShown('bottom', 'side')).toBeUndefined()
+    expect(sheetShown(undefined, 'side')).toBeUndefined()
   })
 })

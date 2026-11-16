@@ -38,3 +38,15 @@ export function toggledPlacement(
 ): PlacementChoice {
   return current === wanted ? 'closed' : wanted
 }
+
+/**
+ * What showing the sheet asks of the workbench: full screen covers the sheet,
+ * so it moves beside the conversation (the companion last used); anywhere else
+ * the sheet already shows and nothing moves (`undefined`).
+ */
+export function sheetShown(
+  current: Placement | undefined,
+  last: Companion,
+): Companion | undefined {
+  return current === 'full' ? last : undefined
+}
