@@ -373,6 +373,19 @@
   margin-inline-start: auto;
   flex: 0 0 auto;
 }
+/* A narrow composer (project home, a split pane) keeps one toolbar row: the
+   Web and Plan chips drop to their marks (each keeps its aria-label and
+   tooltip) and the model name drops "(default)", instead of the row breaking
+   into two with the name cut off. */
+.appearance-composer-toolbar {
+  container: composer-toolbar / inline-size;
+}
+@container composer-toolbar (inline-size < 34rem) {
+  .composer-chip-label,
+  .model-picker-default {
+    display: none;
+  }
+}
 .appearance-composer-toolbar :is(button, [role='button']) {
   font: var(--recipe-ui-label);
   letter-spacing: 0.01em;
@@ -813,7 +826,9 @@
   overflow-wrap: anywhere;
 }
 
-@container (max-width: 28rem) {
+/* Only a phone-width toolbar gives the tools a row of their own; from 25rem
+   the chips' marks, the settings and the send fit on one row. */
+@container (max-width: 25rem) {
   .appearance-composer-toolbar {
     align-items: flex-end;
   }
