@@ -189,7 +189,11 @@ export function WorkbenchDock({
             'me-(--sheet-inset) mb-(--sheet-inset) h-(--dock-height) shrink-0',
         )}
       >
-        <Workbench projectId={projectId} shown={placement !== undefined} />
+        <Workbench
+          projectId={projectId}
+          shown={placement !== undefined}
+          companion={docked}
+        />
       </div>
     </>
   )

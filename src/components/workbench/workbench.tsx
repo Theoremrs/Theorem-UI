@@ -175,11 +175,14 @@ export function WorkbenchSurface({
   project,
   loadArrangements = false,
   shown = true,
+  companion = false,
   children,
 }: {
   connect: (dispatch: Dispatch, surface: SurfaceHost) => Adapter
   /** Whether the person can see it. Only then may a run's agent read and act on it (lib/workbench/agent). */
   shown?: boolean
+  /** Whether it stands beside the conversation rather than taking the whole sheet; the core decides what that leaves out. */
+  companion?: boolean
   /** Called once, after the first frame is on the page: what a story or an oracle waits for. */
   onDrawn?: () => void
   /** The project whose artifacts the Artifacts panel shows; absent, the panel's page side is not mounted. */
@@ -309,6 +312,10 @@ export function WorkbenchSurface({
     setWorkbenchHandle(mountedHandle)
     return () => setWorkbenchHandle(undefined)
   }, [shown, mountedHandle])
+
+  useEffect(() => {
+    mountedHandle?.set_companion(companion)
+  }, [companion, mountedHandle])
 
   return (
     <FeedContext.Provider value={feed}>
@@ -467,12 +474,15 @@ export function Workbench({
   projectId,
   projectTitle = 'This project',
   shown = true,
+  companion = false,
   children,
 }: {
   projectId: string
   projectTitle?: string
   /** Whether the person can see it (WorkbenchSurface). */
   shown?: boolean
+  /** Whether it stands beside the conversation (WorkbenchSurface). */
+  companion?: boolean
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const runtime = useConversationRuntime()
@@ -675,6 +685,7 @@ export function Workbench({
       connect={connect}
       project={{ id: projectId, title: projectTitle }}
       shown={shown}
+      companion={companion}
     >
       {(feed, parts) => (
         <>
