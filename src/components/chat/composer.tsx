@@ -29,7 +29,6 @@ import {
 } from '@/components/chat/composer-tools'
 import { EffortPicker } from '@/components/chat/effort-picker'
 import { ModelPicker } from '@/components/chat/model-picker'
-import { ResponseControl } from '@/components/chat/response-control'
 import {
   RunInputStatus,
   useBusyComposerInput,
@@ -249,7 +248,6 @@ export const ComposerSettings: FC = () => (
   <>
     <ModelPicker />
     <EffortPicker />
-    <ResponseControl />
     <AuiIf condition={(s) => s.thread.capabilities.dictation}>
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate
