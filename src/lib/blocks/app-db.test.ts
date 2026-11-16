@@ -5,7 +5,12 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { memoryDatabase } from '../../../test/blocks/memory-database'
 import type { MemoryDatabase } from '../../../test/blocks/memory-database'
 import { memoryWorkspace } from '../../../test/blocks/memory-workspace'
-import { appDatabaseDirectory, documentAppDatabases } from './app-db'
+import {
+  APP_HISTORY_DAYS,
+  appDatabaseDirectory,
+  compactWhenHistoryIsOld,
+  documentAppDatabases,
+} from './app-db'
 import type { DocumentDatabases } from './app-db'
 import { serveBridge } from './bridge'
 import { noCapabilities, parseHtmlDeclarations } from './declarations'
@@ -288,5 +293,70 @@ describe("an App's database over the bridge", () => {
     })
     await settled()
     expect(seen).toHaveLength(1)
+  })
+})
+
+describe('the history window', () => {
+  const DAY = 86_400_000
+  const now = 1_800_000_000_000
+  const database = (
+    oldestMs: number | null,
+    compactFails = false,
+    historyDays: number | null = APP_HISTORY_DAYS,
+  ) => {
+    const calls: string[] = []
+    return {
+      calls,
+      inspect: async () => {
+        calls.push('inspect')
+        return {
+          writable: true,
+          version: 3,
+          nodes: 1,
+          edges: 0,
+          history: oldestMs === null ? null : { commits: 3, oldestMs },
+          historyDays,
+        }
+      },
+      compact: async () => {
+        calls.push('compact')
+        if (compactFails) throw Object.assign(new Error('full'), { code: 'quota_exhausted' })
+        return { generation: 2, chunksRemoved: 4, bytesRemoved: 400, commitsRemoved: 2 }
+      },
+    }
+  }
+
+  test('a database is compacted once it holds versions a day past the window', async () => {
+    const old = database(now - (APP_HISTORY_DAYS + 2) * DAY)
+    expect(await compactWhenHistoryIsOld(old, now)).toBe(true)
+    expect(old.calls).toEqual(['inspect', 'compact'])
+  })
+
+  test('nothing is rewritten while every version is inside the window and its slack', async () => {
+    for (const oldestMs of [now - APP_HISTORY_DAYS * DAY, now - (APP_HISTORY_DAYS + 1) * DAY, null]) {
+      const recent = database(oldestMs)
+      expect(await compactWhenHistoryIsOld(recent, now)).toBe(false)
+      expect(recent.calls).toEqual(['inspect'])
+    }
+  })
+
+  test('the window is the one the database was opened with', async () => {
+    const weekly = database(now - 9 * DAY, false, 7)
+    expect(await compactWhenHistoryIsOld(weekly, now)).toBe(true)
+    const keepsAll = database(now - 900 * DAY, false, null)
+    expect(await compactWhenHistoryIsOld(keepsAll, now)).toBe(false)
+    expect(keepsAll.calls).toEqual(['inspect'])
+  })
+
+  test('a compaction that fails leaves the database usable', async () => {
+    const failing = database(now - 90 * DAY, true)
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      expect(await compactWhenHistoryIsOld(failing, now)).toBe(false)
+    } finally {
+      console.warn = warn
+    }
+    expect(failing.calls).toEqual(['inspect', 'compact'])
   })
 })

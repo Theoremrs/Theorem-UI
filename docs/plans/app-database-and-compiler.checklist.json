@@ -76,11 +76,13 @@
     {
       "id": "db-compaction",
       "requirement": "An App's database does not grow without bound: the browser store is compacted",
-      "status": "partial",
+      "status": "done",
       "evidence": [
-        "Not built. The engine's browser store refuses reclamation by design (rustyred-engine browser_projection.rs, chunk_store_browser_compaction_refused): OPFS has no atomic rename, and the route it names is a two-file generation switch",
+        "Before 2026-11-16: not built. The engine's browser store refuses reclamation by design (rustyred-engine browser_projection.rs, chunk_store_browser_compaction_refused): OPFS has no atomic rename, and the route it names is a two-file generation switch",
         "Measured in headless Chromium, 2026-11-10, 200 small nodes then 1000 one-node commits: the file grew about 7 KB per commit as Theorem UI opens it (controlEvents and keepHistory off), 7 MB in all, at about 33 ms per commit; with both on, about 100 KB and 100 ms per commit",
-        "2026-11-16: App databases moved to the canonical engine (@rustyreddb/browser 0.2.0 from Theorem rustyred-thg-browser, Theorem PR #1088). It compacts by a two-file generation switch, but retains every past version: measured natively, about 11.6 KB per one-node commit with control events off, and compaction reclaims 25-45%. Not yet exposed by the package or called here; a history retention window is the planned core change"
+        "2026-11-16: App databases moved to the canonical engine (@rustyreddb/browser 0.2.0 from Theorem rustyred-thg-browser, Theorem PR #1088). It compacts by a two-file generation switch, but retains every past version: measured natively, about 11.6 KB per one-node commit with control events off, and compaction reclaims 25-45%. Not yet exposed by the package or called here; a history retention window is the planned core change",
+        "Built 2026-11-16: a history retention window in the storage core (Theorem rustyred-thg-core RedCoreGraphStore::retain_history_since, history_extent), the package's historyDays open option and compact() (Theorem rustyred-thg-browser), and here src/lib/blocks/app-db.ts: every App database opens with historyDays 30 (APP_HISTORY_DAYS) and compactWhenHistoryIsOld rewrites it on open once it holds versions more than 31 days old. The current records are always kept, so growth is bounded by what an App writes in 30 days",
+        "Observed 2026-11-16, headless Chromium, bun run e2e:app-db (dev server and --built, 16 of 16 each): an App's inspect() reports historyDays 30; a database opened with historyDays 0, written three times and compacted on OPFS cut 2 of 3 commits, reclaimed 30 chunks (7,919 bytes), kept the current record, and reopened with 1 commit. The 31-day trigger itself is covered with injected time, not observed over real days: the app-db.test.ts 'history window' tests and the Theorem rustyred-thg-browser and rustyred-thg-core retention tests"
       ]
     },
     {

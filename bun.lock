@@ -1058,7 +1058,7 @@
 
     "@rollup/pluginutils": ["@rollup/pluginutils@5.5.1", "", { "dependencies": { "@types/estree": "^1.0.0", "estree-walker": "^2.0.2", "picomatch": "^4.0.2" }, "peerDependencies": { "rollup": "^1.20.0||^2.0.0||^3.0.0||^4.0.0" }, "optionalPeers": ["rollup"] }, "sha512-P9ZvnfouRu4MSC+ilERaw6FmZs8zqKhpHxEs4aGDGWQAMzQGXnhvCSvoNwokfNvdt7t3Y5Y4p6gStQgezeIqug=="],
 
-    "@rustyreddb/browser": ["@rustyreddb/browser@vendor/rustyreddb-browser-0.2.0.tgz", {}, "sha512-3/eZA8LYhGLVwxSkIwATR8CmDgT3zwqpP92ey4xOL1y/yEDKjskdtsSvYYUIWZKc7T7tsRKFkjiRMce7UF+TrQ=="],
+    "@rustyreddb/browser": ["@rustyreddb/browser@vendor/rustyreddb-browser-0.2.0.tgz", {}, "sha512-XaEciKBw+TJrHxKaLE4QVzPtEQzfhgkpOT/H6Xns4Me+AqlN8NhHJhYgA+j6GmyA/hw301AUOibaLb6/TyMuyA=="],
 
     "@rustyreddb/node": ["@rustyreddb/node@0.1.0-beta.2", "", { "optionalDependencies": { "@rustyreddb/node-darwin-arm64": "0.1.0-beta.2", "@rustyreddb/node-linux-x64-gnu": "0.1.0-beta.2" } }, "sha512-4hwdcLdwH1WzDCRc+GIoS2L8obk+G3k6h3Z4Igr+eBJO0775p3q5k3Nnu46AaNncUj1IsnOGuZ3cJIhoeKhc6g=="],
 

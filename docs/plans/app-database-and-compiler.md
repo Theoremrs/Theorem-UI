@@ -224,12 +224,16 @@ Open, in the order they matter:
 1. **A builder run.** Theorem PR #1002 tells the builder about `db`, the
    TypeScript form, the repair selection and `selection.source`. Nothing here
    has been exercised by a model yet: that needs the deployed stack.
-2. **Bounded history in the browser store.** Since 2026-11-16 App databases
-   run on Theorem's canonical engine (`@rustyreddb/browser` 0.2.0, built from
-   `rustyred-thg-browser`). It has two-file generation compaction, but it
-   keeps every past version, so compaction alone reclaims little. A retention
-   window that drops old versions at compaction is the planned storage-core
-   change. After that, the package can expose `compact` and this app can call it.
+2. **Bounded history in the browser store: built 2026-11-16.** App
+   databases run on Theorem's canonical engine (`@rustyreddb/browser` 0.2.0,
+   built from `rustyred-thg-browser`). Each opens with a 30-day history
+   window (`APP_HISTORY_DAYS` in `src/lib/blocks/app-db.ts`): the current
+   records are always kept, and versions older than the window are cut when
+   the database is compacted, which this app does on open once there is
+   something more than a day past the window. The window is a setting of the
+   handle; `openAppDatabase` takes another, but an App cannot choose its own
+   yet. Letting it would need a way to declare it, such as an option on
+   `db("name")`.
 3. **The phone measurement** of the checker.
 4. **Component plugins and style books.** Not started, and it needs decisions:
    where a library's source lives, how an App names the one it uses, and how

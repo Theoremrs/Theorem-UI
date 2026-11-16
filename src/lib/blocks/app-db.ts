@@ -27,13 +27,56 @@ export type OpenDatabaseAt = (directory: string) => Promise<OpenDatabase>
 /**
  * Nothing reads control events for an App's data, so none are written.
  */
-const openInBrowser: OpenDatabaseAt = async (directory) => {
+/**
+ * Days of past versions an App database keeps. Its current records are always
+ * kept; versions older than this are dropped when the database is compacted.
+ */
+export const APP_HISTORY_DAYS = 30
+
+const DAY_MS = 86_400_000
+
+/**
+ * Compact `database` when it holds versions more than a day older than the
+ * window it was opened with, so a database opened daily is rewritten about
+ * once a day at most, and one with nothing to drop is left alone. A failure
+ * leaves the database as it was, so it is reported and otherwise ignored.
+ */
+export async function compactWhenHistoryIsOld(
+  database: Pick<Database, 'inspect' | 'compact'>,
+  now: number = Date.now(),
+): Promise<boolean> {
+  try {
+    const { history, historyDays } = await database.inspect()
+    if (
+      !history ||
+      historyDays === null ||
+      history.oldestMs >= now - (historyDays + 1) * DAY_MS
+    )
+      return false
+    await database.compact()
+    return true
+  } catch (failure) {
+    console.warn('An App database could not be compacted', failure)
+    return false
+  }
+}
+
+/**
+ * Open an App's database in this origin's private file system, keeping
+ * `historyDays` of past versions, and compact it in the background when it
+ * holds older ones.
+ */
+export async function openAppDatabase(
+  directory: string,
+  { historyDays = APP_HISTORY_DAYS }: { historyDays?: number } = {},
+): Promise<Database> {
   const [{ open }, { default: wasm }] = await Promise.all([
     import('@rustyreddb/browser'),
     import('@rustyreddb/browser/rustyred.wasm?url'),
   ])
-  return open(directory, {
+  const database = await open(directory, {
     controlEvents: false,
+    historyDays,
     // Another tab showing this App uses the same database: one tab holds its
     // file and the rest reach it through that tab.
     shared: true,
@@ -43,7 +86,12 @@ const openInBrowser: OpenDatabaseAt = async (directory) => {
         type: 'module',
       }),
   })
+  // Calls made meanwhile wait behind it in the database's worker.
+  void compactWhenHistoryIsOld(database)
+  return database
 }
+
+const openInBrowser: OpenDatabaseAt = (directory) => openAppDatabase(directory)
 
 /**
  * A database that is nothing but memory, for a run that must not touch an

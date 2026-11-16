@@ -1,7 +1,7 @@
 // The page side of scripts/e2e/app-db.mjs: it mounts a hosted App the way the
 // app does (the hosted document, the block sandbox, the frame connection and
 // the App's databases), without a signed-in Theorem behind it.
-import { documentAppDatabases } from '@/lib/blocks/app-db'
+import { documentAppDatabases, openAppDatabase } from '@/lib/blocks/app-db'
 import { parseHtmlDeclarations } from '@/lib/blocks/declarations'
 import { pinnedAppHost, pinnedAppState } from '@/lib/blocks/document-app'
 import { BLOCK_SANDBOX, FrameConnection } from '@/lib/blocks/executor'
@@ -68,4 +68,26 @@ async function clear(): Promise<void> {
       await root.removeEntry(name, { recursive: true })
 }
 
-Object.assign(window, { oracle: { mount, unmount, clear } })
+/**
+ * Keep no past versions, write three, and compact: what the cut leaves, in the
+ * file and after reopening it.
+ */
+async function retention() {
+  const directory = 'theorem-app.retention.records'
+  const db = await openAppDatabase(directory, { historyDays: 0 })
+  for (const name of ['Alder', 'Birch', 'Cedar'])
+    await db.mutate({
+      upsertNodes: [{ id: 'org:a', labels: ['Org'], properties: { name } }],
+    })
+  const before = await db.inspect()
+  const report = await db.compact()
+  const after = await db.inspect()
+  await db.close()
+  const again = await openAppDatabase(directory)
+  const reopened = await again.inspect()
+  const node = await again.getNode('org:a')
+  await again.close()
+  return { before, report, after, reopened, node }
+}
+
+Object.assign(window, { oracle: { mount, unmount, clear, retention } })

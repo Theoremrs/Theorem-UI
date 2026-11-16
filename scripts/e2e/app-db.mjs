@@ -64,6 +64,18 @@ const UNDECLARED = `<!doctype html>
   })
 </script>`
 
+/** An App that asks how much history its database keeps. */
+const INSPECT = `<!doctype html>
+<meta name="theorem:uses" content='db("records")'>
+<p id="history"></p>
+<script>
+  theorem.db('records').then((db) => db.inspect()).then((inspection) => {
+    document.getElementById('history').textContent =
+      JSON.stringify([inspection.historyDays, inspection.history.commits > 0])
+    document.body.dataset.count = 'inspected'
+  }, (error) => { document.getElementById('history').textContent = error.code })
+</script>`
+
 /**
  * An App written the way Theorem's builder is told to (builder_app.md in the
  * Theorem repo): render from subscribe, change one field by reading the node
@@ -244,6 +256,28 @@ try {
   check(
     'and it does not reseed what is already there',
     (await rows('rebuilt', 2)).join() === 'Alder,Beech',
+  )
+
+  await mount('inspect', INSPECT, { documentId: 'app-1' })
+  await rows('inspect', 'inspected')
+  check(
+    "an App's database keeps 30 days of past versions",
+    (await frame('inspect').textContent('#history')) === '[30,true]',
+    await frame('inspect').textContent('#history'),
+  )
+  await unmount('inspect')
+
+  const kept = await page.evaluate(() => window.oracle.retention())
+  check(
+    'compaction cuts the versions older than the window and keeps the records',
+    kept.before.history.commits >= 3 &&
+      kept.report.commitsRemoved === kept.before.history.commits - 1 &&
+      kept.report.bytesRemoved > 0 &&
+      kept.after.history.commits === 1 &&
+      kept.reopened.history.commits === 1 &&
+      kept.reopened.historyDays === 30 &&
+      kept.node?.properties.name === 'Cedar',
+    kept,
   )
 
   // A second tab of the same browser, showing the same App.

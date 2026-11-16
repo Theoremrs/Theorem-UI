@@ -134,6 +134,10 @@ export class Databases {
           version: number
           nodes: number
           edges: number
+          /** Past versions kept, the current one included, and when the oldest was made. */
+          history: { commits: number; oldestMs: number } | null
+          /** Days of past versions kept; older ones go when the database is compacted. */
+          historyDays: number | null
         }>,
       mutate: (batch: DbBatch) =>
         run('mutate', batch) as Promise<{
