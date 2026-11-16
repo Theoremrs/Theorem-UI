@@ -1,6 +1,6 @@
-// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.history list / preview / restore operation (types ListHistoryRequest, PreviewHistoryRequest, RestoreHistoryRequest; the answer is NativeResult, read here), sent through ../ask with the request id as the idempotency key, as ../language/language does. The SDK's WorkspaceHistory-style helpers are not used for the reasons language.ts gives. Behaviour follows the IDE's theorem-timeline (history.list entries by operation id, newest first, the first 50; history.restore after the session's edits are flushed).
+// SOURCING: @theoremharness/sdk — each call is the generated client.ide.history list / preview / restore operation (types ListHistoryRequest, PreviewHistoryRequest, RestoreHistoryRequest; the answer is NativeResult, read here), sent through ../ask with the request id as the idempotency key, as ../language/language does. The SDK's WorkspaceHistory-style helpers are not used for the reasons language.ts gives. Behaviour follows the IDE's theorem-timeline (history.list entries by operation id, newest first, the first 50; history.restore after the session's edits are flushed).
 
-import type { TheoremClient } from '@theoremharness/sdk-ide'
+import type { TheoremClient } from '@theoremharness/sdk'
 import type { Environment, HostClient } from '../environment/environment'
 import { refused, statusOf } from '../environment/result'
 import type { Completion, Outcome } from '../environment/result'

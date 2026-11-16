@@ -2,7 +2,7 @@
 // in src/lib/theorem/client.ts; the workspace id rule is imported from src/components/ide/follow.ts.
 // Only wiring: every behavior lives in ./environment.
 
-import { TheoremClient, WorkspaceLive } from '@theoremharness/sdk-ide'
+import { TheoremClient, WorkspaceLive } from '@theoremharness/sdk'
 import { workspaceIdOf } from '@/components/ide/follow'
 import { bootstrap } from '@/lib/theorem/client'
 import { terminalHost } from '../terminal/host'

@@ -1,7 +1,7 @@
 // SOURCING: none — bun:test over ./layout and ./checkpoint with the environment's stub host and a stub database
 import { describe, expect, test } from 'bun:test'
 import type { Node } from '@rustyreddb/browser'
-import type { TheoremClient } from '@theoremharness/sdk-ide'
+import type { TheoremClient } from '@theoremharness/sdk'
 import { HttpError, stubHost, testEnvironment } from '../environment/test-host'
 import { createCheckpoints } from './checkpoint'
 import type { CheckpointDatabase } from './checkpoint'

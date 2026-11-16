@@ -1,10 +1,10 @@
-// SOURCING: @theoremharness/sdk-ide — `client.ide.terminal.*` (attach, input, inputBytes, kill, list and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
+// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` (attach, input, inputBytes, kill, list and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
 import type {
   TerminalListReply,
   TerminalOpenRequest,
   TheoremClient,
   WorkspaceLive,
-} from '@theoremharness/sdk-ide'
+} from '@theoremharness/sdk'
 import { herdrIdentity } from './protocol'
 import type { HerdrIdentity } from './protocol'
 import { parseProgramReport } from './program-report'
@@ -146,9 +146,9 @@ export function terminalHost(deps: TerminalDeps): TerminalHost {
       terminal.attach({ ...(await headers()), ...request }),
     async input(request) {
       const sent = { ...(await headers(request.input_id)), ...request }
-      return (await ('bytes_base64' in request
+      return await ('bytes_base64' in request
         ? terminal.inputBytes(sent)
-        : terminal.input(sent))) as InputReply
+        : terminal.input(sent))
     },
     resize: async (request) =>
       terminal.resize({ ...(await headers()), body: { ...request } }),

@@ -1021,7 +1021,11 @@ describe('the host’s terminal list', () => {
     const r = rig()
     const answer = {
       sessions: [],
-      adoption: { state: 'unavailable' as const, reason: 'the core is down' },
+      adoption: {
+        state: 'unavailable' as const,
+        reason: 'core_unavailable' as const,
+        next_step: 'retry' as const,
+      },
     }
     r.handlers.list = () => answer
     expect(await r.host.canList()).toBe(true)

@@ -1,5 +1,5 @@
-// SOURCING: @theoremharness/sdk-ide for the host's terminal types (attach reply, binding, lease, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
-import type { Theorem, WorkspaceLiveEvent } from '@theoremharness/sdk-ide'
+// SOURCING: @theoremharness/sdk for the host's terminal types (attach reply, binding, lease, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
+import type { Theorem, WorkspaceLiveEvent } from '@theoremharness/sdk'
 import { reason as readableReason } from '../environment/workspace-recovery'
 import { readable } from '../environment/redact'
 

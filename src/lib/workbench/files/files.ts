@@ -1,9 +1,9 @@
-// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.workspace.files* operation
+// SOURCING: @theoremharness/sdk — each call is the generated client.ide.workspace.files* operation
 // and file.changed arrives on WorkspaceLive, both through ../environment; the two list shapes are read
 // by ./directory-listing and copy-over by ./replace-entry (both copied verbatim from the Theia
 // extension). This file only maps the host's answers to the workbench's completion shape.
 
-import type { WorkspaceLiveEvents } from '@theoremharness/sdk-ide'
+import type { WorkspaceLiveEvents } from '@theoremharness/sdk'
 import type { Environment, OperationHeaders } from '../environment/environment'
 import { createRun } from '../environment/run'
 import { accepted, refused } from '../environment/result'

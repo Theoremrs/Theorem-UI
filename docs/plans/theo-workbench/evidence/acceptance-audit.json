@@ -1758,7 +1758,7 @@
    "capability": "SDK vendoring and Theia patches",
    "status": "differently",
    "evidence": "package.json; ide/",
-   "how": "Root has alpha.5 plus sdk-ide alpha.8. ide/ still has alpha.3 and its patches."
+   "how": "Root has one @theoremharness/sdk, 0.6.0-alpha.9, with no patch and no sdk-ide. ide/ still has alpha.3 and its patches."
   }
  ],
  "requirements_without_cases_or_code": [

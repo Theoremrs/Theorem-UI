@@ -9,7 +9,7 @@ import type {
   OwnerReply,
   TerminalPort,
 } from './adapter'
-import type { TerminalListReply } from '@theoremharness/sdk-ide'
+import type { TerminalListReply } from '@theoremharness/sdk'
 import type { TerminalHost } from './terminal'
 import type { Connectivity } from './terminal/wire'
 import { rig as terminalRig } from './terminal/test-rig'
@@ -2024,12 +2024,13 @@ describe('host events', () => {
         sessions: [row('pty-1', 'native')],
         adoption: {
           state: 'unavailable',
-          reason: 'the core refused the label',
+          reason: 'core_closed',
+          next_step: 'retry',
         },
       }
       t.announce({
         kind: 'terminal.adoption',
-        data: { state: 'unavailable', reason: 'the core refused the label' },
+        data: { state: 'unavailable', reason: 'core_closed', next_step: 'retry' },
       })
       await t.settle()
       const last = sessionLists(t).at(-1)!
@@ -2037,15 +2038,18 @@ describe('host events', () => {
       expect(last.profiles.filter((p) => p.backend === 'herdr')).toEqual([
         expect.objectContaining({
           available: false,
-          unavailableReason: 'the core refused the label',
+          unavailableReason:
+            'Herdr terminals cannot be reached: the core closed the connection. Retry to reconnect.',
         }),
         expect.objectContaining({
           available: false,
-          unavailableReason: 'the core refused the label',
+          unavailableReason:
+            'Herdr terminals cannot be reached: the core closed the connection. Retry to reconnect.',
         }),
         expect.objectContaining({
           available: false,
-          unavailableReason: 'the core refused the label',
+          unavailableReason:
+            'Herdr terminals cannot be reached: the core closed the connection. Retry to reconnect.',
         }),
       ])
     })
@@ -2098,17 +2102,26 @@ describe('host events', () => {
       expect(sessionLists(t).at(-1)!.adoption).toEqual({ state: 'settled' })
       answer = {
         sessions: [],
-        adoption: { state: 'unavailable', reason: 'core down' },
+        adoption: {
+          state: 'unavailable',
+          reason: 'core_unavailable',
+          next_step: 'retry',
+        },
       }
       t.announce({
         kind: 'terminal.adoption',
-        data: { state: 'unavailable', reason: 'core down' },
+        data: {
+          state: 'unavailable',
+          reason: 'core_unavailable',
+          next_step: 'retry',
+        },
       })
       await t.settle()
       last = sessionLists(t).at(-1)!
       expect(last.adoption).toEqual({
         state: 'unavailable',
-        reason: 'core down',
+        reason: 'core_unavailable',
+        next_step: 'retry',
       })
     })
 

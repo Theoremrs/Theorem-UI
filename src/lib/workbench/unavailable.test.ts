@@ -1,6 +1,6 @@
 // SOURCING: none — bun:test over every owner that lists or reads project data (files, scm, search, run, language, documents) with a client whose every operation fails; AC-51 (R40, R38). The SDK's own TheoremError and TheoremTimeoutError are the errors thrown.
 import { describe, expect, test } from 'bun:test'
-import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk-ide'
+import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk'
 import { createDocuments } from './documents/documents'
 import {
   op,

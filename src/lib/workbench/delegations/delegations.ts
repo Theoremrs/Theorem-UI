@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk — each call is the generated client.chat.runs.delegations / delegationContent operation (types Theorem.RunDelegations, Theorem.DelegationPart, Theorem.ChangeSetEntry, core.BinaryResponse). lru-cache holds the blobs: `max` and `maxSize` with `sizeCalculation` bound them, and `fetch()` with `fetchMethod` shares one load per key and does not keep a rejected load. TextDecoder is the platform's UTF-8 decoder. Behaviour follows the IDE's theorem-delegations provider and lib/theorem/delegations (LIVE_DELEGATION_STATES), whose Theia and React types are not imported.
+// SOURCING: @theoremharness/sdk — each call is the generated client.chat.runs.delegations / delegationContent operation (types Theorem.ChatRunDelegations, Theorem.DelegationPart, Theorem.ChangeSetEntry; the content is the text the server sends). lru-cache holds the blobs: `max` and `maxSize` with `sizeCalculation` bound them, and `fetch()` with `fetchMethod` shares one load per key and does not keep a rejected load. TextEncoder is the platform's UTF-8 encoder, used to count the text's bytes. Behaviour follows the IDE's theorem-delegations provider and lib/theorem/delegations (LIVE_DELEGATION_STATES), whose Theia and React types are not imported.
 
 import type { Theorem } from '@theoremharness/sdk'
 import { LRUCache } from 'lru-cache'
@@ -11,12 +11,12 @@ export interface DelegationsClient {
     runs: {
       delegations: (request: {
         runId: string
-      }) => PromiseLike<Pick<Theorem.RunDelegations, 'delegations'>>
+      }) => PromiseLike<Pick<Theorem.ChatRunDelegations, 'delegations'>>
       delegationContent: (request: {
         runId: string
         delegationId: string
         ref: string
-      }) => PromiseLike<{ arrayBuffer: () => Promise<ArrayBuffer> }>
+      }) => PromiseLike<string>
     }
   }
 }
@@ -71,8 +71,8 @@ export interface Delegations {
   /**
    * One side of one change as text. Refused: `no_such_change` (the path is not in the list),
    * `binary_skipped`, `no_such_side` (the before of an added file, the after of a deleted one),
-   * `no_longer_stored` (the host answered 404), `too_large` (over {@link MAX_TEXT_BYTES}), `not_text`
-   * (the bytes are not UTF-8), `stale_account` (the account changed while this was in flight).
+   * `no_longer_stored` (the host answered 404), `too_large` (over {@link MAX_TEXT_BYTES}),
+   * `stale_account` (the account changed while this was in flight).
    */
   content: (
     request: ContentRequest,
@@ -168,11 +168,9 @@ export function createDelegations({
     maxSize: MAX_CACHE_BYTES,
     sizeCalculation: ({ size }) => Math.max(1, size),
     fetchMethod: async (_key, _stale, { context: { request, ref } }) => {
-      let bytes: ArrayBuffer
+      let text: string
       try {
-        bytes = await (
-          await client.chat.runs.delegationContent({ ...request, ref })
-        ).arrayBuffer()
+        text = await client.chat.runs.delegationContent({ ...request, ref })
       } catch (error) {
         if (statusOf(error) === 404)
           throw new Refusal(
@@ -181,19 +179,13 @@ export function createDelegations({
           )
         throw error
       }
-      if (bytes.byteLength > MAX_TEXT_BYTES)
+      const size = new TextEncoder().encode(text).byteLength
+      if (size > MAX_TEXT_BYTES)
         throw new Refusal(
           'too_large',
-          `The file is ${bytes.byteLength} bytes; changes are shown up to ${MAX_TEXT_BYTES}`,
+          `The file is ${size} bytes; changes are shown up to ${MAX_TEXT_BYTES}`,
         )
-      try {
-        return {
-          text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-          size: bytes.byteLength,
-        }
-      } catch {
-        throw new Refusal('not_text', 'The file is not UTF-8 text')
-      }
+      return { text, size }
     },
   })
   const fetchText = (request: DelegationRequest, ref: string) =>

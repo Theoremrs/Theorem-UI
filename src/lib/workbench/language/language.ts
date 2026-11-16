@@ -1,6 +1,6 @@
-// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.language / navigation / refactor / diagnostics operation, sent through ../ask with the request id as the idempotency key. The SDK's WorkspaceLanguage class is not used: it freezes one CSRF token at construction, mints its own idempotency key per call (so the workbench's request id cannot be the host's), and has no place for a stale-generation guard. Its request bodies (document and position fields) and its reading of the host's answers are copied from it.
+// SOURCING: @theoremharness/sdk — each call is the generated client.ide.language / navigation / refactor / diagnostics operation, sent through ../ask with the request id as the idempotency key. The SDK's WorkspaceLanguage class is not used: it freezes one CSRF token at construction, mints its own idempotency key per call (so the workbench's request id cannot be the host's), and has no place for a stale-generation guard. Its request bodies (document and position fields) and its reading of the host's answers are copied from it.
 
-import type { TheoremClient } from '@theoremharness/sdk-ide'
+import type { TheoremClient } from '@theoremharness/sdk'
 import type { Environment, HostClient } from '../environment/environment'
 import { refused } from '../environment/result'
 import type { Completion } from '../environment/result'

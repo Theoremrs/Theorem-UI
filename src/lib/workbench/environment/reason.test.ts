@@ -1,6 +1,6 @@
 // SOURCING: none — bun:test over ./workspace-recovery's reason and ./redact, with the SDK's own error classes; AC-51 (R40) and AC-53 (R42) at the owners' shared error reading
 import { describe, expect, test } from 'bun:test'
-import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk-ide'
+import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk'
 import { readable, REASON_LIMIT, redact } from './redact'
 import { reason } from './workspace-recovery'
 

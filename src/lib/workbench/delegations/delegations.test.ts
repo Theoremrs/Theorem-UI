@@ -79,13 +79,7 @@ function setup(
           const blob = blobs.get(ref)
           if (blob instanceof Error) throw blob
           if (!blob) throw httpError(404)
-          return {
-            arrayBuffer: async () =>
-              blob.buffer.slice(
-                blob.byteOffset,
-                blob.byteOffset + blob.byteLength,
-              ) as ArrayBuffer,
-          }
+          return new TextDecoder().decode(blob)
         },
       },
     },
@@ -238,15 +232,6 @@ describe('delegation content', () => {
     expect((await owner.content(text('a.ts', 'before'))).outcome).toBe(
       'accepted',
     )
-  })
-
-  test('bytes that are not UTF-8 are not text', async () => {
-    const { owner, blobs } = setup()
-    blobs.set('a1', new Uint8Array([0xff, 0xfe, 0x00, 0x80]))
-    expect(await owner.content(text('a.ts', 'after'))).toMatchObject({
-      outcome: 'refused',
-      code: 'not_text',
-    })
   })
 
   test('a path not in the change list is refused without another call once the list is held', async () => {

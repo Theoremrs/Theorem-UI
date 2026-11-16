@@ -49,10 +49,7 @@ function setup() {
         delegationContent: async ({ ref }) => {
           calls.push(`blob:${ref}`)
           await gate
-          return {
-            arrayBuffer: async () =>
-              new TextEncoder().encode(`text of ${ref}`).buffer,
-          }
+          return `text of ${ref}`
         },
       },
     },

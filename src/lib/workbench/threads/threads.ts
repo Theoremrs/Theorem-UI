@@ -52,7 +52,7 @@ export interface ThreadsClient {
     runs: {
       delegations: (request: {
         runId: string
-      }) => PromiseLike<Pick<Theorem.RunDelegations, 'delegations'>>
+      }) => PromiseLike<Pick<Theorem.ChatRunDelegations, 'delegations'>>
     }
   }
 }

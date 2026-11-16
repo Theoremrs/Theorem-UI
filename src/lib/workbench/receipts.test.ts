@@ -1,7 +1,7 @@
 // SOURCING: none — bun:test over the documents, SCM and terminal owners (through their ports where they have one and the adapter's completionFor) with the SDK's own error classes and a captured console; AC-53 (R42, R47)
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { inspect } from 'node:util'
-import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk-ide'
+import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk'
 import { completionFor } from './adapter'
 import { createDocuments } from './documents/documents'
 import { createDocumentsPort } from './documents/port'

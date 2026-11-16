@@ -1,11 +1,11 @@
-// SOURCING: @theoremharness/sdk-ide — each call is the generated client.ide.scm.* operation, sent through
+// SOURCING: @theoremharness/sdk — each call is the generated client.ide.scm.* operation, sent through
 // ../environment with the request id as the idempotency key. The SDK's WorkspaceScm class is not used:
 // it freezes one CSRF token at construction, mints its own idempotency key per call (so the workbench's
 // request id cannot be the host's), returns bare results with no state revision, and has no diff, log,
 // blame, merge or amend. ./blame-hunks is copied from the Theia extension. A diff is read as the
 // unified text plus the hunks the host already parses, so jsdiff (installed) is not needed here.
 
-import type { ScmResolveRequest } from '@theoremharness/sdk-ide'
+import type { ScmResolveRequest } from '@theoremharness/sdk'
 import type {
   Environment,
   HostClient,

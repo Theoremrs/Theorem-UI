@@ -116,11 +116,10 @@ export function useDelegationContent(
     gcTime: 10 * 60_000,
     queryFn: async ({ signal }) => {
       try {
-        const content = await theorem().chat.runs.delegationContent(
+        return await theorem().chat.runs.delegationContent(
           { runId, delegationId, ref: ref! },
           { abortSignal: signal },
         )
-        return new TextDecoder().decode(await content.arrayBuffer())
       } catch (error) {
         throw new Error(
           error instanceof TheoremError && error.statusCode === 404

@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk-ide — each call is the generated client.documentSessions.* operation
+// SOURCING: @theoremharness/sdk — each call is the generated client.documentSessions.* operation
 // (open, edit, save, close, head, reconcile), live document events arrive on WorkspaceLive through
 // ../environment, and utf16ToScalar / scalarToUtf16 are the SDK's own offset helpers. The SDK's
 // DocumentSession class is NOT used: its constructor is private and wants a full TheoremClient and
@@ -7,8 +7,8 @@
 // workbench's contract is the opposite: the Rust side rebases, so a stale edit is refused as a conflict
 // and its text is kept here until the caller settles it. This file maps the host's answers to that.
 
-import { scalarToUtf16, utf16ToScalar } from '@theoremharness/sdk-ide'
-import type { WorkspaceLiveEvents } from '@theoremharness/sdk-ide'
+import { scalarToUtf16, utf16ToScalar } from '@theoremharness/sdk'
+import type { WorkspaceLiveEvents } from '@theoremharness/sdk'
 import type {
   Environment,
   HostClient,
