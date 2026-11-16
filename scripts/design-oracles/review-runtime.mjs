@@ -1,4 +1,4 @@
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides } from './browser-controls.mjs'
 // Real browser, shell, editor, attachment adapter, Theorem runtime and SDK.
 // Only selected responses of the existing story transport are controlled.
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -397,10 +397,10 @@ try {
   const before = await assertDomIdentity()
   const dialog = page.getByRole('dialog', { name: 'Appearance settings' })
   await control('Appearance').click()
-  await chooseOption(page, dialog, 'Composer material', 'Frosted glass')
-  await dialog
-    .getByRole('button', { name: 'Tools above editor', exact: true })
-    .click()
+  await applyOverrides(page, dialog, {
+    materials: { composer: 'glass' },
+    layout: 'sidecar',
+  })
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
   await input.focus()
   const after = await assertDomIdentity()

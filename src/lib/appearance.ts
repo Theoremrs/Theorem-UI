@@ -38,6 +38,19 @@ const measure = z.number().min(20).max(100)
 const opaqueHex = z
   .string()
   .regex(/^#[0-9a-f]{6}$/i, 'Use an opaque, six-digit sRGB hex color.')
+/**
+ * A custom CSS snippet, applied after the app's own styles. It travels with
+ * an exported appearance, so it may not reach the network: no @import and no
+ * url() but data: URLs.
+ */
+export const customCssSchema = z
+  .string()
+  .max(20_000, 'Keep custom CSS under 20,000 characters.')
+  .refine((css) => !/@import/i.test(css), 'Custom CSS cannot use @import.')
+  .refine(
+    (css) => !/url\(\s*(?!['"]?data:)/i.test(css),
+    'Custom CSS can only use data: URLs.',
+  )
 const customColorRoles = z.enum([...new Set(Object.values(COLOR_ROLES))])
 const customColors = z.record(customColorRoles, opaqueHex)
 
@@ -96,6 +109,7 @@ const appearanceOptionsSchema = z
     layout,
     motion,
     preview: previewPreferenceSchema,
+    css: customCssSchema,
     scales: z
       .strictObject({ content: scale, ui: scale, code: scale })
       .partial(),
@@ -183,6 +197,7 @@ export function resolveAppearance({ preset, overrides }: AppearanceSelection) {
     reading: overrides.reading ?? 'comfortable',
     layout: overrides.layout ?? 'conversation',
     motion: overrides.motion ?? 'system',
+    css: overrides.css ?? '',
     scales: { content: 1, ui: 1, code: 1, ...overrides.scales },
     materials: {
       ...defaults.materials,
@@ -321,8 +336,13 @@ function applyAppearance(appearance: ResolvedAppearance) {
   root.dataset.appearanceState = JSON.stringify(appearance)
   for (const role of SURFACE_ROLES)
     root.setAttribute(`data-material-${role}`, appearance.materials[role])
-  for (const [name, value] of Object.entries(appearance.scales))
-    root.style.setProperty(`--appearance-scale-${name}`, `${value}`)
+  // Only a chosen size goes on the root, so custom CSS can set the rest
+  // (appearance.css holds the defaults).
+  for (const [name, value] of Object.entries(appearance.scales)) {
+    if (value === 1) root.style.removeProperty(`--appearance-scale-${name}`)
+    else root.style.setProperty(`--appearance-scale-${name}`, `${value}`)
+  }
+  applyCustomCss(appearance.css)
   const { font, customPalette } = appearance
   const properties = {
     '--appearance-prose-line-height': `calc(${TEXT_RECIPES.prose.size * (font?.contentLineHeight ?? TEXT_RECIPES.prose.lineHeight)}rem * var(--appearance-scale-content))`,
@@ -355,6 +375,33 @@ function applyAppearance(appearance: ResolvedAppearance) {
       else root.style.removeProperty(name)
     }
   }
+}
+
+const CUSTOM_CSS_ID = 'theorem-custom-css'
+
+/**
+ * The snippet goes last in the document, after every stylesheet the app
+ * loads, so a rule of equal weight to the app's own wins.
+ */
+function applyCustomCss(css: string) {
+  let style = document.getElementById(CUSTOM_CSS_ID)
+  if (!css) {
+    style?.remove()
+    return
+  }
+  if (!style) {
+    style = document.createElement('style')
+    style.id = CUSTOM_CSS_ID
+  }
+  if (style.textContent !== css) style.textContent = css
+  const place = () => {
+    const parent = document.body ?? document.head
+    if (style.parentNode !== parent || style.nextElementSibling)
+      parent.append(style)
+  }
+  place()
+  if (!document.body)
+    document.addEventListener('DOMContentLoaded', place, { once: true })
 }
 
 if (typeof window !== 'undefined') {

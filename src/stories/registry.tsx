@@ -49,6 +49,7 @@ import { ContextPanel } from '@/components/shell/sidebar'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
+import { FaceFeel } from '@/components/face/face-feel'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
@@ -826,6 +827,13 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
     <WithRuntime>
       <GlassCompareStory />
     </WithRuntime>
+  ),
+  // Theo's motion constants, tuned against the live face. A development bench,
+  // not a setting: the product's Appearance page does not show it.
+  'face-feel': () => (
+    <div className="mx-auto max-w-2xl p-6">
+      <FaceFeel />
+    </div>
   ),
   'conversation-wide': ConversationWideStory,
   'note-kinds': NoteKindsStory,

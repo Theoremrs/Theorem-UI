@@ -209,7 +209,7 @@ try {
   )
   await page.reload()
   await settings
-    .getByRole('combobox', { name: 'Composer material', exact: true })
+    .getByRole('textbox', { name: 'Text size', exact: true })
     .waitFor()
   await attach()
   const persisted = await page.evaluate(() => ({

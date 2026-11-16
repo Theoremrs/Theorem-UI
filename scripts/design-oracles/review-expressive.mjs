@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { launchReviewBrowser } from './review-browser.mjs'
 import { wcagContrast } from 'culori'
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides, chooseOption } from './browser-controls.mjs'
 
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
 const out =
@@ -162,7 +162,7 @@ try {
           .count(),
         0,
       )
-      await chooseOption(page, dialog, 'Background material', 'Frosted glass')
+      await applyOverrides(page, dialog, { materials: { canvas: 'glass' } })
       await page.waitForFunction(
         () => document.documentElement.dataset.materialCanvas === 'glass',
       )
@@ -174,7 +174,7 @@ try {
       )
       assert.equal(overrides.materials.canvas, 'glass')
       assert.equal(overrides.materials['assistant-reading'], undefined)
-      await chooseOption(page, dialog, 'Background material', 'Paper')
+      await applyOverrides(page, dialog, { materials: { canvas: 'paper' } })
       const density = dialog.getByRole('combobox', {
         name: 'Density',
         exact: true,
@@ -191,10 +191,10 @@ try {
       )
       await chooseOption(page, dialog, 'Density', 'Comfortable')
       const size = dialog.getByRole('textbox', {
-        name: 'Content size',
+        name: 'Text size',
         exact: true,
       })
-      await size.fill('125')
+      await size.fill('20')
       await size.press('Tab')
       await settle()
       assert.equal(
@@ -205,7 +205,7 @@ try {
         ),
         1.25,
       )
-      await size.fill('100')
+      await size.fill('16')
       await size.press('Tab')
       await dialog.getByRole('button', { name: 'Close', exact: true }).click()
     },
