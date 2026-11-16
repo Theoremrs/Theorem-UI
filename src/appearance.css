@@ -745,6 +745,23 @@
 .aui-composer-send-icon .icon-mask {
   background-color: currentColor;
 }
+/* Send has no tile: the plane is filled with the accent the tile used to be,
+   under the ink outline, so it reads in light and dark alike. Masks only:
+   without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-send:is(:hover, :focus-visible)
+    .aui-composer-send-icon
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-send:active .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
 /* The stop mark on a filled action (Cancel, Stop generating) and the
    microphone-off of a running dictation are drawn in their button's own
    colour: the ring and the square on the destructive fill, and the mark in
