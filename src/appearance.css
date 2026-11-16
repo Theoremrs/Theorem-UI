@@ -786,19 +786,20 @@
   .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
     background-color: currentColor;
   }
-  /* Resume has no tile either: its arrows take the accent, like Send. */
-  .aui-composer-resume-icon.rail-mark > [data-layer='tint'] {
+  /* Resume has no tile either: its arrows take the accent, like Send. Refresh
+     is a soft mark, so its arrows are drawn as the paper layer. */
+  .aui-composer-resume-icon.rail-mark > [data-layer='paper'] {
     background-color: var(--redwood);
     transition: background-color 150ms;
   }
   .aui-composer-resume:is(:hover, :focus-visible)
     .aui-composer-resume-icon.rail-mark
-    > [data-layer='tint'] {
+    > [data-layer='paper'] {
     background-color: var(--redwood-hover);
   }
   .aui-composer-resume:active
     .aui-composer-resume-icon.rail-mark
-    > [data-layer='tint'] {
+    > [data-layer='paper'] {
     background-color: var(--redwood-pressed);
   }
 }

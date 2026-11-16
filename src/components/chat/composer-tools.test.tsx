@@ -537,3 +537,34 @@ test('the account default effort stands in the menu until the conversation choos
   expect(useGenerationOverrides.getState().byThread[DRAFT]).toBeUndefined()
   expect(generationTurnOptions().effort).toBe('high')
 })
+
+test("a conversation's own response limits can be dropped from the effort menu, keeping its effort", async () => {
+  modelsBody = { defaultRef: FLASH.ref, models: [FLASH, OPUS], openrouter: { status: 'live' } }
+  useGenerationOverrides.setState({
+    byThread: { [DRAFT]: { effort: 'high', responseDetail: 'concise', runBudget: { maxSteps: 4 } } },
+  })
+  const { container } = await mount(<Harness text="Hello" sent={[]} />)
+  const trigger = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]'),
+  )
+  await act(() => trigger.click())
+  const reset = await waitFor(() =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === 'Use account response limits',
+    ),
+  )
+  await act(() => reset.click())
+  expect(useGenerationOverrides.getState().byThread[DRAFT]).toEqual({ effort: 'high' })
+})
+
+test('the effort menu offers no limits reset while the conversation has none of its own', async () => {
+  modelsBody = { defaultRef: FLASH.ref, models: [FLASH, OPUS], openrouter: { status: 'live' } }
+  useGenerationOverrides.setState({ byThread: { [DRAFT]: { effort: 'high' } } })
+  const { container } = await mount(<Harness text="Hello" sent={[]} />)
+  const trigger = await waitFor(() =>
+    container.querySelector<HTMLButtonElement>('[aria-label="Reasoning effort"]'),
+  )
+  await act(() => trigger.click())
+  await waitFor(() => document.querySelector('[role="menuitemradio"]'))
+  expect(document.querySelector('[role="menuitem"]')).toBeNull()
+})
