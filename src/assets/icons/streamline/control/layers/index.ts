@@ -78,6 +78,26 @@ import fileAddPaper from './fileAdd-paper.svg'
 import imageFileEditLine from './imageFileEdit-line.svg'
 import imageFileEditAccent from './imageFileEdit-accent.svg'
 import imageFileEditPaper from './imageFileEdit-paper.svg'
+import settingsLine from './settings-line.svg'
+import settingsTint from './settings-tint.svg'
+import settingsPaper from './settings-paper.svg'
+import archiveLine from './archive-line.svg'
+import archiveAccent from './archive-accent.svg'
+import linkLine from './link-line.svg'
+import linkTint from './link-tint.svg'
+import eyeLine from './eye-line.svg'
+import eyeAccent from './eye-accent.svg'
+import eyeTint from './eye-tint.svg'
+import hideLine from './hide-line.svg'
+import hideAccent from './hide-accent.svg'
+import stopLine from './stop-line.svg'
+import stopAccent from './stop-accent.svg'
+import stopPaper from './stop-paper.svg'
+import detachLine from './detach-line.svg'
+import detachAccent from './detach-accent.svg'
+import detachPaper from './detach-paper.svg'
+import micOffLine from './micOff-line.svg'
+import micOffAccent from './micOff-accent.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -104,6 +124,14 @@ export const CONTROL_LAYERS = {
   fileEdit: { line: fileEditLine, accent: fileEditAccent, tint: fileEditTint, paper: fileEditPaper },
   fileAdd: { line: fileAddLine, accent: fileAddAccent, tint: fileAddTint, paper: fileAddPaper },
   imageFileEdit: { line: imageFileEditLine, accent: imageFileEditAccent, paper: imageFileEditPaper },
+  settings: { line: settingsLine, tint: settingsTint, paper: settingsPaper },
+  archive: { line: archiveLine, accent: archiveAccent },
+  link: { line: linkLine, tint: linkTint },
+  eye: { line: eyeLine, accent: eyeAccent, tint: eyeTint },
+  hide: { line: hideLine, accent: hideAccent },
+  stop: { line: stopLine, accent: stopAccent, paper: stopPaper },
+  detach: { line: detachLine, accent: detachAccent, paper: detachPaper },
+  micOff: { line: micOffLine, accent: micOffAccent },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

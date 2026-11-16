@@ -72,16 +72,50 @@ export const CONTROLS = [
   { name: 'approval', source: 'control/source/streamline-file-question.png' },
   { name: 'search', source: 'control/source/streamline-search.png' },
   // Session marks: a session's type, and the states that outrank it.
-  { name: 'fileText', source: 'control/source/streamline-common-file-text.png' },
+  {
+    name: 'fileText',
+    source: 'control/source/streamline-common-file-text.png',
+  },
   { name: 'fileCode', source: 'control/source/streamline-file-code.png' },
-  { name: 'fileCheck', source: 'control/source/streamline-common-file-check.png' },
-  { name: 'fileModule', source: 'control/source/streamline-common-file-module.png' },
-  { name: 'fileDouble', source: 'control/source/streamline-common-file-double.png' },
-  { name: 'fileDouble2', source: 'control/source/streamline-common-file-double-2.png' },
-  { name: 'fileEmpty', source: 'control/source/streamline-common-file-empty.png' },
-  { name: 'fileEdit', source: 'control/source/streamline-common-file-edit.png' },
+  {
+    name: 'fileCheck',
+    source: 'control/source/streamline-common-file-check.png',
+  },
+  {
+    name: 'fileModule',
+    source: 'control/source/streamline-common-file-module.png',
+  },
+  {
+    name: 'fileDouble',
+    source: 'control/source/streamline-common-file-double.png',
+  },
+  {
+    name: 'fileDouble2',
+    source: 'control/source/streamline-common-file-double-2.png',
+  },
+  {
+    name: 'fileEmpty',
+    source: 'control/source/streamline-common-file-empty.png',
+  },
+  {
+    name: 'fileEdit',
+    source: 'control/source/streamline-common-file-edit.png',
+  },
   { name: 'fileAdd', source: 'control/source/streamline-common-file-add.png' },
-  { name: 'imageFileEdit', source: 'control/source/streamline-image-file-edit.png' },
+  {
+    name: 'imageFileEdit',
+    source: 'control/source/streamline-image-file-edit.png',
+  },
+  // Owner's 2026-11-15 set, replacing the Noun marks: grey at rest, coloured
+  // when their control is chosen (styles.css).
+  { name: 'settings', source: 'control/source/streamline-cog.png' },
+  { name: 'archive', source: 'control/source/streamline-archive.png' },
+  { name: 'link', source: 'control/source/streamline-hyperlink-3.png' },
+  { name: 'eye', source: 'control/source/streamline-glasses-retro-1.png' },
+  { name: 'hide', source: 'control/source/streamline-glasses-sun.png' },
+  { name: 'stop', source: 'control/source/streamline-button-stop-1.png' },
+  { name: 'detach', source: 'control/source/streamline-expand-6.png' },
+  { name: 'micOff', source: 'control/source/streamline-microphone-off.png' },
 ]
 
 /**

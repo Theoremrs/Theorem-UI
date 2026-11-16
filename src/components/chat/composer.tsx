@@ -283,7 +283,7 @@ export const ComposerSettings: FC = () => (
             />
           }
         >
-          <Icon.Stop className="aui-composer-stop-dictation-icon size-4 animate-pulse" />
+          <Icon.MicOff className="aui-composer-stop-dictation-icon size-4 animate-pulse" />
         </ComposerPrimitive.StopDictation>
       </AuiIf>
     </AuiIf>

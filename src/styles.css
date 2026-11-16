@@ -294,7 +294,7 @@
   --color-separator: var(--line-separator);
   --color-control: var(--line-control);
   --color-redwood: var(--redwood);
-  --color-folder: var(--ink-muted);
+  --color-folder: var(--redwood);
   --color-folder-agent: var(--folder-agent);
   --color-redwood-hover: var(--redwood-hover);
   --color-redwood-pressed: var(--redwood-pressed);
@@ -1379,6 +1379,49 @@
 
   .rail-mark > [data-layer='paper'] {
     background-color: var(--rail-paper);
+  }
+
+  /* Colour is for the rail and for state. Away from the rail a coloured mark
+     rests in greys, as Claude's, Linear's and Codex's controls do, and takes
+     its colour back when its control is chosen: a pressed toggle (Web, Plan),
+     the current row, a selected or checked item. The greys are the control's
+     text colour over whatever is behind the mark, so they follow the
+     palette, the mode and the glass the same way the colours do. Owner's
+     review, 2026-11-15. */
+  .rail-mark:not(
+    :is(
+        [data-appearance-part='rail'],
+        [aria-pressed='true'],
+        [aria-selected='true'],
+        [aria-current]:not([aria-current='false']),
+        [data-active]:not([data-active='false']),
+        [data-state='on'],
+        [data-state='checked']
+      )
+      .rail-mark
+  ) {
+    > .icon-mask {
+      transition: background-color 150ms;
+    }
+
+    /* At rest it is a one-colour mark like its neighbours: the outline in
+       the control's own text colour (muted, then ink on hover) and the fills
+       as washes of it. */
+    > [data-layer='line'] {
+      background-color: currentColor;
+    }
+
+    > [data-layer='accent'] {
+      background-color: color-mix(in oklab, currentColor 34%, transparent);
+    }
+
+    > [data-layer='tint'] {
+      background-color: color-mix(in oklab, currentColor 16%, transparent);
+    }
+
+    > [data-layer='paper'] {
+      background-color: color-mix(in oklab, currentColor 5%, transparent);
+    }
   }
 
   /* Without CSS masks (Servo 0.7) each layer's colour would fill its whole box.

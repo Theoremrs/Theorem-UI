@@ -5,11 +5,8 @@
 // TheoremWeb uses (stroke outlines; provenance in PROVENANCE.md).
 import type { CSSProperties, ComponentProps, FC } from 'react'
 import { cn } from '@/lib/utils'
-import Close from '@/assets/icons/composer/noun-close-8086061.svg?react'
 import Microphone from '@/assets/icons/composer/noun-microphone-8216254.svg?react'
 import Refresh from '@/assets/icons/composer/noun-refresh-8086048.svg?react'
-import Settings from '@/assets/icons/composer/noun-settings-8086044.svg?react'
-import Stop from '@/assets/icons/composer/noun-stop-8086088.svg?react'
 import CopiedMark from '@/assets/icons/message/theorem-copied.svg?react'
 import EditMark from '@/assets/icons/message/theorem-edit.svg?react'
 import MoreMark from '@/assets/icons/message/theorem-more.svg?react'
@@ -41,7 +38,6 @@ import {
   ChevronsRight as Last,
   ChevronsUpDown as UpDown,
   CornerDownRight as Continue,
-  EyeOff as Hide,
   GripVertical as Grip,
   KeyRound as Key,
   Pause,
@@ -57,7 +53,6 @@ import {
   SquareTerminal as Terminal,
   Star,
   Trash2 as Delete,
-  X,
   BellOff as Mute,
   History,
   Radar,
@@ -85,19 +80,14 @@ import {
   LayoutGrid as Apps,
   ListChecks as Checklist,
   MessagesSquare as Conversation,
-  SquareArrowOutUpRight as Detach,
   Sparkles as Sparkle,
   Undo2 as Undo,
 } from 'lucide-react'
 import PenroseTriangle from '@/assets/icons/rail/noun-penrose-triangle-881122.svg?react'
 import Projects from '@/assets/icons/rail/noun-projects-8375031.svg?react'
-import Archive from '@/assets/icons/records/noun-archive-8315826.svg?react'
 import Check from '@/assets/icons/records/noun-checkmark-8086058.svg?react'
 import Coding from '@/assets/icons/records/noun-coding-8259870.svg?react'
-import Expand from '@/assets/icons/records/noun-expand-8086092.svg?react'
-import Eye from '@/assets/icons/records/noun-eye-8086063.svg?react'
 import Menu from '@/assets/icons/records/noun-menu-8086045.svg?react'
-import Link from '@/assets/icons/records/noun-link-8086078.svg?react'
 import ProjectRow from '@/assets/icons/tree/noun-data-8394841.svg?react'
 import FolderClosed from '@/assets/icons/streamline/streamline-folder.png'
 import AgentCursor from '@/assets/icons/streamline/streamline-agent-software-cursor-bot-2.png'
@@ -128,6 +118,8 @@ import SearchSquare from '@/assets/icons/streamline/streamline-search-square.png
 import SquareWireframe from '@/assets/icons/streamline/streamline-square-wireframe-3d.png'
 import ShareBox from '@/assets/icons/streamline/streamline-share-1.png'
 import XMark from '@/assets/icons/streamline/streamline-x.png'
+import CloseMark from '@/assets/icons/streamline/streamline-close.png'
+import ExpandMark from '@/assets/icons/streamline/streamline-expand-2.png'
 import AppWindowCode from '@/assets/icons/streamline/streamline-app-window-code.png'
 import ListEdit from '@/assets/icons/streamline/streamline-list-edit.png'
 
@@ -258,22 +250,19 @@ export const painted = (
 /**
  * The folder and the file as the notes tree draws them. A project in the
  * sidebar and an entry in the file explorer are the same two marks, so a
- * folder is one thing wherever it is listed. Both are outlines in the muted
- * ink, as Obsidian's and Linear's trees draw them: the accent is kept for
- * state (selection, focus, the send action), not repeated down every row.
+ * folder is one thing wherever it is listed. Their colours are their own:
+ * a caller's text colour does not repaint them.
  */
 const Folder: SvgMark = ({ className, ...props }) => (
   <LucideFolder
     aria-hidden="true"
-    strokeWidth={1.75}
     {...props}
-    className={cn('size-4 shrink-0', className, 'text-folder')}
+    className={cn('size-4 shrink-0', className, 'fill-folder text-folder')}
   />
 )
 const FileEntry: SvgMark = ({ className, ...props }) => (
   <LucideFile
     aria-hidden="true"
-    strokeWidth={1.75}
     {...props}
     className={cn('size-4 shrink-0', className, 'text-ink-muted')}
   />
@@ -443,6 +432,21 @@ const SessionContinued = painted(CONTROL_LAYERS.fileDouble, 45, true)
 const SessionPair = painted(CONTROL_LAYERS.fileDouble2, 45, true)
 const SessionEmpty = painted(CONTROL_LAYERS.fileEmpty, 180, true)
 
+/* The owner's 2026-11-15 Streamline set, in place of the Noun marks and the
+   Lucide stand-ins for the same ideas. Close and Expand are Light line art;
+   the rest are coloured marks, grey until their control is chosen. */
+const Close = masked(CloseMark)
+const X = Close
+const Expand = masked(ExpandMark)
+const Settings = painted(CONTROL_LAYERS.settings, 180, true)
+const Archive = painted(CONTROL_LAYERS.archive, 45, true)
+const Link = painted(CONTROL_LAYERS.link, 180, true)
+const Eye = painted(CONTROL_LAYERS.eye, 180, true)
+const Hide = painted(CONTROL_LAYERS.hide, 180, true)
+const Stop = painted(CONTROL_LAYERS.stop, 0, true)
+const Detach = painted(CONTROL_LAYERS.detach, 45, true)
+const MicOff = painted(CONTROL_LAYERS.micOff, 0, true)
+
 export const Icon = {
   Group: SquareDashed,
   Apps,
@@ -521,6 +525,7 @@ export const Icon = {
   Mail,
   Menu,
   Microphone,
+  MicOff,
   Model,
   Moon,
   More,
