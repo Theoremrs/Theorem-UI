@@ -1163,6 +1163,15 @@ export function createConversation({
             parentId: target.parentId,
             sourceId: target.message.id,
             content: [{ type: 'text', text: request.text }],
+            // The edited message keeps the attachments of the one it replaces;
+            // the runtime resolves them by id as it did on the first send.
+            attachments: target.message.attachments.map((attachment) => ({
+              id: attachment.id,
+              type: attachment.type,
+              name: attachment.name,
+              contentType: attachment.contentType,
+              content: attachment.content ?? [],
+            })),
           }),
         )
       })

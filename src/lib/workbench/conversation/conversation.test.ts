@@ -745,6 +745,29 @@ describe('stop, retry and edit', () => {
     expect(stub.starts).toEqual([{ parentId: 'u1' }])
   })
 
+  test('an edit keeps the attachments of the message it edits', async () => {
+    const { stub, conversation } = setup()
+    await conversation.send({
+      ...base('r'),
+      clientMessageId: 'c1',
+      text: 'hi',
+      attachments: [{ id: 'up1', name: 'notes.txt', contentType: 'text/plain' }],
+    })
+    const result = await conversation.edit({
+      ...base('r2'),
+      messageId: 'u1',
+      clientMessageId: 'c2',
+      text: 'hey',
+    })
+    expect(result.outcome).toBe('accepted')
+    expect(stub.appends.at(-1)).toMatchObject({
+      sourceId: 'u1',
+      attachments: [
+        expect.objectContaining({ id: 'up1', name: 'notes.txt' }),
+      ],
+    })
+  })
+
   test('edit appends on the message before it, and is refused when the runtime cannot', async () => {
     const { stub, conversation } = setup()
     await conversation.send({ ...base('r'), clientMessageId: 'c1', text: 'hi' })
