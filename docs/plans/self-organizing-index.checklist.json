@@ -153,7 +153,9 @@
       "status": "partial",
       "evidence": [
         "UI: record pages and previews open through the Index navigator, which records item_opened with record:<name>/<id> (src/components/crm/navigation.ts)",
-        "Not yet: Theorem's observations, used-together and bindings for records"
+        "UI: contract `records` binding and result, optional `records` on the used-together result (src/components/index/contract.ts, bindings.ts); IndexComparison's optional records argument and Records section (src/components/index/library.tsx); 'Often opened with' on a record's preview and page (src/components/crm/often-opened-with.tsx)",
+        "UI tests: src/components/index/index.test.ts ('the used-together template with records parses, with and without documents', 'records in the contract'), src/components/index/records-in-views.test.tsx ('IndexComparison with records'), src/components/crm/often-opened-with.test.tsx ('Often opened with')",
+        "Server side is in Theorem (tests in theorem_index_workspace); not yet observed against a deployed Theorem"
       ]
     },
     {

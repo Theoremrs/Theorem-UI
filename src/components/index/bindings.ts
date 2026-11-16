@@ -64,6 +64,11 @@ export function mergeBinding(
         kind: 'filing_history',
         documentId: pick(binding.documentId, args.documentId, text),
       }
+    case 'records':
+      return {
+        kind: 'records',
+        ids: pick(binding.ids, args.ids, strings),
+      }
     case 'map': {
       const overlay = pick(binding.overlay, args.overlay, (v) =>
         OVERLAYS.find((o) => o === v),

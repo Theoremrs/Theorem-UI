@@ -16,6 +16,7 @@ import {
   relatedGroups,
   revisionStep,
 } from './model'
+import { OftenOpenedWith } from './often-opened-with'
 import { useCrmNavigate } from './navigation'
 import { useCrmRecord, useCrmWrites, useRecordChanges } from './queries'
 import {
@@ -185,6 +186,7 @@ function LoadedRecord({
               onOpenRelated={(target, id) => void openRecord(target, id)}
             />
           </div>
+          <OftenOpenedWith type={type} recordId={record.id} />
           <div className="flex flex-col gap-4 border-t border-separator px-4 py-4">
             <PrivateToggle
               type={type}

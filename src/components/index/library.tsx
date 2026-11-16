@@ -22,15 +22,17 @@ import {
   CrmTableView,
   RecordsHome as RecordsHome_,
 } from '@/components/crm/index-views'
+import { NamedTypeIcon } from '@/components/crm/type-icons'
 import { DataModelView } from '@/components/records/data-model'
 import { WORK_COMPONENT_NAMES, workComponents } from '@/components/work/library'
 import { AtlasMap } from './atlas'
-import { dataModelViewId, recordsViewId } from './programs'
+import { dataModelViewId, recordPageViewId, recordsViewId } from './programs'
 import type {
   AtlasSnapshot,
   Collection,
   FilingReceipt,
   IndexItem,
+  IndexRecord,
   ObservationEvent,
   Scope,
 } from './contract'
@@ -132,13 +134,9 @@ const Heading = defineComponent({
   }),
   component: ({ props }) =>
     props.level === 1 ? (
-      <h2 className="font-heading text-[22px] font-medium">
-        {props.text}
-      </h2>
+      <h2 className="font-heading text-[22px] font-medium">{props.text}</h2>
     ) : (
-      <h3 className="font-heading text-[17px] font-semibold">
-        {props.text}
-      </h3>
+      <h3 className="font-heading text-[17px] font-semibold">{props.text}</h3>
     ),
 })
 
@@ -609,11 +607,12 @@ const latestReceipt = (history: unknown) =>
 const IndexComparison = defineComponent({
   name: 'IndexComparison',
   description:
-    'Template component: documents side by side with where each is filed and why, from an items Query, a collections Query and one filing_history Query per document, in document order.',
+    'Template component: documents side by side with where each is filed and why, from an items Query, a collections Query and one filing_history Query per document, in document order; an optional records Query adds the CRM records opened with them.',
   props: z.object({
     items: z.any(),
     collections: z.any(),
     filings: z.array(z.any()).optional(),
+    records: z.any().optional(),
   }),
   component: function IndexComparisonView({ props }) {
     const host = useHost()
@@ -623,38 +622,79 @@ const IndexComparison = defineComponent({
     const collections = rows<Collection>(
       (props.collections as { collections?: unknown } | null)?.collections,
     )
+    const records = rows<IndexRecord>(
+      (props.records as { records?: unknown } | null)?.records,
+    )
     const name = (id: string) =>
       collections.find((c) => c.collectionId === id)?.name ??
       host.collectionName(id) ??
       id
+    const openRecord = (record: IndexRecord) => {
+      host.record({ kind: 'item_opened', subjects: [record.itemId] })
+      host.openView(recordPageViewId(record.nameSingular, record.recordId))
+    }
     return (
-      <div className="flex snap-x gap-3 overflow-x-auto pb-1">
-        {items.map((item, index) => {
-          const receipt = latestReceipt(props.filings?.[index])
-          return (
-            <ItemButton
-              key={item.documentId}
-              item={item}
-              className="flex w-72 shrink-0 snap-start flex-col gap-2 rounded-lg border border-separator p-3"
-            >
-              <span className="text-sm font-medium">{item.title}</span>
-              <span className="text-[11px] text-ink-faint">
-                {item.documentKind}
-              </span>
-              <CollectionChips ids={item.collectionIds} />
-              {receipt && (
-                <span className="text-xs text-ink-muted">
-                  Filed in {name(receipt.destinationCollectionId)} by{' '}
-                  {receipt.tier}, {Math.round(receipt.confidence * 100)}% sure
-                  {receipt.lowConfidence ? ', worth a look' : ''}.
-                </span>
-              )}
-              <span className="text-xs leading-5 text-ink-muted">
-                {item.snippet}
-              </span>
-            </ItemButton>
-          )
-        })}
+      <div className="flex flex-col gap-4">
+        {items.length > 0 && (
+          <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+            {items.map((item, index) => {
+              const receipt = latestReceipt(props.filings?.[index])
+              return (
+                <ItemButton
+                  key={item.documentId}
+                  item={item}
+                  className="flex w-72 shrink-0 snap-start flex-col gap-2 rounded-lg border border-separator p-3"
+                >
+                  <span className="text-sm font-medium">{item.title}</span>
+                  <span className="text-[11px] text-ink-faint">
+                    {item.documentKind}
+                  </span>
+                  <CollectionChips ids={item.collectionIds} />
+                  {receipt && (
+                    <span className="text-xs text-ink-muted">
+                      Filed in {name(receipt.destinationCollectionId)} by{' '}
+                      {receipt.tier}, {Math.round(receipt.confidence * 100)}%
+                      sure
+                      {receipt.lowConfidence ? ', worth a look' : ''}.
+                    </span>
+                  )}
+                  <span className="text-xs leading-5 text-ink-muted">
+                    {item.snippet}
+                  </span>
+                </ItemButton>
+              )
+            })}
+          </div>
+        )}
+        {records.length > 0 && (
+          <section aria-label="Records" className="flex flex-col gap-1.5">
+            <h3 className="text-xs font-medium tracking-wide text-ink-faint uppercase">
+              Records
+            </h3>
+            <ul className="flex flex-col">
+              {records.map((record) => (
+                <li key={record.itemId}>
+                  <button
+                    type="button"
+                    onClick={() => openRecord(record)}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-sm outline-none hover:bg-hover/60 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
+                  >
+                    <NamedTypeIcon
+                      nameSingular={record.nameSingular}
+                      className="text-ink-muted"
+                    />
+                    <span className="min-w-0 flex-1 truncate">
+                      {record.title || record.recordId}
+                    </span>
+                    <span className="shrink-0 text-[11px] text-ink-faint">
+                      {record.nameSingular}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     )
   },
@@ -814,7 +854,7 @@ const RecordPage = defineComponent({
 const RecordsHome = defineComponent({
   name: 'RecordsHome',
   description:
-    'Where records begin: the people, organizations and promises Theorem can keep, and adding them; once added, the first record type\'s table. Takes no props.',
+    "Where records begin: the people, organizations and promises Theorem can keep, and adding them; once added, the first record type's table. Takes no props.",
   props: z.object({}),
   component: function RecordsHomeComponent() {
     return (

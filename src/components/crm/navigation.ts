@@ -73,6 +73,18 @@ export function useCrmNavigate() {
           },
         )
       },
+      /** A record's page by the type's name, as an Index result names it. */
+      openRecordNamed: (nameSingular: string, recordId: string) => {
+        opened(`record:${nameSingular}/${recordId}`)
+        navigate.openView(recordPageViewId(nameSingular, recordId), HOME, {
+          closeItem: true,
+        })
+      },
+      /** A document beside the view, as the Index opens any item. */
+      openDocument: (documentId: string) => {
+        opened(documentId)
+        navigate.openItem(documentId)
+      },
       /** Opens a record beside the table, or closes the one that is open. */
       preview: (type: ObjectType, recordId: string | undefined) => {
         if (!recordId) return navigate.closeItem()

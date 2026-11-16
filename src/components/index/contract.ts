@@ -26,6 +26,8 @@ export type Binding =
   | { kind: 'collections' }
   | { kind: 'used_together'; anchorIds: string[]; limit?: number }
   | { kind: 'filing_history'; documentId: string }
+  /** CRM records by Index item id (`record:<name>/<id>`), 1..50, answered in the order given. */
+  | { kind: 'records'; ids: string[] }
   | {
       kind: 'map'
       overlay?: AtlasOverlay
@@ -171,10 +173,25 @@ export type AtlasSnapshot = {
   cells: AtlasCell[]
 }
 
+/** A CRM record as the Index names it: an item id of the form `record:<nameSingular>/<recordId>`. */
+export type IndexRecord = {
+  itemId: string
+  recordId: string
+  nameSingular: string
+  /** Empty when the record has no name; show `recordId` then. */
+  title: string
+}
+
 export type QueryResult =
   | { kind: 'items'; items: IndexItem[]; total: number }
   | { kind: 'collections'; collections: Collection[] }
-  | { kind: 'used_together'; items: (IndexItem & { sessions: number })[] }
+  | {
+      kind: 'used_together'
+      items: (IndexItem & { sessions: number })[]
+      /** Records opened alongside the anchors; absent from a server that predates records. */
+      records?: (IndexRecord & { sessions: number })[]
+    }
+  | { kind: 'records'; records: IndexRecord[] }
   | { kind: 'filing_history'; receipts: FilingReceipt[] }
   | { kind: 'map'; snapshot: AtlasSnapshot }
 

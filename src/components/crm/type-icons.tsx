@@ -13,7 +13,7 @@ import {
 import type { LucideIcon } from 'lucide-react'
 import type { ObjectType } from '@/components/records/contract'
 import { cn } from '@/lib/utils'
-import { builtInName } from './model'
+import { BUILT_IN, builtInName } from './model'
 import type { BuiltIn } from './model'
 
 const ICON: Record<BuiltIn, LucideIcon> = {
@@ -61,5 +61,21 @@ export function BuiltInIcon({
       strokeWidth={1.75}
       className={cn('size-4 shrink-0', className)}
     />
+  )
+}
+
+/** The mark for a type known only by its singular name, as an Index record names it. */
+export function NamedTypeIcon({
+  nameSingular,
+  className,
+}: {
+  nameSingular: string
+  className?: string
+}) {
+  const name = BUILT_IN.find((n) => n === nameSingular.toLowerCase())
+  return name ? (
+    <BuiltInIcon name={name} className={className} />
+  ) : (
+    <TypeIcon type={undefined} className={className} />
   )
 }

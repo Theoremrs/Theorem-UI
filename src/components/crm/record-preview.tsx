@@ -5,6 +5,7 @@ import type { ObjectType } from '@/components/records/contract'
 import { recordTitle } from '@/components/records/model'
 import { Button } from '@/components/ui/button'
 import type { CrmRecord } from './api'
+import { OftenOpenedWith } from './often-opened-with'
 import { useCrmNavigate } from './navigation'
 import type { CrmWrites } from './queries'
 import {
@@ -124,6 +125,8 @@ export function RecordPreview({
             onOpenRelated={(target, id) => void openRelated(target, id)}
           />
         </div>
+
+        <OftenOpenedWith type={type} recordId={record.id} />
 
         <div className="flex flex-col gap-4 border-t border-separator px-4 py-4">
           <PrivateToggle

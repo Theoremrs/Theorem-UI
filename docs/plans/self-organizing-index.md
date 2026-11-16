@@ -69,8 +69,21 @@ The owner set the order in which records join the self-organizing loop:
 1. **Records in views and used together.** The Index's observations and its
    used-together relation accept record ids; a view binding can list records;
    a prepared view can place records beside the documents they are used with.
-   Started on the UI side (observations carry record ids); the server side is
-   not.
+   UI side done in source: observations carry record ids; the contract has a
+   `records` binding (`{kind:'records', ids}`, 1..50 item ids) with its
+   `records` result and an optional `records` list on the used-together result
+   (absent from an older server, read as none); `IndexComparison` takes an
+   optional fourth argument (the `records` Query) and shows a "Records"
+   section of rows (type mark, title or record id) that open the record page,
+   and renders an all-record group with no document strip; a record's preview
+   and page show "Often opened with" (a used-together binding anchored on the
+   record's item id, up to 8 neighbours, hidden while loading, when empty or
+   when the read fails). Tests: `index.test.ts` ("the used-together template
+   with records parses", "records in the contract"),
+   `records-in-views.test.tsx` ("IndexComparison with records") and
+   `crm/often-opened-with.test.tsx` ("Often opened with"). The server side is
+   in Theorem (`theorem_index_workspace` tests). Nothing here is observed
+   against a deployed Theorem yet.
 2. **Filing documents to records.** The filing engine proposes the record a
    document is about, with the same tier, confidence, correction and undo as
    filing to a collection.
