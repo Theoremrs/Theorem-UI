@@ -515,7 +515,7 @@ function Loaded({
           <footer className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1">
             <Button
               variant="outline"
-              className="h-8 border-control px-3 text-md"
+              className="h-8 border-control px-3 text-sm"
               onClick={() => {
                 address()
                 focusComposer()

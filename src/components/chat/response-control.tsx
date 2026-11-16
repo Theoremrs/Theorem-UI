@@ -1,8 +1,16 @@
 // SOURCING: coss ui Popover over Base UI Popover, ui/tooltip over Base UI Tooltip, lib/theorem/use-generation (the conversation's override), components/chat/run-footer (the limits panel the last run reported)
+import { Icon } from '@/components/icons'
 import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
-import { CountControl, DetailControl } from '@/components/chat/generation-fields'
+import {
+  CountControl,
+  DetailControl,
+} from '@/components/chat/generation-fields'
 import { LimitsPanel } from '@/components/chat/run-footer'
-import { Popover, PopoverPopup, PopoverTrigger } from '@/components/coss/popover'
+import {
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+} from '@/components/coss/popover'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -12,10 +20,19 @@ import {
 } from '@/components/ui/tooltip'
 import { useGenerationDefaults } from '@/lib/theorem/generation'
 import { firstRenderedAt } from '@/lib/theorem/run-parts'
-import { useConversationGeneration, useLatestRunFacts } from '@/lib/theorem/use-generation'
+import {
+  useConversationGeneration,
+  useLatestRunFacts,
+} from '@/lib/theorem/use-generation'
 import { cn } from '@/lib/utils'
 
-const Field = ({ label, children }: { label: string; children: React.ReactNode }) => (
+const Field = ({
+  label,
+  children,
+}: {
+  label: string
+  children: React.ReactNode
+}) => (
   <div className="flex flex-col gap-1.5">
     <span className="text-xs font-medium text-ink-muted">{label}</span>
     {children}
@@ -45,14 +62,18 @@ export function ResponseControl() {
                 aria-label="Response length and detail"
                 data-active={active ? '' : undefined}
                 className={cn(
-                  'flex h-8 items-center gap-1.5 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink',
+                  'flex h-8 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink',
                   active && 'text-ink',
                 )}
               />
             }
           >
             <span>Length</span>
-            {active && <span aria-hidden className="size-1.5 rounded-full bg-redwood" />}
+            {active && (
+              <span aria-hidden className="size-1.5 rounded-full bg-redwood" />
+            )}
+            {/* The same chooser mark as the model beside it, so both read as menus. */}
+            <Icon.UpDown aria-hidden className="size-3.5 shrink-0" />
           </TooltipTrigger>
           <TooltipContent side="top">
             {active
@@ -62,7 +83,10 @@ export function ResponseControl() {
         </Tooltip>
       </TooltipProvider>
       <PopoverPopup side="top" align="end">
-        <div data-slot="response-control" className="flex w-72 max-w-full flex-col gap-3 text-sm">
+        <div
+          data-slot="response-control"
+          className="flex w-72 max-w-full flex-col gap-3 text-sm"
+        >
           <div className="flex items-center justify-between gap-2">
             <h3 className="font-medium">This conversation</h3>
             {active && (
@@ -81,7 +105,11 @@ export function ResponseControl() {
             <CountControl
               label="Maximum output per call"
               value={override.maxOutputTokens}
-              placeholder={defaults.maxOutputTokens ? `${defaults.maxOutputTokens} (your default)` : "Model's maximum"}
+              placeholder={
+                defaults.maxOutputTokens
+                  ? `${defaults.maxOutputTokens} (your default)`
+                  : "Model's maximum"
+              }
               onChange={(maxOutputTokens) => change({ maxOutputTokens })}
             />
           </Field>
@@ -89,9 +117,15 @@ export function ResponseControl() {
             <CountControl
               label="Run budget output tokens"
               value={override.runBudget?.maxOutputTokens}
-              placeholder={defaults.runBudget?.maxOutputTokens ? `${defaults.runBudget.maxOutputTokens} (your default)` : 'No cap'}
+              placeholder={
+                defaults.runBudget?.maxOutputTokens
+                  ? `${defaults.runBudget.maxOutputTokens} (your default)`
+                  : 'No cap'
+              }
               onChange={(maxOutputTokens) =>
-                change({ runBudget: { ...override.runBudget, maxOutputTokens } })
+                change({
+                  runBudget: { ...override.runBudget, maxOutputTokens },
+                })
               }
             />
           </Field>
@@ -99,7 +133,11 @@ export function ResponseControl() {
             <CountControl
               label="Run budget steps"
               value={override.runBudget?.maxSteps}
-              placeholder={defaults.runBudget?.maxSteps ? `${defaults.runBudget.maxSteps} (your default)` : 'No cap'}
+              placeholder={
+                defaults.runBudget?.maxSteps
+                  ? `${defaults.runBudget.maxSteps} (your default)`
+                  : 'No cap'
+              }
               onChange={(maxSteps) =>
                 change({ runBudget: { ...override.runBudget, maxSteps } })
               }
@@ -107,7 +145,9 @@ export function ResponseControl() {
           </Field>
           {facts?.limits && (
             <section className="flex flex-col gap-2 border-t border-separator pt-3">
-              <h3 className="text-xs font-medium text-ink-muted">Last reply ran under</h3>
+              <h3 className="text-xs font-medium text-ink-muted">
+                Last reply ran under
+              </h3>
               <LimitsPanel
                 limits={facts.limits}
                 timing={facts.timing}

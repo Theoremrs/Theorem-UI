@@ -129,7 +129,7 @@ export function ComposerWebToggle() {
           }
         >
           <WebMark className="size-4" />
-          <span className="pe-0.5">Web</span>
+          <span className="composer-chip-label pe-0.5">Web</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {on
@@ -164,7 +164,7 @@ export function ComposerPlanToggle() {
           }
         >
           <Icon.Plan className="size-4" />
-          <span className="pe-0.5">Plan</span>
+          <span className="composer-chip-label pe-0.5">Plan</span>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {on
