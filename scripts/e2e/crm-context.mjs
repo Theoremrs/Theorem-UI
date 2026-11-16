@@ -24,6 +24,7 @@ import { turns } from './turns.mjs'
 const BUILT_IN = [
   'Person',
   'Organization',
+  'Relationship',
   'Activity',
   'Commitment',
   'Interaction',
@@ -216,6 +217,24 @@ await create('Interaction', {
   people: [noor],
   context_use: 'private',
 })
+// How the records are related: Noor is Avery's sister, and Noor's studio
+// buys its clay from another organization.
+await create('Organization', { id: id('org:clay'), name: 'Riverbed Clay' })
+await create('Relationship', {
+  id: id('tie:sister'),
+  relation: 'sister',
+  kind: 'family',
+  from_person: noor,
+  to_person: avery,
+})
+await create('Relationship', {
+  id: id('tie:supplier'),
+  relation: 'supplier',
+  kind: 'business',
+  from_organization: id('org:clay'),
+  to_organization: id('org:kiln'),
+  details: 'Twelve-month supply agreement',
+})
 log('fixture saved; the commitment is at revision', saved.version)
 
 // The screen shows the saved records.
@@ -327,6 +346,55 @@ check(
 )
 await page.getByText('is due Wednesday').first().waitFor({ timeout: 60_000 })
 check('and the answer on the page says Wednesday', true)
+
+// How the records are related reaches the provider in words, with a
+// description of the data model to read them by.
+const statementOf = (request, recordId) =>
+  JSON.parse(spanOf(request, recordId)?.content ?? '{}').statement
+check(
+  'the provider was told how Noor is related to the person asking',
+  statementOf(firstAsk, id('tie:sister')) ===
+    'Noor is “sister” to Avery Quinn (the person asking).',
+  statementOf(firstAsk, id('tie:sister')),
+)
+check(
+  'and how her organization is related to another',
+  statementOf(firstAsk, id('tie:supplier')) ===
+    'Riverbed Clay is “supplier” to Kiln Street Studio.',
+  statementOf(firstAsk, id('tie:supplier')),
+)
+await page
+  .getByText('Noor is “sister” to Avery Quinn')
+  .first()
+  .waitFor({ timeout: 60_000 })
+check('and the answer on the page says so', true)
+const described = JSON.parse(
+  firstAsk?.modelSpans?.[0]?.content ?? '{}',
+).data_model
+const typeNames = (described?.types ?? []).map((entry) => entry.type)
+check(
+  'the provider was sent one description of the data model',
+  firstAsk?.modelSpans?.length === 1 &&
+    ['Person', 'Organization', 'Relationship', 'Commitment'].every((name) =>
+      typeNames.includes(name),
+    ),
+  typeNames.join(', '),
+)
+check(
+  'which says what links one type to another',
+  described?.types?.find((entry) => entry.type === 'Commitment')?.links
+    ?.owed_to === 'Person',
+)
+check(
+  'and what the fields of the given records mean',
+  described?.fields?.Person?.role ===
+    'Role. What they do, or who they are to you.',
+  JSON.stringify(described?.fields?.Person),
+)
+check(
+  'without naming the field that is kept from Theorem',
+  !JSON.stringify(described ?? {}).includes('phone'),
+)
 await shot('3-answer-wednesday')
 const firstThread = page.url()
 

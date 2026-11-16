@@ -307,6 +307,7 @@ test('built-in types come first in their order, then the rest by label', () => {
   expect(listed.map((t) => t.label_plural)).toEqual([
     'People',
     'Organizations',
+    'Relationships',
     'Activities',
     'Commitments',
     'Interactions',
@@ -458,6 +459,7 @@ test('related records are grouped by the field that relates them, in both direct
     ),
   ).toEqual([
     'from Organization.organization: org:kiln',
+    'to Relationship.from_person: tie:sister',
     'to Activity.people: activity:workshop',
     'to Commitment.owed_to: commitment:materials',
     'to Interaction.people: interaction:planning',

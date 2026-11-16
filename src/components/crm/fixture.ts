@@ -81,7 +81,7 @@ function builtIn(
   }
 }
 
-/** The seven built-in types, as `installLifeContextTypes` declares them. */
+/** The built-in types, as `installLifeContextTypes` declares them. */
 export function fixtureTypes(): ObjectType[] {
   return [
     builtIn('Organization', 'Organizations', 'name', [
@@ -171,6 +171,38 @@ export function fixtureTypes(): ObjectType[] {
       ],
       { standing: true },
     ),
+    builtIn(
+      'Relationship',
+      'Relationships',
+      'relation',
+      [
+        text('relation', 'Relation', { required: true }),
+        choice('kind', 'Kind', [
+          'family',
+          'partner',
+          'friend',
+          'work',
+          'business',
+          'membership',
+          'other',
+        ]),
+        one('from_person', 'Person', 'Person'),
+        one('from_organization', 'Organization', 'Organization'),
+        one('to_person', 'To person', 'Person'),
+        one('to_organization', 'To organization', 'Organization'),
+        choice('status', 'Status', ['current', 'past']),
+        text('since', 'Since'),
+        text('until', 'Until'),
+        long('details', 'Details'),
+      ],
+      {
+        tie: {
+          from: ['from_person', 'from_organization'],
+          to: ['to_person', 'to_organization'],
+          relation: 'relation',
+        },
+      },
+    ),
   ]
 }
 
@@ -182,6 +214,7 @@ export const FIXTURE_TYPE = {
   interaction: typeId('Interaction'),
   goal: typeId('Goal'),
   constraint: typeId('Constraint'),
+  relationship: typeId('Relationship'),
 } as const
 
 type Node = {
@@ -246,6 +279,12 @@ function fixtureNodes(): Node[] {
       due: 'Friday',
       status: 'open',
     }),
+    node('tie:sister', 'Relationship', 1, {
+      relation: 'sister',
+      kind: 'family',
+      from_person: 'person:noor',
+      to_person: 'person:avery',
+    }),
     node('constraint:mornings', 'Constraint', 1, {
       statement: 'No calls before 10am',
       kind: 'availability',
@@ -302,6 +341,8 @@ export type FixtureOptions = {
   readOnly?: string[]
   /** Plural names (lowercase) this sign-in may not read at all. */
   unreadable?: string[]
+  /** Singular names of built-in types this workspace was set up without. */
+  missing?: string[]
 }
 
 type Body = { query?: string; variables?: Record<string, unknown> }
@@ -315,6 +356,7 @@ export function createFixtureServer(options: FixtureOptions = {}) {
   const types = fixtureTypes()
   const state = {
     installed: options.installed ?? true,
+    missing: new Set(options.missing ?? []),
     self:
       options.self === 'unbound'
         ? null
@@ -337,11 +379,15 @@ export function createFixtureServer(options: FixtureOptions = {}) {
   const unreadable = new Set(options.unreadable ?? [])
   const plural = (type: ObjectType) => type.name_plural.toLowerCase()
 
+  const declared = () =>
+    state.installed
+      ? types.filter((type) => !state.missing.has(type.name_singular))
+      : []
   const life = () => ({
-    installed: state.installed,
+    installed: state.installed && state.missing.size === 0,
     types: types.map((type) => ({
       name_singular: type.name_singular,
-      declared: state.installed,
+      declared: declared().includes(type),
     })),
     self:
       state.self === undefined
@@ -355,25 +401,21 @@ export function createFixtureServer(options: FixtureOptions = {}) {
             },
     // Avery is the person signed in, where the sign-in names one.
     actor: state.self === undefined ? null : 'user:avery',
-    access: state.installed
-      ? types.map((type) => ({
-          objectTypeId: type.object_type_id,
-          read: !unreadable.has(plural(type)),
-          write: !unreadable.has(plural(type)) && !readOnly.has(plural(type)),
-          writeScope: `record:${plural(type)}:write`,
-        }))
-      : [],
+    access: declared().map((type) => ({
+      objectTypeId: type.object_type_id,
+      read: !unreadable.has(plural(type)),
+      write: !unreadable.has(plural(type)) && !readOnly.has(plural(type)),
+      writeScope: `record:${plural(type)}:write`,
+    })),
   })
 
   const model = (): DataModel => ({
-    objectTypes: state.installed
-      ? types.map((type) => ({
-          ...type,
-          record_count: state.nodes.filter((n) =>
-            n.labels.includes(type.node_label),
-          ).length,
-        }))
-      : [],
+    objectTypes: declared().map((type) => ({
+      ...type,
+      record_count: state.nodes.filter((n) =>
+        n.labels.includes(type.node_label),
+      ).length,
+    })),
     observedShapes: [],
     divergences: [],
     relations: [],
@@ -503,6 +545,7 @@ export function createFixtureServer(options: FixtureOptions = {}) {
       )
     if (query.includes('installLifeContextTypes')) {
       state.installed = true
+      state.missing.clear()
       return { data: { installLifeContextTypes: life() } }
     }
     if (query.includes('bindSelfPerson')) {

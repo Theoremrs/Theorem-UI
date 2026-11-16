@@ -9,6 +9,7 @@ import {
   ShieldAlert,
   Target,
   UserRound,
+  Waypoints,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type { ObjectType } from '@/components/records/contract'
@@ -19,6 +20,7 @@ import type { BuiltIn } from './model'
 const ICON: Record<BuiltIn, LucideIcon> = {
   person: UserRound,
   organization: Building2,
+  relationship: Waypoints,
   activity: CalendarRange,
   commitment: Handshake,
   interaction: MessagesSquare,

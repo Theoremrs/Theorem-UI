@@ -275,6 +275,13 @@ export function ContextManifestView({
             </p>
           )}
 
+          {manifest.modelTypes.length > 0 && (
+            <p className="text-xs leading-5 text-ink-muted">
+              Theorem was also told how your records are organised:{' '}
+              {manifest.modelTypes.join(', ')}.
+            </p>
+          )}
+
           {tokens && manifest.included.length > 0 && (
             <p className="text-xs leading-5 text-ink-faint tabular-nums">
               {tokens}

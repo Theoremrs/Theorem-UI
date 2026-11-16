@@ -56,6 +56,8 @@ export type ContextManifest = {
   /** Records that were eligible and left out to stay within the limits. */
   overBudget: number
   degraded: string[]
+  /** The record types Theorem was told about, when it was given the data model. */
+  modelTypes: string[]
   estimatedTokens: number | undefined
   /** How the token figure was reached; it is an estimate, and says so. */
   method: string | undefined
@@ -153,6 +155,7 @@ export function decodeManifestPart(data: unknown): ContextManifest | undefined {
     }),
     overBudget: count(manifest.over_budget) ?? 0,
     degraded: texts(manifest.degraded),
+    modelTypes: isObject(manifest.model) ? texts(manifest.model.types) : [],
     estimatedTokens:
       count(delivery.estimatedTokens) ?? count(accounting.estimated_tokens),
     method: text(delivery.method) ?? text(accounting.method),
@@ -265,6 +268,7 @@ const WITHHELD: Record<string, string> = {
   field_excluded: 'the field that ties it in is kept out of Theorem’s answers',
   not_readable: 'this sign-in cannot read it',
   not_found: 'it could not be found',
+  related_withheld: 'it relates a record that is kept out',
 }
 
 /** Why a record was held back. A reason this client does not know says so. */
@@ -280,6 +284,10 @@ export function degradedWords(code: string) {
     return `Only some ${subject} records were looked through; others may bear on this.`
   if (kind === 'time_limit')
     return 'Looking through saved records took too long and stopped early; some may be missing.'
+  if (kind === 'model_fields_omitted')
+    return 'How your records are organised was described without the meaning of each field, to fit.'
+  if (kind === 'model_omitted')
+    return 'How your records are organised was too long to describe, so the records were given without it.'
   if (kind === 'resolution_failed')
     return 'Saved records could not be read for this reply, so none were used.'
   return 'Saved records were not read completely for this reply.'

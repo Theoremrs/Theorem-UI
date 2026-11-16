@@ -300,8 +300,12 @@ export type TypeAccess = {
 }
 
 export type LifeContext = {
-  /** Whether the built-in types are declared here. */
+  /** Whether every built-in type is declared here. */
   installed: boolean
+  /** Whether any built-in type is declared here. */
+  started: boolean
+  /** The built-in types this workspace does not have yet, by name. */
+  missing: string[]
   types: { nameSingular: string; declared: boolean }[]
   self: SelfBinding
   access: TypeAccess[]
@@ -331,15 +335,22 @@ function decodeSelf(raw: unknown): SelfBinding {
 /** Reads what the server answered, and nothing it did not: a missing flag is false. */
 export function decodeLifeContext(raw: unknown): LifeContext {
   const value = isObject(raw) ? raw : {}
-  return {
-    installed: value.installed === true,
-    types: (Array.isArray(value.types) ? value.types : []).flatMap((type) => {
+  const types = (Array.isArray(value.types) ? value.types : []).flatMap(
+    (type) => {
       if (!isObject(type)) return []
       const nameSingular = text(either(type, 'nameSingular', 'name_singular'))
       return nameSingular
         ? [{ nameSingular, declared: type.declared === true }]
         : []
-    }),
+    },
+  )
+  return {
+    installed: value.installed === true,
+    started: value.installed === true || types.some((type) => type.declared),
+    missing: types
+      .filter((type) => !type.declared)
+      .map((type) => type.nameSingular),
+    types,
     self: decodeSelf(value.self),
     actor: text(value.actor) ?? null,
     access: (Array.isArray(value.access) ? value.access : []).flatMap(

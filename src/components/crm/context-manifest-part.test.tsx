@@ -89,6 +89,23 @@ test('open, each record is named with its type, its saved revision and why it wa
   )
 })
 
+test('it says which record types Theorem was told about, when the data model was given', async () => {
+  const { manifest, delivery } = payload()
+  const { container } = await opened({
+    manifest: {
+      ...manifest,
+      model: { types: ['Person', 'Relationship'], explained: ['Person'] },
+    },
+    delivery,
+  })
+  expect(container.textContent).toContain(
+    'Theorem was also told how your records are organised: Person, Relationship.',
+  )
+  // Without one, nothing is said about it.
+  const plain = await opened(payload())
+  expect(plain.container.textContent).not.toContain('how your records are')
+})
+
 test('a used record links to its page in the CRM', async () => {
   const { container } = await opened(payload())
   const link = [...container.querySelectorAll('a')].find(

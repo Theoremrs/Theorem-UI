@@ -1,6 +1,6 @@
 // SOURCING: Twenty's navigation drawer for the anatomy (the workspace switcher, then one row per record type with its mark, plural label and count); the Index panel's rows for the geometry and states (components/index/index-panel), so the CRM's list reads as the app's other panels do; lucide-react marks
 import { useNavigate } from '@tanstack/react-router'
-import { Database, EyeOff, UserRound } from 'lucide-react'
+import { Database, EyeOff, Plus, UserRound } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { DATA_MODEL_VIEW_ID } from '@/components/index/programs'
 import type { ObjectType } from '@/components/records/contract'
@@ -9,6 +9,7 @@ import { YouBadge } from './cells'
 import { CrmScopeProvider, useCrmScope, useCrmScopeValue } from './context'
 import { personType, typeBySlug } from './model'
 import { useCrmNavigate, useCrmPlace } from './navigation'
+import { useInstallLifeContextTypes } from './queries'
 import { TypeIcon } from './type-icons'
 
 const ROW =
@@ -56,7 +57,7 @@ function Me() {
   const { openRecord } = useCrmNavigate()
   const navigate = useNavigate()
   const people = personType(types)
-  if (!life?.installed || !people) return null
+  if (!life?.started || !people) return null
   const self = selfId ? recordById(selfId) : undefined
   const mark = (
     <UserRound aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
@@ -109,7 +110,7 @@ function Types() {
         Loading
       </p>
     )
-  if (!life?.installed && !types.length) return null
+  if (!life?.started && !types.length) return null
   return (
     <>
       <Heading>Records</Heading>
@@ -123,6 +124,42 @@ function Types() {
           onOpen={() => void openType(type)}
         />
       ))}
+      {life?.started && life.missing.length > 0 && (
+        <AddMissing missing={life.missing} />
+      )}
+    </>
+  )
+}
+
+/**
+ * A workspace set up before a built-in type existed does not have it. Adding
+ * declares only what is absent and leaves every existing type as it is.
+ */
+function AddMissing({ missing }: { missing: string[] }) {
+  const install = useInstallLifeContextTypes()
+  const what =
+    missing.length === 1
+      ? `Add the ${missing[0]} type`
+      : `Add ${missing.length} new record types`
+  return (
+    <>
+      <button
+        type="button"
+        className={ROW}
+        disabled={install.isPending}
+        title={missing.join(', ')}
+        onClick={() => install.mutate()}
+      >
+        <Plus aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">
+          {install.isPending ? 'Adding' : what}
+        </span>
+      </button>
+      {install.error && (
+        <p role="alert" className="px-2 py-1 text-xs leading-4 text-ink">
+          It could not be added. Try again.
+        </p>
+      )}
     </>
   )
 }

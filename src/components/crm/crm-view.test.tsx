@@ -115,6 +115,27 @@ test('before the types exist, it says what will be added and adds them on reques
   expect(server.state.installed).toBe(true)
 })
 
+test('a workspace set up before Relationships existed keeps its records and is offered the new type', async () => {
+  serve({ missing: ['Relationship'] })
+  // It is not sent back to the first-run screen: /crm is still the table.
+  const { path } = await view('/crm')
+  await waitFor(() => path() === '/crm/people')
+
+  const { container } = await mountAt('/crm/people', () => (
+    <CrmPanel switcher={null} />
+  ))
+  const add = await waitFor(() =>
+    buttonNamed(container, 'Add the Relationship type'),
+  )
+  const rows = () =>
+    [...container.querySelectorAll('nav button')].map((row) => row.textContent)
+  expect(rows().some((row) => row.startsWith('Relationships'))).toBe(false)
+  await click(add)
+  await waitFor(() => rows().some((row) => row.startsWith('Relationships')))
+  expect(buttonNamed(container, 'Add the Relationship type')).toBeUndefined()
+  expect(server.state.missing.size).toBe(0)
+})
+
 test('/crm opens the first listed type', async () => {
   const { path } = await view('/crm')
   await waitFor(() => path() === '/crm/people')
@@ -780,9 +801,10 @@ test('the panel lists the types in order, with counts, the current one marked, a
     (row) => row.textContent,
   )
   expect(rows[0]).toBe('Avery QuinnYou')
-  expect(rows.slice(1, 8).map((row) => row.replace(/\d+$/, ''))).toEqual([
+  expect(rows.slice(1, 9).map((row) => row.replace(/\d+$/, ''))).toEqual([
     'People',
     'Organizations',
+    'Relationships',
     'Activities',
     'Commitments',
     'Interactions',

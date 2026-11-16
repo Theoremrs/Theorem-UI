@@ -45,7 +45,8 @@ export function CrmView() {
   const { openType } = useCrmNavigate()
   const type = typeBySlug(scope.types, slug)
   const first = scope.types[0]
-  const installed = scope.life?.installed === true
+  // Some of the built-in types are here, whether or not all of them are.
+  const installed = scope.life?.started === true
 
   // /crm itself is the first listed type's table, once there is one to show.
   const redirect = !slug && installed && first ? first : undefined
@@ -106,6 +107,10 @@ export function CrmView() {
 const FIRST_RUN_LABEL: Record<(typeof BUILT_IN)[number], [string, string]> = {
   person: ['People', 'Who you know, and how to reach them.'],
   organization: ['Organizations', 'Where people work and who you deal with.'],
+  relationship: [
+    'Relationships',
+    'How people and organizations are related, to you and to each other.',
+  ],
   activity: ['Activities', 'Projects, trips and events under way.'],
   commitment: ['Commitments', 'What is owed, by whom, and when.'],
   interaction: ['Interactions', 'Meetings, calls and messages that happened.'],

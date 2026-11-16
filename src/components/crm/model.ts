@@ -21,6 +21,7 @@ import type { CrmRecord, LifeContext, RecordChange, TypeAccess } from './api'
 export const BUILT_IN = [
   'person',
   'organization',
+  'relationship',
   'activity',
   'commitment',
   'interaction',

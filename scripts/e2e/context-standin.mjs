@@ -13,6 +13,7 @@ import { createServer } from 'node:http'
 
 const PORT = Number(process.env.E2E_STANDIN_PORT)
 const RECORD_SOURCE = 'life_context_record'
+const MODEL_SOURCE = 'life_context_model'
 const BRIEF_START = '{"brief_id"'
 
 const requests = []
@@ -49,7 +50,11 @@ function objectEnd(source, start) {
 }
 
 /** The saved-record spans of the context brief in a request's system messages. */
-function recordSpans(body) {
+const recordSpans = (body) => spansOf(body, RECORD_SOURCE)
+/** The span that describes how the person's records are organised, if sent. */
+const modelSpans = (body) => spansOf(body, MODEL_SOURCE)
+
+function spansOf(body, sourceType) {
   const spans = []
   for (const message of body?.messages ?? []) {
     if (message.role !== 'system') continue
@@ -63,7 +68,7 @@ function recordSpans(body) {
       continue
     }
     for (const span of brief.evidence ?? [])
-      if (span.source_type === RECORD_SOURCE) spans.push(span)
+      if (span.source_type === sourceType) spans.push(span)
   }
   return spans
 }
@@ -84,6 +89,8 @@ function reply(body) {
     if (!name) continue
     if (record.type === 'Commitment' && fields.due)
       lines.push(`"${name}" is due ${fields.due}.`)
+    // A record that relates two others says so in words; repeat them.
+    else if (record.statement) lines.push(record.statement)
     else lines.push(`${record.type}: ${name}.`)
   }
   return lines.length
@@ -114,6 +121,7 @@ createServer(async (req, res) => {
     at: Date.now(),
     body,
     recordSpans: recordSpans(body),
+    modelSpans: modelSpans(body),
   })
   const content = reply(body)
   const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
