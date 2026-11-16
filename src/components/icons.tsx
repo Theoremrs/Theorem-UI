@@ -117,7 +117,7 @@ import SquareWireframe from '@/assets/icons/streamline/streamline-square-wirefra
 import ShareBox from '@/assets/icons/streamline/streamline-share-1.png'
 import XMark from '@/assets/icons/streamline/streamline-x.png'
 import CloseMark from '@/assets/icons/streamline/streamline-close.png'
-import ExpandMark from '@/assets/icons/streamline/streamline-expand-2.png'
+import ExpandMark from '@/assets/icons/streamline/streamline-expand-5.png'
 import AppWindowCode from '@/assets/icons/streamline/streamline-app-window-code.png'
 import ListEdit from '@/assets/icons/streamline/streamline-list-edit.png'
 

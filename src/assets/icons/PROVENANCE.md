@@ -713,7 +713,7 @@ others until a 48px copy replaces it.
 | Mark           | Where                                                                  | Source                                                     | Streamline name                | Style   | SHA-256                                                            |
 | -------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------ | ------- | ------------------------------------------------------------------ |
 | Close, X       | Dismiss and remove, everywhere; replaces the Noun close and Lucide `X` | `streamline/streamline-close.png`                          | Close                          | Light   | `f90c823fda609ebd7381388940538b8148b9d7dd8fbf005b6486461947e1acee` |
-| Expand         | Expand to full view                                                    | `streamline/streamline-expand-2.png`                       | Expand 2                       | Light   | `60ea872fcb1bf913d7c23e03b2ab846fb746d004797b2cee7e6f752ab5994423` |
+| Expand         | Expand to full view                                                    | `streamline/streamline-expand-5.png`                       | Expand 5                       | Light   | `3cf4bbbc3401ea4c26abbc863649af42323cd02757990568cc86aa99fc47cf60` |
 | Settings       | Settings and options                                                   | `streamline/control/source/streamline-cog.png`             | Cog                            | colored | `7f3c95e071b53bc88c2412b32ee772aa788e6a6751253f4ec654e7dbe19b998b` |
 | Archive, Index | Archive a thread or record; the sessions panel Index mark              | `streamline/control/source/streamline-archive.png`         | Archive                        | colored | `212a4d2c5881bf18105e07eddb48e658edb74373c54fe2fd1b80f7196a949f70` |
 | Link           | Links, link fields, embeds                                             | `streamline/control/source/streamline-hyperlink-3.png`     | Hyperlink 3                    | colored | `3d89e3fa07d1da241d7e21f410b358dd45df0cece031616d3c6caff5886eb3f4` |
@@ -751,3 +751,7 @@ Retired with them, and removed from the tree:
 | -------------------------------------- | ------------------------------------------------------------------ | ---------- |
 | `composer/noun-microphone-8216254.svg` | `4e6cdaa318bf1d49ff204fa8834a491789fe651ca222091601edda9fc199be03` | Microphone |
 | `composer/noun-refresh-8086048.svg`    | `ec0b1e2d68207b399efed91bf3bfe227130941f4b04f6920603594e18a9260d8` | Refresh    |
+
+Expand 2 was placed first and replaced by Expand 5 the same day: its two
+crossed arrows read as a close mark at 14px, beside the real close in the
+plan card's and the Compare pane's headers.
