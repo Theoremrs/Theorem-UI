@@ -3,6 +3,7 @@
 // is this app's own capability model (plan D9), hand-rolled.
 import { parseExpressionAt } from 'acorn'
 import type { Expression, SpreadElement } from 'acorn'
+import { APP_HISTORY_DAYS } from './app-db'
 
 /**
  * What a block declared it may reach. A block gets exactly these and nothing
@@ -44,8 +45,10 @@ export const isEffectful = (capabilities: Capabilities): boolean =>
 export interface Declarations {
   capabilities: Capabilities
   /**
-   * Days of past versions a database keeps, by name, where its declaration
-   * gives a window: `db("crm", { historyDays: 365 })`. Others keep the default.
+   * Days of past versions each declared database keeps, by name: the window
+   * its declaration gives — `db("crm", { historyDays: 365 })` — or
+   * `APP_HISTORY_DAYS` when it gives none. Every `db` in `capabilities.db` is
+   * in here, so a reader never has to supply a default of its own.
    */
   dbHistoryDays: Record<string, number>
   errors: Array<string>
@@ -182,16 +185,19 @@ export function parseDeclarationList(
       into.errors.push(problem)
       continue
     }
-    if (args[1]) {
-      const days = dbHistoryDays(value, args[1])
-      // A database may be named `constructor`: only own keys count.
-      const before = Object.hasOwn(into.dbHistoryDays, value)
-        ? into.dbHistoryDays[value]
-        : undefined
+    if (kind === 'db') {
+      // A declaration of a database always settles its window: the one it
+      // states, or the default it leaves itself. Saying `db("crm")` besides
+      // `db("crm", { historyDays: 365 })` would otherwise mix the two.
+      const days = args[1] ? dbHistoryDays(value, args[1]) : APP_HISTORY_DAYS
       if (typeof days === 'string') {
         into.errors.push(days)
         continue
       }
+      // A database may be named `constructor`: only own keys count.
+      const before = Object.hasOwn(into.dbHistoryDays, value)
+        ? into.dbHistoryDays[value]
+        : undefined
       if (before !== undefined && before !== days) {
         into.errors.push(
           `db("${value}") is declared with two windows, ${before} and ${days} days`,

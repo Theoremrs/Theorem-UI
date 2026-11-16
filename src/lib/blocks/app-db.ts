@@ -1,7 +1,7 @@
 // SOURCING: @rustyreddb/browser (the graph database, in a dedicated worker, on
 // the origin private file system). Which App reaches which database, and that
 // a saved revision may only read, is this app's capability model.
-import type { Database } from '@rustyreddb/browser'
+import type { Database, OpenOptions } from '@rustyreddb/browser'
 import type { AppDatabases } from './bridge'
 import type { DbMethod, DbRead } from './sandbox/protocol'
 
@@ -67,6 +67,22 @@ export async function compactWhenHistoryIsOld(
 }
 
 /**
+ * What an App's records are, however the engine is stood up: the same for the
+ * database on screen and for the memory one a check runs against, so a check
+ * refuses nothing the App it is checking would accept. One source, because the
+ * engine defaults `controlEvents` and `ownershipMarkers` to true.
+ */
+const appDatabaseRules = {
+  // Nothing reads control events for an App's data, so none are written.
+  controlEvents: false,
+  // A compaction without a window of its own keeps this many days.
+  historyDays: APP_HISTORY_DAYS,
+  // No subsystem keeps records in an App's database, so `ownership` is
+  // one of the App's own properties. Every other owner rule still holds.
+  ownershipMarkers: false,
+} satisfies OpenOptions
+
+/**
  * Open an App's database in this origin's private file system. The view that
  * may change it compacts it (see `documentAppDatabases`), with the window its
  * App declares.
@@ -77,13 +93,7 @@ export async function openAppDatabase(directory: string): Promise<Database> {
     import('@rustyreddb/browser/rustyred.wasm?url'),
   ])
   return open(directory, {
-    // Nothing reads control events for an App's data, so none are written.
-    controlEvents: false,
-    // A compaction without a window of its own keeps this many days.
-    historyDays: APP_HISTORY_DAYS,
-    // No subsystem keeps records in an App's database, so `ownership` is
-    // one of the App's own properties. Every other owner rule still holds.
-    ownershipMarkers: false,
+    ...appDatabaseRules,
     // Another tab showing this App uses the same database: one tab holds its
     // file and the rest reach it through that tab.
     shared: true,
@@ -95,11 +105,10 @@ export async function openAppDatabase(directory: string): Promise<Database> {
   })
 }
 
-const openInBrowser: OpenDatabaseAt = (directory) => openAppDatabase(directory)
-
 /**
  * A database that is nothing but memory, for a run that must not touch an
- * App's records: the hidden run a check makes of an App.
+ * App's records: the hidden run a check makes of an App. It is opened under
+ * `appDatabaseRules` like the one on screen.
  */
 export const openInMemory: OpenDatabaseAt = async () => {
   const [{ inMemory }, { default: wasm }] = await Promise.all([
@@ -107,6 +116,7 @@ export const openInMemory: OpenDatabaseAt = async () => {
     import('@rustyreddb/browser/rustyred.wasm?url'),
   ])
   return inMemory({
+    ...appDatabaseRules,
     wasm,
     worker: () =>
       new Worker(new URL('./app-db.worker.ts', import.meta.url), {
@@ -122,8 +132,6 @@ interface Held {
   database: Promise<OpenDatabase>
   users: number
   closing?: ReturnType<typeof setTimeout>
-  /** Whether a view has checked it for history to drop since it opened. */
-  compacted?: boolean
 }
 
 /**
@@ -227,8 +235,9 @@ export interface DocumentDatabases extends AppDatabases {
  * The databases of one App document, for one view of it. `writable` false is
  * a saved revision: it reads the App's records and changes none.
  * `historyDays` holds the windows the view's source declares, by database
- * name; others keep `APP_HISTORY_DAYS`. A writable view compacts each database
- * to its window when it first reaches it; a saved revision never compacts.
+ * name; others keep `APP_HISTORY_DAYS`. Each writable view compacts each
+ * database to its own window once, when it first reaches it; a saved revision
+ * never compacts, and leaves a database it keeps open for others alone.
  */
 export function documentAppDatabases(
   documentId: string,
@@ -238,10 +247,10 @@ export function documentAppDatabases(
     historyDays?: Record<string, number>
   } = {},
 ): DocumentDatabases {
-  const { writable = true, open = openInBrowser } = options
+  const { writable = true, open = openAppDatabase } = options
   let windows = options.historyDays ?? {}
   // A database may be named `constructor`: only the record's own keys count.
-  const window = (name: string): number =>
+  const historyDaysFor = (name: string): number =>
     Object.hasOwn(windows, name) ? windows[name]! : APP_HISTORY_DAYS
   const opened = new Map<string, Promise<OpenDatabase>>()
   let disposed = false
@@ -254,15 +263,12 @@ export function documentAppDatabases(
       )
     let mine = opened.get(name)
     if (!mine) {
-      const directory = appDatabaseDirectory(documentId, name)
-      mine = acquire(directory, open)
+      mine = acquire(appDatabaseDirectory(documentId, name), open)
       opened.set(name, mine)
-      const entry = held.get(directory)
-      if (writable && entry && !entry.compacted) {
-        entry.compacted = true
+      if (writable) {
         // Calls made meanwhile wait behind it in the database's worker.
         void mine.then(
-          (db) => compactWhenHistoryIsOld(db, window(name)),
+          (db) => compactWhenHistoryIsOld(db, historyDaysFor(name)),
           () => {},
         )
       }
@@ -278,7 +284,7 @@ export function documentAppDatabases(
           ),
           { code: 'read_only' },
         )
-      return run(await database(name), method, args, window(name))
+      return run(await database(name), method, args, historyDaysFor(name))
     },
     subscribe(name, read: { method: DbRead; args: unknown }, next, error) {
       let stop: (() => void) | undefined
@@ -289,7 +295,7 @@ export function documentAppDatabases(
           stop = db.subscribe(
             { method: read.method, args: read.args ?? undefined } as never,
             read.method === 'inspect'
-              ? (report) => next(withWindow(report, window(name)))
+              ? (report) => next(withWindow(report, historyDaysFor(name)))
               : next,
             (failure) =>
               error({ code: failure.code, message: failure.message }),

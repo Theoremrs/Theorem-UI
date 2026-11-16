@@ -119,10 +119,67 @@ describe('declaring a database', () => {
     ])
     expect(errors).toEqual([])
     expect(capabilities.db).toEqual(['crm', 'log', 'scratch'])
-    expect(dbHistoryDays).toEqual({ crm: 365, scratch: 0.5 })
-    const named = parseHtmlDeclarations(['db("constructor", { historyDays: 5 })'])
-    expect(named.errors).toEqual([])
-    expect(named.dbHistoryDays).toEqual({ constructor: 5 })
+    // Every declared database carries a window, so a reader never has to know
+    // what the default is: `log` keeps ninety days because nothing said other.
+    expect(dbHistoryDays).toEqual({
+      crm: 365,
+      log: APP_HISTORY_DAYS,
+      scratch: 0.5,
+    })
+  })
+
+  test('a database declared twice must be asked for the same window', () => {
+    // A bare declaration is the default window, and the default is a window:
+    // mixing one with a stated window leaves a database no one can compact.
+    for (const [declaration, windows] of [
+      ['db("crm"), db("crm", { historyDays: 365 })', '90 and 365'],
+      ['db("crm", { historyDays: 365 }), db("crm")', '365 and 90'],
+      [
+        'db("crm", { historyDays: 365 }), state("view"), db("crm", { historyDays: 7 })',
+        '365 and 7',
+      ],
+    ] as Array<[string, string]>) {
+      const { errors } = parseHtmlDeclarations([declaration])
+      expect(errors).toEqual([
+        `db("crm") is declared with two windows, ${windows} days`,
+      ])
+    }
+    // The same window twice is one window, however it is arrived at.
+    for (const declaration of [
+      'db("crm"), db("crm")',
+      'db("crm", { historyDays: 90 }), db("crm")',
+      'db("crm"), db("crm", { historyDays: 90 })',
+      'db("crm", { historyDays: 365 }), db("crm", { historyDays: 365 })',
+    ]) {
+      const { capabilities, dbHistoryDays, errors } = parseHtmlDeclarations([
+        declaration,
+      ])
+      expect(errors).toEqual([])
+      expect(capabilities.db).toEqual(['crm'])
+      expect(dbHistoryDays).toEqual({
+        crm: declaration.includes('365') ? 365 : APP_HISTORY_DAYS,
+      })
+    }
+  })
+
+  test('a database may be named constructor', () => {
+    // `dbHistoryDays` carries a `constructor` of its own, so the record's
+    // prototype is not a window it was declared with.
+    const bare = parseHtmlDeclarations(['db("constructor"), db("constructor")'])
+    expect(bare.errors).toEqual([])
+    expect(bare.capabilities.db).toEqual(['constructor'])
+    expect(bare.dbHistoryDays).toEqual({ constructor: APP_HISTORY_DAYS })
+    const windowed = parseHtmlDeclarations([
+      'db("constructor", { historyDays: 5 })',
+    ])
+    expect(windowed.errors).toEqual([])
+    expect(windowed.dbHistoryDays).toEqual({ constructor: 5 })
+    const mixed = parseHtmlDeclarations([
+      'db("constructor"), db("constructor", { historyDays: 5 })',
+    ])
+    expect(mixed.errors).toEqual([
+      `db("constructor") is declared with two windows, ${APP_HISTORY_DAYS} and 5 days`,
+    ])
   })
 
   test('a window that is not a number of days is refused', () => {
@@ -417,7 +474,9 @@ describe('the history window', () => {
           inspect: async () => ({
             ...(await database.inspect()),
             history: { commits: 2, oldestMs: Date.now() - 400 * DAY },
-            historyDays: APP_HISTORY_DAYS,
+            // A handle that remembers no window of its own: what an App is
+            // told is the one its own source declares, never this.
+            historyDays: null,
           }),
           compact: async (options?: { historyDays?: number }) => {
             compactions.push([directory, options?.historyDays])
@@ -429,7 +488,7 @@ describe('the history window', () => {
   }
   const settle = () => new Promise((resolve) => setTimeout(resolve, 10))
 
-  test('the open App compacts each database once, with the window it declares', async () => {
+  test('a view compacts each database once, with the window it declares', async () => {
     const browser = oldStorage()
     const one = documentAppDatabases('doc-window', {
       open: browser.open,
@@ -437,15 +496,49 @@ describe('the history window', () => {
     })
     // The source changed before the App reached its databases.
     one.setHistoryDays({ crm: 365 })
-    const two = documentAppDatabases('doc-window', { open: browser.open })
-    cleanups.push(one.dispose, two.dispose)
+    cleanups.push(one.dispose)
     await one.call('crm', 'inspect', undefined)
     await one.call('log', 'inspect', undefined)
-    await two.call('crm', 'inspect', undefined)
+    // Reached again: the view has looked for history to drop once already.
+    await one.call('crm', 'inspect', undefined)
     await settle()
     expect(browser.compactions).toEqual([
       [appDatabaseDirectory('doc-window', 'crm'), 365],
       [appDatabaseDirectory('doc-window', 'log'), APP_HISTORY_DAYS],
+    ])
+  })
+
+  test('opening the App again compacts, while a saved revision holds the database open', async () => {
+    const browser = oldStorage()
+    const directory = appDatabaseDirectory('doc-reopened', 'crm')
+    const first = documentAppDatabases('doc-reopened', {
+      open: browser.open,
+      historyDays: { crm: 365 },
+    })
+    await first.call('crm', 'inspect', undefined)
+    await settle()
+    // A saved revision of the same App reaches the same database, and keeps it
+    // open after the first view of the App goes away.
+    const pinned = documentAppDatabases('doc-reopened', {
+      open: browser.open,
+      writable: false,
+    })
+    await pinned.call('crm', 'inspect', undefined)
+    await settle()
+    first.dispose()
+    // The App is opened again, this time asking for a week.
+    const again = documentAppDatabases('doc-reopened', {
+      open: browser.open,
+      historyDays: { crm: 7 },
+    })
+    cleanups.push(pinned.dispose, again.dispose)
+    await again.call('crm', 'inspect', undefined)
+    await settle()
+    // One handle throughout, and each writable view of it compacted once.
+    expect(browser.opens).toEqual([directory])
+    expect(browser.compactions).toEqual([
+      [directory, 365],
+      [directory, 7],
     ])
   })
 
