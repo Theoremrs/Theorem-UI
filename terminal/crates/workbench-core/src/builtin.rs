@@ -342,7 +342,14 @@ pub fn registry() -> Registry {
                 .key("Mod+Alt+H", KeyScope::Global),
             // The same Enter the list takes: the conversation panel makes the
             // thread the open one, so the answer that names it is the panel's.
-            ActionDescriptor::local("threads.open", "Open thread").requires("threads"),
+            // A session row that is not admitted yet is admitted by the same
+            // Enter, so the action declares the effect it may emit.
+            ActionDescriptor::new("threads.open", "Open thread", Start)
+                .emits(EffectKind::TerminalAdmit)
+                .requires("threads"),
+            ActionDescriptor::new("threads.admit", "Admit to this workspace", Start)
+                .emits(EffectKind::TerminalAdmit)
+                .requires("terminal.admit"),
             ActionDescriptor::local("threads.menu", "Thread menu").requires("threads"),
             ActionDescriptor::local("threads.details", "View thread details").requires("threads"),
             ActionDescriptor::local("threads.archived", "Show archived threads")

@@ -74,6 +74,23 @@ fn extending_makes_the_effect_checks_registration_makes() {
 }
 
 #[test]
+fn the_threads_registry_resolves_admission_and_declares_the_effect_opening_may_emit() {
+    let registry = builtin::registry();
+    let (_, admit) = registry
+        .action(&ActionId::new("threads.admit"))
+        .expect("threads.admit is registered");
+    assert_eq!(admit.intent, Start);
+    assert_eq!(admit.emits, [EffectKind::TerminalAdmit]);
+    assert!(admit
+        .requires
+        .contains(&theorem_workbench_core::ids::Capability::new("terminal.admit")));
+    // Opening a session row may admit it: a domain effect, so not Local.
+    let (_, open) = registry.action(&ActionId::new("threads.open")).unwrap();
+    assert_eq!(open.intent, Start);
+    assert!(open.emits.contains(&EffectKind::TerminalAdmit));
+}
+
+#[test]
 fn extending_an_unregistered_kind_is_an_error() {
     let mut registry = builtin::registry();
     let ghost = PanelKind::new("ghost");
