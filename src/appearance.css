@@ -138,8 +138,15 @@
 [data-appearance-part='artifact'] {
   --appearance-surface-fill: var(--surface-artifact);
 }
+/* The status note is a tint of the error container over what it sits on, so a
+   failed reply reads as a margin note rather than a slab (owner review,
+   2026-11-16). Error ink keeps 4.5:1 against it in every palette. */
 [data-surface-role='status'] {
-  --appearance-surface-fill: var(--error-container);
+  --appearance-surface-fill: color-mix(
+    in oklab,
+    var(--error-container) 45%,
+    transparent
+  );
 }
 
 .appearance-surface[data-material='flat'],

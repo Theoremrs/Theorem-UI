@@ -609,12 +609,14 @@ const MessageError: FC = () => {
     )
   })
   if (hasErrorPart) return null
+  // A note in the reply's margin, not a filled slab: the header already says
+  // the reply did not finish, so the reason only needs to be legible.
   return (
     <MessagePrimitive.Error>
       <ErrorPrimitive.Root
         data-surface-role="status"
         {...appearancePair('error', 'status')}
-        className="aui-message-error-root bg-error-container text-error-ink mt-2 rounded-lg px-4 py-3 text-sm"
+        className="aui-message-error-root text-error-ink border-error-ink/35 mt-2 border-l-2 py-0.5 pl-3 text-sm"
       >
         <ErrorPrimitive.Message className="aui-message-error-message break-words" />
       </ErrorPrimitive.Root>
