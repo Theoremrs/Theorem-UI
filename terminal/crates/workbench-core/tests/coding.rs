@@ -252,6 +252,19 @@ fn code_start_opens_a_side_chat_for_theorem_and_hands_it_the_task_as_the_agent()
 }
 
 #[test]
+fn code_start_opens_its_own_panel_whatever_panel_it_is_aimed_at() {
+    // The catalog files code.start under the "coding" kind, and an agent
+    // reads that as a panel to aim at. code.start always opens a panel of its
+    // own, so a panel argument, open or not, changes nothing.
+    let (mut m, _) = model();
+    for panel in ["coding", "tab:p4"] {
+        let (outcome, _) = act(&mut m, "code.start", Some(panel), Some(r#"{"input":"add tests"}"#));
+        assert!(panel_of(&outcome).is_some(), "{panel}: {outcome:?}");
+    }
+    assert_eq!(open_of(&m, "side-chat").len(), 2);
+}
+
+#[test]
 fn code_start_opens_a_shell_for_claude_and_codex() {
     let (mut m, log) = model();
     for option in ["claude", "codex"] {
