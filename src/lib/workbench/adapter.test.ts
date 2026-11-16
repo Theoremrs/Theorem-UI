@@ -3,6 +3,8 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import type { AccountChange } from './account'
 import { createAdapter } from './adapter'
+import { createSessionWatch } from './agent/sessions'
+import type { SessionNotice } from './agent/sessions'
 import type {
   AdapterOptions,
   OwnerPort,
@@ -2938,5 +2940,69 @@ describe('terminal core loss, through the real terminal owner', () => {
         state: 'lost',
       },
     )
+  })
+})
+
+describe('telling the agent its terminal stopped working', () => {
+  const agent = { type: 'agent', runId: 'front-run' } as const
+  const claude = {
+    ...effectOf(1, 'terminalOpen'),
+    payload: {
+      backend: 'herdr',
+      argv: ['claude'],
+      name: 'Claude Code (Herdr)',
+      cols: 80,
+      rows: 24,
+    },
+  } as Effect
+  const report = (state: string) => ({
+    type: 'report',
+    terminalId: 't1',
+    bindingEpoch: 2,
+    report: { kind: 'current', status: { state } },
+  })
+  async function opened(effect: Effect) {
+    const told: SessionNotice[] = []
+    const t = await setup({
+      sessions: createSessionWatch((notice) => told.push(notice)),
+    })
+    t.adapter.perform(effect)
+    await t.settle()
+    return { t, told }
+  }
+
+  test('a terminal the agent opened tells that run when its program goes from working to idle', async () => {
+    const { t, told } = await opened({ ...claude, actor: agent } as Effect)
+    t.port.emit(report('idle'))
+    t.port.emit(report('working'))
+    expect(told).toEqual([])
+    t.port.emit(report('idle'))
+    expect(told).toEqual([
+      {
+        runId: 'front-run',
+        session: 't1',
+        what: 'Claude Code (Herdr)',
+        state: 'finished',
+      },
+    ])
+  })
+
+  test('blocked is waiting for a person, and an exit is news with its code', async () => {
+    const { t, told } = await opened({ ...claude, actor: agent } as Effect)
+    t.port.emit(report('working'))
+    t.port.emit(report('blocked'))
+    t.port.emit({ type: 'exited', reason: 'exited', code: 3, signal: null })
+    expect(told.map((n) => [n.state, n.detail])).toEqual([
+      ['waiting', undefined],
+      ['ended', 'exit code 3'],
+    ])
+  })
+
+  test('a terminal the person opened tells no run', async () => {
+    const { t, told } = await opened(claude)
+    t.port.emit(report('working'))
+    t.port.emit(report('done'))
+    t.port.emit({ type: 'exited', reason: 'exited', code: 0, signal: null })
+    expect(told).toEqual([])
   })
 })

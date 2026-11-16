@@ -15,6 +15,9 @@ import { herdrIdentity } from './terminal/protocol'
 import { causeWords, isKnownCause, stepWords } from './terminal/wire'
 import type { ListedTerminals } from './terminal/host'
 import { profileById, TERMINAL_PROFILES } from './terminal'
+import type { ProgramReport } from './terminal/program-report'
+import { sessionWatch } from './agent/sessions'
+import type { SessionState, SessionWatch } from './agent/sessions'
 import type { TerminalAdoption } from '@theoremharness/sdk'
 import type { Layout } from './layout'
 import type { AccountChange, AccountWatch } from './account'
@@ -142,6 +145,8 @@ export interface AdapterOptions {
   clipboard?: ClipboardPort
   /** Applies the theme a saved arrangement carries. Absent, that effect is refused `owner_unavailable`. */
   appearance?: AppearancePort
+  /** Watches the terminals an agent run acted on; the page's one watch unless a test gives its own. */
+  sessions?: SessionWatch
   /** The workbench handle's `dispatch`: every message is an `Inbound`, tagged by its channel. */
   dispatch: (message: Inbound) => void
   /**
@@ -226,7 +231,30 @@ export function completionFor(effect: Effect, answer: OwnerReply): Completion {
   }
 }
 
+/**
+ * What a program's own report says of its work, as the session watch reads
+ * it. A report with no current word, or a state it does not name, says
+ * nothing.
+ */
+function reportState(report: ProgramReport): SessionState | undefined {
+  if (report.kind !== 'current') return undefined
+  switch (report.status.state) {
+    case 'working':
+      return 'working'
+    case 'idle':
+    case 'done':
+      return 'finished'
+    case 'blocked':
+      return 'waiting'
+    case 'error':
+      return 'failed'
+    default:
+      return undefined
+  }
+}
+
 export function createAdapter(options: AdapterOptions): AccountAdapter {
+  const agentSessions = options.sessions ?? sessionWatch
   const { environment: env, files, layout, dispatch } = options
   const workspace = env.workspaceId
   /** Makes request ids unique across page loads: effect ids restart, and a host may remember a key. */
@@ -341,6 +369,13 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           })
           return
         case 'exited':
+          agentSessions.observe(
+            port.state.terminalId!,
+            'ended',
+            typeof event.code === 'number'
+              ? `exit code ${event.code}`
+              : event.reason,
+          )
           send({
             type: 'terminalExited',
             resource: target,
@@ -350,6 +385,11 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           })
           return
         case 'lost':
+          agentSessions.observe(
+            port.state.terminalId!,
+            'ended',
+            'the program was lost',
+          )
           send({
             type: 'terminalExited',
             resource: target,
@@ -392,6 +432,10 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           // into text or logged here. A report for no known binding epoch is not sent.
           if (event.bindingEpoch === undefined || event.bindingEpoch < epoch())
             return
+          {
+            const state = reportState(event.report)
+            if (state) agentSessions.observe(port.state.terminalId!, state)
+          }
           send({
             type: 'terminalReport',
             resource: target,
@@ -816,6 +860,19 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     effect: Of<'terminal'>,
     requestId: string,
   ): Promise<OwnerReply> {
+    // A terminal an agent run sent words to (code.send) is watched for that run.
+    if (
+      effect.actor?.type === 'agent' &&
+      effect.kind !== 'terminalOpen' &&
+      effect.resource.type === 'terminal'
+    ) {
+      const session = effect.resource.session
+      agentSessions.acted(
+        session,
+        effect.actor.runId,
+        terminals.get(session)?.port.state.profile?.id ?? 'the terminal',
+      )
+    }
     if (effect.kind === 'terminalOpen') {
       const opening = openTerminal(effect, requestId)
       openings.set(effect.id, opening)
@@ -895,6 +952,13 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     })
     if (done.outcome === 'accepted' && !disposed) {
       terminals.set(done.value.terminalId, { port, stop })
+      // A program an agent run started (code.start) is watched for that run.
+      if (effect.actor?.type === 'agent')
+        agentSessions.acted(
+          done.value.terminalId,
+          effect.actor.runId,
+          name ?? argv?.join(' ') ?? 'the terminal',
+        )
       track(port)
     } else {
       stop()

@@ -72,6 +72,7 @@ import { useKitRequests } from '@/lib/kit/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
+import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
 import { speechAdapter } from '@/lib/speech/adapter'
 import { clientSurfaceTurnOptions } from './client-surface'
 
@@ -700,6 +701,8 @@ function useTheoremThreadRuntime() {
   useFaceRequests(runtime, faceEffort)
   // The agent reads and acts on the workbench; this answers it.
   useWorkbenchRequests(runtime)
+  // A coding session the agent started that stops working wakes the agent; this tells it.
+  useSessionNoticeDelivery(runtime)
   useEffect(() => {
     let busy = false
     const abort = new AbortController()

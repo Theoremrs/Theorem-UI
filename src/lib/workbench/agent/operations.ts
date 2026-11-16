@@ -61,7 +61,7 @@ export const WORKBENCH_OPERATIONS = [
   {
     name: WORKBENCH_ACT,
     description:
-      'Runs one workbench action as you, for this run, as if the person pressed its key: `action` (an id from `workbench.read`) and, for one panel, `panel` (a node id). `workbench.open` shows the workbench beside the conversation (`placement` side or bottom) or full screen (full); any other action opens it first if it is closed. To hand off coding: `code.start` with `option` (theorem, claude or codex) and `input` (the task); `code.send` with `input` gives a running session feedback and `code.stop` stops it, both with its `panel`. Actions marked human-only (approvals) are refused. "accepted" means dispatched, not finished: follow it with `workbench.read`.',
+      'Runs one workbench action as you, for this run, as if the person pressed its key: `action` (an id from `workbench.read`) and, for one panel, `panel` (a node id). `workbench.open` shows the workbench beside the conversation (`placement` side or bottom) or full screen (full); any other action opens it first if it is closed. To hand off coding: `code.start` with `option` (theorem, claude or codex) and `input` (the task); `code.send` with `input` gives a running session feedback and `code.stop` stops it, both with its `panel`. Actions marked human-only (approvals) are refused. "accepted" means dispatched, not finished: follow it with `workbench.read`. A coding session you started or sent words to tells you when it stops working (finished, waiting for a person, stopped, failed or ended), in a message that begins "Workbench:".',
     effect: 'presentation',
     inputSchema: {
       type: 'object',
