@@ -43,7 +43,13 @@ const WHEN = new Intl.DateTimeFormat('en-US', {
 })
 
 /** One record in full: its properties, what changed, and what it is tied to. */
-export function RecordPage({ type, recordId }: { type: ObjectType; recordId: string }) {
+export function RecordPage({
+  type,
+  recordId,
+}: {
+  type: ObjectType
+  recordId: string
+}) {
   const { life } = useCrmScope()
   const access = accessFor(life, type)
   const { openType } = useCrmNavigate()
@@ -67,7 +73,11 @@ export function RecordPage({ type, recordId }: { type: ObjectType; recordId: str
         <p className="text-sm font-medium text-ink">{title}</p>
         <p className="max-w-sm text-xs leading-5 text-ink-muted">{detail}</p>
         {retry && (
-          <Button size="sm" variant="outline" onClick={() => void query.refetch()}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void query.refetch()}
+          >
             Try again
           </Button>
         )}
@@ -170,7 +180,12 @@ function LoadedRecord({
             />
           </div>
           <div className="flex flex-col gap-4 border-t border-separator px-4 py-4">
-            <PrivateToggle type={type} record={record} writes={writes} writable={writable} />
+            <PrivateToggle
+              type={type}
+              record={record}
+              writes={writes}
+              writable={writable}
+            />
             <SelfControl type={type} record={record} />
           </div>
         </div>
@@ -218,9 +233,18 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
     )
   if (changes.isError)
     return (
-      <div role="alert" className="flex items-center gap-2 px-4 py-4 text-[13px] text-ink">
-        <span>The changes could not be loaded. {crmErrorText(changes.error, type)}</span>
-        <Button size="xs" variant="outline" onClick={() => void changes.refetch()}>
+      <div
+        role="alert"
+        className="flex items-center gap-2 px-4 py-4 text-[13px] text-ink"
+      >
+        <span>
+          The changes could not be loaded. {crmErrorText(changes.error, type)}
+        </span>
+        <Button
+          size="xs"
+          variant="outline"
+          onClick={() => void changes.refetch()}
+        >
           Try again
         </Button>
       </div>
@@ -235,7 +259,8 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
   return (
     <ol aria-label="Changes, newest first" className="flex flex-col px-4 py-3">
       {list.map((change) => {
-        const lines = change.kind === 'updated' ? changeLines(change, type, titleOf) : []
+        const lines =
+          change.kind === 'updated' ? changeLines(change, type, titleOf) : []
         const step = revisionStep(change)
         return (
           <li
@@ -245,7 +270,10 @@ function Timeline({ type, record }: { type: ObjectType; record: CrmRecord }) {
             <div className="min-w-0 flex-1">
               {lines.length ? (
                 lines.map((line) => (
-                  <p key={line.fieldKey} className="text-[13px] leading-5 text-ink">
+                  <p
+                    key={line.fieldKey}
+                    className="text-[13px] leading-5 text-ink"
+                  >
                     {line.text}
                   </p>
                 ))
@@ -300,7 +328,9 @@ function Related({ type, record }: { type: ObjectType; record: CrmRecord }) {
         >
           <h3 className="flex items-center gap-1.5 pb-1.5 text-xs text-ink-muted">
             <TypeIcon type={group.type} className="size-3.5" />
-            <span className="font-medium text-ink">{group.type.label_plural}</span>
+            <span className="font-medium text-ink">
+              {group.type.label_plural}
+            </span>
             <span>
               {group.direction === 'from'
                 ? `· ${group.field.label}`
@@ -335,7 +365,10 @@ function Related({ type, record }: { type: ObjectType; record: CrmRecord }) {
         </section>
       ))}
       {unread.map((other) => (
-        <p key={other.object_type_id} className="text-xs leading-5 text-ink-muted">
+        <p
+          key={other.object_type_id}
+          className="text-xs leading-5 text-ink-muted"
+        >
           {statusOf(other) === 'denied'
             ? `${other.label_plural} tied to this record are not shown: this sign-in cannot read them.`
             : statusOf(other) === 'failed'

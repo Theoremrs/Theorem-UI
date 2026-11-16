@@ -15,11 +15,19 @@ const field = (
   label: string,
   field_type: SchemaFieldType,
   extra: Partial<FieldSpec> = {},
-): FieldSpec => ({ key, label, field_type, required: false, system: false, ...extra })
+): FieldSpec => ({
+  key,
+  label,
+  field_type,
+  required: false,
+  system: false,
+  ...extra,
+})
 
 const text = (key: string, label: string, extra?: Partial<FieldSpec>) =>
   field(key, label, { kind: 'text' }, extra)
-const long = (key: string, label: string) => field(key, label, { kind: 'long_text' })
+const long = (key: string, label: string) =>
+  field(key, label, { kind: 'long_text' })
 const choice = (key: string, label: string, variants: string[]) =>
   field(key, label, { kind: 'enum', variants }, { facet: true })
 const one = (key: string, label: string, target: string) =>
@@ -312,7 +320,11 @@ export function createFixtureServer(options: FixtureOptions = {}) {
     changes: fixtureChanges(),
     types,
     /** Every `invokeRecordVerb` input, in order, for a test to read. */
-    verbs: [] as { objectTypeId: string; verb: string; input: Record<string, unknown> }[],
+    verbs: [] as {
+      objectTypeId: string
+      verb: string
+      input: Record<string, unknown>
+    }[],
     created: 0,
     clock: FIXTURE_NOW,
   }
@@ -490,7 +502,9 @@ export function createFixtureServer(options: FixtureOptions = {}) {
         )
       const id = String(variables.id)
       if (!state.nodes.some((n) => n.id === id && n.labels.includes('Person')))
-        return refuse(`record_not_found: \`${id}\` is not a Person record of this workspace`)
+        return refuse(
+          `record_not_found: \`${id}\` is not a Person record of this workspace`,
+        )
       state.self = id
       return { data: { bindSelfPerson: life() } }
     }
@@ -580,10 +594,27 @@ export function fixtureManifestPart() {
       schema: 'theorem.life_context_manifest.v1',
       you: { state: 'bound', record_id: 'person:avery' },
       included: [
-        included('person:avery', 'person', 3, 'Avery Quinn', ['name', 'location'], { kind: 'you' }, 38, {
-          withheld_fields: ['email'],
-        }),
-        included('person:noor', 'person', 4, 'Noor', ['name', 'organization', 'role'], { kind: 'mentioned', phrase: 'Noor' }, 61),
+        included(
+          'person:avery',
+          'person',
+          3,
+          'Avery Quinn',
+          ['name', 'location'],
+          { kind: 'you' },
+          38,
+          {
+            withheld_fields: ['email'],
+          },
+        ),
+        included(
+          'person:noor',
+          'person',
+          4,
+          'Noor',
+          ['name', 'organization', 'role'],
+          { kind: 'mentioned', phrase: 'Noor' },
+          61,
+        ),
         included(
           'commitment:materials',
           'commitment',
@@ -615,7 +646,11 @@ export function fixtureManifestPart() {
         ),
       ],
       withheld: [
-        { record_id: 'interaction:planning', object_type: 'Interaction', reason: 'record_private' },
+        {
+          record_id: 'interaction:planning',
+          object_type: 'Interaction',
+          reason: 'record_private',
+        },
       ],
       ambiguous: [],
       over_budget: 0,
@@ -654,7 +689,9 @@ export function fixtureFetch(server: FixtureServer): typeof fetch {
       })
     if (url.pathname === '/graphql') {
       const raw =
-        input instanceof Request ? await input.text() : String(init?.body ?? '{}')
+        input instanceof Request
+          ? await input.text()
+          : String(init?.body ?? '{}')
       return Response.json(server.handle(JSON.parse(raw) as Body))
     }
     return Response.json({}, { status: 404 })

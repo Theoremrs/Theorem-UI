@@ -60,7 +60,8 @@ function reply(body) {
       continue
     }
     const fields = record.fields ?? {}
-    const name = fields.title ?? fields.name ?? fields.statement ?? fields.summary
+    const name =
+      fields.title ?? fields.name ?? fields.statement ?? fields.summary
     if (!name) continue
     if (record.type === 'Commitment' && fields.due)
       lines.push(`"${name}" is due ${fields.due}.`)
@@ -78,6 +79,8 @@ createServer(async (req, res) => {
     requests.length = 0
     return answer(res, 200, [])
   }
+  // Theorem checks a key before it keeps one; any key is this stand-in's.
+  if (req.method === 'GET') return answer(res, 200, { data: { label: 'e2e' } })
 
   const chunks = []
   for await (const chunk of req) chunks.push(chunk)
@@ -87,15 +90,34 @@ createServer(async (req, res) => {
   } catch {
     return answer(res, 400, { error: { message: 'request body is not JSON' } })
   }
-  requests.push({ path: req.url, at: Date.now(), body, recordSpans: recordSpans(body) })
-  answer(res, 200, {
-    choices: [
-      {
-        index: 0,
-        message: { role: 'assistant', content: reply(body) },
-        finish_reason: 'stop',
-      },
-    ],
-    usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+  requests.push({
+    path: req.url,
+    at: Date.now(),
+    body,
+    recordSpans: recordSpans(body),
   })
+  const content = reply(body)
+  const usage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+  if (!body.stream)
+    return answer(res, 200, {
+      choices: [
+        {
+          index: 0,
+          message: { role: 'assistant', content },
+          finish_reason: 'stop',
+        },
+      ],
+      usage,
+    })
+  // The same answer as a chat-completions event stream, for a model the
+  // catalog streams.
+  res.writeHead(200, { 'content-type': 'text/event-stream' })
+  const event = (data) => res.write(`data: ${JSON.stringify(data)}\n\n`)
+  event({
+    choices: [
+      { index: 0, delta: { role: 'assistant', content }, finish_reason: null },
+    ],
+  })
+  event({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }], usage })
+  res.end('data: [DONE]\n\n')
 }).listen(PORT, '127.0.0.1')

@@ -108,7 +108,10 @@ export function useCrmRecordsOf(types: ObjectType[]) {
     })),
   })
   const stamp = results
-    .map((result) => `${result.dataUpdatedAt}:${result.status}:${result.fetchStatus}`)
+    .map(
+      (result) =>
+        `${result.dataUpdatedAt}:${result.status}:${result.fetchStatus}`,
+    )
     .join()
   return useMemo(() => {
     const byType = new Map<string, CrmRecordPage>()
@@ -147,11 +150,7 @@ export function useCrmRecordsOf(types: ObjectType[]) {
 
 const NO_RECORDS: CrmRecord[] = []
 
-const heldRecord = (
-  client: QueryClient,
-  objectType: ObjectType,
-  id: string,
-) =>
+const heldRecord = (client: QueryClient, objectType: ObjectType, id: string) =>
   client
     .getQueryData<CrmRecordPage>(crmKeys.records(objectType.object_type_id))
     ?.records.find((record) => record.id === id)
@@ -323,7 +322,9 @@ export const useCrmEdits = create<EditsState>()((set) => ({
   clearRecord: (recordId) =>
     set((s) => ({
       edits: Object.fromEntries(
-        Object.entries(s.edits).filter(([, edit]) => edit.recordId !== recordId),
+        Object.entries(s.edits).filter(
+          ([, edit]) => edit.recordId !== recordId,
+        ),
       ),
     })),
 }))
@@ -378,7 +379,8 @@ export function useCrmWrites(objectType: ObjectType) {
         } catch (error) {
           put({
             ...edit,
-            status: error instanceof RevisionConflictError ? 'conflict' : 'failed',
+            status:
+              error instanceof RevisionConflictError ? 'conflict' : 'failed',
             error,
           })
           return undefined
@@ -390,7 +392,12 @@ export function useCrmWrites(objectType: ObjectType) {
 
   /** Save one field of a record as it was read. A value that did not change is not sent. */
   const save = useCallback(
-    (record: CrmRecord, field: FieldSpec, value: unknown, readRevision = record.version) => {
+    (
+      record: CrmRecord,
+      field: FieldSpec,
+      value: unknown,
+      readRevision = record.version,
+    ) => {
       if (sameValue(record.values[field.key], value)) {
         useCrmEdits.getState().clear(record.id, field.key)
         return Promise.resolve(record)

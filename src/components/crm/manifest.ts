@@ -77,7 +77,9 @@ function decodeWhy(raw: unknown): ManifestWhy {
     case 'related_from':
     case 'related_to': {
       const recordId = text(raw.record_id) ?? text(raw.recordId)
-      return recordId ? { kind: raw.kind, recordId, through } : { kind: 'unknown' }
+      return recordId
+        ? { kind: raw.kind, recordId, through }
+        : { kind: 'unknown' }
     }
     default:
       return { kind: 'unknown' }
@@ -122,7 +124,8 @@ export function decodeManifestPart(data: unknown): ContextManifest | undefined {
       : {}
   const manifest = part.manifest
   if (!isObject(manifest)) return undefined
-  if (text(manifest.schema) !== 'theorem.life_context_manifest.v1') return undefined
+  if (text(manifest.schema) !== 'theorem.life_context_manifest.v1')
+    return undefined
   const you = isObject(manifest.you) ? manifest.you : {}
   const accounting = isObject(manifest.accounting) ? manifest.accounting : {}
   const delivery = isObject(part.delivery) ? part.delivery : {}
@@ -177,7 +180,8 @@ export function manifestSummary(manifest: ContextManifest) {
       : 'Used no saved records',
   ]
   if (held) parts.push(`${held} held back`)
-  if (manifest.overBudget) parts.push(`${manifest.overBudget} left out for length`)
+  if (manifest.overBudget)
+    parts.push(`${manifest.overBudget} left out for length`)
   return parts.join(' · ')
 }
 
@@ -212,22 +216,20 @@ export function whyWords(
     case 'mentioned':
       return `Your message says “${why.phrase}”`
     case 'standing':
-      return why.through
-        ? `It always applies to you (${fieldWord(type, why.through).toLowerCase()})`
-        : 'It always applies to you'
+      return 'It always applies to you'
     case 'related_from': {
       // An included record points at this one through its field.
-      const other = labelOf(why.recordId) ?? 'Another record used here'
+      const other = labelOf(why.recordId) ?? 'another record used here'
       return why.through
-        ? `${other} names it as ${fieldWord(typeOf(why.recordId), why.through).toLowerCase()}`
-        : `${other} points to it`
+        ? `${fieldWord(typeOf(why.recordId), why.through)} of ${other}`
+        : `Tied to ${other}`
     }
     case 'related_to': {
       // This record points at an included one through its own field.
       const other = labelOf(why.recordId) ?? 'another record used here'
       return why.through
-        ? `Its ${fieldWord(type, why.through).toLowerCase()} is ${other}`
-        : `It points to ${other}`
+        ? `${fieldWord(type, why.through)}: ${other}`
+        : `Tied to ${other}`
     }
     default:
       return undefined
@@ -235,15 +237,21 @@ export function whyWords(
 }
 
 /** What was kept from, shortened in or added to a used record. Never a value. */
-export function fieldNotes(record: IncludedRecord, type: ObjectType | undefined) {
-  const words = (keys: string[]) => listOf(keys.map((key) => fieldWord(type, key)))
+export function fieldNotes(
+  record: IncludedRecord,
+  type: ObjectType | undefined,
+) {
+  const words = (keys: string[]) =>
+    listOf(keys.map((key) => fieldWord(type, key)))
   const notes: string[] = []
   if (record.withheldFields.length)
     notes.push(`Held back: ${words(record.withheldFields)}`)
   if (record.shortenedFields.length)
     notes.push(`Shortened to fit: ${words(record.shortenedFields)}`)
   if (record.supersededFields.length)
-    notes.push(`Given with the value it replaced: ${words(record.supersededFields)}`)
+    notes.push(
+      `Given with the value it replaced: ${words(record.supersededFields)}`,
+    )
   return notes
 }
 
@@ -281,5 +289,7 @@ export function degradedWords(code: string) {
 export function tokenWords(manifest: ContextManifest) {
   if (manifest.estimatedTokens === undefined) return undefined
   const about = `about ${new Intl.NumberFormat('en-US').format(manifest.estimatedTokens)} tokens`
-  return manifest.method ? `${about} — ${manifest.method}` : `${about} — an estimate`
+  return manifest.method
+    ? `${about} — ${manifest.method}`
+    : `${about} — an estimate`
 }

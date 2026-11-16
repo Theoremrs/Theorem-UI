@@ -18,6 +18,10 @@
 // GitHub. The accounts' passwords are in secrets.json under neonPasswords.
 // Generated secrets stay in E2E_DATA_DIR, in a file only this user can read.
 //
+// With E2E_CONTEXT_STANDIN set, for scripts/e2e/crm-context.mjs, no real model
+// is called at all: scripts/e2e/context-standin.mjs sits in OpenRouter's place,
+// keeps each request and answers from the saved records in it.
+//
 // With E2E_KEY_STANDIN set, for scripts/e2e/keys.mjs, the deployment has no OpenRouter
 // key and reaches OpenRouter through scripts/e2e/provider-standin.mjs. That takes only
 // a generated test key and swaps in the real one as it forwards, so a page never
@@ -44,6 +48,7 @@ import {
   IDENTITY_MODE,
   NEON,
   NEON_ACCOUNTS,
+  OTHER_ACCOUNT,
   STANDIN,
   STANDIN_PORT,
   UI,
@@ -242,6 +247,31 @@ if (process.env.E2E_KEY_STANDIN) {
   delete serverEnv.OPENROUTER_API_KEY
 }
 
+// For scripts/e2e/crm-context.mjs: every OpenRouter model answers from
+// scripts/e2e/context-standin.mjs, which keeps each request whole and replies
+// only from the saved records in it. The deployment's key is a generated test
+// key, so nothing reaches a real provider.
+if (process.env.E2E_CONTEXT_STANDIN) {
+  start('standin', process.execPath, ['scripts/e2e/context-standin.mjs'], {
+    ...process.env,
+    E2E_STANDIN_PORT: String(STANDIN_PORT),
+  })
+  await ready('standin', `${STANDIN}/__requests`)
+  const endpoint = { endpoint: `${STANDIN}/api/v1` }
+  serverEnv.THEOREM_MODELS_JSON = join(DATA_DIR, 'context-models.json')
+  writeFileSync(
+    serverEnv.THEOREM_MODELS_JSON,
+    JSON.stringify({
+      models: {
+        openrouter: Object.fromEntries(
+          STANDIN_MODELS.map((model) => [model, endpoint]),
+        ),
+      },
+    }),
+  )
+  serverEnv.OPENROUTER_API_KEY = secret.testProviderKey
+}
+
 // The server does not start without a web search provider. One named in
 // provider-keys.env wins; otherwise the offline provider answers from a local
 // manifest, so agent web searches in a scenario come back empty, not live.
@@ -260,7 +290,9 @@ start('server', server, [], {
   RUSTY_RED_MCP_DEFAULT_TENANT: ACCOUNT,
   RUSTY_RED_PREWARM_TENANTS: ACCOUNT,
   RUSTY_RED_TENANT_ADMISSION: 'allowlist',
-  RUSTY_RED_TENANT_ALLOWLIST: ACCOUNT,
+  RUSTY_RED_TENANT_ALLOWLIST: process.env.E2E_CONTEXT_STANDIN
+    ? `${ACCOUNT},${OTHER_ACCOUNT}`
+    : ACCOUNT,
   RUSTY_RED_SESSION_SIGNING_KEY_HEX: secret.sessionSigningKey,
   THEOREM_PUBLICATION_SIGNING_KEY_HEX: secret.publicationSigningKey,
   RUSTY_RED_OAUTH_ENABLED: 'true',
@@ -271,6 +303,9 @@ start('server', server, [], {
       client_id: CLIENT_ID,
       client_name: 'Theorem end to end',
       redirect_uris: [`${UI}/auth/callback`],
+      // A signed-in person reads and changes their workspace's records with
+      // graph:read and graph:write, which every client is granted; no
+      // per-type record scope is added here.
       extra_scopes: ['models:invoke', 'agency:approve'],
     },
   ]),

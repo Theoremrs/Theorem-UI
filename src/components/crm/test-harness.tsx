@@ -22,14 +22,43 @@ export async function mountAt(path: string, subject: () => ReactNode) {
   })
   const root = createRootRoute({ component: () => <>{subject()}</> })
   const empty = () => null
-  const crm = createRoute({ getParentRoute: () => root, path: '/crm', component: empty })
-  const type = createRoute({ getParentRoute: () => crm, path: '$objectType', component: empty })
-  const record = createRoute({ getParentRoute: () => type, path: '$recordId', component: empty })
-  const index = createRoute({ getParentRoute: () => root, path: '/index', component: empty })
-  const home = createRoute({ getParentRoute: () => root, path: '/', component: empty })
+  const crm = createRoute({
+    getParentRoute: () => root,
+    path: '/crm',
+    component: empty,
+  })
+  const type = createRoute({
+    getParentRoute: () => crm,
+    path: '$objectType',
+    component: empty,
+  })
+  const record = createRoute({
+    getParentRoute: () => type,
+    path: '$recordId',
+    component: empty,
+  })
+  const index = createRoute({
+    getParentRoute: () => root,
+    path: '/index',
+    component: empty,
+  })
+  const home = createRoute({
+    getParentRoute: () => root,
+    path: '/',
+    component: empty,
+  })
   const router = createRouter({
-    routeTree: root.addChildren([crm.addChildren([type.addChildren([record])]), index, home]),
+    routeTree: root.addChildren([
+      crm.addChildren([type.addChildren([record])]),
+      index,
+      home,
+    ]),
     history: createMemoryHistory({ initialEntries: [path] }),
+  })
+  // Every place the router went, in order.
+  const visited: string[] = []
+  router.subscribe('onBeforeNavigate', ({ toLocation }) => {
+    visited.push(toLocation.pathname)
   })
   await router.load()
   const view = await render(
@@ -39,5 +68,11 @@ export async function mountAt(path: string, subject: () => ReactNode) {
   )
   // Let the first reads land, as they have by the time a person looks.
   await act(() => new Promise((resolve) => setTimeout(resolve, 5)))
-  return { ...view, router, client, path: () => router.state.location.pathname }
+  return {
+    ...view,
+    router,
+    client,
+    visited,
+    path: () => router.state.location.pathname,
+  }
 }

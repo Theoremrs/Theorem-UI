@@ -143,22 +143,50 @@ export type ContextPolicy = {
   standing?: boolean
 }
 
-const strings = (value: unknown) =>
-  Array.isArray(value)
-    ? value.filter((entry): entry is string => typeof entry === 'string')
-    : undefined
+const POLICY_KEYS = [
+  'version',
+  'assistance',
+  'excluded_fields',
+  'mention_fields',
+  'standing',
+]
 
-/** A type's policy; one that declares none is available to the assistant. */
-export function contextPolicy(type: Pick<ObjectType, 'extensions'>): ContextPolicy {
+const strings = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+
+/**
+ * What the server makes of a type's `theorem.context`, read by the server's
+ * own rules: a type that declares no policy is not used, and neither is one
+ * whose policy this version cannot read (another version, an unknown key).
+ */
+export type ContextReading =
+  | { state: 'available' | 'excluded'; policy: ContextPolicy }
+  | { state: 'undeclared' | 'unreadable'; policy?: undefined }
+
+export function contextPolicy(
+  type: Pick<ObjectType, 'extensions' | 'retired'>,
+): ContextReading {
   const raw = type.extensions?.[CONTEXT_EXTENSION]
-  const value =
-    raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  if (raw === undefined || raw === null) return { state: 'undeclared' }
+  if (typeof raw !== 'object' || Array.isArray(raw))
+    return { state: 'unreadable' }
+  const value = raw as Record<string, unknown>
+  const readable =
+    Object.keys(value).every((key) => POLICY_KEYS.includes(key)) &&
+    value.version === 1 &&
+    (value.assistance === 'available' || value.assistance === 'excluded') &&
+    (value.excluded_fields === undefined || strings(value.excluded_fields)) &&
+    (value.mention_fields === undefined || strings(value.mention_fields)) &&
+    (value.standing === undefined || typeof value.standing === 'boolean')
+  if (!readable) return { state: 'unreadable' }
+  const policy = value as ContextPolicy
+  // A retired type is kept out whatever its policy says.
   return {
-    version: 1,
-    assistance: value.assistance === 'excluded' ? 'excluded' : 'available',
-    excluded_fields: strings(value.excluded_fields),
-    mention_fields: strings(value.mention_fields),
-    standing: value.standing === true ? true : undefined,
+    state:
+      policy.assistance === 'available' && !type.retired
+        ? 'available'
+        : 'excluded',
+    policy,
   }
 }
 
@@ -286,8 +314,11 @@ export function changeLines(
 /** "revision 6 → 7", or nothing when the change does not say. */
 export function revisionStep(change: RecordChange) {
   const after = revisionAfter(change)
-  if (change.kind === 'created') return after === null ? 'revision 1' : `revision ${after}`
-  return after === null ? undefined : `revision ${change.previousRevision} → ${after}`
+  if (change.kind === 'created')
+    return after === null ? 'revision 1' : `revision ${after}`
+  return after === null
+    ? undefined
+    : `revision ${change.previousRevision} → ${after}`
 }
 
 /** A record's title under its type, for labels and sentences. */

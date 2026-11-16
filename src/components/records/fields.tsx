@@ -697,6 +697,11 @@ function TextEditor({
     onCommit(n, move)
   }
   useImperativeHandle(commitRef, () => commit)
+  const className = cn(
+    'w-full bg-transparent text-sm text-ink outline-none',
+    numeric && 'tabular-nums',
+    invalid && 'text-error-ink',
+  )
   const shared = {
     autoFocus: true,
     value: text,
@@ -710,11 +715,7 @@ function TextEditor({
       event.currentTarget.setSelectionRange(end, end)
     },
     onBlur: () => commit(),
-    className: cn(
-      'w-full bg-transparent text-sm text-ink outline-none',
-      numeric && 'tabular-nums',
-      invalid && 'text-error-ink',
-    ),
+    className,
   }
   return multiline ? (
     <textarea
@@ -724,7 +725,7 @@ function TextEditor({
       onKeyDown={(event) =>
         commitKeys(event, commit, discard, { multiline: true })
       }
-      className={cn(shared.className, 'min-w-72 resize-none p-2')}
+      className={cn(className, 'min-w-72 resize-none p-2')}
     />
   ) : (
     <input

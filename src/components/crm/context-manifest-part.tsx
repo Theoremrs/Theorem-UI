@@ -58,7 +58,11 @@ function RecordLink({
 }
 
 /** The saved records a reply was given, and what was held back from it. */
-export function ContextManifestView({ manifest }: { manifest: ContextManifest }) {
+export function ContextManifestView({
+  manifest,
+}: {
+  manifest: ContextManifest
+}) {
   const [open, setOpen] = useState(false)
   const model = useDataModel().data
   const typeOfName = (id: string | undefined, name: string | undefined) =>
@@ -67,11 +71,15 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
         (id && type.object_type_id === id) ||
         (name && type.name_singular.toLowerCase() === name.toLowerCase()),
     )
-  const included = new Map(manifest.included.map((record) => [record.recordId, record]))
+  const included = new Map(
+    manifest.included.map((record) => [record.recordId, record]),
+  )
   const labelOf = (recordId: string) => included.get(recordId)?.label
   const typeOf = (recordId: string) => {
     const record = included.get(recordId)
-    return record ? typeOfName(record.objectTypeId, record.objectType) : undefined
+    return record
+      ? typeOfName(record.objectTypeId, record.objectType)
+      : undefined
   }
   const tokens = tokenWords(manifest)
   const attention =
@@ -86,7 +94,9 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
     >
       <CollapsibleTrigger className="group/used flex min-h-8 w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-start text-ink-muted outline-none hover:text-ink focus-visible:outline-2 focus-visible:outline-focus">
         <Layers aria-hidden className="size-3.5 shrink-0" />
-        <span className="min-w-0 flex-1 truncate">{manifestSummary(manifest)}</span>
+        <span className="min-w-0 flex-1 truncate">
+          {manifestSummary(manifest)}
+        </span>
         {attention && (
           <span className="flex shrink-0 items-center gap-1 text-xs text-ochre-ink">
             <CircleAlert aria-hidden className="size-3.5" />
@@ -100,16 +110,24 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
       </CollapsibleTrigger>
       <CollapsiblePanel>
         <div className="flex flex-col gap-3 border-t border-separator px-2.5 py-2.5">
-          <h4 className="text-xs font-medium text-ink">Used in this response</h4>
+          <h4 className="text-xs font-medium text-ink">
+            Used in this response
+          </h4>
 
           {manifest.included.length > 0 && (
-            <ul aria-label="Saved records used" className="flex flex-col gap-2.5">
+            <ul
+              aria-label="Saved records used"
+              className="flex flex-col gap-2.5"
+            >
               {manifest.included.map((record) => {
                 const type = typeOfName(record.objectTypeId, record.objectType)
                 const why = whyWords(record, labelOf, type, typeOf)
                 return (
                   <li key={record.recordId} className="flex gap-2">
-                    <TypeIcon type={type} className="mt-0.5 size-3.5 text-ink-muted" />
+                    <TypeIcon
+                      type={type}
+                      className="mt-0.5 size-3.5 text-ink-muted"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="leading-5">
                         <RecordLink
@@ -126,9 +144,16 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
                           revision {record.revision}
                         </span>
                       </p>
-                      {why && <p className="text-xs leading-5 text-ink-muted">{why}</p>}
+                      {why && (
+                        <p className="text-xs leading-5 text-ink-muted">
+                          {why}
+                        </p>
+                      )}
                       {fieldNotes(record, type).map((note) => (
-                        <p key={note} className="text-xs leading-5 text-ink-muted">
+                        <p
+                          key={note}
+                          className="text-xs leading-5 text-ink-muted"
+                        >
                           {note}
                         </p>
                       ))}
@@ -154,7 +179,8 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
                     'record'
                   ).toLowerCase()
                   const gone =
-                    record.reason === 'record_deleted' || record.reason === 'not_found'
+                    record.reason === 'record_deleted' ||
+                    record.reason === 'not_found'
                   return (
                     <li
                       key={`${record.recordId}:${record.reason}`}
@@ -187,11 +213,15 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
           )}
 
           {manifest.ambiguous.length > 0 && (
-            <section aria-label="Names that match more than one record" className="flex flex-col gap-1">
+            <section
+              aria-label="Names that match more than one record"
+              className="flex flex-col gap-1"
+            >
               {manifest.ambiguous.map((mention) => (
                 <p key={mention.phrase} className="text-xs leading-5 text-ink">
-                  “{mention.phrase}” matches {mention.recordIds.length || 'more than one'}{' '}
-                  saved records, so Theorem could not tell which you meant
+                  “{mention.phrase}” matches{' '}
+                  {mention.recordIds.length || 'more than one'} saved records,
+                  so Theorem could not tell which you meant
                   {mention.recordIds.length > 0 && ': '}
                   {mention.recordIds.map((id, index) => (
                     <span key={id}>
@@ -213,10 +243,19 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
           )}
 
           {manifest.degraded.length > 0 && (
-            <ul aria-label="What could not be read" className="flex flex-col gap-1">
+            <ul
+              aria-label="What could not be read"
+              className="flex flex-col gap-1"
+            >
               {manifest.degraded.map((code) => (
-                <li key={code} className="flex gap-1.5 text-xs leading-5 text-ink">
-                  <CircleAlert aria-hidden className="mt-1 size-3 shrink-0 text-ochre-ink" />
+                <li
+                  key={code}
+                  className="flex gap-1.5 text-xs leading-5 text-ink"
+                >
+                  <CircleAlert
+                    aria-hidden
+                    className="mt-1 size-3 shrink-0 text-ochre-ink"
+                  />
                   {degradedWords(code)}
                 </li>
               ))}
@@ -231,12 +270,15 @@ export function ContextManifestView({ manifest }: { manifest: ContextManifest })
           )}
           {manifest.you.state === 'withheld' && (
             <p className="text-xs leading-5 text-ink-muted">
-              Your own record is held back, so Theorem was not told who is asking.
+              Your own record is held back, so Theorem was not told who is
+              asking.
             </p>
           )}
 
           {tokens && manifest.included.length > 0 && (
-            <p className="text-xs leading-5 text-ink-faint tabular-nums">{tokens}</p>
+            <p className="text-xs leading-5 text-ink-faint tabular-nums">
+              {tokens}
+            </p>
           )}
         </div>
       </CollapsiblePanel>

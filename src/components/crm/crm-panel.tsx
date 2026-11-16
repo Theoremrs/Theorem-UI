@@ -19,7 +19,9 @@ const NUMBER = new Intl.NumberFormat('en-US')
 function Heading({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-7 items-center px-2 pt-3 pb-1">
-      <h2 className="min-w-0 flex-1 text-xs text-ink-faint-sheet">{children}</h2>
+      <h2 className="min-w-0 flex-1 text-xs text-ink-faint-sheet">
+        {children}
+      </h2>
     </div>
   )
 }
@@ -55,7 +57,9 @@ function Me() {
   const people = personType(types)
   if (!life?.installed || !people) return null
   const self = selfId ? recordById(selfId) : undefined
-  const mark = <UserRound aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+  const mark = (
+    <UserRound aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
+  )
 
   if (selfId)
     return (
@@ -75,7 +79,11 @@ function Me() {
     )
   return (
     <div className="flex flex-col">
-      <button type="button" className={ROW} onClick={() => void openType(people)}>
+      <button
+        type="button"
+        className={ROW}
+        onClick={() => void openType(people)}
+      >
         {mark}
         <span className="min-w-0 flex-1 truncate">Me</span>
         <span className={COUNT}>Not set</span>
@@ -142,13 +150,19 @@ function TypeRow({
       <TypeIcon type={type} />
       <span className="min-w-0 flex-1 truncate">{type.label_plural}</span>
       {denied ? (
-        <span className="flex shrink-0 items-center text-ink-faint-sheet">
-          <EyeOff aria-hidden className="size-3" />
+        <span
+          className="flex shrink-0 items-center text-ink-muted"
+          title="Not available to this sign-in"
+        >
+          <EyeOff aria-hidden className="size-3.5" />
           <span className="sr-only">Not available to this sign-in</span>
         </span>
       ) : (
         typeof count === 'number' && (
-          <span className={COUNT} aria-label={`${NUMBER.format(count)} records`}>
+          <span
+            className={COUNT}
+            aria-label={`${NUMBER.format(count)} records`}
+          >
             {NUMBER.format(count)}
           </span>
         )

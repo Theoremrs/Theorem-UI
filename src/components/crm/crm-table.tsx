@@ -8,11 +8,12 @@ import {
   Settings2,
   X,
 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import type { KeyboardEvent } from 'react'
 import {
   Menu,
   MenuCheckboxItem,
+  MenuGroup,
   MenuGroupLabel,
   MenuItem,
   MenuPopup,
@@ -83,18 +84,29 @@ const IDENTIFIER = 220
 const STEP = 200
 
 type Sort = { key: string; descending: boolean }
-type Editing = { rowId: string; col: string; typed?: string; anchor: Element | null }
+type Editing = {
+  rowId: string
+  col: string
+  typed?: string
+  anchor: Element | null
+}
 
 const NUMBER = new Intl.NumberFormat('en-US')
 
 function compare(a: unknown, b: unknown) {
   const empty = (v: unknown) =>
-    v === null || v === undefined || v === '' || (Array.isArray(v) && v.length === 0)
+    v === null ||
+    v === undefined ||
+    v === '' ||
+    (Array.isArray(v) && v.length === 0)
   // A record with nothing to sort by goes last, whichever way the sort runs.
   if (empty(a) || empty(b)) return empty(a) === empty(b) ? 0 : empty(a) ? 1 : -1
   if (typeof a === 'number' && typeof b === 'number') return a - b
   const text = (v: unknown) => (Array.isArray(v) ? v.join(', ') : String(v))
-  return text(a).localeCompare(text(b), undefined, { numeric: true, sensitivity: 'base' })
+  return text(a).localeCompare(text(b), undefined, {
+    numeric: true,
+    sensitivity: 'base',
+  })
 }
 
 /** One type's records as a table, with the record preview beside it. */
@@ -118,12 +130,14 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set())
   const [limit, setLimit] = useState(STEP)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
-  const [focus, setFocus] = useState<{ row: number; col: number }>({ row: 0, col: 0 })
+  const [focus, setFocus] = useState<{ row: number; col: number }>({
+    row: 0,
+    col: 0,
+  })
   const [editing, setEditing] = useState<Editing | null>(null)
   const [draft, setDraft] = useState<string | null>(null)
   const draftLeft = useRef(false)
   const [createError, setCreateError] = useState<unknown>(null)
-  const [focusNew, setFocusNew] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleteReport, setDeleteReport] = useState<string | null>(null)
   const grid = useRef<HTMLDivElement>(null)
@@ -135,8 +149,11 @@ export function CrmTable({ type }: { type: ObjectType }) {
     return identifier ? [identifier, ...rest] : rest
   }, [type, identifier, hidden])
   const widthOf = (field: FieldSpec) =>
-    field.key === identifier?.key ? IDENTIFIER : KIND[field.field_type.kind].width
-  const totalWidth = CHECK + columns.reduce((sum, field) => sum + widthOf(field), 0)
+    field.key === identifier?.key
+      ? IDENTIFIER
+      : KIND[field.field_type.kind].width
+  const totalWidth =
+    CHECK + columns.reduce((sum, field) => sum + widthOf(field), 0)
 
   const records = page.data?.records
   const loaded = records?.length ?? 0
@@ -168,7 +185,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
   // Cell focus
 
   const cellAt = (row: number, col: number) =>
-    grid.current?.querySelector<HTMLElement>(`[data-r="${row}"][data-c="${col}"]`)
+    grid.current?.querySelector<HTMLElement>(
+      `[data-r="${row}"][data-c="${col}"]`,
+    )
   const focusCell = (row: number, col: number) => {
     const r = Math.max(0, Math.min(shown.length - 1, row))
     const c = Math.max(0, Math.min(columns.length - 1, col))
@@ -186,25 +205,26 @@ export function CrmTable({ type }: { type: ObjectType }) {
             ? focusCell(row, col - 1)
             : focusCell(row, col)
 
-  // A record just created is where the cursor goes next.
-  useEffect(() => {
-    if (!focusNew) return
-    const row = shown.findIndex((record) => record.id === focusNew)
-    if (row < 0) return
-    setFocusNew(null)
-    setFocus({ row, col: 0 })
-    requestAnimationFrame(() => {
-      const cell = cellAt(row, 0)
-      cell?.scrollIntoView?.({ block: 'nearest' })
-      cell?.focus()
-    })
-    // `shown` is derived; its length and the id are what matter.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusNew, shown.length])
+  /**
+   * Puts the cursor in a record's name once its row is drawn: a record just
+   * created is where the person goes on typing. The row arrives a render
+   * later, so this looks again for a few frames and then gives up.
+   */
+  const focusRecord = (id: string, tries = 20) => {
+    const cell = [
+      ...(grid.current?.querySelectorAll<HTMLElement>('[data-record]') ?? []),
+    ].find((candidate) => candidate.dataset.record === id)
+    if (cell) {
+      cell.scrollIntoView({ block: 'nearest' })
+      cell.focus()
+    } else if (tries > 0)
+      requestAnimationFrame(() => focusRecord(id, tries - 1))
+  }
 
   // Editing
 
-  const editable = (field: FieldSpec) => access.write && editStyle(field) !== 'none'
+  const editable = (field: FieldSpec) =>
+    access.write && editStyle(field) !== 'none'
   const startEdit = (row: number, col: number, typed?: string) => {
     const record = shown[row]
     const field = columns[col]
@@ -217,9 +237,19 @@ export function CrmTable({ type }: { type: ObjectType }) {
     }
     if (typed !== undefined && style !== 'inline') return
     setFocus({ row, col })
-    setEditing({ rowId: record.id, col: field.key, typed, anchor: cellAt(row, col) ?? null })
+    setEditing({
+      rowId: record.id,
+      col: field.key,
+      typed,
+      anchor: cellAt(row, col) ?? null,
+    })
   }
-  const commit = (record: CrmRecord, field: FieldSpec, value: unknown, move?: Move) => {
+  const commit = (
+    record: CrmRecord,
+    field: FieldSpec,
+    value: unknown,
+    move?: Move,
+  ) => {
     setEditing(null)
     void writes.save(record, field, value)
     step(
@@ -234,7 +264,11 @@ export function CrmTable({ type }: { type: ObjectType }) {
     step(focus.row, focus.col)
   }
 
-  const onCellKey = (event: KeyboardEvent<HTMLElement>, row: number, col: number) => {
+  const onCellKey = (
+    event: KeyboardEvent<HTMLElement>,
+    row: number,
+    col: number,
+  ) => {
     if (event.target !== event.currentTarget || editing) return
     const record = shown[row]
     const arrows: Record<string, Move> = {
@@ -286,10 +320,13 @@ export function CrmTable({ type }: { type: ObjectType }) {
       {
         onSuccess: (record) => {
           // The new record must be on screen to take the cursor.
-          if (filter && !text.toLowerCase().includes(filter.trim().toLowerCase()))
+          if (
+            filter &&
+            !text.toLowerCase().includes(filter.trim().toLowerCase())
+          )
             setFilter('')
           setLimit(Number.MAX_SAFE_INTEGER)
-          setFocusNew(record.id)
+          focusRecord(record.id)
         },
         onError: setCreateError,
       },
@@ -298,9 +335,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
   const openDraft = () => {
     setDraft('')
     requestAnimationFrame(() =>
-      grid.current?.querySelector<HTMLElement>('[data-add-row]')?.scrollIntoView?.({
-        block: 'nearest',
-      }),
+      grid.current
+        ?.querySelector<HTMLElement>('[data-add-row]')
+        ?.scrollIntoView({ block: 'nearest' }),
     )
   }
 
@@ -312,7 +349,8 @@ export function CrmTable({ type }: { type: ObjectType }) {
       if (!next.delete(id)) next.add(id)
       return next
     })
-  const allSelected = shown.length > 0 && shown.every((record) => selected.has(record.id))
+  const allSelected =
+    shown.length > 0 && shown.every((record) => selected.has(record.id))
   const someSelected = shown.some((record) => selected.has(record.id))
   const deleteSelected = async () => {
     setConfirmDelete(false)
@@ -324,7 +362,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
         await writes.remove(record)
         deleted += 1
       } catch (error) {
-        refused.push(`${recordTitle(type, record)}: ${crmErrorText(error, type)}`)
+        refused.push(
+          `${recordTitle(type, record)}: ${crmErrorText(error, type)}`,
+        )
       }
     setSelected(new Set())
     setDeleteReport(
@@ -336,34 +376,69 @@ export function CrmTable({ type }: { type: ObjectType }) {
 
   // Assistant use, for the whole type
 
-  const policy = contextPolicy(type)
-  const setAssistance = (available: boolean) =>
+  // Read by the server's rules: a type with no setting is not used, and a
+  // setting this version cannot read is left as it is, never overwritten.
+  const context = contextPolicy(type)
+  const setAssistance = (available: boolean) => {
+    if (context.state === 'unreadable') return
     declare.mutate({
       input: {
         ...toInput(type),
         extensions: {
           ...type.extensions,
           [CONTEXT_EXTENSION]: {
-            ...policy,
+            ...(context.policy ?? { version: 1 }),
             assistance: available ? 'available' : 'excluded',
           },
         },
       },
       anchor: type.content_anchor,
     })
+  }
+
+  // Assistant use, field by field: a field kept from Theorem is never sent,
+  // and a record is never found by what that field holds.
+  const keptFromTheorem = new Set(context.policy?.excluded_fields ?? [])
+  const setFieldRead = (key: string, read: boolean) => {
+    if (context.state === 'unreadable' || !context.policy) return
+    const kept = new Set(keptFromTheorem)
+    if (read) kept.delete(key)
+    else kept.add(key)
+    declare.mutate({
+      input: {
+        ...toInput(type),
+        extensions: {
+          ...type.extensions,
+          [CONTEXT_EXTENSION]: {
+            ...context.policy,
+            excluded_fields: type.fields
+              .map((field) => field.key)
+              .filter((field) => kept.has(field)),
+          },
+        },
+      },
+      anchor: type.content_anchor,
+    })
+  }
 
   const plural = type.label_plural
   const noun = type.label_singular.toLowerCase()
   const denied = !access.read || page.error instanceof RecordAccessError
-  const editingRow = editing ? shown.find((r) => r.id === editing.rowId) : undefined
-  const editingField = editing ? columns.find((f) => f.key === editing.col) : undefined
+  const editingRow = editing
+    ? shown.find((r) => r.id === editing.rowId)
+    : undefined
+  const editingField = editing
+    ? columns.find((f) => f.key === editing.col)
+    : undefined
 
   const count = () => {
     if (!page.data) return ''
-    const some = (n: number) => `${NUMBER.format(n)} ${n === 1 ? noun : plural.toLowerCase()}`
+    const some = (n: number) =>
+      `${NUMBER.format(n)} ${n === 1 ? noun : plural.toLowerCase()}`
     if (total > loaded)
       return `Showing the first ${NUMBER.format(loaded)} of ${some(total)}. Filter and sort work on these ${NUMBER.format(loaded)}.`
-    if (filter.trim()) return `${NUMBER.format(rows.length)} of ${some(loaded)} match “${filter.trim()}”`
+    if (filter.trim())
+      return `${NUMBER.format(rows.length)} of ${some(loaded)} match “${filter.trim()}”`
     return some(loaded)
   }
 
@@ -376,7 +451,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
         {/* Page header: 44 px */}
         <header className="flex h-11 shrink-0 items-center gap-2 border-b border-separator px-3">
           <TypeIcon type={type} className="text-ink-muted" />
-          <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{plural}</h1>
+          <h1 className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
+            {plural}
+          </h1>
           {access.write && !denied && identifier && (
             <Button size="sm" variant="outline" onClick={openDraft}>
               <Plus aria-hidden />
@@ -393,13 +470,17 @@ export function CrmTable({ type }: { type: ObjectType }) {
             <div className="flex h-10 shrink-0 items-center gap-1 border-b border-separator px-3 text-[13px]">
               <span className="font-medium text-ink">All {plural}</span>
               {page.data && (
-                <span className="text-ink-muted tabular-nums">· {NUMBER.format(total)}</span>
-              )}
-              {!policy || policy.assistance === 'excluded' ? (
-                <span className="ms-2 truncate text-xs text-ink-muted">
-                  Theorem does not use {plural.toLowerCase()} when it answers.
+                <span className="text-ink-muted tabular-nums">
+                  · {NUMBER.format(total)}
                 </span>
-              ) : null}
+              )}
+              {context.state !== 'available' && (
+                <span className="ms-2 truncate text-xs text-ink-muted">
+                  {context.state === 'unreadable'
+                    ? `Theorem does not use ${plural.toLowerCase()} when it answers: this type’s setting could not be read.`
+                    : `Theorem does not use ${plural.toLowerCase()} when it answers.`}
+                </span>
+              )}
               <span className="flex-1" />
               {selected.size > 0 && access.write && (
                 <>
@@ -452,7 +533,11 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   </button>
                 </span>
               ) : (
-                <Button size="xs" variant="ghost" onClick={() => setFiltering(true)}>
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  onClick={() => setFiltering(true)}
+                >
                   <ListFilter aria-hidden />
                   Filter
                 </Button>
@@ -469,15 +554,22 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   }
                 />
                 <MenuPopup align="end" className="w-56">
-                  <MenuGroupLabel>Sort by</MenuGroupLabel>
                   <MenuRadioGroup
                     value={sort?.key ?? ''}
                     onValueChange={(key) =>
-                      setSort({ key: String(key), descending: sort?.descending ?? false })
+                      setSort({
+                        key: String(key),
+                        descending: sort?.descending ?? false,
+                      })
                     }
                   >
+                    <MenuGroupLabel>Sort by</MenuGroupLabel>
                     {shownFields(type).map((field) => (
-                      <MenuRadioItem key={field.key} value={field.key} closeOnClick={false}>
+                      <MenuRadioItem
+                        key={field.key}
+                        value={field.key}
+                        closeOnClick={false}
+                      >
                         {field.label}
                       </MenuRadioItem>
                     ))}
@@ -486,13 +578,25 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   <MenuRadioGroup
                     value={sort?.descending ? 'descending' : 'ascending'}
                     onValueChange={(direction) =>
-                      sort && setSort({ ...sort, descending: direction === 'descending' })
+                      sort &&
+                      setSort({
+                        ...sort,
+                        descending: direction === 'descending',
+                      })
                     }
                   >
-                    <MenuRadioItem value="ascending" disabled={!sort} closeOnClick={false}>
+                    <MenuRadioItem
+                      value="ascending"
+                      disabled={!sort}
+                      closeOnClick={false}
+                    >
                       Ascending
                     </MenuRadioItem>
-                    <MenuRadioItem value="descending" disabled={!sort} closeOnClick={false}>
+                    <MenuRadioItem
+                      value="descending"
+                      disabled={!sort}
+                      closeOnClick={false}
+                    >
                       Descending
                     </MenuRadioItem>
                   </MenuRadioGroup>
@@ -512,36 +616,67 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   }
                 />
                 <MenuPopup align="end" className="w-64">
-                  <MenuGroupLabel>Columns</MenuGroupLabel>
-                  {shownFields(type).map((field) => (
-                    <MenuCheckboxItem
-                      key={field.key}
-                      closeOnClick={false}
-                      disabled={field.key === identifier?.key}
-                      checked={!hidden.has(field.key)}
-                      onCheckedChange={(checked) =>
-                        setHidden((held) => {
-                          const next = new Set(held)
-                          if (checked) next.delete(field.key)
-                          else next.add(field.key)
-                          return next
-                        })
-                      }
-                    >
-                      {field.label}
-                    </MenuCheckboxItem>
-                  ))}
+                  <MenuGroup>
+                    <MenuGroupLabel>Columns</MenuGroupLabel>
+                    {shownFields(type).map((field) => (
+                      <MenuCheckboxItem
+                        key={field.key}
+                        closeOnClick={false}
+                        disabled={field.key === identifier?.key}
+                        checked={!hidden.has(field.key)}
+                        onCheckedChange={(checked) =>
+                          setHidden((held) => {
+                            const next = new Set(held)
+                            if (checked) next.delete(field.key)
+                            else next.add(field.key)
+                            return next
+                          })
+                        }
+                      >
+                        {field.label}
+                      </MenuCheckboxItem>
+                    ))}
+                  </MenuGroup>
                   <MenuSeparator />
-                  <MenuGroupLabel>Theorem</MenuGroupLabel>
-                  <MenuCheckboxItem
-                    variant="switch"
-                    closeOnClick={false}
-                    disabled={!access.write || declare.isPending}
-                    checked={policy.assistance === 'available'}
-                    onCheckedChange={setAssistance}
-                  >
-                    May use {plural.toLowerCase()} in answers
-                  </MenuCheckboxItem>
+                  <MenuGroup>
+                    <MenuGroupLabel>Theorem</MenuGroupLabel>
+                    <MenuCheckboxItem
+                      variant="switch"
+                      closeOnClick={false}
+                      disabled={
+                        !access.write ||
+                        declare.isPending ||
+                        context.state === 'unreadable'
+                      }
+                      checked={context.state === 'available'}
+                      onCheckedChange={setAssistance}
+                    >
+                      May use {plural.toLowerCase()} in answers
+                    </MenuCheckboxItem>
+                  </MenuGroup>
+                  {context.state === 'available' && (
+                    <MenuGroup>
+                      <MenuGroupLabel>Fields Theorem may read</MenuGroupLabel>
+                      {shownFields(type).map((field) => (
+                        <MenuCheckboxItem
+                          key={field.key}
+                          closeOnClick={false}
+                          aria-label={`Theorem may read ${field.label}`}
+                          disabled={
+                            !access.write ||
+                            declare.isPending ||
+                            field.key === identifier?.key
+                          }
+                          checked={!keptFromTheorem.has(field.key)}
+                          onCheckedChange={(read) =>
+                            setFieldRead(field.key, read)
+                          }
+                        >
+                          {field.label}
+                        </MenuCheckboxItem>
+                      ))}
+                    </MenuGroup>
+                  )}
                 </MenuPopup>
               </Menu>
             </div>
@@ -562,9 +697,11 @@ export function CrmTable({ type }: { type: ObjectType }) {
                 role="alert"
                 className="border-b border-separator bg-error-container/40 px-3 py-1.5 text-xs leading-5 text-ink"
               >
-                {createError !== null && `Not added. ${crmErrorText(createError, type)} `}
+                {createError !== null &&
+                  `Not added. ${crmErrorText(createError, type)} `}
                 {deleteReport}
-                {declare.isError && ` Not changed. ${crmErrorText(declare.error, type)}`}
+                {declare.isError &&
+                  ` Not changed. ${crmErrorText(declare.error, type)}`}
               </p>
             )}
 
@@ -583,7 +720,10 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   role="row"
                   aria-rowindex={1}
                   className="flex border-b border-separator bg-raised"
-                  style={{ height: HEADER, width: `max(100%, ${totalWidth}px)` }}
+                  style={{
+                    height: HEADER,
+                    width: `max(100%, ${totalWidth}px)`,
+                  }}
                 >
                   <div
                     role="columnheader"
@@ -596,7 +736,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
                       indeterminate={someSelected && !allSelected}
                       disabled={!shown.length}
                       onCheckedChange={(checked) =>
-                        setSelected(checked ? new Set(shown.map((r) => r.id)) : new Set())
+                        setSelected(
+                          checked ? new Set(shown.map((r) => r.id)) : new Set(),
+                        )
                       }
                     />
                   </div>
@@ -607,13 +749,20 @@ export function CrmTable({ type }: { type: ObjectType }) {
                         key={field.key}
                         role="columnheader"
                         aria-sort={
-                          sorted ? (sort.descending ? 'descending' : 'ascending') : 'none'
+                          sorted
+                            ? sort.descending
+                              ? 'descending'
+                              : 'ascending'
+                            : 'none'
                         }
                         className={cn(
                           'flex shrink-0 items-center border-s border-separator bg-raised',
                           col === 0 && 'sticky z-10 border-s-0',
                         )}
-                        style={{ width: widthOf(field), left: col === 0 ? CHECK : undefined }}
+                        style={{
+                          width: widthOf(field),
+                          left: col === 0 ? CHECK : undefined,
+                        }}
                       >
                         <button
                           type="button"
@@ -630,12 +779,20 @@ export function CrmTable({ type }: { type: ObjectType }) {
                           className="flex h-full min-w-0 flex-1 items-center gap-1.5 px-2 text-start text-xs text-ink-muted hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                         >
                           <FieldTypeIcon kind={field.field_type.kind} />
-                          <span className="min-w-0 flex-1 truncate">{field.label}</span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {field.label}
+                          </span>
                           {sorted &&
                             (sort.descending ? (
-                              <ArrowDown aria-hidden className="size-3 shrink-0" />
+                              <ArrowDown
+                                aria-hidden
+                                className="size-3 shrink-0"
+                              />
                             ) : (
-                              <ArrowUp aria-hidden className="size-3 shrink-0" />
+                              <ArrowUp
+                                aria-hidden
+                                className="size-3 shrink-0"
+                              />
                             ))}
                         </button>
                       </div>
@@ -648,7 +805,8 @@ export function CrmTable({ type }: { type: ObjectType }) {
                 {shown.map((record, row) => {
                   const isSelected = selected.has(record.id)
                   const isPreviewed = record.id === previewId
-                  const ground = isPreviewed || isSelected ? 'bg-selected' : 'bg-background'
+                  const ground =
+                    isPreviewed || isSelected ? 'bg-selected' : 'bg-background'
                   return (
                     <div
                       key={record.id}
@@ -662,7 +820,10 @@ export function CrmTable({ type }: { type: ObjectType }) {
                         ground,
                         !isPreviewed && !isSelected && 'hover:bg-hover',
                       )}
-                      style={{ height: ROW, width: `max(100%, ${totalWidth}px)` }}
+                      style={{
+                        height: ROW,
+                        width: `max(100%, ${totalWidth}px)`,
+                      }}
                     >
                       <div
                         role="gridcell"
@@ -670,7 +831,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
                         className={cn(
                           'sticky left-0 z-10 flex shrink-0 items-center justify-center',
                           ground,
-                          !isPreviewed && !isSelected && 'group-hover/tr:bg-hover',
+                          !isPreviewed &&
+                            !isSelected &&
+                            'group-hover/tr:bg-hover',
                         )}
                         style={{ width: CHECK }}
                       >
@@ -682,7 +845,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
                       </div>
                       {columns.map((field, col) => {
                         const edit = edits[editKey(record.id, field.key)]
-                        const value = edit ? edit.value : record.values[field.key]
+                        const value = edit
+                          ? edit.value
+                          : record.values[field.key]
                         const active = focus.row === row && focus.col === col
                         const inline =
                           editing?.rowId === record.id &&
@@ -694,11 +859,13 @@ export function CrmTable({ type }: { type: ObjectType }) {
                             role="gridcell"
                             data-r={row}
                             data-c={col}
+                            data-record={col === 0 ? record.id : undefined}
                             tabIndex={active ? 0 : -1}
                             aria-colindex={col + 2}
                             aria-readonly={!editable(field) || undefined}
                             onFocus={(event) => {
-                              if (event.target === event.currentTarget) setFocus({ row, col })
+                              if (event.target === event.currentTarget)
+                                setFocus({ row, col })
                             }}
                             onKeyDown={(event) => onCellKey(event, row, col)}
                             onDoubleClick={() => startEdit(row, col)}
@@ -726,7 +893,9 @@ export function CrmTable({ type }: { type: ObjectType }) {
                                   value={value}
                                   row={record}
                                   typed={editing.typed}
-                                  onCommit={(next, move) => commit(record, field, next, move)}
+                                  onCommit={(next, move) =>
+                                    commit(record, field, next, move)
+                                  }
                                   onDiscard={discard}
                                 />
                               </div>
@@ -740,7 +909,10 @@ export function CrmTable({ type }: { type: ObjectType }) {
                                         edit
                                           ? {
                                               ...record,
-                                              values: { ...record.values, [field.key]: value },
+                                              values: {
+                                                ...record.values,
+                                                [field.key]: value,
+                                              },
                                             }
                                           : record
                                       }
@@ -753,10 +925,18 @@ export function CrmTable({ type }: { type: ObjectType }) {
                                       field={field}
                                       value={value}
                                       tabIndex={-1}
-                                      onOpenRelated={(target, id) => void openRecord(target, id)}
+                                      onOpenRelated={(target, id) =>
+                                        void openRecord(target, id)
+                                      }
                                       onToggle={
-                                        editable(field) && editStyle(field) === 'toggle'
-                                          ? (next) => void writes.save(record, field, next)
+                                        editable(field) &&
+                                        editStyle(field) === 'toggle'
+                                          ? (next) =>
+                                              void writes.save(
+                                                record,
+                                                field,
+                                                next,
+                                              )
                                           : undefined
                                       }
                                     />
@@ -778,12 +958,20 @@ export function CrmTable({ type }: { type: ObjectType }) {
                   Loading {plural.toLowerCase()}
                 </p>
               )}
-              {page.isError && !denied && (
-                <div role="alert" className="flex items-center gap-2 px-3 py-3 text-ink">
+              {page.isError && (
+                <div
+                  role="alert"
+                  className="flex items-center gap-2 px-3 py-3 text-ink"
+                >
                   <span>
-                    {plural} could not be loaded. {crmErrorText(page.error, type)}
+                    {plural} could not be loaded.{' '}
+                    {crmErrorText(page.error, type)}
                   </span>
-                  <Button size="xs" variant="outline" onClick={() => void page.refetch()}>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => void page.refetch()}
+                  >
                     Try again
                   </Button>
                 </div>
@@ -885,35 +1073,41 @@ export function CrmTable({ type }: { type: ObjectType }) {
         />
       )}
 
-      {editing && editingRow && editingField && editStyle(editingField) === 'popover' && (
-        <CrmEditorPopover
-          type={type}
-          record={editingRow}
-          field={editingField}
-          value={
-            edits[editKey(editingRow.id, editingField.key)]?.value ??
-            editingRow.values[editingField.key]
-          }
-          anchor={editing.anchor}
-          sideOffset={-ROW}
-          onCommit={(value, move) => commit(editingRow, editingField, value, move)}
-          onCommitAway={(value) => {
-            setEditing(null)
-            void writes.save(editingRow, editingField, value)
-          }}
-          onDiscard={discard}
-        />
-      )}
+      {editing &&
+        editingRow &&
+        editingField &&
+        editStyle(editingField) === 'popover' && (
+          <CrmEditorPopover
+            type={type}
+            record={editingRow}
+            field={editingField}
+            value={
+              edits[editKey(editingRow.id, editingField.key)]?.value ??
+              editingRow.values[editingField.key]
+            }
+            anchor={editing.anchor}
+            sideOffset={-ROW}
+            onCommit={(value, move) =>
+              commit(editingRow, editingField, value, move)
+            }
+            onCommitAway={(value) => {
+              setEditing(null)
+              void writes.save(editingRow, editingField, value)
+            }}
+            onDiscard={discard}
+          />
+        )}
 
       <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Delete {selected.size} {selected.size === 1 ? noun : plural.toLowerCase()}?
+              Delete {selected.size}{' '}
+              {selected.size === 1 ? noun : plural.toLowerCase()}?
             </DialogTitle>
             <DialogDescription>
-              They are removed from Theorem and cannot be brought back here. A record
-              that changed since this table loaded is left alone.
+              They are removed from Theorem and cannot be brought back here. A
+              record that changed since this table loaded is left alone.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -933,13 +1127,16 @@ export function CrmTable({ type }: { type: ObjectType }) {
 /** A type this sign-in may not read: said plainly, not drawn as an empty table. */
 function Unavailable({ type }: { type: ObjectType }) {
   return (
-    <div role="status" className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center">
+    <div
+      role="status"
+      className="flex min-h-0 flex-1 flex-col items-center justify-center gap-1 px-6 text-center"
+    >
       <p className="text-sm font-medium text-ink">
         {type.label_plural} are not available to this sign-in.
       </p>
       <p className="max-w-sm text-xs leading-5 text-ink-muted">
-        They may exist; this sign-in is not allowed to read them. Sign in with an
-        account that can, or ask whoever manages this workspace.
+        They may exist; this sign-in is not allowed to read them. Sign in with
+        an account that can, or ask whoever manages this workspace.
       </p>
     </div>
   )

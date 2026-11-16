@@ -6,7 +6,8 @@
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-export type TagTone = 'teal' | 'ochre' | 'redwood' | 'neutral' | 'error' | 'plain'
+export type TagTone =
+  'teal' | 'ochre' | 'redwood' | 'neutral' | 'error' | 'plain'
 
 const SOFT: Record<TagTone, string> = {
   teal: 'bg-teal-container text-teal-ink',

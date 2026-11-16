@@ -55,7 +55,10 @@ export function RecordMark({
         colorSeed={record?.id ?? name}
         size={size}
         shape={kind === 'person' ? 'circle' : 'rounded-square'}
-        className={cn(large && kind === 'person' && 'text-[11px]', size === 'xl' && kind === 'person' && 'text-[13px]')}
+        className={cn(
+          large && kind === 'person' && 'text-[11px]',
+          size === 'xl' && kind === 'person' && 'text-[13px]',
+        )}
       />
     )
   return (
@@ -154,7 +157,10 @@ export function RelationValue({
   if (!ids.length) return null
   if (!target)
     return (
-      <Missing label={`${ids.length} linked`} why="The type this field points at is not declared here." />
+      <Missing
+        label={`${ids.length} linked`}
+        why="The type this field points at is not declared here."
+      />
     )
   const status = statusOf(target)
   return (
@@ -174,7 +180,12 @@ export function RelationValue({
           )
         if (status === 'pending')
           return (
-            <Chip key={id} variant="soft" color="secondary" aria-label="Loading">
+            <Chip
+              key={id}
+              variant="soft"
+              color="secondary"
+              aria-label="Loading"
+            >
               Loading
             </Chip>
           )
@@ -269,7 +280,10 @@ export function CrmFieldValue({
       />
     )
   if (isEmptyValue(value) && kind !== 'boolean') return null
-  if (field.field_type.kind === 'enum' || field.field_type.kind === 'enum_many') {
+  if (
+    field.field_type.kind === 'enum' ||
+    field.field_type.kind === 'enum_many'
+  ) {
     const variants = field.field_type.variants
     const values = Array.isArray(value) ? value.map(String) : [String(value)]
     return (

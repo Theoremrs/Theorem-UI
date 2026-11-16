@@ -83,13 +83,19 @@ export function CrmView() {
           <FirstRun scope={scope} />
         )
       ) : !type ? (
-        <Centered title={`There is no record type called “${decodeURIComponent(slug)}”.`}>
+        <Centered
+          title={`There is no record type called “${decodeURIComponent(slug)}”.`}
+        >
           <p className={detail}>
             It may have been retired or renamed. Choose a type from the list.
           </p>
         </Centered>
       ) : recordId ? (
-        <RecordPage key={`${type.object_type_id}:${recordId}`} type={type} recordId={recordId} />
+        <RecordPage
+          key={`${type.object_type_id}:${recordId}`}
+          type={type}
+          recordId={recordId}
+        />
       ) : (
         <CrmTable key={type.object_type_id} type={type} />
       )}
@@ -104,7 +110,10 @@ const FIRST_RUN_LABEL: Record<(typeof BUILT_IN)[number], [string, string]> = {
   commitment: ['Commitments', 'What is owed, by whom, and when.'],
   interaction: ['Interactions', 'Meetings, calls and messages that happened.'],
   goal: ['Goals', 'What someone is trying to reach.'],
-  constraint: ['Constraints', 'Limits to respect: availability, budget, preferences.'],
+  constraint: [
+    'Constraints',
+    'Limits to respect: availability, budget, preferences.',
+  ],
 }
 
 /** Nothing is declared yet: say what will be added, and add it on request. */

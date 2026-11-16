@@ -63,18 +63,16 @@ export function decodeRecordPage(raw: unknown): CrmRecordPage {
   const count = Number(envelope.count)
   return {
     records,
-    count: Number.isFinite(count) ? Math.max(count, records.length) : records.length,
+    count: Number.isFinite(count)
+      ? Math.max(count, records.length)
+      : records.length,
   }
 }
 
 // Refusals
 
 export type CrmVerb =
-  | 'find_many'
-  | 'find_one'
-  | 'create_one'
-  | 'update_one'
-  | 'delete_one'
+  'find_many' | 'find_one' | 'create_one' | 'update_one' | 'delete_one'
 
 const WRITES: ReadonlySet<CrmVerb> = new Set([
   'create_one',
@@ -252,7 +250,8 @@ export async function updateCrmRecord(
       { recordId: id, expectedRevision },
     ),
   )
-  if (!record) throw new Error('Theorem saved the change but did not return the record.')
+  if (!record)
+    throw new Error('Theorem saved the change but did not return the record.')
   return record
 }
 
@@ -327,7 +326,9 @@ export function decodeLifeContext(raw: unknown): LifeContext {
     access: (Array.isArray(value.access) ? value.access : []).flatMap(
       (entry) => {
         if (!isObject(entry)) return []
-        const objectTypeId = text(either(entry, 'objectTypeId', 'object_type_id'))
+        const objectTypeId = text(
+          either(entry, 'objectTypeId', 'object_type_id'),
+        )
         return objectTypeId
           ? [
               {

@@ -3,7 +3,10 @@ import { useNavigate } from '@tanstack/react-router'
 import { Pencil, Sparkles, Trash2 } from 'lucide-react'
 import { useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { useComposerReferences, focusComposer } from '@/components/chat/composer-references'
+import {
+  useComposerReferences,
+  focusComposer,
+} from '@/components/chat/composer-references'
 import { Switch } from '@/components/coss/switch'
 import type { FieldSpec, ObjectType } from '@/components/records/contract'
 import { FieldEditor, FieldTypeIcon } from '@/components/records/fields'
@@ -46,11 +49,7 @@ import {
   isPrivate,
   shownFields,
 } from './model'
-import {
-  useBindSelfPerson,
-  useFieldEdit,
-  useUnsavedEdits,
-} from './queries'
+import { useBindSelfPerson, useFieldEdit, useUnsavedEdits } from './queries'
 import type { CrmWrites, FieldEdit } from './queries'
 import { recordReference } from './reference'
 
@@ -81,7 +80,9 @@ function UnsavedEdit({
   const [reloadError, setReloadError] = useState<unknown>(null)
   const field = fieldByKey(type, edit.fieldKey)
   const label =
-    edit.fieldKey === CONTEXT_USE_FIELD ? 'Private to me' : (field?.label ?? edit.fieldKey)
+    edit.fieldKey === CONTEXT_USE_FIELD
+      ? 'Private to me'
+      : (field?.label ?? edit.fieldKey)
   const entered =
     edit.fieldKey === CONTEXT_USE_FIELD
       ? edit.value === 'private'
@@ -105,7 +106,8 @@ function UnsavedEdit({
           : edit.status === 'held'
             ? `It was reloaded at revision ${record?.version ?? edit.readRevision}${saved !== undefined ? `, where ${label} is “${saved}”` : ''}.`
             : crmErrorText(edit.error, type)}
-        {reloadError !== null && ` Reloading failed: ${crmErrorText(reloadError, type)}`}
+        {reloadError !== null &&
+          ` Reloading failed: ${crmErrorText(reloadError, type)}`}
       </p>
       <span className="flex shrink-0 items-center gap-1">
         {edit.status === 'conflict' && (
@@ -121,12 +123,20 @@ function UnsavedEdit({
           </button>
         )}
         {edit.status === 'held' && (
-          <button type="button" className={quiet} onClick={() => void writes.apply(edit)}>
+          <button
+            type="button"
+            className={quiet}
+            onClick={() => void writes.apply(edit)}
+          >
             Save my change
           </button>
         )}
         {edit.status === 'failed' && !refused && (
-          <button type="button" className={quiet} onClick={() => void writes.apply(edit)}>
+          <button
+            type="button"
+            className={quiet}
+            onClick={() => void writes.apply(edit)}
+          >
             Try again
           </button>
         )}
@@ -209,7 +219,10 @@ export function TitleField({
   const edit = useFieldEdit(record.id, identifier?.key ?? '')
   const [draft, setDraft] = useState<string | null>(null)
   const left = useRef(false)
-  const title = edit && typeof edit.value === 'string' ? edit.value : recordTitle(type, record)
+  const title =
+    edit && typeof edit.value === 'string'
+      ? edit.value
+      : recordTitle(type, record)
   const canEdit = writable && identifier !== undefined && !identifier.system
   const commit = () => {
     if (left.current || draft === null || !identifier) return
@@ -261,7 +274,9 @@ export function TitleField({
           {title}
         </button>
       ) : (
-        <span className={cn('min-w-0 truncate px-1 text-ink', className)}>{title}</span>
+        <span className={cn('min-w-0 truncate px-1 text-ink', className)}>
+          {title}
+        </span>
       )}
       <EditMark edit={edit} />
     </span>
@@ -287,7 +302,8 @@ function PropertyRow({
 }) {
   const edit = useFieldEdit(record.id, field.key)
   const [editing, setEditing] = useState(false)
-  const anchor = useRef<HTMLDivElement>(null)
+  // The row, as an element the editor's popover is placed against.
+  const [anchor, setAnchor] = useState<HTMLDivElement | null>(null)
   const value = edit ? edit.value : record.values[field.key]
   const style = editStyle(field)
   const canEdit = writable && style !== 'none' && edit?.status !== 'saving'
@@ -307,11 +323,13 @@ function PropertyRow({
         <span className="truncate">{field.label}</span>
       </div>
       <div
-        ref={anchor}
+        ref={setAnchor}
         className={cn(
           'flex min-h-8 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 text-sm text-ink',
           opens && !editing && 'cursor-text hover:bg-hover',
-          editing && style === 'inline' && 'bg-background outline-2 outline-focus',
+          editing &&
+            style === 'inline' &&
+            'bg-background outline-2 outline-focus',
         )}
         onClick={opens && !editing ? () => setEditing(true) : undefined}
       >
@@ -328,7 +346,9 @@ function PropertyRow({
           <>
             <span className="flex min-w-0 flex-1 items-center overflow-hidden">
               {empty ? (
-                <span className="text-ink-faint">{opens ? 'Empty' : 'Not set'}</span>
+                <span className="text-ink-faint">
+                  {opens ? 'Empty' : 'Not set'}
+                </span>
               ) : (
                 <CrmFieldValue
                   type={type}
@@ -363,7 +383,7 @@ function PropertyRow({
           record={record}
           field={field}
           value={value}
-          anchor={anchor.current}
+          anchor={anchor}
           onCommit={commit}
           onDiscard={() => setEditing(false)}
         />
@@ -387,7 +407,9 @@ export function PropertyList({
   onOpenRelated: (type: ObjectType, id: string) => void
 }) {
   const identifier = identifierField(type)
-  const fields = shownFields(type).filter((field) => field.key !== identifier?.key)
+  const fields = shownFields(type).filter(
+    (field) => field.key !== identifier?.key,
+  )
   return (
     <div role="list" aria-label="Properties" className="flex flex-col">
       {fields.map((field) => (
@@ -454,7 +476,13 @@ export function PrivateToggle({
 // This is me
 
 /** On a person: say that this record is the signed-in person, or see that it is. */
-export function SelfControl({ type, record }: { type: ObjectType; record: CrmRecord }) {
+export function SelfControl({
+  type,
+  record,
+}: {
+  type: ObjectType
+  record: CrmRecord
+}) {
   const { life, selfId } = useCrmScope()
   const bind = useBindSelfPerson()
   if (builtInName(type) !== 'person') return null
@@ -477,7 +505,10 @@ export function SelfControl({ type, record }: { type: ObjectType; record: CrmRec
       >
         This is me
       </Button>
-      <p role={bind.isError ? 'alert' : undefined} className="text-xs leading-5 text-ink-muted">
+      <p
+        role={bind.isError ? 'alert' : undefined}
+        className="text-xs leading-5 text-ink-muted"
+      >
         {bind.isError
           ? crmErrorText(bind.error, type)
           : unavailable
@@ -518,10 +549,14 @@ export function AskTheoremButton({
       onClick={() => {
         useComposerReferences
           .getState()
-          .add(recordReference(type.name_singular, record.id, recordTitle(type, record)))
-        void openChat().then(() =>
-          requestAnimationFrame(() => focusComposer()),
-        )
+          .add(
+            recordReference(
+              type.name_singular,
+              record.id,
+              recordTitle(type, record),
+            ),
+          )
+        void openChat().then(() => requestAnimationFrame(() => focusComposer()))
       }}
     >
       <Sparkles aria-hidden />
@@ -574,8 +609,8 @@ export function DeleteControl({
           <DialogHeader>
             <DialogTitle>Delete {title}?</DialogTitle>
             <DialogDescription>
-              This {noun} is removed from Theorem, at saved revision {record.version}. It
-              cannot be brought back here.
+              This {noun} is removed from Theorem, at saved revision{' '}
+              {record.version}. It cannot be brought back here.
             </DialogDescription>
           </DialogHeader>
           {error !== null && (
@@ -654,16 +689,23 @@ export function RecordHeading({
 }) {
   const { selfId } = useCrmScope()
   return (
-    <div className="flex min-w-0 items-center gap-2">
-      <RecordMark type={type} record={record} size={size === 'page' ? 'xl' : 'lg'} />
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+    <div className="flex min-w-0 items-start gap-2">
+      <span className="mt-0.5 flex shrink-0">
+        <RecordMark
+          type={type}
+          record={record}
+          size={size === 'page' ? 'xl' : 'lg'}
+        />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
         <TitleField
           type={type}
           record={record}
           writes={writes}
           writable={writable}
           className={cn(
-            'font-heading font-medium',
+            // A long name wraps; it is the record's heading, not a cell.
+            'font-heading font-medium whitespace-normal [overflow-wrap:anywhere]',
             size === 'page' ? 'text-[20px] leading-7' : 'text-[18px] leading-6',
           )}
         />

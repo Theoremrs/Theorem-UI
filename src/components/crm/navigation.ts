@@ -7,10 +7,7 @@ import { typeSlug } from './model'
 
 /** Where the CRM is: a type's table, or one record's page. */
 export function useCrmPlace() {
-  const params = useParams({ strict: false }) as {
-    objectType?: string
-    recordId?: string
-  }
+  const params = useParams({ strict: false })
   return { slug: params.objectType, recordId: params.recordId }
 }
 

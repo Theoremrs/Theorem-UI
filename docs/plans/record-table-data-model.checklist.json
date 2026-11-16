@@ -44,11 +44,12 @@
     },
     {
       "id": "focus-edit",
-      "requirement": "Cell focus with arrows, Enter edits, typing a character opens the editor with it, Enter saves and moves down, Tab across, Escape saves, Backspace clears, Cmd/Ctrl+Enter opens the record",
+      "requirement": "Cell focus with arrows, Enter edits, typing a character opens the editor with it, Enter saves and moves down, Tab across, Escape cancels the edit and leaves the saved value (changed from Twenty's Escape-saves when the CRM mode was added, so the two tables agree), Backspace clears, Cmd/Ctrl+Enter opens the record",
       "status": "done",
       "evidence": [
         "record-table.tsx onGridKeyDown, fields.tsx commitKeys",
-        "Verified: type-to-edit, Enter moves down, Escape saves"
+        "Verified: type-to-edit, Enter moves down",
+        "fields.test.tsx: Escape cancels: nothing is saved, and the editor is asked to close; Escape in a text editor restores the value; Enter saves it"
       ]
     },
     {

@@ -47,7 +47,8 @@ export function RecordPreview({
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return
       const target = event.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (target?.closest('input, textarea, select, [contenteditable="true"]'))
+        return
       onClose()
     }
     node.addEventListener('keydown', onKey)
@@ -65,7 +66,11 @@ export function RecordPreview({
         <span className="min-w-0 flex-1 truncate text-xs text-ink-muted">
           {type.label_singular}
         </span>
-        <Button size="xs" variant="ghost" onClick={() => void openRecord(type, record.id)}>
+        <Button
+          size="xs"
+          variant="ghost"
+          onClick={() => void openRecord(type, record.id)}
+        >
           <ArrowUpRight aria-hidden />
           Open
         </Button>
@@ -110,7 +115,12 @@ export function RecordPreview({
         </div>
 
         <div className="flex flex-col gap-4 border-t border-separator px-4 py-4">
-          <PrivateToggle type={type} record={record} writes={writes} writable={writable} />
+          <PrivateToggle
+            type={type}
+            record={record}
+            writes={writes}
+            writable={writable}
+          />
           <SelfControl type={type} record={record} />
         </div>
       </div>
