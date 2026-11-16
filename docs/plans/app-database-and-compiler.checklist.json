@@ -76,10 +76,11 @@
     {
       "id": "db-compaction",
       "requirement": "An App's database does not grow without bound: the browser store is compacted",
-      "status": "todo",
+      "status": "partial",
       "evidence": [
         "Not built. The engine's browser store refuses reclamation by design (rustyred-engine browser_projection.rs, chunk_store_browser_compaction_refused): OPFS has no atomic rename, and the route it names is a two-file generation switch",
-        "Measured in headless Chromium, 2026-11-10, 200 small nodes then 1000 one-node commits: the file grew about 7 KB per commit as Theorem UI opens it (controlEvents and keepHistory off), 7 MB in all, at about 33 ms per commit; with both on, about 100 KB and 100 ms per commit"
+        "Measured in headless Chromium, 2026-11-10, 200 small nodes then 1000 one-node commits: the file grew about 7 KB per commit as Theorem UI opens it (controlEvents and keepHistory off), 7 MB in all, at about 33 ms per commit; with both on, about 100 KB and 100 ms per commit",
+        "2026-11-16: App databases moved to the canonical engine (@rustyreddb/browser 0.2.0 from Theorem rustyred-thg-browser, Theorem PR #1088). It compacts by a two-file generation switch, but retains every past version: measured natively, about 11.6 KB per one-node commit with control events off, and compaction reclaims 25-45%. Not yet exposed by the package or called here; a history retention window is the planned core change"
       ]
     },
     {
@@ -222,6 +223,16 @@
         "A vault module's page is hosted by the same hostedAppDocument (src/components/pages/sandboxed-module.tsx), so a module that carries TypeScript source is built, stamped and traced like an App: app-source.test.ts \"a page module's page is built the same way, under the hosts it was allowed\"",
         "Not built for modules: the problems list, the type check, Ask to fix, the element panel and db. A module that does not build shows the build error as text",
         "Not observed: a TypeScript module on a page, which needs a vault"
+      ]
+    },
+    {
+      "id": "db-canonical-engine",
+      "requirement": "App databases run on Rusty Red's canonical engine with the same Database API, starting fresh",
+      "status": "done",
+      "evidence": [
+        "Theorem PR #1088: record API (recordCall), in-memory mode, controlEvents switch and the @rustyreddb/browser 0.2.0 package in rustyred-thg-browser; cargo test -p rustyred-thg-browser --lib 11 passed",
+        "vendor/rustyreddb-browser-0.2.0.tgz (sha256 2dab4b00a963cf90...); module rustyred_thg_browser_bg.wasm 17,330,102 bytes after wasm-opt -Oz, under the Workers 25 MiB asset cap",
+        "2026-11-16, Chromium 1243 headless: bun run e2e:app-db 14 of 14 and bun run e2e:app-db --built 14 of 14; bun test src/lib/blocks 171 pass; bun run typecheck clean"
       ]
     }
   ]
