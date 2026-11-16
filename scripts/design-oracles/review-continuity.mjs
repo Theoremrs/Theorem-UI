@@ -244,19 +244,22 @@ try {
   )
   const legacyContext = await browser.newContext()
   await legacyContext.addInitScript(() => {
-    localStorage.setItem(
-      'theorem-ui:palette',
-      JSON.stringify({ state: { palette: 'vitesse' }, version: 0 }),
-    )
-    localStorage.setItem(
-      'theorem-ui:surfaces',
-      JSON.stringify({ state: { composer: 'liquid' }, version: 0 }),
-    )
-    localStorage.setItem(
-      'theorem-ui:life',
-      JSON.stringify({ state: { shown: false }, version: 0 }),
-    )
-    localStorage.setItem('theorem-ui-theme', 'dark')
+    // Init scripts run in every frame, and a sandboxed app frame has no storage.
+    try {
+      localStorage.setItem(
+        'theorem-ui:palette',
+        JSON.stringify({ state: { palette: 'vitesse' }, version: 0 }),
+      )
+      localStorage.setItem(
+        'theorem-ui:surfaces',
+        JSON.stringify({ state: { composer: 'liquid' }, version: 0 }),
+      )
+      localStorage.setItem(
+        'theorem-ui:life',
+        JSON.stringify({ state: { shown: false }, version: 0 }),
+      )
+      localStorage.setItem('theorem-ui-theme', 'dark')
+    } catch {}
   })
   const legacyPage = await legacyContext.newPage()
   legacyPage.on('pageerror', (error) => errors.push(error.message))

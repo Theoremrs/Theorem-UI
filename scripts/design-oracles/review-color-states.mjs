@@ -232,14 +232,17 @@ for (const engine of engines.filter(
       const errors = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.addInitScript((mode) => {
-        localStorage.setItem('theorem-ui-theme', mode)
-        localStorage.setItem(
-          'theorem-ui:appearance',
-          JSON.stringify({
-            version: 1,
-            state: { preset: 'calm', overrides: {} },
-          }),
-        )
+        // Init scripts run in every frame, and a sandboxed app frame has no storage.
+        try {
+          localStorage.setItem('theorem-ui-theme', mode)
+          localStorage.setItem(
+            'theorem-ui:appearance',
+            JSON.stringify({
+              version: 1,
+              state: { preset: 'calm', overrides: {} },
+            }),
+          )
+        } catch {}
       }, mode)
       const item = {
         engine,

@@ -263,7 +263,7 @@ const { page: a, context, browser } = session
 versions.chromium = browser.version()
 const identity = await (await context.request.get(`${UI}/api/environment/v1/bootstrap`, READ)).json()
 setPrincipals([identity.principalId])
-await context.addInitScript(() => localStorage.setItem('theorem-ui:workbench', '1'))
+await context.addInitScript(() => { try { localStorage.setItem('theorem-ui:workbench', '1') } catch {} })
 
 const lines = async (page) =>
   (await page.evaluate((grid) => document.querySelector(grid)?.innerText ?? '', GRID).catch(() => ''))
@@ -421,7 +421,7 @@ async function inputWorks(page) {
 const extra = []
 async function secondBrowser() {
   const context2 = await browser.newContext({ viewport: VIEWPORT, colorScheme: 'dark', storageState: await context.storageState() })
-  await context2.addInitScript(() => localStorage.setItem('theorem-ui:workbench', '1'))
+  await context2.addInitScript(() => { try { localStorage.setItem('theorem-ui:workbench', '1') } catch {} })
   extra.push(context2)
   const page = await context2.newPage()
   page.setDefaultTimeout(30_000)

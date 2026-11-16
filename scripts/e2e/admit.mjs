@@ -31,9 +31,11 @@ const identity = await (
   await context.request.get(`${UI}/api/environment/v1/bootstrap`, READ)
 ).json()
 setPrincipals([identity.principalId])
-await context.addInitScript(() =>
-  localStorage.setItem('theorem-ui:workbench', '1'),
-)
+await context.addInitScript(() => {
+  try {
+    localStorage.setItem('theorem-ui:workbench', '1')
+  } catch {}
+})
 
 const lines = async () =>
   (
