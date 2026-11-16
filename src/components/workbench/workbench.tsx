@@ -174,9 +174,12 @@ export function WorkbenchSurface({
   onDrawn,
   project,
   loadArrangements = false,
+  shown = true,
   children,
 }: {
   connect: (dispatch: Dispatch, surface: SurfaceHost) => Adapter
+  /** Whether the person can see it. Only then may a run's agent read and act on it (lib/workbench/agent). */
+  shown?: boolean
   /** Called once, after the first frame is on the page: what a story or an oracle waits for. */
   onDrawn?: () => void
   /** The project whose artifacts the Artifacts panel shows; absent, the panel's page side is not mounted. */
@@ -227,7 +230,6 @@ export function WorkbenchSurface({
       if (disposed) return
       handle.current = mounted
       setMountedHandle(mounted)
-      setWorkbenchHandle(mounted)
       // The frames drawn before this sink was taken carry icons it has not seen.
       icons.set(mounted.icons())
       stopMotion = deliverReducedMotion(mounted)
@@ -297,9 +299,16 @@ export function WorkbenchSurface({
       adapter?.dispose()
       handle.current = undefined
       setMountedHandle(undefined)
-      setWorkbenchHandle(undefined)
     }
   }, [feed, icons])
+
+  // A run's agent reaches the workbench only while the person can see it: a
+  // closed one is opened first (lib/workbench/agent/operations.ts).
+  useEffect(() => {
+    if (!shown || !mountedHandle) return
+    setWorkbenchHandle(mountedHandle)
+    return () => setWorkbenchHandle(undefined)
+  }, [shown, mountedHandle])
 
   return (
     <FeedContext.Provider value={feed}>
@@ -457,10 +466,13 @@ type Owners = { adapter: AccountAdapter; stop: () => void }
 export function Workbench({
   projectId,
   projectTitle = 'This project',
+  shown = true,
   children,
 }: {
   projectId: string
   projectTitle?: string
+  /** Whether the person can see it (WorkbenchSurface). */
+  shown?: boolean
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const runtime = useConversationRuntime()
@@ -662,6 +674,7 @@ export function Workbench({
       key={projectId}
       connect={connect}
       project={{ id: projectId, title: projectTitle }}
+      shown={shown}
     >
       {(feed, parts) => (
         <>

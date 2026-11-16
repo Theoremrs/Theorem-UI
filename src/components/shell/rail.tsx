@@ -35,6 +35,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 import { RailMark } from './rail-marks'
 import {
   MODES,
@@ -169,10 +170,10 @@ function AccountMenu() {
   )
 }
 
-/** Shows and hides the agent terminal drawer. */
+/** Opens the workbench beside the conversation (where it was last docked), and closes it. */
 function TerminalToggle() {
-  const open = useShell((s) => s.terminalOpen)
-  const setOpen = useShell((s) => s.setTerminalOpen)
+  const { placement, toggle } = useWorkbenchPlacement()
+  const open = placement === 'side' || placement === 'bottom'
   return (
     <TooltipProvider>
       <Tooltip>
@@ -180,16 +181,16 @@ function TerminalToggle() {
           render={
             <button
               type="button"
-              aria-label="Agent terminal"
+              aria-label="Workbench"
               aria-pressed={open}
-              onClick={() => setOpen(!open)}
+              onClick={() => toggle()}
               className={`${railButton} mb-2 aria-pressed:text-ink`}
             />
           }
         >
           <Icon.Terminal className="size-5" strokeWidth={1.75} />
         </TooltipTrigger>
-        <TooltipContent side="right">Agent terminal (ctrl+`)</TooltipContent>
+        <TooltipContent side="right">Workbench</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   )

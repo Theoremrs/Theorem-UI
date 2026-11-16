@@ -474,20 +474,27 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
               <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setSideDrawer('terminal')}
+                onClick={() => useShell.getState().setWorkbench('side')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal on the right
+                Workbench on the right
               </Menu.Item>
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setTerminalOpen(true)}
+                onClick={() => useShell.getState().setWorkbench('bottom')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal at the bottom
+                Workbench at the bottom
                 <span className="ms-auto ps-4 font-mono text-xs text-ink-faint">
                   ctrl+`
                 </span>
+              </Menu.Item>
+              <Menu.Item
+                className={menuItem}
+                onClick={() => useShell.getState().setWorkbench('full')}
+              >
+                <Icon.Terminal className="size-4 text-ink-muted" />
+                Workbench full screen
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>

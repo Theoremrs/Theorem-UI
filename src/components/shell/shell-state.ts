@@ -2,6 +2,10 @@
 import type { SerializedDockview } from 'dockview-react'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type {
+  Companion,
+  PlacementChoice,
+} from '@/components/workbench/placement'
 import type { NoteOrder } from '@/lib/theorem/note-order'
 import type { ShellMode } from './modes'
 
@@ -67,9 +71,15 @@ type ShellState = {
    * until they move one; projects it does not name follow, as Theorem lists them.
    */
   projectOrder: readonly string[]
-  /** Whether the agent terminal drawer is up. Not persisted. */
-  terminalOpen: boolean
-  /** The bottom drawer's snap point: its height as a share of the window. */
+  /**
+   * Where the person put the workbench: full screen, docked beside or under
+   * the sheet, or closed. Unset until they choose, when the delivery switch
+   * decides (components/workbench/placement.ts).
+   */
+  workbench: PlacementChoice | undefined
+  /** The docked placement last used, which a toggle reopens. */
+  lastCompanion: Companion
+  /** The workbench docked under the sheet: its height as a share of the window. */
   terminalHeight: number
   /** Each project's current agent-terminal thread. */
   terminalThreads: Readonly<Record<string, string>>
@@ -77,7 +87,7 @@ type ShellState = {
   terminalThreadIds: readonly string[]
   /** What the right-hand drawer shows, when it is open. Not persisted. */
   sideDrawer: SideDrawer | undefined
-  /** The right-hand drawer's width in px on desktop, set by dragging its edge. */
+  /** The workbench docked beside the sheet: its width in px, set by dragging its edge. */
   sideWidth: number
   /**
    * The docked artifact cabinet's width in px, set by dragging its edge
@@ -115,7 +125,8 @@ type ShellState = {
   setOrganizeOpen: (key: string, open: boolean) => void
   setIdeFilesHeight: (height: number) => void
   setProjectOrder: (order: readonly string[]) => void
-  setTerminalOpen: (open: boolean) => void
+  /** Puts the workbench somewhere, or closes it; a docked placement becomes the one a toggle reopens. */
+  setWorkbench: (choice: PlacementChoice) => void
   setTerminalHeight: (height: number) => void
   setTerminalThread: (projectId: string, threadId: string | undefined) => void
   setSideDrawer: (drawer: SideDrawer | undefined) => void
@@ -154,8 +165,9 @@ export const useShell = create<ShellState>()(
       ideFilesOpen: true,
       organizeOpen: {},
       projectOrder: [],
-      terminalOpen: false,
-      terminalHeight: 0.46,
+      workbench: undefined,
+      lastCompanion: 'side',
+      terminalHeight: 0.42,
       terminalThreads: {},
       terminalThreadIds: [],
       sideDrawer: undefined,
@@ -189,7 +201,12 @@ export const useShell = create<ShellState>()(
         set((s) => ({ organizeOpen: { ...s.organizeOpen, [key]: open } })),
       setIdeFilesHeight: (ideFilesHeight) => set({ ideFilesHeight }),
       setProjectOrder: (projectOrder) => set({ projectOrder }),
-      setTerminalOpen: (terminalOpen) => set({ terminalOpen }),
+      setWorkbench: (workbench) =>
+        set(
+          workbench === 'side' || workbench === 'bottom'
+            ? { workbench, lastCompanion: workbench }
+            : { workbench },
+        ),
       setTerminalHeight: (terminalHeight) => set({ terminalHeight }),
       setTerminalThread: (projectId, threadId) =>
         set((s) => {
@@ -293,6 +310,8 @@ export const useShell = create<ShellState>()(
         organizeOpen,
         ideFilesHeight,
         projectOrder,
+        workbench,
+        lastCompanion,
         terminalHeight,
         sideWidth,
         cabinetWidth,
@@ -311,6 +330,8 @@ export const useShell = create<ShellState>()(
         organizeOpen,
         ideFilesHeight,
         projectOrder,
+        workbench,
+        lastCompanion,
         terminalHeight,
         sideWidth,
         cabinetWidth,
