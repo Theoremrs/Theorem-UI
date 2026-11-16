@@ -486,9 +486,18 @@ export function Workbench({
   children?: (feed: SemanticsFeed) => ReactNode
 }) {
   const runtime = useConversationRuntime()
-  const [sideChats] = useState(() =>
-    createSideChats((request) => createSideChatModel(projectId, request)),
-  )
+  // One side-chat owner per project: a fresh side chat makes its thread in the project shown now,
+  // and switching projects lets the old project's side chats go (React's "adjust state when a prop
+  // changes" pattern, so the switch happens in the same render).
+  const ownSideChats = () => ({
+    projectId,
+    chats: createSideChats((request) =>
+      createSideChatModel(projectId, request),
+    ),
+  })
+  const [side, setSide] = useState(ownSideChats)
+  if (side.projectId !== projectId) setSide(ownSideChats())
+  const sideChats = side.chats
   const [access, setAccess] = useState<{
     code: 'signed_out' | 'forbidden'
     reason: string
