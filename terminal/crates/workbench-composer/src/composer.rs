@@ -495,7 +495,14 @@ impl Composer {
         let plain = !mods.intersects(Mods::CTRL | Mods::CMD | Mods::ALT);
         let extend = mods.contains(Mods::SHIFT);
         match k.key() {
-            Key::Enter if !mods.intersects(Mods::SHIFT | Mods::ALT) => self.submit(out),
+            // Ctrl/Cmd+Enter submits even with Shift; Shift or Alt alone writes a line.
+            Key::Enter
+                if !mods.contains(Mods::ALT)
+                    && (mods.intersects(Mods::CTRL | Mods::CMD)
+                        || !mods.contains(Mods::SHIFT)) =>
+            {
+                self.submit(out)
+            }
             Key::Enter => self.newline(out),
             Key::Char(c) if mods.contains(Mods::CTRL) && c.eq_ignore_ascii_case(&'j') => {
                 self.newline(out)

@@ -80,6 +80,29 @@ fn enter_steers_a_running_run_and_sends_when_idle() {
 }
 
 #[test]
+fn ctrl_or_cmd_enter_submits_even_with_shift() {
+    let mut r = rig(60, 4);
+    r.c.set_status(status(Policy::Idle));
+    for mods in [
+        Mods::CTRL,
+        Mods::CMD,
+        Mods::CTRL | Mods::SHIFT,
+        Mods::CMD | Mods::SHIFT,
+    ] {
+        r.type_str("words");
+        match submitted(&r.key(Key::Enter, mods)) {
+            Some(Event::Submit { mode, .. }) => assert_eq!(*mode, SubmitMode::Send),
+            o => panic!("{mods:?}: {o:?}"),
+        }
+    }
+    // Shift alone and Alt still write a line instead of sending.
+    r.type_str("more");
+    assert!(submitted(&r.key(Key::Enter, Mods::SHIFT)).is_none());
+    assert!(submitted(&r.key(Key::Enter, Mods::ALT)).is_none());
+    assert!(r.c.text().contains('\n'));
+}
+
+#[test]
 fn a_run_that_cannot_steer_takes_no_submit_and_says_so() {
     let mut r = rig(80, 4);
     r.c.set_status(status(Policy::Running { can_steer: false }));
