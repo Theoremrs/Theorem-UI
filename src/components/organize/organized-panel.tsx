@@ -541,6 +541,15 @@ function PinnedGroup({
 }) {
   const pins = useSidebarPrefs((s) => s.pins)
   const [open, setOpen] = useSectionOpen('pinned', true)
+  // Shown once something is pinned, as Linear shows Favorites: an empty
+  // heading and a standing hint cost a sidebar row on every visit, and Pin is
+  // in every row's menu.
+  const shown = pins.some((pin) =>
+    pin.kind === 'project'
+      ? projects.some((p) => p.projectId === pin.id)
+      : byId.has(pin.id),
+  )
+  if (!shown) return null
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <SidebarGroup className={GROUP}>
@@ -587,12 +596,6 @@ function PinnedGroup({
                 )
               )
             })}
-            {pins.length === 0 && (
-              <li className="px-2 py-1 text-xs text-ink-muted">
-                Pin a session or project from its menu. Pins are kept in this
-                browser.
-              </li>
-            )}
           </SidebarMenuSub>
         </CollapsiblePanel>
       </SidebarGroup>

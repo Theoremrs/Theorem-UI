@@ -138,8 +138,15 @@
 [data-appearance-part='artifact'] {
   --appearance-surface-fill: var(--surface-artifact);
 }
+/* The status note is a tint of the error container over what it sits on, so a
+   failed reply reads as a margin note rather than a slab (owner review,
+   2026-11-16). Error ink keeps 4.5:1 against it in every palette. */
 [data-surface-role='status'] {
-  --appearance-surface-fill: var(--error-container);
+  --appearance-surface-fill: color-mix(
+    in oklab,
+    var(--error-container) 45%,
+    transparent
+  );
 }
 
 .appearance-surface[data-material='flat'],
@@ -365,6 +372,20 @@
 .appearance-composer-actions {
   margin-inline-start: auto;
   flex: 0 0 auto;
+}
+/* A narrow composer (project home, a split pane) keeps one toolbar row: the
+   Web and Plan chips drop to their marks (each keeps its aria-label and
+   tooltip) and the model name drops "(default)", instead of the row breaking
+   into two with the name cut off. The box is measured, not the toolbar,
+   because the sidecar layout lays the toolbar out with display: contents. */
+.appearance-composer-box {
+  container: composer-toolbar / inline-size;
+}
+@container composer-toolbar (inline-size < 34rem) {
+  .composer-chip-label,
+  .model-picker-default {
+    display: none;
+  }
 }
 .appearance-composer-toolbar :is(button, [role='button']) {
   font: var(--recipe-ui-label);
@@ -724,6 +745,31 @@
 .aui-composer-send-icon .icon-mask {
   background-color: currentColor;
 }
+/* The stop mark on a filled action (Cancel, Stop generating) and the
+   microphone-off of a running dictation are drawn in their button's own
+   colour: the ring and the square on the destructive fill, and the mark in
+   the recording red, and the resume arrows on theirs. Their fills are a
+   faint wash of it. */
+/* Masks only: without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > .icon-mask {
+    background-color: color-mix(in oklab, currentColor 22%, transparent);
+  }
+  :is(
+      .aui-composer-cancel-icon,
+      .aui-composer-stop-dictation-icon,
+      .aui-composer-resume-icon
+    ).rail-mark
+    > [data-layer='line'],
+  .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
+    background-color: currentColor;
+  }
+}
 /* Keep paired action paints synchronized, including inherited SVG colors. */
 .appearance-composer-toolbar
   :is(.aui-composer-send, .appearance-destructive-action),
@@ -784,7 +830,9 @@
   overflow-wrap: anywhere;
 }
 
-@container (max-width: 28rem) {
+/* Only a phone-width toolbar gives the tools a row of their own; from 25rem
+   the chips' marks, the settings and the send fit on one row. */
+@container (max-width: 25rem) {
   .appearance-composer-toolbar {
     align-items: flex-end;
   }

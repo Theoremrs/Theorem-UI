@@ -76,7 +76,7 @@ function pickerLabel(
   return (
     <>
       {defaultName}
-      <span className="text-ink-faint"> (default)</span>
+      <span className="model-picker-default text-ink-faint"> (default)</span>
     </>
   )
 }
