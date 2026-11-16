@@ -59,6 +59,7 @@ function mount(
   mainSent: string[],
   sideSent: string[],
   aborted: { count: number },
+  historyAsked: string[] = [],
 ) {
   const side = createSideChats(async () => model(sideSent, aborted))
   const mainAdapter: ChatModelAdapter = {
@@ -86,6 +87,10 @@ function mount(
       services: {
         answerApproval: async () => undefined,
         sendInput: async () => undefined,
+        history: async (threadId) => {
+          historyAsked.push(threadId)
+          return null
+        },
       },
       workspaceId: 'w1',
     })
@@ -136,6 +141,31 @@ test("a side chat's sends never reach the main thread, and closing it ends its r
 
   await act(async () => chat.close())
   expect(aborted.count).toBe(1)
+})
+
+test('a side chat with no durable thread yet asks for no history, then asks for its own', async () => {
+  const historyAsked: string[] = []
+  const { conversation } = mount([], [], { count: 0 }, historyAsked)
+  let opened: Awaited<ReturnType<Conversation['sideChat']>> | undefined
+  await act(async () => {
+    opened = await conversation.sideChat(base('r1'))
+  })
+  if (opened?.outcome !== 'accepted') throw new Error(String(opened?.outcome))
+  const chat = opened.value
+  chat.conversation.snapshot()
+  expect(historyAsked.filter((id) => id.startsWith('side-'))).toEqual([])
+
+  await act(async () => {
+    await chat.conversation.send({
+      ...base('r2'),
+      clientMessageId: 'c1',
+      text: 'aside',
+    })
+  })
+  chat.conversation.snapshot()
+  expect(historyAsked).toContain('durable-side')
+  expect(historyAsked.filter((id) => id.startsWith('side-'))).toEqual([])
+  await act(async () => chat.close())
 })
 
 test('with no host mounted a side chat fails instead of waiting', async () => {

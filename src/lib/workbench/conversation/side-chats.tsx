@@ -105,7 +105,8 @@ function ownConversation(
     threads: {
       ...runtime.threads,
       getState: () => ({ mainThreadId: model.threadId() ?? local }),
-      mainItem: { getState: () => ({ remoteId: model.threadId() ?? local }) },
+      // The durable id only: a key of its own names no thread Theorem has.
+      mainItem: { getState: () => ({ remoteId: model.threadId() }) },
     },
   }
 }
