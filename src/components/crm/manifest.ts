@@ -284,8 +284,8 @@ export function degradedWords(code: string) {
     return `Only some ${subject} records were looked through; others may bear on this.`
   if (kind === 'time_limit')
     return 'Looking through saved records took too long and stopped early; some may be missing.'
-  if (kind === 'model_fields_omitted')
-    return 'How your records are organised was described without the meaning of each field, to fit.'
+  if (kind === 'model_fields_limited')
+    return 'How your records are organised was described with the meaning of only some fields, to fit.'
   if (kind === 'model_omitted')
     return 'How your records are organised was too long to describe, so the records were given without it.'
   if (kind === 'resolution_failed')

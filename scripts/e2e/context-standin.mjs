@@ -86,11 +86,11 @@ function reply(body) {
     const fields = record.fields ?? {}
     const name =
       fields.title ?? fields.name ?? fields.statement ?? fields.summary
-    if (!name) continue
-    if (record.type === 'Commitment' && fields.due)
-      lines.push(`"${name}" is due ${fields.due}.`)
     // A record that relates two others says so in words; repeat them.
-    else if (record.statement) lines.push(record.statement)
+    if (record.statement) lines.push(record.statement)
+    else if (!name) continue
+    else if (record.type === 'Commitment' && fields.due)
+      lines.push(`"${name}" is due ${fields.due}.`)
     else lines.push(`${record.type}: ${name}.`)
   }
   return lines.length

@@ -1,55 +1,71 @@
+17:33:39 signed in as claude-e2e-other
 PASS another workspace holds a contact named Noor
-15:52:31 fixture saved; the commitment is at revision 13019
+17:33:48 signed in as claude-e2e
+17:34:00 fixture saved; the commitment is at revision 2101
 PASS the People table lists Noor
 PASS and says which record is the person signed in
-PASS the Person type now keeps phone from Theorem  {"assistance":"available","excluded_fields":["phone"],"mention_fields":["aliases"],"version":1}
+PASS the Person type now keeps phone from Theorem  {"version":1,"assistance":"available","mention_fields":["aliases"],"excluded_fields":["phone"]}
+17:34:52 Home did not load; requests that failed: [
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/catalog.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/contract.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/previews.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/handlers/markdown/views.tsx',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/server/desktop/workspace/markdown.ts'
+]
 PASS the first turn finishes  completed
-PASS the provider was sent the commitment  7 record spans
-PASS at the revision that was saved  record:Commitment/commitment:materials-7a6ddfe3@13019
+PASS the provider was sent the commitment  10 record spans
+PASS at the revision that was saved  record:Commitment/commitment:materials-2469848a@2101
 PASS saying Wednesday
 PASS and the answer on the page says Wednesday
-15:53:39 the page did not load; requests that failed: [
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/coss/separator.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/coss/sheet.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/coss/switch.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/lib/codemirror-theme.ts',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/program/new-graph.ts'
-]
-PASS the edit was saved at a new revision  revision 13019 then 13718
+PASS the provider was told how Noor is related to the person asking  Noor is “sister” to Avery Quinn (the person asking).
+PASS and how her organization is related to another  Riverbed Clay is “supplier” to Kiln Street Studio.
+PASS and the answer on the page says so
+PASS the provider was sent one description of the data model  Activity, Commitment, Constraint, Interaction, Organization, Person, Relationship
+PASS which says what links one type to another
+PASS and what the fields of the given records mean  {"name":"Name. The name you know them by.","organization":"Organization. The organization they belong to.","role":"Role. What they do, or who they are to you."}
+PASS without naming the field that is kept from Theorem
+PASS the edit was saved at a new revision  revision 2101 then 3117
 PASS the screen shows the new saved revision
-15:53:53 page loads needed: to open 2 and to reopen 1
+17:35:59 the page did not load; requests that failed: [
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/previews.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/handlers/markdown/views.tsx',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/server/desktop/workspace/markdown.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/work/keys.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/work/new-item.tsx'
+]
+17:36:05 page loads needed: to open 1 and to reopen 2
 PASS reopened, the record still says Friday
 PASS and its history shows Wednesday becoming Friday  You changed Due from Wednesday to Friday
 
-Nov 16, 2026, 3:53 PM · revision 13019 → 13718
+Nov 16, 2026, 5:35 PM · revision 2101 → 3117
 
 You added this
 
-Nov 16, 2026, 3:52 PM · revision 13019
+Nov 16, 2026, 5:33 PM · revision 2101
 PASS between the two saved revisions, as the change of the person signed in  You changed Due from Wednesday to Friday
 
-Nov 16, 2026, 3:53 PM · revision 13019 → 13718
+Nov 16, 2026, 5:35 PM · revision 2101 → 3117
 
 You added this
 
-Nov 16, 2026, 3:52 PM · revision 13019
-15:54:38 the page did not load; requests that failed: [
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/program/proposal-review.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/program/selection-bar.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/coss/field.tsx',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/lib/theorem/session-graph.ts',
-  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/lib/theorem/session-graph-layout.ts'
-]
+Nov 16, 2026, 5:33 PM · revision 2101
 PASS a follow-up in the first conversation finishes  completed
 PASS its request still carries the earlier answer that said Wednesday
-PASS and the commitment at the edited revision  record:Commitment/commitment:materials-7a6ddfe3@13718
+PASS and the commitment at the edited revision  record:Commitment/commitment:materials-2469848a@3117
 PASS saying Friday, with Wednesday marked as replaced  {"due":"Friday","superseded":{"due":{"previous":"Wednesday"}}}
 PASS and the new answer in that conversation says Friday
+17:37:00 Home did not load; requests that failed: [
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/catalog.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/contract.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/cabinet/previews.ts',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/components/handlers/markdown/views.tsx',
+  'net::ERR_INSUFFICIENT_RESOURCES http://localhost:3102/src/server/desktop/workspace/markdown.ts'
+]
 PASS the second turn finishes  completed
-PASS the provider was sent the edited revision  record:Commitment/commitment:materials-7a6ddfe3@13718
+PASS the provider was sent the edited revision  record:Commitment/commitment:materials-2469848a@3117
 PASS saying Friday  Friday
 PASS with the day it replaced marked as replaced  {"due":{"previous":"Wednesday"}}
-PASS every saved-record span names its record and revision  7 spans
+PASS every saved-record span names its record and revision  10 spans
 PASS Noor is among them
 PASS and so is when Avery can be called
 PASS and the answer on the page says Friday
@@ -59,26 +75,26 @@ PASS no request holds the private note
 PASS no request holds the other workspace's contact
 PASS the private record is in no span
 PASS the reply says which saved records it used
-PASS naming the commitment and its revision  Used 7 saved records · 1 held back
+PASS naming the commitment and its revision  Used 10 saved records · 1 held back
 Used in this response
 
-Avery Quinn · Person · revision 13001
+Avery Quinn · Person · revision 2083
 
 This is you
 
-No calls before 10am · Constraint · revision 13023
+No calls before 10am · Constraint · revision 2105
 
 It always applies to you
 
-Noor · Perso
+Noor · Person
 PASS and that something was held back, without saying what it holds
-15:55:09 provider requests written to /tmp/claude-0/-home-user/ab33e1ed-a1c3-5ca1-823c-9ec8aa80fa88/scratchpad/e2e-data/crm-context-requests.json
-15:55:09 page problems 42
+17:37:12 provider requests written to /tmp/claude-0/-home-user/ab33e1ed-a1c3-5ca1-823c-9ec8aa80fa88/scratchpad/e2e-data/crm-context-requests.json
+17:37:12 page problems 42
 Errors seen:
   404 GET /api/artifacts/v1/libraries/theorem-artifacts
-  503 GET /api/project-files/v1/projects/chatproj_sha256%3A07af2d77bf3efe816508e8160
+  503 GET /api/project-files/v1/projects/chatproj_sha256%3A2b82c4bd188a67b33fe336d21
   404 PUT /api/artifacts/v1/libraries/theorem-artifacts 
-  404 GET /api/chat/v1/threads/chatthread_sha256%3A657daa1ae5a205a3b7f88f0e2/reviews
   TypeError: Failed to fetch dynamically imported module: http://localhost:3102/node_modules/@tanstack/react-start/dist/plugin/default-entry/client.tsx
-  404 GET /api/chat/v1/threads/chatthread_sha256%3Ad4cda3e7269aac50f49aa0e35/reviews
+  404 GET /api/chat/v1/threads/chatthread_sha256%3Ae406ceb16868a1509b9a2bf7b/reviews
+  404 GET /api/chat/v1/threads/chatthread_sha256%3A8d438255cc58aeb565712c783/reviews
 All checks passed

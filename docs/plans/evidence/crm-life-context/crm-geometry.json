@@ -155,8 +155,8 @@
       "authority": "diagnostic",
       "expectation": "records added outside the screen are counted",
       "measured": {
-        "shown": "9",
-        "saved": 41,
+        "shown": "11",
+        "saved": 42,
         "secondsSinceTheyWereAdded": 2
       },
       "result": "review",
@@ -167,7 +167,7 @@
       "authority": "contract",
       "expectation": "every row 36 px, at least 40 rows",
       "measured": {
-        "rows": 41,
+        "rows": 42,
         "heights": [
           36
         ]
@@ -180,7 +180,7 @@
       "authority": "contract",
       "expectation": "the column headers stay in place while the rows scroll",
       "measured": {
-        "scrolledBy": 802,
+        "scrolledBy": 838,
         "headerTopBefore": 123,
         "headerTopAfter": 123
       },
@@ -192,8 +192,8 @@
       "authority": "contract",
       "expectation": "the count shown is the number saved, not the number drawn",
       "measured": {
-        "shown": "41 organizations",
-        "saved": 41
+        "shown": "42 organizations",
+        "saved": 42
       },
       "result": "pass",
       "note": ""
@@ -259,30 +259,30 @@
       "expectation": "marking rows and choosing a value saves nothing",
       "measured": {
         "before": {
-          "org:geometry-c1c33bc9-0": {
-            "revision": 15378,
+          "org:geometry-cbf349fa-0": {
+            "revision": 4431,
             "location": null
           },
-          "org:geometry-c1c33bc9-1": {
-            "revision": 15382,
+          "org:geometry-cbf349fa-1": {
+            "revision": 4435,
             "location": null
           },
-          "org:geometry-c1c33bc9-2": {
-            "revision": 15386,
+          "org:geometry-cbf349fa-2": {
+            "revision": 4439,
             "location": null
           }
         },
         "chosen": {
-          "org:geometry-c1c33bc9-0": {
-            "revision": 15378,
+          "org:geometry-cbf349fa-0": {
+            "revision": 4431,
             "location": null
           },
-          "org:geometry-c1c33bc9-1": {
-            "revision": 15382,
+          "org:geometry-cbf349fa-1": {
+            "revision": 4435,
             "location": null
           },
-          "org:geometry-c1c33bc9-2": {
-            "revision": 15386,
+          "org:geometry-cbf349fa-2": {
+            "revision": 4439,
             "location": null
           }
         }
@@ -296,30 +296,30 @@
       "expectation": "Apply changes the two marked records and no other; each is saved at a later revision",
       "measured": {
         "before": {
-          "org:geometry-c1c33bc9-0": {
-            "revision": 15378,
+          "org:geometry-cbf349fa-0": {
+            "revision": 4431,
             "location": null
           },
-          "org:geometry-c1c33bc9-1": {
-            "revision": 15382,
+          "org:geometry-cbf349fa-1": {
+            "revision": 4435,
             "location": null
           },
-          "org:geometry-c1c33bc9-2": {
-            "revision": 15386,
+          "org:geometry-cbf349fa-2": {
+            "revision": 4439,
             "location": null
           }
         },
         "after": {
-          "org:geometry-c1c33bc9-0": {
-            "revision": 15538,
+          "org:geometry-cbf349fa-0": {
+            "revision": 4627,
             "location": "Leeds"
           },
-          "org:geometry-c1c33bc9-1": {
-            "revision": 15542,
+          "org:geometry-cbf349fa-1": {
+            "revision": 4631,
             "location": "Leeds"
           },
-          "org:geometry-c1c33bc9-2": {
-            "revision": 15386,
+          "org:geometry-cbf349fa-2": {
+            "revision": 4439,
             "location": null
           }
         }
@@ -332,8 +332,8 @@
       "authority": "contract",
       "expectation": "the panel says what happened to each record, with the revisions it moved between",
       "measured": [
-        "Alder Press 1\nUpdated · revision 15378 to 15538",
-        "Birch Pottery 2\nUpdated · revision 15382 to 15542"
+        "Alder Press 1\nUpdated · revision 4431 to 4627",
+        "Birch Pottery 2\nUpdated · revision 4435 to 4631"
       ],
       "result": "pass",
       "note": ""
