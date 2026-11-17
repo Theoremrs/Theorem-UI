@@ -133,6 +133,9 @@ describe('the icon layer', () => {
       expect(style.getPropertyValue('--ink')).toBe('#112233')
       expect(style.getPropertyValue('--rail-ground')).toBe('#445566')
       expect(style.getPropertyValue('--redwood')).toBe('#778899')
+      // A mark at rest is drawn in greys mixed from currentColor (styles.css, .rail-mark); with
+      // the app's text colour, a light app's dark ink would vanish on a dark terminal.
+      expect(['#112233', 'rgb(17, 34, 51)']).toContain(style.color)
     } finally {
       await act(async () => useTerminalTheme.setState(before))
     }

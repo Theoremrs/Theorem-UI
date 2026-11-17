@@ -129,6 +129,8 @@ export function IconLayer({
           inset: 0,
           overflow: 'hidden',
           pointerEvents: 'none',
+          // A mark at rest is greys mixed from currentColor (styles.css, .rail-mark).
+          color: chrome.text,
           '--ink': chrome.text,
           '--rail-ground': chrome.bg,
           '--redwood': chrome.accent,
