@@ -81,7 +81,7 @@ function moved(page, a, b) {
     await root.waitFor({ timeout: 30000 })
     await page.waitForTimeout(1500)
     if (story.keys.length) {
-      await page.locator('[aria-label="Agent terminal"]').focus()
+      await page.locator('[aria-label="Workspace"]').focus()
       for (const key of story.keys) await page.keyboard.press(key)
       await page.waitForTimeout(300)
     }

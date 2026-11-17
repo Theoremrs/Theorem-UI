@@ -1,0 +1,868 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "workbench-palette:changes",
+  "policy_version": "1.0",
+  "source_revision": "320f9c941630de0f56f65b2430fda6b325f4e7be+worktree",
+  "fixture": "workbench-palette-changes-vitesse-light",
+  "environment": {
+    "story": "workbench-palette-changes-vitesse-light",
+    "surface": "changes",
+    "profile": "vitesse-light",
+    "route": "/story/workbench-palette-changes-vitesse-light",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    },
+    "device_pixel_ratio": 1,
+    "zoom": 1,
+    "renderer": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.8078.4 Safari/537.36",
+    "os": "darwin",
+    "language": "en",
+    "direction": "ltr",
+    "palette": "vitesse",
+    "mode": "light",
+    "appearance_preset": "calm",
+    "font": "the grid mono face from the app (computed font-family not asserted)",
+    "date": "2026-11-15"
+  },
+  "counts": {
+    "pass": 24,
+    "fail": 0,
+    "review": 4,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "WB-TXT.ink",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 5,
+          "column": 130,
+          "text": "l"
+        },
+        "raw_foreground": "#cdd0d0",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.692215925272517,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 4,
+          "column": 126,
+          "text": "S"
+        },
+        "raw_foreground": "#959898",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.174300418852514,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.focused-row",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "focused-row",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 130,
+          "text": "m"
+        },
+        "raw_foreground": "#df78af",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.33234331810339,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-active",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-active",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 138,
+          "text": "C"
+        },
+        "raw_foreground": "#df78af",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.33234331810339,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.mark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 130,
+          "text": "m"
+        },
+        "raw_foreground": "#df78af",
+        "palette_fields": {
+          "fg": [
+            "mark"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.33234331810339,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.tab-inactive",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "tab-inactive",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 0,
+          "column": 1,
+          "text": "F"
+        },
+        "raw_foreground": "#e8e9e9",
+        "palette_fields": {
+          "fg": [
+            "bright",
+            "heading"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 12.367534650845503,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 35,
+          "column": 33,
+          "text": "c"
+        },
+        "raw_foreground": "#d6bc8a",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.180978022081975,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.success",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 6,
+          "column": 128,
+          "text": "A"
+        },
+        "raw_foreground": "#7ee787",
+        "palette_fields": {
+          "fg": [
+            "success",
+            "syntaxTag"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.791332443789862,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.error",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 15,
+          "column": 128,
+          "text": "D"
+        },
+        "raw_foreground": "#e08a8f",
+        "palette_fields": {
+          "fg": [
+            "error"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.875571898622026,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.warning-on-focus",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "warning-on-focus",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 128,
+          "text": "M"
+        },
+        "raw_foreground": "#d6bc8a",
+        "palette_fields": {
+          "fg": [
+            "gold",
+            "warning",
+            "approval"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.180978022081975,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.muted-on-focus",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "muted-on-focus",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 8,
+          "column": 151,
+          "text": "d"
+        },
+        "raw_foreground": "#959898",
+        "palette_fields": {
+          "fg": [
+            "muted"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 5.174300418852514,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-added",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-added",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 13,
+          "column": 148,
+          "text": "h"
+        },
+        "raw_foreground": "#cdd0d0",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 8.95772923023361,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-removed",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-removed",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 155,
+          "text": ";"
+        },
+        "raw_foreground": "#cdd0d0",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.074418791416042,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-added-words-changes",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-added-words-changes",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 12,
+          "column": 149,
+          "text": "s"
+        },
+        "raw_foreground": "#cdd0d0",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedWords"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 7.365225192474631,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-TXT.diff-removed-words",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "diff-removed-words",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 138,
+          "text": "p"
+        },
+        "raw_foreground": "#cdd0d0",
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedWords"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 7.363995633528341,
+        "minimum": 4.5,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.tab-letters",
+      "class": "standard",
+      "predicate": "oklab_distance",
+      "observation": "tab-letters",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "what": "the active tab's letters against the inactive tab's letters, as painted"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.27037041420782154,
+        "minimum": 0.1,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-UI.separator",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "separator",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 2,
+          "column": 30,
+          "text": "│"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5457736109647142,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.composer-border",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "composer-border",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 33,
+          "column": 31,
+          "text": "╭"
+        },
+        "palette_fields": {
+          "fg": [
+            "line"
+          ],
+          "bg": [
+            "bg"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.5457736109647142,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.diff-added-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "diff-added-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 13,
+          "column": 148,
+          "text": "h"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "addedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.0819947417655704,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-UI.diff-removed-fill",
+      "class": "diagnostic",
+      "predicate": "contrast",
+      "observation": "diff-removed-fill",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "method": "Ratzilla DomBackend cell span, getComputedStyle color and background-color",
+        "cell": {
+          "row": 11,
+          "column": 155,
+          "text": ";"
+        },
+        "palette_fields": {
+          "fg": [
+            "ink"
+          ],
+          "bg": [
+            "removedLine"
+          ],
+          "matches": true
+        },
+        "bound_to_expected_palette_fields": true,
+        "against": "pane-bg"
+      },
+      "arithmetic": "fail",
+      "detail": {
+        "value": 1.068081179418442,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "review"
+    },
+    {
+      "id": "WB-DONOR.derived-bg",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-bg",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.021298924090943756,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-mark",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-mark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.15184552575752067,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-line",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-line",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.03300627486344589,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-ink",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-ink",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.012418405596160866,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.derived-muted",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "derived-muted",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.01382214426996638,
+        "minimum": 0.005,
+        "maximum": 1.0,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-success",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-success",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-warning",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-warning",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-DONOR.fixed-error",
+      "class": "contract",
+      "predicate": "oklab_distance",
+      "observation": "fixed-error",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-changes-vitesse-light",
+        "against": "workbench-palette-changes-github-sharp-light",
+        "method": "the role colour painted here and in the same mode of the next palette"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 0.0,
+        "minimum": 0.0,
+        "maximum": 0.05,
+        "unit": "delta_e_ok"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}

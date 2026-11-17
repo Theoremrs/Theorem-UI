@@ -12,6 +12,7 @@ import type { Workspace } from './terminal-theme'
 import {
   FALLBACK_ROLES,
   ILLUSTRATION_REFERENCE,
+  TEXT_RATIO,
   failingPairs,
   projectIllustration,
   requiredPairs,
@@ -46,6 +47,14 @@ describe('terminal roles', () => {
         expect(wcagContrast(pair.fg, pair.bg)).toBeGreaterThanOrEqual(
           pair.ratio,
         )
+    })
+    test(`${name}: the mark reads as text on both surfaces`, () => {
+      const { mark, bg, raised } = roles.chrome
+      expect(wcagContrast(mark, bg)).toBeGreaterThanOrEqual(TEXT_RATIO)
+      expect(wcagContrast(mark, raised)).toBeGreaterThanOrEqual(TEXT_RATIO)
+      expect(
+        requiredPairs(roles).filter((p) => p.role === 'chrome.mark'),
+      ).toHaveLength(2)
     })
     test(`${name}: headings are not a status hue`, () => {
       expect(roles.chrome.heading).toBe(roles.chrome.bright)
@@ -133,6 +142,7 @@ describe('the terminal palette the WASM reads', () => {
     expect(palette.gold).toBe(roles.state.warning)
     expect(palette.sage).toBe(roles.chrome.accent)
     expect(palette.heading).toBe(roles.chrome.heading)
+    expect(palette.mark).toBe(roles.chrome.mark)
     // Every key the Rust Palette declares is sent.
     const rust = readFileSync(
       new URL('../../../terminal/src/lib.rs', import.meta.url),

@@ -19,14 +19,14 @@
 import { githubDarkTheme } from '@tanstack/highlight/themes/github-dark'
 import { clampChroma, converter, formatHex, wcagContrast } from 'culori'
 import type { Oklab, Oklch } from 'culori'
-import { SLATE, terminalTheme } from './terminal-theme'
+import { LINK, SLATE, SUCCESS, terminalTheme } from './terminal-theme'
 import type { TerminalTheme, Workspace } from './terminal-theme'
 
 const oklch = converter('oklch')
 const oklab = converter('oklab')
 
 /** Bumped whenever a rule here changes what a role resolves to. */
-export const ROLES_VERSION = 1
+export const ROLES_VERSION = 2
 
 /** Readable normal text, and essential nontext indicators (WCAG 1.4.3, 1.4.11). */
 export const TEXT_RATIO = 4.5
@@ -58,10 +58,6 @@ const SYNTAX_SOURCE = {
 } as const
 export type SyntaxRole = keyof typeof SYNTAX_SOURCE
 
-/** GitHub Dark's success green and link blue, the hues those families keep. */
-const SUCCESS = '#7ee787'
-const LINK = '#58a6ff'
-
 export type TerminalRoles = {
   version: number
   /** One identity for every colour below; previews record it (§7.2). */
@@ -81,6 +77,8 @@ export type TerminalRoles = {
     /** Prompt, caret, progress and the selected card's border. */
     accent: string
     focus: string
+    /** The letters of the thing that is chosen or matched. */
+    mark: string
     selection: string
     disabled: string
     /** The prompt's cursor while the terminal is not focused. */
@@ -198,6 +196,7 @@ export function requiredPairs(roles: TerminalRoles): RequiredPair[] {
   text('chrome.muted', chrome.muted)
   text('chrome.heading', chrome.heading)
   text('chrome.accent', chrome.accent)
+  text('chrome.mark', chrome.mark)
   for (const [name, fg] of Object.entries(state)) text(`state.${name}`, fg)
   for (const [name, fg] of Object.entries(syntax)) text(`syntax.${name}`, fg)
   const rows = { removedLine: diff.removedLine, addedLine: diff.addedLine }
@@ -274,6 +273,7 @@ function resolve(theme: TerminalTheme, dark: boolean): TerminalRoles {
       heading: role('chrome.heading', theme.bright),
       accent: role('chrome.accent', theme.sage),
       focus: role('chrome.focus', theme.sage),
+      mark: role('chrome.mark', theme.mark),
       selection: theme.raised,
       disabled: theme.idle,
       idle: theme.idle,
@@ -364,6 +364,7 @@ export function wasmPalette(roles: TerminalRoles) {
     heading: chrome.heading,
     accent: chrome.accent,
     focus: chrome.focus,
+    mark: chrome.mark,
     selection: chrome.selection,
     disabled: chrome.disabled,
     deep: chrome.deep,

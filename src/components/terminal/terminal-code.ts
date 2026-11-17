@@ -1,4 +1,4 @@
-// SOURCING: @tanstack/highlight's createHighlighter/tokenize for class-based code tokens, with the languages a coding agent writes, and its renderTokens range decorations for the words a diff line changed; mdast-util-from-markdown for where fenced code sits in the agent's markdown; jsdiff's parsePatch for a diff's files and hunks and diffWordsWithSpace for what changed within a line; colours are the terminal crate's (terminal/src/lib.rs)
+// SOURCING: @tanstack/highlight's createHighlighter/tokenize for class-based code tokens, with the languages a coding agent writes, and its renderTokens range decorations for the words a diff line changed; mdast-util-from-markdown for where fenced code sits in the agent's markdown; jsdiff's parsePatch for a diff's files and hunks and diffWordsWithSpace for what changed within a line; jsdiff's createPatch for the code a write or an edit carries in its arguments while it streams; colours are the terminal crate's (terminal/src/lib.rs)
 //
 // Code the agent writes, highlighted for the terminal. The terminal draws
 // markdown itself (tui-markdown, highlighting off); fenced code is lifted out
@@ -34,7 +34,7 @@ import { toml } from '@tanstack/highlight/languages/toml'
 import { ts } from '@tanstack/highlight/languages/ts'
 import { tsx } from '@tanstack/highlight/languages/tsx'
 import { yaml } from '@tanstack/highlight/languages/yaml'
-import { diffWordsWithSpace, parsePatch } from 'diff'
+import { createPatch, diffWordsWithSpace, parsePatch } from 'diff'
 import { fromMarkdown } from 'mdast-util-from-markdown'
 
 const highlighter = createHighlighter({
@@ -397,6 +397,45 @@ export function toolOutput(
     lines: highlightLines(rows.slice(0, OUTPUT_LINES).join('\n'), lang),
     more: Math.max(0, rows.length - OUTPUT_LINES),
   }
+}
+
+/** The names tools give a write's whole new text, and an edit's text before and after. */
+const WRITTEN = ['content', 'contents', 'file_text', 'text'] as const
+const EDITED = [
+  ['old_string', 'new_string'],
+  ['old_str', 'new_str'],
+  ['oldText', 'newText'],
+] as const
+
+/**
+ * The code a write or an edit carries in its arguments, as a diff, so it can be drawn while
+ * the call streams and before it returns. A write is every line added; an edit is its text
+ * before and after. Hunk headers are left out: an edit's snippet does not say where in the
+ * file it lands, so its line numbers would mislead. Absent when the arguments carry neither.
+ */
+export function argsDiff(
+  args: Record<string, unknown>,
+  path: string | undefined,
+): { diff: DiffLine[]; write: boolean } | undefined {
+  const pair = EDITED.map(
+    ([before, after]) =>
+      [stringArg(args[before]), stringArg(args[after])] as const,
+  ).find(([, after]) => after !== undefined)
+  const written = WRITTEN.map((key) => stringArg(args[key])).find(
+    (value) => value !== undefined,
+  )
+  const [before, after, write] = pair
+    ? [pair[0] ?? '', pair[1] ?? '', false]
+    : written !== undefined
+      ? ['', written, true]
+      : [undefined, undefined, false]
+  if (after === undefined || before === after) return
+  const name = path ?? 'file'
+  const lines = diffLines(
+    createPatch(name, before, after, '', ''),
+    path,
+  ).filter((line) => line.k !== 'hunk')
+  return lines.length > 0 ? { diff: lines, write } : undefined
 }
 
 /** Where a tool's file opens in the editor: one-based lines, both ends included. */

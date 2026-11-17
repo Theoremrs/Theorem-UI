@@ -78,6 +78,23 @@ import fileAddPaper from './fileAdd-paper.svg'
 import imageFileEditLine from './imageFileEdit-line.svg'
 import imageFileEditAccent from './imageFileEdit-accent.svg'
 import imageFileEditPaper from './imageFileEdit-paper.svg'
+import folderEmptyLine from './folderEmpty-line.svg'
+import folderEmptyAccent from './folderEmpty-accent.svg'
+import folderEmptyPaper from './folderEmpty-paper.svg'
+import folderFileLine from './folderFile-line.svg'
+import folderFileAccent from './folderFile-accent.svg'
+import folderFileTint from './folderFile-tint.svg'
+import folderFilePaper from './folderFile-paper.svg'
+import folderHomeLine from './folderHome-line.svg'
+import folderHomeAccent from './folderHome-accent.svg'
+import folderHomePaper from './folderHome-paper.svg'
+import folderCheckLine from './folderCheck-line.svg'
+import folderCheckAccent from './folderCheck-accent.svg'
+import folderCheckTint from './folderCheck-tint.svg'
+import folderCheckPaper from './folderCheck-paper.svg'
+import folderEditLine from './folderEdit-line.svg'
+import folderEditAccent from './folderEdit-accent.svg'
+import folderEditPaper from './folderEdit-paper.svg'
 import settingsLine from './settings-line.svg'
 import settingsTint from './settings-tint.svg'
 import settingsPaper from './settings-paper.svg'
@@ -131,6 +148,11 @@ export const CONTROL_LAYERS = {
   fileEdit: { line: fileEditLine, accent: fileEditAccent, tint: fileEditTint, paper: fileEditPaper },
   fileAdd: { line: fileAddLine, accent: fileAddAccent, tint: fileAddTint, paper: fileAddPaper },
   imageFileEdit: { line: imageFileEditLine, accent: imageFileEditAccent, paper: imageFileEditPaper },
+  folderEmpty: { line: folderEmptyLine, accent: folderEmptyAccent, paper: folderEmptyPaper },
+  folderFile: { line: folderFileLine, accent: folderFileAccent, tint: folderFileTint, paper: folderFilePaper },
+  folderHome: { line: folderHomeLine, accent: folderHomeAccent, paper: folderHomePaper },
+  folderCheck: { line: folderCheckLine, accent: folderCheckAccent, tint: folderCheckTint, paper: folderCheckPaper },
+  folderEdit: { line: folderEditLine, accent: folderEditAccent, paper: folderEditPaper },
   settings: { line: settingsLine, tint: settingsTint, paper: settingsPaper },
   archive: { line: archiveLine, accent: archiveAccent },
   link: { line: linkLine, tint: linkTint },

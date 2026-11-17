@@ -1,0 +1,4133 @@
+//! The process pane driven through a real root: keys, pointer, completions and
+//! host messages go in as `Msg`; effects and cells come out.
+
+use base64::Engine as _;
+use base64::engine::general_purpose::STANDARD as B64;
+use keybinds::{Key, KeyInput, Mods};
+use ratatui::buffer::Buffer;
+use ratatui::layout::Rect;
+use ratatui::style::Color;
+use theorem_workbench_core::builtin;
+use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome, TerminalOpened};
+use theorem_workbench_core::effect::{Effect, EffectBody, InputKind, TerminalBackend};
+use theorem_workbench_core::host::{
+    ConnectivityState, HostMessage, TerminalProfileInfo, TerminalSessionInfo, TerminalSessionState,
+};
+use theorem_workbench_core::ids::{ActionId, Actor, EffectId, PanelInstanceId, ResourceRef};
+use theorem_workbench_core::keys::{KeyTable, Overrides, Platform};
+use theorem_workbench_core::registry::Capabilities;
+use theorem_workbench_core::semantics::SemanticTree;
+use theorem_workbench_core::stale::Stale;
+use theorem_workbench_core::{
+    Button, DockMsg, Model, Msg, PanelFactories, Pointer, PointerKind, Theme, ViewCtx, update,
+};
+use theorem_workbench_dock::{CellMetrics, Dock, DockConfig, Preset};
+use theorem_workbench_process::{ProcessStyles, extend_registry, register};
+use theorem_workbench_vt::Palette;
+
+const CAPS: [&str; 11] = [
+    "files",
+    "documents",
+    "scm",
+    "language",
+    "run",
+    "search",
+    "environment",
+    "artifacts",
+    "conversation",
+    "terminal.native",
+    "terminal.herdr",
+];
+
+macro_rules! fixture {
+    ($name:literal) => {
+        include_bytes!(concat!("fixtures/", $name))
+    };
+}
+
+fn named(workspace: &str) -> Msg {
+    Msg::Host(HostMessage::WorkspaceChanged {
+        workspace: workspace.into(),
+        environment: Some("devbox".into()),
+    })
+}
+
+fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
+    session_named(name, backend, "zsh")
+}
+
+fn session_named(name: &str, backend: TerminalBackend, profile: &str) -> TerminalSessionInfo {
+    TerminalSessionInfo {
+        name: None,
+        command: None,
+        cwd: None,
+        admitted: true,
+        session: name.into(),
+        profile: profile.into(),
+        backend,
+        workspace: "w".into(),
+        host: Some("devbox".into()),
+        program: Some(1),
+        state: TerminalSessionState::Running,
+        reason: None,
+        next_step: None,
+        modes: None,
+        program_report: Default::default(),
+    }
+}
+
+fn profile(id: &str, backend: TerminalBackend, available: bool) -> TerminalProfileInfo {
+    TerminalProfileInfo {
+        id: id.into(),
+        label: id.into(),
+        backend,
+        argv: None,
+        available,
+        unavailable_reason: (!available).then(|| "herdr is not running on devbox".to_owned()),
+    }
+}
+
+/// What the host says the chooser offers, for workspace `workspace`.
+fn listing(workspace: &str, sessions: Vec<TerminalSessionInfo>) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: workspace.into(),
+        profiles: vec![
+            profile("herdr-zsh", TerminalBackend::Herdr, false),
+            profile("native-zsh", TerminalBackend::Native, true),
+        ],
+        sessions,
+        adoption: None,
+    })
+}
+
+fn data() -> Msg {
+    listing("w", vec![session("s1", TerminalBackend::Herdr)])
+}
+
+/// A host listing whose session `s1` runs the Claude Code coding profile.
+fn coding_listing() -> Msg {
+    listing(
+        "w",
+        vec![session_named("s1", TerminalBackend::Herdr, "Claude Code (Herdr)")],
+    )
+}
+
+fn palette() -> Palette {
+    Palette::default()
+}
+
+fn model(workspace: &str) -> Model {
+    let mut factories = PanelFactories::new();
+    register(&mut factories, ProcessStyles::new(palette()), "n1");
+    let mut registry = builtin::registry();
+    extend_registry(&mut registry).expect("the shell actions register");
+    let (keys, issues) = KeyTable::build(&registry, Platform::Other, &Overrides::default());
+    assert!(issues.is_empty(), "{issues:?}");
+    let (dock, _) = Dock::from_preset(DockConfig::default(), Preset::Default);
+    let mut m = Model::new(registry, factories, keys, Capabilities::of(CAPS), dock);
+    update(
+        &mut m,
+        Msg::Resize {
+            area: Rect::new(0, 0, 200, 50),
+            metrics: CellMetrics::new(8.0, 16.0),
+        },
+    );
+    if !workspace.is_empty() {
+        update(&mut m, named(workspace));
+    }
+    m
+}
+
+struct Rig {
+    m: Model,
+    id: PanelInstanceId,
+}
+
+fn shell_id(m: &Model) -> PanelInstanceId {
+    m.panel_ids()
+        .find(|(_, k)| k.as_str() == "shell")
+        .map(|(id, _)| id.clone())
+        .expect("a shell panel is open")
+}
+
+/// Shell opened in workspace `w`, nothing chosen.
+fn rig() -> Rig {
+    let mut m = model("w");
+    let fx = update(
+        &mut m,
+        Msg::Action {
+            id: ActionId::new("shell.choose"),
+            actor: Actor::Human,
+        },
+    );
+    assert!(fx.is_empty(), "opening Shell emitted {fx:?}");
+    let id = shell_id(&m);
+    update(&mut m, Msg::Dock(DockMsg::FocusPanel(id.clone())));
+    update(&mut m, data());
+    Rig { m, id }
+}
+
+fn terminal() -> ResourceRef {
+    ResourceRef::Terminal {
+        workspace: "w".into(),
+        session: "s1".into(),
+    }
+}
+
+fn opened(epoch: u64, program: u64, cols: u16, rows: u16, origin: &str) -> TerminalOpened {
+    TerminalOpened {
+        session: "s1".into(),
+        cols,
+        rows,
+        backend: TerminalBackend::Herdr,
+        stream_epoch: Some("e".into()),
+        epoch,
+        program,
+        origin: Some(origin.into()),
+        process_owned_by: None,
+        attachment: None,
+    }
+}
+
+impl Rig {
+    fn send(&mut self, msg: Msg) -> Vec<Effect> {
+        update(&mut self.m, msg)
+    }
+
+    fn key(&mut self, key: Key) -> Vec<Effect> {
+        self.mods(key, Mods::NONE)
+    }
+
+    fn mods(&mut self, key: Key, mods: Mods) -> Vec<Effect> {
+        self.send(Msg::Key(KeyInput::new(key, mods)))
+    }
+
+    fn typed(&mut self, text: &str) -> Vec<Effect> {
+        text.chars().flat_map(|c| self.key(Key::Char(c))).collect()
+    }
+
+    fn tick(&mut self) -> Vec<Effect> {
+        self.send(Msg::Tick)
+    }
+
+    fn answer(
+        &mut self,
+        e: &Effect,
+        outcome: Outcome,
+        payload: Option<CompletionPayload>,
+    ) -> Vec<Effect> {
+        let mut c = Completion::new(e.id, e.resource.clone(), outcome);
+        c.payload = payload;
+        self.send(Msg::Completion(c))
+    }
+
+    fn accept_attach(&mut self, e: &Effect, opened: TerminalOpened) -> Vec<Effect> {
+        self.answer(
+            e,
+            Outcome::Accepted,
+            Some(CompletionPayload::Terminal(opened)),
+        )
+    }
+
+    fn bytes(&mut self, epoch: u64, offset: u64, data: &[u8]) -> Vec<Effect> {
+        let mut fx = self.send(Msg::Host(HostMessage::TerminalOutput {
+            resource: terminal(),
+            epoch,
+            offset,
+            data: B64.encode(data),
+        }));
+        fx.extend(self.tick());
+        fx
+    }
+
+    fn reset(&mut self, epoch: u64, offset: u64, data: &[u8]) -> Vec<Effect> {
+        self.send(Msg::Host(HostMessage::TerminalReset {
+            resource: terminal(),
+            epoch,
+            offset,
+            data: B64.encode(data),
+        }))
+    }
+
+    fn host(&mut self, message: HostMessage) -> Vec<Effect> {
+        self.send(Msg::Host(message))
+    }
+
+    /// Choose the session row and answer the attach: a controller on an 80x24
+    /// grid.
+    fn live(&mut self) {
+        let fx = self.key(Key::Enter);
+        let attach = only_attach(&fx);
+        let fx = self.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+        // The pane asked for its own size; answer so no resize is in flight.
+        self.settle_resize(fx);
+    }
+
+    fn settle_resize(&mut self, fx: Vec<Effect>) {
+        if let Some(e) = fx
+            .iter()
+            .find(|e| matches!(e.body, EffectBody::TerminalResize(_)))
+        {
+            let EffectBody::TerminalResize(r) = &e.body else {
+                unreachable!()
+            };
+            let (cols, rows) = (r.cols, r.rows);
+            self.answer(&e.clone(), Outcome::Accepted, None);
+            self.host(HostMessage::TerminalResized {
+                resource: terminal(),
+                epoch: Some(1),
+                cols,
+                rows,
+            });
+        }
+    }
+
+    fn body(&self) -> Rect {
+        let frame = self.m.frame().expect("solved");
+        frame
+            .groups
+            .iter()
+            .find(|g| g.active.as_ref().map(|a| a.0.as_str()) == Some(self.id.as_str()))
+            .expect("the shell group")
+            .body
+    }
+
+    fn draw(&self, width: u16, height: u16) -> Buffer {
+        self.draw_with(width, height, &Theme::plain())
+    }
+
+    fn draw_with(&self, width: u16, height: u16, theme: &Theme) -> Buffer {
+        let area = Rect::new(0, 0, width, height);
+        let mut buf = Buffer::empty(area);
+        let mut cx = ViewCtx::new(theme, self.m.workspace());
+        cx.focused = true;
+        self.m.panel(&self.id).unwrap().view(area, &mut buf, &cx);
+        buf
+    }
+
+    fn text(&self, width: u16, height: u16) -> Vec<String> {
+        let buf = self.draw(width, height);
+        (0..height)
+            .map(|y| {
+                (0..width)
+                    .map(|x| buf[(x, y)].symbol().to_owned())
+                    .collect::<String>()
+                    .trim_end()
+                    .to_owned()
+            })
+            .collect()
+    }
+
+    /// The rows the focus colours cover: the chosen row, which no marker glyph tells.
+    fn chosen_rows(&self, width: u16, height: u16) -> Vec<String> {
+        let buf = self.draw(width, height);
+        let text = self.text(width, height);
+        (0..height)
+            .filter(|y| {
+                let m = buf[(2, *y)].modifier;
+                m.contains(ratatui::style::Modifier::REVERSED)
+                    || m.contains(ratatui::style::Modifier::UNDERLINED)
+            })
+            .map(|y| text[usize::from(y)].clone())
+            .collect()
+    }
+
+    /// The pane drawn at the size the root gave it.
+    fn grid(&self) -> Vec<String> {
+        let b = self.body();
+        self.text(b.width, b.height)
+    }
+
+    fn screen(&self) -> String {
+        self.text(100, 30).join("\n")
+    }
+
+    fn click_at(&mut self, x: u16, y: u16) -> Vec<Effect> {
+        let b = self.body();
+        let mut fx = vec![];
+        for kind in [
+            PointerKind::Down(Button::Left),
+            PointerKind::Up(Button::Left),
+        ] {
+            fx.extend(self.send(Msg::Pointer(Pointer {
+                kind,
+                x: b.x + x,
+                y: b.y + y,
+                mods: Mods::NONE,
+                clicks: 1,
+            })));
+        }
+        fx
+    }
+
+    fn semantics(&self) -> SemanticTree {
+        let theme = Theme::plain();
+        let cx = ViewCtx::new(&theme, self.m.workspace());
+        let b = self.body();
+        let nodes = self
+            .m
+            .panel(&self.id)
+            .unwrap()
+            .semantics(Rect::new(0, 0, b.width, b.height), &cx);
+        SemanticTree {
+            root: nodes[0].id.clone(),
+            nodes,
+        }
+    }
+
+    fn valid_tree(&self) -> SemanticTree {
+        let tree = self.semantics();
+        tree.validate()
+            .unwrap_or_else(|e| panic!("{e:?}\n{tree:#?}"));
+        tree
+    }
+}
+
+/// A screen read as running text: a wrapped notice has its words on one line again.
+fn one_line(screen: &str) -> String {
+    screen.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn only_attach(fx: &[Effect]) -> Effect {
+    let found: Vec<&Effect> = fx
+        .iter()
+        .filter(|e| matches!(e.body, EffectBody::TerminalAttach(_)))
+        .collect();
+    assert_eq!(found.len(), 1, "expected one attach in {fx:?}");
+    found[0].clone()
+}
+
+fn kinds(fx: &[Effect]) -> Vec<&'static str> {
+    fx.iter()
+        .map(|e| match &e.body {
+            EffectBody::TerminalOpen(_) => "open",
+            EffectBody::TerminalAttach(_) => "attach",
+            EffectBody::TerminalInput(_) => "input",
+            EffectBody::TerminalInputBytes(_) => "bytes",
+            EffectBody::TerminalAbandonOpen(_) => "abandon",
+            EffectBody::TerminalResize(_) => "resize",
+            EffectBody::TerminalDetach(_) => "detach",
+            EffectBody::TerminalEnd => "end",
+            EffectBody::ClipboardWrite(_) => "clipboard",
+            _ => "other",
+        })
+        .collect()
+}
+
+fn inputs(fx: &[Effect]) -> Vec<(String, String, u64)> {
+    fx.iter()
+        .filter_map(|e| match &e.body {
+            EffectBody::TerminalInput(i) => Some((
+                i.bytes.clone(),
+                i.input_id.clone(),
+                i.claim.epoch,
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
+fn cell_fg(buf: &Buffer, x: u16, y: u16) -> Color {
+    buf[(x, y)].fg
+}
+
+// ---- 1. choosing -----------------------------------------------------------
+
+#[test]
+fn opening_shell_starts_nothing_and_lists_rows_with_what_persistence_means() {
+    let mut r = rig();
+    assert!(r.tick().is_empty());
+    assert!(r.tick().is_empty());
+    let s = r.screen();
+    for needle in [
+        "s1",
+        "w @ devbox",
+        "Herdr",
+        "survives pane close and refresh",
+        "Start native-zsh",
+        "not kept by Herdr, ends with the host",
+        "unavailable: herdr is not running on devbox",
+    ] {
+        assert!(s.contains(needle), "{needle:?} missing from\n{s}");
+    }
+    r.valid_tree();
+}
+
+#[test]
+fn choosing_a_session_emits_exactly_one_attach() {
+    let mut r = rig();
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["attach"]);
+    let EffectBody::TerminalAttach(a) = &fx[0].body else {
+        unreachable!()
+    };
+    assert!(!a.attachment.is_empty(), "the view names its own attachment");
+    assert_eq!(fx[0].resource, terminal());
+    assert!(r.tick().is_empty(), "no second effect while attaching");
+}
+
+#[test]
+fn choosing_a_profile_emits_exactly_one_open_and_an_unavailable_profile_none() {
+    let mut r = rig();
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    assert!(fx.is_empty(), "the Herdr profile is unavailable: {fx:?}");
+    assert!(r.screen().contains("herdr is not running on devbox"));
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let EffectBody::TerminalOpen(o) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(o.backend, TerminalBackend::Native);
+    assert!(r.tick().is_empty());
+    r.valid_tree();
+}
+
+#[test]
+fn a_double_click_chooses_and_a_single_click_only_selects() {
+    let mut r = rig();
+    // Line 4 is the session row's title (heading, hint, blank, heading).
+    assert!(r.click_at(2, 4).is_empty(), "a single click only selects");
+    let b = r.body();
+    let fx = r.send(Msg::Pointer(Pointer {
+        kind: PointerKind::Down(Button::Left),
+        x: b.x + 2,
+        y: b.y + 4,
+        mods: Mods::NONE,
+        clicks: 2,
+    }));
+    assert_eq!(kinds(&fx), ["attach"]);
+}
+
+// ---- 2. opening ------------------------------------------------------------
+
+#[test]
+fn an_uncertain_open_is_shown_unknown_never_retried_or_resolved() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    let open = fx[0].clone();
+    assert!(
+        r.answer(
+            &open,
+            Outcome::Uncertain {
+                reason: "socket closed".into()
+            },
+            None
+        )
+        .is_empty()
+    );
+    for _ in 0..3 {
+        assert!(r.tick().is_empty());
+    }
+    let s = r.screen();
+    assert!(
+        s.contains("Unknown whether a shell started (socket closed)"),
+        "{s}"
+    );
+    assert!(r.key(Key::Enter).is_empty());
+    let tree = r.valid_tree();
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.name.starts_with("Unknown whether"))
+    );
+}
+
+#[test]
+fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let EffectBody::TerminalOpen(o) = &fx[0].body else {
+        unreachable!()
+    };
+    let attachment = o.attachment.clone().expect("the open names its attachment");
+    let fx = r.answer(
+        &fx[0],
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            attachment: Some(attachment.clone()),
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    assert!(
+        !kinds(&fx).contains(&"attach"),
+        "no follow-up attach after an open: {fx:?}"
+    );
+    let typed = r.typed("l");
+    let EffectBody::TerminalInput(i) = &typed[0].body else {
+        unreachable!()
+    };
+    assert_eq!(i.claim.attachment, attachment);
+    assert_eq!(i.claim.epoch, 1);
+}
+
+// ---- 3. live ---------------------------------------------------------------
+
+#[test]
+fn input_carries_a_fresh_id_and_the_claim_and_a_retry_reuses_the_id() {
+    let mut r = rig();
+    r.live();
+    let first = r.typed("l");
+    let second = r.typed("s");
+    let (a, b) = (inputs(&first), inputs(&second));
+    assert_eq!((a.len(), b.len()), (1, 1));
+    assert_eq!(a[0].0, "l");
+    assert_ne!(a[0].1, b[0].1, "each logical input has its own id");
+    assert_eq!(a[0].2, 1, "the binding epoch of the claim");
+    let EffectBody::TerminalInput(sent) = &first[0].body else {
+        unreachable!()
+    };
+    assert_eq!(sent.kind, InputKind::Human);
+    assert_eq!(sent.claim.epoch, 1);
+
+    // Unknown outcome: not resent by itself.
+    r.answer(
+        &second[0],
+        Outcome::Uncertain {
+            reason: "timeout".into(),
+        },
+        None,
+    );
+    assert!(r.tick().is_empty());
+    assert!(r.screen().contains("Input unconfirmed (timeout)"));
+    // A person resends it: same id, same bytes, same claim.
+    let b = r.body();
+    let fx = r.click_at(2, b.height - 1);
+    let again = inputs(&fx);
+    assert_eq!(again, b_vec(&second));
+}
+
+fn b_vec(fx: &[Effect]) -> Vec<(String, String, u64)> {
+    inputs(fx)
+}
+
+#[test]
+fn paste_and_focus_leave_through_the_encoders() {
+    let mut r = rig();
+    r.live();
+    let fx = r.send(Msg::Paste("echo hi".into()));
+    let sent = inputs(&fx);
+    assert_eq!(sent.len(), 1);
+    assert_eq!(
+        sent[0].0, "echo hi",
+        "no bracketed paste until the program asks"
+    );
+    r.bytes(1, 0, b"\x1b[?2004h\x1b[?1004h");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "\x1b[200~x\x1b[201~");
+    r.send(Msg::Focus(false));
+    let fx = r.tick();
+    assert_eq!(inputs(&fx)[0].0, "\x1b[O");
+}
+
+#[test]
+fn the_screen_resizes_only_when_the_host_confirms_and_one_resize_is_in_flight() {
+    let mut r = rig();
+    let fx = r.key(Key::Enter);
+    let attach = only_attach(&fx);
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    let b = r.body();
+    let want = (b.width, b.height - 2);
+    assert_eq!(kinds(&fx), ["resize"]);
+    let EffectBody::TerminalResize(first) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!((first.cols, first.rows), want);
+    assert_eq!(first.claim.attachment, {
+        let EffectBody::TerminalAttach(a) = &attach.body else {
+            unreachable!()
+        };
+        a.attachment.clone()
+    });
+    // The grid is still the host's 80x24: output is drawn on it.
+    r.bytes(1, 0, b"x");
+    assert!(r.grid()[1].starts_with('x'));
+
+    // The body changes twice while the first resize is in flight.
+    for height in [40, 30] {
+        r.send(Msg::Resize {
+            area: Rect::new(0, 0, 200, height),
+            metrics: CellMetrics::new(8.0, 16.0),
+        });
+        assert!(r.tick().is_empty(), "one resize at a time");
+    }
+    let latest = r.body();
+    // The answer frees the slot; the latest size, not each intermediate one,
+    // is what follows.
+    let mut fx = r.answer(&fx[0], Outcome::Accepted, None);
+    fx.extend(r.host(HostMessage::TerminalResized {
+        resource: terminal(),
+        epoch: Some(1),
+        cols: first.cols,
+        rows: first.rows,
+    }));
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), ["resize"]);
+    let EffectBody::TerminalResize(second) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(
+        (second.cols, second.rows),
+        (latest.width, latest.height - 2)
+    );
+}
+
+#[test]
+fn another_views_size_stands_until_this_view_is_used_again() {
+    let mut r = rig();
+    r.live();
+    let b = r.body();
+    let mine = (b.width, b.height - 2);
+    // Another view of the same terminal set its own size.
+    let mut fx = r.host(HostMessage::TerminalResized {
+        resource: terminal(),
+        epoch: Some(1),
+        cols: 46,
+        rows: 70,
+    });
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), Vec::<&str>::new(), "no fight over the size");
+    // Coming back to this window makes this the latest view: its size
+    // follows.
+    r.send(Msg::Focus(false));
+    r.tick();
+    r.send(Msg::Focus(true));
+    let fx = r.tick();
+    let sizes: Vec<_> = fx
+        .iter()
+        .filter_map(|e| match &e.body {
+            EffectBody::TerminalResize(s) => Some((s.cols, s.rows)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sizes, [mine]);
+    r.settle_resize(fx);
+    // So does typing, after the other view resizes again.
+    r.host(HostMessage::TerminalResized {
+        resource: terminal(),
+        epoch: Some(1),
+        cols: 46,
+        rows: 70,
+    });
+    let fx = r.typed("l");
+    assert!(kinds(&fx).contains(&"resize"), "{:?}", kinds(&fx));
+}
+
+#[test]
+fn color_cursor_and_wide_characters_draw_the_expected_cells() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, fixture!("sgr.vt"));
+    let b = r.body();
+    let buf = r.draw(b.width, b.height);
+    let pal = palette();
+    // "red" is ANSI 1; "bold" is bold ANSI 2 (green).
+    assert_eq!(cell_fg(&buf, 0, 1), pal.ansi[1]);
+    assert_eq!(buf[(0, 1)].symbol(), "r");
+    assert_eq!(cell_fg(&buf, 4, 1), pal.ansi[2]);
+    assert_eq!(cell_fg(&buf, 9, 1), Color::Indexed(196));
+    assert_eq!(cell_fg(&buf, 13, 1), Color::Rgb(1, 2, 3));
+    assert!(r.grid()[1].starts_with("red bold idx rgb inv bgblue dim"));
+}
+
+#[test]
+fn cursor_movement_and_erase_land_on_the_right_cells() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, fixture!("cursor_erase.vt"));
+    let t = r.grid();
+    assert_eq!(t[1], "145", "row 1: two chars deleted after the first");
+    assert_eq!(t[2], "ab", "row 2: erased from column 3");
+    assert!(t[3].contains('q'));
+    assert!(t[4].contains('X'));
+}
+
+#[test]
+fn wide_characters_occupy_two_cells() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, fixture!("wide.vt"));
+    let b = r.body();
+    let buf = r.draw(b.width, b.height);
+    assert_eq!(buf[(0, 1)].symbol(), "a");
+    assert_eq!(buf[(1, 1)].symbol(), "\u{6f22}");
+    assert_eq!(buf[(3, 1)].symbol(), "\u{5b57}");
+    assert_eq!(buf[(5, 1)].symbol(), "b");
+}
+
+#[test]
+fn the_alternate_screen_draws_and_its_cursor_hides() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"before\r\n");
+    let off = b"before\r\n".len() as u64;
+    r.bytes(1, off, fixture!("alt_enter.vt"));
+    let t = r.grid();
+    assert!(t[1].starts_with("FULL SCREEN"), "{t:?}");
+    assert!(t[2].starts_with("line two"));
+    assert!(!t.join("\n").contains("before"));
+}
+
+#[test]
+fn scrollback_by_page_keys_and_wheel_until_typing_returns_to_the_bottom() {
+    let mut r = rig();
+    r.live();
+    let mut out = String::new();
+    for i in 0..60 {
+        out.push_str(&format!("line {i}\r\n"));
+    }
+    r.bytes(1, 0, out.as_bytes());
+    assert!(r.grid().iter().any(|l| l == "line 59"));
+    r.key(Key::PageUp);
+    assert!(!r.grid().iter().any(|l| l == "line 59"), "scrolled up");
+    let b = r.body();
+    r.send(Msg::Pointer(Pointer {
+        kind: PointerKind::Wheel { dx: 0, dy: 1 },
+        x: b.x + 2,
+        y: b.y + 3,
+        mods: Mods::NONE,
+        clicks: 1,
+    }));
+    let fx = r.typed("q");
+    assert_eq!(inputs(&fx).len(), 1);
+    assert!(
+        r.grid().iter().any(|l| l == "line 59"),
+        "typing returned to the bottom"
+    );
+}
+
+#[test]
+fn selection_and_copy_go_to_the_clipboard_not_the_program() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"hello world\r\n");
+    let b = r.body();
+    let at = |kind, x, y| {
+        Msg::Pointer(Pointer {
+            kind,
+            x: b.x + x,
+            y: b.y + y,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    r.send(at(PointerKind::Down(Button::Left), 0, 1));
+    r.send(at(PointerKind::Move, 4, 1));
+    r.send(at(PointerKind::Up(Button::Left), 4, 1));
+    let fx = r.mods(Key::Char('c'), Mods::CMD);
+    assert_eq!(kinds(&fx), ["clipboard"]);
+    let EffectBody::ClipboardWrite(w) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(w.text, "hello");
+}
+
+// ---- 4. refusals -----------------------------------------------------------
+
+#[test]
+fn a_stale_epoch_refusal_says_so_and_attaches_again_without_resending() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"abc");
+    let fx = r.typed("a");
+    let fx = r.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "stale_epoch".into(),
+        },
+        None,
+    );
+    let s = one_line(&r.screen());
+    assert!(s.contains("rebound") && s.contains("(host: stale_epoch)"), "{s}");
+    assert!(inputs(&fx).is_empty(), "the refused input is not sent again");
+    let attach = only_attach(&fx);
+    let EffectBody::TerminalAttach(a) = &attach.body else {
+        unreachable!()
+    };
+    assert_eq!(a.from_offset, 3);
+    r.accept_attach(&attach, opened(2, 1, 80, 24, "reattached"));
+    let typed = r.typed("b");
+    assert_eq!(inputs(&typed), [("b".to_owned(), inputs(&typed)[0].1.clone(), 2)]);
+}
+
+#[test]
+fn any_other_control_refusal_is_a_failed_send_and_the_pane_still_types() {
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    let fx = r.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "held".into(),
+        },
+        None,
+    );
+    assert!(fx.is_empty(), "{fx:?}");
+    let s = one_line(&r.screen());
+    assert!(s.contains("Input refused: held (terminal_control_refused)."), "{s}");
+    assert!(!s.contains("observ") && !s.contains("control."), "{s}");
+    assert_eq!(inputs(&r.typed("b"))[0].0, "b");
+}
+
+// ---- 5. epochs -------------------------------------------------------------
+
+#[test]
+fn a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"old screen");
+    r.host(HostMessage::TerminalOpened {
+        resource: terminal(),
+        epoch: 2,
+        program: 2,
+        backend: TerminalBackend::Herdr,
+        origin: "replacement".into(),
+        cols: 80,
+        rows: 24,
+    });
+    let fx = r.tick();
+    assert!(kinds(&fx).is_empty());
+    r.reset(2, 5, b"\x1b[H\x1b[2Jnew program");
+    let s = r.screen();
+    assert!(
+        s.contains("new program") && !s.contains("old screen"),
+        "{s}"
+    );
+    assert!(s.contains("Program replaced"), "{s}");
+    // A frame of the old epoch changes nothing.
+    r.bytes(1, 10, b"STALE");
+    assert!(!r.screen().contains("STALE"));
+}
+
+#[test]
+fn an_offset_gap_asks_for_a_reset() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"abc");
+    let fx = r.bytes(1, 99, b"zzz");
+    let attach = only_attach(&fx);
+    let EffectBody::TerminalAttach(a) = &attach.body else {
+        unreachable!()
+    };
+    assert_eq!(a.from_offset, 3);
+    assert!(!r.screen().contains("zzz"));
+    assert!(r.screen().contains("asking") || r.screen().contains("Asking"));
+}
+
+#[test]
+fn replacement_continuation_reattachment_and_host_reset_read_differently() {
+    let mut texts = vec![];
+    for origin in ["launched", "adopted", "reattached"] {
+        let mut r = rig();
+        let fx = r.key(Key::Enter);
+        let attach = only_attach(&fx);
+        let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, origin));
+        r.settle_resize(fx);
+        texts.push(r.screen());
+    }
+    assert!(texts[0].contains("Started in this pane"));
+    assert!(texts[1].contains("Adopted a terminal"));
+    assert!(texts[2].contains("kept running while no view was attached"));
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"abc");
+    r.reset(1, 3, b"\x1b[Habc");
+    assert!(r.screen().contains("host log reset") || r.screen().contains("host repainted"));
+}
+
+// ---- 6. ended, lost, unavailable --------------------------------------------
+
+#[test]
+fn an_exit_names_the_hosts_reason_and_never_offers_continuation() {
+    let mut r = rig();
+    r.live();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(3),
+        reason: "exited".into(),
+    });
+    let s = r.screen();
+    assert!(s.contains("exited with code 3 (exited)"), "{s}");
+    assert!(s.contains("The program has ended"), "{s}");
+    assert!(r.typed("z").is_empty());
+    let tree = r.valid_tree();
+    let end = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "end-process")
+        .unwrap();
+    assert!(!end.actions[0].enabled && end.actions[0].reason.is_some());
+}
+
+#[test]
+fn a_lost_program_is_lost_and_a_new_shell_is_a_different_process() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: None,
+        reason: "lost".into(),
+    });
+    let s = r.screen();
+    assert!(
+        s.contains("lost (lost)") && s.contains("The program is lost"),
+        "{s}"
+    );
+    let fx = r.key(Key::Char('n'));
+    assert_eq!(kinds(&fx), ["detach", "open"]);
+    assert!(r.screen().contains("does not continue s1"));
+}
+
+#[test]
+fn an_unavailable_backend_is_a_failure_line_with_the_hosts_reason() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: "herdr is not running".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        s.contains("Backend unavailable") && s.contains("herdr is not running"),
+        "{s}"
+    );
+    r.valid_tree();
+    r.key(Key::Esc);
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+// ---- 7. closing and ending -------------------------------------------------
+
+#[test]
+fn closing_the_pane_detaches_with_the_claim_and_never_ends() {
+    let mut r = rig();
+    r.live();
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["detach"]);
+    let EffectBody::TerminalDetach(claim) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(claim.epoch, 1);
+}
+
+#[test]
+fn ending_asks_first_and_only_a_person_confirms() {
+    let mut r = rig();
+    r.live();
+    let act = |r: &mut Rig| {
+        r.send(Msg::Action {
+            id: ActionId::new("shell.end"),
+            actor: Actor::Agent { run_id: "r".into() },
+        })
+    };
+    // An agent asking only raises the question.
+    assert!(act(&mut r).is_empty());
+    assert!(act(&mut r).is_empty());
+    assert!(r.screen().contains("End process s1?"));
+    assert!(
+        r.valid_tree()
+            .nodes
+            .iter()
+            .any(|n| n.name.starts_with("End process s1?"))
+    );
+    // Esc cancels: nothing left.
+    assert!(r.key(Key::Esc).is_empty());
+    assert!(!r.screen().contains("End process s1?"));
+    // A person asks, then confirms.
+    assert!(act(&mut r).is_empty());
+    let fx = r.typed("y");
+    assert_eq!(kinds(&fx), ["end"]);
+    assert!(r.typed("n").is_empty(), "the program no longer takes keys");
+}
+
+#[test]
+fn clicking_end_process_asks_and_enter_confirms() {
+    let mut r = rig();
+    r.live();
+    let b = r.body();
+    assert!(r.click_at(b.width - 3, 0).is_empty());
+    assert!(r.screen().contains("End process s1?"));
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["end"]);
+}
+
+#[test]
+fn a_destroy_close_still_only_detaches() {
+    let mut r = rig();
+    r.live();
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert!(!kinds(&fx).contains(&"end"));
+}
+
+// ---- binding, workspace, restore --------------------------------------------
+
+#[test]
+fn binding_reports_the_terminal_and_its_epoch() {
+    let mut r = rig();
+    r.live();
+    let b = r.m.panel(&r.id).unwrap().binding().unwrap();
+    assert_eq!(b.resource, terminal());
+    assert_eq!(b.generation.map(|g| g.0), Some(1));
+}
+
+#[test]
+fn a_workspace_change_detaches_and_returns_to_the_chooser() {
+    let mut r = rig();
+    r.live();
+    let mut fx = r.send(named("other"));
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), ["detach"]);
+    assert_eq!(fx[0].resource, terminal());
+    let s = r.screen();
+    assert!(s.contains("The workspace changed to other"), "{s}");
+    assert!(s.contains("workspace other"));
+    assert!(
+        !s.contains("s1  zsh"),
+        "the other workspace has no such session"
+    );
+    assert!(r.tick().is_empty());
+}
+
+#[test]
+fn serialize_then_restore_attaches_by_identity_and_does_not_relaunch() {
+    let mut r = rig();
+    r.live();
+    let doc = r.m.document();
+    let saved = doc.to_string();
+    assert!(saved.contains("\"session\":\"s1\""), "{saved}");
+
+    let mut m = model("w");
+    m.restore(doc).expect("restores");
+    let mut r2 = Rig {
+        id: shell_id(&m),
+        m,
+    };
+    r2.send(data());
+    let fx = r2.tick();
+    assert_eq!(kinds(&fx), ["attach"]);
+    assert!(!kinds(&fx).contains(&"open"));
+    assert_eq!(fx[0].resource, terminal());
+}
+
+#[test]
+fn a_restored_pane_whose_terminal_is_gone_says_so_and_offers_the_chooser() {
+    let mut r = rig();
+    r.live();
+    let doc = r.m.document();
+    let mut m = model("w");
+    m.restore(doc).unwrap();
+    let mut r2 = Rig {
+        id: shell_id(&m),
+        m,
+    };
+    r2.send(data());
+    let attach = only_attach(&r2.tick());
+    r2.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_session_not_found".into(),
+            reason: "no such terminal".into(),
+        },
+        None,
+    );
+    let s = r2.screen();
+    assert!(
+        s.contains("Terminal not found") && s.contains("no such terminal"),
+        "{s}"
+    );
+    r2.valid_tree();
+    r2.key(Key::Esc);
+    assert!(r2.screen().contains("Existing sessions"));
+}
+
+// ---- semantics, every state ---------------------------------------------------
+
+#[test]
+fn every_state_has_a_valid_semantic_tree_with_a_status_line() {
+    let mut r = rig();
+    let check = |r: &Rig, what: &str| {
+        let tree = r.valid_tree();
+        assert!(
+            tree.nodes.iter().any(|n| n.id.as_str() == "status"),
+            "{what}: no status node"
+        );
+    };
+    check(&r, "choosing");
+    let attach = only_attach(&r.key(Key::Enter));
+    check(&r, "attaching");
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    check(&r, "running");
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().any(|n| n.id.as_str() == "terminal"));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    check(&r, "ended");
+}
+
+// ---- renders for the report -----------------------------------------------------
+
+#[test]
+fn renders_of_the_choosing_and_live_states_at_80_by_24() {
+    let mut r = rig();
+    println!("--- Choosing (80x24)\n{}", r.text(80, 24).join("\n"));
+    r.live();
+    r.bytes(1, 0, fixture!("live.vt"));
+    println!("--- Live (80x24)\n{}", r.text(80, 24).join("\n"));
+}
+
+#[allow(dead_code)]
+fn unused(_: EffectId) {}
+
+#[test]
+fn the_chooser_follows_the_catalog_the_mount_updates() {
+    let mut r = rig();
+    r.send(listing(
+        "w",
+        vec![
+            session("s1", TerminalBackend::Herdr),
+            session("s2", TerminalBackend::Native),
+        ],
+    ));
+    assert!(r.tick().is_empty());
+    assert!(r.screen().contains("s2"));
+}
+
+// ---- the open in flight ------------------------------------------------------
+
+/// Start the native profile and leave the open unanswered.
+fn opening() -> (Rig, Effect) {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["open"]);
+    let open = fx[0].clone();
+    (r, open)
+}
+
+#[test]
+fn closing_during_an_open_sends_the_abandon_and_nothing_else() {
+    let (mut r, open) = opening();
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["abandon"]);
+    let EffectBody::TerminalAbandonOpen(a) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(a.open, open.id);
+}
+
+#[test]
+fn an_uncertain_open_is_abandoned_too_when_the_pane_closes() {
+    let (mut r, open) = opening();
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket".into(),
+        },
+        None,
+    );
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["abandon"]);
+}
+
+#[test]
+fn leaving_the_wait_with_escape_asks_the_host_to_end_the_session_the_open_creates() {
+    let (mut r, open) = opening();
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"]);
+    assert!(r.screen().contains("asked to end the shell"));
+    // The late answer of the abandoned open starts no pane state.
+    let late = r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    assert!(late.is_empty());
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+#[test]
+fn a_workspace_change_during_an_open_abandons_it_on_the_next_tick() {
+    let (mut r, open) = opening();
+    let mut fx = r.send(named("other"));
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), ["abandon"]);
+    let EffectBody::TerminalAbandonOpen(a) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(a.open, open.id);
+    assert_eq!(
+        fx[0].resource,
+        ResourceRef::Workspace {
+            workspace: "w".into()
+        },
+        "the open's own workspace, not the new one"
+    );
+}
+
+#[test]
+fn an_open_that_resolved_is_detached_not_abandoned_when_the_pane_closes() {
+    let (mut r, open) = opening();
+    r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(kinds(&fx), ["detach"]);
+}
+
+// ---- input that is not UTF-8 -------------------------------------------------
+
+#[test]
+fn a_non_utf8_mouse_report_reaches_the_wire_intact_and_a_resend_reuses_its_id() {
+    let mut r = rig();
+    // Wide enough that a column past 94 exists: X10 reports add 33 to it.
+    r.send(Msg::Resize {
+        area: Rect::new(0, 0, 600, 50),
+        metrics: CellMetrics::new(8.0, 16.0),
+    });
+    r.live();
+    r.bytes(1, 0, b"\x1b[?1000h");
+    let b = r.body();
+    assert!(b.width > 100, "the pane is {} wide", b.width);
+    let at = |kind| {
+        Msg::Pointer(Pointer {
+            kind,
+            x: b.x + 100,
+            y: b.y + 3,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    let fx = r.send(at(PointerKind::Down(Button::Left)));
+    assert_eq!(kinds(&fx), ["bytes"]);
+    let EffectBody::TerminalInputBytes(sent) = &fx[0].body else {
+        unreachable!()
+    };
+    let wire = B64.decode(&sent.data).unwrap();
+    assert!(std::str::from_utf8(&wire).is_err(), "{wire:?}");
+    // CSI M, button 0 (+32), column 100 + 1 (+32), row 2 + 1 (+32).
+    assert_eq!(
+        wire,
+        vec![0x1b, b'[', b'M', 32, 32 + 101, 32 + 3 + 1 - 1 + 1 - 1]
+    );
+    assert_eq!(sent.claim.epoch, 1);
+    // Unknown outcome, resent by a person: same id, same data.
+    r.answer(
+        &fx[0],
+        Outcome::Uncertain {
+            reason: "timeout".into(),
+        },
+        None,
+    );
+    let b2 = r.body();
+    let again = r.click_at(2, b2.height - 1);
+    assert_eq!(kinds(&again), ["bytes"]);
+    let EffectBody::TerminalInputBytes(second) = &again[0].body else {
+        unreachable!()
+    };
+    assert_eq!(second.input_id, sent.input_id);
+    assert_eq!(second.data, sent.data);
+}
+
+// ---- the listing -----------------------------------------------------------
+
+#[test]
+fn a_listing_for_another_workspace_is_ignored_and_each_message_replaces_both_lists() {
+    let mut r = rig();
+    r.send(listing(
+        "elsewhere",
+        vec![session("x9", TerminalBackend::Native)],
+    ));
+    assert!(!r.screen().contains("x9"));
+    assert!(r.screen().contains("s1"));
+    r.send(listing("w", vec![session("s7", TerminalBackend::Native)]));
+    let s = r.screen();
+    assert!(s.contains("s7") && !s.contains(" s1 "), "{s}");
+}
+
+#[test]
+fn a_pane_opened_after_the_listing_shows_it_at_once() {
+    let mut r = rig();
+    // A second shell pane, opened after the host spoke.
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.choose"),
+        actor: Actor::Human,
+    });
+    assert!(fx.is_empty());
+    let ids =
+        r.m.panel_ids()
+            .filter(|(_, k)| k.as_str() == "shell")
+            .count();
+    assert!(ids >= 1);
+    let fresh =
+        r.m.panel_ids()
+            .filter(|(_, k)| k.as_str() == "shell")
+            .map(|(id, _)| id.clone())
+            .last()
+            .unwrap();
+    let r2 = Rig { m: r.m, id: fresh };
+    assert!(r2.screen().contains("s1"));
+}
+
+// ---- restore -----------------------------------------------------------------
+
+#[test]
+fn a_pane_attached_to_a_terminal_another_view_also_has_types_pastes_and_resizes() {
+    // The first rig's pane stays attached: the restored one is a second view
+    // of the same terminal, as after a reload.
+    let mut first = rig();
+    first.live();
+    let doc = first.m.document();
+    let mut m = model("w");
+    m.restore(doc).expect("restores");
+    let mut r = Rig {
+        id: shell_id(&m),
+        m,
+    };
+    r.send(data());
+    let attach = only_attach(&r.tick());
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    let b = r.body();
+    assert_eq!(kinds(&fx), ["resize"], "the pane sends its own size");
+    let EffectBody::TerminalResize(size) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!((size.cols, size.rows), (b.width, b.height - 2));
+    let typed = r.typed("l");
+    assert_eq!(inputs(&typed).len(), 1, "{typed:?}");
+    assert_eq!(inputs(&typed)[0].0, "l");
+    assert_eq!(inputs(&r.send(Msg::Paste("x".into())))[0].0, "x");
+    // And the first view still types too.
+    assert_eq!(inputs(&first.typed("m"))[0].0, "m");
+    let s = r.screen();
+    assert!(!s.contains("observ") && !s.contains("control"), "{s}");
+}
+
+// ---- semantics ------------------------------------------------------------------
+
+#[test]
+fn the_terminal_node_carries_the_visible_screen_and_the_cursor_and_modes() {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, b"hello\r\nworld\x1b[?2004h");
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    let text = term.text.as_deref().unwrap();
+    assert!(text.starts_with("hello\nworld"), "{text:?}");
+    let d = term.state.description.as_deref().unwrap();
+    assert!(d.contains("Cursor at row 2, column 6."), "{d}");
+    assert!(d.contains("Bracketed paste on."), "{d}");
+    r.bytes(1, 20, b"\x1b[?1049h");
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    assert!(
+        term.state
+            .description
+            .as_deref()
+            .unwrap()
+            .contains("Alternate screen.")
+    );
+}
+
+#[test]
+fn the_screen_text_is_bounded_by_the_core() {
+    let mut r = rig();
+    r.live();
+    for i in 0..400 {
+        let off = (i * 20) as u64;
+        r.bytes(1, off, format!("{:019}\n", i).as_bytes());
+    }
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .unwrap();
+    assert!(
+        term.text.as_deref().unwrap().len() <= theorem_workbench_core::semantics::MAX_NODE_TEXT
+    );
+}
+
+// ---- actions ---------------------------------------------------------------------
+
+#[test]
+fn the_pane_registers_its_workflows_and_only_the_confirmation_is_human_only() {
+    let registry = {
+        let mut reg = builtin::registry();
+        extend_registry(&mut reg).unwrap();
+        reg
+    };
+    for id in [
+        "shell.attach",
+        "shell.resend",
+        "shell.end.confirm",
+    ] {
+        assert!(registry.action(&ActionId::new(id)).is_some(), "{id}");
+    }
+    let human = |id: &str| registry.action(&ActionId::new(id)).unwrap().1.human_only;
+    assert!(human("shell.end.confirm"));
+    assert!(!human("shell.attach"));
+    assert!(registry.action(&ActionId::new("shell.observe")).is_none());
+    assert!(registry.action(&ActionId::new("shell.control")).is_none());
+    // Registering twice is refused rather than duplicated.
+    let mut again = registry;
+    assert!(extend_registry(&mut again).is_err());
+}
+
+#[test]
+fn shell_attach_acts_on_the_selected_row() {
+    let mut r = rig();
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.attach"),
+        actor: Actor::Agent { run_id: "r".into() },
+    });
+    let attach = only_attach(&fx);
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    r.settle_resize(fx);
+    assert_eq!(inputs(&r.typed("l"))[0].0, "l");
+}
+
+#[test]
+fn an_agent_cannot_confirm_the_end_and_a_person_can_only_after_it_was_asked() {
+    let mut r = rig();
+    r.live();
+    let agent = Actor::Agent { run_id: "r".into() };
+    let act = |r: &mut Rig, id: &str, actor: Actor| {
+        r.send(Msg::Action {
+            id: ActionId::new(id),
+            actor,
+        })
+    };
+    // Nothing asked yet: even a person's confirm emits nothing.
+    assert!(act(&mut r, "shell.end.confirm", Actor::Human).is_empty());
+    assert!(act(&mut r, "shell.end", agent.clone()).is_empty());
+    assert!(
+        act(&mut r, "shell.end.confirm", agent).is_empty(),
+        "refused for a model"
+    );
+    assert!(r.screen().contains("End process s1?"));
+    let fx = act(&mut r, "shell.end.confirm", Actor::Human);
+    assert_eq!(kinds(&fx), ["end"]);
+}
+
+#[test]
+fn the_unconfirmed_input_can_be_resent_through_its_action_with_the_same_id() {
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    r.answer(&fx[0], Outcome::Uncertain { reason: "t".into() }, None);
+    let again = r.send(Msg::Action {
+        id: ActionId::new("shell.resend"),
+        actor: Actor::Human,
+    });
+    assert_eq!(inputs(&again), inputs(&fx));
+}
+
+// ---- resets read from epochs, not from screen text -----------------------------
+
+#[test]
+fn the_first_repaint_after_an_attach_does_not_rewrite_how_the_binding_began() {
+    let mut r = rig();
+    r.live();
+    r.reset(1, 0, b"\x1b[Hfirst paint");
+    assert!(
+        r.screen()
+            .contains("kept running while no view was attached")
+    );
+}
+
+// ---- colours from the context theme --------------------------------------------
+
+fn sgr_rig() -> (Rig, u16, u16) {
+    let mut r = rig();
+    r.live();
+    r.bytes(1, 0, fixture!("sgr.vt"));
+    let b = r.body();
+    (r, b.width, b.height)
+}
+
+#[test]
+fn a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws() {
+    use ratatui::style::{Modifier, Style};
+    let (r, w, h) = sgr_rig();
+    // A wrapped notice is drawn over the grid's bottom rows, in the chrome's colours.
+    let grid_end = r
+        .semantics()
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "notice")
+        .map_or(h - 1, |n| n.rect.unwrap().y);
+    let plain = r.draw_with(w, h, &Theme::plain());
+    let bare = Theme::chrome(
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+    );
+    // The header and footer take the chrome roles, which differ by theme; the
+    // terminal grid takes only the palette.
+    let bare_drawn = r.draw_with(w, h, &bare);
+    for y in 1..grid_end {
+        for x in 0..w {
+            assert_eq!(bare_drawn[(x, y)], plain[(x, y)], "({x},{y})");
+        }
+    }
+    // Roles that only carry a modifier say nothing about colour.
+    let reversed = Style::default().add_modifier(Modifier::REVERSED);
+    let modifiers = Theme::chrome(
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        reversed,
+        reversed,
+    );
+    let drawn = r.draw_with(w, h, &modifiers);
+    let pal = palette();
+    for y in 0..h {
+        for x in 0..w {
+            // Only the chrome roles' own modifiers differ; the grid is the palette's.
+            if y > 1 && y < grid_end {
+                assert_eq!(drawn[(x, y)].fg, plain[(x, y)].fg, "({x},{y})");
+                assert_eq!(drawn[(x, y)].bg, plain[(x, y)].bg, "({x},{y})");
+            }
+        }
+    }
+    assert_eq!(cell_fg(&drawn, 0, 1), pal.ansi[1]);
+}
+
+#[test]
+fn setting_ansi_one_on_the_theme_recolours_an_sgr_31_cell_and_only_that_colour() {
+    let (r, w, h) = sgr_rig();
+    let pal = palette();
+    let red = Color::Rgb(0xaa, 0x11, 0x22);
+    let mut ansi = [Color::Reset; 16];
+    ansi[1] = red;
+    let drawn = r.draw_with(w, h, &Theme::plain().with_ansi(ansi));
+    assert_eq!(cell_fg(&drawn, 0, 1), red);
+    // Entries left at Reset keep today's value.
+    assert_eq!(cell_fg(&drawn, 4, 1), pal.ansi[2]);
+    assert_eq!(cell_fg(&drawn, 9, 1), Color::Indexed(196));
+}
+
+#[test]
+fn the_themes_text_and_background_roles_win_over_the_explicit_palette() {
+    use ratatui::style::Style;
+    let (r, w, h) = sgr_rig();
+    let theme = Theme::chrome(
+        Style::default().bg(Color::Rgb(1, 1, 1)),
+        Style::default().fg(Color::Rgb(9, 9, 9)),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+        Style::default(),
+    );
+    let drawn = r.draw_with(w, h, &theme);
+    // A cell past the text on a grid row is the default colours.
+    let cell = &drawn[(w - 1, 1)];
+    assert_eq!(cell.fg, Color::Rgb(9, 9, 9));
+    assert_eq!(cell.bg, Color::Rgb(1, 1, 1));
+}
+
+// ---- adoption and the host's modes -----------------------------------------------
+
+fn listing_with(
+    sessions: Vec<TerminalSessionInfo>,
+    adoption: Option<theorem_workbench_core::host::TerminalAdoption>,
+) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![profile("native-zsh", TerminalBackend::Native, true)],
+        sessions,
+        adoption,
+    })
+}
+
+fn no_chooser_note(s: &str) {
+    assert!(!s.contains("No existing sessions"), "{s}");
+}
+
+#[test]
+fn a_pending_listing_says_the_host_is_still_looking_and_never_says_there_are_none() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Pending)));
+    let s = r.screen();
+    assert!(s.contains("still looking for running terminals"), "{s}");
+    assert!(s.contains("No sessions listed yet"), "{s}");
+    no_chooser_note(&s);
+}
+
+#[test]
+fn a_settled_empty_listing_is_the_truth_and_says_there_are_no_sessions() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Settled)));
+    let s = r.screen();
+    assert!(s.contains("No existing sessions to attach to"), "{s}");
+    assert!(
+        !s.contains("still looking") && !s.contains("cannot list"),
+        "{s}"
+    );
+}
+
+#[test]
+fn an_unavailable_listing_gives_the_hosts_reason_and_without_one_still_says_it_cannot_list() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(listing_with(
+        vec![],
+        Some(TerminalAdoption::Unavailable {
+            reason: Some("herdr socket missing".into()),
+            next_step: None,
+        }),
+    ));
+    let s = r.screen();
+    assert!(
+        s.contains("The host cannot list its terminals: herdr socket missing"),
+        "{s}"
+    );
+    no_chooser_note(&s);
+    r.send(listing_with(
+        vec![],
+        Some(TerminalAdoption::Unavailable {
+            reason: None,
+            next_step: None,
+        }),
+    ));
+    assert!(r.screen().contains("The host cannot list its terminals."));
+}
+
+#[test]
+fn a_host_that_does_not_report_adoption_is_drawn_as_before() {
+    let mut r = rig();
+    r.send(listing_with(vec![], None));
+    let s = r.screen();
+    assert!(s.contains("No existing sessions to attach to"), "{s}");
+    assert!(
+        !s.contains("still looking") && !s.contains("cannot list"),
+        "{s}"
+    );
+}
+
+#[test]
+fn only_a_settled_listing_says_an_attached_session_is_gone() {
+    use theorem_workbench_core::host::TerminalAdoption;
+    for (adoption, gone) in [
+        (None, false),
+        (Some(TerminalAdoption::Pending), false),
+        (
+            Some(TerminalAdoption::Unavailable {
+                reason: None,
+                next_step: None,
+            }),
+            false,
+        ),
+        (Some(TerminalAdoption::Settled), true),
+    ] {
+        let mut r = rig();
+        r.live();
+        r.send(listing_with(vec![], adoption.clone()));
+        let s = r.screen();
+        assert_eq!(s.contains("is gone"), gone, "{adoption:?}: {s}");
+        assert!(r.m.panel(&r.id).is_some(), "the pane is never dropped");
+        // Listed again by a settled host, the session is back.
+        r.send(listing_with(
+            vec![session("s1", TerminalBackend::Herdr)],
+            Some(TerminalAdoption::Settled),
+        ));
+        assert!(!r.screen().contains("is gone"));
+    }
+}
+
+fn moded() -> theorem_workbench_core::host::TerminalModes {
+    use theorem_workbench_core::host::{MouseEncoding, MouseProtocol, TerminalModes};
+    TerminalModes {
+        alternate_screen: true,
+        application_cursor: true,
+        application_keypad: false,
+        bracketed_paste: true,
+        hide_cursor: false,
+        mouse_protocol: MouseProtocol::PressRelease,
+        mouse_encoding: MouseEncoding::Sgr,
+    }
+}
+
+/// An attach to a session the host lists with `modes`, answered with no output.
+fn attached_with(modes: Option<theorem_workbench_core::host::TerminalModes>) -> Rig {
+    let mut r = rig();
+    let mut s = session("s1", TerminalBackend::Herdr);
+    s.modes = modes;
+    r.send(listing_with(vec![s], None));
+    let fx = r.key(Key::Enter);
+    let attach = only_attach(&fx);
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    r
+}
+
+#[test]
+fn an_attach_with_modes_encodes_the_first_key_paste_and_mouse_press_before_any_output() {
+    let mut r = attached_with(Some(moded()));
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1bOA", "application cursor");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "\x1b[200~x\x1b[201~");
+    let b = r.body();
+    let fx = r.send(Msg::Pointer(Pointer {
+        kind: PointerKind::Down(Button::Left),
+        x: b.x + 2,
+        y: b.y + 3,
+        mods: Mods::NONE,
+        clicks: 1,
+    }));
+    let sent = inputs(&fx);
+    assert_eq!(sent.len(), 1, "{fx:?}");
+    assert!(
+        sent[0].0.starts_with("\x1b[<0;") && sent[0].0.ends_with('M'),
+        "SGR press: {:?}",
+        sent[0].0
+    );
+}
+
+#[test]
+fn an_attach_with_no_modes_encodes_as_it_always_did() {
+    let mut r = attached_with(None);
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1b[A");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "x");
+}
+
+#[test]
+fn output_after_an_attach_still_wins_over_the_modes_the_list_gave() {
+    let mut r = attached_with(Some(moded()));
+    r.bytes(1, 0, b"\x1b[?1l\x1b[?2004l");
+    let fx = r.key(Key::Up);
+    assert_eq!(inputs(&fx)[0].0, "\x1b[A");
+    let fx = r.send(Msg::Paste("x".into()));
+    assert_eq!(inputs(&fx)[0].0, "x");
+}
+
+// ---- reported status and printed content hold no authority (AC-42, AC-51) -----
+
+fn bound() -> Rig {
+    let mut r = rig();
+    r.live();
+    r
+}
+
+/// A bound pane whose attach answer names `origin` (None: the host named none).
+fn live_origin(origin: Option<&str>) -> Rig {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.origin = origin.map(str::to_owned);
+    let fx = r.accept_attach(&attach, o);
+    r.settle_resize(fx);
+    r
+}
+
+fn node<'a>(tree: &'a SemanticTree, id: &str) -> &'a theorem_workbench_core::semantics::Node {
+    tree.nodes
+        .iter()
+        .find(|n| n.id.as_str() == id)
+        .unwrap_or_else(|| panic!("no node {id}"))
+}
+
+/// Every node that carries `needle` in its name, description or text.
+fn nodes_saying(tree: &SemanticTree, needle: &str) -> Vec<String> {
+    tree.nodes
+        .iter()
+        .filter(|n| {
+            n.name.contains(needle)
+                || n.state
+                    .description
+                    .as_deref()
+                    .is_some_and(|d| d.contains(needle))
+                || n.text.as_deref().is_some_and(|t| t.contains(needle))
+        })
+        .map(|n| n.id.as_str().to_owned())
+        .collect()
+}
+
+/// The actions every node offers, with whether each is enabled: what the
+/// pane lets anyone do, independent of what the screen says.
+fn offered(tree: &SemanticTree) -> Vec<(String, String, bool)> {
+    tree.nodes
+        .iter()
+        .flat_map(|n| {
+            n.actions.iter().map(|a| {
+                (
+                    n.id.as_str().to_owned(),
+                    a.id.as_str().to_owned(),
+                    a.enabled,
+                )
+            })
+        })
+        .collect()
+}
+
+#[test]
+fn a_host_that_names_no_origin_is_drawn_with_no_claim_about_how_the_program_began() {
+    let r = live_origin(None);
+    let s = r.screen();
+    for claim in [
+        "Started in",
+        "Adopted",
+        "Re-attached",
+        "replaced",
+        "continues",
+    ] {
+        assert!(!s.contains(claim), "{claim:?} invented in\n{s}");
+    }
+    let tree = r.valid_tree();
+    assert_eq!(node(&tree, "status").state.description, None);
+    assert!(tree.nodes.iter().all(|n| n.id.as_str() != "notice"));
+}
+
+#[test]
+fn an_origin_word_the_pane_does_not_know_is_quoted_as_the_hosts_and_never_acted_on() {
+    for word in ["blocked", "finished", "done"] {
+        let mut r = live_origin(Some(word));
+        let s = r.screen();
+        assert!(
+            s.contains(&format!("The host reports the origin as \"{word}\".")),
+            "{s}"
+        );
+        assert!(
+            !s.contains("The program has ended") && !s.contains("lost"),
+            "{word} read as an ending:\n{s}"
+        );
+        let tree = r.valid_tree();
+        let status = node(&tree, "status");
+        assert!(status.name.ends_with("| epoch 1"), "{}", status.name);
+        assert!(
+            status
+                .state
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("The host reports"),
+            "provenance is the host's"
+        );
+        assert!(
+            node(&tree, "end-process").actions[0].enabled,
+            "still running"
+        );
+        assert!(r.tick().is_empty(), "{word} caused an effect");
+    }
+}
+
+#[test]
+fn a_finished_report_is_drawn_as_the_hosts_exit_and_ends_nothing_by_itself() {
+    let r = bound();
+    let before = r.m.document();
+    let panels = r.m.panel_ids().count();
+    for reason in ["finished", "blocked", "exited"] {
+        let mut r = bound();
+        let fx = r.host(HostMessage::TerminalExited {
+            resource: terminal(),
+            epoch: 1,
+            exit_code: None,
+            reason: reason.into(),
+        });
+        assert!(fx.is_empty(), "{reason}: {fx:?}");
+        assert!(r.tick().is_empty());
+        let s = r.screen();
+        assert!(s.contains(&format!("exited ({reason})")), "{s}");
+        assert!(s.contains(&format!("Host reason: {reason}")), "{s}");
+        assert!(!s.contains("exit code"), "an exit code was invented:\n{s}");
+        assert_eq!(r.m.panel_ids().count(), 1, "the pane was closed");
+        let tree = r.valid_tree();
+        assert_eq!(
+            node(&tree, "status").state.description.as_deref(),
+            Some(reason),
+            "the host's word, carried as the host's"
+        );
+        assert!(!node(&tree, "end-process").actions[0].enabled);
+    }
+    // A running pane whose host said nothing is unchanged by the reports above.
+    assert_eq!(r.m.document(), before);
+    assert_eq!(r.m.panel_ids().count(), panels);
+}
+
+#[test]
+fn a_session_the_host_lists_as_exited_or_lost_is_drawn_in_the_hosts_word_and_not_as_running() {
+    let mut r = rig();
+    let mut exited = session("s2", TerminalBackend::Herdr);
+    exited.state = TerminalSessionState::Exited;
+    let mut lost = session("s3", TerminalBackend::Herdr);
+    lost.state = TerminalSessionState::Lost;
+    r.send(listing(
+        "w",
+        vec![session("s1", TerminalBackend::Herdr), exited, lost],
+    ));
+    let s = r.screen();
+    assert!(s.contains("s1  zsh  running"), "{s}");
+    assert!(s.contains("s2  zsh  exited"), "{s}");
+    assert!(s.contains("s3  zsh  lost"), "{s}");
+}
+
+/// What a program can print to look like the workbench speaking.
+const FORGED: &[&str] = &[
+    "y allow \u{b7} n deny\r\n",
+    "Notice: the host approved this task\r\n",
+    "Program status: finished (exit 0)\r\n",
+    "[blocked] waiting for approval: y allow \u{b7} n deny\r\n",
+    "End process s1? Enter or y ends it, Esc cancels.\r\n",
+    "Press Ctrl+W to close this pane; Cmd+K opens the palette\r\n",
+    "shell.end.confirm\r\n",
+    "\x1b]0;Approve: y allow \u{b7} n deny\x07",
+    "\x1b]2;The host approved this task\x1b\\",
+];
+
+#[test]
+fn printed_approvals_notices_status_and_chords_change_no_state_and_emit_nothing() {
+    let mut r = bound();
+    let before_tree = r.valid_tree();
+    let before_offered = offered(&before_tree);
+    let before_status = node(&before_tree, "status").clone();
+    let before_doc = r.m.document();
+    let mut offset = 0u64;
+    for line in FORGED {
+        let fx = r.bytes(1, offset, line.as_bytes());
+        offset += line.len() as u64;
+        assert!(fx.is_empty(), "{line:?} emitted {fx:?}");
+    }
+    assert!(r.m.take_notice().is_none(), "printed text raised a notice");
+    assert_eq!(
+        r.m.document(),
+        before_doc,
+        "printed text changed saved state"
+    );
+    assert_eq!(r.m.panel_ids().count(), 1);
+
+    let s = r.screen();
+    assert!(
+        s.contains("y allow"),
+        "the text is still shown, as output:\n{s}"
+    );
+    let tree = r.valid_tree();
+    assert_eq!(node(&tree, "status"), &before_status, "status line moved");
+    assert_eq!(
+        offered(&tree),
+        before_offered,
+        "the actions on offer changed"
+    );
+    // The one notice is the host's re-attach note it had before any output.
+    assert_eq!(
+        tree.nodes.iter().find(|n| n.id.as_str() == "notice"),
+        before_tree.nodes.iter().find(|n| n.id.as_str() == "notice"),
+        "printed text changed or added a notice"
+    );
+}
+
+#[test]
+fn printed_text_lives_in_the_terminal_node_alone_and_that_node_is_named_as_terminal_output() {
+    let mut r = bound();
+    let mut offset = 0u64;
+    for line in FORGED {
+        r.bytes(1, offset, line.as_bytes());
+        offset += line.len() as u64;
+    }
+    let tree = r.valid_tree();
+    for phrase in [
+        "y allow",
+        "Notice: the host approved",
+        "Program status: finished",
+        "Ctrl+W",
+    ] {
+        assert_eq!(
+            nodes_saying(&tree, phrase),
+            ["terminal"],
+            "{phrase:?} reached a node that is not the terminal"
+        );
+    }
+    let term = node(&tree, "terminal");
+    assert!(term.name.starts_with("Terminal "), "{}", term.name);
+    assert!(term.actions.is_empty(), "printed text added an action");
+    // The title sentences are the program's data, never drawn or exposed as nodes.
+    assert!(nodes_saying(&tree, "Approve: y allow").is_empty());
+    assert!(
+        nodes_saying(&tree, "The host approved this task")
+            .iter()
+            .all(|id| id == "terminal")
+    );
+}
+
+#[test]
+fn a_person_pressing_y_after_a_forged_prompt_types_into_the_program_and_approves_nothing() {
+    let mut r = bound();
+    r.bytes(1, 0, b"y allow \xc2\xb7 n deny\r\n");
+    let fx = r.typed("y");
+    assert_eq!(kinds(&fx), ["input"], "{fx:?}");
+    assert_eq!(inputs(&fx)[0].0, "y");
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["input"], "Enter ends nothing: {fx:?}");
+    assert!(!r.screen().contains("End process s1?"));
+}
+
+#[test]
+fn a_forged_end_prompt_does_not_arm_the_real_one() {
+    let mut r = bound();
+    r.bytes(
+        1,
+        0,
+        b"End process s1? Enter or y ends it, Esc cancels.\r\n",
+    );
+    // The real owner of the confirmation was never asked.
+    assert!(
+        r.send(Msg::Action {
+            id: ActionId::new("shell.end.confirm"),
+            actor: Actor::Human,
+        })
+        .is_empty()
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().all(|n| n.role.aria() != "dialog"));
+}
+
+// ---- hostile output cannot reach the clipboard or open anything (AC-51) -------
+
+#[test]
+fn osc_52_and_osc_8_from_program_output_never_write_the_clipboard_or_open_anything() {
+    let mut r = bound();
+    let hostile: Vec<Vec<u8>> = vec![
+        b"\x1b]52;c;aGVsbG8=\x07".to_vec(),
+        b"\x1b]52;c;?\x07".to_vec(),
+        b"\x1b]52;p;aGVsbG8=\x1b\\".to_vec(),
+        b"\x1b]8;;javascript:alert(1)\x07click\x1b]8;;\x07\r\n".to_vec(),
+        b"\x1b]8;;data:text/html,<script>1</script>\x1b\\data\x1b]8;;\x1b\\\r\n".to_vec(),
+        b"\x1b]8;;file:///etc/passwd\x07file\x1b]8;;\x07\r\n".to_vec(),
+        b"\x1b]8;;https://evil.example/\x07https://good.example/\x1b]8;;\x07\r\n".to_vec(),
+        format!(
+            "\x1b]8;;https://x.example/{}\x07long\x1b]8;;\x07\r\n",
+            "a".repeat(70_000)
+        )
+        .into_bytes(),
+        "\x1b]8;;https://x.example/\x01\x02\x7f\u{9b}2J\x07ctl\x1b]8;;\x07\r\n"
+            .as_bytes()
+            .to_vec(),
+    ];
+    let mut offset = 0u64;
+    for bytes in &hostile {
+        let fx = r.bytes(1, offset, bytes);
+        offset += bytes.len() as u64;
+        assert!(
+            fx.is_empty(),
+            "{:?} emitted {fx:?}",
+            &bytes[..20.min(bytes.len())]
+        );
+    }
+    // Clicking where the link text is only selects; it opens nothing.
+    let fx = r.click_at(1, 4);
+    assert!(fx.is_empty(), "a click on link text emitted {fx:?}");
+    assert!(r.m.take_notice().is_none());
+    let s = r.screen();
+    for leak in ["javascript", "evil.example", "passwd", "script", "aGVsbG8"] {
+        assert!(!s.contains(leak), "{leak:?} reached the screen:\n{s}");
+    }
+    assert!(
+        s.contains("click") && s.contains("https://good.example/"),
+        "{s}"
+    );
+}
+
+#[test]
+fn the_clipboard_is_written_only_by_a_persons_copy_of_a_selection() {
+    let mut r = bound();
+    r.bytes(1, 0, b"\x1b]52;c;aGVsbG8=\x07shown text\r\n");
+    let b = r.body();
+    let at = |kind, x| {
+        Msg::Pointer(Pointer {
+            kind,
+            x: b.x + x,
+            y: b.y + 1,
+            mods: Mods::NONE,
+            clicks: 1,
+        })
+    };
+    r.send(at(PointerKind::Down(Button::Left), 0));
+    r.send(at(PointerKind::Move, 4));
+    let fx = r.send(at(PointerKind::Up(Button::Left), 4));
+    assert!(fx.is_empty(), "selecting alone wrote the clipboard: {fx:?}");
+    let fx = r.mods(Key::Char('c'), Mods::CMD);
+    let EffectBody::ClipboardWrite(w) = &fx[0].body else {
+        panic!("{fx:?}")
+    };
+    assert_eq!(
+        w.text, "shown",
+        "the person's selection, not the program's payload"
+    );
+}
+
+#[test]
+fn a_control_sequence_in_a_host_reason_is_not_drawn_into_the_chrome_as_a_control() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "held\r\nby\x1b[2J another\x07".into(),
+        },
+        None,
+    );
+    let buf = r.draw(100, 30);
+    for y in 0..30 {
+        for x in 0..100 {
+            let sym = buf[(x, y)].symbol();
+            assert!(
+                sym.chars().all(|c| !c.is_control()),
+                "control character {sym:?} drawn at {x},{y}"
+            );
+        }
+    }
+}
+
+// ---- host errors are readable and scoped (AC-51) ---------------------------------
+
+fn assert_readable(s: &str) {
+    for debug in [
+        "Refused {",
+        "Failed {",
+        "Uncertain {",
+        "[object",
+        "Some(",
+        "None",
+        "\\u{",
+    ] {
+        assert!(!s.contains(debug), "debug text {debug:?} in\n{s}");
+    }
+}
+
+#[test]
+fn a_refusal_shows_its_code_and_reason_as_plain_text_in_this_pane() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "another viewer holds control".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(s.contains("The host refused"), "{s}");
+    assert!(
+        s.contains("Host reason: another viewer holds control"),
+        "{s}"
+    );
+    assert!(s.contains("Code: terminal_control_refused"), "{s}");
+    assert_readable(&s);
+    let tree = r.valid_tree();
+    let alert = node(&tree, "status");
+    assert_eq!(alert.role.aria(), "alert");
+    assert_eq!(
+        alert.state.description.as_deref(),
+        Some("another viewer holds control")
+    );
+}
+
+#[test]
+fn a_failed_attach_and_an_uncertain_open_are_readable_and_say_what_they_do_not_know() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: "the socket closed".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        s.contains("The request failed") && s.contains("Host reason: the socket closed"),
+        "{s}"
+    );
+    assert!(!s.contains("Code:"), "a code was invented:\n{s}");
+    assert_readable(&s);
+
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket closed".into(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        s.contains("Unknown whether a shell started (socket closed)"),
+        "{s}"
+    );
+    assert_readable(&s);
+}
+
+#[test]
+fn a_failure_with_no_reason_still_reads_as_a_sentence() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: String::new(),
+        },
+        None,
+    );
+    let s = r.screen();
+    assert!(
+        !s.contains("Host reason: \n") && !s.lines().any(|l| l.trim_end() == "Host reason:"),
+        "{s}"
+    );
+    assert!(s.contains("Host reason: The host gave no reason."), "{s}");
+    let tree = r.valid_tree();
+    assert_eq!(
+        node(&tree, "status").state.description.as_deref(),
+        Some("The host gave no reason.")
+    );
+
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let open = r.key(Key::Enter)[0].clone();
+    r.answer(&open, Outcome::Uncertain { reason: " ".into() }, None);
+    let s = r.screen();
+    assert!(
+        s.contains("Unknown whether a shell started (The host gave no reason.)"),
+        "{s}"
+    );
+}
+
+// ---- frames from an older wire are not guessed at (AC-62, R27) -------------------
+
+#[test]
+fn a_frame_whose_payload_is_not_the_supported_encoding_draws_nothing_and_is_not_guessed() {
+    let mut r = bound();
+    r.bytes(1, 0, b"kept\r\n");
+    let before = r.screen();
+    // A frame in an older shape: the payload is raw terminal text, or the
+    // length-prefixed binary an original Remux client would have sent, not
+    // base64.
+    let legacy: [&str; 3] = [
+        "\x1b[31mraw text\x1b[0m",
+        "\u{0}\u{0}\u{0}\u{5}hello",
+        "not base64!!",
+    ];
+    for payload in legacy {
+        for msg in [
+            HostMessage::TerminalOutput {
+                resource: terminal(),
+                epoch: 1,
+                offset: 6,
+                data: payload.into(),
+            },
+            HostMessage::TerminalReset {
+                resource: terminal(),
+                epoch: 1,
+                offset: 6,
+                data: payload.into(),
+            },
+        ] {
+            let mut fx = r.host(msg);
+            fx.extend(r.tick());
+            assert!(
+                !kinds(&fx).contains(&"clipboard") && !kinds(&fx).contains(&"end"),
+                "{fx:?}"
+            );
+            assert_eq!(r.screen(), before, "{payload:?} drew something");
+        }
+    }
+    // The supported encoding at the same offset still draws.
+    r.bytes(1, 6, b"next");
+    assert!(r.screen().contains("next"));
+}
+
+// ---- names the core accepts, and the attachment the host returned ----------------
+
+fn attachment_of(effect: &Effect) -> String {
+    let EffectBody::TerminalAttach(a) = &effect.body else {
+        panic!("not an attach: {effect:?}")
+    };
+    a.attachment.clone()
+}
+
+fn claim_of(fx: &[Effect]) -> Vec<String> {
+    fx.iter()
+        .filter_map(|e| match &e.body {
+            EffectBody::TerminalInput(i) => Some(i.claim.attachment.clone()),
+            EffectBody::TerminalInputBytes(i) => Some(i.claim.attachment.clone()),
+            EffectBody::TerminalResize(r) => Some(r.claim.attachment.clone()),
+            EffectBody::TerminalDetach(c) => Some(c.attachment.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn named_profiles(ids: &[&str]) -> Msg {
+    Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: ids
+            .iter()
+            .map(|id| profile(id, TerminalBackend::Herdr, true))
+            .collect(),
+        sessions: vec![],
+        adoption: None,
+    })
+}
+
+#[test]
+fn starting_a_profile_whose_id_has_spaces_sends_a_name_the_core_accepts() {
+    for id in [
+        "Herdr shell",
+        "Claude Code (Herdr)",
+        "Codex (Herdr)",
+        "\u{65e5}\u{672c}",
+    ] {
+        let mut r = rig();
+        r.send(named_profiles(&[id]));
+        let fx = r.key(Key::Enter);
+        let EffectBody::TerminalOpen(open) = &fx[0].body else {
+            panic!("{fx:?}")
+        };
+        match &open.name {
+            Some(name) => assert!(
+                (1..=32).contains(&name.len())
+                    && name
+                        .chars()
+                        .all(|c| matches!(c, 'a'..='z' | '0'..='9' | '-' | '_' | '.')),
+                "{id:?} sent {name:?}"
+            ),
+            None => assert!(!id.is_ascii(), "{id:?} lost its name"),
+        }
+    }
+    let mut r = rig();
+    r.send(named_profiles(&["Herdr shell"]));
+    let fx = r.key(Key::Enter);
+    let EffectBody::TerminalOpen(open) = &fx[0].body else {
+        panic!()
+    };
+    assert!(open.name.as_deref().unwrap().starts_with("herdr-shell-"));
+}
+
+#[test]
+fn every_claim_after_an_attach_carries_the_attachment_the_host_returned() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let asked = attachment_of(&attach);
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.attachment = Some("ta-host-1".into());
+    let fx = r.accept_attach(&attach, o);
+    assert_ne!(asked, "ta-host-1");
+    assert_eq!(
+        claim_of(&fx),
+        ["ta-host-1"],
+        "the pane's first resize: {fx:?}"
+    );
+    r.settle_resize(fx);
+    assert_eq!(claim_of(&r.typed("a")), ["ta-host-1"]);
+    assert_eq!(claim_of(&r.send(Msg::Paste("p".into()))), ["ta-host-1"]);
+    let fx = r.send(Msg::Dock(DockMsg::ClosePanel(r.id.clone())));
+    assert_eq!(claim_of(&fx), ["ta-host-1"], "detach: {fx:?}");
+}
+
+#[test]
+fn a_later_attach_asks_by_the_hosts_name_and_a_new_answer_replaces_it_again() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.attachment = Some("ta-host-1".into());
+    let fx = r.accept_attach(&attach, o);
+    r.settle_resize(fx);
+    r.bytes(1, 0, b"abc");
+    // A gap asks for a repaint: a later attach.
+    let attach = only_attach(&r.bytes(1, 99, b"zzz"));
+    assert_eq!(
+        attachment_of(&attach),
+        "ta-host-1",
+        "the host's name is the key"
+    );
+    let mut o = opened(2, 2, 80, 24, "reattached");
+    o.attachment = Some("ta-host-2".into());
+    r.accept_attach(&attach, o);
+    // Typing names the new attachment (a resize may ride along with it).
+    let claims = claim_of(&r.typed("a"));
+    assert!(!claims.is_empty() && claims.iter().all(|c| c == "ta-host-2"), "{claims:?}");
+}
+
+#[test]
+fn an_answer_with_no_attachment_keeps_the_panes_own() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    let asked = attachment_of(&attach);
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    r.settle_resize(fx);
+    assert_eq!(claim_of(&r.typed("a")), [asked]);
+}
+
+// ---- Escape, a stale list, a host that lists the program as lost ----------------
+
+#[test]
+fn escape_in_a_failure_inside_a_drawer_leaves_the_failure_and_the_pane_to_the_pane() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: "herdr is not running".into(),
+        },
+        None,
+    );
+    let group = r.m.focus().group;
+    r.send(Msg::Dock(DockMsg::OpenDrawer(group)));
+    assert_eq!(r.m.dock().drawer(), Some(group));
+    // Esc goes to the pane, not the drawer: the pane returns to its chooser,
+    // visibly, instead of vanishing with the failure.
+    r.key(Key::Esc);
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
+}
+
+fn drawer_on(r: &mut Rig) -> theorem_workbench_dock::GroupId {
+    let group = r.m.focus().group;
+    r.send(Msg::Dock(DockMsg::OpenDrawer(group)));
+    assert_eq!(r.m.dock().drawer(), Some(group));
+    group
+}
+
+#[test]
+fn in_the_failed_state_the_pane_holds_escape_and_keeps_its_own_key_context() {
+    use theorem_workbench_core::keys::{KeyContext, active_contexts};
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Failed {
+            reason: "boom".into(),
+        },
+        None,
+    );
+    let panel = r.m.panel(&r.id).unwrap();
+    assert!(panel.holds_escape());
+    assert!(!panel.text_entry(), "nothing is typed in a failure");
+    let kind = theorem_workbench_core::ids::PanelKind::new("shell");
+    assert_eq!(
+        active_contexts(Some(&kind), panel.text_entry()),
+        [KeyContext::Panel { kind }, KeyContext::Global]
+    );
+}
+
+#[test]
+fn escape_during_the_opening_wait_inside_a_drawer_stops_the_wait_and_the_drawer_stays() {
+    let (mut r, _open) = opening();
+    let group = drawer_on(&mut r);
+    let fx = r.key(Key::Esc);
+    assert_eq!(kinds(&fx), ["abandon"], "Esc stops the wait");
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+#[test]
+fn escape_at_the_end_prompt_inside_a_drawer_cancels_the_prompt_and_the_drawer_stays() {
+    let mut r = bound();
+    let fx = r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    assert!(fx.is_empty());
+    assert!(r.screen().contains("End process s1?"));
+    let group = drawer_on(&mut r);
+    let fx = r.key(Key::Esc);
+    assert!(fx.is_empty(), "cancelling ends nothing: {fx:?}");
+    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
+    assert!(!r.screen().contains("End process s1?"), "{}", r.screen());
+}
+
+#[test]
+fn escape_after_the_program_ended_inside_a_drawer_returns_to_the_chooser_and_the_drawer_stays() {
+    let mut r = bound();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let group = drawer_on(&mut r);
+    r.key(Key::Esc);
+    assert_eq!(r.m.dock().drawer(), Some(group), "an ended program's Esc");
+    assert!(r.screen().contains("Existing sessions"), "{}", r.screen());
+}
+
+#[test]
+fn the_chooser_follows_a_host_that_reports_herdr_ready_after_it_first_drew_and_back() {
+    let mut r = rig();
+    let herdr = |available: bool, reason: &str| {
+        let mut p = profile("Herdr shell", TerminalBackend::Herdr, available);
+        p.unavailable_reason = (!available).then(|| reason.to_owned());
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![p],
+            sessions: vec![],
+            adoption: None,
+        })
+    };
+    r.send(herdr(false, "not ready yet"));
+    assert!(
+        r.screen().contains("unavailable: not ready yet"),
+        "{}",
+        r.screen()
+    );
+    r.send(herdr(true, ""));
+    let s = r.screen();
+    assert!(!s.contains("unavailable"), "a stale answer stayed:\n{s}");
+    r.send(herdr(false, "core stopped"));
+    assert!(
+        r.screen().contains("unavailable: core stopped"),
+        "{}",
+        r.screen()
+    );
+}
+
+#[test]
+fn a_host_that_lists_the_bound_session_as_lost_or_exited_ends_the_pane_s_running() {
+    for (state, word) in [
+        (TerminalSessionState::Lost, "lost"),
+        (TerminalSessionState::Exited, "exited"),
+    ] {
+        let mut r = bound();
+        assert!(r.screen().contains("Herdr | epoch 1"), "{}", r.screen());
+        let mut row = session("s1", TerminalBackend::Herdr);
+        row.state = state;
+        r.send(listing("w", vec![row]));
+        let s = r.screen();
+        assert!(!s.contains("Herdr | epoch 1") && s.contains(word), "{s}");
+        assert!(
+            r.typed("z").is_empty(),
+            "input went to a program the host calls {word}"
+        );
+    }
+}
+
+// ---- wrapping to the pane's width ---------------------------------------------------
+
+const LONG_PROFILE_REASON: &str =
+    "the herdr core on devbox is older than the pinned release so terminals cannot be adopted yet";
+const LONG_LISTING_REASON: &str = "the herdr socket is missing from the runtime directory and nothing answers on the fallback path either";
+const LONG_FAILURE_REASON: &str =
+    "herdr is not running on devbox and its supervisor reported that it could not be started again";
+
+fn tokens(rows: &[String]) -> Vec<String> {
+    rows.iter()
+        .flat_map(|r| r.split_whitespace().map(str::to_owned))
+        .collect()
+}
+
+/// Every word of `text`, in order, among the words the cells show.
+fn shows_all_words(rows: &[String], text: &str, what: &str) {
+    let shown = tokens(rows);
+    let mut at = 0;
+    for word in text.split_whitespace() {
+        match shown[at..].iter().position(|t| t == word) {
+            Some(i) => at += i + 1,
+            None => panic!(
+                "{what}: `{word}` is missing or out of order\n{}",
+                rows.join("\n")
+            ),
+        }
+    }
+}
+
+fn no_ellipsis(rows: &[String], what: &str) {
+    assert!(
+        !rows.iter().any(|r| r.contains('\u{2026}')),
+        "{what}: a word was cut with an ellipsis\n{}",
+        rows.join("\n")
+    );
+}
+
+fn wrapping_widths(r: &Rig) -> [u16; 3] {
+    [r.body().width, 24, 120]
+}
+
+fn wrapping_chooser() -> Rig {
+    use theorem_workbench_core::host::TerminalAdoption;
+    let mut r = rig();
+    r.send(Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![
+            TerminalProfileInfo {
+                unavailable_reason: Some(LONG_PROFILE_REASON.into()),
+                ..profile("herdr-zsh", TerminalBackend::Herdr, false)
+            },
+            profile("native-zsh", TerminalBackend::Native, true),
+        ],
+        sessions: vec![session("s1", TerminalBackend::Herdr)],
+        adoption: Some(TerminalAdoption::Unavailable {
+            reason: Some(LONG_LISTING_REASON.into()),
+            next_step: None,
+        }),
+    }));
+    r
+}
+
+#[test]
+fn the_choosers_notes_and_a_profiles_unavailable_reason_wrap_at_every_width_without_losing_a_word()
+{
+    use theorem_workbench_core::host::TerminalAdoption;
+    let r = wrapping_chooser();
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        let what = format!("width {w}");
+        shows_all_words(
+            &rows,
+            &format!("The host cannot list its terminals: {LONG_LISTING_REASON}"),
+            &what,
+        );
+        shows_all_words(&rows, LONG_PROFILE_REASON, &what);
+        no_ellipsis(&rows, &what);
+        assert!(
+            rows.iter().all(|row| row.chars().count() <= w as usize),
+            "{what}"
+        );
+    }
+    // The pending note and the empty-list line wrap too.
+    let mut r = rig();
+    r.send(listing_with(vec![], Some(TerminalAdoption::Pending)));
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        let what = format!("pending at width {w}");
+        shows_all_words(
+            &rows,
+            "The host is still looking for running terminals. This list may be incomplete.",
+            &what,
+        );
+        shows_all_words(&rows, "No sessions listed yet", &what);
+        no_ellipsis(&rows, &what);
+    }
+    r.send(listing_with(vec![], Some(TerminalAdoption::Settled)));
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 60);
+        shows_all_words(
+            &rows,
+            "No existing sessions to attach to",
+            &format!("width {w}"),
+        );
+        no_ellipsis(&rows, "settled");
+    }
+}
+
+#[test]
+fn a_word_wider_than_the_pane_is_the_only_thing_cut_and_the_rest_still_wraps() {
+    let mut r = rig();
+    let long = "x".repeat(40);
+    r.send(Msg::Host(HostMessage::TerminalSessions {
+        workspace: "w".into(),
+        profiles: vec![TerminalProfileInfo {
+            unavailable_reason: Some(format!("because {long} is not here")),
+            ..profile("herdr-zsh", TerminalBackend::Herdr, false)
+        }],
+        sessions: vec![],
+        adoption: None,
+    }));
+    let rows = r.text(24, 40);
+    let shown = tokens(&rows);
+    for w in ["because", "is", "not", "here"] {
+        assert!(shown.iter().any(|t| t == w), "{w}\n{}", rows.join("\n"));
+    }
+    assert_eq!(
+        shown
+            .iter()
+            .filter(|t| t.chars().all(|c| c == 'x'))
+            .map(|t| t.len())
+            .sum::<usize>(),
+        40
+    );
+}
+
+#[test]
+fn the_selected_row_and_the_keyboards_target_stay_on_screen_when_wrapping_makes_the_list_taller() {
+    let mut r = wrapping_chooser();
+    for w in wrapping_widths(&r) {
+        for height in [8u16, 12] {
+            let mut r2 = wrapping_chooser();
+            r2.key(Key::Home);
+            let top = r2.text(w, height);
+            assert!(
+                !r2.chosen_rows(w, height).is_empty(),
+                "width {w}, height {height}: the first row is selected and not drawn\n{}",
+                top.join("\n")
+            );
+            r2.key(Key::End);
+            let bottom = r2.text(w, height);
+            assert!(
+                r2.chosen_rows(w, height)
+                    .iter()
+                    .any(|row| row.contains("native-zsh")),
+                "width {w}, height {height}: the last row is selected and not drawn\n{}",
+                bottom.join("\n")
+            );
+            assert!(
+                bottom.iter().all(|row| !row.starts_with('>')),
+                "no arrow marks the chosen row\n{}",
+                bottom.join("\n")
+            );
+        }
+    }
+    // Walking down never loses the chosen row: scrolling, not dropping.
+    r.key(Key::Home);
+    for _ in 0..3 {
+        r.key(Key::Down);
+        assert!(
+            !r.chosen_rows(24, 8).is_empty(),
+            "{}",
+            r.text(24, 8).join("\n")
+        );
+    }
+}
+
+#[test]
+fn a_failure_wraps_at_every_width_and_its_semantic_description_stays_whole() {
+    let mut r = rig();
+    let attach = only_attach(&r.key(Key::Enter));
+    r.answer(
+        &attach,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: LONG_FAILURE_REASON.into(),
+        },
+        None,
+    );
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 40);
+        let what = format!("failure at width {w}");
+        shows_all_words(&rows, LONG_FAILURE_REASON, &what);
+        shows_all_words(&rows, "Backend unavailable", &what);
+        no_ellipsis(&rows, &what);
+    }
+    let tree = r.valid_tree();
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.state.description.as_deref() == Some(LONG_FAILURE_REASON)),
+        "the alert keeps the whole reason on one line"
+    );
+}
+
+#[test]
+fn the_status_line_and_notices_wrap_over_the_screens_bottom_rows_at_every_width() {
+    let mut r = bound();
+    r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    let prompt =
+        "End process s1? This stops the program for everyone. Enter or y ends it, Esc cancels.";
+    for w in wrapping_widths(&r) {
+        let rows = r.text(w, 14);
+        let what = format!("end prompt at width {w}");
+        shows_all_words(&rows, prompt, &what);
+        no_ellipsis(&rows, &what);
+    }
+    let tree = r.valid_tree();
+    assert!(
+        tree.nodes.iter().all(|n| !n.name.contains('\n')),
+        "names stay whole"
+    );
+}
+
+// ---- the program's own status report (R32) ---------------------------------------------
+
+use theorem_workbench_core::host::{ProgramReport, ProgramState, ProgramStatus};
+
+fn status(state: ProgramState) -> ProgramStatus {
+    ProgramStatus {
+        state,
+        raw_state: None,
+        kind: None,
+        msg: None,
+        app: None,
+        title: None,
+        progress: None,
+    }
+}
+
+fn current(status: ProgramStatus, seq: Option<u64>) -> ProgramReport {
+    ProgramReport::Current {
+        status,
+        status_ms: None,
+        seq,
+    }
+}
+
+fn report_msg(report: ProgramReport) -> HostMessage {
+    HostMessage::TerminalReport {
+        resource: terminal(),
+        epoch: 1,
+        report,
+    }
+}
+
+/// Everything that is the pane's own or the host's and not the program's: the
+/// header row, the tab's label, the lifecycle and action nodes, the
+/// key context, what the pane holds Escape for, and what it would serialize.
+fn lifecycle(r: &Rig) -> String {
+    use theorem_workbench_core::keys::active_contexts;
+    let panel = r.m.panel(&r.id).unwrap();
+    let kind = theorem_workbench_core::ids::PanelKind::new("shell");
+    let tree = r.semantics();
+    let nodes: Vec<String> = tree
+        .nodes
+        .iter()
+        .filter(|n| !["program-report", "terminal", "shell"].contains(&n.id.as_str()))
+        .map(|n| format!("{n:?}"))
+        .collect();
+    format!(
+        "header={:?}\ntab={:?}\ncontexts={:?}\ntext_entry={} holds_escape={}\nserialized={}\nnodes={nodes:#?}",
+        r.grid().first(),
+        panel.tab_label(),
+        active_contexts(Some(&kind), panel.text_entry()),
+        panel.text_entry(),
+        panel.holds_escape(),
+        panel.serialize(),
+    )
+}
+
+fn says_report(screen: &str) -> bool {
+    [
+        "Program reports",
+        "Program's last report",
+        "Program has not reported",
+        "Program withdrew",
+    ]
+    .iter()
+    .any(|w| screen.contains(w))
+}
+
+fn report_node(r: &Rig) -> Option<theorem_workbench_core::semantics::Node> {
+    r.valid_tree()
+        .nodes
+        .into_iter()
+        .find(|n| n.id.as_str() == "program-report")
+}
+
+#[test]
+fn each_case_reads_differently_at_every_width_and_unavailable_says_nothing() {
+    let mut full = status(ProgramState::Working);
+    full.kind = Some("build".into());
+    full.app = Some("cc".into());
+    full.title = Some("the-title".into());
+    full.msg = Some("compiling".into());
+    full.progress = Some(40);
+    let mut unknown = status(ProgramState::Unknown);
+    unknown.raw_state = Some("pondering".into());
+    let cases: [(ProgramReport, &str); 5] = [
+        (
+            ProgramReport::NeverReported,
+            "Program has not reported a status",
+        ),
+        (
+            ProgramReport::Cleared {
+                status_ms: Some(1),
+                seq: Some(1),
+            },
+            "Program withdrew its report",
+        ),
+        (
+            current(full, None),
+            "Program reports: working \u{b7} build \u{b7} cc \u{b7} the-title \u{b7} compiling \u{b7} progress 40",
+        ),
+        (
+            current(unknown, None),
+            "Program reports: its own word \"pondering\"",
+        ),
+        (
+            current(status(ProgramState::Done), None),
+            "Program reports: done",
+        ),
+    ];
+    for (report, wording) in cases {
+        let mut r = bound();
+        assert!(r.host(report_msg(report.clone())).is_empty());
+        for w in [r.body().width, 24, 120] {
+            let rows = r.text(w, 14);
+            let what = format!("{report:?} at width {w}");
+            let words = wording.split_whitespace().count();
+            // The band is bounded to three rows: what does not fit is cut
+            // and marked, never dropped silently.
+            if rows.iter().any(|row| row.ends_with("(more)")) {
+                assert!(w < 40, "{what}: cut at a width the report fits");
+                let kept = wording
+                    .split_whitespace()
+                    .take(words.min(6))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                shows_all_words(&rows, &kept, &what);
+            } else {
+                shows_all_words(&rows, wording, &what);
+            }
+            no_ellipsis(&rows, "report");
+            assert!(rows.iter().all(|row| row.chars().count() <= w as usize));
+        }
+        let node = report_node(&r).expect("one node for the report");
+        assert_eq!(node.role, theorem_workbench_core::semantics::Role::Status);
+        assert!(node.actions.is_empty(), "no action on the report");
+        assert!(node.name.contains("reported by the program itself"));
+    }
+    // The host does not carry reports: nothing is drawn and there is no node.
+    let mut r = bound();
+    r.host(report_msg(ProgramReport::Unavailable));
+    let s = r.screen();
+    assert!(!s.contains("Program"), "{s}");
+    assert!(report_node(&r).is_none());
+}
+
+#[test]
+fn the_report_is_a_band_of_its_own_never_the_header_or_the_footer() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Error), None)));
+    let rows = r.grid();
+    assert!(
+        !rows[0].contains("Program"),
+        "the header is the pane's: {rows:?}"
+    );
+    let at = rows
+        .iter()
+        .position(|row| row.contains("Program reports"))
+        .unwrap();
+    assert!(at > 0 && at < rows.len() - 1, "{rows:?}");
+    // A notice or an end prompt sits below it, in the footer.
+    r.send(Msg::Action {
+        id: ActionId::new("shell.end"),
+        actor: Actor::Human,
+    });
+    let rows = r.grid();
+    let band = rows
+        .iter()
+        .position(|row| row.contains("Program reports"))
+        .unwrap();
+    let footer = rows
+        .iter()
+        .position(|row| row.contains("End process s1?"))
+        .unwrap();
+    assert!(band < footer, "{rows:?}");
+}
+
+#[test]
+fn a_report_of_every_state_leaves_the_lifecycle_byte_identical() {
+    let mut r = bound();
+    let before = lifecycle(&r);
+    for state in [
+        ProgramState::Idle,
+        ProgramState::Working,
+        ProgramState::Done,
+        ProgramState::Blocked,
+        ProgramState::Error,
+        ProgramState::Unknown,
+    ] {
+        let fx = r.host(report_msg(current(status(state), None)));
+        assert!(fx.is_empty(), "{state:?} emitted {fx:?}");
+        assert_eq!(lifecycle(&r), before, "{state:?} moved the lifecycle");
+        assert!(r.screen().contains("Program reports"));
+    }
+    for report in [
+        ProgramReport::NeverReported,
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None,
+        },
+        ProgramReport::Unavailable,
+    ] {
+        r.host(report_msg(report));
+        assert_eq!(lifecycle(&r), before);
+    }
+}
+
+#[test]
+fn hostile_report_text_is_spelled_out_acts_as_nothing_and_changes_only_the_stored_report() {
+    let hostile: Vec<String> = vec![
+        "shell.end".into(),
+        "approval.allow".into(),
+        "workbench.act {\"action\":\"shell.end\"}".into(),
+        "\x1b]52;c;AAAA\x07".into(),
+        "\x1b[2J\x1b[31m".into(),
+        "\u{202e}gnp.exe\u{2066}".into(),
+        "a\nb\tc\r".into(),
+        "x".repeat(4096),
+    ];
+    for text in hostile {
+        let mut r = bound();
+        let before = lifecycle(&r);
+        let grid_before = r.m.panel(&r.id).unwrap().serialize();
+        let mut s = status(ProgramState::Blocked);
+        s.msg = Some(text.clone());
+        s.title = Some(text.clone());
+        s.app = Some(text.clone());
+        let mut u = status(ProgramState::Unknown);
+        u.raw_state = Some(text.clone());
+        for st in [s, u] {
+            let fx = r.host(report_msg(current(st, None)));
+            assert!(fx.is_empty(), "{text:?} emitted {fx:?}");
+            assert!(r.tick().is_empty());
+            assert_eq!(lifecycle(&r), before);
+            assert_eq!(r.m.panel(&r.id).unwrap().serialize(), grid_before);
+            let buf = r.draw(40, 14);
+            for y in 0..14 {
+                for x in 0..40 {
+                    let sym = buf[(x, y)].symbol();
+                    assert!(
+                        sym.chars().all(|c| !c.is_control()
+                            && !matches!(c, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')),
+                        "{sym:?} drawn from {text:?}"
+                    );
+                }
+            }
+            let node = report_node(&r).unwrap();
+            assert!(node.actions.is_empty());
+            let described = node.state.description.clone().unwrap();
+            assert!(described.chars().count() <= 4096);
+            assert!(!described.chars().any(|c| c.is_control()));
+            for n in r.valid_tree().nodes {
+                assert!(
+                    !n.id.as_str().contains(&text[..text.len().min(8)])
+                        || text.starts_with("shell")
+                );
+                assert!(
+                    n.actions
+                        .iter()
+                        .all(|a| a.id.as_str().starts_with("shell.")),
+                    "an action grew out of the report"
+                );
+            }
+        }
+    }
+    // The escapes are what is shown.
+    let mut r = bound();
+    let mut s = status(ProgramState::Working);
+    s.msg = Some("a\x1b[2Jb\u{202e}c".into());
+    r.host(report_msg(current(s, None)));
+    let screen = one_line(&r.text(120, 14).join("\n"));
+    assert!(screen.contains("a\\u{1b}[2Jb\\u{202e}c"), "{screen}");
+    // The longest text is bounded: three rows, cut and marked, whole in the node.
+    let mut r = bound();
+    let mut s = status(ProgramState::Working);
+    s.msg = Some("y".repeat(4096));
+    r.host(report_msg(current(s, None)));
+    let rows = r.text(40, 20);
+    let band: Vec<&String> = rows
+        .iter()
+        .filter(|row| row.contains('y') || row.contains("Program"))
+        .collect();
+    assert_eq!(band.len(), 3, "{rows:?}");
+    assert!(band[2].ends_with("(more)"), "{band:?}");
+    let described = report_node(&r).unwrap().state.description.unwrap();
+    assert_eq!(described.chars().count(), 4096);
+    assert!(described.ends_with("(more)"));
+}
+
+#[test]
+fn an_older_sequence_does_not_replace_a_newer_report_and_an_equal_or_newer_one_does() {
+    let mut r = bound();
+    let word = |r: &Rig, w: &str| one_line(&r.text(120, 14).join("\n")).contains(w);
+    let mut a = status(ProgramState::Working);
+    a.msg = Some("five".into());
+    r.host(report_msg(current(a, Some(5))));
+    let mut b = status(ProgramState::Working);
+    b.msg = Some("three".into());
+    r.host(report_msg(current(b, Some(3))));
+    assert!(word(&r, "five") && !word(&r, "three"));
+    let mut c = status(ProgramState::Working);
+    c.msg = Some("five again".into());
+    r.host(report_msg(current(c, Some(5))));
+    assert!(word(&r, "five again"));
+    let mut d = status(ProgramState::Working);
+    d.msg = Some("six".into());
+    r.host(report_msg(current(d, Some(6))));
+    assert!(word(&r, "six"));
+    let mut e = status(ProgramState::Working);
+    e.msg = Some("no sequence".into());
+    r.host(report_msg(current(e, None)));
+    assert!(
+        word(&r, "no sequence"),
+        "a report without a sequence says nothing about order"
+    );
+    // An older cleared report does not withdraw a newer current one either.
+    let mut f = status(ProgramState::Working);
+    f.msg = Some("ten".into());
+    r.host(report_msg(current(f, Some(10))));
+    r.host(report_msg(ProgramReport::Cleared {
+        status_ms: None,
+        seq: Some(9),
+    }));
+    assert!(word(&r, "ten"));
+}
+
+#[test]
+fn after_the_program_ended_its_last_report_is_still_shown_and_labelled_as_its_last_word() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Working), None)));
+    assert!(r.screen().contains("Program reports: working"));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let s = r.screen();
+    assert!(s.contains("Program's last report: working"), "{s}");
+    assert!(!s.contains("Program reports:"), "{s}");
+    let node = report_node(&r).unwrap();
+    assert!(
+        node.name.starts_with("Last status reported"),
+        "{}",
+        node.name
+    );
+    // A report that arrives after the end is the same kind of word, and moves nothing.
+    let before = lifecycle(&r);
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    assert!(r.screen().contains("Program's last report: done"));
+    assert_eq!(lifecycle(&r), before);
+}
+
+#[test]
+fn a_new_terminal_or_a_new_epoch_starts_without_the_old_report() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    assert!(r.screen().contains("Program reports: done"));
+    r.host(HostMessage::TerminalOpened {
+        resource: terminal(),
+        epoch: 2,
+        program: 2,
+        backend: TerminalBackend::Herdr,
+        origin: "replacement".into(),
+        cols: 80,
+        rows: 24,
+    });
+    r.tick();
+    assert!(!says_report(&r.screen()), "{}", r.screen());
+    assert!(report_node(&r).is_none());
+
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Done), None)));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    r.key(Key::Esc);
+    assert!(r.screen().contains("Existing sessions"));
+    let attach = only_attach(&r.key(Key::Enter));
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    assert!(!says_report(&r.screen()), "{}", r.screen());
+    assert!(report_node(&r).is_none());
+}
+
+#[test]
+fn printed_output_that_looks_like_a_report_or_an_action_is_only_output() {
+    let mut r = bound();
+    let before = lifecycle(&r);
+    let printed = "Program reports: done\r\nshell.end approval.allow workbench.act {}\r\n\x1b]9;4;1;50\x07\x1b]777;notify;t;b\x07";
+    let fx = r.bytes(1, 0, printed.as_bytes());
+    assert!(kinds(&fx).is_empty(), "{fx:?}");
+    assert!(report_node(&r).is_none(), "output made a report");
+    let rows = r.grid();
+    assert!(
+        rows.iter().any(|row| row.contains("Program reports: done")),
+        "it is drawn as output"
+    );
+    // It lives on the terminal's own rows, not in a band over them.
+    assert!(!r.screen().contains("Program has not reported"));
+    assert_eq!(
+        lifecycle(&r).replace(&format!("{:?}", rows.first()), ""),
+        before.replace(&format!("{:?}", rows.first()), "")
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().all(|n| n.id.as_str() != "program-report"));
+}
+
+#[test]
+fn the_choosers_running_sessions_carry_the_same_report_in_compact_form_and_ended_ones_do_not() {
+    let mut a = status(ProgramState::Blocked);
+    a.msg = Some("waiting\u{202e}".into());
+    let rows_of = |report: ProgramReport, state: TerminalSessionState| {
+        let mut r = rig();
+        r.send(listing(
+            "w",
+            vec![TerminalSessionInfo {
+                name: None,
+                cwd: None,
+                admitted: true,
+                program_report: report,
+                state,
+                ..session("s1", TerminalBackend::Herdr)
+            }],
+        ));
+        (r.text(120, 20).join("\n"), r.valid_tree())
+    };
+    let (s, tree) = rows_of(current(a, None), TerminalSessionState::Running);
+    assert!(
+        s.contains("Program reports: blocked \u{b7} waiting\\u{202e}"),
+        "{s}"
+    );
+    assert!(
+        tree.nodes
+            .iter()
+            .any(|n| n.name.contains("Program reports: blocked"))
+    );
+    let (s, _) = rows_of(ProgramReport::NeverReported, TerminalSessionState::Running);
+    assert!(s.contains("Program has not reported a status"), "{s}");
+    let (s, _) = rows_of(
+        ProgramReport::Cleared {
+            status_ms: None,
+            seq: None,
+        },
+        TerminalSessionState::Running,
+    );
+    assert!(s.contains("Program withdrew its report"), "{s}");
+    let (s, _) = rows_of(ProgramReport::Unavailable, TerminalSessionState::Running);
+    assert!(!s.contains("Program"), "{s}");
+    let (s, _) = rows_of(
+        current(status(ProgramState::Done), None),
+        TerminalSessionState::Exited,
+    );
+    assert!(!s.contains("Program reports"), "{s}");
+}
+
+#[test]
+fn a_report_the_core_hands_the_chooser_through_the_session_list_is_shown_and_moves_nothing() {
+    let mut r = rig();
+    let before: Vec<String> = r.text(100, 30);
+    r.host(report_msg(current(status(ProgramState::Working), Some(1))));
+    let after = r.text(100, 30);
+    assert_ne!(
+        before, after,
+        "the retained list carries the report to the chooser"
+    );
+    assert!(after.join("\n").contains("Program reports: working"));
+    assert!(r.screen().contains("Existing sessions"));
+}
+
+// ---- what the tree says about text, rects and urgency ------------------------------
+
+#[test]
+fn the_terminal_publishes_its_screen_spelled_out_and_no_selection_because_the_program_owns_the_line()
+ {
+    use theorem_workbench_core::semantics::Role;
+    let mut r = rig();
+    r.live();
+    // A right-to-left override and a zero-width space, as printable cells of hostile output.
+    r.bytes(1, 0, "ab\u{202e}cd\u{200b}e".as_bytes());
+    let tree = r.valid_tree();
+    let term = node(&tree, "terminal");
+    assert_eq!(term.role, Role::TextBox);
+    let text = term.text.as_deref().unwrap();
+    assert!(
+        !text.contains('\u{202e}') && !text.contains('\u{200b}'),
+        "{text:?}"
+    );
+    assert!(text.contains("ab\\u{202e}cd\\u{200b}e"), "{text:?}");
+    assert_eq!(
+        term.selection, None,
+        "a terminal is read, not edited as text"
+    );
+}
+
+#[test]
+fn every_chooser_row_has_the_rect_it_is_drawn_in() {
+    let r = rig();
+    let tree = r.valid_tree();
+    let rows: Vec<_> = tree
+        .nodes
+        .iter()
+        .filter(|n| n.id.as_str().starts_with("row:"))
+        .collect();
+    assert!(!rows.is_empty());
+    for row in &rows {
+        assert!(
+            row.rect.unwrap().width > 0 && row.rect.unwrap().height > 0,
+            "{row:?}"
+        );
+    }
+    let mut ys: Vec<u16> = rows.iter().map(|n| n.rect.unwrap().y).collect();
+    let sorted = ys.clone();
+    ys.sort_unstable();
+    ys.dedup();
+    assert_eq!(ys, sorted, "each row is on its own line, in order");
+    // The row the screen shows at that line is the row the node names.
+    let screen = r.text(r.body().width, r.body().height);
+    for row in &rows {
+        let first_word = row.name.split(". ").next().unwrap();
+        assert!(
+            screen[usize::from(row.rect.unwrap().y)].contains(first_word),
+            "{first_word:?} is not on line {}: {screen:?}",
+            row.rect.unwrap().y
+        );
+    }
+}
+
+#[test]
+fn a_notice_that_asks_or_warns_is_not_a_passing_status() {
+    use theorem_workbench_core::semantics::Role;
+    let act = |r: &mut Rig, id: &str| {
+        r.send(Msg::Action {
+            id: ActionId::new(id),
+            actor: Actor::Human,
+        })
+    };
+    let mut r = rig();
+    r.live();
+    // A question is a dialog.
+    act(&mut r, "shell.end");
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Dialog);
+    // Waiting for the host to end it is only a status.
+    act(&mut r, "shell.end.confirm");
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Status);
+    // Input whose outcome is unknown needs attention: an alert.
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    r.answer(&fx[0], Outcome::Uncertain { reason: "t".into() }, None);
+    assert_eq!(node(&r.valid_tree(), "notice").role, Role::Alert);
+}
+
+#[test]
+fn every_action_a_node_offers_is_registered_with_a_title_a_person_would_read() {
+    let mut r = rig();
+    let mut seen = 0;
+    for step in 0..2 {
+        if step == 1 {
+            r.live();
+        }
+        for n in r.valid_tree().nodes {
+            for a in n.actions {
+                let (_, d) = r.m.registry().action(&a.id).unwrap_or_else(|| {
+                    panic!(
+                        "{} is offered by {} and not registered",
+                        a.id.as_str(),
+                        n.id.as_str()
+                    )
+                });
+                assert!(
+                    !d.title.trim().is_empty() && !d.title.contains(a.id.as_str()),
+                    "{}: {:?}",
+                    a.id.as_str(),
+                    d.title
+                );
+                seen += 1;
+            }
+        }
+    }
+    assert!(seen > 0);
+}
+
+// ---- connectivity: the connection is lost, the program is not known to be ----
+
+fn link(epoch: u64, state: ConnectivityState, reason: Option<&str>) -> HostMessage {
+    HostMessage::TerminalConnectivity {
+        resource: terminal(),
+        epoch,
+        state,
+        reason: reason.map(str::to_owned),
+        next_step: reason.map(|_| "retry".to_owned()),
+    }
+}
+
+fn notice_text(r: &Rig) -> String {
+    r.valid_tree()
+        .nodes
+        .into_iter()
+        .find(|n| n.id.as_str() == "notice")
+        .map(|n| n.name)
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_lost_connection_says_it_is_the_connection_and_running_in_the_same_epoch_recovers() {
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains(
+            "Connection to the terminal lost: the core closed the connection. The program may still be running; its outcome is not known. Retry to reconnect"
+        ),
+        "{s}"
+    );
+    assert!(s.contains("connection lost"), "{s}");
+    assert!(
+        !s.contains("The program has ended") && !s.contains("exited"),
+        "{s}"
+    );
+    let said = notice_text(&r);
+    assert!(
+        said.contains("Connection to the terminal lost: the core closed the connection."),
+        "the semantic node says the same: {said}"
+    );
+    let tree = r.valid_tree();
+    assert!(tree.nodes.iter().any(|n| n.id.as_str() == "reconnect"));
+    assert!(!tree.nodes.iter().any(|n| n.id.as_str() == "start-new"));
+
+    r.host(link(1, ConnectivityState::Running, None));
+    let s = one_line(&r.screen());
+    assert!(!s.contains("Connection to the terminal lost"), "{s}");
+    assert!(s.contains("Herdr | epoch 1"), "{s}");
+    assert!(notice_text(&r).is_empty() || !notice_text(&r).contains("lost"));
+}
+
+#[test]
+fn each_cause_the_core_names_is_said_in_plain_words_and_an_unknown_one_as_sent_escaped() {
+    for (cause, words) in [
+        ("core_closed", "the core closed the connection"),
+        ("core_unavailable", "the core cannot be reached"),
+        (
+            "subscribe_timed_out",
+            "the core did not answer the subscription in time",
+        ),
+    ] {
+        let mut r = bound();
+        r.host(link(1, ConnectivityState::Lost, Some(cause)));
+        let s = one_line(&r.screen());
+        assert!(
+            s.contains(&format!("Connection to the terminal lost: {words}.")),
+            "{cause}: {s}"
+        );
+    }
+    let mut r = bound();
+    r.host(link(
+        1,
+        ConnectivityState::Lost,
+        Some("odd\u{202e}cause\u{1b}[31m"),
+    ));
+    let s = r.screen();
+    assert!(s.contains("odd\\u{202e}cause\\u{1b}[31m"), "{s}");
+    assert!(!s.contains('\u{202e}') && !s.contains('\u{1b}'));
+    let said = notice_text(&r);
+    assert!(
+        !said.contains('\u{202e}') && !said.contains('\u{1b}'),
+        "{said:?}"
+    );
+}
+
+#[test]
+fn running_never_revives_an_exited_terminal_or_a_program_reported_lost() {
+    let mut r = bound();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    let s = one_line(&r.screen());
+    assert!(s.contains("exited with code 0"), "{s}");
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains("exited with code 0") && !s.contains("Connection to the terminal lost"),
+        "a loss does not turn an exit into a lost connection: {s}"
+    );
+
+    // A loss, then an exit: the exit stands over a later running.
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(2),
+        reason: "exited".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    assert!(one_line(&r.screen()).contains("exited with code 2"));
+
+    // The host's own word that the program is lost is not a connection.
+    let mut r = bound();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: None,
+        reason: "lost".into(),
+    });
+    r.host(link(1, ConnectivityState::Running, None));
+    assert!(one_line(&r.screen()).contains("lost (lost)"));
+}
+
+#[test]
+fn connectivity_for_an_older_epoch_is_dropped_and_counted() {
+    let mut r = bound();
+    r.host(HostMessage::TerminalOpened {
+        resource: terminal(),
+        epoch: 2,
+        program: 1,
+        backend: TerminalBackend::Herdr,
+        origin: "reattached".into(),
+        cols: 80,
+        rows: 24,
+    });
+    let before = r.m.counters().dropped;
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    let s = one_line(&r.screen());
+    assert!(!s.contains("Connection to the terminal lost"), "{s}");
+    assert_eq!(r.m.counters().dropped, before + 1);
+    assert_eq!(r.m.counters().last_drop, Some(Stale::OlderEpoch));
+    r.host(link(2, ConnectivityState::Lost, Some("core_closed")));
+    assert!(one_line(&r.screen()).contains("Connection to the terminal lost"));
+}
+
+#[test]
+fn the_program_report_band_is_the_same_through_a_loss_and_its_recovery() {
+    let mut r = bound();
+    r.host(report_msg(current(status(ProgramState::Working), Some(1))));
+    let band = |r: &Rig| {
+        r.grid()
+            .into_iter()
+            .filter(|row| row.contains("Program reports") || row.contains("last report"))
+            .collect::<Vec<_>>()
+    };
+    let before = band(&r);
+    assert!(!before.is_empty(), "{:?}", r.grid());
+    let node = report_node(&r).map(|n| (n.name, n.state.description));
+    r.host(link(1, ConnectivityState::Lost, Some("core_closed")));
+    assert_eq!(band(&r), before, "the band is as it was");
+    assert_eq!(report_node(&r).map(|n| (n.name, n.state.description)), node);
+    r.host(link(1, ConnectivityState::Running, None));
+    assert_eq!(band(&r), before);
+}
+
+#[test]
+fn typing_into_a_pane_whose_connection_is_lost_emits_no_input_and_says_why() {
+    let mut r = bound();
+    r.host(link(1, ConnectivityState::Lost, Some("core_unavailable")));
+    for fx in [
+        r.typed("ls"),
+        r.key(Key::Backspace),
+        r.send(Msg::Paste("pasted".into())),
+    ] {
+        assert!(
+            fx.iter().all(|e| !matches!(
+                e.body,
+                EffectBody::TerminalInput(_) | EffectBody::TerminalInputBytes(_)
+            )),
+            "{fx:?}"
+        );
+    }
+    assert!(
+        one_line(&r.screen()).contains("Connection to the terminal lost"),
+        "{}",
+        r.screen()
+    );
+    // New shell is not the way back from a lost connection.
+    assert!(r.key(Key::Char('n')).is_empty());
+    // Enter attaches to the same terminal again, by the person's choice.
+    let fx = r.key(Key::Enter);
+    assert_eq!(kinds(&fx), ["detach", "attach"], "{fx:?}");
+}
+
+#[test]
+fn a_session_the_host_lists_as_lost_carries_its_cause_and_a_running_listing_clears_it() {
+    let mut r = bound();
+    let mut lost = session("s1", TerminalBackend::Herdr);
+    lost.state = TerminalSessionState::Lost;
+    lost.reason = Some("core_unavailable".into());
+    lost.next_step = Some("retry".into());
+    r.send(listing("w", vec![lost]));
+    let s = one_line(&r.screen());
+    assert!(
+        s.contains("Connection to the terminal lost: the core cannot be reached."),
+        "{s}"
+    );
+    r.send(listing("w", vec![session("s1", TerminalBackend::Herdr)]));
+    assert!(!one_line(&r.screen()).contains("Connection to the terminal lost"));
+}
+
+fn open_of(fx: &[Effect]) -> (Effect, Option<String>) {
+    let open = fx
+        .iter()
+        .find(|e| matches!(e.body, EffectBody::TerminalOpen(_)))
+        .unwrap_or_else(|| panic!("no open in {fx:?}"))
+        .clone();
+    let EffectBody::TerminalOpen(o) = &open.body else {
+        unreachable!()
+    };
+    let operation = o.operation.clone();
+    (open, operation)
+}
+
+#[test]
+fn a_retry_of_a_failed_or_uncertain_launch_reuses_its_operation_and_a_new_launch_gets_a_new_one() {
+    // Failed, then Enter on the failure.
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, first) = open_of(&r.key(Key::Enter));
+    let first = first.expect("an open names its operation");
+    r.answer(
+        &open,
+        Outcome::Failed {
+            reason: "pty busy".into(),
+        },
+        None,
+    );
+    let (open, second) = open_of(&r.key(Key::Enter));
+    assert_eq!(second.as_deref(), Some(first.as_str()));
+
+    // Uncertain, Esc to the chooser, the same profile again: the same launch.
+    r.answer(
+        &open,
+        Outcome::Uncertain {
+            reason: "socket closed".into(),
+        },
+        None,
+    );
+    assert!(r.tick().is_empty(), "the pane never relaunches by itself");
+    r.key(Key::Esc);
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, third) = open_of(&r.key(Key::Enter));
+    assert_eq!(third.as_deref(), Some(first.as_str()));
+
+    // Accepted: that launch is settled. A new shell after the program ends is
+    // a new launch with its own operation.
+    r.answer(
+        &open,
+        Outcome::Accepted,
+        Some(CompletionPayload::Terminal(TerminalOpened {
+            backend: TerminalBackend::Native,
+            ..opened(1, 1, 80, 24, "launched")
+        })),
+    );
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let (_, fourth) = open_of(&r.key(Key::Char('n')));
+    let fourth = fourth.expect("a new launch names its operation");
+    assert_ne!(fourth, first);
+}
+
+#[test]
+fn a_refused_launch_is_retried_with_the_same_operation_too() {
+    let mut r = rig();
+    r.key(Key::Down);
+    r.key(Key::Down);
+    let (open, first) = open_of(&r.key(Key::Enter));
+    r.answer(
+        &open,
+        Outcome::Refused {
+            code: "terminal_backend_unavailable".into(),
+            reason: "no backend".into(),
+        },
+        None,
+    );
+    let (_, again) = open_of(&r.key(Key::Enter));
+    assert!(first.is_some());
+    assert_eq!(again, first);
+}
+
+#[test]
+fn a_session_name_and_a_reason_with_control_or_hidden_characters_are_spelled_out() {
+    let hostile = "\u{202e}\u{1b}[31m\u{200b}\u{7}";
+    let spelled = "\\u{202e}\\u{1b}[31m\\u{200b}\\u{7}";
+    let mut r = rig();
+    let mut s = session(&format!("tricky{hostile}"), TerminalBackend::Herdr);
+    s.state = TerminalSessionState::Lost;
+    s.reason = Some(format!("gone{hostile}"));
+    r.send(listing("w", vec![s]));
+    let buf = r.draw(100, 30);
+    for cell in &buf.content {
+        assert!(
+            !cell
+                .symbol()
+                .chars()
+                .any(|c| c.is_control() || theorem_workbench_text::visible::hidden(c)),
+            "{:?}",
+            cell.symbol()
+        );
+    }
+    let screen = r.screen();
+    assert!(screen.contains(&format!("tricky{spelled}")), "{screen}");
+}
+
+// ---- 5. a coding agent in a shell, for an agent ----------------------------
+
+use theorem_workbench_core::agent::{AgentOutcome, RefusalCode, agent_outcome, agent_request};
+
+/// Run `action` for agent run `run-7` the way the wasm handle does.
+fn act(
+    m: &mut Model,
+    action: &str,
+    panel: Option<&str>,
+    args: Option<&str>,
+) -> (AgentOutcome, Vec<Effect>) {
+    let msg = match agent_request(action, "run-7", panel, args) {
+        Ok(msg) => msg,
+        Err(refused) => return (refused, vec![]),
+    };
+    m.capture_notices();
+    let effects = update(m, msg);
+    let notices = m.take_captured();
+    let acted = m.take_acted_panel();
+    (
+        agent_outcome(&notices, effects.len(), acted.as_ref()),
+        effects,
+    )
+}
+
+fn agent() -> Actor {
+    Actor::Agent {
+        run_id: "run-7".into(),
+    }
+}
+
+fn coding_profile(available: bool) -> TerminalProfileInfo {
+    TerminalProfileInfo {
+        id: "Claude Code (Herdr)".into(),
+        label: "Claude Code".into(),
+        backend: TerminalBackend::Herdr,
+        argv: Some(vec!["claude".into()]),
+        available,
+        unavailable_reason: (!available).then(|| "herdr is not running on devbox".to_owned()),
+    }
+}
+
+/// Workspace `w` whose host offers the Claude Code profile and a native shell.
+fn coding_model(available: bool) -> Model {
+    let mut m = model("w");
+    update(
+        &mut m,
+        Msg::Host(HostMessage::TerminalSessions {
+            workspace: "w".into(),
+            profiles: vec![
+                coding_profile(available),
+                profile("native-zsh", TerminalBackend::Native, true),
+            ],
+            sessions: vec![session("s1", TerminalBackend::Herdr)],
+            adoption: None,
+        }),
+    );
+    m
+}
+
+fn shells(m: &Model) -> usize {
+    m.panel_ids().filter(|(_, k)| k.as_str() == "shell").count()
+}
+
+#[test]
+fn code_start_opens_the_coding_profile_with_the_task_for_the_agent() {
+    let mut m = coding_model(true);
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix the failing test","option":"claude"}"#),
+    );
+    let AgentOutcome::Accepted { panel, .. } = &outcome else {
+        panic!("refused: {outcome:?}")
+    };
+    assert_eq!(panel.as_deref(), Some(shell_id(&m).as_str()));
+    assert_eq!(kinds(&fx), vec!["open"]);
+    let EffectBody::TerminalOpen(open) = &fx[0].body else {
+        unreachable!()
+    };
+    assert_eq!(open.backend, TerminalBackend::Herdr);
+    assert_eq!(
+        open.argv.as_deref(),
+        Some(&["claude".to_owned(), "fix the failing test".to_owned()][..])
+    );
+    assert_eq!(fx[0].actor, agent());
+}
+
+#[test]
+fn an_unavailable_coding_profile_is_refused_with_the_reason_and_no_shell_is_left() {
+    let mut m = coding_model(false);
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"claude"}"#),
+    );
+    assert!(fx.is_empty(), "nothing opens in its place: {fx:?}");
+    let AgentOutcome::Refused { code, reason } = &outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert_eq!(*code, RefusalCode::Unavailable);
+    assert!(
+        reason.contains("herdr is not running on devbox"),
+        "{reason}"
+    );
+    assert_eq!(shells(&m), 0, "the empty chooser is closed");
+
+    // Codex is not listed at all: refused by name, no native shell instead.
+    let (outcome, fx) = act(
+        &mut m,
+        "code.start",
+        None,
+        Some(r#"{"input":"fix it","option":"codex"}"#),
+    );
+    assert!(fx.is_empty());
+    let AgentOutcome::Refused { reason, .. } = &outcome else {
+        panic!("accepted: {outcome:?}")
+    };
+    assert!(reason.contains("Codex (Herdr)"), "{reason}");
+    assert_eq!(shells(&m), 0);
+}
+
+#[test]
+fn code_send_pastes_then_presses_enter_and_code_stop_sends_ctrl_c() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(sent, vec!["run the tests".to_owned(), "\r".to_owned()]);
+    assert!(fx.iter().all(|e| e.actor == agent()));
+
+    // Once the program asks for bracketed paste, the words go bracketed.
+    r.bytes(1, 0, b"\x1b[?2004h");
+    let (_, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"y"}"#));
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(
+        sent,
+        vec!["\x1b[200~y\x1b[201~".to_owned(), "\r".to_owned()]
+    );
+
+    let (outcome, fx) = act(&mut r.m, "code.stop", Some(&id), None);
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    assert_eq!(
+        kinds(&fx),
+        vec!["input"],
+        "Ctrl-C, never the end of the process"
+    );
+    assert_eq!(inputs(&fx)[0].0, "\x03");
+}
+
+#[test]
+fn code_send_is_refused_without_words_and_on_an_ended_program() {
+    let mut r = rig();
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), None);
+    assert!(fx.is_empty());
+    assert!(
+        matches!(
+            &outcome,
+            AgentOutcome::Refused {
+                code: RefusalCode::InvalidArgs,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
+    let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
+    assert!(fx.is_empty(), "an ended program is typed nothing: {fx:?}");
+    assert!(
+        matches!(
+            &outcome,
+            AgentOutcome::Refused {
+                code: RefusalCode::Unavailable,
+                ..
+            }
+        ),
+        "{outcome:?}"
+    );
+}
+
+#[test]
+fn code_send_and_code_stop_refuse_a_shell_that_is_not_a_coding_session() {
+    let mut r = bound();
+    let id = r.id.as_str().to_owned();
+    for (action, args) in [
+        ("code.send", Some(r#"{"input":"rm -rf /"}"#)),
+        ("code.stop", None),
+    ] {
+        let (outcome, fx) = act(&mut r.m, action, Some(&id), args);
+        assert!(fx.is_empty(), "{action} typed into a plain shell: {fx:?}");
+        let AgentOutcome::Refused { code, reason } = &outcome else {
+            panic!("{action} accepted: {outcome:?}")
+        };
+        assert_eq!(*code, RefusalCode::Unavailable);
+        assert!(reason.contains("coding session"), "{reason}");
+    }
+}
+
+#[test]
+fn code_send_steers_an_adopted_coding_session_the_host_names() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let id = r.id.as_str().to_owned();
+    let (outcome, fx) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(
+        matches!(outcome, AgentOutcome::Accepted { .. }),
+        "{outcome:?}"
+    );
+    let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
+    assert_eq!(sent, vec!["run the tests".to_owned(), "\r".to_owned()]);
+    assert!(fx.iter().all(|e| e.actor == agent()));
+}
+
+#[test]
+fn code_send_and_stop_follow_a_coding_program_started_inside_an_existing_shell() {
+    let mut r = rig();
+    r.live();
+    let mut row = session("s1", TerminalBackend::Herdr);
+    row.command = Some("/usr/local/bin/claude".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert_eq!(
+        inputs(&effects).into_iter().map(|input| input.0).collect::<Vec<_>>(),
+        vec!["run the tests".to_owned(), "\r".to_owned()]
+    );
+    let (outcome, effects) = act(&mut r.m, "code.stop", Some(&id), None);
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert_eq!(inputs(&effects)[0].0, "\x03");
+}
+
+#[test]
+fn code_send_does_not_keep_steering_a_coding_session_after_it_returns_to_a_shell() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let mut row = session("s1", TerminalBackend::Herdr);
+    row.command = Some("zsh".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"rm -rf /"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Refused { .. }), "{outcome:?}");
+    assert!(effects.is_empty(), "{effects:?}");
+}
+
+#[test]
+fn code_send_refuses_a_coding_profile_whose_current_program_is_a_shell() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let mut row = session_named("s1", TerminalBackend::Herdr, "Claude Code (Herdr)");
+    row.command = Some("zsh".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"rm -rf /"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Refused { .. }), "{outcome:?}");
+    assert!(effects.is_empty(), "{effects:?}");
+}
+
+#[test]
+fn the_terminal_node_leads_with_the_process_state_and_keeps_the_last_sixty_rows() {
+    let mut r = rig();
+    let fx = r.key(Key::Enter);
+    let attach = only_attach(&fx);
+    // A tall grid the host confirmed: more rows than the tree carries.
+    r.accept_attach(&attach, opened(1, 1, 80, 100, "reattached"));
+    let text: String = (1..=100).map(|n| format!("row {n}\r\n")).collect();
+    r.bytes(1, 0, text.as_bytes());
+    let tree = r.valid_tree();
+    let term = tree
+        .nodes
+        .iter()
+        .find(|n| n.id.as_str() == "terminal")
+        .expect("a terminal node");
+    let description = term.state.description.as_deref().unwrap_or_default();
+    assert!(
+        description.starts_with("The program is running."),
+        "{description}"
+    );
+    let shown = term.text.as_deref().unwrap_or_default();
+    let rows: Vec<&str> = shown.split('\n').collect();
+    assert_eq!(rows.len(), 60, "{shown}");
+    assert!(shown.contains("row 100"), "{shown}");
+    assert!(!rows.iter().any(|row| row.trim() == "row 1"), "{shown}");
+}

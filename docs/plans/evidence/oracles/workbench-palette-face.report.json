@@ -1,0 +1,1695 @@
+{
+  "schema": "design-oracles-report/1",
+  "skill_version": "1.0.0-portable",
+  "policy_name": "workbench-palette:face",
+  "policy_version": "1.0",
+  "source_revision": "11bdda4a78399993b60b0e634d6b924f51b71357+worktree",
+  "fixture": "workbench-palette-face-*",
+  "environment": {
+    "surface": "face",
+    "profiles": [
+      "github-sharp-light",
+      "github-sharp-dark",
+      "stone-light",
+      "stone-dark",
+      "vitesse-light",
+      "vitesse-dark"
+    ],
+    "date": "2026-11-15",
+    "viewport_css_px": {
+      "width": 1280,
+      "height": 640
+    }
+  },
+  "counts": {
+    "pass": 66,
+    "fail": 0,
+    "review": 0,
+    "not_measurable": 0
+  },
+  "results": [
+    {
+      "id": "WB-FACE-01.eyes-on-plate.github-sharp-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-github-sharp-light",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-github-sharp-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#202733",
+        "plate_expected_ink": "#c8d0d8",
+        "model_eyes_on_body": 8.849715698087538,
+        "model_body_on_surface": 9.625228218904192
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.749668931206447,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.github-sharp-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-github-sharp-dark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-github-sharp-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#22272e",
+        "plate_expected_ink": "#cad0d4",
+        "model_eyes_on_body": 8.859280975841644,
+        "model_body_on_surface": 9.647702486085402
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.772657918871312,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.stone-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-stone-light",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-stone-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#292623",
+        "plate_expected_ink": "#d1cfcd",
+        "model_eyes_on_body": 8.88121988451339,
+        "model_body_on_surface": 9.684597709753701
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.810048612717495,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.stone-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-stone-dark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-stone-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#232220",
+        "plate_expected_ink": "#cbc9c8",
+        "model_eyes_on_body": 8.362343324951196,
+        "model_body_on_surface": 9.634145293460579
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.866511594094563,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.vitesse-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-vitesse-light",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-vitesse-light",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#242728",
+        "plate_expected_ink": "#cdd0d0",
+        "model_eyes_on_body": 8.88860697662058,
+        "model_body_on_surface": 9.692215925272517
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.817795671651359,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.vitesse-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "observation": "eyes-vitesse-dark",
+      "evidence_kind": "rendered_web",
+      "provenance": {
+        "story": "workbench-palette-face-vitesse-dark",
+        "method": "the face's perch cells in the screenshot: plate the commonest non-surface colour, eyes the most contrasting solid colour on it",
+        "surface": "#272726",
+        "plate_expected_ink": "#d0d0cf",
+        "model_eyes_on_body": 8.93876117024456,
+        "model_body_on_surface": 9.687212181758508
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "value": 9.813610208653492,
+        "minimum": 3.0,
+        "unit": "ratio"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.0",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-0",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.0",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-0",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.1",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-1",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.1",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-1",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.2",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-2",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.2",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-2",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.3",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-3",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.3",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-3",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.4",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-4",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.4",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-4",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-light",
+        "from": "github-sharp-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.5",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-5",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.5",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-5",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.6",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-6",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.6",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-6",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.7",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-7",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.7",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-7",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.8",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-8",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.8",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-8",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.9",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-9",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.9",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-9",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "github-sharp-dark",
+        "from": "github-sharp-dark",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.10",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-10",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.10",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-10",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.11",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-11",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.11",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-11",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.12",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-12",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.12",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-12",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.13",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-13",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.13",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-13",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.14",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-14",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.14",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-14",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-light",
+        "from": "stone-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.15",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-15",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.15",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-15",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.16",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-16",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.16",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-16",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.17",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-17",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.17",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-17",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.18",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-18",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.18",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-18",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.19",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-19",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.19",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-19",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "stone-dark",
+        "from": "stone-dark",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.20",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-20",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.20",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-20",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.21",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-21",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.21",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-21",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.22",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-22",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.22",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-22",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.23",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-23",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.23",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-23",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.24",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-24",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "vitesse-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.24",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-24",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-light",
+        "from": "vitesse-light",
+        "to": "vitesse-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.25",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-25",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.25",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-25",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.26",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-26",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.26",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-26",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "github-sharp-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.27",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-27",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.27",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-27",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.28",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-28",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-dark",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.28",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-28",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "stone-dark",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.29",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-geometry-29",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "vitesse-light",
+        "method": "perch and status row rects before and after window.__setPaletteProfile, one page session, Theo working"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "row.height",
+          "perch.width",
+          "perch.height",
+          "perch.x",
+          "perch.y"
+        ],
+        "numeric_tolerance": "0.5"
+      },
+      "status": "pass"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.29",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "observation": "switch-state-29",
+      "evidence_kind": "interaction",
+      "provenance": {
+        "page_session": "vitesse-dark",
+        "from": "vitesse-dark",
+        "to": "vitesse-light",
+        "method": "theFace().state() before and after the switch"
+      },
+      "arithmetic": "pass",
+      "detail": {
+        "changed_fields": [],
+        "preserved_fields": [
+          "liveness",
+          "asleep",
+          "working",
+          "form"
+        ],
+        "numeric_tolerance": "0"
+      },
+      "status": "pass"
+    }
+  ],
+  "claim_boundary": "Only the declared observation and evidence kind are evaluated. This report is not whole-product accessibility certification."
+}

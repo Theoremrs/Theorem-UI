@@ -1,0 +1,8 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 060dbac553fe03c7581188084174b5c46fb958602251f540bfd1b2d5896793d8 # shrinks to start = "", acts = [Type("a"), Move(8, false), Type("a"), Mark(2237317172984973605, 3688735033835739621)]
+cc d5e3131ad7874f71b4e0e7189e3a192a7d39e385832540b0679dbb40532746fc # shrinks to start = "a\u{200b}\u{200b}a\réHello,", acts = [Select(10316786921091256074, 5108076503554291430), Type("a"), Undo, Backspace, Type("a"), Undo, Mark(2953477982252950069, 8891433154530129833), Undo, Remote(10281119382135390785, 1585066641058076218, "a"), Remote(16235411194886392703, 3547569134230507344, "\u{200b}"), Type("a"), Undo, Backspace, Type("a"), Backspace, WordBack, Type("각"), Move(0, false), Type("\n"), Select(3607733342306414910, 1023878199650083022)]

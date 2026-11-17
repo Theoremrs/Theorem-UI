@@ -435,12 +435,13 @@ export const loadWasm = () =>
   (wasmModule ??= Promise.all([
     import('@/terminal-wasm/theorem_terminal'),
     import('./live-terminal-theme'),
-    import('./terminal-roles'),
-  ]).then(async ([wasm, { useTerminalTheme }, { wasmPalette }]) => {
+    import('./terminal-ladder'),
+  ]).then(async ([wasm, { useTerminalTheme }, { ladderPalette }]) => {
     await wasm.default()
-    // One role contract for every terminal and the cabinet (terminal-roles.ts).
+    // One role contract for every terminal and the cabinet (terminal-roles.ts),
+    // with the surface ladder and registers derived from it (terminal-ladder.ts).
     const paint = ({ roles }: { roles: TerminalRoles }) =>
-      wasm.set_palette(JSON.stringify(wasmPalette(roles)))
+      wasm.set_palette(JSON.stringify(ladderPalette(roles)))
     paint(useTerminalTheme.getState())
     useTerminalTheme.subscribe(paint)
     return wasm
@@ -556,10 +557,10 @@ export function TerminalScreen({
         aria-label="Agent terminal"
         data-base-ui-swipe-ignore=""
         onKeyDown={(event) => {
-          if (event.metaKey) return
-          // Copy wins over stop while the person has text selected.
+          // Copying text selected on the page wins over the terminal's own copy and stop. The
+          // terminal answers false for a Command chord that is not its prompt's.
           if (
-            event.ctrlKey &&
+            (event.ctrlKey || event.metaKey) &&
             event.key === 'c' &&
             !window.getSelection()?.isCollapsed
           )

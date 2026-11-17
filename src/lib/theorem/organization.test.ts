@@ -8,6 +8,7 @@ import {
   organizedViews,
   planMove,
   primaryProjectId,
+  projectToOpenIn,
   rehome,
   sessionLists,
 } from './organization'
@@ -268,6 +269,23 @@ describe('primaryProjectId', () => {
   })
 })
 
+describe('projectToOpenIn', () => {
+  const shared = thread('t', {
+    homeProjectId: 'home',
+    memberships: [member('first', { atMs: 1 }), member('second', { atMs: 5 })],
+  })
+
+  test('a project the thread is placed in is the one it opens under when asked for', () => {
+    expect(projectToOpenIn(shared, 'second')).toBe('second')
+    expect(projectToOpenIn(shared, 'home')).toBe('home')
+  })
+
+  test('nothing asked for, or a project it is not in, opens it in its primary one', () => {
+    expect(projectToOpenIn(shared)).toBe('first')
+    expect(projectToOpenIn(shared, 'elsewhere')).toBe('first')
+  })
+})
+
 describe('nestByOrigin', () => {
   test('a fork sits under a source in the same list and stands alone otherwise', () => {
     const fork = thread('fork', {
@@ -299,9 +317,18 @@ describe('nestByOrigin', () => {
     const forkOf = (threadId: string, source: string, createdAtMs: number) =>
       thread(threadId, {
         createdAtMs,
-        origin: { kind: 'forked', threadId: source, branchId: 'b', messageId: 'm' },
+        origin: {
+          kind: 'forked',
+          threadId: source,
+          branchId: 'b',
+          messageId: 'm',
+        },
       })
-    const threads = [forkOf('a', 'b', 2), forkOf('b', 'c', 1), forkOf('c', 'a', 3)]
+    const threads = [
+      forkOf('a', 'b', 2),
+      forkOf('b', 'c', 1),
+      forkOf('c', 'a', 3),
+    ]
     const { roots, children } = nestByOrigin(threads)
     // Broken at its oldest member, b; the rest hang beneath it.
     expect(roots.map((t) => t.threadId)).toEqual(['b'])
@@ -314,7 +341,12 @@ describe('nestByOrigin', () => {
 
   test('a self-referencing fork is a root', () => {
     const self = thread('self', {
-      origin: { kind: 'forked', threadId: 'self', branchId: 'b', messageId: 'm' },
+      origin: {
+        kind: 'forked',
+        threadId: 'self',
+        branchId: 'b',
+        messageId: 'm',
+      },
     })
     expect(nestByOrigin([self]).roots.map((t) => t.threadId)).toEqual(['self'])
   })

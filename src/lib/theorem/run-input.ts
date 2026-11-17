@@ -81,6 +81,12 @@ export type RunInputHost = {
   attemptId?: string
   /** Text retained by send recovery for this thread, once that write has happened. */
   savedSend?: (threadId: string) => string | undefined
+  /**
+   * Where this conversation's input waits before it has a thread to belong to. One slot
+   * serves a session's draft chats, so a chat that opens a record of its own names it here:
+   * no other conversation can read it, adopt what is in it, or clear it when it settles.
+   */
+  pendingKey?: string
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
 }
 
@@ -91,6 +97,13 @@ const storageKey = (threadId: string) => `theorem.run-input.${threadId}`
  * arrives; a later chat keeps the text for an explicit retry.
  */
 const PENDING_KEY = 'theorem.run-input.pending:'
+/**
+ * Where kept input waits before it has a thread to belong to: the session's one slot, or a
+ * conversation's own when it names a scope. The format lives here so no caller has to know it.
+ */
+export const pendingInputKey = (scope?: string) =>
+  scope ? `${PENDING_KEY}${scope}` : PENDING_KEY
+const pendingOf = (host: RunInputHost) => host.pendingKey ?? PENDING_KEY
 const TEMPORARY = 'temporary'
 const recoveredElsewhere = 'This message was kept from a chat that was still being created. Retry sends it with the next response.'
 const unknownDelivery = 'Could not confirm delivery. Retry checks this same message.'
@@ -159,7 +172,7 @@ export function createRunInputQueue(host: RunInputHost) {
   }
 
   const readPending = (): { attemptId?: string; items: PendingRunInput[] } | undefined => {
-    const raw = host.storage?.getItem(PENDING_KEY)
+    const raw = host.storage?.getItem(pendingOf(host))
     if (!raw) return
     let parsed: unknown
     try { parsed = JSON.parse(raw) } catch { return }
@@ -190,8 +203,9 @@ export function createRunInputQueue(host: RunInputHost) {
       const pending = next.filter((item) => item.handoff || !threadId)
       const durable = threadId ? next.filter((item) => !item.handoff) : []
       const ownedPending = restoredFor === TEMPORARY || items.some((item) => item.handoff)
-      if (pending.length) host.storage.setItem(PENDING_KEY, JSON.stringify({ attemptId, items: pending }))
-      else if (ownedPending) host.storage.removeItem(PENDING_KEY)
+      const waiting = pendingOf(host)
+      if (pending.length) host.storage.setItem(waiting, JSON.stringify({ attemptId, items: pending }))
+      else if (ownedPending) host.storage.removeItem(waiting)
       if (threadId && (durable.length || items.some((item) => !item.handoff))) {
         if (durable.length) host.storage.setItem(storageKey(threadId), JSON.stringify(durable))
         else host.storage.removeItem(storageKey(threadId))
@@ -248,7 +262,7 @@ export function createRunInputQueue(host: RunInputHost) {
     }
     const saved = host.storage?.getItem(storageKey(threadId)) ?? null
     if (!saved && items.length === 0) {
-      if (restoredFor === TEMPORARY) host.storage?.removeItem(PENDING_KEY)
+      if (restoredFor === TEMPORARY) host.storage?.removeItem(pendingOf(host))
       restoredFor = threadId
       return
     }
@@ -386,10 +400,24 @@ export function createRunInputQueue(host: RunInputHost) {
     observe,
     stop,
     getSnapshot: () => items,
-    submit(text: string) {
+    /**
+     * Keeps words until the run shows them. A caller that already names the message — a composer
+     * that mints its own client id, and must never send that id twice — gives it here: it becomes
+     * the request key, so the same message is queued and sent once however often it is offered.
+     * Returns false only when these words are not, and were not, the message that id names.
+     */
+    submit(text: string, id?: string) {
       if (disposed || !text.trim()) return false
       restore()
-      publish([...items, { id: crypto.randomUUID(), text, state: 'waiting' }])
+      const held = id === undefined ? undefined : items.find((item) => item.id === id)
+      if (held) {
+        // One id names one message: a repeat of the same words neither queues a second row nor
+        // sends again; other words under that id are a different message this id cannot carry.
+        if (held.text !== text) return false
+        observe()
+        return true
+      }
+      publish([...items, { id: id ?? crypto.randomUUID(), text, state: 'waiting' }])
       observe()
       return true
     },
@@ -413,6 +441,11 @@ export function createRunInputQueue(host: RunInputHost) {
       } else if (item.runId) {
         void send(item, item.runId)
       }
+    },
+    /** Takes a row off the queue and forgets its record, so a reload does not bring it back. */
+    dismiss(id: string) {
+      if (disposed) return
+      publish(items.filter((item) => item.id !== id))
     },
     dispose() { disposed = true },
   }
