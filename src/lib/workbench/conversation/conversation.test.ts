@@ -662,8 +662,13 @@ describe('run input recovery', () => {
     const t = recovering()
     const owner = t.make()
     expect(
-      (await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }))
-        .outcome,
+      (
+        await owner.input({
+          requestId: 'r1',
+          clientMessageId: 'c1',
+          text: 'also',
+        })
+      ).outcome,
     ).toBe('accepted')
     await t.settle()
     // Theorem took the words and the run has not shown them: they stay listed.
@@ -691,7 +696,11 @@ describe('run input recovery', () => {
       assistant('a1', 'x', {
         runId: 'run1',
         parts: [
-          userInputPart({ inputId: 'srv-c1', text: 'also', status: 'delivered' }),
+          userInputPart({
+            inputId: 'srv-c1',
+            text: 'also',
+            status: 'delivered',
+          }),
         ],
       }),
     ]
@@ -768,8 +777,13 @@ describe('run input recovery', () => {
     const owner = t.make()
     // Saved for recovery, so the composer may clear however the send turns out.
     expect(
-      (await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }))
-        .outcome,
+      (
+        await owner.input({
+          requestId: 'r1',
+          clientMessageId: 'c1',
+          text: 'also',
+        })
+      ).outcome,
     ).toBe('accepted')
     await t.settle()
     // Listed, with the words kept: the row is retriable rather than a dead end, because
@@ -777,7 +791,9 @@ describe('run input recovery', () => {
     expect(owner.snapshot().queued).toMatchObject([
       { clientMessageId: 'c1', text: 'also', state: 'failed' },
     ])
-    expect(owner.snapshot().queued[0]?.reason).toContain('Could not confirm delivery')
+    expect(owner.snapshot().queued[0]?.reason).toContain(
+      'Could not confirm delivery',
+    )
     // Recovery and every later observation leave it alone: the reply may have gone out.
     t.stub.emit()
     await t.settle()
@@ -802,7 +818,11 @@ describe('run input recovery', () => {
     t.stub.messages = []
     const owner = t.make()
     expect(
-      await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }),
+      await owner.input({
+        requestId: 'r1',
+        clientMessageId: 'c1',
+        text: 'also',
+      }),
     ).toMatchObject({ outcome: 'refused', code: 'no_active_run' })
     expect(t.sends).toEqual([])
     expect(owner.snapshot().queued).toEqual([])
@@ -938,10 +958,14 @@ describe('run input recovery', () => {
     ])
     // The main conversation never carries the side chat's words.
     expect(withSides.snapshot().queued).toEqual([])
-    expect(t.sends).toEqual([{ runId: 'run2', inputId: 's1', text: 'side words' }])
+    expect(t.sends).toEqual([
+      { runId: 'run2', inputId: 's1', text: 'side words' },
+    ])
     // The side chat keeps its own record in the host's storage, under its own thread: the
     // owner a side chat is made by is not given the host's store to throw away.
-    expect(t.storage.getItem('theorem.run-input.remote-2')).toContain('side words')
+    expect(t.storage.getItem('theorem.run-input.remote-2')).toContain(
+      'side words',
+    )
     expect(t.storage.getItem('theorem.run-input.remote-1')).toBeNull()
     opened.value.close()
     withSides.dispose()

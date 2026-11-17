@@ -991,7 +991,10 @@ export function createConversation({
       // that settled: the run's own record of words it never took is not the person's
       // message, and the Retry they are owed is not satisfied by a transcript part.
       inputRows = items
-        .filter((item) => !item.visible || item.state === 'failed' || item.state === 'next')
+        .filter(
+          (item) =>
+            !item.visible || item.state === 'failed' || item.state === 'next',
+        )
         .map(rowOf)
       useRunInputs.setState({ [inputKey]: items })
       changed()

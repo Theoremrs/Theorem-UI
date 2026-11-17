@@ -143,8 +143,8 @@ async function readRunInputThread(threadId: string): Promise<RunInputThread> {
   return {
     active: Boolean(
       snapshot.liveRun ||
-        snapshot.thread.activeRunId ||
-        snapshot.thread.pendingTurn,
+      snapshot.thread.activeRunId ||
+      snapshot.thread.pendingTurn,
     ),
     ...(snapshot.liveRun?.runId ? { runId: snapshot.liveRun.runId } : {}),
     inputs: snapshot.messages.flatMap((message) =>
@@ -191,11 +191,14 @@ async function readRunInputReceipts(
     if (receipt)
       receipts.set(receipt.inputId, {
         ...receipt,
-        requestKey: receipt.requestKey ?? receipts.get(receipt.inputId)?.requestKey,
+        requestKey:
+          receipt.requestKey ?? receipts.get(receipt.inputId)?.requestKey,
       })
   }
   if (!terminal)
-    throw new Error('The response has not finished recording its input receipts')
+    throw new Error(
+      'The response has not finished recording its input receipts',
+    )
   return [...receipts.values()]
 }
 
