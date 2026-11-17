@@ -482,6 +482,50 @@ test('a reload keeps a caller-supplied id, and its retry replays that same reque
   expect(h.host.send).toHaveBeenCalledWith('run-1', 'Use the smaller design', 'client-1')
 })
 
+test('a kept record belongs to the conversation that wrote it', async () => {
+  const h = harness()
+  h.local.threadId = undefined
+  h.local.runId = undefined
+  h.host.attemptId = 'attempt-1'
+  h.host.pendingKey = 'theorem.run-input.pending:attempt-1'
+  const first = createRunInputQueue(h.host)
+  expect(first.submit('Use the smaller design')).toBe(true)
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+
+  // Another conversation of the same session opens with no thread of its own, on the same
+  // storage. Its record is its own, so it neither sees nor takes the first one's words.
+  h.host.attemptId = 'attempt-2'
+  h.host.pendingKey = 'theorem.run-input.pending:attempt-2'
+  const second = createRunInputQueue(h.host)
+  second.observe()
+  expect(second.getSnapshot()).toEqual([])
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+
+  // Its own words land in its own record, and settling that record cannot clear the other's.
+  expect(second.submit('Also keep the margins')).toBe(true)
+  expect(h.storage.get('theorem.run-input.pending:attempt-2')).toContain('Also keep the margins')
+  expect(h.storage.get('theorem.run-input.pending:attempt-1')).toContain('Use the smaller design')
+  h.local.threadId = 'thread-2'
+  second.observe()
+  await settle()
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+  expect(h.storage.get('theorem.run-input.thread-2')).toContain('Also keep the margins')
+  expect(h.storage.has('theorem.run-input.thread-1')).toBe(false)
+  first.dispose()
+  second.dispose()
+})
+
+test('a queue with no scoped record keeps the shared one of the session', () => {
+  const h = harness()
+  h.local.threadId = undefined
+  h.local.runId = undefined
+  h.host.attemptId = 'attempt-1'
+  const queue = createRunInputQueue(h.host)
+  expect(queue.submit('Use the smaller design')).toBe(true)
+  expect(h.storage.has('theorem.run-input.pending:')).toBe(true)
+  queue.dispose()
+})
+
 test('raw event decoding requires user_input and carries only the command receipt identity', () => {
   const part = { ...receipt(), type: 'user_input' }
   expect(runInputReceipt({ payload: { part }, idempotencyKey: 'chat-command:key-1' })?.requestKey).toBe('key-1')
