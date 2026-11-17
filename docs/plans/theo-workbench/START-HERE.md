@@ -7,7 +7,7 @@
 ## What to read
 
 1. [Main specification](SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0.md): product, UI, ownership, selected source reuse, migration and delivery gates.
-2. [Herdr integration](herdr-integration.md): layout extraction, Core execution, identity, control leases, detach, recovery, compatibility and safety.
+2. [Herdr integration](herdr-integration.md): layout extraction, Core execution, identity, input from any view, detach, recovery, compatibility and safety.
 3. [Technical requirements](technical-requirements.md): 48 individually identified obligations, each with an owner and acceptance references.
 4. [Acceptance cases](acceptance-cases.json): 62 acceptance procedures with required observations, now carrying an execution record per case (build identity, platform, actual commands, tier, observations, limitations, or the named blocker). Each case names the tier its evidence belongs to; this file is still not an executable test suite, and it is not a passing report for the live-only cases.
 5. [Theia migration parity register](migration-parity-register.json): existing user capabilities that must remain reachable after the old frontend is removed. Reconciled against the candidate build at the pure and simulated tiers: P03 and P04 are recorded `pass`, the other thirteen rows stay `not_run` with the blocker named. `current_consumer` is still the seed — the Theia path is mounted and was not traced as a running baseline here.

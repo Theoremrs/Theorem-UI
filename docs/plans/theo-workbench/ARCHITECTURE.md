@@ -33,7 +33,7 @@ Project and conversation navigation, which the sidebar carried, is the Threads p
 | `workbench-vt` | VT byte-to-screen interpreter and input encoder for process panes | `vt100`, `tui-term` |
 | `workbench-markdown` | ELY-derived parse/block/edit logic and the four modes | `workbench-text`, `pulldown-cmark` |
 | `workbench-changes` | Changes panel model and view over Theorem SCM | `workbench-core` |
-| `workbench-process` | Process pane: chooser, attach, control lease, epochs and resets, drawn through `workbench-vt` | `workbench-core`, `workbench-vt` |
+| `workbench-process` | Process pane: chooser, attach, input and resize from any view, epochs and resets, drawn through `workbench-vt` | `workbench-core`, `workbench-vt` |
 | `workbench-editor` | Source editor panel and the editing widget Markdown Source mode shares | `workbench-core`, `workbench-text` |
 | `theorem-terminal` (root) | wasm-bindgen exports, `DomBackend` screen, frame loop, the Theo transcript session (existing `Session`), cabinet | all of the above, `ratzilla` |
 
@@ -135,7 +135,7 @@ The workbench talks to the workspace host through the SDK; it never opens a Herd
 | Interpreter is `vt100` 0.16.x in wasm, drawn through `tui-term` | It is the same interpreter the host uses for the `formatted` repaint (`vt_screen.rs`, `vt100 = "0.16.2"`), and `tui-term` 0.3.4 targets `vt100 ^0.16.2`. A newer `vt100` would diverge from the host's snapshot semantics |
 | Profile table and `openBody` come from `terminal-profile.ts`, moved out of the Theia extension unchanged | Theia-free, already tested (`terminal-profile.test.ts`) |
 | Launch goes through one typed adapter function until the frontend vendors an SDK that types `backend`, `argv`, `name` | Vendored alpha.5 `TerminalChannel.open` sends size only (`terminal-path.md` 4) |
-| The four versions stay four fields: live-stream epoch, binding epoch, program generation, lease generation | `terminal-path.md` 2.2 |
+| The three versions stay three fields: live-stream epoch, binding epoch, program generation (the control-lease generation was removed with the lease, 2026-11-16) | `terminal-path.md` 2.2 |
 | No replacement shell is opened on a guess; a lost program is shown as lost, and a new shell is a separate, labeled action that keeps the profile | Theia's `replaceLostShell` drops the profile (`terminal-path.md` 5.2) |
 
 Backend dependency: the Herdr path is not on backend `main`. See section 11, item 2.

@@ -150,7 +150,7 @@ Keep these stores distinct in meaning:
 | Draft, undo, composition, pending edits | Document/conversation controller, independent of pane |
 | Last accepted document/resource snapshot | Existing resource owner and its client projection |
 | Database checkpoints and permitted offline state | Existing local RustyRed/document persistence boundary |
-| Remote execution, accepted Git changes, terminal control leases | Workspace host/services |
+| Remote execution, accepted Git changes, terminal bindings and the input ledger | Workspace host/services |
 | Herdr process and its terminal lifetime | Herdr Core/holder on the chosen host |
 
 Messages request actions; they are not authorization. Human and agent entry points converge on the same operation semantics while retaining authenticated actor identity. A model-generated message cannot synthesize human approval merely by naming an approval action.
@@ -220,7 +220,7 @@ The detailed normative boundary is in [herdr-integration.md](herdr-integration.m
 - Closing a panel, navigating, or refreshing detaches the viewer. It does not kill a Herdr process.
 - Reconnecting attaches to the existing terminal identity and correct generation. It never reruns a launch on a guess.
 - Program replacement, process continuation, browser attachment, and host-log reset remain distinguishable.
-- Use a scoped control lease for typing/paste/resize; read-only observers do not become controllers.
+- Any view of a terminal may type, paste and resize; the latest resize wins. There are no observers, no takeover and no control lease (removed by the owner on 2026-11-16: one person's several views of a terminal must never lock each other out). Input aimed at a terminal the host has since rebound is refused `stale_epoch` and the view re-attaches.
 - Keep process status separate from accepted Theorem task state. No guessed status from terminal text.
 - Preserve or repair live discovery through the existing authenticated workspace event path; bound initial adoption to its opening snapshot.
 - Unsupported/unavailable backends fail explicitly. Native shell remains an explicit supported profile, not a silent fallback.
@@ -308,7 +308,7 @@ Mount the Rust workbench on the actual web route. Adapt the selected Herdr layou
 
 ### Gate 2 — prove the process path before polishing it
 
-Through the existing SDK, open or attach to a real Herdr shell and one supported external agent. Interpret terminal output, handle input/paste/resize and control leases, detach, refresh, reconnect, restart the workspace host, and preserve process identity where promised. Exercise an unavailable backend and a replaced/lost program. No snapshot fixture substitutes for this gate.
+Through the existing SDK, open or attach to a real Herdr shell and one supported external agent. Interpret terminal output, handle input/paste/resize from more than one view, detach, refresh, reconnect, restart the workspace host, and preserve process identity where promised. Exercise an unavailable backend and a replaced/lost program. No snapshot fixture substitutes for this gate.
 
 ### Gate 3 — real editing and Git
 
@@ -334,7 +334,7 @@ Open a real project in web Theo. Verify the environment, browse files, and open 
 
 Open Add tool. Verify no effect occurs until selecting an action. Start a Herdr-backed shell or supported coding-agent profile on the selected host, run a uniquely identifiable process, and detach its pane. Move Markdown into the center and Theo to the right, switch the theme, and reopen the process pane. It must be the same process and correct screen, not a rerun with a similar title.
 
-Exercise an observer in a second browser, controlled takeover, stale input refusal, host epoch change, and resnapshot. Kill/loss/replacement must be visibly different from detach/rebind. Make a manual Markdown correction, save, inspect the actual diff, stage/commit through Theorem, and view a generated artifact through the integrated cabinet and original viewer.
+Exercise a second browser typing and resizing the same terminal, stale input refusal, host epoch change, and resnapshot. Kill/loss/replacement must be visibly different from detach/rebind. Make a manual Markdown correction, save, inspect the actual diff, stage/commit through Theorem, and view a generated artifact through the integrated cabinet and original viewer.
 
 Save the alternate layout to the account, reload, and restore it on a narrow viewport. Confirm drafts, references, editing history, artifact selection, process binding, and task state remain coherent. Reconnect after a resource change, test a permission refusal and storage failure, and verify no data from another account leaks.
 

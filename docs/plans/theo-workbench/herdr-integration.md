@@ -8,7 +8,7 @@
 
 The proposed workbench already needs terminal persistence, multiple viewers, external-agent profiles, reconnection, and operation identity. Herdr belongs to that execution layer. It does not compete with the ELY Markdown port. Separately, the original Herdr TUI has a Ratatui layout module selected as a source donor for the workbench. These two uses must not pull in the original runtime or its legacy transport. [S19]
 
-There is concrete integration to preserve. The inspected Theorem-UI profile code names native Shell, Herdr shell, Claude Code (Herdr), and Codex (Herdr), and gates Herdr availability on host capabilities. The inspected Theorem terminal registry separates native and Herdr process mechanics behind one boundary, keeps binding epochs, and contains control-lease behavior. Theia's frontend is currently one consumer of that path. [S02–S04 in SOURCES.md]
+There is concrete integration to preserve. The inspected Theorem-UI profile code names native Shell, Herdr shell, Claude Code (Herdr), and Codex (Herdr), and gates Herdr availability on host capabilities. The inspected Theorem terminal registry separates native and Herdr process mechanics behind one boundary, keeps binding epochs, and lets any view of a terminal type and resize it. Theia's frontend is currently one consumer of that path. [S02–S04 in SOURCES.md]
 
 Therefore **removing Theia must not remove Herdr discovery, attachment, or recovery**. Extract/rebind existing consumers; do not install another browser-facing Herdr supervisor or independently launch processes from widgets.
 
@@ -37,12 +37,11 @@ In particular, do not copy Herdr App’s documented pane-close-ends-terminal pol
 
 Bind a process pane using the authenticated account/tenant scope, environment/workspace, Theorem terminal session identity, backend, and current binding epoch. Retain core identity/terminal address in the host adapter where needed. A title, array position, process executable, or bare `t7` is not sufficient identity.
 
-Keep at least four independent version concepts:
+Keep at least three independent version concepts:
 
 1. Host/live-stream epoch: scopes host event sequence numbers and reconnect state.
 2. Terminal binding epoch: scopes a byte log and its terminal screen.
 3. Process incarnation/origin: distinguishes a surviving program from a replacement shell.
-4. Control-lease generation: determines which attachment may write or resize.
 
 None is the resource revision of an edited document. Do not combine them into one generic `version` field whose meaning changes by call site.
 
@@ -86,15 +85,15 @@ The current host already has a VT screen wrapper and bounded log; its comments d
 
 The actual terminal interpreter is a release gate. Test alternate-screen programs, cursor addressing, erase/insert/delete operations, scroll regions, wide/combining characters, split escape sequences, bracketed paste, resize, input mode, OSC-8 policy, and full repaint. Supported external-agent CLI versions must render and accept input correctly on real sessions. Do not advertise unsupported graphics, clipboard, keyboard, or query capabilities.
 
-Automatic terminal query replies are tagged/handled according to the negotiated provider path; observers must not generate duplicate input. The browser must not treat a terminal query as a human command or let output take ownership of its surrounding workbench.
+Automatic terminal query replies are tagged/handled according to the negotiated provider path; client replies are discarded on Herdr terminals, because Herdr Core answers queries itself; on a native PTY only the view that last typed or resized answers, so two views never send duplicate replies. The browser must not treat a terminal query as a human command or let output take ownership of its surrounding workbench.
 
-## 6. Control and multi-viewer semantics
+## 6. Multi-viewer semantics
 
-Use the existing host's control-lease mechanism as the browser-facing authority. An observer may view, select/copy, and search locally. It cannot type, paste, resize the actual program, or answer input-generating queries as the controller.
+Any view of a terminal may type, paste and resize the actual program, and select/copy and search locally. There are no observers, no takeover and no lease generation: the owner removed exclusive control on 2026-11-16 because one person's several views of a terminal must never lock each other out (a stale attachment left by a reloaded page held the lease and locked the live page out).
 
-A takeover increments the lease generation. Late input carrying the previous generation is refused. Resizing a hidden/observing panel changes its local viewport but not the actual PTY. The active controller's dimensions determine the program grid according to the agreed host contract.
+Input aimed at a terminal the host has since rebound carries an old binding epoch and is refused `stale_epoch`; the view then re-attaches for the authoritative repaint. The latest resize from any view sets the program grid. A hidden view does not resize the program until it is shown and measured.
 
-Herdr's own active-viewer rule and Theorem's browser-client lease are distinct. The inspected host multiplexes browser clients through its core attachment. Preserve that design instead of allowing each browser to attach directly and compete for size control. [S04]
+Herdr's own active-viewer rule and the browser views are distinct. The inspected host multiplexes browser clients through its core attachment. Preserve that design instead of allowing each browser to attach directly and compete for size control. [S04]
 
 Input deduplication is bounded by the actual host ledger. Do not advertise universal exactly-once delivery. On uncertain input outcome, reconcile within the supported identity/ledger window or show uncertainty; never resend arbitrary bytes automatically after that window. Likewise, an uncertain launch is queried/reconciled before any second launch attempt.
 
@@ -134,7 +133,7 @@ On an isolated test environment with the final matched SDK/host/Herdr versions:
 
 1. Start one uniquely identified process from Theo Web using an explicit Herdr profile.
 2. Read output and type/paste through the actual input path.
-3. Open an observer and demonstrate that it cannot resize/type until a deliberate takeover succeeds.
+3. Open a second view of the same terminal and demonstrate that it can type, and that a resize from either view is applied, the latest winning.
 4. Close the original panel, refresh the browser, and reattach to the same continuing process.
 5. Restart only the Theorem workspace host while keeping the Herdr provider running; observe the new binding epoch, authoritative repaint, and subsequent output.
 6. Start an eligible terminal from another authorized client; verify one adopted record appears without blocking workspace opening.

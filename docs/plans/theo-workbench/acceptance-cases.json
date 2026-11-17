@@ -907,32 +907,9 @@
       ],
       "oracle_class": "interaction",
       "procedure": "Paste a command into chat, press shell shortcuts without shell focus, then explicitly focus and control the shell.",
-      "required_observations": "Chat never executes as shell input; browser/workbench shortcuts are not forwarded unintentionally; actual shell input requires the bound controller.",
-      "status": "pass",
-      "evidence": [
-        {
-          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
-          "platform": "linux-cloud-runner",
-          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
-          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
-          "command": [
-            "cd terminal && cargo test -p theorem-workbench-process -p theorem-workbench-core --locked",
-            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-keyboard-journey",
-            "same env: interact workbench-semantic-overlay"
-          ],
-          "result": "pass",
-          "evidence_tier": "pure tests (crate + port) + rendered fixture",
-          "observed": [
-            "chat never executes as shell input: process.rs code_send_and_code_stop_refuse_a_shell_that_is_not_a_coding_session — text pasted into an attached plain shell is refused with the reason instead of executed (commit c1f4b02b), and the paste/bracketed-paste/Ctrl-C path now runs only on a coding session",
-            "browser and workbench shortcuts are not forwarded unintentionally: the workbench routes chords through the core key table (workbench.rs 176 tests green); paste-chord.test.ts 'a plain v, another letter and an Alt chord are not paste' and reads the platform from the platform or the user agent",
-            "actual shell input requires the bound controller: process.rs an_observer_emits_nothing_shows_the_reason_and_offers_control, requesting_control_attaches_as_controller_and_a_refusal_is_shown_with_its_reason, a_refused_input_moves_a_controller_to_observing_with_the_hosts_reason, the_terminal_node_says_why_an_observer_cannot_type",
-            "on the real page the same separation holds: keyboard-journey 112/114 green including '18 the terminal takes typed input and echoes it', '16 Shell chooser by its chord', '17 Enter takes the existing session', and the per-surface real-clipboard paste/copy checks; semantic-overlay 'the status names the session and who controls it' and 'Request control is disabled ... and gives its reason'"
-          ],
-          "limitations": [
-            "workbench-keyboard-journey's two failing checks are the documented macOS-calibrated focus-drawn ones (step 12 after moving a panel back); they concern how focus is painted, not which surface receives input"
-          ]
-        }
-      ]
+      "required_observations": "Chat never executes as shell input; browser/workbench shortcuts are not forwarded unintentionally; actual shell input requires the focused, bound terminal.",
+      "status": "not_run",
+      "evidence": []
     },
     {
       "id": "AC-27",
@@ -1211,13 +1188,13 @@
     },
     {
       "id": "AC-35",
-      "title": "Observer control and late input",
+      "title": "Every view types",
       "requirements": [
         "R28"
       ],
       "oracle_class": "two-browser integration",
-      "procedure": "Attach A as controller and B as observer; attempt input/resize from B, then transfer control while delayed A input is in flight.",
-      "required_observations": "Observer operations are refused; takeover advances generation; stale A input cannot reach the program.",
+      "procedure": "Given two browser views attached to one terminal, when A types and then B types, observe both views.",
+      "required_observations": "Both views see each other's output; typing from B reaches the program and shows in both, and typing from A still does; neither view is refused or locked out.",
       "status": "not_run",
       "evidence": [
         {
@@ -1243,14 +1220,14 @@
     },
     {
       "id": "AC-36",
-      "title": "Controller-independent local resizing",
+      "title": "Every view resizes",
       "requirements": [
         "R28",
         "R06"
       ],
       "oracle_class": "two-browser interaction",
-      "procedure": "Resize an observer pane and a hidden view repeatedly; then resize the active controller.",
-      "required_observations": "Only permitted controller changes the program grid; observer-local layout does not steal terminal size ownership.",
+      "procedure": "Given two browser views attached to one terminal, when B is resized and then A is resized, read the program's grid after each.",
+      "required_observations": "A resize from either view is applied to the program's grid and the latest resize wins; neither view is refused.",
       "status": "not_run",
       "evidence": [
         {
@@ -1415,7 +1392,7 @@
         "R48"
       ],
       "oracle_class": "security integration",
-      "procedure": "From an unauthorized account attempt raw backend selection, another workspace terminal ID, forged labels, control takeover and environment path injection.",
+      "procedure": "From an unauthorized account attempt raw backend selection, another workspace terminal ID, forged labels, another account's attachment id and environment path injection.",
       "required_observations": "Gateway/host refuse access; labels are not permission; credentials/raw core endpoints are absent from browser data.",
       "status": "not_run",
       "evidence": [
@@ -1664,7 +1641,7 @@
         "R21"
       ],
       "oracle_class": "manual assistive technology",
-      "procedure": "Inspect and operate the mounted composer, file tree, picker, tabs, diff controls and terminal controller indicator with a supported screen reader.",
+      "procedure": "Inspect and operate the mounted composer, file tree, picker, tabs, diff controls and terminal attachment indicator with a supported screen reader.",
       "required_observations": "Meaningful names/roles/state are announced once; editable text is usable; cell rendering and semantic mirror do not duplicate the interface.",
       "status": "not_run",
       "evidence": [

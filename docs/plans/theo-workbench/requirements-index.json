@@ -258,7 +258,7 @@
     },
     {
       "id": "R28",
-      "title": "Control leases and observers",
+      "title": "Any view types and resizes",
       "owner": "Host authorization/input",
       "acceptance": [
         "AC-26",

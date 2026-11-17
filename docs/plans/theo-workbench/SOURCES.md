@@ -44,7 +44,7 @@ Inspected file. Uses TerminalChannel, distinguishes detach from explicit termina
 
 [terminal.rs at PR #1046 head 3a4293c](https://github.com/Travis-Gilbert/Theorem/blob/3a4293c75afa918e1196554fb59f619473d8da41/apps/theorem-ide-host/src/terminal.rs). Git blob: `51db90d94cc2c9187c5c21aadf3cad796665743c`.
 
-Inspected lines 1–260. Establishes the existing two-backend registry, binding epoch, bounded byte log, process-origin vocabulary, input ledger, and host-issued control-lease design. Native and Herdr backends have different process lifetimes. This source is newer than the indexed default-host pty.rs inspected separately.
+Inspected lines 1–260. Establishes the existing two-backend registry, binding epoch, bounded byte log, process-origin vocabulary, input ledger, and the host's input-claim design (its control lease was removed by the owner on 2026-11-16). Native and Herdr backends have different process lifetimes. This source is newer than the indexed default-host pty.rs inspected separately.
 
 <a id="s05"></a>
 
@@ -126,7 +126,7 @@ The user authorizes suitable direct source reuse in the implementation direction
 
 [Herdr Core README](https://github.com/herdrdev/herdr-core/blob/master/README.md), [product description](https://herdr.dev/core/), and [API documentation](https://github.com/herdrdev/herdr-core/blob/master/schema/README.md) were opened.
 
-The documentation describes a headless terminal runtime, an introspectable request API, attach streams, source-reported status, and snapshot/event recovery. The application-specific lease, scope, identity, and UI requirements in the spec are not claims that Herdr alone implements Theorem's policy. These are moving upstream references; record the actually deployed hc version and schema digest at Gate 0. The prior Remux generation-one protocol is not assumed compatible.
+The documentation describes a headless terminal runtime, an introspectable request API, attach streams, source-reported status, and snapshot/event recovery. The application-specific scope, identity, and UI requirements in the spec are not claims that Herdr alone implements Theorem's policy. These are moving upstream references; record the actually deployed hc version and schema digest at Gate 0. The prior Remux generation-one protocol is not assumed compatible.
 
 <a id="s16"></a>
 

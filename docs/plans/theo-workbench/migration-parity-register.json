@@ -340,7 +340,7 @@
       "id": "P11",
       "capability": "Herdr reconnect and control",
       "existing_owner": "Theorem terminal registry and Herdr Core adapter",
-      "required_parity": "Binding epochs, adoption, snapshots, stream offsets, observer/control leases, process identity and replacement semantics reach the new consumer.",
+      "required_parity": "Binding epochs, adoption, snapshots, stream offsets, input and resize from any view, process identity and replacement semantics reach the new consumer.",
       "acceptance_references": [
         "AC-31",
         "AC-32",

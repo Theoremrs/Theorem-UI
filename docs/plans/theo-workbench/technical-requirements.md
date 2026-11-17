@@ -195,12 +195,12 @@ Process output MUST pass through a tested terminal interpreter, not Markdown/esc
 
 Attach/replay/reset MUST bind environment, terminal session, backend and generation. New binding/host epochs MUST invalidate old offsets/screen projections. Reattached and replacement-process origins MUST remain distinct. No stale output may repaint a newly bound pane.
 
-## R28 — Control leases and observers
+## R28 — Any view types and resizes
 
 **Owner:** Host authorization/input  
 **Acceptance:** AC-26, AC-35, AC-36
 
-Only a valid current controller may type, paste or resize the actual terminal. Observers MUST not send human/query input or steal size control. Takeover MUST reject late input from an old lease generation. Browser focus alone MUST NOT grant remote execution rights.
+Any view attached to a terminal MAY type, paste and resize it; the latest resize wins. There are no observers, no takeover and no lease generation: the owner removed exclusive control on 2026-11-16 because one person's several views of a terminal must never lock each other out (a stale attachment left by a reloaded page held the lease and locked the live page out). Input aimed at a terminal the host has since rebound MUST be refused `stale_epoch`, and the view MUST re-attach. Renderer replies to terminal queries are discarded on Herdr terminals, where Herdr Core answers queries itself; on a native PTY only the view that last typed or resized answers. Browser focus alone MUST NOT grant remote execution rights.
 
 ## R29 — Detach is not terminate
 

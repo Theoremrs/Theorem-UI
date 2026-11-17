@@ -902,7 +902,7 @@
   },
   {
    "id": "AC-35",
-   "title": "Observer control and late input",
+   "title": "Every view types",
    "requirements": [
     "R28"
    ],
@@ -923,7 +923,7 @@
   },
   {
    "id": "AC-36",
-   "title": "Controller-independent local resizing",
+   "title": "Every view resizes",
    "requirements": [
     "R28",
     "R06"
@@ -1646,7 +1646,7 @@
    "capability": "Terminal session identity and reattach",
    "status": "has",
    "evidence": "terminal/crates/workbench-process/src/bound.rs; src/lib/workbench/terminal/session.ts",
-   "how": "Epochs, leases and adoption."
+   "how": "Epochs and adoption."
   },
   {
    "id": "P12",
