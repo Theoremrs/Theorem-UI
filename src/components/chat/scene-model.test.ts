@@ -60,12 +60,22 @@ test('only the scene page’s own messages are read', () => {
     readFrameMessage({
       type: 'sceneos:mounted',
       ok: false,
-      error: { stage: 'mount', message: 'ctx.canvas is null', line: 12, column: 4 },
+      error: {
+        stage: 'mount',
+        message: 'ctx.canvas is null',
+        line: 12,
+        column: 4,
+      },
     }),
   ).toEqual({
     type: 'sceneos:mounted',
     ok: false,
-    error: { stage: 'mount', message: 'ctx.canvas is null', line: 12, column: 4 },
+    error: {
+      stage: 'mount',
+      message: 'ctx.canvas is null',
+      line: 12,
+      column: 4,
+    },
   })
   expect(readFrameMessage({ type: 'sceneos:dismiss' })).toEqual({
     type: 'sceneos:dismiss',
@@ -94,7 +104,12 @@ test('the page’s errors are read with their stage and place, or not at all', (
   expect(
     readFrameMessage({
       type: 'sceneos:error',
-      error: { stage: 'load', message: 'Unexpected token', line: '7', column: -1 },
+      error: {
+        stage: 'load',
+        message: 'Unexpected token',
+        line: '7',
+        column: -1,
+      },
     }),
   ).toEqual({
     type: 'sceneos:error',
@@ -117,7 +132,13 @@ test('a pick names an entity, and clearing it names none', () => {
   expect(
     readFrameMessage({
       type: 'sceneos:select',
-      entity: { id: 'alu', label: 'ALU', kind: 'unit', detail: 'Adds', extra: 1 },
+      entity: {
+        id: 'alu',
+        label: 'ALU',
+        kind: 'unit',
+        detail: 'Adds',
+        extra: 1,
+      },
     }),
   ).toEqual({
     type: 'sceneos:select',
@@ -128,7 +149,10 @@ test('a pick names an entity, and clearing it names none', () => {
     entity: null,
   })
   expect(
-    readFrameMessage({ type: 'sceneos:select', entity: { id: 'pc', label: 3 } }),
+    readFrameMessage({
+      type: 'sceneos:select',
+      entity: { id: 'pc', label: 3 },
+    }),
   ).toEqual({ type: 'sceneos:select', entity: { id: 'pc' } })
   for (const entity of [undefined, { label: 'ALU' }, { id: ' ' }, 'alu'])
     expect(readFrameMessage({ type: 'sceneos:select', entity })).toBeUndefined()
@@ -138,7 +162,13 @@ test('an ask names the part asked about, and nothing without one', () => {
   expect(
     readFrameMessage({
       type: 'sceneos:ask',
-      entity: { id: 'alu', label: 'ALU', kind: 'unit', detail: 'Adds', extra: 1 },
+      entity: {
+        id: 'alu',
+        label: 'ALU',
+        kind: 'unit',
+        detail: 'Adds',
+        extra: 1,
+      },
     }),
   ).toEqual({
     type: 'sceneos:ask',
@@ -155,7 +185,9 @@ test('an error reads as one line, and asks for the code to be fixed', () => {
     line: 12,
     column: 4,
   }
-  expect(errorLine(error)).toBe('mount at line 12, column 4: ctx.canvas is null')
+  expect(errorLine(error)).toBe(
+    'mount at line 12, column 4: ctx.canvas is null',
+  )
   expect(errorLine({ stage: 'load', message: 'Unexpected token' })).toBe(
     'load: Unexpected token',
   )
@@ -165,4 +197,75 @@ test('an error reads as one line, and asks for the code to be fixed', () => {
   expect(repairRequest(undefined, error)).toContain(
     'The immersive artifact failed: mount at line 12',
   )
+})
+
+test('the page says on mount whether it restored the checkpoint, in its own words or not at all', () => {
+  expect(
+    readFrameMessage({ type: 'sceneos:mounted', ok: true, restore: 'stale' }),
+  ).toEqual({ type: 'sceneos:mounted', ok: true, restore: 'stale' })
+  // A page that does not keep checkpoints says nothing about restoring.
+  expect(readFrameMessage({ type: 'sceneos:mounted', ok: true })).toEqual({
+    type: 'sceneos:mounted',
+    ok: true,
+  })
+  expect(
+    readFrameMessage({ type: 'sceneos:mounted', ok: true, restore: 'maybe' }),
+  ).toEqual({ type: 'sceneos:mounted', ok: true })
+})
+
+test('a checkpoint is kept only when it is versioned and tied to a package', () => {
+  const good = { version: 1, packageDigest: 'd', actions: [] }
+  expect(readFrameMessage({ type: 'sceneos:state', checkpoint: good })).toEqual(
+    {
+      type: 'sceneos:state',
+      checkpoint: good,
+    },
+  )
+  for (const bad of [
+    { packageDigest: 'd' },
+    { version: 1.5, packageDigest: 'd' },
+    { version: 1 },
+    'v1',
+  ])
+    expect(
+      readFrameMessage({ type: 'sceneos:state', checkpoint: bad }),
+    ).toBeUndefined()
+})
+
+test('a still is a small image, or nothing', () => {
+  const still = 'data:image/png;base64,iVBORw0KGgo='
+  expect(readFrameMessage({ type: 'sceneos:poster', image: still })).toEqual({
+    type: 'sceneos:poster',
+    image: still,
+  })
+  for (const image of [
+    'https://example.com/x.png',
+    'data:image/svg+xml;base64,PHN2Zz4=',
+    `data:image/png;base64,${'A'.repeat(1024 * 1024 + 1)}`,
+    42,
+  ])
+    expect(readFrameMessage({ type: 'sceneos:poster', image })).toEqual({
+      type: 'sceneos:poster',
+      image: '',
+    })
+})
+
+test('a picked part carries its current values, bounded', () => {
+  const values = Object.fromEntries(
+    Array.from({ length: 40 }, (_, i) => [`v${i}`, i]),
+  )
+  const message = readFrameMessage({
+    type: 'sceneos:select',
+    entity: {
+      id: 'alu',
+      values: { ...values, note: 'x'.repeat(500), bad: { nested: true } },
+      phase: 'execute',
+    },
+  })
+  const entity = message?.type === 'sceneos:select' ? message.entity : undefined
+  expect(entity?.phase).toBe('execute')
+  const kept = entity?.values ?? {}
+  expect(Object.keys(kept).length).toBeLessThanOrEqual(32)
+  expect(kept.v0).toBe(0)
+  expect(kept.bad).toBeUndefined()
 })

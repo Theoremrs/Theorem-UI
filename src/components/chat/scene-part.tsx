@@ -33,6 +33,12 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { askAbout } from './composer-references'
 import {
+  checkpointFor,
+  checkpointKey,
+  dropCheckpoint,
+  keepCheckpoint,
+} from './scene-checkpoints'
+import {
   errorLine,
   readFrameMessage,
   repairRequest,
@@ -73,6 +79,34 @@ export const SceneHost = createContext({
 
 type Phase = 'loading' | 'ready' | 'failed'
 
+/**
+ * How many scenes in the conversation keep a live page at once. Past it, the
+ * one longest out of view is suspended: its last checkpoint is kept, a still
+ * of its stage stands in for it, and it mounts again where it was when it
+ * comes back into view. Only a page that takes checkpoints is suspended.
+ */
+export const LIVE_SCENES = 3
+
+type LiveScene = {
+  onScreen: boolean
+  seenAt: number
+  canSuspend: () => boolean
+  suspend: () => void
+}
+
+const liveScenes = new Set<LiveScene>()
+
+function suspendExcess() {
+  const offscreen = [...liveScenes]
+    .filter((scene) => !scene.onScreen && scene.canSuspend())
+    .sort((a, b) => a.seenAt - b.seenAt)
+  const excess = liveScenes.size - LIVE_SCENES
+  for (const scene of offscreen.slice(0, Math.max(0, excess))) scene.suspend()
+}
+
+/** Within this much of the viewport a scene counts as in view. */
+const NEAR_VIEW = '600px 0px'
+
 /** The error the agent's code stopped with, and whether Fix has asked about it. */
 type Fault = { error: ModuleError; asked: boolean }
 
@@ -109,21 +143,28 @@ export function SceneCard({
   const frame = useRef<HTMLIFrameElement | null>(null)
   const switching = useRef(false)
   // What the current page last drew with; empty until it can take a mount.
-  const drawnWith = useRef<string | undefined>(undefined)
+  const drawnWith = useRef<{ theme: string; asks: boolean } | undefined>(
+    undefined,
+  )
   const [phase, setPhase] = useState<Phase>('loading')
   const [layout, setLayout] = useState<SceneLayout>(inPanel ? 'full' : 'inline')
   const [fault, setFault] = useState<Fault>()
+  const [suspended, setSuspended] = useState(false)
+  // A still of the stage while the scene is suspended and until it mounts again.
+  const [poster, setPoster] = useState('')
+  // The page takes checkpoints, live theme changes and poster requests.
+  const capable = useRef(false)
+  const suspending = useRef(false)
+  const posterWaiter = useRef<((image: string) => void) | undefined>(undefined)
   const label = scene.title ?? 'Interactive scene'
   const host = useContext(SceneHost)
   const asks = onAsk !== undefined
-  // What a mount says besides the package: the colours, and whether the
-  // callout on a picked part offers Ask.
-  const mountKey = JSON.stringify([theme, asks])
+  const themeKey = JSON.stringify(theme)
 
   // The latest values the frame's listener reads, without making a new frame.
-  const latest = useRef({ scene, layout, theme, asks, mountKey, onAsk })
+  const latest = useRef({ scene, layout, theme, themeKey, asks, onAsk })
   useEffect(() => {
-    latest.current = { scene, layout, theme, asks, mountKey, onAsk }
+    latest.current = { scene, layout, theme, themeKey, asks, onAsk }
   })
 
   const post = useCallback((message: HostMessage) => {
@@ -131,6 +172,20 @@ export function SceneCard({
     // page reads only messages whose source is its parent.
     frame.current?.contentWindow?.postMessage(message, '*')
   }, [])
+
+  /** Draw the package in the current theme, from where the reader had got to. */
+  const mount = useCallback(() => {
+    const current = latest.current
+    drawnWith.current = { theme: current.themeKey, asks: current.asks }
+    const checkpoint = checkpointFor(checkpointKey(current.scene))
+    post({
+      type: 'sceneos:mount',
+      package: current.scene.scenePackage,
+      theme: current.theme,
+      ask: current.asks,
+      ...(checkpoint && { checkpoint }),
+    })
+  }, [post])
 
   const place = useCallback(
     (next: SceneLayout) => {
@@ -167,7 +222,7 @@ export function SceneCard({
   const sceneKey = scene.packageHash ?? scene.sceneId
   useLayoutEffect(() => {
     const parent = holder.current
-    if (!parent) return
+    if (!parent || suspended) return
     setPhase('loading')
     setFault(undefined)
     drawnWith.current = undefined
@@ -197,24 +252,31 @@ export function SceneCard({
       const message = readFrameMessage(event.data)
       if (!message) return
       switch (message.type) {
-        case 'sceneos:host-ready': {
+        case 'sceneos:host-ready':
           // Also after the page reloads, so it is told again.
-          const current = latest.current
-          drawnWith.current = current.mountKey
-          post({
-            type: 'sceneos:mount',
-            package: current.scene.scenePackage,
-            theme: current.theme,
-            ask: current.asks,
-          })
+          mount()
           post({ type: 'sceneos:layout', layout: latest.current.layout })
           return
-        }
         case 'sceneos:mounted':
           mounted = true
           window.clearTimeout(timer)
+          capable.current = message.restore !== undefined
+          // A checkpoint for another revision, or one the page could not
+          // replay, is not offered again.
+          if (message.restore === 'stale' || message.restore === 'incompatible')
+            dropCheckpoint(checkpointKey(latest.current.scene))
+          setPoster('')
           setPhase(message.ok ? 'ready' : 'failed')
           setFault(message.error && { error: message.error, asked: false })
+          return
+        case 'sceneos:state':
+          keepCheckpoint(
+            checkpointKey(latest.current.scene),
+            message.checkpoint,
+          )
+          return
+        case 'sceneos:poster':
+          posterWaiter.current?.(message.image)
           return
         case 'sceneos:error':
           setFault({ error: message.error, asked: false })
@@ -239,22 +301,81 @@ export function SceneCard({
     }
     // `label` names the frame when it is made; a later title does not remake it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sceneKey, host, post, collapse])
+  }, [sceneKey, host, post, collapse, mount, suspended])
 
-  // A palette or mode switch, or a conversation that starts or stops taking
-  // questions: the page tears the run down and draws the package again, in
-  // the same frame.
+  // A palette or mode switch repaints the running scene in place. A
+  // conversation that starts or stops taking questions, or a page that cannot
+  // repaint, draws the package again in the same frame, from the last
+  // checkpoint when the page keeps them.
   useEffect(() => {
     const drawn = drawnWith.current
-    if (drawn === undefined || drawn === mountKey) return
-    drawnWith.current = mountKey
-    post({
-      type: 'sceneos:mount',
-      package: latest.current.scene.scenePackage,
-      theme: latest.current.theme,
-      ask: latest.current.asks,
+    if (drawn === undefined) return
+    if (drawn.theme === themeKey && drawn.asks === asks) return
+    if (capable.current && drawn.asks === asks) {
+      drawnWith.current = { theme: themeKey, asks }
+      post({ type: 'sceneos:theme', theme: latest.current.theme })
+      return
+    }
+    mount()
+  }, [themeKey, asks, post, mount])
+
+  // Out of view in a long conversation: past LIVE_SCENES live pages, the
+  // scene longest out of view gives up its page for a still of its stage.
+  const suspend = useCallback(async () => {
+    const expanded = () => latest.current.layout === 'full'
+    if (suspending.current || expanded()) return
+    suspending.current = true
+    const image = await new Promise<string>((resolve) => {
+      const timer = window.setTimeout(() => resolve(''), 1500)
+      posterWaiter.current = (still) => {
+        window.clearTimeout(timer)
+        resolve(still)
+      }
+      post({ type: 'sceneos:poster-request' })
     })
-  }, [mountKey, post])
+    posterWaiter.current = undefined
+    suspending.current = false
+    // Expanded while the still was taken: it stays live.
+    if (expanded()) return
+    setPoster(image)
+    setSuspended(true)
+  }, [post])
+
+  useEffect(() => {
+    const node = dialog.current
+    if (inPanel || !node || typeof IntersectionObserver === 'undefined') return
+    if (suspended) {
+      // Back in view: mount again, where the reader was.
+      const observer = new IntersectionObserver(
+        ([entry]) => entry?.isIntersecting && setSuspended(false),
+        { rootMargin: NEAR_VIEW },
+      )
+      observer.observe(node)
+      return () => observer.disconnect()
+    }
+    const live: LiveScene = {
+      onScreen: true,
+      seenAt: Date.now(),
+      canSuspend: () => capable.current,
+      suspend: () => void suspend(),
+    }
+    liveScenes.add(live)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        live.onScreen =
+          Boolean(entry?.isIntersecting) || latest.current.layout === 'full'
+        if (live.onScreen) live.seenAt = Date.now()
+        else suspendExcess()
+      },
+      { rootMargin: NEAR_VIEW },
+    )
+    observer.observe(node)
+    suspendExcess()
+    return () => {
+      observer.disconnect()
+      liveScenes.delete(live)
+    }
+  }, [inPanel, suspended, suspend])
 
   // Escape asks a modal dialog to close: collapse instead. Where the browser
   // does not let that be refused, the dialog closes and is shown again inline.
@@ -301,6 +422,7 @@ export function SceneCard({
       data-scene-id={scene.sceneId}
       data-layout={layout}
       data-phase={phase}
+      data-suspended={suspended || undefined}
       className={cn(
         'relative max-w-none flex-col overflow-hidden p-0 text-ink open:flex',
         inPanel
@@ -325,7 +447,15 @@ export function SceneCard({
         )}
       >
         <div ref={holder} className="size-full" />
-        {phase === 'loading' && (
+        {poster && (suspended || phase === 'loading') && (
+          // The stage as it was, while the scene is away and until it is back.
+          <img
+            src={poster}
+            alt=""
+            className="pointer-events-none absolute inset-0 size-full object-contain"
+          />
+        )}
+        {phase === 'loading' && !poster && (
           <p
             role="status"
             className="pointer-events-none absolute inset-0 flex items-center justify-center text-sm text-ink-faint"
