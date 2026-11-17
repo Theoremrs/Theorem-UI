@@ -172,9 +172,11 @@ async function run(
   const build = hosted.hostedBuild(page)
   const state = pinnedAppState(null)
   await state.ready
+  const declarations = declarationsOf(html)
   // A name no App has, so the run can never open an App's own records.
   const databases = documentAppDatabases(`check-${crypto.randomUUID()}`, {
     open: openInMemory,
+    historyDays: declarations.dbHistoryDays,
   })
   const url = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
   const frame = document.createElement('iframe')
@@ -188,7 +190,7 @@ async function run(
     ...pinnedAppHost(
       html,
       'check',
-      declarationsOf(html).capabilities,
+      declarations.capabilities,
       state.state,
       databases,
     ),

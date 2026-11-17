@@ -209,6 +209,11 @@ function AppPreview({
     [app.documentId],
   )
   useEffect(() => () => databases.dispose(), [databases])
+  // They outlive a revision, so they are told each one's history windows. The
+  // frame reaches a database only after this runs for the source it shows.
+  useEffect(() => {
+    if (declarations) databases.setHistoryDays(declarations.dbHistoryDays)
+  }, [databases, declarations])
   const onError = useCallback(
     (failure: FrameError) => {
       if (!shown) return

@@ -119,9 +119,18 @@ export function PinnedAppFrame({
   // The App's records as they are now, for reading: a saved revision keeps
   // its source, and an App keeps one set of data across revisions.
   const documentId = artifact.documentId ?? artifact.artifactId
+  const declarations = useMemo(
+    () => appDeclarations(artifact.content),
+    [artifact.content],
+  )
+  // It reports the window this revision declared, and never compacts.
   const databases = useMemo(
-    () => documentAppDatabases(documentId, { writable: false }),
-    [documentId],
+    () =>
+      documentAppDatabases(documentId, {
+        writable: false,
+        historyDays: declarations.dbHistoryDays,
+      }),
+    [documentId, declarations],
   )
   useEffect(() => () => databases.dispose(), [databases])
   const host = useMemo(
@@ -130,7 +139,7 @@ export function PinnedAppFrame({
         ...pinnedAppHost(
           artifact.content,
           artifact.documentId ?? artifact.artifactId,
-          appDeclarations(artifact.content).capabilities,
+          declarations.capabilities,
           state.state,
           databases,
         ),
@@ -140,6 +149,7 @@ export function PinnedAppFrame({
       artifact.content,
       artifact.documentId,
       artifact.artifactId,
+      declarations,
       state,
       databases,
       onSelection,

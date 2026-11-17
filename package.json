@@ -106,7 +106,7 @@
     "@prosemirror-adapter/react": "0.5.5",
     "@puckeditor/core": "0.24.0",
     "@radix-ui/react-use-size": "1.1.5",
-    "@rustyreddb/browser": "file:vendor/rustyreddb-browser-0.1.0-beta.2.tgz",
+    "@rustyreddb/browser": "file:vendor/rustyreddb-browser-0.2.0.tgz",
     "@rustyreddb/node": "0.1.0-beta.2",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.1.18",
