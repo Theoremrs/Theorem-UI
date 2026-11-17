@@ -22,6 +22,22 @@ export type ProposalDecision = {
   currentRevision: number | null
   changeId: string | null
   refusal: { code: string; detail: string } | undefined
+  /** What the approval made beyond the saved fields: the task, once made. */
+  task: MadeTask | undefined
+}
+
+/** The task a proposal would add to the person's work tracker. */
+export type ProposedTask = {
+  title: string
+  details: string | undefined
+  workItemId: string
+}
+
+/** The task an approval made, as the work tracker answered. */
+export type MadeTask = {
+  workItemId: string
+  key: string
+  title: string
 }
 
 export type ProposalField = {
@@ -47,6 +63,8 @@ export type RecordProposal = {
   applied: boolean
   decision: ProposalDecision | null
   createdAtMs: number
+  /** Set when approving also adds a task to the work tracker. */
+  task: ProposedTask | undefined
 }
 
 const STATUSES: ProposalStatus[] = [
@@ -75,7 +93,27 @@ function decodeDecision(raw: unknown): ProposalDecision | null {
     currentRevision: whole(either(raw, 'currentRevision', 'current_revision')),
     changeId: text(either(raw, 'changeId', 'change_id')) ?? null,
     refusal,
+    task: decodeMadeTask(raw.result),
   }
+}
+
+function decodeMadeTask(raw: unknown): MadeTask | undefined {
+  if (!isObject(raw) || raw.kind !== 'task') return undefined
+  const workItemId = text(either(raw, 'workItemId', 'work_item_id'))
+  if (!workItemId) return undefined
+  return {
+    workItemId,
+    key: text(raw.key) ?? '',
+    title: text(raw.title) ?? '',
+  }
+}
+
+function decodeProposedTask(raw: unknown): ProposedTask | undefined {
+  if (!isObject(raw) || raw.kind !== 'task') return undefined
+  const title = text(raw.title)
+  const workItemId = text(either(raw, 'workItemId', 'work_item_id'))
+  if (!title || !workItemId) return undefined
+  return { title, details: text(raw.details), workItemId }
 }
 
 /** A proposal as the server sends it; anything that is not one is `undefined`. */
@@ -116,6 +154,7 @@ export function decodeProposal(raw: unknown): RecordProposal | undefined {
     applied: raw.applied === true,
     decision: decodeDecision(raw.decision),
     createdAtMs: Number(raw.createdAtMs) || 0,
+    task: decodeProposedTask(raw.action),
   }
 }
 
@@ -170,6 +209,10 @@ export function outcomeWords(proposal: RecordProposal): string | undefined {
     case 'pending_approval':
       return undefined
     case 'applied':
+      if (decision?.task)
+        return `Added ${decision.task.key || 'the task'} to your work tracker and saved it on this ${proposal.objectType.toLowerCase()}.`
+      if (proposal.task)
+        return `Added the task to your work tracker and saved it on this ${proposal.objectType.toLowerCase()}.`
       return decision?.afterRevision != null
         ? `Saved at revision ${decision.afterRevision}`
         : 'Saved'

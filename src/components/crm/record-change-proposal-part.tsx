@@ -1,10 +1,12 @@
 // SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, CircleAlert, FilePen } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowRight, CircleAlert, FilePen, ListTodo } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
 import { useDataModel } from '@/components/records/queries'
+import { workItemId } from '@/components/work/route'
 import { RecordLink } from './context-manifest-part'
 import { decideProposal, problemCode, readProposal } from './proposal-api'
 import {
@@ -61,18 +63,32 @@ export function RecordChangeProposalView({
       ? 'This was already decided. Reload to see what happened.'
       : describeError(decide.error))
   const type = typeNamed(proposal.objectType)
+  const task = proposal.task
+  const made = proposal.decision?.task
+  // A task proposal's only field is the task's id; the task itself is shown.
+  const fields = task
+    ? proposal.fields.filter((field) => field.to !== task.workItemId)
+    : proposal.fields
 
   return (
     <section
-      aria-label={`Proposed change to ${proposal.objectType}`}
+      aria-label={
+        task
+          ? `Proposed task for ${proposal.objectType}`
+          : `Proposed change to ${proposal.objectType}`
+      }
       data-part="theorem-record_change_proposal"
       data-status={proposal.status}
       className="my-2 flex flex-col gap-2.5 rounded-md border border-separator bg-raised px-3 py-2.5 text-[13px]"
     >
       <h4 className="flex items-center gap-1.5 text-xs font-medium text-ink">
-        <FilePen aria-hidden className="size-3.5 text-ink-muted" />
+        {task ? (
+          <ListTodo aria-hidden className="size-3.5 text-ink-muted" />
+        ) : (
+          <FilePen aria-hidden className="size-3.5 text-ink-muted" />
+        )}
         <span>
-          Proposed change to{' '}
+          {task ? 'Proposed task for' : 'Proposed change to'}{' '}
           <RecordLink
             type={type}
             typeName={proposal.objectType}
@@ -83,26 +99,37 @@ export function RecordChangeProposalView({
         </span>
       </h4>
 
-      <ul aria-label="Fields to change" className="flex flex-col gap-1.5">
-        {proposal.fields.map((field) => (
-          <li
-            key={field.key}
-            className="flex flex-wrap items-baseline gap-x-2 leading-5"
-          >
-            <span className="font-medium text-ink">{field.label}</span>
-            <span className="flex min-w-0 items-baseline gap-1.5">
-              <span className="text-ink-muted line-through decoration-ink-faint">
-                {valueWords(field.from)}
+      {task && (
+        <div aria-label="Task" className="flex flex-col gap-0.5 leading-5">
+          <span className="font-medium text-ink">{task.title}</span>
+          {task.details && (
+            <span className="text-xs text-ink-muted">{task.details}</span>
+          )}
+        </div>
+      )}
+
+      {fields.length > 0 && (
+        <ul aria-label="Fields to change" className="flex flex-col gap-1.5">
+          {fields.map((field) => (
+            <li
+              key={field.key}
+              className="flex flex-wrap items-baseline gap-x-2 leading-5"
+            >
+              <span className="font-medium text-ink">{field.label}</span>
+              <span className="flex min-w-0 items-baseline gap-1.5">
+                <span className="text-ink-muted line-through decoration-ink-faint">
+                  {valueWords(field.from)}
+                </span>
+                <ArrowRight
+                  aria-hidden
+                  className="size-3 shrink-0 self-center text-ink-faint"
+                />
+                <span className="text-ink">{valueWords(field.to)}</span>
               </span>
-              <ArrowRight
-                aria-hidden
-                className="size-3 shrink-0 self-center text-ink-faint"
-              />
-              <span className="text-ink">{valueWords(field.to)}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {proposal.reason && (
         <p className="text-xs leading-5 text-ink-muted">{proposal.reason}</p>
@@ -158,7 +185,9 @@ export function RecordChangeProposalView({
             <span role="status" className="text-xs text-ink-muted">
               {decide.isPending
                 ? 'Sending your answer'
-                : 'Waiting for you. Nothing is saved until you approve.'}
+                : task
+                  ? 'Waiting for you. No task is made until you approve.'
+                  : 'Waiting for you. Nothing is saved until you approve.'}
             </span>
           </div>
           {failure && (
@@ -175,6 +204,18 @@ export function RecordChangeProposalView({
         outcome && (
           <p role="status" className="text-xs leading-5 text-ink">
             {outcome}
+            {made && (
+              <>
+                {' '}
+                <Link
+                  to="/index"
+                  search={{ item: workItemId(made.workItemId) }}
+                  className="font-medium underline decoration-ink-faint underline-offset-2"
+                >
+                  Open {made.key || 'the task'}
+                </Link>
+              </>
+            )}
           </p>
         )
       )}

@@ -289,3 +289,80 @@ test('a payload that is not a proposal draws nothing, and the outcome part draws
   ))
   expect(outcome.container.textContent).toBe('')
 })
+
+const taskProposal = (over: Record<string, unknown> = {}) =>
+  proposal({
+    fields: [{ key: 'task', label: 'Task', from: null, to: 'wi_materials' }],
+    reason: 'You owe Noor the materials list.',
+    evidence: [],
+    action: {
+      kind: 'task',
+      title: 'Send Noor the materials list',
+      details: 'Clay, glazes and kiln times.',
+      work_item_id: 'wi_materials',
+    },
+    ...over,
+  })
+
+test('a proposed task shows the task, not its id, and says no task is made yet', async () => {
+  current = { proposal: taskProposal() }
+  const { container } = await part({ proposal: taskProposal() })
+  expect(container.textContent).toContain('Proposed task for')
+  const task = container.querySelector('[aria-label="Task"]')!
+  expect(task.textContent).toContain('Send Noor the materials list')
+  expect(task.textContent).toContain('Clay, glazes and kiln times.')
+  expect(
+    container.querySelector('ul[aria-label="Fields to change"]'),
+  ).toBeNull()
+  expect(container.textContent).not.toContain('wi_materials')
+  expect(container.textContent).toContain(
+    'Waiting for you. No task is made until you approve.',
+  )
+})
+
+test('an approved task says which task was made and opens it in the work tracker', async () => {
+  current = { proposal: taskProposal() }
+  decision = {
+    status: 201,
+    body: {
+      decision: 'approve',
+      proposal: taskProposal({
+        status: 'applied',
+        applied: true,
+        decision: {
+          decision: 'approve',
+          decided_at_ms: 5,
+          before_revision: 9,
+          after_revision: 10,
+          result: {
+            kind: 'task',
+            workItemId: 'wi_materials',
+            key: 'T-4',
+            title: 'Send Noor the materials list',
+          },
+        },
+      }),
+    },
+  }
+  const { container } = await part({ proposal: taskProposal() })
+  await click(button(container, 'Approve'))
+  await waitFor(() =>
+    container.textContent.includes('Added T-4 to your work tracker'),
+  )
+  const open = [...container.querySelectorAll('a')].find(
+    (a) => a.textContent === 'Open T-4',
+  )!
+  expect(decodeURIComponent(open.getAttribute('href')!)).toBe(
+    '/index?item=work:wi_materials',
+  )
+})
+
+test('a task proposal decodes its task and an approval its result', () => {
+  const decoded = decodeProposalPart({ proposal: taskProposal() })!
+  expect(decoded.task).toEqual({
+    title: 'Send Noor the materials list',
+    details: 'Clay, glazes and kiln times.',
+    workItemId: 'wi_materials',
+  })
+  expect(decodeProposalPart({ proposal: proposal() })!.task).toBeUndefined()
+})
