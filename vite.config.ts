@@ -52,6 +52,33 @@ const diffsServerStub: Plugin = {
   },
 }
 
+// The App graph database and the workbench's device checkpoint keep their
+// records in @rustyreddb/browser: a dedicated worker of the page, on the origin
+// private file system. No server opens one — a Worker has neither OPFS nor a
+// page Worker — but the lazy imports in blocks/app-db and workbench/layout/
+// checkpoint still pull its wasm into the server bundle. The vendored 0.2.0
+// tarball grew that wasm to ~16.5 MiB, which alone pushed the Worker past
+// Cloudflare's 63.9 MiB uncompressed limit and failed every deploy (code
+// 10027). Servers get inert stubs; the browser keeps the real package, lazily.
+const rustyredServerStub: Plugin = {
+  name: 'theorem:rustyred-server-stub',
+  enforce: 'pre',
+  applyToEnvironment: (environment) => environment.name !== 'client',
+  resolveId(id) {
+    if (id === '@rustyreddb/browser' || id.startsWith('@rustyreddb/browser/'))
+      return '\0theorem:rustyred-browser'
+  },
+  load(id) {
+    if (id === '\0theorem:rustyred-browser')
+      return `const unavailable = () =>
+  Promise.reject(new Error('RustyRedDB runs in a browser worker, not on the server.'))
+export const open = unavailable
+export const inMemory = unavailable
+export default ''
+`
+  },
+}
+
 // The personal Theorem serves the API and is its OAuth issuer; it grants the
 // theorem-ui client models:invoke.
 const theoremVars = {
@@ -84,6 +111,7 @@ const config = defineConfig({
   plugins: [
     cloudflare && loroForWorkers,
     diffsServerStub,
+    rustyredServerStub,
     tailwindcss(),
     // Noun icons are filled contours on a 100 viewBox with no declared fill.
     svgr({
