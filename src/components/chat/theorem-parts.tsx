@@ -47,14 +47,8 @@ import { PlanToolCall } from '@/components/chat/plan-graph'
 import { useRevealFile } from '@/components/ide/follow'
 import { openOf, pathOf } from '@/components/terminal/terminal-code'
 import type { Open } from '@/components/terminal/terminal-code'
-import { askAbout } from '@/components/chat/composer-references'
-import {
-  readScene,
-  repairRequest,
-  SCENE_PART,
-} from '@/components/chat/scene-model'
-import { SceneCard } from '@/components/chat/scene-part'
-import { useSceneTheme } from '@/components/chat/scene-theme'
+import { readScene, SCENE_PART } from '@/components/chat/scene-model'
+import { SceneInReply } from '@/components/chat/scene-part'
 import { Icon } from '@/components/icons'
 import {
   Trace,
@@ -1018,40 +1012,11 @@ const UserInputPart: DataMessagePartComponent = ({ data }) => {
 
 /* --------------------------------------------------------------------- scenes */
 
-/**
- * A reply's interactive scene (scene-part.tsx), drawn above its text. Fix
- * sends the failure to the agent as the next turn; a pick becomes a
- * reference to this reply, with what was picked as its excerpt.
- */
+/** A reply's interactive scene (scene-part.tsx), drawn above its text. */
 const ScenePart: DataMessagePartComponent = ({ data }) => {
-  const aui = useAui()
-  const theme = useSceneTheme()
-  const threadId = useAuiState((s) => s.threadListItem.remoteId)
-  const messageId = useAuiState((s) => s.message.id)
   const scene = readScene(data)
   if (!scene) return <PartNotice name={SCENE_PART} />
-  return (
-    <SceneCard
-      scene={scene}
-      theme={theme}
-      onRepair={(error) => aui.thread.append(repairRequest(scene.title, error))}
-      onAsk={
-        threadId
-          ? (entity) =>
-              askAbout({
-                label: `${scene.title ?? 'Scene'}: ${entity.label ?? entity.id}`,
-                excerpt: JSON.stringify({
-                  scene: { sceneId: scene.sceneId, title: scene.title },
-                  entity,
-                }),
-                location: {
-                  resource: { kind: 'message', threadId, messageId },
-                },
-              })
-          : undefined
-      }
-    />
-  )
+  return <SceneInReply scene={scene} />
 }
 
 /** Inspector-only or figure-only parts: retained inert, never drawn in the transcript. */

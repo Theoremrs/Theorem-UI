@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { ArtifactActions } from './artifact-actions'
+import { fillsPanel } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
 import { useArtifactView } from './artifact-view'
 import { thingProps } from '@/lib/face/things'
@@ -69,6 +70,7 @@ export function ArtifactPanel({
   const artifact = versions[index] ?? newest
   if (!artifact || !newest) return null
   const latest = artifact === newest
+  const fills = fillsPanel(artifact, 'interactive')
   const goTo = (next: number) =>
     select(
       artifactId,
@@ -101,20 +103,36 @@ export function ArtifactPanel({
         onClose={onClose}
       />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6">
+      <div
+        className={cn(
+          'min-h-0 flex-1',
+          fills ? 'flex flex-col' : 'overflow-y-auto',
+        )}
+      >
+        <div
+          className={cn(
+            fills
+              ? 'flex min-h-0 flex-1 flex-col'
+              : 'mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6',
+          )}
+        >
           {/* The newest revision stays mounted while an older one is shown,
               so a live session and an unsaved edit outlast a look back. */}
-          <div hidden={!latest}>
+          <div
+            hidden={!latest}
+            className={cn(fills && latest && 'min-h-0 flex-1')}
+          >
             <ArtifactView artifact={newest} distance="interactive" latest />
           </div>
           {!latest && (
-            <ArtifactView
-              key={artifact.revision}
-              artifact={artifact}
-              distance="interactive"
-              latest={false}
-            />
+            <div className={cn(fills && 'min-h-0 flex-1')}>
+              <ArtifactView
+                key={artifact.revision}
+                artifact={artifact}
+                distance="interactive"
+                latest={false}
+              />
+            </div>
           )}
         </div>
       </div>

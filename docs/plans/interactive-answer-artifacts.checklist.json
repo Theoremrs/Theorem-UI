@@ -1,0 +1,179 @@
+{
+  "spec": "Owner's artifact breakdown of 2026-11-17 plus PLAN-THEOREM-INTERACTIVE-ANSWER-ARTIFACTS-2026-11-17 (docs/plans/interactive-answer-artifacts-plan.md)",
+  "rules": [
+    "built is the implementer's report; review is set only by the owner.",
+    "Subjective presentation gets an owner-picked visual target (labelled fixture studies) before it spreads to other artifact kinds.",
+    "Fixture evidence proves rendering only. W0/W7 rows need live runs with the real agent across varied questions; never the same question twice, never a stand-in page presented as the feature.",
+    "The agent writes artifact code; the sandboxed frame is the boundary. Checks only help it repair (load/runtime errors, size, deadlines)."
+  ],
+  "out_of_scope_here": [
+    "Artifact browser / Ratatui-derived thread list (icons, left rail, status hierarchy): another session owns it"
+  ],
+  "items": [
+    {
+      "id": "DOC-01",
+      "area": "policy",
+      "claim": "Presentation rules and the three-context model written down (docs/plans/interactive-answer-artifacts.md)",
+      "built": "done",
+      "review": "awaiting owner review"
+    },
+    {
+      "id": "FIX-01",
+      "area": "fixture",
+      "claim": "Scene idle: the real SceneOS host page (Theorem main build, revision and hash recorded) drawing a compiled scene inline in a reply",
+      "built": "done: stories scene-cpu-inline and scene-adder-inline draw host.html from Theorem main a7ea1f19d2 (sha256 recorded in src/stories/fixtures/scenes.ts)",
+      "review": ""
+    },
+    {
+      "id": "FIX-02",
+      "area": "fixture",
+      "claim": "Scene with a part selected: the page's callout with Ask",
+      "built": "done: ALU picked, the page draws its callout with Ask (the story thread has a saved id, as a real one does)",
+      "review": ""
+    },
+    {
+      "id": "FIX-03",
+      "area": "fixture",
+      "claim": "Scene expanded: the same frame in the top layer",
+      "built": "done: scene-cpu-expanded; also scene-cpu-panel, the same scene in the workspace panel",
+      "review": ""
+    },
+    {
+      "id": "FIX-04",
+      "area": "fixture",
+      "claim": "Scene failure: the agent's code throws; the error line and Fix under a scene that still draws, and a failed mount",
+      "built": "done: scene-adder-throws (error line and Fix under a scene that still draws, after three steps) and scene-adder-load-fails (failed mount)",
+      "review": ""
+    },
+    {
+      "id": "FIX-05",
+      "area": "fixture",
+      "claim": "Scene fallback: the page never loads (or there is no GPU) and the fallback text explains it",
+      "built": "partial: scene-host-unreachable (the page never loads, fallback text shown). No-GPU fallback not covered: SceneOS needs a forced-no-WebGL switch to fixture it",
+      "review": ""
+    },
+    {
+      "id": "FIX-06",
+      "area": "fixture",
+      "claim": "UI artifact inline: an OpenUI program in a reply as it is today, plus chromeless studies for the owner to pick",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "FIX-07",
+      "area": "fixture",
+      "claim": "UI artifact expanded: the same artifact in the dock panel",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "FIX-08",
+      "area": "fixture",
+      "claim": "UI artifact failure: an unreadable program",
+      "built": "done (existing story artifact-unreadable)",
+      "review": ""
+    },
+    {
+      "id": "FIX-09",
+      "area": "evidence",
+      "claim": "Captures of FIX-01..08 in dark and light, full page and tight crop, labelled on the image",
+      "built": "partial: 26 scene captures in docs/plans/evidence/scenes-2026-11-17/ (dark and light, full and crop, labelled RENDER on the image). UI artifact captures wait on FIX-06/07",
+      "review": ""
+    },
+    {
+      "id": "P1",
+      "area": "scene presentation",
+      "claim": "Inline scene finished: chromeless, part of the answer, minimal material plane, no title bar or Open-first model; loading/failed/fallback states consistent",
+      "built": "studies built: plane and open over today (scene-study-*), sent to the owner; implementation in SceneOS and scene-part.tsx waits on the pick",
+      "review": "awaiting owner pick"
+    },
+    {
+      "id": "P2",
+      "area": "contract",
+      "claim": "Invisible artifact frame contract shared by every kind: sizing, focus, expansion, lifecycle, revision identity, Ask/continuity hooks, theme",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "P3",
+      "area": "UI artifacts",
+      "claim": "UI artifacts on the shared contract, chromeless inline per the picked study",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W0",
+      "area": "baseline",
+      "claim": "Running frontend/backend revisions and SceneOS bundle hash recorded; a fresh real conversation creates and operates a scene on them",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W1",
+      "area": "receipts and bounds",
+      "claim": "Receipts separate admitted from mounted/running, over the App client-check path; authored code runs in a terminable worker with deadlines and size bounds; the agent gets the failure and can repair on a new revision",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W2-backend",
+      "area": "artifact identity",
+      "claim": "show_scene emits a canonical theorem-artifact envelope (identity, revision, lifecycle, run, payload hash) alongside the scene package",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W2-ui",
+      "area": "artifact identity",
+      "claim": "A SceneOS contribution in the artifact registry delegating to SceneCard (chromeless, no Interact gate); scenes enumerate with the thread's artifacts, open in the workspace, export source; saved theorem-scene-v1 parts read through a compatibility reader with stable identity and no duplicates on replay",
+      "built": "built: theorem.scene contribution (bare in the reply, fills a panel, no Interact), saved theorem-scene-v1 parts read as scene:<sceneId> artifacts with the package hash as revision, deduped on replay and against an envelope that carries the same package; export is the package JSON; kind labels Scene and Interface. Tests: src/components/artifacts/scene-artifact.test.ts",
+      "review": ""
+    },
+    {
+      "id": "W3",
+      "area": "state",
+      "claim": "Versioned checkpoint/restore; theme and Ask changes without remounting the runtime; restore after navigation and reload; stale and incompatible checkpoints handled",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W4",
+      "area": "follow-up",
+      "claim": "Agent reads definition and bounded runtime state, applies ScenePatchV1 to the named instance with revision checks, gets an applied receipt; Ask carries exact revision, checkpoint digest, entity and current values",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W5",
+      "area": "long chats",
+      "claim": "Offscreen scenes suspend and keep a still preview; bounded live instances and trace; composer latency measured with 0/1/many scenes",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W6",
+      "area": "generality",
+      "claim": "A second, non-CPU subject authored by a real model through the same path; continuous-state contract evaluated",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W7",
+      "area": "release",
+      "claim": "Real-agent signed-in browser journey (plan section 8) on recorded versions",
+      "built": "pending",
+      "review": ""
+    },
+    {
+      "id": "W8",
+      "area": "native",
+      "claim": "Same artifact revision and checkpoint in native Theo/Platinum",
+      "built": "pending",
+      "review": ""
+    }
+  ],
+  "contracts": {
+    "scene-artifact-envelope": "A theorem-artifact part with artifactKind \"scene\" carries, as its payload, exactly the theorem-scene-v1 payload a theorem-scene part carries (contractVersion, sceneId, title, fallbackText, packageHash, scenePackage). The UI reads it as the same scene; a theorem-scene part with the same packageHash beside it is not listed twice.",
+    "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body."
+  }
+}

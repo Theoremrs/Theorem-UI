@@ -23,6 +23,8 @@ import {
   UnreadableNotebook,
 } from './notebook-artifact'
 import { OpenUIArtifact } from './openui/renderer'
+import { SceneCard, SceneInReply } from '@/components/chat/scene-part'
+import { useSceneTheme } from '@/components/chat/scene-theme'
 import {
   mountRenderers,
   rendererFor,
@@ -146,18 +148,47 @@ const MarimoArtifact: FC<RendererProps> = ({ artifact }) =>
     <UnreadableNotebook artifact={artifact} />
   )
 
-mountRenderers({
-  'theorem-document.excerpt': DocumentExcerpt,
-  'theorem-document': DocumentArtifact,
-  'theorem-code.excerpt': CodeExcerpt,
-  'theorem-code': CodeArtifact,
-  'theorem-diagram': DiagramArtifact,
-  'theorem-app.preview': AppPreviewArtifact,
-  'theorem-app': AppArtifact,
-  'theorem-observable': ObservableArtifact,
-  'theorem-marimo': MarimoArtifact,
-  'theorem-openui': OpenUIArtifact,
-})
+/** A scene in its reply: the whole surface, wired to the conversation. */
+const SceneReplyArtifact: FC<RendererProps> = ({ artifact }) =>
+  artifact.scene ? (
+    <SceneInReply scene={artifact.scene} />
+  ) : (
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
+  )
+
+/** A scene filling a panel, in its full layout. */
+const SceneArtifact: FC<RendererProps> = ({ artifact }) => {
+  const theme = useSceneTheme()
+  return artifact.scene ? (
+    <SceneCard scene={artifact.scene} theme={theme} placement="panel" />
+  ) : (
+    <TheoremCard
+      artifact={artifact}
+      reason="The scene payload could not be read"
+    />
+  )
+}
+
+mountRenderers(
+  {
+    'theorem-document.excerpt': DocumentExcerpt,
+    'theorem-document': DocumentArtifact,
+    'theorem-code.excerpt': CodeExcerpt,
+    'theorem-code': CodeArtifact,
+    'theorem-diagram': DiagramArtifact,
+    'theorem-app.preview': AppPreviewArtifact,
+    'theorem-app': AppArtifact,
+    'theorem-observable': ObservableArtifact,
+    'theorem-marimo': MarimoArtifact,
+    'theorem-openui': OpenUIArtifact,
+    'theorem-scene.reply': SceneReplyArtifact,
+    'theorem-scene': SceneArtifact,
+  },
+  { bare: ['theorem-scene.reply'], fills: ['theorem-scene'] },
+)
 
 /** The Theorem card: what the artifact is, its summary, and why no renderer showed it. */
 const TheoremCard: FC<{ artifact: TheoremArtifact; reason?: string }> = ({

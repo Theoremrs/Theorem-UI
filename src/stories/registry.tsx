@@ -119,6 +119,7 @@ import {
 } from './fixtures/activity'
 import type { ActivityState } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
+import { SCENE_STORY_RENDERS } from './scene-stories'
 import type { ArtifactStory } from './fixtures/artifacts'
 import { documentFixtures } from './fixtures/notes'
 import { PROGRAM_PART } from './fixtures/program'
@@ -1099,6 +1100,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   ...Object.fromEntries(
     ARTIFACT_STORIES.map((story) => [story.id, artifactStory(story)]),
   ),
+  ...SCENE_STORY_RENDERS,
   'activity-approval-high': threadStory(
     'approval',
     activityMessages('approval', 'high'),
