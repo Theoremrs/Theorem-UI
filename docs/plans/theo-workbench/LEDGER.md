@@ -74,3 +74,9 @@ Not adopted, and why: `edtui` (modal editor, hard `crossterm` and clipboard depe
 | Row | Collage (sha256) | Sealed | By | Note |
 |---|---|---|---|---|
 | L03 Tool picker | `docs/plans/evidence/workbench-picker/collage.png` (`f8b0af24fabc53452448a21ff6a53f4188173b9ff15233f6f918cd8bc484ce3e`) | 2026-11-15 | The owner, by instruction in chat | Sealed without the collage being opened: the owner could not view it at the time and said not to let that hold the work up. A later look may reopen this row. A render at `8b31f327` differs from the sealed one in 7,602 pixels, all in grid rows 26 to 28: the Theo composer under the picker, whose status line has since moved inside its box. The picker's own cells are unchanged, so the collage and the committed render are kept as sealed. |
+
+## Gaps that are not a donor's fault
+
+| # | Gap | Where it stands | What would close it |
+|---|---|---|---|
+| G01 | The host terminal ledger carries no agent input kind | The wire's `InputKind` is `human` or `reply` and nothing else (`terminal/crates/workbench-core/src/effect.rs`). The agent's identity does not travel on the input kind: it travels on the effect envelope, where `actor == Agent` is asserted (`workbench-process/tests/process.rs`, commit `c1f4b02b`). So `code.send` and `code.stop` act on coding sessions only and refuse a plain shell with the reason, and the host never sees a word it would have to attribute. An input kind that names the agent needs the host to offer one — backend work of the same kind as ARCHITECTURE section 11 item 5, not a frontend change. L24's missing SDK calls are a separate gap and are not restated here. | A backend that advertises an agent input kind on the terminal path, then a `workbench-process` case that sends one and reads it back. Recorded at `a9e9dd88` on 2026-11-17.
