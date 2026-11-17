@@ -3011,7 +3011,10 @@ impl Screen {
                 .parent_element()
                 .and_then(|wrapper| {
                     wrapper
-                        .query_selector("textarea[aria-label='Workbench input']")
+                        .query_selector(&format!(
+                            "textarea[aria-label='{} input']",
+                            theorem_workbench_core::panels::WORKBENCH_LABEL
+                        ))
                         .ok()
                         .flatten()
                 })

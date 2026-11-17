@@ -6,6 +6,7 @@ import { useShell } from '@/components/shell/shell-state'
 import { cn } from '@/lib/utils'
 import type { Placement } from './placement'
 import { Workbench } from './workbench'
+import { WORKBENCH_LABEL } from './label'
 
 /** The narrowest the docked workbench gets beside the sheet; its panels collapse below their minimums. */
 const MIN_WIDTH = 360
@@ -118,7 +119,7 @@ function EdgeHandle({
       ref={handle}
       role="separator"
       aria-orientation={axis === 'x' ? 'vertical' : 'horizontal'}
-      aria-label={axis === 'x' ? 'Workbench width' : 'Workbench height'}
+      aria-label={axis === 'x' ? `${WORKBENCH_LABEL} width` : `${WORKBENCH_LABEL} height`}
       aria-valuemin={axis === 'x' ? MIN_WIDTH : Math.round(MIN_SHARE * 100)}
       aria-valuemax={axis === 'x' ? undefined : Math.round(MAX_SHARE * 100)}
       aria-valuenow={axis === 'x' ? width : Math.round(share * 100)}

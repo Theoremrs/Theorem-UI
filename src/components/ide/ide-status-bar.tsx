@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils'
 import type { StatusBarItem } from '../../../ide/theia-extensions/theorem-workspace/src/common/ide-bridge'
 import { useFollow } from './follow'
 import { useIdePage } from './ide-page'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ENTRY =
   'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs whitespace-nowrap text-ink-muted outline-none focus-visible:outline-2 focus-visible:outline-focus'
@@ -74,9 +75,9 @@ export function IdeStatusBar() {
     >
       <button
         type="button"
-        aria-label="Workbench"
+        aria-label={WORKBENCH_LABEL}
         aria-pressed={placement === 'bottom'}
-        title="Workbench (ctrl+`)"
+        title={`${WORKBENCH_LABEL} (ctrl+\`)`}
         onClick={() => toggle('bottom')}
         className={cn(ENTRY, CLICKABLE, 'aria-pressed:text-ink')}
       >

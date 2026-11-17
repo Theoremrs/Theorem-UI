@@ -80,6 +80,7 @@ import {
   useThreadDelegation,
 } from '@/lib/theorem/delegations'
 import { useReview, useReviewDock } from '@/lib/theorem/reviews'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ARTIFACT = 'artifact:'
 const NOTE = 'note-panel:'
@@ -484,14 +485,14 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 onClick={() => useShell.getState().setWorkbench('side')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Workbench on the right
+                {`${WORKBENCH_LABEL} on the right`}
               </Menu.Item>
               <Menu.Item
                 className={menuItem}
                 onClick={() => useShell.getState().setWorkbench('bottom')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Workbench at the bottom
+                {`${WORKBENCH_LABEL} at the bottom`}
                 <span className="ms-auto ps-4 font-mono text-xs text-ink-faint">
                   ctrl+`
                 </span>
@@ -501,7 +502,7 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 onClick={() => useShell.getState().setWorkbench('full')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Workbench full screen
+                {`${WORKBENCH_LABEL} full screen`}
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>

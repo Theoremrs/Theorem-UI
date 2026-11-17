@@ -49,6 +49,7 @@ import { menuItem, menuPopup } from './sidebar'
 
 import { Link } from '@tanstack/react-router'
 import { useCommandPalette } from './command-palette'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 /** The rail's square controls: destinations and the account. */
 const railButton =
@@ -122,7 +123,7 @@ function TerminalToggle() {
     <Button
       variant="ghost"
       size="icon"
-      aria-label="Workbench"
+      aria-label={WORKBENCH_LABEL}
       aria-pressed={open}
       onClick={() => toggle()}
       className={`${railButton} mb-2 aria-pressed:text-ink`}

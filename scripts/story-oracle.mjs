@@ -688,12 +688,12 @@ const SCENARIOS = {
       return {
         'the tab strip is a tablist of named tabs': /tablist "Main tabs"/.test(tree) && /tab "Theo" \[selected\]/.test(tree) && /tab "Changes" \[selected\]/.test(tree) && /tab "Files"/.test(tree),
         'the grid host stays aria-hidden': await page.evaluate(() => !!document.querySelector('[id$=_ratzilla_grid]')?.closest('[aria-hidden="true"]')),
-        'the input names itself and holds focus': start.held && (await attr(page, 'body:p1', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workbench input',
+        'the input names itself and holds focus': start.held && (await attr(page, 'body:p1', 'role')) === 'tabpanel' && (await page.locator('textarea').first().getAttribute('aria-label')) === 'Workspace input',
         'the composer is where focus starts': start.role === 'textbox' && start.name === 'Message to Theo',
         'focus moves to Files with its chord and lands on its first row, input still focused': files.held && files.node === 'p3/f:.github' && files.role === 'treeitem',
         // Changes opens on the Review, so focus lands on its tree's first row (a file); in the Stage view it was the group named by its first file.
         'focus moves to Changes with its chord': changes.held && ((changes.role === 'group' && /Cargo\.toml/.test(changes.name ?? '')) || (changes.role === 'treeitem' && /^[AMDRU!] /.test(changes.name ?? ''))),
-        'the Files tab and the Changes tab each appear once': (await countByRole(page, 'tab', 'Files')) === 1 && (await countByRole(page, 'tab', 'Changes')) === 1 && (await countByRole(page, 'textbox', 'Workbench input')) === 1,
+        'the Files tab and the Changes tab each appear once': (await countByRole(page, 'tab', 'Files')) === 1 && (await countByRole(page, 'tab', 'Changes')) === 1 && (await countByRole(page, 'textbox', 'Workspace input')) === 1,
         'no element id is repeated': ids.all === ids.unique,
       }
     },

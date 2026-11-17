@@ -24,7 +24,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
             nodes: vec![Node::new(
                 ROOT,
                 Role::Application,
-                "Workbench",
+                crate::panels::WORKBENCH_LABEL,
                 Rect::default(),
             )],
         };
@@ -41,7 +41,7 @@ pub fn semantics(model: &Model) -> SemanticTree {
     let theme = Theme::plain();
     let window = model.focus().window;
 
-    let mut root = Node::new(ROOT, Role::Application, "Workbench", frame.area);
+    let mut root = Node::new(ROOT, Role::Application, crate::panels::WORKBENCH_LABEL, frame.area);
     let mut nodes = vec![];
     for group in &frame.groups {
         let cx = ViewCtx {

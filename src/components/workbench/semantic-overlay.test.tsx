@@ -75,7 +75,7 @@ function setup(over: { handle?: Partial<OverlayHandle>; input?: boolean } = {}) 
     ...over.handle,
   }
   const field = document.createElement('textarea')
-  field.setAttribute('aria-label', 'Workbench input')
+  field.setAttribute('aria-label', 'Workspace input')
   document.body.append(field)
   const mirror: { current: InputMirror | undefined } = { current: undefined }
   const parts = {
@@ -101,7 +101,7 @@ const byNode = (id: string) =>
 
 const tabsTree = full(
   'root',
-  node('root', ['tabs'], { role: 'application', name: 'Workbench' }),
+  node('root', ['tabs'], { role: 'application', name: 'Workspace' }),
   node('tabs', ['tab:a', 'tab:b'], { role: 'tabList', name: 'Main tabs' }),
   withState(
     node('tab:a', [], { role: 'tab', name: 'Alpha', actions: [{ id: 'tab.focus.a', enabled: true }, { id: 'tab.close.a', enabled: true }] }),
@@ -386,7 +386,7 @@ describe('focus, without moving it', () => {
       }),
     )
     expect(t.field.getAttribute('aria-activedescendant')).toBe(byNode('tab:b').id)
-    expect(t.field.getAttribute('aria-label')).toBe('Workbench input')
+    expect(t.field.getAttribute('aria-label')).toBe('Workspace input')
   })
 
   test('the id it names is the id of the element, hostile or not', async () => {
@@ -437,7 +437,7 @@ describe('focus, without moving it', () => {
     )
     expect(t.field.value).toBe('')
     expect(t.mirror.current).toBeUndefined()
-    expect(t.field.getAttribute('aria-label')).toBe('Workbench input')
+    expect(t.field.getAttribute('aria-label')).toBe('Workspace input')
     expect(t.field.getAttribute('aria-activedescendant')).toBe(byNode('tab').id)
     expect(byNode('edit').hasAttribute('aria-hidden')).toBe(false)
   })
@@ -474,7 +474,7 @@ describe('focus, without moving it', () => {
     await view.unmount()
     expect(t.mirror.current).toBeUndefined()
     expect(t.field.hasAttribute('aria-activedescendant')).toBe(false)
-    expect(t.field.getAttribute('aria-label')).toBe('Workbench input')
+    expect(t.field.getAttribute('aria-label')).toBe('Workspace input')
   })
 })
 

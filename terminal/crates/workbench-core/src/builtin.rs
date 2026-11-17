@@ -437,7 +437,7 @@ pub fn registry() -> Registry {
         // the keyboard, and apply a preset.
         Spec {
             kind: crate::panels::WORKBENCH_KIND,
-            title: "Workbench",
+            title: crate::panels::WORKBENCH_LABEL,
             icon: "layout",
             binding: R::None,
             placement: Main,

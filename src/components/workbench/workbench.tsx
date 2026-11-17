@@ -69,6 +69,7 @@ import { createIconStore } from './icon-layer/store'
 import { SemanticOverlay } from './semantic-overlay'
 import { settle, typedSince } from './semantic-overlay/mirror'
 import type { InputMirror } from './semantic-overlay/mirror'
+import { WORKBENCH_LABEL } from './label'
 
 /** What the surface lets an adapter's builder do to the mounted core besides answering effects. */
 export interface SurfaceHost {
@@ -379,7 +380,7 @@ export function WorkbenchSurface({
             input.current = element
             setInputElement(element)
           }}
-          aria-label="Workbench input"
+          aria-label={`${WORKBENCH_LABEL} input`}
           autoCapitalize="off"
           autoComplete="off"
           autoCorrect="off"

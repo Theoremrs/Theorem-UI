@@ -42,6 +42,12 @@ pub const ACTION_CODE_SEND: &str = "code.send";
 /// Stop a coding panel's work: the side chat's run, or Ctrl-C to a terminal.
 pub const ACTION_CODE_STOP: &str = "code.stop";
 /// The terminal profiles `code.start` names, by option.
+/// The workbench's user-visible name: the word the UI labels, the semantic
+/// tree's root and the hidden input's aria carry. The code keeps the domain
+/// word "workbench"; the person reads this one. The page's own labels carry
+/// the same word from `components/workbench/label.ts`.
+pub const WORKBENCH_LABEL: &str = "Workspace";
+
 pub const CODING_PROFILES: [(&str, &str); 2] =
     [("claude", "Claude Code (Herdr)"), ("codex", "Codex (Herdr)")];
 
