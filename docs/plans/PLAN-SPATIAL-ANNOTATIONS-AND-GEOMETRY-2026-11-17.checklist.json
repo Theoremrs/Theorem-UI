@@ -1,0 +1,20 @@
+{
+  "plan": "docs/plans/PLAN-SPATIAL-ANNOTATIONS-AND-GEOMETRY-2026-11-17.md",
+  "direction": "docs/plans/DIRECTION-SPATIAL-GENERATIVE-ARTIFACTS-2026-11-17.md",
+  "items": [
+    { "id": "port-128", "what": "@theorem/spatial resolved through PR #128's App dependency resolver", "status": "done", "evidence": "521a1886; bun test app-dependencies/app-check/spatial 28 pass; e2e:spatial 17/17" },
+    { "id": "annotate-pieces", "what": "@theorem/annotate: projected anchor, subjects, connectors, note holding any children, placement routine", "status": "open" },
+    { "id": "annotate-astryx", "what": "Notes and controls composed from Astryx with prebuilt CSS, themed from the App's tokens", "status": "open" },
+    { "id": "annotate-floating", "what": "Floating UI virtual element positions a note at a projected point; one positioning and one focus owner per note", "status": "open" },
+    { "id": "annotate-occlusion", "what": "Off-screen, collision and hidden-behind-geometry handled", "status": "open" },
+    { "id": "chrome-replaced", "what": "Spatial card, breadcrumb, playback bar and hint rebuilt on the annotation layer; tiers rest/hover/click; pinnable note; narrow layout below the scene", "status": "open" },
+    { "id": "annotate-acceptance", "what": "Note stays attached while camera and part move; labels never cover controls; narrow and wide; keyboard and touch; agent writes a new annotation or control in TSX with no registry change", "status": "open" },
+    { "id": "framing", "what": "Camera fits the region left after controls and notes; port labels weighted by relevance", "status": "open" },
+    { "id": "elk", "what": "ELK layered arrangement compared with an authored one; computed once per structure", "status": "open" },
+    { "id": "manifold", "what": "Manifold initialised from bytes in an App, parameterised shape built off the main thread, regenerated on a parameter change, recipe in source", "status": "open" },
+    { "id": "wasm-assets", "what": "The resolver gives an App the bytes of a .wasm dependency", "status": "open" },
+    { "id": "tracing", "what": "Reference extraction shown on the CPU and an unrelated subject", "status": "open" },
+    { "id": "agent-contract", "what": "app_contract.md teaches the annotation layer, geometry and reference workflow as options", "status": "open" },
+    { "id": "live-journey", "what": "Signed-in real-agent run: new component in TSX, operated, follow-up revises the same App, Ask on a selection, expand/collapse keep the instance, a conventional UI artifact too", "status": "open" }
+  ]
+}
