@@ -893,6 +893,52 @@ describe('run input recovery', () => {
     owner.dispose()
   })
 
+  test('a reloaded draft chat keeps its recovered words listed, then sends them once as a turn', async () => {
+    const t = recovering('draft-9')
+    // A chat that was still being created when its words were kept: the record names that
+    // attempt, and this owner is a later one, so the words come back for an explicit retry
+    // rather than being sent at whoever opened next.
+    t.storage.setItem(
+      'theorem.run-input.pending:',
+      JSON.stringify({
+        attemptId: 'an-earlier-attempt',
+        items: [{ id: 'c1', text: 'also', state: 'waiting' }],
+      }),
+    )
+    t.stub.remoteId = undefined
+    t.stub.isRunning = false
+    t.stub.messages = []
+    const owner = t.make()
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+    ])
+    expect(t.sends).toEqual([])
+
+    // The person retries: the words become a turn of this chat's own, and the record stays
+    // kept until the thread actually holds them.
+    retryRunInput(t.queueKey, 'c1')
+    await t.settle()
+    expect(t.stub.appends).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'also' }],
+        runConfig: { custom: { theoremRunInput: true } },
+      },
+    ])
+    expect(t.sends).toEqual([])
+    expect(owner.snapshot().queued).toEqual([])
+
+    // The chat is created, and its stored thread has the words: nothing more is kept for it.
+    t.stub.remoteId = 'remote-9'
+    t.durable.userTexts = ['also']
+    t.stub.emitThreads()
+    await t.settle()
+    expect(t.storage.getItem('theorem.run-input.pending:')).toBeNull()
+    expect(t.storage.getItem('theorem.run-input.remote-9')).toBeNull()
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+  })
+
   test('the queue belongs to this owner: registered while it lives, gone when it is closed', async () => {
     const t = recovering()
     const owner = t.make()

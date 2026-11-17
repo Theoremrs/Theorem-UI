@@ -14,7 +14,7 @@ import type { ModelChoice } from '../wire/ModelChoice'
 import type { SourceReference } from '../wire/SourceReference'
 import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
-import { describeError, hasStatus } from '@/lib/theorem/client'
+import { describeError, hasStatus, pendingSendText } from '@/lib/theorem/client'
 import { createRunInputQueue, inputReceipt } from '@/lib/theorem/run-input'
 import {
   registerRunInputQueue,
@@ -1010,6 +1010,9 @@ export function createConversation({
     },
     describeError,
     attemptId: inputKey,
+    // A retried message's text is kept until the send recovery on this thread, or the thread
+    // itself, holds it: what a person is owed is that it is not lost, not that it is listed twice.
+    savedSend: pendingSendText,
     storage,
   })
   const unregisterInputs = registerRunInputQueue(inputKey, runInput)
