@@ -829,6 +829,49 @@ describe('run input recovery', () => {
     owner.dispose()
   })
 
+  test('a not-delivered receipt the run shows in the transcript leaves the row listed with Retry', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    await owner.stop({ requestId: 'r2', runId: 'run1' })
+    // The run's own record of the words it never took arrives through the stream, so the
+    // transcript shows it. That is the run's word, not the person's message: the row the
+    // composer lists with Retry is not satisfied by it.
+    t.stub.messages = [
+      assistant('a1', 'x', {
+        runId: 'run1',
+        status: { type: 'incomplete', reason: 'cancelled' },
+        parts: [
+          userInputPart({
+            inputId: 'srv-c1',
+            text: 'also',
+            status: 'not_delivered',
+            reason: 'run_cancelled',
+          }),
+        ],
+      }),
+    ]
+    t.durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_cancelled',
+      },
+    ]
+    t.stub.isRunning = false
+    t.durable.active = false
+    t.durable.runId = undefined
+    t.stub.emit()
+    await t.settle()
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+    ])
+    expect(t.stub.appends).toEqual([])
+    owner.dispose()
+  })
+
   test('the queue belongs to this owner: registered while it lives, gone when it is closed', async () => {
     const t = recovering()
     const owner = t.make()
@@ -848,7 +891,6 @@ describe('run input recovery', () => {
     side.remoteId = 'remote-2'
     side.isRunning = true
     side.messages = [assistant('sa1', 'x', { runId: 'run2' })]
-    const main = t.make()
     const sideOptions = {
       runtime: t.stub.runtime,
       sideChats: {
@@ -895,12 +937,14 @@ describe('run input recovery', () => {
       { clientMessageId: 's1', text: 'side words', state: 'queued' },
     ])
     // The main conversation never carries the side chat's words.
-    expect(main.snapshot().queued).toEqual([])
     expect(withSides.snapshot().queued).toEqual([])
     expect(t.sends).toEqual([{ runId: 'run2', inputId: 's1', text: 'side words' }])
+    // The side chat keeps its own record in the host's storage, under its own thread: the
+    // owner a side chat is made by is not given the host's store to throw away.
+    expect(t.storage.getItem('theorem.run-input.remote-2')).toContain('side words')
+    expect(t.storage.getItem('theorem.run-input.remote-1')).toBeNull()
     opened.value.close()
     withSides.dispose()
-    main.dispose()
   })
 })
 

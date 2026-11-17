@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react (the useAui client is the runtime the conversation owner drives, its thread composer holds the draft attachments); sendApprovalDecision, sendRunInput, useComposerReferences, usePickedModels, useGenerationOverrides and the model catalog are the chat's own, reused so an approval, input, reference, model or effort from the workbench takes the same path as the composer's
+// SOURCING: @assistant-ui/react (the useAui client is the runtime the conversation owner drives, its thread composer holds the draft attachments); sendApprovalDecision, sendRunInput, useComposerReferences, usePickedModels, useGenerationOverrides and the model catalog are the chat's own, reused so an approval, input, reference, model or effort from the workbench takes the same path as the composer's; the thread read behind `runInput` is `bindRunInput`'s own authoritative read (chat.threads.get for the run standing and the input a thread holds, chat.runs.events for a closed run's receipts, settled on a terminal event), mirrored here for the workbench owner, which drives a ConversationRuntime and has no live-run store
 import type { AssistantClient } from '@assistant-ui/react'
 import {
   useComposerReferences,
@@ -6,6 +6,9 @@ import {
 } from '@/components/chat/composer-references'
 import { useShell } from '@/components/shell/shell-state'
 import { sendApprovalDecision } from '@/lib/theorem/approval'
+import { theorem, TERMINAL_RUN_EVENTS } from '@/lib/theorem/client'
+import { inputReceipt, runInputReceipt } from '@/lib/theorem/run-input'
+import type { InputReceipt } from '@/lib/theorem/run-input'
 import {
   DRAFT,
   EFFORT_LEVELS,
@@ -21,6 +24,7 @@ import type {
   ConversationRuntime,
   ConversationServices,
   ModelServices,
+  RunInputThread,
 } from './conversation'
 
 /**
@@ -130,19 +134,85 @@ const modelServices: ModelServices = {
   },
 }
 
+/**
+ * What Theorem stores about words sent to a run, as the queue reads it: the run
+ * standing of a thread and the input it holds, with the user text already on it.
+ */
+async function readRunInputThread(threadId: string): Promise<RunInputThread> {
+  const snapshot = await theorem().chat.threads.get({ threadId })
+  return {
+    active: Boolean(
+      snapshot.liveRun ||
+        snapshot.thread.activeRunId ||
+        snapshot.thread.pendingTurn,
+    ),
+    ...(snapshot.liveRun?.runId ? { runId: snapshot.liveRun.runId } : {}),
+    inputs: snapshot.messages.flatMap((message) =>
+      message.parts.flatMap((part) => {
+        const receipt =
+          part.type === 'user_input' ? inputReceipt(part.payload) : undefined
+        return receipt ? [receipt] : []
+      }),
+    ),
+    userTexts: snapshot.messages.flatMap((message) =>
+      message.role === 'user'
+        ? message.parts.flatMap((part) => {
+            const text =
+              part.type === 'text' &&
+              part.payload &&
+              typeof part.payload === 'object' &&
+              'text' in part.payload
+                ? part.payload.text
+                : undefined
+            return typeof text === 'string' ? [text] : []
+          })
+        : [],
+    ),
+  }
+}
+
+/**
+ * A closed run's own input receipts. Absence of a delivered event is not a
+ * refusal: the read is only an answer once the run has finished recording them.
+ */
+async function readRunInputReceipts(
+  runId: string,
+): Promise<readonly InputReceipt[]> {
+  const receipts = new Map<string, InputReceipt>()
+  const events = await theorem().chat.runs.events(
+    { runId, after_seq: 0 },
+    { abortSignal: AbortSignal.timeout(10_000) },
+  )
+  let terminal = false
+  for await (const event of events) {
+    if (TERMINAL_RUN_EVENTS.has(event.sourceEventType)) terminal = true
+    if (event.sourceEventType !== 'CHAT.MESSAGE.PART') continue
+    const receipt = runInputReceipt(event)
+    if (receipt)
+      receipts.set(receipt.inputId, {
+        ...receipt,
+        requestKey: receipt.requestKey ?? receipts.get(receipt.inputId)?.requestKey,
+      })
+  }
+  if (!terminal)
+    throw new Error('The response has not finished recording its input receipts')
+  return [...receipts.values()]
+}
+
 /** What the conversation sends to Theorem that the runtime does not carry. */
 export const conversationServices: ConversationServices = {
   answerApproval: async ({ runId, approvalId, toolCallId, choice }) => {
     await sendApprovalDecision(runId, { approvalId, toolCallId }, choice)
   },
-  sendInput: async ({ runId, inputId, text }) => {
-    await sendRunInput(runId, text, inputId)
-  },
+  // The same send as the composer's: the words go to the run under the key that
+  // names the message, and Theorem's confirmation of that request comes back.
+  sendInput: ({ runId, inputId, text }) => sendRunInput(runId, text, inputId),
   openUnder: (threadId, projectId) =>
     useShell
       .getState()
       .askProject(projectId ? { threadId, projectId } : undefined),
   history: loadThreadTree,
+  runInput: { thread: readRunInputThread, receipts: readRunInputReceipts },
   selectBranch,
   references: {
     add: (references) => {

@@ -208,9 +208,9 @@ export interface ConversationSnapshot extends Transcript {
   revision: number
   loading: boolean
   /**
-   * Words kept for a run that the transcript does not show yet: on their way, waiting
-   * for the run's next step, settled for the next turn, or kept with a reason to Retry.
-   * One queue decides each row's standing; this lists what it announces.
+   * Words kept for a run, listed under the composer with their own state: on their way,
+   * waiting for the run's next step, settled for the next turn, or kept with a reason to
+   * Retry. One queue decides each row's standing; this lists what it announces.
    */
   queued: QueuedInput[]
   /** The thread's versions and branches; absent until Theorem has answered, or for a thread it does not hold yet. */
@@ -987,7 +987,12 @@ export function createConversation({
         runConfig: { custom: { theoremRunInput: true } },
       }),
     changed: (items) => {
-      inputRows = items.filter((item) => !item.visible).map(rowOf)
+      // A row the transcript shows needs no second listing under the composer — except one
+      // that settled: the run's own record of words it never took is not the person's
+      // message, and the Retry they are owed is not satisfied by a transcript part.
+      inputRows = items
+        .filter((item) => !item.visible || item.state === 'failed' || item.state === 'next')
+        .map(rowOf)
       useRunInputs.setState({ [inputKey]: items })
       changed()
     },
@@ -1481,6 +1486,7 @@ export function createConversation({
         runtime: side.runtime,
         services,
         workspaceId,
+        storage,
         schedule,
       })
       let closed = false
