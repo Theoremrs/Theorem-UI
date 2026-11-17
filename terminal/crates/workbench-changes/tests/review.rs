@@ -266,9 +266,42 @@ fn enter_on_a_file_puts_its_header_at_the_top_and_marks_it_current() {
         top.contains(&path),
         "the header is the first row of the diff: {top}"
     );
+    // The cursor moves on; the current file stays marked by its bold name, not by a rail.
+    model.review_move(1);
+    let area = ratatui::layout::Rect::new(0, 0, 120, 20);
+    let mut buf = ratatui::buffer::Buffer::empty(area);
+    model.draw(area, &mut buf, &ChangesStyles::plain());
+    theorem_workbench_core::take_icons(&mut buf);
+    let rows = lines(&buf);
     assert!(
-        rows.iter().any(|l| l.contains('\u{258d}')),
-        "the tree marks the current file"
+        !rows.iter().any(|l| l.contains('\u{258d}')),
+        "no rail: {rows:#?}"
+    );
+    let name = path.rsplit('/').next().unwrap();
+    // The tree is right of the divider; a row counts when its file name is bold.
+    let divider = (0..120u16)
+        .find(|x| buf[(*x, 2)].symbol() == "\u{2502}")
+        .unwrap();
+    let bold_names: Vec<String> = (2..20u16)
+        .filter_map(|y| {
+            let cells: Vec<&str> = (divider + 1..120).map(|x| buf[(x, y)].symbol()).collect();
+            let text = cells.concat();
+            let at = text.find(" M ")? + 3;
+            let start = text[..at].chars().count();
+            let len = text[at..].split(' ').next()?.chars().count();
+            let bold = (start..start + len).all(|i| {
+                buf[(divider + 1 + i as u16, y)]
+                    .modifier
+                    .contains(ratatui::style::Modifier::BOLD)
+            });
+            bold.then(|| text[at..].split(' ').next().unwrap().to_owned())
+        })
+        .collect();
+    // The cursor moved one row down, to two.rs, which is bold as the cursor; the rest are plain.
+    assert_eq!(
+        bold_names,
+        vec![name.to_owned(), "two.rs".to_owned()],
+        "the current file's name is bold in the tree"
     );
 }
 

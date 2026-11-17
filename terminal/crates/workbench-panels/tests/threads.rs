@@ -960,3 +960,54 @@ fn the_cursor_row_is_in_the_mark_colour_while_the_panel_has_focus_and_bright_bol
     assert!(idle[(x, y)].modifier.contains(Modifier::BOLD));
     assert_eq!(idle[(x, y)].bg, Color::Blue);
 }
+
+#[test]
+fn a_rows_state_is_in_its_title_and_nothing_is_drawn_at_the_edge() {
+    const RED: Color = Color::Rgb(0xd0, 0x30, 0x30);
+    let mut ansi = Theme::plain().ansi;
+    ansi[1] = RED;
+    let theme = Theme {
+        success: Style::default().fg(Color::Green),
+        warning: Style::default().fg(Color::Yellow),
+        ansi,
+        ..Theme::plain()
+    };
+    let mut r = Rig::new(&[]);
+    r.host(relisted(|threads| {
+        let pin = threads.iter_mut().find(|t| t["id"] == "t-pin").unwrap();
+        pin["tag"] = json!("red");
+    }));
+    let buf = r.cells(&theme, false, 60, 40);
+    // The first cell of `name` where it is drawn.
+    let first = |name: &str| {
+        (0..40u16)
+            .find_map(|y| {
+                (0..60u16)
+                    .find(|x| {
+                        name.chars().enumerate().all(|(i, c)| {
+                            let at = x + i as u16;
+                            at < 60 && buf[(at, y)].symbol() == c.to_string()
+                        })
+                    })
+                    .map(|x| buf[(x, y)].clone())
+            })
+            .unwrap_or_else(|| panic!("{name} is not drawn: {:?}", r.text(60, 40)))
+    };
+    let rail = (0..40u16).any(|y| (0..60u16).any(|x| buf[(x, y)].symbol() == "\u{258e}"));
+    assert!(!rail, "no rail: {:?}", r.text(60, 40));
+
+    let running = first("Running thread");
+    assert!(running.modifier.contains(Modifier::BOLD), "running is bold");
+    let waiting = first("Needs you thread");
+    assert!(
+        waiting.modifier.contains(Modifier::BOLD),
+        "needs you is bold"
+    );
+    assert_eq!(waiting.fg, Color::Yellow, "and keeps the warning colour");
+    let tagged = first("Pinned one");
+    assert_eq!(tagged.fg, RED, "a tag is the title's colour");
+    assert!(
+        !tagged.modifier.contains(Modifier::BOLD),
+        "a tag alone is not bold"
+    );
+}
