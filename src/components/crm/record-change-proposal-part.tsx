@@ -1,5 +1,6 @@
-// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); the inspector's document opener (./open-document), else a Link to the document in the Index, for a source; @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
+// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); the inspector's document opener (./open-document), else a Link to the document in the Index, for a source and a saved message draft; @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
+import type { ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
 import {
@@ -8,6 +9,7 @@ import {
   FilePen,
   FileText,
   ListTodo,
+  Mail,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
@@ -28,6 +30,32 @@ import type { RecordProposal } from './proposal'
 const SOURCE_LINK =
   'underline decoration-ink-faint underline-offset-2 hover:text-ink'
 
+/** A saved document, opened where the surrounding inspector opens documents, else in the Index. */
+function DocumentLink({
+  documentId,
+  className,
+  children,
+}: {
+  documentId: string
+  className: string
+  children: ReactNode
+}) {
+  const openDocument = useOpenDocumentHandler()
+  return openDocument ? (
+    <button
+      type="button"
+      className={className}
+      onClick={() => openDocument(documentId)}
+    >
+      {children}
+    </button>
+  ) : (
+    <Link to="/index" search={{ item: documentId }} className={className}>
+      {children}
+    </Link>
+  )
+}
+
 /** The change the assistant proposes, and the two ways to answer it. */
 export function RecordChangeProposalView({
   snapshot,
@@ -45,9 +73,6 @@ export function RecordChangeProposalView({
     retry: false,
   })
   const proposal = current.data
-  // A source opens where the surrounding inspector opens documents, if any;
-  // otherwise beside the Index's view.
-  const openDocument = useOpenDocumentHandler()
   const typeNamed = (name: string) =>
     model?.objectTypes.find(
       (type) => type.name_singular.toLowerCase() === name.toLowerCase(),
@@ -88,18 +113,23 @@ export function RecordChangeProposalView({
   const type = typeNamed(proposal.objectType)
   const task = proposal.task
   const made = proposal.decision?.task
-  // A task proposal's only field is the task's id; the task itself is shown.
-  const fields = task
-    ? proposal.fields.filter((field) => field.to !== task.workItemId)
+  const draft = proposal.draft
+  const savedDraft = proposal.decision?.draft
+  // A task or draft proposal's only field is the id of what it makes; that
+  // itself is shown instead.
+  const madeId = task?.workItemId ?? draft?.documentId
+  const fields = madeId
+    ? proposal.fields.filter((field) => field.to !== madeId)
     : proposal.fields
+  const heading = task
+    ? 'Proposed task for'
+    : draft
+      ? 'Proposed message draft for'
+      : 'Proposed change to'
 
   return (
     <section
-      aria-label={
-        task
-          ? `Proposed task for ${proposal.objectType}`
-          : `Proposed change to ${proposal.objectType}`
-      }
+      aria-label={`${heading} ${proposal.objectType}`}
       data-part="theorem-record_change_proposal"
       data-status={proposal.status}
       className="my-2 flex flex-col gap-2.5 rounded-md border border-separator bg-raised px-3 py-2.5 text-[13px]"
@@ -107,11 +137,13 @@ export function RecordChangeProposalView({
       <h4 className="flex items-center gap-1.5 text-xs font-medium text-ink">
         {task ? (
           <ListTodo aria-hidden className="size-3.5 text-ink-muted" />
+        ) : draft ? (
+          <Mail aria-hidden className="size-3.5 text-ink-muted" />
         ) : (
           <FilePen aria-hidden className="size-3.5 text-ink-muted" />
         )}
         <span>
-          {task ? 'Proposed task for' : 'Proposed change to'}{' '}
+          {heading}{' '}
           <RecordLink
             type={type}
             typeName={proposal.objectType}
@@ -128,6 +160,31 @@ export function RecordChangeProposalView({
           {task.details && (
             <span className="text-xs text-ink-muted">{task.details}</span>
           )}
+        </div>
+      )}
+
+      {draft && (
+        <div
+          aria-label="Message draft"
+          className="flex flex-col gap-1 leading-5"
+        >
+          {draft.to && (
+            <span className="text-xs text-ink-muted">
+              To{' '}
+              <RecordLink
+                type={typeNamed('Person')}
+                typeName="Person"
+                recordId={draft.to.recordId}
+                className="font-normal"
+              >
+                {draft.to.title}
+              </RecordLink>
+            </span>
+          )}
+          <span className="font-medium text-ink">{draft.subject}</span>
+          <p className="whitespace-pre-wrap border-l-2 border-separator ps-2 text-xs text-ink">
+            {draft.body}
+          </p>
         </div>
       )}
 
@@ -199,23 +256,12 @@ export function RecordChangeProposalView({
               </blockquote>
               <span className="flex flex-wrap items-baseline gap-x-1 ps-2.5 text-ink-muted">
                 <FileText aria-hidden className="size-3 self-center" />
-                {openDocument ? (
-                  <button
-                    type="button"
-                    className={SOURCE_LINK}
-                    onClick={() => openDocument(source.documentId)}
-                  >
-                    {source.title}
-                  </button>
-                ) : (
-                  <Link
-                    to="/index"
-                    search={{ item: source.documentId }}
-                    className={SOURCE_LINK}
-                  >
-                    {source.title}
-                  </Link>
-                )}
+                <DocumentLink
+                  documentId={source.documentId}
+                  className={SOURCE_LINK}
+                >
+                  {source.title}
+                </DocumentLink>
                 {source.revision !== null && (
                   <span>{`· revision ${source.revision}`}</span>
                 )}
@@ -248,7 +294,9 @@ export function RecordChangeProposalView({
                 ? 'Sending your answer'
                 : task
                   ? 'Waiting for you. No task is made until you approve.'
-                  : 'Waiting for you. Nothing is saved until you approve.'}
+                  : draft
+                    ? 'Waiting for you. Nothing is saved or sent until you approve.'
+                    : 'Waiting for you. Nothing is saved until you approve.'}
             </span>
           </div>
           {failure && (
@@ -275,6 +323,17 @@ export function RecordChangeProposalView({
                 >
                   Open {made.key || 'the task'}
                 </Link>
+              </>
+            )}
+            {savedDraft && (
+              <>
+                {' '}
+                <DocumentLink
+                  documentId={savedDraft.documentId}
+                  className="font-medium underline decoration-ink-faint underline-offset-2"
+                >
+                  Open the draft
+                </DocumentLink>
               </>
             )}
           </p>

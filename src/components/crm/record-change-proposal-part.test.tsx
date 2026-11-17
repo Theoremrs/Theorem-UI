@@ -461,6 +461,127 @@ test('a task proposal decodes its task and an approval its result', () => {
   expect(decodeProposalPart({ proposal: proposal() })!.task).toBeUndefined()
 })
 
+const DRAFT_ID = 'note:draft-materials'
+const draftProposal = (over: Record<string, unknown> = {}) =>
+  proposal({
+    fields: [{ key: 'draft', label: 'Draft', from: null, to: DRAFT_ID }],
+    reason: 'You owe Noor the materials list by Friday.',
+    evidence: [],
+    action: {
+      kind: 'message_draft',
+      subject: 'Materials list for the workshop',
+      body: 'Hi Noor,\n\nHere is the materials list: clay, glazes and kiln times.',
+      to: { record_id: 'person:noor', title: 'Noor Rahman' },
+      document_id: DRAFT_ID,
+    },
+    ...over,
+  })
+
+test('a proposed message draft shows who it is for and what it says, not its id, and that nothing is sent', async () => {
+  current = { proposal: draftProposal() }
+  const { container } = await part({ proposal: draftProposal() })
+  expect(container.textContent).toContain('Proposed message draft for')
+  const draft = container.querySelector('[aria-label="Message draft"]')!
+  expect(draft.textContent).toContain('To Noor Rahman')
+  expect(draft.textContent).toContain('Materials list for the workshop')
+  expect(draft.textContent).toContain('clay, glazes and kiln times')
+  expect(
+    container.querySelector('ul[aria-label="Fields to change"]'),
+  ).toBeNull()
+  expect(container.textContent).not.toContain(DRAFT_ID)
+  expect(container.textContent).toContain(
+    'Waiting for you. Nothing is saved or sent until you approve.',
+  )
+})
+
+test('an approved draft says where it was filed and that nothing was sent, and opens the draft', async () => {
+  current = { proposal: draftProposal() }
+  decision = {
+    status: 201,
+    body: {
+      decision: 'approve',
+      proposal: draftProposal({
+        status: 'applied',
+        applied: true,
+        decision: {
+          decision: 'approve',
+          decided_at_ms: 5,
+          before_revision: 9,
+          after_revision: 10,
+          result: {
+            kind: 'message_draft',
+            documentId: DRAFT_ID,
+            title: 'Materials list for the workshop',
+            filedTo: [
+              {
+                recordItemId: 'record:Commitment/commitment:materials',
+                title: 'Send Noor the materials list',
+              },
+              {
+                recordItemId: 'record:Person/person:noor',
+                title: 'Noor Rahman',
+              },
+            ],
+            sent: false,
+          },
+        },
+      }),
+    },
+  }
+  const { container } = await part({ proposal: draftProposal() })
+  await click(button(container, 'Approve'))
+  await waitFor(() =>
+    container.textContent.includes(
+      'Saved the draft \u201cMaterials list for the workshop\u201d and filed it to Send Noor the materials list and Noor Rahman. Nothing was sent.',
+    ),
+  )
+  const open = [...container.querySelectorAll('a')].find(
+    (a) => a.textContent === 'Open the draft',
+  )!
+  expect(decodeURIComponent(open.getAttribute('href')!)).toBe(
+    `/index?item=${DRAFT_ID}`,
+  )
+})
+
+test('a refused draft approval says no draft was saved', async () => {
+  current = {
+    proposal: draftProposal({
+      status: 'refused',
+      decision: {
+        decision: 'approve',
+        decided_at_ms: 5,
+        before_revision: 9,
+        after_revision: 10,
+        refusal: {
+          code: 'draft_no_longer_linked',
+          detail: 'the commitment no longer names this draft',
+        },
+      },
+    }),
+  }
+  const { container } = await part({ proposal: draftProposal() })
+  await waitFor(() =>
+    container.textContent.includes(
+      'No draft was saved: the commitment no longer names this draft',
+    ),
+  )
+})
+
+test('a draft proposal decodes its draft and an approval the saved draft', () => {
+  const decoded = decodeProposalPart({ proposal: draftProposal() })!
+  expect(decoded.draft).toEqual({
+    subject: 'Materials list for the workshop',
+    body: 'Hi Noor,\n\nHere is the materials list: clay, glazes and kiln times.',
+    to: { recordId: 'person:noor', title: 'Noor Rahman' },
+    documentId: DRAFT_ID,
+  })
+  expect(decoded.task).toBeUndefined()
+  expect(decodeProposalPart({ proposal: proposal() })!.draft).toBeUndefined()
+  expect(
+    decodeProposalPart({ proposal: taskProposal() })!.draft,
+  ).toBeUndefined()
+})
+
 test("an approval makes the record's CRM and Records copies stale, so they are read again", async () => {
   decision = {
     status: 201,

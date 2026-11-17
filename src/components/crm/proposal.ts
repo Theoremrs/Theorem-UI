@@ -24,6 +24,8 @@ export type ProposalDecision = {
   refusal: { code: string; detail: string } | undefined
   /** What the approval made beyond the saved fields: the task, once made. */
   task: MadeTask | undefined
+  /** The message draft an approval saved, once saved. */
+  draft: SavedDraft | undefined
 }
 
 /** The task a proposal would add to the person's work tracker. */
@@ -38,6 +40,27 @@ export type MadeTask = {
   workItemId: string
   key: string
   title: string
+}
+
+/**
+ * A message Theorem would draft for the person to send themselves. Approving
+ * saves it as a document; nothing is ever sent from it.
+ */
+export type ProposedDraft = {
+  subject: string
+  body: string
+  /** Who it is for: a person given to the conversation. */
+  to: { recordId: string; title: string } | undefined
+  /** The id the saved draft will have. */
+  documentId: string
+}
+
+/** The draft an approval saved, and the records it was filed to. */
+export type SavedDraft = {
+  documentId: string
+  title: string
+  /** The titles of the records the draft was filed to. */
+  filedTo: string[]
 }
 
 export type ProposalField = {
@@ -76,6 +99,8 @@ export type RecordProposal = {
   createdAtMs: number
   /** Set when approving also adds a task to the work tracker. */
   task: ProposedTask | undefined
+  /** Set when approving also saves a message draft. */
+  draft: ProposedDraft | undefined
 }
 
 const STATUSES: ProposalStatus[] = [
@@ -105,6 +130,39 @@ function decodeDecision(raw: unknown): ProposalDecision | null {
     changeId: text(either(raw, 'changeId', 'change_id')) ?? null,
     refusal,
     task: decodeMadeTask(raw.result),
+    draft: decodeSavedDraft(raw.result),
+  }
+}
+
+function decodeSavedDraft(raw: unknown): SavedDraft | undefined {
+  if (!isObject(raw) || raw.kind !== 'message_draft') return undefined
+  const documentId = text(either(raw, 'documentId', 'document_id'))
+  if (!documentId) return undefined
+  const filedTo = either(raw, 'filedTo', 'filed_to')
+  return {
+    documentId,
+    title: text(raw.title) ?? '',
+    filedTo: Array.isArray(filedTo)
+      ? filedTo
+          .map((record) => (isObject(record) ? text(record.title) : undefined))
+          .filter((title): title is string => !!title)
+      : [],
+  }
+}
+
+function decodeProposedDraft(raw: unknown): ProposedDraft | undefined {
+  if (!isObject(raw) || raw.kind !== 'message_draft') return undefined
+  const subject = text(raw.subject)
+  const body = text(raw.body)
+  const documentId = text(either(raw, 'documentId', 'document_id'))
+  if (!subject || !body || !documentId) return undefined
+  const to = isObject(raw.to) ? raw.to : undefined
+  const recordId = to && text(either(to, 'recordId', 'record_id'))
+  return {
+    subject,
+    body,
+    to: recordId ? { recordId, title: text(to.title) ?? recordId } : undefined,
+    documentId,
   }
 }
 
@@ -167,6 +225,7 @@ export function decodeProposal(raw: unknown): RecordProposal | undefined {
     decision: decodeDecision(raw.decision),
     createdAtMs: Number(raw.createdAtMs) || 0,
     task: decodeProposedTask(raw.action),
+    draft: decodeProposedDraft(raw.action),
   }
 }
 
@@ -242,6 +301,14 @@ export function outcomeWords(proposal: RecordProposal): string | undefined {
     case 'pending_approval':
       return undefined
     case 'applied':
+      if (decision?.draft)
+        return `Saved the draft \u201c${decision.draft.title}\u201d${
+          decision.draft.filedTo.length
+            ? ` and filed it to ${decision.draft.filedTo.join(' and ')}`
+            : ''
+        }. Nothing was sent.`
+      if (proposal.draft)
+        return `Saved the draft on this ${proposal.objectType.toLowerCase()}. Nothing was sent.`
       if (decision?.task)
         return `Added ${decision.task.key || 'the task'} to your work tracker and saved it on this ${proposal.objectType.toLowerCase()}.`
       if (proposal.task)
@@ -252,6 +319,8 @@ export function outcomeWords(proposal: RecordProposal): string | undefined {
     case 'dismissed':
       return "Dismissed. Theorem won't propose this again unless something new supports it."
     case 'refused':
+      if (proposal.draft && decision?.refusal?.code !== 'record_revision_stale')
+        return `No draft was saved: ${decision?.refusal?.detail || 'the approval was refused.'}`
       if (proposal.task && decision?.refusal?.code !== 'record_revision_stale')
         return `No task was made: ${decision?.refusal?.detail || 'the approval was refused.'}`
       return decision?.refusal?.code === 'record_revision_stale'
