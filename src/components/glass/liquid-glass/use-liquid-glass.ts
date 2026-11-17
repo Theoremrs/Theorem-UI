@@ -269,13 +269,24 @@ class Glass {
     const intersection = new IntersectionObserver(changed)
     intersection.observe(element)
     const mutation = new MutationObserver(changed)
+    // A pane also moves when the layout around it changes without resizing
+    // it: a message expanding above the edit composer pushes the form down
+    // while it stays fully visible and nothing scrolls. Its parent's
+    // structure carries that change, so watch it rather than polling geometry
+    // every frame. Character data is excluded: typing changes no layout here
+    // and must not cost a redraw per keystroke.
+    const layout = element.parentElement ?? element
     const targets = new Set<Element>()
     for (let node: Element | null = element; node; node = node.parentElement)
       targets.add(node)
+    // One registration per target: observing a target again replaces its
+    // options rather than adding to them, so each target's whole interest is
+    // stated at once.
     for (const target of targets)
       mutation.observe(target, {
         attributes: true,
         attributeFilter: ['class', 'style', 'hidden'],
+        ...(target === layout ? { childList: true, subtree: true } : {}),
       })
     entry.stopGeometry = () => {
       resize.disconnect()

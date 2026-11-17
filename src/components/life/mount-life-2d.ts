@@ -274,11 +274,13 @@ export function mountLife2d(
     const visible = !stopped && isVisible(host)
     const becameVisible = visible && !wasVisible
     wasVisible = visible
+    // Becoming visible repaints whether or not the field is playing: a field
+    // mounted hidden, or resized while hidden, has no pixels until it draws.
+    if (becameVisible) draw()
     if (!running()) {
       stopFrames()
       return
     }
-    if (becameVisible) draw()
     if (!handle) {
       last = 0
       handle = requestAnimationFrame(tick)
@@ -305,7 +307,17 @@ export function mountLife2d(
   schedule()
   const stopVisibility = observeVisibility(host, schedule)
   const stopControls = useLifeControls.subscribe((state, previous) => {
-    if (state.playing !== previous.playing) schedule()
+    if (state.playing !== previous.playing) {
+      schedule()
+      return
+    }
+    // A paused field still shows what these settings change, so changing one
+    // repaints once instead of waiting for the next play.
+    if (
+      state.companion !== previous.companion ||
+      state.brush !== previous.brush
+    )
+      redraw()
   })
 
   return {

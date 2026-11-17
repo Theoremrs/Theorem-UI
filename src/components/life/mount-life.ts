@@ -495,7 +495,17 @@ export function mountLife(
 
   const stopVisibility = observeVisibility(host, syncLoop)
   const stopControls = useLifeControls.subscribe((state, previous) => {
-    if (state.playing !== previous.playing) syncLoop()
+    if (state.playing !== previous.playing) {
+      syncLoop()
+      return
+    }
+    // A paused field still shows what these settings change, so changing one
+    // repaints once instead of leaving the old picture until the next play.
+    if (
+      state.companion !== previous.companion ||
+      state.brush !== previous.brush
+    )
+      requestDraw()
   })
   syncLoop()
 

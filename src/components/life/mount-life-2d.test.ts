@@ -351,3 +351,59 @@ test('real Canvas 2D path handles drawing, resize, palette repaint, and teardown
   staleFrame(10000) // a queued callback that runs after teardown is inert
   expect(scheduled.size).toBe(0)
 })
+
+test('a paused field mounted hidden paints once when it becomes visible', async () => {
+  const { host, ctx, frame, scheduled } = setup()
+  // Mounted while hidden and paused: nothing may draw yet.
+  host.style.visibility = 'hidden'
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  ctx.clearRect.mockClear()
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBe(0)
+
+  host.style.visibility = ''
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(0)
+  // Still paused: the first paint must not start the animation loop.
+  expect(scheduled.size).toBe(0)
+})
+
+test('a paused field resized while hidden repaints its pixels on return', async () => {
+  const { host, game, ctx, frame } = setup()
+  game.press(25, 40)
+  frame()
+  host.style.visibility = 'hidden'
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  // Resizing clears the backing store; the saved cells must come back.
+  game.resize(300, 224)
+  ctx.clearRect.mockClear()
+  ctx.fillText.mockClear()
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBe(0)
+
+  host.style.visibility = ''
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(0)
+  expect(ctx.fillText.mock.calls.length).toBeGreaterThan(0)
+})
+
+test('a paused field repaints when the companion setting changes', async () => {
+  const { ctx, frame } = setup()
+  useLifeControls.setState({ companion: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  frame()
+  ctx.clearRect.mockClear()
+  useLifeControls.setState({ companion: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(0)
+})
+
+test('a paused field repaints when the brush preview setting changes', async () => {
+  const { game, ctx, frame } = setup()
+  game.hover(55, 56)
+  frame()
+  ctx.clearRect.mockClear()
+  useLifeControls.setState({ brush: 'glider' })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(0)
+})

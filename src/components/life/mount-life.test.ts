@@ -223,3 +223,46 @@ test('a field mounted off or hidden does not draw until it becomes visible', asy
   expect(redraws).toBeGreaterThan(0)
   game.destroy()
 })
+
+test('a paused textmode field repaints when the companion is switched off', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  drawField()
+  drawOverlay()
+  useLifeControls.setState({ playing: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(false)
+
+  redraws = 0
+  useLifeControls.setState({ companion: false })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(redraws).toBeGreaterThan(0)
+  expect(looping).toBe(false)
+
+  redraws = 0
+  useLifeControls.setState({ companion: true })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(redraws).toBeGreaterThan(0)
+  expect(looping).toBe(false)
+  game.destroy()
+})
+
+test('a paused textmode field repaints when the brush preview changes', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  drawField()
+  useLifeControls.setState({ playing: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  redraws = 0
+  useLifeControls.setState({ brush: 'glider' })
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(redraws).toBeGreaterThan(0)
+  expect(looping).toBe(false)
+  game.destroy()
+})

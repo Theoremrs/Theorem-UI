@@ -531,3 +531,50 @@ test('removing the last pane disconnects its observers and idle work', async () 
     rafCalls: 0,
   })
 })
+
+test('a pane moved by a sibling growing redraws without a scroll or resize', async () => {
+  instrument()
+  const { pane, paneBox } = await mount()
+  renders.length = 0
+  layoutReads = 0
+
+  // Expanding a message above the composer moves the form down. The pane
+  // keeps its size, stays fully visible, and nothing scrolls: only its
+  // position changes.
+  const sibling = document.createElement('div')
+  pane.parentElement!.insertBefore(sibling, pane)
+  measure(
+    pane,
+    rect(paneBox.left, paneBox.top + 90, paneBox.width, paneBox.height),
+  )
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+
+  expect(renders.at(-1)?.pane.rect.top).toBe(paneBox.top + 90)
+})
+
+test('typing in a sibling does not redraw the glass every keystroke', async () => {
+  instrument()
+  const { pane } = await mount()
+  const typed = document.createElement('div')
+  typed.textContent = 'a draft'
+  pane.parentElement!.insertBefore(typed, pane)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+
+  renders.length = 0
+  layoutReads = 0
+  rafCalls = 0
+  for (let index = 0; index < 20; index++) {
+    typed.firstChild!.textContent = `a draft ${index}`
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    flush()
+  }
+  expect({ renders: renders.length, layoutReads, rafCalls }).toEqual({
+    renders: 0,
+    layoutReads: 0,
+    rafCalls: 0,
+  })
+})
