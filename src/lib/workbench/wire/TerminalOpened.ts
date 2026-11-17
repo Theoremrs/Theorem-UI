@@ -4,12 +4,11 @@ import type { TerminalBackend } from "./TerminalBackend";
 /**
  * The binding a terminal open or attach reports (`terminal-path.md` 2.1).
  *
- * Four versions, each its own field and never folded into one number:
+ * Three versions, each its own field and never folded into one number:
  * - `stream_epoch`: the live stream's epoch (a string, as the host sends it);
  * - `epoch`: the binding epoch, which strands old byte offsets when it moves;
  * - `program` with `origin`: the program incarnation (1 = original, +1 per
- *   replacement) and how it came to be there;
- * - `lease_generation`: the control lease's generation.
+ *   replacement) and how it came to be there.
  *
  * Fields the session does not report are absent, never invented.
  */
@@ -18,7 +17,7 @@ export type TerminalOpened = { session: string, cols: number, rows: number, back
  * `launched`, `adopted`, `replacement`, `reattached` or the host's other
  * word.
  */
-origin?: string, leaseGeneration?: number, 
+origin?: string, 
 /**
  * What the host reported (`host` or `herdr-core`). Absent when it did
  * not: [`TerminalOpened::process_owner`] derives it from the backend.
@@ -28,13 +27,4 @@ processOwnedBy?: string,
  * The attachment the answer was made under: the one `terminalOpen` or
  * `terminalAttach` was given, or the host's when none was.
  */
-attachment?: string, 
-/**
- * This attachment holds the control lease now (`control.controlling`),
- * so a restored pane knows whether it may type.
- */
-controlling?: boolean, 
-/**
- * Somebody holds the lease (`control.controlled`).
- */
-controlled?: boolean, };
+attachment?: string, };

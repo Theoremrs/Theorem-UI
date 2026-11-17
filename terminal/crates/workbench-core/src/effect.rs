@@ -878,33 +878,25 @@ pub struct TerminalOpen {
     pub operation: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
-#[serde(rename_all = "camelCase")]
-pub enum TerminalRole {
-    Controller,
-    Observer,
-}
-
+/// Attach a view. Every view of a terminal may type, paste and resize, so
+/// there is no role to ask for.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalAttach {
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub from_offset: u64,
-    pub role: TerminalRole,
     pub attachment: String,
 }
 
-/// The claim a controller presents with input and resize: its attachment and
-/// the lease generation and binding epoch it believes are current.
+/// The claim a view presents with input and resize: its attachment and the
+/// binding epoch it believes is current. A key aimed at a terminal the host
+/// has since rebound is refused `stale_epoch`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "ts", derive(ts_rs::TS))]
 #[serde(rename_all = "camelCase")]
 pub struct TerminalClaim {
     pub attachment: String,
-    #[cfg_attr(feature = "ts", ts(type = "number"))]
-    pub lease_generation: u64,
     #[cfg_attr(feature = "ts", ts(type = "number"))]
     pub epoch: u64,
 }
@@ -1343,7 +1335,6 @@ mod tests {
             input_id: "load1:7".into(),
             claim: TerminalClaim {
                 attachment: "a1".into(),
-                lease_generation: 4,
                 epoch: 2,
             },
         });
@@ -1359,7 +1350,7 @@ mod tests {
             serde_json::to_value(&first).unwrap()["payload"],
             json!({
                 "bytes": "ls\r", "kind": "human", "inputId": "load1:7",
-                "claim": {"attachment": "a1", "leaseGeneration": 4, "epoch": 2}
+                "claim": {"attachment": "a1", "epoch": 2}
             })
         );
     }

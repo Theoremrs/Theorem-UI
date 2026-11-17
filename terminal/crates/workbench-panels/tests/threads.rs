@@ -217,7 +217,7 @@ fn sessions() -> Value {
         let mut v = json!({
             "session": id, "profile": "zsh", "backend": "herdr", "workspace": "w",
             "host": host, "cwd": cwd, "program": 1, "state": "running",
-            "controlledElsewhere": false, "admitted": admitted,
+            "admitted": admitted,
         });
         if let Some(n) = name {
             v["name"] = json!(n);

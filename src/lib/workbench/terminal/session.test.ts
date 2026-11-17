@@ -120,24 +120,9 @@ function rig(options: { offers?: boolean | string[] } = {}) {
   }
 }
 
-const control = (
-  generation: number,
-  controlling = true,
-  controlled = true,
-  epoch = 1,
-) => ({
-  attachment: 'ta-1',
-  role: controlling ? 'controller' : 'observer',
-  controlling,
-  controlled,
-  generation,
-  epoch,
-})
-
 const attachReply = (extra: Record<string, unknown> = {}) => ({
   session: 'pty-1',
   attachment: 'ta-1',
-  control: control(1),
   epoch: 1,
   binding: { epoch: 1, program: 1 },
   formatted: '',
@@ -147,31 +132,19 @@ const attachReply = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-/** An opened, attached controller on binding epoch 1, program 1. */
-async function opened(
-  r: ReturnType<typeof rig>,
-  profile = 'Herdr shell',
-  role?: 'controller' | 'observer',
-) {
+/** An opened, attached view on binding epoch 1, program 1. */
+async function opened(r: ReturnType<typeof rig>, profile = 'Herdr shell') {
   r.handlers.open = () => ({
     session: 'pty-1',
     cols: 80,
     rows: 24,
     binding: { epoch: 1, program: 1 },
   })
-  r.handlers.attach = () =>
-    attachReply({
-      control: control(
-        role === 'observer' ? 0 : 1,
-        role !== 'observer',
-        role !== 'observer',
-      ),
-    })
+  r.handlers.attach = () => attachReply()
   const result = await r.session.open({
     profile: profileById(profile),
     cols: 80,
     rows: 24,
-    ...(role ? { role } : {}),
   })
   expect(result.outcome).toBe('accepted')
   return result
@@ -223,7 +196,7 @@ describe('open', () => {
       rows: 24,
       binding: { epoch: 1, program: 1 },
     })
-    r.handlers.attach = () => attachReply({ control: control(1, true, true) })
+    r.handlers.attach = () => attachReply()
     await r.session.open({
       profile: profileById('Herdr shell'),
       cols: 80,
@@ -233,14 +206,14 @@ describe('open', () => {
     expect(r.of('attach')[0]).toMatchObject({ attachment: 'pane-7' })
   })
 
-  test('attaches as controller from offset 0 and reports what it answers', async () => {
+  test('attaches from offset 0 and reports what it answers', async () => {
     const r = rig()
     const result = await opened(r)
     expect(r.of('attach')[0]).toMatchObject({
       session: 'pty-1',
       from_offset: 0,
-      role: 'controller',
     })
+    expect(r.of('attach')[0]).not.toHaveProperty('role')
     expect(result).toMatchObject({
       terminalId: 'pty-1',
       bindingEpoch: 1,
@@ -249,7 +222,7 @@ describe('open', () => {
     expect(r.session.state).toMatchObject({
       phase: 'attached',
       origin: 'launched',
-      lease: { role: 'controller', generation: 1, attachment: 'ta-1' },
+      attachment: 'ta-1',
     })
     expect(r.events[0]).toMatchObject({ type: 'opened', origin: 'launched' })
   })
@@ -294,7 +267,7 @@ describe('open', () => {
   })
 })
 
-describe('four versions', () => {
+describe('three versions', () => {
   test('a reset and a reattach move only the field each one owns', async () => {
     const r = rig()
     await opened(r)
@@ -304,15 +277,13 @@ describe('four versions', () => {
       streamEpoch: 'stream-b',
       bindingEpoch: 1,
       program: 1,
-      lease: { generation: 1 },
     })
 
-    // The host rebinds: a replacement program under epoch 2. The lease generation stays what it was.
+    // The host rebinds: a replacement program under epoch 2.
     r.handlers.attach = () =>
       attachReply({
         epoch: 2,
         binding: { epoch: 2, program: 2 },
-        control: control(1, true, true, 2),
         formatted: 'REPAINT',
         offset_start: 0,
         offset_end: 7,
@@ -330,7 +301,6 @@ describe('four versions', () => {
       program: 2,
       origin: 'replacement',
       offset: 7,
-      lease: { generation: 1 },
     })
     expect(r.events).toContainEqual({
       type: 'reset',
@@ -338,20 +308,6 @@ describe('four versions', () => {
       epoch: 2,
     })
     expect(r.of('attach').at(-1)).toMatchObject({ from_offset: 0 })
-
-    // A takeover changes the lease generation and nothing else.
-    r.live('terminal.control', {
-      session: 'pty-1',
-      epoch: 2,
-      generation: 2,
-      controlled: true,
-    })
-    expect(r.session.state).toMatchObject({
-      streamEpoch: 'stream-b',
-      bindingEpoch: 2,
-      program: 2,
-      lease: { generation: 2, role: 'observer' },
-    })
   })
 
   test('output from an older binding epoch is dropped and one from a newer epoch asks for a repaint', async () => {
@@ -513,7 +469,7 @@ describe('output and reconnect', () => {
   })
 })
 
-describe('lease and input', () => {
+describe('input', () => {
   test('input carries the claim and a fresh id', async () => {
     const r = rig()
     await opened(r)
@@ -532,100 +488,97 @@ describe('lease and input', () => {
       bytes: 'ls\r',
       kind: 'human',
       attachment: 'ta-1',
-      generation: 1,
       epoch: 1,
     })
+    expect(a).not.toHaveProperty('generation')
     expect(a!.input_id).not.toBe(b!.input_id)
     expect(second.outcome).toBe('accepted')
   })
 
-  test('an observer cannot type, paste or resize; nothing is sent', async () => {
+  test('a view of a terminal another view also has types, pastes and resizes', async () => {
     const r = rig()
-    await opened(r, 'Herdr shell', 'observer')
-    expect(r.session.state.lease.role).toBe('observer')
+    r.handlers.attach = () =>
+      // An older host still reports that some other attachment holds control.
+      attachReply({
+        control: {
+          attachment: 'ta-1',
+          role: 'observer',
+          controlling: false,
+          controlled: true,
+          generation: 3,
+          epoch: 1,
+        },
+      })
+    expect(
+      (
+        await r.session.attach({
+          terminalId: 'pty-1',
+          fromOffset: 0,
+          attachment: 'ta-1',
+        })
+      ).outcome,
+    ).toBe('accepted')
+    expect(r.of('attach')[0]).not.toHaveProperty('role')
+    r.handlers.input = () => ({ accepted: true })
+    r.handlers.paste = () => ({ accepted: true })
+    r.handlers.resize = () => ({})
     for (const result of [
       await r.session.input('x'),
-      await r.session.paste('x'),
-      await r.session.resize(10, 10),
+      await r.session.paste('y'),
+      await r.session.resize(100, 30),
     ]) {
-      expect(result).toMatchObject({
-        outcome: 'refused',
-        code: 'terminal_control_refused',
-        reason: 'observer',
-      })
+      expect(result.outcome).toBe('accepted')
     }
-    expect(r.of('input')).toHaveLength(0)
-    expect(r.of('paste')).toHaveLength(0)
-    expect(r.of('resize')).toHaveLength(0)
+    const claim = { attachment: 'ta-1', epoch: 1 }
+    const [typed] = r.of('input')
+    const [pasted] = r.of('paste')
+    const [resized] = r.of('resize')
+    expect(typed).toMatchObject({ bytes: 'x', ...claim })
+    expect(pasted!.body).toMatchObject({ text: 'y', ...claim })
+    expect(resized!.body).toMatchObject({ cols: 100, rows: 30, ...claim })
+    for (const sent of [typed, pasted!.body, resized!.body]) {
+      expect(sent).not.toHaveProperty('generation')
+      expect(sent).not.toHaveProperty('role')
+    }
   })
 
-  test.each([
-    'observer',
-    'held',
-    'stale_generation',
-    'stale_epoch',
-    'unknown_attachment',
-  ] as const)('the host refusing for %s is a typed refusal', async (reason) => {
+  test('the host refusing a write drawn against an older binding is a typed refusal', async () => {
     const r = rig()
     await opened(r)
     r.handlers.input = () => {
-      throw new HostError(409, { code: 'terminal_control_refused', reason })
+      throw new HostError(409, {
+        code: 'terminal_control_refused',
+        reason: 'stale_epoch',
+      })
     }
     expect(await r.session.input('x')).toMatchObject({
       outcome: 'refused',
       code: 'terminal_control_refused',
-      reason,
+      reason: 'stale_epoch',
       terminalId: 'pty-1',
       bindingEpoch: 1,
     })
   })
 
-  test('requestControl takes the lease with a role and the new generation shows', async () => {
-    const r = rig()
-    await opened(r, 'Herdr shell', 'observer')
-    r.handlers.attach = () => attachReply({ control: control(4) })
-    const result = await r.session.requestControl()
-    expect(result.outcome).toBe('accepted')
-    expect(r.of('attach').at(-1)).toMatchObject({
-      role: 'controller',
-      attachment: 'ta-1',
-    })
-    expect(r.session.state.lease).toMatchObject({
-      role: 'controller',
-      generation: 4,
-    })
-    r.handlers.attach = () => attachReply({ control: control(4, false, false) })
-    await r.session.releaseControl()
-    expect(r.of('attach').at(-1)).toMatchObject({ role: 'observer' })
-    expect(r.session.state.lease.role).toBe('observer')
-  })
-
-  test('a takeover elsewhere turns this controller into an observer and typing stops locally', async () => {
-    const r = rig()
-    await opened(r)
-    r.live('terminal.control', {
-      session: 'pty-1',
-      epoch: 1,
-      generation: 2,
-      controlled: true,
-    })
-    expect(r.events.at(-1)).toMatchObject({
-      type: 'lease',
-      lease: { role: 'observer', generation: 2, held: true },
-    })
-    expect(await r.session.input('x')).toMatchObject({
-      outcome: 'refused',
-      reason: 'observer',
-    })
-    // A late event for an older generation changes nothing.
-    r.live('terminal.control', {
-      session: 'pty-1',
-      epoch: 1,
-      generation: 1,
-      controlled: false,
-    })
-    expect(r.session.state.lease.generation).toBe(2)
-  })
+  test.each(['held', 'observer', 'stale_generation', 'unknown_attachment'])(
+    'the host refusing for %s is a failed send in its own word, and the next input still goes',
+    async (word) => {
+      const r = rig()
+      await opened(r)
+      r.handlers.input = () => {
+        throw new HostError(409, {
+          code: 'terminal_control_refused',
+          reason: word,
+        })
+      }
+      const refused = await r.session.input('x')
+      expect(refused.outcome).toBe('failed')
+      expect((refused as { reason: string }).reason).toContain(word)
+      r.handlers.input = () => ({ accepted: true })
+      expect((await r.session.input('y')).outcome).toBe('accepted')
+      expect(r.of('input')).toHaveLength(2)
+    },
+  )
 
   test('a retry after a lost acknowledgement reuses the id and the host acknowledges a duplicate', async () => {
     const r = rig()
@@ -647,7 +600,6 @@ describe('lease and input', () => {
     expect(second).toMatchObject({
       input_id: first!.input_id,
       bytes: 'rm -i x\r',
-      generation: 1,
       epoch: 1,
     })
     // Answered now: a second retry sends nothing.
@@ -664,7 +616,7 @@ describe('lease and input', () => {
   test('a resize carries the claim the caller names, and the session own claim when it names none', async () => {
     const r = rig()
     await opened(r)
-    const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+    const claim = { attachment: 'ta-9', epoch: 1 }
     await r.session.resize(90, 20, { claim })
     await r.session.resize(91, 21)
     const [named, own] = r.of('resize')
@@ -672,7 +624,6 @@ describe('lease and input', () => {
       cols: 90,
       rows: 20,
       attachment: 'ta-9',
-      generation: 4,
       epoch: 1,
     })
     expect(own!.body).toMatchObject({ cols: 91, rows: 21 })
@@ -685,7 +636,7 @@ describe('lease and input', () => {
     r.handlers.input = () => {
       throw new HostError(undefined)
     }
-    const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+    const claim = { attachment: 'ta-9', epoch: 1 }
     await r.session.input('first', 'human', { inputId: 'panel-1', claim })
     r.handlers.input = () => ({ accepted: true })
     await r.session.input('changed', 'human', { inputId: 'panel-1' })
@@ -693,14 +644,13 @@ describe('lease and input', () => {
     expect(a).toMatchObject({
       input_id: 'panel-1',
       attachment: 'ta-9',
-      generation: 4,
       epoch: 1,
     })
     expect(b).toMatchObject({
       input_id: 'panel-1',
       bytes: 'first',
       attachment: 'ta-9',
-      generation: 4,
+      epoch: 1,
     })
   })
 
@@ -712,7 +662,7 @@ describe('lease and input', () => {
       const r = rig()
       await opened(r)
       r.handlers.inputBytes = () => ({ accepted: true })
-      const claim = { attachment: 'ta-9', leaseGeneration: 4, epoch: 1 }
+      const claim = { attachment: 'ta-9', epoch: 1 }
       expect(
         await r.session.inputBytes(raw, 'human', { inputId: 'panel-7', claim }),
       ).toMatchObject({ outcome: 'accepted', value: { inputId: 'panel-7' } })
@@ -725,7 +675,6 @@ describe('lease and input', () => {
         'Idempotency-Key': 'panel-7',
         kind: 'human',
         attachment: 'ta-9',
-        generation: 4,
         epoch: 1,
       })
       expect(sent).not.toHaveProperty('bytes')
@@ -753,17 +702,6 @@ describe('lease and input', () => {
       expect(r.of('inputBytes')).toHaveLength(2)
     })
 
-    test('an observer is refused locally and nothing is sent', async () => {
-      const r = rig()
-      await opened(r, 'Herdr shell', 'observer')
-      expect(await r.session.inputBytes(raw)).toMatchObject({
-        outcome: 'refused',
-        code: 'terminal_control_refused',
-        reason: 'observer',
-      })
-      expect(r.of('inputBytes')).toHaveLength(0)
-    })
-
     test('a host that does not list terminal.input.bytes gets UTF-8 text as text and refuses the rest', async () => {
       const r = rig({ offers: ['terminal.kill'] })
       await opened(r)
@@ -784,7 +722,7 @@ describe('lease and input', () => {
     })
   })
 
-  test('an observer query reply the host discards is an acknowledgement, not an error', async () => {
+  test('a query reply the host discards is an acknowledgement, not an error', async () => {
     const r = rig()
     await opened(r)
     r.handlers.input = () => ({ accepted: false, discarded: true })
@@ -978,7 +916,6 @@ describe('exit, loss and adoption', () => {
         session: 'hc-9',
         epoch: 3,
         binding: { epoch: 3, program: 1 },
-        control: control(0, false, false, 3),
       })
     const result = await r.session.attach({ terminalId: 'hc-9', fromOffset: 0 })
     expect(result).toMatchObject({
@@ -986,10 +923,7 @@ describe('exit, loss and adoption', () => {
       terminalId: 'hc-9',
       bindingEpoch: 3,
     })
-    expect(r.of('attach')[0]).toMatchObject({
-      role: 'observer',
-      from_offset: 0,
-    })
+    expect(r.of('attach')[0]).toMatchObject({ from_offset: 0 })
     r.live('terminal.opened', {
       session: 'hc-9',
       epoch: 4,
@@ -1011,7 +945,6 @@ describe('exit, loss and adoption', () => {
         session: 'hc-9',
         epoch: 3,
         binding: { epoch: 3, program: 1 },
-        control: control(0, false, false, 3),
       })
     await r.session.attach({
       terminalId: 'hc-9',

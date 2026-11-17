@@ -2404,7 +2404,6 @@ impl Model {
             HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
             | HostMessage::TerminalConnectivity { .. }
-            | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalResized { .. } => self.drain_pty(),
             HostMessage::ConversationSnapshot {
                 resource: ResourceRef::Conversation { thread, .. },
@@ -2695,8 +2694,7 @@ fn host_route(message: &HostMessage) -> (Option<&ResourceRef>, Option<Revision>)
         | TerminalOpened { resource, .. }
         | TerminalExited { resource, .. }
         | TerminalConnectivity { resource, .. }
-        | TerminalReport { resource, .. }
-        | TerminalControl { resource, .. } => (Some(resource), None),
+        | TerminalReport { resource, .. } => (Some(resource), None),
         FileChanged { .. }
         | ThemeChanged { .. }
         | CapabilitiesChanged { .. }

@@ -19,7 +19,7 @@ use theorem_workbench_core::completion::{
 use theorem_workbench_core::effect::{
     ApprovalDecision, ConversationApproval, ConversationSend, ConversationSwitch, DocumentOpen,
     DocumentReconcile, Effect, EffectBody, EffectKind, FilesPath, ReconcileKeep, ScmDiff,
-    TerminalAttach, TerminalBackend, TerminalOpen, TerminalRole,
+    TerminalAttach, TerminalBackend, TerminalOpen,
 };
 use theorem_workbench_core::host::HostMessage;
 use theorem_workbench_core::ids::{
@@ -737,7 +737,6 @@ fn cases() -> Vec<Case> {
             kind: "term",
             body: EffectBody::TerminalAttach(TerminalAttach {
                 from_offset: 0,
-                role: TerminalRole::Controller,
                 attachment: "a1".into(),
             }),
             next: term("s2"),

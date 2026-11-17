@@ -21,8 +21,6 @@ export {
 } from './terminal-profile'
 export type {
   InputKind,
-  LeaseRefusalReason,
-  LeaseRole,
   Outcome,
   ProgramOrigin,
   Refusal,

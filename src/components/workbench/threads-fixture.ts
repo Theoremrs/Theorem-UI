@@ -91,7 +91,6 @@ const seedSessions = (): TerminalSessionInfo[] => [
     host: 'studio',
     program: 1,
     state: 'running',
-    controlledElsewhere: false,
     admitted: true,
     programReport: {
       kind: 'current',
@@ -109,7 +108,6 @@ const seedSessions = (): TerminalSessionInfo[] => [
     host: 'studio',
     program: 1,
     state: 'running',
-    controlledElsewhere: false,
     admitted: true,
     programReport: {
       kind: 'current',
@@ -127,7 +125,6 @@ const seedSessions = (): TerminalSessionInfo[] => [
     host: 'laptop',
     program: 1,
     state: 'running',
-    controlledElsewhere: false,
     admitted: false,
     programReport: { kind: 'never_reported' },
   },
@@ -140,7 +137,6 @@ const seedSessions = (): TerminalSessionInfo[] => [
     host: 'laptop',
     program: 1,
     state: 'running',
-    controlledElsewhere: false,
     admitted: false,
     programReport: { kind: 'never_reported' },
   },

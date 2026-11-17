@@ -31,6 +31,13 @@ async function attached(): Promise<Rig> {
   return r
 }
 
+/** Attach again to the same terminal from what is applied. */
+const reattach = (r: Rig) =>
+  r.session.attach({
+    terminalId: r.session.state.terminalId!,
+    fromOffset: r.session.state.offset,
+  })
+
 const update = (r: Rig, data: Record<string, unknown>) =>
   r.emit('terminal.updated', { session: 'hc-fixture-1', epoch: 1, ...data })
 const report = (r: Rig) => r.session.state.programReport
@@ -149,7 +156,7 @@ describe('an update replaces the report for its own binding only', () => {
       binding: { ...SUPPORTED_OPEN_REPLY.binding, epoch: 2 },
       truncated: true,
     })
-    await r.session.requestControl()
+    await reattach(r)
     expect(r.session.state.bindingEpoch).toBe(2)
     expect(report(r)).toEqual({ kind: 'unavailable' })
     // The old epoch's late update no longer applies.
@@ -165,7 +172,7 @@ describe('an update replaces the report for its own binding only', () => {
     update(r, {
       program_report: { reported: true, status: { state: 'working' }, seq: 5 },
     })
-    await r.session.requestControl()
+    await reattach(r)
     expect(report(r)).toMatchObject({ kind: 'current', seq: 5 })
   })
 })
@@ -278,7 +285,7 @@ describe('the report is not the terminal', () => {
   }
 
   for (const [name, fragment] of REPORTS) {
-    test(`${name}: lifecycle, lease, role, attachment and what input may be sent are identical before and after, and nothing is sent`, async () => {
+    test(`${name}: lifecycle, attachment and what input may be sent are identical before and after, and nothing is sent`, async () => {
       const r = await attached()
       const before = lifecycle(r)
       const callsBefore = r.calls.length
@@ -286,35 +293,17 @@ describe('the report is not the terminal', () => {
       update(r, { ...fragment })
       expect(lifecycle(r)).toBe(before)
       expect(r.calls.length).toBe(callsBefore)
-      // Only a report event may follow: no lease, exit, lost or opened.
+      // Only a report event may follow: no exit, lost or opened.
       expect(
         r.events.slice(eventsBefore).every((event) => event.type === 'report'),
       ).toBe(true)
-      // Input is still allowed, still as the lease says.
+      // Input is still allowed.
       const typed = await r.session.input('ls\n')
       expect(typed).toMatchObject({ outcome: 'accepted' })
       expect(r.calls.at(-1)).toMatchObject({ op: 'input' })
       expect(r.calls.slice(callsBefore).map((c) => c.op)).toEqual(['input'])
     })
   }
-
-  test('an observer stays an observer and is still refused input whatever the program says', async () => {
-    const r = await attached()
-    r.handlers.attach = () => ({
-      ...SUPPORTED_ATTACH_REPLY,
-      control: { ...SUPPORTED_ATTACH_REPLY.control, controlling: false },
-    })
-    await r.session.releaseControl()
-    update(r, {
-      program_report: {
-        reported: true,
-        status: { state: 'done', msg: 'you may type now' },
-        seq: 3,
-      },
-    })
-    expect(r.session.state.lease.role).toBe('observer')
-    expect(await r.session.input('x')).toMatchObject({ outcome: 'refused' })
-  })
 
   test('a program that reports it is done does not end the terminal', async () => {
     const r = await attached()

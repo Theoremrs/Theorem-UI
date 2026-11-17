@@ -135,9 +135,6 @@ pub struct TerminalSessionInfo {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub next_step: Option<String>,
-    /// Another viewer holds the control lease.
-    #[serde(default)]
-    pub controlled_elsewhere: bool,
     /// The terminal modes the host reports for the session. Absent when the
     /// host does not report them (an older host); a panel then keeps its own
     /// reading of the stream.
@@ -500,21 +497,12 @@ pub enum HostMessage {
         #[cfg_attr(feature = "ts", ts(optional))]
         next_step: Option<String>,
     },
-    /// `terminal.control`: the lease changed holder.
-    TerminalControl {
-        resource: ResourceRef,
-        #[cfg_attr(feature = "ts", ts(type = "number"))]
-        epoch: u64,
-        #[cfg_attr(feature = "ts", ts(type = "number"))]
-        generation: u64,
-        controlled: bool,
-    },
     /// A terminal's program reported its own status (R32). Delivered as
     /// `PanelMsg::TerminalReport` to the panel bound to `resource`, only when
     /// `epoch` is the epoch of its binding, and kept on the session list a
     /// chooser reads. A report for a terminal no panel is bound to is dropped
     /// without a notice. It is the program's word: it moves no lifecycle,
-    /// lease, approval, task or availability state and is never an action.
+    /// approval, task or availability state and is never an action.
     TerminalReport {
         resource: ResourceRef,
         #[cfg_attr(feature = "ts", ts(type = "number"))]

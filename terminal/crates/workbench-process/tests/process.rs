@@ -9,9 +9,7 @@ use ratatui::layout::Rect;
 use ratatui::style::Color;
 use theorem_workbench_core::builtin;
 use theorem_workbench_core::completion::{Completion, CompletionPayload, Outcome, TerminalOpened};
-use theorem_workbench_core::effect::{
-    Effect, EffectBody, InputKind, TerminalBackend, TerminalRole,
-};
+use theorem_workbench_core::effect::{Effect, EffectBody, InputKind, TerminalBackend};
 use theorem_workbench_core::host::{
     ConnectivityState, HostMessage, TerminalProfileInfo, TerminalSessionInfo, TerminalSessionState,
 };
@@ -72,7 +70,6 @@ fn session_named(name: &str, backend: TerminalBackend, profile: &str) -> Termina
         state: TerminalSessionState::Running,
         reason: None,
         next_step: None,
-        controlled_elsewhere: false,
         modes: None,
         program_report: Default::default(),
     }
@@ -186,11 +183,8 @@ fn opened(epoch: u64, program: u64, cols: u16, rows: u16, origin: &str) -> Termi
         epoch,
         program,
         origin: Some(origin.into()),
-        lease_generation: Some(1),
         process_owned_by: None,
         attachment: None,
-        controlling: None,
-        controlled: None,
     }
 }
 
@@ -425,7 +419,7 @@ fn inputs(fx: &[Effect]) -> Vec<(String, String, u64)> {
             EffectBody::TerminalInput(i) => Some((
                 i.bytes.clone(),
                 i.input_id.clone(),
-                i.claim.lease_generation,
+                i.claim.epoch,
             )),
             _ => None,
         })
@@ -466,7 +460,7 @@ fn choosing_a_session_emits_exactly_one_attach() {
     let EffectBody::TerminalAttach(a) = &fx[0].body else {
         unreachable!()
     };
-    assert_eq!(a.role, TerminalRole::Controller);
+    assert!(!a.attachment.is_empty(), "the view names its own attachment");
     assert_eq!(fx[0].resource, terminal());
     assert!(r.tick().is_empty(), "no second effect while attaching");
 }
@@ -542,7 +536,7 @@ fn an_uncertain_open_is_shown_unknown_never_retried_or_resolved() {
 }
 
 #[test]
-fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment_and_lease() {
+fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment() {
     let mut r = rig();
     r.key(Key::Down);
     r.key(Key::Down);
@@ -558,8 +552,6 @@ fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment_and_leas
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
             attachment: Some(attachment.clone()),
-            controlling: Some(true),
-            controlled: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
     );
@@ -572,30 +564,10 @@ fn open_and_attach_are_one_effect_and_the_answer_carries_the_attachment_and_leas
         unreachable!()
     };
     assert_eq!(i.claim.attachment, attachment);
-    assert_eq!(i.claim.lease_generation, 1);
+    assert_eq!(i.claim.epoch, 1);
 }
 
-#[test]
-fn an_open_the_host_answers_without_control_leaves_the_pane_observing_with_the_reason() {
-    let mut r = rig();
-    r.key(Key::Down);
-    r.key(Key::Down);
-    let open = r.key(Key::Enter)[0].clone();
-    r.answer(
-        &open,
-        Outcome::Accepted,
-        Some(CompletionPayload::Terminal(TerminalOpened {
-            backend: TerminalBackend::Native,
-            controlling: Some(false),
-            controlled: Some(true),
-            ..opened(1, 1, 80, 24, "launched")
-        })),
-    );
-    assert!(r.typed("l").is_empty());
-    assert!(r.screen().contains("(host: held)"), "{}", r.screen());
-}
-
-// ---- 3. live, controlling --------------------------------------------------
+// ---- 3. live ---------------------------------------------------------------
 
 #[test]
 fn input_carries_a_fresh_id_and_the_claim_and_a_retry_reuses_the_id() {
@@ -607,7 +579,7 @@ fn input_carries_a_fresh_id_and_the_claim_and_a_retry_reuses_the_id() {
     assert_eq!((a.len(), b.len()), (1, 1));
     assert_eq!(a[0].0, "l");
     assert_ne!(a[0].1, b[0].1, "each logical input has its own id");
-    assert_eq!(a[0].2, 1, "the lease generation of the claim");
+    assert_eq!(a[0].2, 1, "the binding epoch of the claim");
     let EffectBody::TerminalInput(sent) = &first[0].body else {
         unreachable!()
     };
@@ -815,104 +787,53 @@ fn selection_and_copy_go_to_the_clipboard_not_the_program() {
     assert_eq!(w.text, "hello");
 }
 
-// ---- 4. observing ----------------------------------------------------------
+// ---- 4. refusals -----------------------------------------------------------
 
-fn observing() -> Rig {
+#[test]
+fn a_stale_epoch_refusal_says_so_and_attaches_again_without_resending() {
     let mut r = rig();
-    let fx = r.key(Key::Char('o'));
-    let attach = only_attach(&fx);
-    let EffectBody::TerminalAttach(a) = &attach.body else {
-        unreachable!()
-    };
-    assert_eq!(a.role, TerminalRole::Observer);
-    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
-    r
-}
-
-#[test]
-fn an_observer_emits_nothing_shows_the_reason_and_offers_control() {
-    let mut r = observing();
-    assert!(r.tick().is_empty(), "no resize from an observer");
-    assert!(r.typed("ls").is_empty());
-    assert!(r.send(Msg::Paste("x".into())).is_empty());
-    let s = r.screen();
-    assert!(s.contains("observing"), "{s}");
-    assert!(
-        s.contains("did not take control") || s.contains("observer"),
-        "{s}"
+    r.live();
+    r.bytes(1, 0, b"abc");
+    let fx = r.typed("a");
+    let fx = r.answer(
+        &fx[0],
+        Outcome::Refused {
+            code: "terminal_control_refused".into(),
+            reason: "stale_epoch".into(),
+        },
+        None,
     );
-    assert!(s.contains("Enter requests control"), "{s}");
-    let tree = r.valid_tree();
-    let ctrl = tree
-        .nodes
-        .iter()
-        .find(|n| n.id.as_str() == "request-control")
-        .unwrap();
-    assert!(ctrl.actions[0].enabled);
-    // Output still arrives.
-    r.bytes(1, 0, b"hi");
-    assert!(r.grid()[1].starts_with("hi"));
-}
-
-#[test]
-fn requesting_control_attaches_as_controller_and_a_refusal_is_shown_with_its_reason() {
-    let mut r = observing();
-    r.typed("x");
-    let fx = r.key(Key::Enter);
+    let s = one_line(&r.screen());
+    assert!(s.contains("rebound") && s.contains("(host: stale_epoch)"), "{s}");
+    assert!(inputs(&fx).is_empty(), "the refused input is not sent again");
     let attach = only_attach(&fx);
     let EffectBody::TerminalAttach(a) = &attach.body else {
         unreachable!()
     };
-    assert_eq!(a.role, TerminalRole::Controller);
-    r.answer(
-        &attach,
+    assert_eq!(a.from_offset, 3);
+    r.accept_attach(&attach, opened(2, 1, 80, 24, "reattached"));
+    let typed = r.typed("b");
+    assert_eq!(inputs(&typed), [("b".to_owned(), inputs(&typed)[0].1.clone(), 2)]);
+}
+
+#[test]
+fn any_other_control_refusal_is_a_failed_send_and_the_pane_still_types() {
+    let mut r = rig();
+    r.live();
+    let fx = r.typed("a");
+    let fx = r.answer(
+        &fx[0],
         Outcome::Refused {
             code: "terminal_control_refused".into(),
             reason: "held".into(),
         },
         None,
     );
-    let s = r.screen();
-    assert!(
-        s.contains("Another viewer holds control (host: held)"),
-        "{s}"
-    );
-    assert!(r.typed("a").is_empty(), "still observing");
-}
-
-#[test]
-fn a_refused_input_moves_a_controller_to_observing_with_the_hosts_reason() {
-    let mut r = rig();
-    r.live();
-    let fx = r.typed("a");
-    r.answer(
-        &fx[0],
-        Outcome::Refused {
-            code: "terminal_control_refused".into(),
-            reason: "stale_generation".into(),
-        },
-        None,
-    );
-    assert!(one_line(&r.screen()).contains("(host: stale_generation)"));
-    assert!(r.typed("b").is_empty());
-}
-
-#[test]
-fn losing_the_lease_moves_to_observing_without_dropping_output() {
-    let mut r = rig();
-    r.live();
-    r.bytes(1, 0, b"abc");
-    r.host(HostMessage::TerminalControl {
-        resource: terminal(),
-        epoch: 1,
-        generation: 2,
-        controlled: false,
-    });
-    assert!(r.typed("z").is_empty());
-    r.bytes(1, 3, b"def");
-    let s = r.screen();
-    assert!(s.contains("abcdef"), "{s}");
-    assert!(s.contains("observing"));
+    assert!(fx.is_empty(), "{fx:?}");
+    let s = one_line(&r.screen());
+    assert!(s.contains("Input refused: held (terminal_control_refused)."), "{s}");
+    assert!(!s.contains("observ") && !s.contains("control."), "{s}");
+    assert_eq!(inputs(&r.typed("b"))[0].0, "b");
 }
 
 // ---- 5. epochs -------------------------------------------------------------
@@ -946,7 +867,7 @@ fn a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped() {
 }
 
 #[test]
-fn an_offset_gap_asks_for_a_reset_with_the_current_role() {
+fn an_offset_gap_asks_for_a_reset() {
     let mut r = rig();
     r.live();
     r.bytes(1, 0, b"abc");
@@ -955,11 +876,6 @@ fn an_offset_gap_asks_for_a_reset_with_the_current_role() {
     let EffectBody::TerminalAttach(a) = &attach.body else {
         unreachable!()
     };
-    assert_eq!(
-        a.role,
-        TerminalRole::Controller,
-        "a repaint must not give the lease up"
-    );
     assert_eq!(a.from_offset, 3);
     assert!(!r.screen().contains("zzz"));
     assert!(r.screen().contains("asking") || r.screen().contains("Asking"));
@@ -1022,7 +938,6 @@ fn a_lost_program_is_lost_and_a_new_shell_is_a_different_process() {
         Outcome::Accepted,
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
-            controlling: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
     );
@@ -1075,7 +990,6 @@ fn closing_the_pane_detaches_with_the_claim_and_never_ends() {
     let EffectBody::TerminalDetach(claim) = &fx[0].body else {
         unreachable!()
     };
-    assert_eq!(claim.lease_generation, 1);
     assert_eq!(claim.epoch, 1);
 }
 
@@ -1225,16 +1139,9 @@ fn every_state_has_a_valid_semantic_tree_with_a_status_line() {
     let attach = only_attach(&r.key(Key::Enter));
     check(&r, "attaching");
     r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
-    check(&r, "controlling");
+    check(&r, "running");
     let tree = r.valid_tree();
     assert!(tree.nodes.iter().any(|n| n.id.as_str() == "terminal"));
-    r.host(HostMessage::TerminalControl {
-        resource: terminal(),
-        epoch: 1,
-        generation: 2,
-        controlled: false,
-    });
-    check(&r, "observing");
     r.host(HostMessage::TerminalExited {
         resource: terminal(),
         epoch: 1,
@@ -1242,26 +1149,6 @@ fn every_state_has_a_valid_semantic_tree_with_a_status_line() {
         reason: "exited".into(),
     });
     check(&r, "ended");
-}
-
-#[test]
-fn the_terminal_node_says_why_an_observer_cannot_type() {
-    let r = observing();
-    let tree = r.valid_tree();
-    let term = tree
-        .nodes
-        .iter()
-        .find(|n| n.id.as_str() == "terminal")
-        .unwrap();
-    assert!(term.state.disabled);
-    assert!(
-        term.state
-            .description
-            .as_deref()
-            .unwrap_or("")
-            .contains("observer")
-            || term.state.description.is_some()
-    );
 }
 
 // ---- renders for the report -----------------------------------------------------
@@ -1376,7 +1263,6 @@ fn an_open_that_resolved_is_detached_not_abandoned_when_the_pane_closes() {
         Outcome::Accepted,
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
-            controlling: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
     );
@@ -1419,7 +1305,7 @@ fn a_non_utf8_mouse_report_reaches_the_wire_intact_and_a_resend_reuses_its_id() 
         wire,
         vec![0x1b, b'[', b'M', 32, 32 + 101, 32 + 3 + 1 - 1 + 1 - 1]
     );
-    assert_eq!(sent.claim.lease_generation, 1);
+    assert_eq!(sent.claim.epoch, 1);
     // Unknown outcome, resent by a person: same id, same data.
     r.answer(
         &fx[0],
@@ -1480,53 +1366,36 @@ fn a_pane_opened_after_the_listing_shows_it_at_once() {
 
 // ---- restore -----------------------------------------------------------------
 
-fn restored(controlling: Option<bool>, controlled: Option<bool>) -> (Rig, Effect) {
-    let mut r = rig();
-    r.live();
-    let doc = r.m.document();
+#[test]
+fn a_pane_attached_to_a_terminal_another_view_also_has_types_pastes_and_resizes() {
+    // The first rig's pane stays attached: the restored one is a second view
+    // of the same terminal, as after a reload.
+    let mut first = rig();
+    first.live();
+    let doc = first.m.document();
     let mut m = model("w");
     m.restore(doc).expect("restores");
-    let mut r2 = Rig {
+    let mut r = Rig {
         id: shell_id(&m),
         m,
     };
-    r2.send(data());
-    let attach = only_attach(&r2.tick());
-    r2.accept_attach(
-        &attach,
-        TerminalOpened {
-            controlling,
-            controlled,
-            ..opened(1, 1, 80, 24, "reattached")
-        },
-    );
-    (r2, attach)
-}
-
-#[test]
-fn a_restored_pane_does_not_take_control_even_when_nobody_holds_it() {
-    let (mut r, attach) = restored(Some(false), Some(false));
-    let EffectBody::TerminalAttach(a) = &attach.body else {
+    r.send(data());
+    let attach = only_attach(&r.tick());
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    let b = r.body();
+    assert_eq!(kinds(&fx), ["resize"], "the pane sends its own size");
+    let EffectBody::TerminalResize(size) = &fx[0].body else {
         unreachable!()
     };
-    assert_eq!(a.role, TerminalRole::Observer);
-    assert!(r.typed("l").is_empty(), "keys alone never take control");
-    assert!(
-        r.screen().contains("Nobody holds control"),
-        "{}",
-        r.screen()
-    );
-}
-
-#[test]
-fn a_restored_pane_shows_who_holds_control() {
-    let (mut r, _) = restored(Some(false), Some(true));
-    assert!(r.typed("l").is_empty());
-    assert!(
-        r.screen().contains("Another viewer holds control"),
-        "{}",
-        r.screen()
-    );
+    assert_eq!((size.cols, size.rows), (b.width, b.height - 2));
+    let typed = r.typed("l");
+    assert_eq!(inputs(&typed).len(), 1, "{typed:?}");
+    assert_eq!(inputs(&typed)[0].0, "l");
+    assert_eq!(inputs(&r.send(Msg::Paste("x".into())))[0].0, "x");
+    // And the first view still types too.
+    assert_eq!(inputs(&first.typed("m"))[0].0, "m");
+    let s = r.screen();
+    assert!(!s.contains("observ") && !s.contains("control"), "{s}");
 }
 
 // ---- semantics ------------------------------------------------------------------
@@ -1593,8 +1462,6 @@ fn the_pane_registers_its_workflows_and_only_the_confirmation_is_human_only() {
     };
     for id in [
         "shell.attach",
-        "shell.observe",
-        "shell.control",
         "shell.resend",
         "shell.end.confirm",
     ] {
@@ -1602,41 +1469,25 @@ fn the_pane_registers_its_workflows_and_only_the_confirmation_is_human_only() {
     }
     let human = |id: &str| registry.action(&ActionId::new(id)).unwrap().1.human_only;
     assert!(human("shell.end.confirm"));
-    assert!(!human("shell.control") && !human("shell.attach"));
+    assert!(!human("shell.attach"));
+    assert!(registry.action(&ActionId::new("shell.observe")).is_none());
+    assert!(registry.action(&ActionId::new("shell.control")).is_none());
     // Registering twice is refused rather than duplicated.
     let mut again = registry;
     assert!(extend_registry(&mut again).is_err());
 }
 
 #[test]
-fn shell_attach_and_shell_control_act_on_the_selected_row_and_the_lease() {
+fn shell_attach_acts_on_the_selected_row() {
     let mut r = rig();
     let fx = r.send(Msg::Action {
-        id: ActionId::new("shell.observe"),
+        id: ActionId::new("shell.attach"),
         actor: Actor::Agent { run_id: "r".into() },
     });
     let attach = only_attach(&fx);
-    let EffectBody::TerminalAttach(a) = &attach.body else {
-        unreachable!()
-    };
-    assert_eq!(a.role, TerminalRole::Observer);
-    r.accept_attach(
-        &attach,
-        TerminalOpened {
-            controlling: Some(false),
-            controlled: Some(false),
-            ..opened(1, 1, 80, 24, "reattached")
-        },
-    );
-    let fx = r.send(Msg::Action {
-        id: ActionId::new("shell.control"),
-        actor: Actor::Human,
-    });
-    let attach = only_attach(&fx);
-    let EffectBody::TerminalAttach(a) = &attach.body else {
-        unreachable!()
-    };
-    assert_eq!(a.role, TerminalRole::Controller);
+    let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
+    r.settle_resize(fx);
+    assert_eq!(inputs(&r.typed("l"))[0].0, "l");
 }
 
 #[test]
@@ -1915,14 +1766,7 @@ fn attached_with(modes: Option<theorem_workbench_core::host::TerminalModes>) -> 
     r.send(listing_with(vec![s], None));
     let fx = r.key(Key::Enter);
     let attach = only_attach(&fx);
-    r.accept_attach(
-        &attach,
-        TerminalOpened {
-            controlling: Some(true),
-            controlled: Some(false),
-            ..opened(1, 1, 80, 24, "reattached")
-        },
-    );
+    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
     r
 }
 
@@ -2061,7 +1905,7 @@ fn an_origin_word_the_pane_does_not_know_is_quoted_as_the_hosts_and_never_acted_
         );
         let tree = r.valid_tree();
         let status = node(&tree, "status");
-        assert!(status.name.contains("controlling"), "{}", status.name);
+        assert!(status.name.ends_with("| epoch 1"), "{}", status.name);
         assert!(
             status
                 .state
@@ -2598,9 +2442,15 @@ fn every_claim_after_an_attach_carries_the_attachment_the_host_returned() {
 
 #[test]
 fn a_later_attach_asks_by_the_hosts_name_and_a_new_answer_replaces_it_again() {
-    let mut r = observing_with_host_name("ta-host-1");
-    r.typed("x");
+    let mut r = rig();
     let attach = only_attach(&r.key(Key::Enter));
+    let mut o = opened(1, 1, 80, 24, "reattached");
+    o.attachment = Some("ta-host-1".into());
+    let fx = r.accept_attach(&attach, o);
+    r.settle_resize(fx);
+    r.bytes(1, 0, b"abc");
+    // A gap asks for a repaint: a later attach.
+    let attach = only_attach(&r.bytes(1, 99, b"zzz"));
     assert_eq!(
         attachment_of(&attach),
         "ta-host-1",
@@ -2608,7 +2458,6 @@ fn a_later_attach_asks_by_the_hosts_name_and_a_new_answer_replaces_it_again() {
     );
     let mut o = opened(2, 2, 80, 24, "reattached");
     o.attachment = Some("ta-host-2".into());
-    o.controlling = Some(true);
     r.accept_attach(&attach, o);
     assert_eq!(claim_of(&r.typed("a")), ["ta-host-2"]);
 }
@@ -2621,15 +2470,6 @@ fn an_answer_with_no_attachment_keeps_the_panes_own() {
     let fx = r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
     r.settle_resize(fx);
     assert_eq!(claim_of(&r.typed("a")), [asked]);
-}
-
-fn observing_with_host_name(name: &str) -> Rig {
-    let mut r = rig();
-    let attach = only_attach(&r.key(Key::Char('o')));
-    let mut o = opened(1, 1, 80, 24, "reattached");
-    o.attachment = Some(name.into());
-    r.accept_attach(&attach, o);
-    r
 }
 
 // ---- Escape, a stale list, a host that lists the program as lost ----------------
@@ -2712,22 +2552,6 @@ fn escape_at_the_end_prompt_inside_a_drawer_cancels_the_prompt_and_the_drawer_st
 }
 
 #[test]
-fn escape_at_an_offer_of_control_inside_a_drawer_dismisses_it_and_the_drawer_stays() {
-    let mut r = observing();
-    r.typed("x");
-    assert!(r.screen().contains("Enter requests control"));
-    let group = drawer_on(&mut r);
-    let fx = r.key(Key::Esc);
-    assert!(fx.is_empty(), "{fx:?}");
-    assert_eq!(r.m.dock().drawer(), Some(group), "the drawer took Esc");
-    assert!(
-        !r.screen().contains("Enter requests control"),
-        "{}",
-        r.screen()
-    );
-}
-
-#[test]
 fn escape_after_the_program_ended_inside_a_drawer_returns_to_the_chooser_and_the_drawer_stays() {
     let mut r = bound();
     r.host(HostMessage::TerminalExited {
@@ -2773,18 +2597,18 @@ fn the_chooser_follows_a_host_that_reports_herdr_ready_after_it_first_drew_and_b
 }
 
 #[test]
-fn a_host_that_lists_the_bound_session_as_lost_or_exited_ends_the_pane_s_controlling() {
+fn a_host_that_lists_the_bound_session_as_lost_or_exited_ends_the_pane_s_running() {
     for (state, word) in [
         (TerminalSessionState::Lost, "lost"),
         (TerminalSessionState::Exited, "exited"),
     ] {
         let mut r = bound();
-        assert!(r.screen().contains("controlling"));
+        assert!(r.screen().contains("Herdr | epoch 1"), "{}", r.screen());
         let mut row = session("s1", TerminalBackend::Herdr);
         row.state = state;
         r.send(listing("w", vec![row]));
         let s = r.screen();
-        assert!(!s.contains("controlling") && s.contains(word), "{s}");
+        assert!(!s.contains("Herdr | epoch 1") && s.contains(word), "{s}");
         assert!(
             r.typed("z").is_empty(),
             "input went to a program the host calls {word}"
@@ -3017,22 +2841,6 @@ fn the_status_line_and_notices_wrap_over_the_screens_bottom_rows_at_every_width(
         tree.nodes.iter().all(|n| !n.name.contains('\n')),
         "names stay whole"
     );
-
-    // An offer of control, and the same drawn narrow.
-    let r = {
-        let mut r = observing();
-        r.typed("x");
-        r
-    };
-    for w in wrapping_widths(&r) {
-        let rows = r.text(w, 14);
-        shows_all_words(
-            &rows,
-            "Enter requests control, Esc dismisses.",
-            &format!("offer at width {w}"),
-        );
-        no_ellipsis(&rows, "offer");
-    }
 }
 
 // ---- the program's own status report (R32) ---------------------------------------------
@@ -3068,7 +2876,7 @@ fn report_msg(report: ProgramReport) -> HostMessage {
 }
 
 /// Everything that is the pane's own or the host's and not the program's: the
-/// header row, the tab's label, the lifecycle, lease and control nodes, the
+/// header row, the tab's label, the lifecycle and action nodes, the
 /// key context, what the pane holds Escape for, and what it would serialize.
 fn lifecycle(r: &Rig) -> String {
     use theorem_workbench_core::keys::active_contexts;
@@ -3240,13 +3048,6 @@ fn a_report_of_every_state_leaves_the_lifecycle_byte_identical() {
         r.host(report_msg(report));
         assert_eq!(lifecycle(&r), before);
     }
-    // The same for an observer, where the offer and the role are in play.
-    let mut o = observing();
-    o.typed("x");
-    let before = lifecycle(&o);
-    o.host(report_msg(current(status(ProgramState::Done), None)));
-    assert_eq!(lifecycle(&o), before);
-    assert!(o.screen().contains("Enter requests control"));
 }
 
 #[test]
@@ -3676,7 +3477,7 @@ fn a_lost_connection_says_it_is_the_connection_and_running_in_the_same_epoch_rec
     r.host(link(1, ConnectivityState::Running, None));
     let s = one_line(&r.screen());
     assert!(!s.contains("Connection to the terminal lost"), "{s}");
-    assert!(s.contains("controlling"), "{s}");
+    assert!(s.contains("Herdr | epoch 1"), "{s}");
     assert!(notice_text(&r).is_empty() || !notice_text(&r).contains("lost"));
 }
 
@@ -3898,7 +3699,6 @@ fn a_retry_of_a_failed_or_uncertain_launch_reuses_its_operation_and_a_new_launch
         Outcome::Accepted,
         Some(CompletionPayload::Terminal(TerminalOpened {
             backend: TerminalBackend::Native,
-            controlling: Some(true),
             ..opened(1, 1, 80, 24, "launched")
         })),
     );
@@ -4123,7 +3923,7 @@ fn code_send_pastes_then_presses_enter_and_code_stop_sends_ctrl_c() {
 }
 
 #[test]
-fn code_send_is_refused_without_words_and_on_an_observer() {
+fn code_send_is_refused_without_words_and_on_an_ended_program() {
     let mut r = rig();
     r.live();
     let id = r.id.as_str().to_owned();
@@ -4140,14 +3940,14 @@ fn code_send_is_refused_without_words_and_on_an_observer() {
         "{outcome:?}"
     );
 
-    let mut r = rig();
-    r.send(coding_listing());
-    let fx = r.key(Key::Char('o'));
-    let attach = only_attach(&fx);
-    r.accept_attach(&attach, opened(1, 1, 80, 24, "reattached"));
-    let id = r.id.as_str().to_owned();
+    r.host(HostMessage::TerminalExited {
+        resource: terminal(),
+        epoch: 1,
+        exit_code: Some(0),
+        reason: "exited".into(),
+    });
     let (outcome, fx) = act(&mut r.m, "code.send", Some(&id), Some(r#"{"input":"ls"}"#));
-    assert!(fx.is_empty(), "an observer types nothing: {fx:?}");
+    assert!(fx.is_empty(), "an ended program is typed nothing: {fx:?}");
     assert!(
         matches!(
             &outcome,

@@ -47,7 +47,6 @@ fn input_bytes_and_abandoning_an_open_belong_to_the_terminal_owner() {
         input_id: "i-1".into(),
         claim: TerminalClaim {
             attachment: "pane-1".into(),
-            lease_generation: 2,
             epoch: 1,
         },
     });
@@ -95,7 +94,6 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
             state: TerminalSessionState::Exited,
             reason: None,
             next_step: None,
-            controlled_elsewhere: true,
             modes: None,
             program_report: Default::default(),
         }],
@@ -104,7 +102,6 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
     let value = serde_json::to_value(&message).unwrap();
     assert_eq!(value["type"], "terminalSessions");
     assert_eq!(value["sessions"][0]["state"], "exited");
-    assert_eq!(value["sessions"][0]["controlledElsewhere"], true);
     assert_eq!(
         serde_json::from_value::<HostMessage>(value).unwrap(),
         message
@@ -124,7 +121,6 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
     };
     assert!(profiles[0].available);
     assert_eq!(sessions[0].state, TerminalSessionState::Running);
-    assert!(!sessions[0].controlled_elsewhere);
 }
 
 #[test]

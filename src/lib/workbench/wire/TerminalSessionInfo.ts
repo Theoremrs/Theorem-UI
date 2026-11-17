@@ -27,10 +27,6 @@ reason?: string,
  */
 nextStep?: string, 
 /**
- * Another viewer holds the control lease.
- */
-controlledElsewhere: boolean, 
-/**
  * The terminal modes the host reports for the session. Absent when the
  * host does not report them (an older host); a panel then keeps its own
  * reading of the stream.

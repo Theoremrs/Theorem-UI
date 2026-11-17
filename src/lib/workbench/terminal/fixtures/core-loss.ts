@@ -166,14 +166,7 @@ export const BACKEND_UNAVAILABLE = {
   detail: { backend: 'herdr', cause: 'core_unavailable', next_step: 'retry' },
 } as const
 
-/** Lease claims and host-owned arguments. */
-export const CONTROL_CLAIM_ATTACH = {
-  session: 'hc-example',
-  role: 'controller',
-  attachment: 'ta-holder',
-  generation: 1,
-  epoch: 2,
-} as const
+/** A control refusal the host still sends, and a host-owned argument. */
 export const CONTROL_REFUSED_HELD = {
   code: 'terminal_control_refused',
   message: 'another attachment holds control at generation 1',

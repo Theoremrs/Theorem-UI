@@ -125,27 +125,27 @@ const SAMPLES: { [TKind in EffectKind]: PayloadOf<TKind> } = {
   },
   searchCancel: { id: 's' },
   terminalOpen: { backend: 'native', cols: 80, rows: 24 },
-  terminalAttach: { fromOffset: 0, role: 'observer', attachment: 'a' },
+  terminalAttach: { fromOffset: 0, attachment: 'a' },
   terminalInput: {
     bytes: 'ls\n',
     kind: 'human',
     inputId: 'i',
-    claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+    claim: { attachment: 'a', epoch: 1 },
   },
   terminalInputBytes: {
     data: 'bHMK',
     kind: 'human',
     inputId: 'ib',
-    claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+    claim: { attachment: 'a', epoch: 1 },
   },
   terminalAbandonOpen: { open: 0 },
   terminalAdmit: { session: 'hc-9' },
   terminalResize: {
     cols: 100,
     rows: 30,
-    claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+    claim: { attachment: 'a', epoch: 1 },
   },
-  terminalDetach: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+  terminalDetach: { attachment: 'a', epoch: 1 },
   terminalEnd: undefined,
   threadsList: undefined,
   threadsCreate: { projectId: 'p1' },
@@ -286,7 +286,7 @@ class FakePort {
     streamEpoch: 's-1' as string | undefined,
     origin: 'launched' as string | undefined,
     processOwnedBy: 'herdr-core' as string | undefined,
-    lease: { generation: 4 as number | undefined },
+    attachment: undefined as string | undefined,
     programReport: { kind: 'unavailable' } as ProgramReport,
     connectivity: { state: 'running' } as Connectivity,
   }
@@ -1062,7 +1062,6 @@ describe('terminals', () => {
         program: 1,
         streamEpoch: 's-1',
         origin: 'launched',
-        leaseGeneration: 4,
         processOwnedBy: 'herdr-core',
       },
     })
@@ -1073,34 +1072,26 @@ describe('terminals', () => {
     expect(t.port.seen.resize).toEqual([
       100,
       30,
-      { claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 } },
+      { claim: { attachment: 'a', epoch: 1 } },
     ])
   })
 
-  test('an open with an attachment hands it to the session and the answer carries it with who holds the lease', async () => {
+  test('an open with an attachment hands it to the session and the answer carries it', async () => {
     const t = await setup()
-    Object.assign(t.port.state, {
-      lease: {
-        generation: 4,
-        role: 'controller',
-        held: true,
-        attachment: 'pane-1',
-      },
-    })
+    Object.assign(t.port.state, { attachment: 'pane-1' })
     t.adapter.perform({
       ...effectOf(1, 'terminalOpen'),
       payload: { backend: 'native', cols: 80, rows: 24, attachment: 'pane-1' },
     } as never)
     await t.settle()
     expect(t.port.seen.open).toMatchObject({ attachment: 'pane-1' })
-    expect(t.completions()[0]!.payload).toMatchObject({
-      attachment: 'pane-1',
-      controlling: true,
-      controlled: true,
-    })
+    const payload = t.completions()[0]!.payload
+    expect(payload).toMatchObject({ attachment: 'pane-1' })
+    expect(payload).not.toHaveProperty('controlling')
+    expect(payload).not.toHaveProperty('leaseGeneration')
   })
 
-  test('an attach answer carries the attachment, generation and epoch the host returned, not the ones the pane asked with', async () => {
+  test('an attach answer carries the attachment and epoch the host returned, not the ones the pane asked with', async () => {
     const t = await setup()
     t.adapter.perform(effectOf(1, 'terminalOpen'))
     await t.settle()
@@ -1109,18 +1100,13 @@ describe('terminals', () => {
       const done = attach(...args)
       Object.assign(t.port.state, {
         bindingEpoch: 3,
-        lease: {
-          generation: 9,
-          role: 'controller',
-          held: true,
-          attachment: 'ta-minted-by-host',
-        },
+        attachment: 'ta-minted-by-host',
       })
       return done
     }
     t.adapter.perform({
       ...effectOf(2, 'terminalAttach'),
-      payload: { fromOffset: 0, role: 'controller', attachment: 'pane-asked' },
+      payload: { fromOffset: 0, attachment: 'pane-asked' },
     } as never)
     await t.settle()
     expect(t.port.seen.attach).toEqual([
@@ -1129,7 +1115,6 @@ describe('terminals', () => {
     const answer = t.completions().at(-1)!.payload
     expect(answer).toMatchObject({
       attachment: 'ta-minted-by-host',
-      leaseGeneration: 9,
       epoch: 3,
     })
   })
@@ -1176,7 +1161,7 @@ describe('terminals', () => {
         data: raw,
         kind: 'human',
         inputId: 'ib',
-        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+        claim: { attachment: 'a', epoch: 1 },
       },
     } as never)
     await t.settle()
@@ -1185,7 +1170,7 @@ describe('terminals', () => {
       'human',
       {
         inputId: 'ib',
-        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+        claim: { attachment: 'a', epoch: 1 },
       },
     ])
     expect(t.port.seen.input).toBeUndefined()
@@ -1198,7 +1183,6 @@ describe('terminals', () => {
       streamEpoch: undefined,
       origin: undefined,
       processOwnedBy: undefined,
-      lease: { generation: undefined },
     })
     t.adapter.perform(effectOf(1, 'terminalOpen'))
     await t.settle()
@@ -1225,11 +1209,11 @@ describe('terminals', () => {
       'human',
       {
         inputId: 'i',
-        claim: { attachment: 'a', leaseGeneration: 1, epoch: 1 },
+        claim: { attachment: 'a', epoch: 1 },
       },
     ])
     expect(t.port.seen.attach).toEqual([
-      { terminalId: 't1', fromOffset: 0, role: 'observer', attachment: 'a' },
+      { terminalId: 't1', fromOffset: 0, attachment: 'a' },
     ])
   })
 
@@ -1290,7 +1274,6 @@ describe('terminals', () => {
       bytes: new TextEncoder().encode('hi'),
       epoch: 2,
     })
-    t.port.emit({ type: 'lease', lease: { generation: 4, held: true } })
     t.port.emit({ type: 'exited', reason: 'exited', code: 0, signal: null })
     expect(
       t
@@ -1308,13 +1291,6 @@ describe('terminals', () => {
         epoch: 2,
         offset: 5,
         data: btoa('hi'),
-      },
-      {
-        type: 'terminalControl',
-        resource: TERMINAL,
-        epoch: 2,
-        generation: 4,
-        controlled: true,
       },
       {
         type: 'terminalExited',
@@ -1678,7 +1654,6 @@ describe('host events', () => {
         host: 'herdr-core',
         program: 1,
         state: 'running',
-        controlledElsewhere: false,
       },
     ])
 
@@ -1693,16 +1668,9 @@ describe('host events', () => {
     expect(lists()[2]!.sessions.map((row) => row.session)).toEqual(['t1', 't9'])
 
     t.port.emit({ type: 'exited', reason: 'exited', code: 0, signal: null })
-    t.port.state.lease = {
-      generation: 4,
-      role: 'observer',
-      held: false,
-    } as never
-    t.port.emit({ type: 'lease', lease: { generation: 4, held: false } })
-    expect(lists().at(-1)!.sessions[0]).toMatchObject({
-      session: 't1',
-      controlledElsewhere: true,
-    })
+    expect(lists().at(-1)!.sessions[0]).not.toHaveProperty(
+      'controlledElsewhere',
+    )
   })
 
   describe('the host lists its terminals', () => {
@@ -1773,7 +1741,6 @@ describe('host events', () => {
           workspace: 'w1',
           program: 2,
           state: 'running',
-          controlledElsewhere: true,
           modes: PLAIN_MODES,
         },
         {
@@ -1783,7 +1750,6 @@ describe('host events', () => {
           workspace: 'w1',
           program: 2,
           state: 'running',
-          controlledElsewhere: false,
           modes: PLAIN_MODES,
         },
       ])
@@ -1893,7 +1859,6 @@ describe('host events', () => {
         backend: 'herdr',
         workspace: of('hc-1').workspace,
         state: 'running',
-        controlledElsewhere: false,
         name: 'agent',
         cwd: '/work/app',
         admitted: false,

@@ -611,7 +611,6 @@ export function createFixtureHost(
                 workspace: WORKSPACE,
                 program: 1,
                 state: 'running',
-                controlledElsewhere: false,
                 ...(options.programReport
                   ? { programReport: { kind: 'unavailable' as const } }
                   : {}),
@@ -1164,10 +1163,7 @@ export function createFixtureHost(
           epoch,
           program: 1,
           origin: 'adopted',
-          leaseGeneration: 1,
           attachment,
-          controlling: true,
-          controlled: true,
         })
         later(() => {
           for (const chunk of options.terminalOutput ?? TERMINAL_BEFORE_RESIZE)

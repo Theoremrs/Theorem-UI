@@ -9,7 +9,7 @@ use theorem_workbench_core::host::ConnectionState;
 use theorem_workbench_text::visible::visible;
 use theorem_workbench_vt::TerminalView;
 
-use crate::bound::{Bound, EndAsk, Role, Status, Tone};
+use crate::bound::{Bound, EndAsk, Status, Tone};
 use crate::catalog::{backend_word, persistence};
 use crate::chooser::{self, LineKind};
 use crate::panel::ProcessPanel;
@@ -88,26 +88,24 @@ fn put_wrapped(buf: &mut Buffer, area: Rect, y: u16, text: &str, style: Style) -
     y
 }
 
-/// The one line that says what the pane is, from host fields only.
+/// The one line that says what the pane is, from host fields only. A running
+/// terminal needs no word of its own.
 pub(crate) fn status_line(b: &Bound) -> String {
     let what = match &b.status {
         Status::Running if b.attaching() => match &b.initial {
-            Some(Some(reason)) => format!("attach outcome unknown ({reason})"),
-            _ => "attaching".to_owned(),
+            Some(Some(reason)) => format!("attach outcome unknown ({reason}) | "),
+            _ => "attaching | ".to_owned(),
         },
-        Status::Running => match &b.role {
-            Role::Controller => "controlling".to_owned(),
-            Role::Observer(_) => "observing".to_owned(),
-        },
+        Status::Running => String::new(),
         Status::Exited { code, reason } => match code {
-            Some(code) => format!("exited with code {code} ({reason})"),
-            None => format!("exited ({reason})"),
+            Some(code) => format!("exited with code {code} ({reason}) | "),
+            None => format!("exited ({reason}) | "),
         },
-        Status::Lost { link: true, .. } => "connection lost".to_owned(),
-        Status::Lost { reason, .. } => format!("lost ({reason})"),
+        Status::Lost { link: true, .. } => "connection lost | ".to_owned(),
+        Status::Lost { reason, .. } => format!("lost ({reason}) | "),
     };
     format!(
-        "{} | {} | {} | epoch {}",
+        "{} | {} | {}epoch {}",
         b.session,
         backend_word(b.backend),
         what,
@@ -163,16 +161,6 @@ pub(crate) fn footer(b: &Bound) -> Option<(String, Tone)> {
             ));
         }
         EndAsk::No => {}
-    }
-    if b.offer_control && !b.controlling() && b.running() && !b.attaching() {
-        let why = match &b.role {
-            Role::Observer(why) => why.text(),
-            Role::Controller => String::new(),
-        };
-        return Some((
-            format!("{why} Enter requests control, Esc dismisses."),
-            Tone::Warning,
-        ));
     }
     if let Some(note) = &b.notice {
         return Some((note.text.clone(), note.tone));
@@ -467,7 +455,7 @@ fn live(p: &ProcessPanel, b: &Bound, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
     );
     if shown.width > 0 && shown.height > 0 {
         let view = TerminalView::new(&b.screen, pal)
-            .show_cursor(cx.focused && b.controlling() && b.running());
+            .show_cursor(cx.focused && b.running());
         ratatui::widgets::Widget::render(view, shown, buf);
     }
 

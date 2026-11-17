@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` (attach, input, inputBytes, kill, list, admit and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the lease claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
+// SOURCING: @theoremharness/sdk — `client.ide.terminal.*` (attach, input, inputBytes, kill, list, admit and the free-bodied open, resize, paste, close) and `WorkspaceLive`. The 0.6.0-alpha.8 client types the write claim, epochs, modes, `bytes_base64`, the list with its adoption state and the terminal live events, so this file only turns each host operation into one call and reads its answer. The SDK's `TerminalChannel` is not used: it answers a bare boolean, swallows refusals into a listener and mints its own input ids, while this workbench needs the panel's `input_id`, the claim it names and the four outcomes. `open`'s, `paste`'s and `kill`'s answers are untyped in the generated client (`NativeResult`), so those are read here.
 import type {
   TerminalListReply,
   TerminalOpenRequest,
@@ -15,7 +15,6 @@ import type {
   AttachReply,
   InputKind,
   InputReply,
-  LeaseRole,
   OpenReply,
   TerminalLiveEvent,
   WriteClaim,
@@ -81,15 +80,8 @@ export type ListedTerminals = Omit<
 export interface AttachRequest {
   session: string
   from_offset: number
+  /** The view's own attachment name. Every view may type, paste and resize, so no role is asked for. */
   attachment?: string
-  role?: Exclude<LeaseRole, 'unleased'>
-  /**
-   * With `role: 'controller'` on a lease somebody holds: the generation (and the binding epoch) of
-   * the claim being made. The host refuses a claim on an occupied lease that does not name the
-   * current attachment and generation.
-   */
-  generation?: number
-  epoch?: number
 }
 
 /** Exactly one wire form of the input: UTF-8 text, or the standard base64 of the exact bytes. */

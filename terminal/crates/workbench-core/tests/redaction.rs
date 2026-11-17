@@ -21,7 +21,7 @@ fn revision(n: u64) -> Value {
 }
 
 fn claim() -> Value {
-    json!({"attachment": "a1", "leaseGeneration": 4, "epoch": 2})
+    json!({"attachment": "a1", "epoch": 2})
 }
 
 fn effect_cases() -> Vec<(&'static str, Value)> {

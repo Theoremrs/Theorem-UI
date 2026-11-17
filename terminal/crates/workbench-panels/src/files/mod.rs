@@ -407,7 +407,6 @@ impl FilesPanel {
             | HostMessage::TerminalResized { .. }
             | HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
-            | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalSessions { .. }
             | HostMessage::ConversationSnapshot { .. }
             | HostMessage::ThemeChanged { .. }

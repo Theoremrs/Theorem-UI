@@ -50,9 +50,6 @@ pub(crate) fn rows(data: &CatalogData, identity: &WorkspaceIdentity) -> Vec<Row>
         if let Some(program) = s.program {
             title.push_str(&format!("  program {program}"));
         }
-        if s.controlled_elsewhere {
-            title.push_str("  held by another viewer");
-        }
         let mut detail = format!(
             "{} @ {} | {} | {}",
             s.workspace,
@@ -237,7 +234,7 @@ pub(crate) fn lines(
         } else if sessions == 0 {
             "No existing sessions to attach to".to_owned()
         } else {
-            "Existing sessions (attach; o observes, t takes control)".to_owned()
+            "Existing sessions (Enter attaches)".to_owned()
         },
         LineKind::Heading,
         None,

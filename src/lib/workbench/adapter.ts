@@ -359,15 +359,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
             data: base64(new TextEncoder().encode(event.formatted)),
           })
           return
-        case 'lease':
-          send({
-            type: 'terminalControl',
-            resource: target,
-            epoch: epoch(),
-            generation: event.lease.generation ?? 0,
-            controlled: event.lease.held,
-          })
-          return
         case 'exited':
           agentSessions.observe(
             port.state.terminalId!,
@@ -611,7 +602,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         workspace,
         program: row.binding.program,
         state: row.state,
-        controlledElsewhere: row.controlled,
         ...(name ? { name } : {}),
         ...(cwd ? { cwd } : {}),
         ...(owned ? { host: owned } : {}),
@@ -633,7 +623,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         backend: row.backend,
         workspace,
         state: row.state,
-        controlledElsewhere: false,
         ...(name ? { name } : {}),
         ...(row.cwd ? { cwd: row.cwd } : {}),
         admitted: false,
@@ -744,7 +733,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
               : {}),
           }
         : {}),
-      controlledElsewhere: state.lease.role === 'observer' && !state.lease.held,
     })
     if (publish) publishSessions()
   }
@@ -785,7 +773,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           workspace,
           ...(program !== undefined ? { program } : {}),
           state: 'running',
-          controlledElsewhere: false,
         })
         publishSessions()
       }
@@ -819,17 +806,8 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       // What the session did not report stays absent; the core derives the owner from the backend.
       ...(state.streamEpoch ? { streamEpoch: state.streamEpoch } : {}),
       ...(state.origin ? { origin: state.origin } : {}),
-      ...(state.lease.generation !== undefined
-        ? { leaseGeneration: state.lease.generation }
-        : {}),
       ...(state.processOwnedBy ? { processOwnedBy: state.processOwnedBy } : {}),
-      ...(state.lease.attachment ? { attachment: state.lease.attachment } : {}),
-      ...(state.lease.role === 'controller' || state.lease.role === 'observer'
-        ? {
-            controlling: state.lease.role === 'controller',
-            controlled: state.lease.held,
-          }
-        : {}),
+      ...(state.attachment ? { attachment: state.attachment } : {}),
     }
     reported.add(bindingKey(payload.session, state.bindingEpoch, state.program))
     return { value: payload }
@@ -993,7 +971,6 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const done = await port.attach({
         terminalId: session,
         fromOffset: effect.payload.fromOffset,
-        role: effect.payload.role,
         attachment: effect.payload.attachment,
       })
       if (done.outcome === 'accepted' && !disposed) {

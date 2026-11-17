@@ -424,7 +424,6 @@ impl ChangesPanel {
             | HostMessage::TerminalOpened { .. }
             | HostMessage::TerminalExited { .. }
             | HostMessage::CapabilitiesChanged { .. }
-            | HostMessage::TerminalControl { .. }
             | HostMessage::TerminalSessions { .. }
             | HostMessage::ConversationSnapshot { .. }
             | HostMessage::ThemeChanged { .. }

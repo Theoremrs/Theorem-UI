@@ -772,12 +772,11 @@ pub struct ConflictSides {
 
 /// The binding a terminal open or attach reports (`terminal-path.md` 2.1).
 ///
-/// Four versions, each its own field and never folded into one number:
+/// Three versions, each its own field and never folded into one number:
 /// - `stream_epoch`: the live stream's epoch (a string, as the host sends it);
 /// - `epoch`: the binding epoch, which strands old byte offsets when it moves;
 /// - `program` with `origin`: the program incarnation (1 = original, +1 per
-///   replacement) and how it came to be there;
-/// - `lease_generation`: the control lease's generation.
+///   replacement) and how it came to be there.
 ///
 /// Fields the session does not report are absent, never invented.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -800,9 +799,6 @@ pub struct TerminalOpened {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub origin: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional, type = "number"))]
-    pub lease_generation: Option<u64>,
     /// What the host reported (`host` or `herdr-core`). Absent when it did
     /// not: [`TerminalOpened::process_owner`] derives it from the backend.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -813,15 +809,6 @@ pub struct TerminalOpened {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "ts", ts(optional))]
     pub attachment: Option<String>,
-    /// This attachment holds the control lease now (`control.controlling`),
-    /// so a restored pane knows whether it may type.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub controlling: Option<bool>,
-    /// Somebody holds the lease (`control.controlled`).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "ts", ts(optional))]
-    pub controlled: Option<bool>,
 }
 
 impl TerminalOpened {
@@ -1505,7 +1492,7 @@ mod tests {
     }
 
     #[test]
-    fn terminal_opened_reports_four_versions_and_no_invented_owner() {
+    fn terminal_opened_reports_three_versions_and_no_invented_owner() {
         use crate::effect::TerminalBackend;
         let opened = TerminalOpened {
             session: "hc-1".into(),
@@ -1516,18 +1503,15 @@ mod tests {
             epoch: 2,
             program: 3,
             origin: Some("replacement".into()),
-            lease_generation: Some(5),
             process_owned_by: None,
             attachment: None,
-            controlling: None,
-            controlled: None,
         };
         shape(
             CompletionPayload::Terminal(opened.clone()),
             json!({
                 "type": "terminal", "session": "hc-1", "cols": 80, "rows": 24,
                 "backend": "herdr", "streamEpoch": "se-1", "epoch": 2, "program": 3,
-                "origin": "replacement", "leaseGeneration": 5
+                "origin": "replacement"
             }),
         );
         // Not sent by the host: derived from the backend, never required.

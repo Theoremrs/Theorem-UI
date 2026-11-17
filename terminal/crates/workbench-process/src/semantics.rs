@@ -13,7 +13,7 @@ use theorem_workbench_core::ViewCtx;
 use theorem_workbench_core::ids::ResourceRef;
 use theorem_workbench_core::semantics::{Node, NodeAction, NodeId, Role as Aria};
 
-use crate::bound::{Bound, EndAsk, Role, Status, Tone};
+use crate::bound::{Bound, EndAsk, Status, Tone};
 use crate::chooser::{self, RowKind};
 use crate::draw;
 use crate::panel::ProcessPanel;
@@ -220,8 +220,8 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         g.term,
     );
     term.binding = b.resource();
-    term.state.focused = cx.focused && b.controlling();
-    term.state.disabled = !b.controlling() || !b.running();
+    term.state.focused = cx.focused;
+    term.state.disabled = !b.running();
     // What a person sees, so assistive technology and the agent read the same
     // screen; the node's text follows each frame because the tree is rebuilt
     // from the screen.
@@ -250,11 +250,6 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     }
     if b.screen.bracketed_paste() {
         notes.push("Bracketed paste on.".into());
-    }
-    if let Role::Observer(why) = &b.role
-        && b.running()
-    {
-        notes.insert(0, why.text());
     }
     term.state.description = Some(notes.join(" "));
 
@@ -297,20 +292,6 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
     }
 
     let can_act = b.running() && !b.attaching();
-    let mut control = Node::new("request-control", Aria::Button, "Request control", g.footer);
-    control.actions = vec![if b.controlling() {
-        action(
-            "shell.control",
-            false,
-            Some("This view already controls the terminal.".into()),
-        )
-    } else if !b.running() {
-        action("shell.control", false, Some(not_running(b).into()))
-    } else if b.attaching() {
-        action("shell.control", false, Some("Still attaching.".into()))
-    } else {
-        action("shell.control", true, None)
-    }];
     let mut end = Node::new("end-process", Aria::Button, "End process", g.header);
     end.actions = vec![if can_act {
         action("shell.end", true, None)
@@ -338,7 +319,7 @@ fn live(b: &Bound, area: Rect, cx: &ViewCtx) -> Vec<Node> {
         )
     }];
     let mut toolbar = Node::new("actions", Aria::Toolbar, "Shell actions", area);
-    let buttons = vec![control, end, resend];
+    let buttons = vec![end, resend];
     toolbar.children = ids(&buttons);
     out.push(toolbar);
     out.extend(buttons);

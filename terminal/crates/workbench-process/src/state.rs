@@ -3,7 +3,7 @@
 use theorem_workbench_core::effect::TerminalBackend;
 use theorem_workbench_core::ids::EffectId;
 
-use crate::bound::{Bound, Want};
+use crate::bound::Bound;
 
 /// A profile row, copied at the moment it was chosen.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -21,7 +21,6 @@ pub(crate) enum Intent {
     Attach {
         session: String,
         backend: TerminalBackend,
-        want: Want,
     },
 }
 

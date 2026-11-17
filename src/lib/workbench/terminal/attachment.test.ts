@@ -37,17 +37,13 @@ async function opened(minted = 'ta-minted-1') {
 const body = (call: { request: Record<string, unknown> }) =>
   (call.request.body ?? call.request) as Record<string, unknown>
 
-const claimOf = (name: string, epoch = 1, leaseGeneration = 1) => ({
-  attachment: name,
-  leaseGeneration,
-  epoch,
-})
+const claimOf = (name: string, epoch = 1) => ({ attachment: name, epoch })
 
 describe('the attachment name the host minted', () => {
   test('the first attach carries the caller name, and the session adopts the one the host returned', async () => {
     const r = await opened()
     expect(body(r.of('attach')[0]!)).toMatchObject({ attachment: 'pane-7' })
-    expect(r.session.state.lease.attachment).toBe('ta-minted-1')
+    expect(r.session.state.attachment).toBe('ta-minted-1')
   })
 
   test('input, binary input, resize, paste and detach all carry the minted name', async () => {
@@ -127,13 +123,20 @@ describe('the attachment name the host minted', () => {
         data: '',
         truncated: true,
       })
-    const again = await r.session.requestControl()
-    expect(again.outcome).toBe('accepted')
+    // The host rebinds the terminal; the session attaches again to read the new epoch.
+    r.emit('terminal.opened', {
+      session: 'hc-fixture-1',
+      epoch: 2,
+      program: 1,
+      origin: 'reattached',
+    })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(r.of('attach')).toHaveLength(2)
     // The re-attach asked with the name the host had given.
     expect(body(r.of('attach')[1]!)).toMatchObject({
       attachment: 'ta-minted-1',
     })
-    expect(r.session.state.lease.attachment).toBe('ta-minted-2')
+    expect(r.session.state.attachment).toBe('ta-minted-2')
     expect(r.session.state.bindingEpoch).toBe(2)
     await r.session.input('z')
     await r.session.resize(60, 10)
@@ -155,23 +158,6 @@ describe('the attachment name the host minted', () => {
     await r.session.detach()
     expect(body(r.of('close').at(-1)!)).toMatchObject({
       attachment: 'ta-minted-2',
-    })
-  })
-
-  test('an observer that takes control keeps the minted name it was already given', async () => {
-    const r = await opened()
-    r.handlers.attach = () => reply('ta-minted-1')
-    await r.session.releaseControl()
-    await r.session.requestControl()
-    expect(
-      r
-        .of('attach')
-        .slice(1)
-        .map((c) => body(c).attachment),
-    ).toEqual(['ta-minted-1', 'ta-minted-1'])
-    await r.session.input('ok')
-    expect(body(r.of('input')[0]!)).toMatchObject({
-      attachment: 'ta-minted-1',
     })
   })
 })

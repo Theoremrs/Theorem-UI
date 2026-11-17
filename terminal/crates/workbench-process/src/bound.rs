@@ -1,7 +1,7 @@
-//! A pane bound to one terminal session: its screen, its lease, the effects it
-//! has in flight, and the host events that move it between states. Every field
-//! that says what the process is doing comes from a host field, never from
-//! output text (R32).
+//! A pane bound to one terminal session: its screen, the effects it has in
+//! flight, and the host events that move it between states. Every view of a
+//! terminal may type, paste and resize. Every field that says what the process
+//! is doing comes from a host field, never from output text (R32).
 
 use std::collections::BTreeMap;
 
@@ -11,7 +11,7 @@ use ratatui::layout::Rect;
 use theorem_workbench_core::completion::{Outcome, TerminalOpened};
 use theorem_workbench_core::effect::{
     Effect, EffectBody, InputKind, TerminalAttach, TerminalBackend, TerminalClaim, TerminalInput,
-    TerminalInputBytes, TerminalResize, TerminalRole,
+    TerminalInputBytes, TerminalResize,
 };
 use theorem_workbench_core::host::{
     ConnectivityState, HostMessage, ProgramReport, TerminalAdoption, TerminalModes,
@@ -19,75 +19,6 @@ use theorem_workbench_core::host::{
 use theorem_workbench_core::ids::{EffectId, Generation, ResourceRef};
 use theorem_workbench_core::{Ctx, EmitError};
 use theorem_workbench_vt::Screen;
-
-/// What a pane wants of the lease when it attaches.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Want {
-    Controller,
-    Observer,
-}
-
-impl Want {
-    pub(crate) fn role(self) -> TerminalRole {
-        match self {
-            Self::Controller => TerminalRole::Controller,
-            Self::Observer => TerminalRole::Observer,
-        }
-    }
-}
-
-/// Why a view is not the controller.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Why {
-    /// Attached to observe, by choice.
-    Chosen,
-    /// Nobody holds control; this view has not asked for it.
-    Free,
-    /// Re-attached after a restore without taking control from anyone.
-    Restored,
-    /// The host's word in `terminal_control_refused`.
-    Lease(String),
-    /// A `terminal.control` event said another viewer holds the lease.
-    Lost(u64),
-}
-
-impl Why {
-    pub(crate) fn text(&self) -> String {
-        match self {
-            Self::Chosen => "This view attached to observe and did not take control.".into(),
-            Self::Free => "Nobody holds control. Press a key to ask for it.".into(),
-            Self::Restored => {
-                "This pane re-attached without taking control from anyone.".into()
-            }
-            Self::Lease(word) => match word.as_str() {
-                "observer" => "This view is attached as an observer (host: observer).".into(),
-                "held" => "Another viewer holds control (host: held).".into(),
-                "stale_generation" => {
-                    "Control moved to another viewer since this view last held it (host: stale_generation)."
-                        .into()
-                }
-                "stale_epoch" => {
-                    "The terminal was rebound since this view last held control (host: stale_epoch)."
-                        .into()
-                }
-                "unknown_attachment" => {
-                    "The host does not know this view's attachment (host: unknown_attachment)."
-                        .into()
-                }
-                other => format!("The host refused control (host: {other})."),
-            },
-            Self::Lost(generation) => {
-                format!("Another viewer took control (lease generation {generation}).")
-            }
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Role {
-    Controller,
-    Observer(Why),
-}
 
 /// What the host says about the program, from its own fields.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -196,19 +127,10 @@ impl Note {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Purpose {
-    /// The attach that makes the pane a viewer at all.
+    /// The attach that makes the pane a view at all.
     Initial,
-    /// A request to take the lease.
-    Control,
     /// A request for the host's authoritative repaint.
     Repaint,
-}
-
-#[derive(Clone, Debug)]
-pub(crate) struct Attaching {
-    pub purpose: Purpose,
-    pub want: Want,
-    pub why: Why,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -270,7 +192,6 @@ pub(crate) enum EndAsk {
 /// Why a key or paste could not be sent.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum Block {
-    Observing(String),
     Ended,
     /// The connection to the terminal is lost; nothing leaves the pane until
     /// it is back or the person attaches again.
@@ -296,8 +217,6 @@ pub(crate) struct Bound {
     pub origin: Option<String>,
     pub stream_epoch: Option<String>,
     pub owner: String,
-    pub lease: u64,
-    pub role: Role,
     pub status: Status,
     pub provenance: Provenance,
     pub screen: Screen,
@@ -305,7 +224,7 @@ pub(crate) struct Bound {
     pub size_known: bool,
     held: Vec<Held>,
     /// The attach effects in flight.
-    pub attaches: BTreeMap<EffectId, Attaching>,
+    pub attaches: BTreeMap<EffectId, Purpose>,
     /// Set while the first attach has not been answered, or answered
     /// `Uncertain`.
     pub initial: Option<Option<String>>,
@@ -316,7 +235,6 @@ pub(crate) struct Bound {
     resize: Option<EffectId>,
     pub awaiting_repaint: bool,
     pub notice: Option<Note>,
-    pub offer_control: bool,
     pub end: EndAsk,
     end_effect: Option<EffectId>,
     pub selecting: bool,
@@ -357,8 +275,6 @@ impl Bound {
                 TerminalBackend::Herdr => "herdr-core".into(),
                 TerminalBackend::Native => "host".into(),
             },
-            lease: 0,
-            role: Role::Observer(Why::Chosen),
             status: Status::Running,
             provenance: Provenance::None,
             screen: Screen::new(rows.max(1), cols.max(1)),
@@ -372,7 +288,6 @@ impl Bound {
             resize: None,
             awaiting_repaint: false,
             notice: None,
-            offer_control: false,
             end: EndAsk::No,
             end_effect: None,
             selecting: false,
@@ -430,7 +345,7 @@ impl Bound {
             _ => {}
         }
         // The host's own word on the program outranks a pane that has seen no
-        // exit event: a listed Lost or Exited terminal is not "controlling".
+        // exit event: a listed Lost or Exited terminal is not running.
         if matches!(
             self.status,
             Status::Running | Status::Lost { link: true, .. }
@@ -499,7 +414,7 @@ impl Bound {
 
     /// The program's own report replaces the one held unless it is older by
     /// the core's sequence. Nothing else changes: no effect, no notice, no
-    /// lifecycle, lease, offer or key state.
+    /// lifecycle or key state.
     pub(crate) fn hold_report(&mut self, report: ProgramReport) {
         if self.report.replaced_by(&report) {
             self.report = report;
@@ -516,7 +431,6 @@ impl Bound {
     pub(crate) fn claim(&self) -> TerminalClaim {
         TerminalClaim {
             attachment: self.attachment.clone(),
-            lease_generation: self.lease,
             epoch: self.epoch,
         }
     }
@@ -525,17 +439,6 @@ impl Bound {
         let resource = self.resource();
         let generation = Generation(self.epoch);
         cx.emit(|id| Effect::new(id, resource, body).with_generation(generation))
-    }
-
-    pub(crate) fn controlling(&self) -> bool {
-        matches!(self.role, Role::Controller)
-    }
-
-    fn why_text(&self) -> String {
-        match &self.role {
-            Role::Observer(why) => why.text(),
-            Role::Controller => String::new(),
-        }
     }
 
     pub(crate) fn running(&self) -> bool {
@@ -560,31 +463,19 @@ impl Bound {
         if self.attaching() {
             return Err(Block::Attaching);
         }
-        match &self.role {
-            Role::Controller => Ok(()),
-            Role::Observer(why) => Err(Block::Observing(why.text())),
-        }
+        Ok(())
     }
 
     // ---- attach ---------------------------------------------------------
 
-    pub(crate) fn attach(
-        &mut self,
-        cx: &mut Ctx,
-        purpose: Purpose,
-        want: Want,
-        why: Why,
-        from_offset: u64,
-    ) -> bool {
+    pub(crate) fn attach(&mut self, cx: &mut Ctx, purpose: Purpose, from_offset: u64) -> bool {
         let body = EffectBody::TerminalAttach(TerminalAttach {
             from_offset,
-            role: want.role(),
             attachment: self.attachment.clone(),
         });
         match self.emit(cx, body) {
             Ok(effect) => {
-                self.attaches
-                    .insert(effect, Attaching { purpose, want, why });
+                self.attaches.insert(effect, purpose);
                 true
             }
             Err(error) => {
@@ -603,29 +494,12 @@ impl Bound {
         if self
             .attaches
             .values()
-            .any(|a| a.purpose == Purpose::Repaint)
+            .any(|purpose| *purpose == Purpose::Repaint)
         {
             return;
         }
-        // The same role it has: a holder that attached as an observer would
-        // give the lease up.
-        let (want, why) = match &self.role {
-            Role::Controller => (Want::Controller, Why::Chosen),
-            Role::Observer(why) => (Want::Observer, why.clone()),
-        };
         let from = self.screen.applied_offset();
-        self.attach(cx, Purpose::Repaint, want, why, from);
-    }
-
-    pub(crate) fn request_control(&mut self, cx: &mut Ctx) {
-        self.offer_control = false;
-        if self.controlling() || !self.running() {
-            return;
-        }
-        let from = self.screen.applied_offset();
-        if self.attach(cx, Purpose::Control, Want::Controller, Why::Chosen, from) {
-            self.notice = Some(Note::new(Tone::Muted, "Asking the host for control."));
-        }
+        self.attach(cx, Purpose::Repaint, from);
     }
 
     // ---- input ----------------------------------------------------------
@@ -721,7 +595,6 @@ impl Bound {
     pub(crate) fn pump_resize(&mut self, cx: &mut Ctx) {
         if !self.size_known
             || self.resize.is_some()
-            || !self.controlling()
             || !self.running()
             || self.attaching()
         {
@@ -774,12 +647,15 @@ impl Bound {
             match outcome {
                 Outcome::Accepted => {}
                 Outcome::Refused { code, reason } => {
-                    if code == "terminal_control_refused" {
-                        self.role = Role::Observer(Why::Lease(reason.clone()));
+                    // The key was aimed at a binding the host has since
+                    // replaced: re-attach to learn the current one. The input
+                    // is not sent again.
+                    if code == "terminal_control_refused" && reason == "stale_epoch" {
                         self.notice = Some(Note::new(
                             Tone::Error,
-                            format!("Input refused. {}", Why::Lease(reason).text()),
+                            "Input refused: the terminal was rebound after this view last attached (host: stale_epoch). It was not sent again; attaching to the current binding.",
                         ));
+                        self.ask_repaint(cx);
                     } else {
                         self.notice = Some(Note::new(
                             Tone::Error,
@@ -844,16 +720,16 @@ impl Bound {
             }
             return None;
         }
-        let attaching = self.attaches.remove(&effect)?;
+        let purpose = self.attaches.remove(&effect)?;
         match outcome {
             Outcome::Accepted => {
                 if let Some(opened) = opened {
-                    self.apply_opened(cx, opened, &attaching);
+                    self.apply_opened(cx, opened, purpose);
                 }
                 None
             }
             Outcome::Uncertain { reason } => {
-                if attaching.purpose == Purpose::Initial {
+                if purpose == Purpose::Initial {
                     self.initial = Some(Some(reason));
                 } else {
                     self.notice = Some(Note::new(
@@ -864,55 +740,42 @@ impl Bound {
                 None
             }
             Outcome::Refused { code, reason } => {
-                self.attach_failed(attaching, Some(code), reason, true)
+                self.attach_failed(purpose, Some(code), reason, true)
             }
-            Outcome::Failed { reason } => self.attach_failed(attaching, None, reason, false),
+            Outcome::Failed { reason } => self.attach_failed(purpose, None, reason, false),
         }
     }
 
     fn attach_failed(
         &mut self,
-        attaching: Attaching,
+        purpose: Purpose,
         code: Option<String>,
         reason: String,
         refused: bool,
     ) -> Option<AttachFailure> {
-        if attaching.purpose == Purpose::Initial {
+        if purpose == Purpose::Initial {
             return Some(AttachFailure {
                 code,
                 reason,
                 refused,
             });
         }
-        if code.as_deref() == Some("terminal_control_refused") {
-            self.role = Role::Observer(Why::Lease(reason.clone()));
-            self.notice = Some(Note::new(
-                Tone::Error,
-                format!("Control refused. {}", Why::Lease(reason).text()),
-            ));
-        } else {
-            self.notice = Some(Note::new(
-                Tone::Error,
-                format!("The host refused: {reason}."),
-            ));
-        }
-        if attaching.purpose == Purpose::Repaint {
+        self.notice = Some(Note::new(
+            Tone::Error,
+            format!("The host refused: {reason}."),
+        ));
+        if purpose == Purpose::Repaint {
             self.awaiting_repaint = false;
         }
         None
     }
 
     /// The answer to an open that attached in the same effect.
-    pub(crate) fn opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, want: Want, why: Why) {
-        let attaching = Attaching {
-            purpose: Purpose::Initial,
-            want,
-            why,
-        };
-        self.apply_opened(cx, opened, &attaching);
+    pub(crate) fn opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened) {
+        self.apply_opened(cx, opened, Purpose::Initial);
     }
 
-    fn apply_opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, attaching: &Attaching) {
+    fn apply_opened(&mut self, cx: &mut Ctx, opened: &TerminalOpened, purpose: Purpose) {
         if opened.epoch > self.epoch && self.epoch != 0 {
             self.report = ProgramReport::Unavailable;
             self.screen = Screen::new(opened.rows.max(1), opened.cols.max(1));
@@ -931,56 +794,16 @@ impl Bound {
         self.origin = opened.origin.clone();
         self.stream_epoch = opened.stream_epoch.clone();
         self.owner = opened.process_owner().to_owned();
-        if let Some(generation) = opened.lease_generation {
-            self.lease = generation;
-        }
         if opened.cols > 0 && opened.rows > 0 && self.screen.size() != (opened.rows, opened.cols) {
             self.screen.resize(opened.rows, opened.cols);
         }
-        match attaching.purpose {
-            Purpose::Initial => {
-                self.initial = None;
-                self.status = Status::Running;
-                self.provenance = match &opened.origin {
-                    Some(origin) => Provenance::from_origin(origin),
-                    None => Provenance::None,
-                };
-                // The host's own word on the lease decides; the wish only
-                // stands in when it said nothing.
-                let controlling = opened
-                    .controlling
-                    .unwrap_or(attaching.want == Want::Controller);
-                self.role = if controlling {
-                    Role::Controller
-                } else {
-                    Role::Observer(observer_why(opened, attaching))
-                };
-            }
-            Purpose::Control => match opened.controlling {
-                Some(false) => {
-                    self.role = Role::Observer(Why::Lease(
-                        if opened.controlled == Some(true) {
-                            "held"
-                        } else {
-                            "observer"
-                        }
-                        .into(),
-                    ));
-                    self.notice = Some(Note::new(
-                        Tone::Warning,
-                        format!("Control was not granted. {}", self.why_text()),
-                    ));
-                }
-                _ => {
-                    self.role = Role::Controller;
-                    self.notice = None;
-                }
-            },
-            Purpose::Repaint => {
-                if opened.controlling == Some(false) && self.controlling() {
-                    self.role = Role::Observer(Why::Lost(self.lease));
-                }
-            }
+        if purpose == Purpose::Initial {
+            self.initial = None;
+            self.status = Status::Running;
+            self.provenance = match &opened.origin {
+                Some(origin) => Provenance::from_origin(origin),
+                None => Provenance::None,
+            };
         }
         self.size_known = true;
         self.flush_held(cx);
@@ -1035,7 +858,7 @@ impl Bound {
         match self.screen.feed_at(offset, bytes) {
             Ok(_) => {
                 let replies = self.screen.take_replies();
-                if !replies.is_empty() && self.controlling() && self.running() {
+                if !replies.is_empty() && self.running() {
                     let _ = self.send(cx, &replies, InputKind::Reply);
                 }
                 let _ = self.screen.take_bells();
@@ -1170,51 +993,12 @@ impl Bound {
                 }
                 self.connectivity(*state, reason.as_ref(), next_step.as_ref());
             }
-            HostMessage::TerminalControl {
-                epoch,
-                generation,
-                controlled,
-                ..
-            } => {
-                if *epoch < self.epoch {
-                    return;
-                }
-                if *controlled {
-                    self.role = Role::Controller;
-                    self.lease = *generation;
-                    self.offer_control = false;
-                } else {
-                    if *generation >= self.lease {
-                        self.lease = *generation;
-                    }
-                    if self.controlling() {
-                        self.role = Role::Observer(Why::Lost(*generation));
-                        self.notice = Some(Note::new(
-                            Tone::Warning,
-                            "Control moved to another viewer. Output keeps arriving here.",
-                        ));
-                    }
-                }
-            }
             _ => {}
         }
     }
 
     pub(crate) fn set_want(&mut self, term: Rect) {
         self.want = (term.width, term.height);
-    }
-}
-
-/// Why an attach that did not get control is observing, from the host's
-/// `controlled` word when it gave one.
-fn observer_why(opened: &TerminalOpened, attaching: &Attaching) -> Why {
-    match (&attaching.why, opened.controlled) {
-        (Why::Restored, Some(true)) => Why::Lease("held".into()),
-        (Why::Restored, Some(false)) => Why::Free,
-        (Why::Chosen, Some(true)) if attaching.want == Want::Controller => {
-            Why::Lease("held".into())
-        }
-        (why, _) => why.clone(),
     }
 }
 

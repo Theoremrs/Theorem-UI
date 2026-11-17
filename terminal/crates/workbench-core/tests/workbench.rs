@@ -380,7 +380,6 @@ impl Panel for TestPanel {
                 cx,
                 EffectBody::TerminalDetach(TerminalClaim {
                     attachment: "a1".into(),
-                    lease_generation: 1,
                     epoch: 1,
                 }),
             );
@@ -2293,7 +2292,6 @@ fn a_terminal_panel_mounted_later_is_told_the_latest_sessions_of_its_workspace()
                 state: Default::default(),
                 reason: None,
                 next_step: None,
-                controlled_elsewhere: false,
                 modes: None,
                 program_report: Default::default(),
             }],
@@ -4592,7 +4590,6 @@ fn adoption_and_modes_reach_a_late_terminal_panel_and_are_dropped_on_a_change() 
                 state: Default::default(),
                 reason: None,
                 next_step: None,
-                controlled_elsewhere: false,
                 modes: Some(modes),
                 program_report: Default::default(),
             }],
@@ -6132,7 +6129,6 @@ fn sessions_message(reports: &[(&str, ProgramReport)]) -> Msg {
                 state: Default::default(),
                 reason: None,
                 next_step: None,
-                controlled_elsewhere: false,
                 modes: None,
                 program_report: report.clone(),
             })

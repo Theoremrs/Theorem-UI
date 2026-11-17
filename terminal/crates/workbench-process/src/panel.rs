@@ -27,7 +27,7 @@ use theorem_workbench_core::panels::{
     ACTION_CODE_SEND, ACTION_CODE_START, ACTION_CODE_STOP, CODING_PROFILES,
 };
 
-use crate::bound::{AttachFailure, Block, Bound, EndAsk, Note, Purpose, Tone, Want, Why};
+use crate::bound::{AttachFailure, Block, Bound, EndAsk, Note, Purpose, Tone};
 use crate::catalog::{Catalog, CatalogData};
 use crate::chooser::{self, Row, RowKind};
 use crate::draw::{self, Geo};
@@ -239,7 +239,7 @@ impl ProcessPanel {
     fn open(&mut self, cx: &mut Ctx, choice: Choice, follows: Option<String>) {
         let (cols, rows) = self.size();
         // Open and attach are one effect: the pane names its attachment now
-        // and the answer carries it back with the lease view.
+        // and the answer carries it back.
         self.binds += 1;
         let prefix = self.prefix(cx);
         let attachment = format!("{prefix}.a");
@@ -288,14 +288,7 @@ impl ProcessPanel {
         }
     }
 
-    fn attach_to(
-        &mut self,
-        cx: &mut Ctx,
-        session: String,
-        backend: TerminalBackend,
-        want: Want,
-        why: Why,
-    ) {
+    fn attach_to(&mut self, cx: &mut Ctx, session: String, backend: TerminalBackend) {
         self.binds += 1;
         let prefix = self.prefix(cx);
         let (cols, rows) = self.size();
@@ -320,7 +313,7 @@ impl ProcessPanel {
         if let Some(modes) = modes {
             bound.seed_modes(&modes);
         }
-        if bound.attach(cx, Purpose::Initial, want, why, 0) {
+        if bound.attach(cx, Purpose::Initial, 0) {
             self.note = None;
             self.stage = Stage::Bound(Box::new(bound));
         } else {
@@ -329,8 +322,8 @@ impl ProcessPanel {
         }
     }
 
-    /// `shell.attach` and `shell.observe` mean the selected session row.
-    fn choose_session(&mut self, cx: &mut Ctx, how: Pick) {
+    /// `shell.attach` means the selected session row.
+    fn choose_session(&mut self, cx: &mut Ctx) {
         if !matches!(self.stage, Stage::Choosing) {
             return;
         }
@@ -338,13 +331,13 @@ impl ProcessPanel {
             self.rows().get(self.selected).map(|r| &r.kind),
             Some(RowKind::Session(_))
         ) {
-            self.choose(cx, how);
+            self.choose(cx);
         } else {
             self.note = Some("Select an existing session first.".into());
         }
     }
 
-    fn choose(&mut self, cx: &mut Ctx, how: Pick) {
+    fn choose(&mut self, cx: &mut Ctx) {
         let rows = self.rows();
         let Some(row) = rows.get(self.selected) else {
             return;
@@ -354,22 +347,8 @@ impl ProcessPanel {
             return;
         }
         match &row.kind {
-            RowKind::Session(s) => {
-                let (want, why) = match how {
-                    Pick::Observe => (Want::Observer, Why::Chosen),
-                    Pick::Take => (Want::Controller, Why::Chosen),
-                    Pick::Default if s.controlled_elsewhere => {
-                        (Want::Observer, Why::Lease("held".into()))
-                    }
-                    Pick::Default => (Want::Controller, Why::Chosen),
-                };
-                self.attach_to(cx, s.session.clone(), s.backend, want, why);
-            }
+            RowKind::Session(s) => self.attach_to(cx, s.session.clone(), s.backend),
             RowKind::Profile(p) => {
-                if how != Pick::Default {
-                    self.note = Some("Only a session can be observed or taken over.".into());
-                    return;
-                }
                 self.open(
                     cx,
                     Choice {
@@ -440,9 +419,7 @@ impl ProcessPanel {
             (Key::Down, _) | (_, Some('j')) => self.selected = (self.selected + 1).min(last),
             (Key::Home, _) => self.selected = 0,
             (Key::End, _) => self.selected = last,
-            (Key::Enter, _) => self.choose(cx, Pick::Default),
-            (_, Some('o')) => self.choose(cx, Pick::Observe),
-            (_, Some('t')) => self.choose(cx, Pick::Take),
+            (Key::Enter, _) => self.choose(cx),
             _ => return,
         }
         if self.selected > last {
@@ -469,11 +446,7 @@ impl ProcessPanel {
         };
         match failure.intent {
             Intent::Open(choice) => self.open(cx, choice, None),
-            Intent::Attach {
-                session,
-                backend,
-                want,
-            } => self.attach_to(cx, session, backend, want, Why::Chosen),
+            Intent::Attach { session, backend } => self.attach_to(cx, session, backend),
         }
     }
 
@@ -534,25 +507,6 @@ impl ProcessPanel {
             }
             return;
         }
-        if !b.controlling() {
-            // An observer emits nothing: it says why, and offers the way out.
-            if b.offer_control {
-                match key.key() {
-                    Key::Enter => {
-                        b.request_control(cx);
-                        return;
-                    }
-                    Key::Esc => {
-                        b.offer_control = false;
-                        return;
-                    }
-                    _ => {}
-                }
-            }
-            b.offer_control = true;
-            b.notice = None;
-            return;
-        }
         let Some(event) = key_event(&key) else { return };
         let Some(bytes) = encode_key(&event, &modes) else {
             return;
@@ -583,7 +537,7 @@ impl ProcessPanel {
             _ => return,
         };
         self.back_to_chooser(cx, None);
-        self.attach_to(cx, session, backend, Want::Observer, Why::Chosen);
+        self.attach_to(cx, session, backend);
     }
 
     /// Only the connection to the terminal is lost; the program may still be
@@ -621,9 +575,6 @@ impl ProcessPanel {
             return;
         }
         if b.gate().is_err() {
-            if !b.controlling() && b.running() && !b.attaching() {
-                b.offer_control = true;
-            }
             return;
         }
         if let Err(block) = b.send(cx, text.as_bytes(), InputKind::Human) {
@@ -637,9 +588,6 @@ impl ProcessPanel {
             return;
         }
         if b.gate().is_err() {
-            if !b.controlling() && b.running() && !b.attaching() {
-                b.offer_control = true;
-            }
             return;
         }
         let bytes = encode_paste(&text, &b.screen.input_modes());
@@ -689,7 +637,7 @@ impl ProcessPanel {
                     self.selected = row;
                     self.note = None;
                     if p.clicks >= 2 {
-                        self.choose(cx, Pick::Default);
+                        self.choose(cx);
                     }
                 }
             }
@@ -782,7 +730,7 @@ impl ProcessPanel {
             return;
         }
 
-        // Otherwise the pointer selects, locally, for controllers and observers alike.
+        // Otherwise the pointer selects, locally.
         match p.kind {
             PointerKind::Down(Button::Left) if inside => {
                 let at: Pos = b.screen.view_pos(row, col);
@@ -841,12 +789,7 @@ impl ProcessPanel {
         };
         if let Some(failure) = b.complete(cx, c.effect, c.outcome, opened) {
             let (session, backend) = (b.session.clone(), b.backend);
-            let want = if b.controlling() {
-                Want::Controller
-            } else {
-                Want::Observer
-            };
-            self.stage = Stage::Failed(failure_of(failure, session, backend, want));
+            self.stage = Stage::Failed(failure_of(failure, session, backend));
         }
     }
 
@@ -879,7 +822,7 @@ impl ProcessPanel {
                 self.unsettled = None;
                 b.profile = Some(op.choice);
                 b.follows = op.follows;
-                b.opened(cx, &t, Want::Controller, Why::Chosen);
+                b.opened(cx, &t);
                 self.stage = Stage::Bound(Box::new(b));
             }
             Outcome::Uncertain { reason } => {
@@ -954,20 +897,14 @@ impl ProcessPanel {
     fn on_action(&mut self, id: ActionId, cx: &mut Ctx) {
         match id.as_str() {
             "shell.start" => match &self.stage {
-                Stage::Choosing => self.choose(cx, Pick::Default),
+                Stage::Choosing => self.choose(cx),
                 Stage::Failed(_) => self.retry_failed(cx),
                 Stage::Bound(_) if self.connection_lost() => self.attach_again(cx),
                 Stage::Bound(b) if !b.running() => self.start_new(cx),
                 _ => {}
             },
             "shell.reconnect" if self.connection_lost() => self.attach_again(cx),
-            "shell.attach" => self.choose_session(cx, Pick::Default),
-            "shell.observe" => self.choose_session(cx, Pick::Observe),
-            "shell.control" => {
-                if let Some(b) = self.bound_mut() {
-                    b.request_control(cx);
-                }
-            }
+            "shell.attach" => self.choose_session(cx),
             "shell.resend" => {
                 if let Some(b) = self.bound_mut() {
                     b.resend(cx);
@@ -1123,9 +1060,7 @@ impl ProcessPanel {
                     saved.workspace, self.identity.workspace
                 ));
             } else {
-                // Never control on restore: the person asks for it.
-                let (want, why) = (Want::Observer, Why::Restored);
-                self.attach_to(cx, saved.session, saved.backend, want, why);
+                self.attach_to(cx, saved.session, saved.backend);
             }
         }
         if let Some(focused) = self.pending_focus.take()
@@ -1174,13 +1109,6 @@ impl ProcessPanel {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Pick {
-    Default,
-    Observe,
-    Take,
-}
-
 fn map_button(button: Button) -> MouseButton {
     match button {
         Button::Left => MouseButton::Left,
@@ -1191,7 +1119,6 @@ fn map_button(button: Button) -> MouseButton {
 
 fn block_note(block: &Block) -> Note {
     match block {
-        Block::Observing(why) => Note::new(Tone::Warning, why.clone()),
         Block::Ended => Note::new(
             Tone::Warning,
             "The program is not running; nothing was sent.",
@@ -1213,7 +1140,6 @@ fn failure_of(
     failure: AttachFailure,
     session: String,
     backend: TerminalBackend,
-    want: Want,
 ) -> Failure {
     let kind = match failure.code.as_deref() {
         Some("terminal_session_not_found") => FailureKind::NotFound,
@@ -1225,11 +1151,7 @@ fn failure_of(
         kind,
         reason: failure.reason,
         code: failure.code,
-        intent: Intent::Attach {
-            session,
-            backend,
-            want,
-        },
+        intent: Intent::Attach { session, backend },
     }
 }
 
@@ -1354,12 +1276,11 @@ impl Panel for ProcessPanel {
 
     fn text_entry(&self) -> bool {
         self.bound()
-            .is_some_and(|b| b.controlling() && b.running() && !b.attaching())
+            .is_some_and(|b| b.running() && !b.attaching())
     }
 
     /// Escape belongs to the pane wherever it means something here: out of a
-    /// failure or a wait, off an end prompt, away from an offer of control, or
-    /// back from an ended program. Otherwise a drawer takes it and the pane
+    /// failure or a wait, off an end prompt, or back from an ended program. Otherwise a drawer takes it and the pane
     /// vanishes with a failure unread. Nothing is typed in these states, so
     /// the pane's own key context stays.
     fn holds_escape(&self) -> bool {
@@ -1369,7 +1290,6 @@ impl Panel for ProcessPanel {
             Stage::Bound(b) => {
                 self.text_entry()
                     || b.end != EndAsk::No
-                    || b.offer_control
                     || !b.running()
                     || b.gone
             }

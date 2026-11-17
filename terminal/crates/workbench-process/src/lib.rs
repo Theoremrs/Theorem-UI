@@ -66,13 +66,6 @@ pub fn actions() -> Vec<ActionDescriptor> {
         // The selected session row of the chooser.
         ActionDescriptor::new("shell.attach", "Attach to session", Create)
             .emits(EffectKind::TerminalAttach),
-        ActionDescriptor::new("shell.observe", "Observe session", Create)
-            .emits(EffectKind::TerminalAttach),
-        // Asks the host for the lease. Taking it from another holder moves
-        // that viewer to observing; the herdr-integration spec does not make
-        // it a person-only act, so it is not marked human only.
-        ActionDescriptor::new("shell.control", "Request control", Start)
-            .emits(EffectKind::TerminalAttach),
         // Attaches to the same terminal again when only the connection to it
         // was lost. Never starts a new process.
         ActionDescriptor::new("shell.reconnect", "Reconnect to the terminal", Create)

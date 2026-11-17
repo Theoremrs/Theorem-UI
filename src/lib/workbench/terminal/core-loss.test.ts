@@ -8,7 +8,6 @@ import {
   ATTACH_LOST_FRAGMENT,
   ATTACH_RUNNING_FRAGMENT,
   BACKEND_UNAVAILABLE,
-  CONTROL_CLAIM_ATTACH,
   CONTROL_REFUSED_HELD,
   EXITED_EXITED,
   EXITED_GONE,
@@ -76,7 +75,7 @@ const attachReply = (extra: Record<string, unknown> = {}) => ({
   ...extra,
 })
 
-/** An opened, attached Herdr controller on `hc-example`, binding epoch 2. */
+/** An opened, attached Herdr view on `hc-example`, binding epoch 2. */
 async function attached(): Promise<Rig> {
   const r = rig()
   r.handlers.open = () => OPEN_REPLY
@@ -91,6 +90,13 @@ async function attached(): Promise<Rig> {
   r.events.length = 0
   return r
 }
+
+/** Attach again to the same terminal from what is applied, as the pane does to recover. */
+const reattach = (r: Rig) =>
+  r.session.attach({
+    terminalId: 'hc-example',
+    fromOffset: r.session.state.offset,
+  })
 
 const emit = (r: Rig, frame: { kind: string; data: unknown }) =>
   r.emit(frame.kind, frame.data as Record<string, unknown>)
@@ -115,10 +121,10 @@ describe('1. terminal.updated connectivity', () => {
         reason,
         nextStep: 'retry',
       })
-      // Loss is not an end: the phase, the lease and the binding are untouched.
+      // Loss is not an end: the phase, the attachment and the binding are untouched.
       expect(r.session.state.phase).toBe('attached')
       expect(r.session.state.bindingEpoch).toBe(2)
-      expect(r.session.state.lease.role).toBe('controller')
+      expect(r.session.state.attachment).toBe('ta-1')
       expect(r.events.map((event) => event.type)).not.toContain('exited')
       expect(r.events.map((event) => event.type)).not.toContain('lost')
       const event = r.events.find((entry) => entry.type === 'connectivity')
@@ -300,7 +306,7 @@ describe('2. list rows, the attach reply and terminal.exited', () => {
   test('attached:true with state:lost is attached to the record, not a live terminal, and launches nothing', async () => {
     const r = await attached()
     r.handlers.attach = () => attachReply(ATTACH_LOST_FRAGMENT)
-    const result = await r.session.requestControl()
+    const result = await reattach(r)
     expect(result).toMatchObject({
       outcome: 'refused',
       code: 'terminal_core_lost',
@@ -312,14 +318,14 @@ describe('2. list rows, the attach reply and terminal.exited', () => {
     expect(r.of('open')).toHaveLength(1)
     // Running again at the next attach.
     r.handlers.attach = () => attachReply(ATTACH_RUNNING_FRAGMENT)
-    expect((await r.session.requestControl()).outcome).toBe('accepted')
+    expect((await reattach(r)).outcome).toBe('accepted')
     expect(r.session.state.connectivity).toEqual({ state: 'running' })
   })
 
   test('an attach reply that names no state claims no loss', async () => {
     const r = await attached()
     emit(r, UPDATED_CORE_CLOSED)
-    expect((await r.session.requestControl()).outcome).toBe('accepted')
+    expect((await reattach(r)).outcome).toBe('accepted')
     expect(r.session.state.connectivity).toEqual({ state: 'running' })
   })
 
@@ -366,76 +372,36 @@ describe('2. list rows, the attach reply and terminal.exited', () => {
   })
 })
 
-describe('3. controller claims', () => {
-  test('a controller request on a lease somebody holds names the current attachment, generation and epoch', async () => {
+describe('3. control refusals', () => {
+  test('terminal_control_refused with detail.reason held is a failed send in the host word, and typing goes on', async () => {
     const r = await attached()
-    await r.session.requestControl()
-    expect(r.of('attach').at(-1)!.request).toMatchObject({
-      session: CONTROL_CLAIM_ATTACH.session,
-      role: 'controller',
-      attachment: 'ta-1',
-      generation: 1,
-      epoch: 2,
-    })
-  })
-
-  test('an unheld lease is acquired without a claim, and a passive read never carries one', async () => {
-    const r = rig()
-    r.handlers.open = () => OPEN_REPLY
-    r.handlers.attach = () =>
-      attachReply({
-        control: {
-          attachment: 'ta-1',
-          role: 'observer',
-          controlling: false,
-          controlled: false,
-          generation: 0,
-          epoch: 2,
-        },
-      })
-    await r.session.open({
-      profile: profileById('Herdr shell'),
-      cols: 80,
-      rows: 24,
-      role: 'observer',
-    })
-    await r.session.requestControl()
-    const sent = r.of('attach').at(-1)!.request
-    expect(sent).toMatchObject({ role: 'controller' })
-    expect(sent).not.toHaveProperty('generation')
-    expect(sent).not.toHaveProperty('epoch')
-    const held = await attached()
-    emit(held, UPDATED_RUNNING)
-    await held.session.releaseControl()
-    expect(held.of('attach').at(-1)!.request).toMatchObject({
-      role: 'observer',
-    })
-    expect(held.of('attach').at(-1)!.request).not.toHaveProperty('epoch')
-  })
-
-  test('terminal_control_refused with detail.reason held is a refusal with the owner code and reason', async () => {
-    const r = await attached()
-    r.handlers.attach = () => {
+    r.handlers.input = () => {
       throw new HostError(409, CONTROL_REFUSED_HELD)
     }
-    expect(await r.session.requestControl()).toMatchObject({
-      outcome: 'refused',
-      code: 'terminal_control_refused',
-      reason: 'held',
-    })
-    // The lease this session holds is not changed by the refusal.
-    expect(r.session.state.lease.role).toBe('controller')
+    const refused = await r.session.input('x')
+    expect(refused.outcome).toBe('failed')
+    expect((refused as { reason: string }).reason).toContain('held')
+    r.handlers.input = () => ({ accepted: true })
+    expect((await r.session.input('y')).outcome).toBe('accepted')
   })
 
-  test('the older flat body still reads', () => {
+  test('the older flat body still reads: stale_epoch is a refusal and any other word a failed send', () => {
     expect(
       classify(
         new HostError(409, {
           code: 'terminal_control_refused',
-          reason: 'held',
+          reason: 'stale_epoch',
         }),
       ),
-    ).toMatchObject({ outcome: 'refused', reason: 'held' })
+    ).toMatchObject({ outcome: 'refused', reason: 'stale_epoch' })
+    const held = classify(
+      new HostError(409, {
+        code: 'terminal_control_refused',
+        reason: 'held',
+      }),
+    )
+    expect(held.outcome).toBe('failed')
+    expect(held.reason).toContain('held')
   })
 })
 
@@ -610,7 +576,7 @@ describe('5. input', () => {
 
     test('after the host replaced the attachment name, a repeat of an unanswered input sends nothing', async () => {
       const r = await attached()
-      const claim = { attachment: 'ta-1', leaseGeneration: 1, epoch: 2 }
+      const claim = { attachment: 'ta-1', epoch: 2 }
       r.handlers.input = lostAnswer
       expect(
         (await r.session.input('x', 'human', { inputId: 'p-1', claim }))
@@ -622,7 +588,7 @@ describe('5. input', () => {
           attachment: 'ta-9',
           control: { ...attachReply().control, attachment: 'ta-9' },
         })
-      await r.session.requestControl()
+      await reattach(r)
       r.handlers.input = () => ({ accepted: true })
       const repeat = await r.session.input('x', 'human', {
         inputId: 'p-1',

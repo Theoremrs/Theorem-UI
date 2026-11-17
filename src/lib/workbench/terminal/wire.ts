@@ -1,22 +1,11 @@
-// SOURCING: @theoremharness/sdk for the host's terminal types (attach reply, binding, lease, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
+// SOURCING: @theoremharness/sdk for the host's terminal types (attach reply, binding, modes, list, adoption, live events); the outcome shape every call returns and the refusal reading are this workbench's own (docs/plans/theo-workbench/gate-0/terminal-path.md), and no upstream library models them.
 import type { Theorem, WorkspaceLiveEvent } from '@theoremharness/sdk'
 import { reason as readableReason } from '../environment/workspace-recovery'
 import { readable } from '../environment/redact'
 
-/** The five reasons the host refuses a keystroke, paste or resize with `terminal_control_refused`. */
-export type LeaseRefusalReason =
-  | 'observer'
-  | 'held'
-  | 'stale_generation'
-  | 'stale_epoch'
-  | 'unknown_attachment'
-
 /** How the program in a binding came to be there. */
 export type ProgramOrigin =
   'launched' | 'adopted' | 'replacement' | 'reattached'
-
-/** `unleased` is a client that names no attachment; it cannot be requested. */
-export type LeaseRole = 'controller' | 'observer' | 'unleased'
 
 export type InputKind = 'human' | 'reply'
 
@@ -27,17 +16,6 @@ export interface WireBinding {
   core_id?: string
   terminal?: string
   program?: number | { generation: number; origin?: ProgramOrigin }
-}
-
-export interface WireControl {
-  attachment?: string
-  role?: string
-  /** This attachment holds the lease. */
-  controlling?: boolean
-  /** Somebody holds the lease. */
-  controlled?: boolean
-  generation?: number
-  epoch?: number
 }
 
 export interface OpenReply {
@@ -53,7 +31,7 @@ export interface OpenReply {
 
 /**
  * What `terminal.attach` answers, as the SDK types it: the offsets and bytes, the binding (one
- * `program` number), the lease `control`, the screen `modes` and the repaint.
+ * `program` number), the attachment name, the screen `modes` and the repaint.
  */
 export type AttachReply = Theorem.IdeTerminalAttachReply
 
@@ -129,10 +107,9 @@ export function lostWords(
   return `Connection to the terminal lost: ${causeWords(reason)}. The program may still be running; its outcome is not known.${step ? ` ${step}` : ''}`
 }
 
-/** The claim a write carries so the host can refuse a stale one. */
+/** The claim a write carries so the host can refuse one drawn against an older binding (`stale_epoch`). */
 export interface WriteClaim {
   attachment?: string
-  generation?: number
   epoch?: number
 }
 
@@ -143,7 +120,6 @@ const TERMINAL_KINDS = [
   'terminal.output',
   'terminal.resized',
   'terminal.exited',
-  'terminal.control',
   'terminal.updated',
 ] as const
 
@@ -175,7 +151,8 @@ export const isTerminalEvent = (event: {
 
 /** Each refusal the host or this module can give. */
 export type Refusal =
-  | { code: 'terminal_control_refused'; reason: LeaseRefusalReason }
+  /** The write was drawn against an older binding epoch; nothing was written. */
+  | { code: 'terminal_control_refused'; reason: 'stale_epoch' }
   | {
       code: 'terminal_backend_unavailable'
       reason: string
@@ -217,14 +194,6 @@ export type Failure =
   | ({ outcome: 'refused' } & Refusal)
   | { outcome: 'uncertain'; reason: string }
   | { outcome: 'failed'; reason: string }
-
-const LEASE_REASONS: ReadonlySet<string> = new Set([
-  'observer',
-  'held',
-  'stale_generation',
-  'stale_epoch',
-  'unknown_attachment',
-])
 
 /** The `detail` the host's refusals carry; the older flat fields are read when it is absent. */
 function detailOf(record: Record<string, unknown>): Record<string, unknown> {
@@ -285,16 +254,16 @@ export function classify(error: unknown): Failure {
       reason: `The host cannot say whether this terminal launch started a program. It was not launched again; look for the terminal in the list before launching another.${typeof detail.operation_id === 'string' ? ` (operation ${readable(detail.operation_id)})` : ''}`,
     }
   }
-  if (
-    statusCode === 409 &&
-    code === 'terminal_control_refused' &&
-    typeof detail.reason === 'string' &&
-    LEASE_REASONS.has(detail.reason)
-  ) {
-    return {
-      outcome: 'refused',
-      code,
-      reason: detail.reason as LeaseRefusalReason,
+  if (statusCode === 409 && code === 'terminal_control_refused') {
+    if (detail.reason === 'stale_epoch') {
+      return { outcome: 'refused', code, reason: 'stale_epoch' }
+    }
+    // Any other word is a failed send, never a change of what this view may do.
+    if (typeof detail.reason === 'string') {
+      return {
+        outcome: 'failed',
+        reason: `The host refused this write (${readable(detail.reason)}); it was not written.`,
+      }
     }
   }
   if (statusCode === 408 || statusCode === 502 || statusCode === 504) {

@@ -226,7 +226,6 @@ export type { TerminalOpen } from "./TerminalOpen";
 export type { TerminalOpened } from "./TerminalOpened";
 export type { TerminalProfileInfo } from "./TerminalProfileInfo";
 export type { TerminalResize } from "./TerminalResize";
-export type { TerminalRole } from "./TerminalRole";
 export type { TerminalSessionInfo } from "./TerminalSessionInfo";
 export type { TerminalSessionState } from "./TerminalSessionState";
 export type { TextChange } from "./TextChange";

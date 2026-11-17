@@ -1,4 +1,4 @@
-// SOURCING: hand-roll — the binding state machine (four separate versions, lease, reset, input ledger) is Theorem's own host contract; the SDK's TerminalChannel (0.6.0-alpha.8) now tracks epochs, leases and kill, but answers a bare boolean, reports a refused claim to a listener, mints its own input ids and has no `uncertain`, while this workbench needs the panel's `input_id` and claim and four outcomes. Transport is the SDK (host.ts); profiles are terminal-profile.ts.
+// SOURCING: hand-roll — the binding state machine (three separate versions, reset, input ledger) is Theorem's own host contract; the SDK's TerminalChannel (0.6.0-alpha.8) tracks epochs and kill, but answers a bare boolean, reports a refused claim to a listener, mints its own input ids and has no `uncertain`, while this workbench needs the panel's `input_id` and claim and four outcomes. Transport is the SDK (host.ts); profiles are terminal-profile.ts.
 import { terminalHost } from './host'
 import type { InputBody, TerminalDeps, TerminalHost } from './host'
 import { readable } from '../environment/redact'
@@ -14,8 +14,6 @@ import type {
   Connectivity,
   Failure,
   InputKind,
-  LeaseRefusalReason,
-  LeaseRole,
   Outcome,
   ProgramOrigin,
   TerminalLiveEvent,
@@ -30,9 +28,9 @@ export type TerminalPhase =
   'idle' | 'opening' | 'attached' | 'detached' | 'exited' | 'lost'
 
 /**
- * Everything this session knows. The four versions are four fields and are never compared with
- * one another: `streamEpoch` (the host's live stream), `bindingEpoch` (one byte log and screen),
- * `program` (which process incarnation) and `lease.generation` (who may write).
+ * Everything this session knows. The three versions are three fields and are never compared with
+ * one another: `streamEpoch` (the host's live stream), `bindingEpoch` (one byte log and screen) and
+ * `program` (which process incarnation). Every view of a terminal may type, paste and resize.
  */
 export interface TerminalState {
   profile: TheoremTerminalProfile | undefined
@@ -52,21 +50,17 @@ export interface TerminalState {
   processOwnedBy: string | undefined
   /**
    * What the program says about itself (R32). Plain data about the program's own word: it is never read by the
-   * lifecycle, the lease, the role, the attachment or the input check, and it is never a command, approval or task.
+   * lifecycle, the attachment or the input check, and it is never a command, approval or task.
    */
   programReport: ProgramReport
   /**
    * Whether the host can reach the terminal's core. `lost` means the process outcome is unknown, not that it
    * exited, and it is not `phase: 'lost'` (a program that cannot be resumed): it clears when the host says
-   * `running`. Control of the lease is a different fact and is not touched by it.
+   * `running`.
    */
   connectivity: Connectivity
-  lease: {
-    role: LeaseRole
-    generation: number | undefined
-    held: boolean
-    attachment: string | undefined
-  }
+  /** The host's name for this view's attachment: what every write claims and a detach closes. */
+  attachment: string | undefined
   exit:
     | {
         reason: string
@@ -98,7 +92,6 @@ export type TerminalEvent =
     }
   /** Discard the screen and replay `formatted`; it already includes everything up to the next `output`. */
   | { type: 'reset'; formatted: string; epoch: number | undefined }
-  | { type: 'lease'; lease: TerminalState['lease'] }
   | { type: 'resized'; cols: number; rows: number }
   | {
       type: 'exited'
@@ -134,8 +127,6 @@ export interface OpenOptions {
   cols: number
   rows: number
   name?: string
-  /** The lease to ask for with the first attach. Default `controller`: the opener types. */
-  role?: 'controller' | 'observer'
   /** The caller's own attachment name for the attach that follows the launch, sent to the host unchanged. */
   attachment?: string
   /**
@@ -227,10 +218,9 @@ function programOf(binding: Pick<WireBinding, 'program'> | undefined): {
     : {}
 }
 
-/** A claim a caller drew its write against: the attachment and the lease generation and epoch it believes current. */
+/** A claim a caller drew its write against: the attachment and binding epoch it believes current. */
 interface SuppliedClaim {
   attachment: string
-  leaseGeneration: number
   epoch: number
 }
 
@@ -247,7 +237,7 @@ interface Sent {
   blocked?: string
 }
 
-/** One terminal binding: its open, attach, input, lease and end, as the host's contract defines them. */
+/** One terminal binding: its open, attach, input and end, as the host's contract defines them. */
 export class TerminalSession {
   private current: TerminalState = {
     profile: undefined,
@@ -264,12 +254,7 @@ export class TerminalSession {
     processOwnedBy: undefined,
     programReport: UNAVAILABLE,
     connectivity: { state: 'running' },
-    lease: {
-      role: 'unleased',
-      generation: undefined,
-      held: false,
-      attachment: undefined,
-    },
+    attachment: undefined,
     exit: undefined,
   }
   private readonly listeners = new Set<(event: TerminalEvent) => void>()
@@ -370,7 +355,7 @@ export class TerminalSession {
       connectivity: { state: 'running' },
       offset: 0,
     })
-    if (options.attachment) this.current.lease.attachment = options.attachment
+    if (options.attachment) this.current.attachment = options.attachment
     this.listen()
     this.emit({
       type: 'opened',
@@ -380,17 +365,17 @@ export class TerminalSession {
       program,
     })
     // The program is running now; if this attach fails the caller still holds its id and can attach again.
-    return this.catchUp({ role: options.role ?? 'controller', from: 0 })
+    this.catchingUp = undefined
+    return this.catchUp(0)
   }
 
   /**
-   * Reach a program that already exists, for example after a reload. Observing never moves the lease.
-   * `attachment` is the caller's own, sent to the host unchanged; the session mints none.
+   * Reach a program that already exists, for example after a reload. `attachment` is the caller's
+   * own, sent to the host unchanged; the session mints none.
    */
   async attach(options: {
     terminalId: string
     fromOffset: number
-    role?: 'controller' | 'observer'
     attachment?: string
   }): Promise<Outcome<Bound>> {
     this.stopListening()
@@ -402,17 +387,14 @@ export class TerminalSession {
       exit: undefined,
       connectivity: { state: 'running' },
     })
-    if (options.attachment) this.current.lease.attachment = options.attachment
+    if (options.attachment) this.current.attachment = options.attachment
     this.listen()
-    return this.catchUp({
-      role: options.role ?? 'observer',
-      from: options.fromOffset,
-    })
+    this.catchingUp = undefined
+    return this.catchUp(options.fromOffset)
   }
 
   /**
-   * Type. Only the controller may; anyone else is refused here with the host's reason and nothing
-   * is sent. The caller mints `inputId` (the terminal panel does, once per logical input) and may
+   * Type. Any view may. The caller mints `inputId` (the terminal panel does, once per logical input) and may
    * name the `claim` it believes current; neither is rewritten. The id is fresh only when the caller
    * names none. A repeat of an id whose acknowledgement was lost resends the original body, claim
    * included, so the host writes it once; a repeat of an id already answered sends nothing. An input
@@ -551,24 +533,14 @@ export class TerminalSession {
     })
   }
 
-  /** Take the lease; the generation advances and a previous holder is refused from then on. */
-  async requestControl(): Promise<Outcome<Bound>> {
-    return this.catchUp({ role: 'controller' })
-  }
-
-  /** Give the lease up and keep watching. */
-  async releaseControl(): Promise<Outcome<Bound>> {
-    return this.catchUp({ role: 'observer' })
-  }
-
   /** Close this view. The program keeps running for its other attachments and for a later attach. */
   async detach(): Promise<Outcome<{ detached: true }>> {
     this.stopListening()
     const result = await this.write(async (id) => {
       await this.host.close({
         session: id,
-        ...(this.current.lease.attachment
-          ? { attachment: this.current.lease.attachment }
+        ...(this.current.attachment
+          ? { attachment: this.current.attachment }
           : {}),
       })
       return { detached: true as const }
@@ -634,45 +606,33 @@ export class TerminalSession {
    * across epochs it is refused here and never guessed. Any other name is the caller's own.
    */
   private claim(supplied?: SuppliedClaim): WriteClaim | Outcome<never> {
-    const { lease, bindingEpoch } = this.current
+    const { attachment, bindingEpoch } = this.current
     if (!supplied) {
-      return {
-        attachment: lease.attachment,
-        generation: lease.generation,
-        epoch: bindingEpoch,
-      }
+      return { attachment, epoch: bindingEpoch }
     }
     const name = supplied.attachment
-    if (!this.superseded.has(name) || name === lease.attachment) {
-      return {
-        attachment: name,
-        generation: supplied.leaseGeneration,
-        epoch: supplied.epoch,
-      }
+    if (!this.superseded.has(name) || name === attachment) {
+      return { attachment: name, epoch: supplied.epoch }
     }
     const replacedIn = this.superseded.get(name)
     if (
-      lease.attachment &&
+      attachment &&
       replacedIn !== undefined &&
       replacedIn === supplied.epoch &&
       supplied.epoch === bindingEpoch
     ) {
-      return {
-        attachment: lease.attachment,
-        generation: supplied.leaseGeneration,
-        epoch: supplied.epoch,
-      }
+      return { attachment, epoch: supplied.epoch }
     }
     return this.answer({
       outcome: 'refused',
       code: 'terminal_attachment_superseded',
-      reason: `The write named attachment "${name}" at binding epoch ${supplied.epoch}; the host replaced it with "${lease.attachment ?? 'none'}" (replaced in epoch ${replacedIn ?? 'unknown'}, binding is now epoch ${bindingEpoch ?? 'unknown'}), so nothing was sent`,
+      reason: `The write named attachment "${name}" at binding epoch ${supplied.epoch}; the host replaced it with "${attachment ?? 'none'}" (replaced in epoch ${replacedIn ?? 'unknown'}, binding is now epoch ${bindingEpoch ?? 'unknown'}), so nothing was sent`,
     })
   }
 
-  /** The local refusal for a call that needs the lease, or a failure when there is no live program to write to. */
+  /** A failure when there is no live program to write to, or the refusal when its core cannot be reached. */
   private unfit(): Outcome<never> | undefined {
-    const { phase, lease } = this.current
+    const { phase } = this.current
     if (phase !== 'attached') {
       return this.answer({
         outcome: 'failed',
@@ -685,15 +645,6 @@ export class TerminalSession {
         outcome: 'refused',
         code: 'terminal_core_lost',
         reason: `${lostWords(connectivity.reason, connectivity.nextStep)} Nothing was sent.`,
-      })
-    }
-    if (lease.role !== 'controller') {
-      const reason: LeaseRefusalReason =
-        lease.role === 'observer' ? 'observer' : 'unknown_attachment'
-      return this.answer({
-        outcome: 'refused',
-        code: 'terminal_control_refused',
-        reason,
       })
     }
     return undefined
@@ -777,16 +728,11 @@ export class TerminalSession {
       return
     }
     this.current.phase = 'lost'
-    this.current.lease = {
-      role: 'unleased',
-      generation: undefined,
-      held: false,
-      attachment: undefined,
-    }
+    this.current.attachment = undefined
     this.emit({ type: 'lost', cause, ...(reason ? { reason } : {}) })
   }
 
-  /** Sets what the host says about reaching the core, and says so when it changed. Never touches the phase, the lease or the report. */
+  /** Sets what the host says about reaching the core, and says so when it changed. Never touches the phase, the attachment or the report. */
   private connect(next: Connectivity): void {
     const state = this.current
     if (JSON.stringify(next) === JSON.stringify(state.connectivity)) return
@@ -806,7 +752,7 @@ export class TerminalSession {
 
   /** Why an input whose outcome is unknown must not be sent again now, or undefined when the same input may be repeated. */
   private notResendable(sent: Sent): string | undefined {
-    const { lease, bindingEpoch, connectivity } = this.current
+    const { attachment, bindingEpoch, connectivity } = this.current
     if (sent.blocked) return sent.blocked
     if (sent.epoch !== bindingEpoch) {
       return `The terminal was rebound (binding epoch ${sent.epoch ?? 'unknown'} to ${bindingEpoch ?? 'unknown'}) after this input was sent, so whether it arrived is unknown; it was not sent again`
@@ -814,7 +760,7 @@ export class TerminalSession {
     const named = sent.claim.attachment
     if (
       named !== undefined &&
-      named !== lease.attachment &&
+      named !== attachment &&
       this.superseded.has(named)
     ) {
       return `The host replaced the attachment name "${named}" this input was sent under, so a repeat would not be the same input; it was not sent again`
@@ -825,59 +771,32 @@ export class TerminalSession {
     return undefined
   }
 
-  /**
-   * Read what this session has not applied. Without a role it keeps the attachment and so never
-   * moves the lease. Plain catch-ups share one request.
-   */
-  private catchUp(options: {
-    role?: 'controller' | 'observer'
-    from?: number
-  }): Promise<Outcome<Bound>> {
-    if (!options.role && this.catchingUp) {
+  /** Read what this session has not applied. Catch-ups share one request; open and attach start a fresh one. */
+  private catchUp(from?: number): Promise<Outcome<Bound>> {
+    if (this.catchingUp) {
       return this.catchingUp
     }
-    const request = this.readFrom(
-      options.from ?? this.current.offset,
-      options.role,
-    ).finally(() => {
+    const request = this.readFrom(from ?? this.current.offset).finally(() => {
       if (this.catchingUp === request) {
         this.catchingUp = undefined
       }
     })
-    if (!options.role) {
-      this.catchingUp = request
-    }
+    this.catchingUp = request
     return request
   }
 
-  private async readFrom(
-    from: number,
-    role: 'controller' | 'observer' | undefined,
-  ): Promise<Outcome<Bound>> {
+  private async readFrom(from: number): Promise<Outcome<Bound>> {
     const id = this.current.terminalId
     if (!id) {
       return this.answer({ outcome: 'failed', reason: 'no terminal is bound' })
     }
     let reply: AttachReply
     try {
-      const { attachment, generation, held } = this.current.lease
-      // Control of a lease somebody holds is claimed with the current attachment, generation and epoch;
-      // an unheld lease is acquired without a claim.
-      const claim =
-        role === 'controller' && held && generation !== undefined
-          ? {
-              generation,
-              ...(this.current.bindingEpoch !== undefined
-                ? { epoch: this.current.bindingEpoch }
-                : {}),
-            }
-          : {}
+      const { attachment } = this.current
       reply = await this.host.attach({
         session: id,
         from_offset: from,
         ...(attachment ? { attachment } : {}),
-        ...(role ? { role } : {}),
-        ...claim,
       })
     } catch (error) {
       const failure = classify(error)
@@ -921,7 +840,7 @@ export class TerminalSession {
     })
   }
 
-  /** Fold an attach reply in: the lease it reports, then either a reset or the bytes after our offset. */
+  /** Fold an attach reply in: the attachment name it reports, then either a reset or the bytes after our offset. */
   private apply(reply: AttachReply): void {
     const state = this.current
     const epoch = reply.epoch ?? reply.binding?.epoch
@@ -943,22 +862,13 @@ export class TerminalSession {
     // The host states connectivity under the same lock as the screen; an answer that says none (an older
     // host) claims no loss.
     this.connect(readConnectivity(reply) ?? { state: 'running' })
-    const before = state.lease.attachment
-    // The lease control names the attachment the host holds; a bare `attachment` is only an echo.
-    if (reply.control) {
-      const { control } = reply
-      state.lease = {
-        role: control.controlling ? 'controller' : 'observer',
-        generation: control.generation,
-        held: control.controlled === true,
-        // Older hosts omit it from the control; the bare field is then the host's name.
-        attachment:
-          (control as { attachment?: string }).attachment ?? reply.attachment,
-      }
-    } else if (reply.attachment) {
-      state.lease.attachment = reply.attachment
-    }
-    const named = state.lease.attachment
+    const before = state.attachment
+    // An older host names its attachment inside `control`; the bare field is otherwise the host's name.
+    const named =
+      (reply.control as { attachment?: string } | undefined)?.attachment ??
+      reply.attachment ??
+      before
+    state.attachment = named
     if (before && named && before !== named) {
       // The host minted its own name: ours is not one it knows from now on.
       this.superseded.set(
@@ -994,7 +904,6 @@ export class TerminalSession {
         state.bindingEpoch,
       )
     }
-    this.emit({ type: 'lease', lease: { ...state.lease } })
   }
 
   /** Bytes in order, each once: drop what is already applied, and catch up when there is a gap. */
@@ -1008,7 +917,7 @@ export class TerminalSession {
       return
     }
     if (offset > this.current.offset) {
-      void this.catchUp({})
+      void this.catchUp()
       return
     }
     const fresh = bytes.subarray(this.current.offset - offset)
@@ -1026,7 +935,7 @@ export class TerminalSession {
       this.host.onEvent((event) => this.onLive(event)),
       this.host.onResync((resync) => {
         this.current.streamEpoch = resync.epoch
-        return this.catchUp({}).then(() => undefined)
+        return this.catchUp().then(() => undefined)
       }),
       this.host.onState((state) => this.onLink(state)),
     )
@@ -1046,7 +955,7 @@ export class TerminalSession {
       this.current.connection = 'connected'
       if (this.linkWasDown && this.current.phase === 'attached') {
         this.linkWasDown = false
-        void this.catchUp({}).then(
+        void this.catchUp().then(
           (result) =>
             result.outcome === 'accepted' && this.emit({ type: 'reconnected' }),
         )
@@ -1154,12 +1063,12 @@ export class TerminalSession {
           })
         }
         // The new epoch's repaint comes only from an attach, which names the epoch.
-        void this.catchUp({ from: 0 })
+        void this.catchUp(0)
         return
       }
       case 'terminal.output':
         if (newer) {
-          void this.catchUp({ from: 0 })
+          void this.catchUp(0)
           return
         }
         {
@@ -1202,24 +1111,6 @@ export class TerminalSession {
           code: event.data.exit_code,
           signal: event.data.signal,
         })
-        return
-      }
-      case 'terminal.control': {
-        const generation = event.data.generation
-        // The event names no attachment: a generation that is not ours means someone else holds the lease.
-        if (generation < (state.lease.generation ?? 0)) {
-          return
-        }
-        const displaced =
-          state.lease.role === 'controller' &&
-          generation !== state.lease.generation
-        state.lease = {
-          ...state.lease,
-          generation,
-          held: event.data.controlled,
-          role: displaced ? 'observer' : state.lease.role,
-        }
-        this.emit({ type: 'lease', lease: { ...state.lease } })
         return
       }
     }
