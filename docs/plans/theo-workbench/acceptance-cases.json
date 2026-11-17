@@ -2,7 +2,7 @@
   "spec": "SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0",
   "version": "1.0",
   "scope": "Theo web only; native work deferred",
-  "status": "not_run",
+  "status": "partially_recorded",
   "semantics": "This is an acceptance checklist, not executable tests or a passing test report. Fixture evidence cannot satisfy a live-only case.",
   "execution_record_required": [
     "candidate_ui_commit",
@@ -30,8 +30,30 @@
       "oracle_class": "source/build",
       "procedure": "Inspect the candidate build graph, changed-file list, route mounts and release plan.",
       "required_observations": "The web Theo route is replaced; no native executable, GPUI dock migration, native packaging or native-client release gate is introduced.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "git log --name-only a410b4d..HEAD",
+            "read terminal/Cargo.toml, terminal/Cargo.lock, scripts/build.sh, scripts/build-cloudflare.sh, package.json scripts"
+          ],
+          "result": "pass",
+          "evidence_tier": "source inspection",
+          "observed": [
+            "theorem-terminal is crate-type cdylib+rlib with publish=false, described in its own manifest as Ratatui on Ratzilla's DOM backend compiled to WebAssembly; no [[bin]] target anywhere in terminal/",
+            "the only build gates are scripts/build.sh, scripts/build-cloudflare.sh + wrangler deploy, and terminal/build.sh (cargo build --release --target wasm32-unknown-unknown, then wasm-bindgen --target web)",
+            "no gpui, wry, tauri, electron or iced entry in terminal/Cargo.toml, terminal/Cargo.lock or package.json",
+            "the workbench mounts inside the existing web shell (src/components/workbench/*, src/lib/workbench/*); no native-client route, packaging step or native release gate appears"
+          ],
+          "limitations": [
+            "source inspection only: it cannot prove what a release pipeline outside this repository would build"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-02",
@@ -45,8 +67,30 @@
       "oracle_class": "source/contracts",
       "procedure": "Trace each extracted ELY/Codex/OpenIDEA component to its data and effect owners; inspect notices and pinned revisions.",
       "required_observations": "Each concept has one accepted owner; no duplicate document/terminal/model runtime; extracted files retain appropriate provenance and licenses.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/adapter.test.ts src/lib/workbench/wire/drift.test.ts",
+            "cd terminal && cargo test --workspace --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "source inspection + pure tests",
+          "observed": [
+            "adapter.test.ts 'every kind goes to exactly one owner, once (R02, AC-02)' — the sample table has every kind the wire declares and each routes once; 'a unknown kind from a newer core is refused, not dropped'",
+            "no duplicate document/terminal/model runtime: the markdown panel, the process pane and the conversation port all route through those owners in adapter.ts",
+            "provenance and license per component: LEDGER.md L01-L29 name lane, source pin, blob hash, author and license; terminal/crates/workbench-layout carries LICENSE-HERDR; the carried ELY files keep their donor header (L04/L05)"
+          ],
+          "limitations": [
+            "LEDGER L06 and L07 reference captures are still pending against the external ELY gallery, so those two donor rows are audited by pin and blob-hash inspection only — a named blocker, not a pass on the capture",
+            "donor byte-identity is taken from the LEDGER record; upstream repositories are unreachable from this runner"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-03",
@@ -60,7 +104,28 @@
       "procedure": "Open a real project through existing Theo navigation and an existing conversation link.",
       "required_observations": "Outer navigation works; files, conversation and tools share the new interior; environment identity is visible; no fabricated resource is created.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list (prints cases, starts nothing)",
+            "ls for E2E_SERVER_BIN / rustyred-thg-server: absent from the image"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "No deployed Theorem web route or backend on this runner: the e2e stack needs a built rustyred-thg-server plus an identity provider, and the workbench only mounts in a vite story fixture here. START-HERE: a browser fixture alone does not establish that flow.",
+          "partial_evidence": [
+            "partial fixture evidence only: story workbench-default 2/2 green shows files, conversation and tools sharing one interior with the picker and composer on the same real wasm frame"
+          ],
+          "observed": [],
+          "limitations": [
+            "the outer-navigation and existing-conversation-link legs need the deployed shell"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-04",
@@ -72,8 +137,32 @@
       "oracle_class": "rendered geometry",
       "procedure": "With measured font/cell metrics resize through 1440x900, 1024x768 and 390x844 CSS-pixel viewports, then increase text size.",
       "required_observations": "Visible dock rectangles conserve available space and do not overlap; panels collapse/tab/expand explicitly; text is not shrunk to fit.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-resize",
+            "cd terminal && cargo test -p theorem-workbench-dock --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "rendered fixture (Chromium) + pure tests",
+          "observed": [
+            "40/40 checks green at 1440x900, 1024x768 and 390x844 and after the text-size increase: font, cell width and cell height measured from a real cell; columns x cell width and rows x pitch fit the host with under one cell and one row left over; no scroll (scroll size equals client size); the semantic tree's dock area equals the grid",
+            "exact cover at every viewport: no two visible panes or dividers overlap, they add up to the dock area exactly, and each lies inside it",
+            "panels collapse/tab/expand explicitly and text is not shrunk to fit: the grid font size, cell width and row height are identical at all three viewports (d), 1024x768 collapses Files to a drawer before 1440x900, 390x844 shows fewer panes side by side and the strip says how many are behind (N more), every panel open at 1440x900 is still named by a tab at 390x844, and Theo and Files stay reachable by their chords",
+            "the deliberate increase behaves: --appearance-scale-code reaches 1.5, the font is larger, columns and rows both fall, and fit plus exact cover still hold afterwards",
+            "geometry.rs 14 tests and operations.rs 20 tests green in the cargo run (splitter resize, minimum-size refusal with how far it may go, maximize/restore, hide/show a region)"
+          ],
+          "limitations": [
+            "rendered from the vite story fixture in Chromium 156.0.8078.4 at DPR 1, dark scheme, reducedMotion=reduce — not the deployed app and not on the macOS reference device",
+            "the run rewrote the macOS-calibrated docs/plans/theo-workbench/evidence/resize-geometry.json (Linux cell width 8px / 180 columns against the committed 7.484375px / 192). That path was restored with git checkout -- and is NOT claimed as this run's evidence; the verdict rests on the scenario's own per-viewport assertions"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-05",
@@ -86,7 +175,28 @@
       "procedure": "Type drafts in conversation and Markdown; move, split, tab, expand and restore their panels during an active run.",
       "required_observations": "Drafts, references, logical selection, undo, run and resource identities survive; only placement changes.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-keyboard-journey",
+            "cd terminal && cargo test -p theorem-workbench-dock --locked"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "No in-repo check asserts the required observations — that drafts, references, logical selection and undo survive a move, split, tab, expand or restore during an active run. The only coverage of a draft across a placement change is story workbench-keyboard-journey, whose two remaining Linux failures are the documented macOS-calibrated focus-drawn checks (112 of 114 green).",
+          "partial_evidence": [
+            "adjacent evidence only: '12 Mod+Alt+Shift+Left moves Changes into the conversation group' and '12 Mod+Alt+Shift+Right moves it back with the document' are green, as is '21 the unsent draft survived the picker'; workbench.rs a_document_round_trip_restores_the_same_dock_and_panel_states_with_no_effects and persistence.rs group_ids_stay_stable_and_are_not_reused_after_restore keep identity across a round trip"
+          ],
+          "observed": [],
+          "limitations": [
+            "composer tests (editing.rs, references.rs, semantics.rs) hold draft, undo and references across their own surface but are never driven through a dock move"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-06",
@@ -97,8 +207,29 @@
       "oracle_class": "effects + interaction",
       "procedure": "Capture domain-operation counters; repeatedly open/filter/close the picker and browse More tools.",
       "required_observations": "No process, document, conversation or model request is created; only explicit selected actions produce effects.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-default"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests + rendered fixture",
+          "observed": [
+            "workbench.rs picker_messages_produce_zero_effects (R07, AC-06): Open, Filter, Next/Prev, Choose, Back, More-tools paging, a filter with no match, Close, columns, pins, TogglePinAt out of range and pointer Select including Select(99) produce no effect at all",
+            "picker.rs browsing_the_picker_has_no_effects_and_only_an_available_choice_chooses (AC-06, AC-07): the same browsing scripts emit nothing and only an available row chosen produces an effect",
+            "no process, document, conversation or model request is created: the effect log is asserted empty, and the story's 'picker filter stays empty' check is green over the real wasm frame"
+          ],
+          "limitations": [
+            "the operation counters are in-core instrumentation over a scripted host, so this proves the client sends nothing, not what a live backend would refuse"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-07",
@@ -111,8 +242,32 @@
       "oracle_class": "contracts + mounted web",
       "procedure": "Register an allowed test panel, change a shortcut, disable one capability, then inspect picker/palette/semantic actions.",
       "required_observations": "All projections use one registry; shortcut labels match active bindings; unavailable controls explain the real reason.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-semantic-overlay",
+            "same env: interact workbench-keyboard-journey"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests + rendered fixture",
+          "observed": [
+            "one registry resolves every entry: registry.rs 5 tests — extending a kind adds actions that resolve like registered ones, a duplicate id is refused and adds nothing, extending makes the effect checks registration makes, and extending an unregistered kind is an error",
+            "shortcut labels match active bindings: picker.rs renders the main and More-tools pages at three widths, rows carry position, selection, shortcut, qualifier and actions, and the semantic order is the reading order, so the label on a row is the binding that fires; the same is read off the live page in workbench-semantic-overlay (18 checks green: the rows are options with position and size, the filter is a labelled text box, the options narrow to the match)",
+            "bindings declared in the registry are the ones the page acts on: keyboard-journey asserts each chord is declared for its action in the action registry (workbench.move.left/right, workbench.focus.left/right, shell.choose, and the layout chords) — 12 of those declarations green",
+            "unavailable controls explain the real reason: workbench-semantic-overlay 'Request control is disabled ... and gives its reason'; language.rs, files.rs and capabilities.test.ts refuse as missing_capability naming the operation"
+          ],
+          "limitations": [
+            "the mounted half is the story fixture, not the deployed app",
+            "keyboard-journey's two failing checks are the documented macOS-calibrated focus-drawn ones, unrelated to registry or shortcut coherence"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-08",
@@ -124,8 +279,30 @@
       "oracle_class": "connected service",
       "procedure": "Use a workspace with nested paths, excluded files, a symlink, binary file, denied path and paginated search.",
       "required_observations": "Correct scoped records open; partial search is identified; unavailable and binary states are truthful; scope escape is refused.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/files src/lib/workbench/search src/lib/workbench/adapter.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-panels --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated host (port + panel tests)",
+          "observed": [
+            "correct scoped records open lazily: files.rs opening_and_focusing_start_nothing_and_the_first_tick_lists_the_root and expanding_lists_the_directory_once_and_only_that_directory (R08, AC-08) — the expansion is the trigger, one listing per directory, loading drawn",
+            "partial search is identified: adapter.test.ts 'search answers the matching paths as a partial listing, and a host that cannot search refuses naming the operation'; files.rs a_partial_listing_is_labeled_partial; search.test.ts follows the host page by page with the id and limit until complete and labels where rows were read",
+            "unavailable and binary states are truthful: files.rs an_empty_directory_and_an_empty_answer_are_said_so (an outage is never an empty project), refused_unavailable_and_failed_listings_are_drawn_per_directory, without_a_workspace_nothing_is_listed; files.test.ts 'says a binary file is not text, and a missing or denied path as the host does'; documents.test.ts 'a binary document is refused and its host session closed'",
+            "scope escape is refused before anything is sent: files.test.ts 'a path that leaves the workspace is refused before anything is sent', scm.test.ts 'a path outside the workspace is refused without a request', documents.test.ts 'refuses a path outside the workspace without a request'"
+          ],
+          "limitations": [
+            "the host is the typed stub runtime, not a connected Theorem service: nested paths, excluded files, symlinks, denied paths and pagination are modelled as host verdicts, so this tier proves the client honors them rather than that the backend produces them"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-09",
@@ -138,8 +315,31 @@
       "oracle_class": "connected service",
       "procedure": "Cancel New page, then create one, edit it, move its pane and reopen by document identity.",
       "required_observations": "Cancellation leaves no orphan; successful creation produces one real document, retained edits and the same resource identity.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-editor --locked",
+            "bun test src/lib/workbench/documents"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate + port)",
+          "observed": [
+            "a_new_page_asks_for_a_name_and_creates_it_through_the_owner: the name is asked for, exactly one page.create goes to the owner, and the created document is opened through that owner (path notes/new.md asserted)",
+            "a_refused_create_shows_the_reason_and_the_name_can_be_changed: a create the owner refuses leaves no opened document behind — the panel holds the reason and the name field, and the retry carries the changed name (a.tx), so cancellation and refusal produce no orphan",
+            "edits are retained against the owner: documents.test.ts 'returns text, revision and the saved state' and 'applies explicit UTF-16 ranges at the base revision and returns the new one'",
+            "the same resource identity comes back after a move and reload: workbench.rs a_document_round_trip_restores_the_same_dock_and_panel_states_with_no_effects; persistence.rs group_ids_stay_stable_and_are_not_reused_after_restore"
+          ],
+          "limitations": [
+            "cancellation is covered through the refused-create leg; there is no separate Esc-before-send assertion in the crate tests",
+            "the pane move and reopen-by-identity legs are crate round-trips, not a mounted browser"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-10",
@@ -152,8 +352,29 @@
       "oracle_class": "interaction + network fault",
       "procedure": "Delay HTTP and DB completion deliberately while typing, selecting and moving the caret in a source file.",
       "required_observations": "Input and draft preview remain immediate without awaiting replies; no false save claim is shown; queued effects remain bounded.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/documents src/lib/workbench/conversation"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated fault (port tests)",
+          "observed": [
+            "input does not await the reply: local.test.ts 'an edit is a draft at once, and checkpointed only when the database commits it, before the host answers'",
+            "no false save claim: 'nothing unaccepted is accepted, and no local copy is kept'; 'the pending edit and its metadata recover through the owner, shown as locally checkpointed and recovered'; documents.test.ts 'a lost answer is uncertain, kept, not resent'",
+            "queued effects stay bounded: local.test.ts 'a draft larger than the store can hold is a stated draft with the reason, not a kept one', 'a later accepted edit drops what the host took and keeps the rest', 'when the whole queue is taken nothing is kept and the device copy is removed'; changes review.rs past_two_hundred_files_only_the_diffs_near_the_viewport_are_read",
+            "caret and selection are local: scenarios.rs selection_extends_by_keyboard_and_select_all, word_and_line_motions_and_deletes, soft_wrap_moves_by_visual_rows"
+          ],
+          "limitations": [
+            "latency is injected as a held answer on the stub runtime, not a delayed HTTP and DB pair: this proves the client never blocks on the reply, not measured round-trip behaviour against a slow provider"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-11",
@@ -165,8 +386,28 @@
       "oracle_class": "mounted web",
       "procedure": "Open a real Markdown file with headings/lists/table/code; edit and switch Visual, Source, Split and Preview.",
       "required_observations": "All views share one session; local text, undo, selection and scroll anchor remain coherent; supported syntax renders meaningfully.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-markdown -p theorem-workbench-markdown-panel --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate)",
+          "observed": [
+            "all four views share one session: markdown/src/spec.rs R10 (AC-11) drives Visual, Source, Split and Preview on one MarkdownDoc — a mode shift forks no text, no undo history and no selection",
+            "markdown-panel/tests/markdown.rs switching_modes_keeps_the_selection_the_undo_history_and_the_pending_edit, the_scroll_anchor_is_kept_across_modes, the_preview_is_derived_from_the_local_draft_not_from_the_owner — local text, undo, selection and scroll anchor stay coherent",
+            "supported syntax renders meaningfully: front_matter_comments_html_footnotes_and_fences_open_as_their_own_source, and 98 tests green in that binary plus 210 in the crate unit tests"
+          ],
+          "limitations": [
+            "the mounted leg is NOT verified on this runner: interact workbench-markdown-visual fails 'visible in Source' (1 of 3 checks) and that check fails byte-identically on the pristine PR head a410b4d0 here — macOS-calibrated, so it establishes nothing either way"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-12",
@@ -178,8 +419,29 @@
       "oracle_class": "document concurrency",
       "procedure": "Keep a local block edit open; an agent commits a different change, then a conflicting same-block change; commit the local edit.",
       "required_observations": "Nonconflicting change reconciles; conflicting text remains recoverable; no branch silently drops the local pending text.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-markdown -p theorem-workbench-markdown-panel -p theorem-workbench-text --locked",
+            "bun test src/lib/workbench/documents"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated concurrency (crate + port)",
+          "observed": [
+            "a nonconflicting peer change reconciles: spec.rs R11 (AC-12) and markdown-panel a_block_edit_is_never_lost_when_the_source_changed_under_it, driven by scripted remote insert and replace at a revision under the open block edit",
+            "conflicting text remains recoverable: taking_theirs_keeps_my_text_to_copy_and_keep_both_adds_it_as_its_own_block; at the text tier scenarios.rs refusal_keeps_the_text_and_marks_it_conflicting, conflict_keep_mine_sends_the_held_text_again, conflict_take_theirs_returns_what_it_drops, conflict_keep_both_keeps_theirs_and_adds_mine",
+            "no branch silently drops the local pending text: spec.rs a_change_that_removes_the_block_keeps_what_the_user_typed — the LEDGER L06 inversion of the two donor drop-asserting tests is what the assertion checks; documents.test.ts 'CONFLICT: an edit against an old revision is refused with the current revision, never sent, and its text is kept'"
+          ],
+          "limitations": [
+            "the peer committer is a scripted remote completion, not an agent run through Theorem"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-13",
@@ -190,8 +452,29 @@
       "oracle_class": "pure + integration",
       "procedure": "Visual-edit one paragraph in a fixture containing front matter, comments, raw/unknown syntax, CRLF and fenced code.",
       "required_observations": "Only the intended source range changes under the stated normalization contract; unsupported content is retained and source-editable.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-markdown -p theorem-workbench-markdown-panel --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate)",
+          "observed": [
+            "the fixture carries front matter, an HTML comment, a rust fence, an unknown ::: directive, uneven bullets, CRLF and wide text: spec.rs R12 (AC-13) a_visual_edit_leaves_every_other_byte_as_written asserts the bytes before and after the edited range equal the source and that the document did change",
+            "opening_and_closing_every_block_without_typing_changes_nothing holds byte-for-byte and makes no pending edit at all",
+            "unsupported content is retained and source-editable: front_matter_comments_fences_and_unknown_syntax_have_block_ranges; markdown-panel front_matter_comments_html_footnotes_and_fences_open_as_their_own_source and opening_a_block_edits_its_source_and_writes_back_only_that_block",
+            "the normalization contract: markdown.rs edits_after_tabs_cjk_combining_marks_zwj_emoji_and_crlf_leave_in_utf16 asserts the CRLF run survives edits around it at UTF-16 offsets"
+          ],
+          "limitations": [
+            "the crate tier asserts source bytes; it does not show a person performing the edit in the mounted panel"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-14",
@@ -203,8 +486,29 @@
       "oracle_class": "property + mounted input",
       "procedure": "Exercise tabs, CJK, combining accents, emoji/ZWJ, surrogate pairs and wrapped lines through typing, selection and semantic navigation.",
       "required_observations": "Source ranges and display positions round-trip without split graphemes, invalid slices, wrong edits or cursor drift.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-text --locked",
+            "cd terminal && cargo test -p theorem-workbench-markdown -p theorem-workbench-markdown-panel --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "property tests + pure tests",
+          "observed": [
+            "generated input over tabs, CJK, combining marks, emoji and ZWJ sequences, surrogate pairs and wrapped lines: properties.rs snapping_never_splits_a_scalar_or_pair, graphemes_match_the_standard, lines_match_a_naive_split_in_every_unit, cells_grow_with_the_text, units_round_trip — 9 property tests green",
+            "source ranges and display positions round-trip: spec.rs R13 (AC-14, AC-22) names coordinates in every unit; markdown.rs asserts UTF-16 offsets after tabs, CJK, combining marks, ZWJ emoji and CRLF",
+            "no split graphemes, invalid slices, wrong edits or cursor drift: scenarios.rs one_backspace_removes_one_cluster, the_cursor_never_rests_inside_a_cluster, a_remote_combining_mark_at_the_cursor_does_not_strand_it, a_selection_end_pushed_out_of_an_atomic_range_stays_on_a_cluster_boundary, vertical_motion_keeps_its_column_through_short_and_wide_lines, soft_wrap_moves_by_visual_rows"
+          ],
+          "limitations": [
+            "the mounted-input leg is not verified here: the typing half lives in workbench-keyboard-journey, whose two macOS-calibrated focus-drawn checks fail on Linux; the property tier is what establishes the round-trip"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-15",
@@ -216,8 +520,29 @@
       "oracle_class": "document concurrency",
       "procedure": "Submit draft generation 7, type generation 8, then deliver acceptance for generation 7 and an older response out of order.",
       "required_observations": "Accepted baseline advances appropriately; generation 8 stays pending; stale responses cannot replace it.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-text -p theorem-workbench-markdown -p theorem-workbench-core --locked",
+            "bun test src/lib/workbench/documents src/lib/workbench/conversation"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated concurrency (crate + port + root)",
+          "observed": [
+            "a late acknowledgement cannot replace the newer draft: scenarios.rs a_late_ack_does_not_replace_the_newer_draft and type_send_remote_lands_before_the_ack; markdown spec.rs R14 an_acknowledgement_does_not_overwrite_later_typing",
+            "the accepted baseline advances only for its own edit: scenarios.rs revision_gaps_and_stale_revisions_change_nothing, requeue_resends_under_the_same_id; documents.test.ts 'CONFLICT: a stale refusal from the host re-reads the head, returns it, and keeps the edit','; adapter.test.ts refused keeps its code and reason, uncertain stays uncertain, failed stays failed",
+            "generation discipline at the root: workbench.rs completions are judged (R33, AC-43, AC-15) — an_answer_for_an_older_generation_of_the_same_binding_is_dropped, an_answer_that_names_another_resource_than_its_effect_is_dropped, an_answer_that_leaves_out_its_generation_is_still_judged_by_the_effects"
+          ],
+          "limitations": [
+            "draft generations 7 and 8 are reproduced with scripted completions at the session and root tier, not against a live document owner"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-16",
@@ -229,8 +554,30 @@
       "oracle_class": "storage integration",
       "procedure": "Obtain a real local checkpoint, reload the web app, and reopen the document before remote sync completes.",
       "required_observations": "Checkpointed text and pending metadata recover through the actual owner; UI distinguishes local from remote acceptance.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/documents/local.test.ts src/lib/workbench/layout",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-recovery-reload"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated storage (port tests) + rendered fixture",
+          "observed": [
+            "local.test.ts describe('AC-16: a reload brings the checkpointed draft back, never as accepted'): the pending edit and its metadata recover through the owner, shown as locally checkpointed and recovered; no further edit is sent until the recovered one is reconciled; a recovered edit whose document has moved on says so and is still held, never rebased here",
+            "typing behind an unanswered edit is kept on the device too: a reload restores every edit in order and the host never saw the later ones; the kept state is a draft until the database commits the queue, never kept on the strength of the first edit alone",
+            "the story asserts a real reload over the wasm frame, 15/15 green: a device draft record exists before the reload; the reload dropped the typing from the page; the device draft survived; the offer says where they were kept and against which revision ('Kept on this device before a reload, against revision 1'); nothing was sent or dropped by merely offering; once the host takes them the status no longer says kept",
+            "local versus remote is distinguished: layout.test.ts 'writes and reads the device copy by workspace, apart from the record' and restore.test.ts 'the copy kept after the last good read is served labelled device, and the next account read says account'"
+          ],
+          "limitations": [
+            "the bun tier uses a memory storage stub shaped like IndexedDB; the story tier mounts the vendored @rustyreddb/browser build inside the fixture, not the deployed app with a remote sync genuinely in flight"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-17",
@@ -242,8 +589,28 @@
       "oracle_class": "fault injection",
       "procedure": "Deny persistent storage, exhaust configured quota and fail a worker while editing in separate runs.",
       "required_observations": "Local draft remains recoverable as far as available memory allows; no durable-save claim; named recovery/export action does not pretend storage succeeded.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/documents/local.test.ts src/lib/workbench/layout/local-store.test.ts src/lib/workbench/layout"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated fault (port tests)",
+          "observed": [
+            "local.test.ts describe('AC-17: storage failure is honest'): quota exceeded leaves the draft in memory and nothing claims it is saved locally; a failed transaction is a failed checkpoint with its reason and an unknown commit is not claimed; when storage works again the next write checkpoints the whole draft; an owner with no local store holds drafts in memory and says so; a corrupt local draft does not stop the document opening and is not read as a clean one; storage that cannot be read at open is stated, not assumed empty",
+            "local-store.test.ts enumerates the real failure shapes: quota by DOMException name or message, denied persistent storage, blocked by another handle, unavailable for a missing, closed or unsupported file system, a payload over the limit refused as too large, a read that throws is stated too, and storageOutcome never returns accepted",
+            "the named recovery action does not pretend: layout.test.ts 'a quota refusal is refused, never accepted as saved', 'a commit whose state is unknown is uncertain', 'an unavailable store is refused; a database that will not open is retried next call'; restore.test.ts 'an unreachable record is a failed load, and no document is invented from the device copy'"
+          ],
+          "limitations": [
+            "faults are injected against a stubbed IDB surface, not a browser denying persistent storage, exhausting a real quota, or killing a worker"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-18",
@@ -255,8 +622,28 @@
       "oracle_class": "storage integration",
       "procedure": "Open several panes and browser tabs on the same document/database scope; close the current owner or a view.",
       "required_observations": "Access follows the existing ownership/handover protocol; no independent conflicting writable opens or resource leaks.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/documents src/lib/workbench/delegations"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated storage (port tests)",
+          "observed": [
+            "one owner across views: documents.test.ts 'two panes share one host session and it closes once, when the last releases', 'concurrent opens of one path make one host request', 'a closed holder is refused, and a reopen after the last close seats again'",
+            "access follows the existing ownership protocol rather than a second one: adapter.test.ts 'every kind goes to exactly one owner, once (R02, AC-02)'",
+            "no independent conflicting writable opens and no leak: local.test.ts 'when the whole queue is taken nothing is kept and the device copy is removed'; delegations.test.ts 'two reads of one ref at once make one call, and a later read makes none', 'the blob cache holds no more than its bound', 'an account switch drops the cache, and an answer still in flight is refused'"
+          ],
+          "limitations": [
+            "several browser tabs on one database scope is modelled as several panes and handles on one in-process runtime; cross-tab BroadcastChannel arbitration on a real browser profile is not exercised"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-19",
@@ -267,8 +654,33 @@
       "oracle_class": "connected SCM",
       "procedure": "In an isolated repository create staged, unstaged, untracked and conflicted files; browse diffs/history/branch operations.",
       "required_observations": "Groups and diff content reflect actual repository states; every exposed action invokes a real supported operation.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/scm",
+            "cd terminal && cargo test -p theorem-workbench-changes --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-changes",
+            "same env: interact workbench-changes-binary-conflict"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated SCM (port + crate) + rendered fixture",
+          "observed": [
+            "groups reflect reported state: scm.test.ts 'groups staged, unstaged, untracked and conflicted paths as workspace resources', 'a row without the two status letters is kept apart, not guessed into a group', 'the state carries what the host reports and nothing it does not'",
+            "diff content is the host's: port.test.ts 'diff and show carry the host text, the parsed hunks and the state', 'one wire row per path: both letters for a path changed on both sides, the conflict flag, the original path', 'log keeps the commits; blame is camelCase with the timestamp as text'",
+            "every exposed action invokes a real supported operation: scm.test.ts 'stage and unstage send the paths', 'discard is its own call and returns the restore id; restore sends it back', 'no other call discards: stage, commit, branch, merge and push never send a discard', 'amend is refused unless the host advertises it', 'merge reports a conflict as an answer, not a failure'",
+            "crate tier: panel.rs 66, review.rs 24, panel_mounted.rs 150, styles.rs 4 green, including totals_are_complete_only_once_every_diff_has_arrived and a_file_has_a_state_letter_and_its_counts_once_its_diff_has_arrived",
+            "mounted on the real frame: workbench-changes 4/4 green (the walk reached the unstaged file by what the page says has focus, the staged count grew, the file moved from Unstaged to Staged, the host was asked to stage it) and workbench-changes-binary-conflict 13/13 green (conflicted file listed, both sides labelled not shown as text, ours/theirs asked before sending scmResolve, the file leaves Conflicted)"
+          ],
+          "limitations": [
+            "the repository is a scripted SCM host answering wire rows, not an isolated git repository on disk: this tier proves the panel reflects reported states and sends only supported operations, not that git produces them"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-20",
@@ -279,8 +691,29 @@
       "oracle_class": "document + SCM",
       "procedure": "Edit an unsaved file, inspect Changes, attempt stage/commit, then explicitly save and repeat.",
       "required_observations": "UI makes saved/index versus local draft meaning clear; unsaved text is not silently committed; receipts identify actual content.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/saved-content.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-editor -p theorem-workbench-changes --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + simulated SCM",
+          "observed": [
+            "unsaved text cannot be silently committed: saved-content.test.ts 'a stage request carries the paths only, even when the effect also carries draft text', 'a commit request carries the message only, and the owner never saves or edits a document to make one'",
+            "receipts identify actual content: 'with no state from the host the outcome names no content of its own, only the effect it answers, and invents no commit id', 'when the host does state the head and index generation they are carried as the identity'",
+            "saved-index versus local draft is kept meaningfully apart in the UI: editor.rs AC-20 the editor's half (166 tests green in that binary) with the_tab_names_the_file_and_marks_unsaved_changes; panel_mounted.rs AC-20 the unsaved draft in the editor and the Git index, and the_draft_survives_a_late_acknowledgement"
+          ],
+          "limitations": [
+            "the distinction is asserted at the request and receipt level; the mounted wording comes from workbench-changes rather than an unsaved-versus-index journey end to end"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-21",
@@ -292,8 +725,31 @@
       "oracle_class": "SCM concurrency",
       "procedure": "Begin a commit, change its message draft, modify the diff base, and induce one uncertain mutation result.",
       "required_observations": "Newer message survives; stale actions revalidate/refuse; uncertain mutation reconciles before any retry; no duplicate commit.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/scm",
+            "cd terminal && cargo test -p theorem-workbench-changes -p theorem-workbench-text -p theorem-workbench-core --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated SCM concurrency (port + crate)",
+          "observed": [
+            "the newer message survives: panel_mounted.rs the_draft_survives_a_late_acknowledgement and the_draft_edits_like_text_and_a_commit_clears_it; scenarios.rs a_late_ack_does_not_replace_the_newer_draft",
+            "stale actions revalidate or refuse: scm.test.ts 'amend is refused unless the host advertises it', 'commit sends the message; an empty one is refused without a request', 'a path outside the workspace is refused without a request'; port.test.ts stage, unstage, restore, commit, fetch and push each make one owner call and carry the repository state when the host reports it",
+            "no duplicate commit: scm.test.ts 'a write whose answer is lost is uncertain and sent once', 'a discard whose answer has no restore id is reported uncertain, not done'; adapter.test.ts 'a thrown error is failed with its reason and is not retried (R47)'",
+            "uncertain reconciles before any retry: workspace-recovery.test.ts 'reopens a workspace a restarted host has closed, and repeats the request' and 'seats a document whose authority is behind, and repeats the edit'"
+          ],
+          "limitations": [
+            "the 'modify the diff base' leg has no covering check because the port exposes one base: review.rs the_only_base_is_the_last_commit_because_that_is_all_the_port_can_diff",
+            "git is a scripted host, not a real repository with a competing index.lock"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-22",
@@ -305,8 +761,32 @@
       "oracle_class": "connected language provider",
       "procedure": "Request diagnostics/navigation/rename/format, edit the file while requests are pending, then deliver old results.",
       "required_observations": "Results carry their source revision; stale results are ignored/refreshed; accepted edit plans use the real document owner.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/language",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-diagnostics"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated provider (port tests) + rendered fixture",
+          "observed": [
+            "results carry the source revision they were computed against: language.test.ts 'answers the snapshot with the revision the host computed it against', 'sends the document, revision and position under the request id and answers the markdown and span'",
+            "stale results are ignored: feed.test.ts 'a set for an older revision than the document’s current one is not sent', 'a revision that moves while the host answers is dropped, and the new revision is asked about', 'an answer with no revision is not placed', 'the same findings at the same revision are sent once'",
+            "accepted edit plans use the real document owner: language.test.ts 'applyPlan hands the plan id to the host authority', 'format and rename answer the plan id, sent once', 'a host that proposes nothing answers no plan'",
+            "named coordinates tie diagnostics to the text: spec.rs R13 (AC-14, AC-22); feed.test.ts counts lines and UTF-16 columns and turns UTF-8 findings into line and column in UTF-16",
+            "mounted: workbench-diagnostics 'the editor opens at the finding' green on the real frame"
+          ],
+          "limitations": [
+            "the language provider is the scripted host in these tests; no real LSP or build service ran",
+            "Alt+V history and source references (parity P08) are covered by the mounted story workbench-document-history, 21/21 green on this runner, rather than by the language port tests."
+          ]
+        }
+      ]
     },
     {
       "id": "AC-23",
@@ -318,8 +798,30 @@
       "oracle_class": "fault injection",
       "procedure": "Disable a configured language/build provider while other tools and documents remain open.",
       "required_observations": "Named capability is unavailable; no fabricated successful output; unrelated editing and tools remain usable.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/language src/lib/workbench/capabilities.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-ide --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated fault (port tests)",
+          "observed": [
+            "the named capability is unavailable, said by name: language.test.ts 'every operation is refused as missing_capability, naming it, and nothing is called', 'an operation the host lists as not ready is missing too', 'a kind the owner does not send is refused without a call', 'the host refusing is a refusal that carries its code'",
+            "no fabricated successful output: feed.test.ts 'a host without diagnostics gets nothing sent and is not asked again', 'an empty answer is empty contents, not a failure' is only taken when the host actually answered empty",
+            "capabilities follow the host's listing and nothing else: capabilities.test.ts 'an operation the host lists as not ready grants nothing, and one it never listed grants nothing', 'a host that is not available grants only what the workbench owns itself'",
+            "unrelated editing and tools stay usable: ide/tests search.rs 27, run.rs 39, replace.rs 20, diagnostics.rs 14 green in the same run while the provider is withheld"
+          ],
+          "limitations": [
+            "the provider is disabled by the stub runtime's operation list, not by killing a real language or build service"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-24",
@@ -332,7 +834,29 @@
       "procedure": "Keep Theo open, start an explicitly selected Codex or Claude CLI profile in another pane, then send different inputs to each.",
       "required_observations": "Each input reaches only its selected target; no hidden thread migration, duplicate model request or transcript fabrication.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls for herdr-core / theorem-ide-host: absent"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Requires a deployed Herdr host with an explicitly selected Codex or Claude CLI profile: E2E_HERDR_HC and E2E_IDE_HOST_BIN are unset and herdr-core, theorem-ide-host and rustyred-thg-server are absent from this image. It also needs a live front model (no ~/.theorem/provider-keys.env), and the threads/run-input path the case routes through is under rework in this session.",
+          "partial_evidence": [
+            "adjacent evidence only, at the unit tier: process.rs code_send_and_code_stop_refuse_a_shell_that_is_not_a_coding_session (commit c1f4b02b) keeps the agent's code.send and code.stop on coding sessions and refuses a plain shell with the reason; side-chat-model.test.ts and conversation.test.ts 'a side chat keeps its own queue: its input is not the main conversation’s row'",
+            "the actor identity on an effect envelope is asserted in process.rs (actor == Agent), so the binding separation exists in the core"
+          ],
+          "observed": [],
+          "limitations": [
+            "no two live bindings existed on this runner, so 'each input reaches only its selected target' cannot be observed end to end"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-25",
@@ -344,8 +868,34 @@
       "oracle_class": "mounted browser + manual IME",
       "procedure": "Compose multiline text with attachments and CJK IME; select/copy/paste; move focus; toggle reduced motion.",
       "required_observations": "One insertion per committed input; hollow caret follows real position, is not saved text, stops decorative blink when required; draft and attachments survive.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-composer -p theorem-workbench-text --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-theo-composer",
+            "same env: interact workbench-semantic-overlay"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + rendered fixture",
+          "observed": [
+            "one insertion per committed input: ime.rs the_committed_text_enters_once, typed_input_that_arrives_before_the_end_does_not_double_either, preedit_is_drawn_at_the_caret_and_is_not_in_the_text, a_cancelled_composition_leaves_the_text_alone, enter_while_composing_never_submits, a_composition_commit_is_one_undo_step_apart_from_typing, the_preedit_survives_a_resize_and_a_redraw — 7 tests green; scenarios.rs composition_is_not_in_the_text_or_in_undo_until_it_ends, composition_survives_a_remote_change",
+            "the hollow caret follows the real position and is not saved text: caret.rs the_caret_is_steady_after_a_key_then_blinks_when_idle, reduced_motion_makes_it_steady_instead_of_blinking (3 tests); scenarios.rs view_state_snapshots_apart_from_text keeps caret and selection out of the document, the_cursor_never_rests_inside_a_cluster",
+            "decorative blink stops when required: caret.rs reduced_motion_makes_it_steady_instead_of_blinking, and reduced-motion.test.ts delivers the preference at once and on each change until stopped",
+            "draft and attachments survive: attachments.rs (10 tests green, including a Shift+Enter that must not submit) and editing.rs enter_submits_the_trimmed_text_and_keeps_the_draft; policy.rs blocked_returns_nothing_and_keeps_the_draft",
+            "multiline, selection, copy, paste and focus are exercised on the real frame: semantic-overlay 19/20 green ('typed text is on the composer node', 'its caret is described in words', 'with a caret published the input holds the text', 'a delete lands in the input and the core'); theo-composer 40/43 green including the footer, the queue rows and the approval region"
+          ],
+          "limitations": [
+            "the case is mounted browser + MANUAL IME: no real CJK IME candidate window was driven here. Composition is reproduced programmatically through the preedit path (ime.rs, scenarios.rs) and through oracle:continuity's 'CDP native composition survives appearance change', which is an automated Input.ime composition, not a human IME session",
+            "theo-composer's three failing checks are the documented macOS-calibrated receipt ones, and workbench-keyboard-journey's composer paste checks are green; the two failures do not touch IME, caret or attachments",
+            "attachments across focus loss and reduced motion are asserted per surface, not in one combined manual pass"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-26",
@@ -358,8 +908,31 @@
       "oracle_class": "interaction",
       "procedure": "Paste a command into chat, press shell shortcuts without shell focus, then explicitly focus and control the shell.",
       "required_observations": "Chat never executes as shell input; browser/workbench shortcuts are not forwarded unintentionally; actual shell input requires the bound controller.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-process -p theorem-workbench-core --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-keyboard-journey",
+            "same env: interact workbench-semantic-overlay"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate + port) + rendered fixture",
+          "observed": [
+            "chat never executes as shell input: process.rs code_send_and_code_stop_refuse_a_shell_that_is_not_a_coding_session — text pasted into an attached plain shell is refused with the reason instead of executed (commit c1f4b02b), and the paste/bracketed-paste/Ctrl-C path now runs only on a coding session",
+            "browser and workbench shortcuts are not forwarded unintentionally: the workbench routes chords through the core key table (workbench.rs 176 tests green); paste-chord.test.ts 'a plain v, another letter and an Alt chord are not paste' and reads the platform from the platform or the user agent",
+            "actual shell input requires the bound controller: process.rs an_observer_emits_nothing_shows_the_reason_and_offers_control, requesting_control_attaches_as_controller_and_a_refusal_is_shown_with_its_reason, a_refused_input_moves_a_controller_to_observing_with_the_hosts_reason, the_terminal_node_says_why_an_observer_cannot_type",
+            "on the real page the same separation holds: keyboard-journey 112/114 green including '18 the terminal takes typed input and echoes it', '16 Shell chooser by its chord', '17 Enter takes the existing session', and the per-surface real-clipboard paste/copy checks; semantic-overlay 'the status names the session and who controls it' and 'Request control is disabled ... and gives its reason'"
+          ],
+          "limitations": [
+            "workbench-keyboard-journey's two failing checks are the documented macOS-calibrated focus-drawn ones (step 12 after moving a panel back); they concern how focus is painted, not which surface receives input"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-27",
@@ -372,7 +945,28 @@
       "procedure": "Capture dark/light/custom terminal appearances while Theo changes activity/expression.",
       "required_observations": "One Theo state owner; readable inverse face; no header growth or lost expression state on theme switch.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-face",
+            "cd terminal && cargo test -p theorem-workbench-core --locked"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "macOS-calibrated reference: interact workbench-face fails 3 of 4 checks on Linux — 'it rests on the Theo status row', 'after a dock resize it moved with the panel and kept its row', 'after the panel moved it is on the status row of its new group' — and those checks fail byte-identically on the pristine PR head a410b4d0 on this machine. The face's perch is the case's readable-inverse-face observation, so it cannot be claimed here.",
+          "partial_evidence": [
+            "partial evidence only, and not claimed as a pass: one Theo state owner holds at the core tier (workbench.rs and the theo.rs/blocks.rs report path never fork expression state) and the appearance story is 4/4 green on the real frame ('the story starts in one theme and the switch changes it', 'applying Mine from the Layouts page restores the saved theme', 'a preset apply does not change the theme'); src/components/face/plate.test.ts and things.test.ts are green in the 761-test components run"
+          ],
+          "observed": [],
+          "limitations": [
+            "no header growth or lost expression state across a theme switch is asserted at the crate tier; the only coverage of the face on the terminal surface is the failing story checks"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-28",
@@ -384,8 +978,32 @@
       "oracle_class": "rendered contrasts + interaction",
       "procedure": "Switch Neutral/Paper/Slate/Forest-equivalent profiles across chat, Markdown, changes, cabinet and a terminal test output.",
       "required_observations": "Host semantic colors remain coherent/readable; no fixed purple/gold donor palette; ANSI slots adapt and explicit program truecolor follows declared policy.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "ORACLE_REVIEW_OUT=$HOME/oracle-out-bookkeeping ORACLE_BASE=http://127.0.0.1:3119 ORACLE_URL=http://127.0.0.1:3119/story/design-oracle-long bun run oracle:colors",
+            "same env: bun run oracle:code",
+            "cd terminal && cargo test -p theorem-workbench-process -p theorem-workbench-vt --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "design oracle + pure tests (crate)",
+          "observed": [
+            "oracle:colors: 54 required color edges across 8 built-in palette/mode sets, 872 predicates, 0 failures — the coordinated palette holds with no fixed purple/gold donor pair",
+            "oracle:code: 12/12 rendered contrast pairs pass (calm and expressive over github-sharp, stone, vitesse, custom; light and dark) measured from actual Shiki and CodeMirror paint in the vite story routes",
+            "ANSI slots adapt and program truecolor follows the declared policy: process.rs setting_ansi_one_on_the_theme_recolours_an_sgr_31_cell_and_only_that_colour, the_themes_text_and_background_roles_win_over_the_explicit_palette, a_theme_with_no_colours_draws_exactly_what_the_explicit_palette_draws; vt/tests/input.rs 11 and hostile.rs 5 green",
+            "host semantic colors stay coherent across chat, markdown, changes, cabinet and terminal: the palette matrices in scripts/story-oracle-palette.mjs are evaluated per surface, and the appearance story is 4/4 green on the real frame"
+          ],
+          "limitations": [
+            "oracle:rendered and oracle:matrix were not run: the runner has only chromium-1248, so the Firefox and WebKit legs of the palette and matrix sweeps cannot execute (see AC-49)",
+            "the Linux cell metrics differ from the macOS reference, so this is a coherence check on this platform, not a fidelity seal against the committed captures"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-29",
@@ -398,7 +1016,29 @@
       "procedure": "Test a ready core, unavailable core, older host with missing capability fields, and malformed profile/program.",
       "required_observations": "Herdr launches only with positive readiness; failures are named; no silent native shell substitution; environment/argv authority is enforced.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls for herdr-core / theorem-ide-host / rustyred-thg-server: absent"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Requires a real Herdr core and Theorem IDE host: E2E_HERDR_HC, E2E_IDE_HOST_BIN and E2E_SERVER_BIN are unset and herdr-core, theorem-ide-host and rustyred-thg-server are absent from this image. scripts/e2e/workbench.mjs is the covering check and prints its case without starting anything. The scenario also pins the core to 0.1.17, the version the host image carries.",
+          "partial_evidence": [
+            "adjacent unit-tier evidence, not claimed as a pass: capabilities.test.ts 'herdr needs the terminal and the host reporting the backend ready'; negotiation.test.ts 'every reader of the host capabilities agrees: a mismatched core is not ready, grants no Herdr capability and keeps native', 'a host that cannot name its backends at all is not assumed to speak the pinned core', 'a failure to read the identity is a refusal, not a launch', 'a native shell is not held back by what the host says about Herdr'; process.rs choosing_a_profile_emits_exactly_one_open_and_an_unavailable_profile_none",
+            "the no-silent-substitution and argv-authority legs hold at the core tier: process.rs an_unavailable_backend_is_a_failure_line_with_the_hosts_reason"
+          ],
+          "observed": [],
+          "limitations": [
+            "launch only on positive readiness, a named failure, and malformed profile or program handling against a real host are exactly what cannot be observed without the binaries"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-30",
@@ -410,7 +1050,30 @@
       "procedure": "Run the pinned supported CLI profiles and terminal exercises covering alternate screen, cursor addressing, scrolling, color, Unicode, paste and resize.",
       "required_observations": "The mounted Ratzilla pane displays/controls actual interactive screens; parser tests plus real process captures show supported modes; no Markdown-log surrogate.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls docs/plans/evidence/refs: no terminal capture for this case"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live process plus real screen capture: needs the pinned supported CLI profiles running under a Herdr core (absent from this image, see AC-29) and the terminal exercises against a real program. The committed captures are macOS-calibrated.",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs color_cursor_and_wide_characters_draw_the_expected_cells, cursor_movement_and_erase_land_on_the_right_cells, wide_characters_occupy_two_cells, the_alternate_screen_draws_and_its_cursor_hides, scrollback_by_page_keys_and_wheel_until_typing_returns_to_the_bottom, selection_and_copy_go_to_the_clipboard_not_the_program (129 tests green) and vt/tests/stream.rs 29 green replay byte fixtures — so the parser-and-cells half exists without a Markdown-log surrogate",
+            "on a real frame the mounted half is thin but green: interact workbench-terminal 'the shell echoes the line' and terminal-program-report 21/22, both over the compiled wasm with a scripted byte feed"
+          ],
+          "observed": [],
+          "limitations": [
+            "parser tests plus real process captures are the case's requirement; only the parser half is available here",
+            "paste and resize reaching a real program, and vim or a pager on the alternate screen, are e2e-only checks"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-31",
@@ -422,8 +1085,29 @@
       "oracle_class": "protocol replay + integration",
       "procedure": "Split UTF-8/CSI/OSC bytes at every relevant boundary; install a reset while old bytes are delayed.",
       "required_observations": "Parser preserves sequences; reset boundary is applied before newer bytes; old/mismatched epoch output cannot repaint the new screen.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-vt -p theorem-workbench-process --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "protocol replay (byte fixtures) + pure tests",
+          "observed": [
+            "split sequences: vt/tests/stream.rs every_split_point_gives_the_same_screen feeds wrap, sgr, cursor_erase, scroll_region, wide, modes and queries fixtures at EVERY byte boundary 0..=len and asserts the formatted state, the title, and focus reporting are identical to the whole-feed screen — 29 tests green in that binary",
+            "the reset boundary is applied before newer bytes, and old or mismatched epoch output cannot repaint: process.rs a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped, an_offset_gap_asks_for_a_reset_with_the_current_role, replacement_continuation_reattachment_and_host_reset_read_differently, the_first_repaint_after_an_attach_does_not_rewrite_how_the_binding_began",
+            "a frame whose payload is not the supported encoding draws nothing and is not guessed (the AC-62 half lives in the same binary): 129 tests green in process.rs",
+            "no silent repaint from a stale stream: vt stream.rs also covers scrollback, selection, search and the input encoders; process.rs an_uncertain_open_is_shown_unknown_never_retried_or_resolved"
+          ],
+          "limitations": [
+            "this is byte replay through the parser and the pane's public API, not two browsers against a live core: the integration leg of the case class is covered at the same tier as the replay leg"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-32",
@@ -436,7 +1120,27 @@
       "procedure": "Start a uniquely identified long-running test process, close its pane, refresh, and reopen the saved terminal binding.",
       "required_observations": "The same continuing process is observed without a second launch; closing only detached the viewer.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live process: needs a uniquely identified long-running test process under a real Herdr core (absent from this image, see AC-29), so 'the same continuing process is observed without a second launch' cannot be seen.",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs serialize_then_restore_attaches_by_identity_and_does_not_relaunch, closing_the_pane_detaches_with_the_claim_and_never_ends, a_destroy_close_still_only_detaches, a_restored_pane_does_not_take_control_even_when_nobody_holds_it, a_restored_pane_shows_who_holds_control (all green over a scripted host listing) — so the detach-not-destroy and attach-by-identity discipline exists in the core"
+          ],
+          "observed": [],
+          "limitations": [
+            "the pane, refresh and reopen legs are crate round-trips against a scripted listing, not a surviving process"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-33",
@@ -449,7 +1153,27 @@
       "procedure": "Keep the isolated Herdr provider/holder alive while restarting only Theorem workspace host; reconnect browser.",
       "required_observations": "Binding epoch/reset behavior is observed; surviving process remains; old stream offsets are not reused against the new host log.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live restart fault: requires the isolated Herdr provider/holder kept alive while only the Theorem workspace host restarts. herdr-core and theorem-ide-host are absent from this image and scripts/e2e/ide-host.mjs cannot start them.",
+          "partial_evidence": [
+            "adjacent evidence only: workspace-recovery.test.ts 'reopens a workspace a restarted host has closed, and repeats the request' and 'seats a document whose authority is behind, and repeats the edit'; process.rs a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped, an_offset_gap_asks_for_a_reset_with_the_current_role and a_restored_pane_whose_terminal_is_gone_says_so_and_offers_the_chooser cover the epoch and offset discipline that the case names"
+          ],
+          "observed": [],
+          "limitations": [
+            "'the surviving process remains' and 'old stream offsets are not reused against the new host log' need the real host pair; only the client-side judgement is provable here"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-34",
@@ -463,7 +1187,27 @@
       "procedure": "Kill the underlying kept test program unexpectedly, allow documented replacement-shell recovery, then explicitly kill that shell.",
       "required_observations": "Lost work and new shell are distinct; original task is not rerun/reported resumed; explicit kill stays final.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live loss fault: requires killing an unexpected real program and the documented replacement-shell recovery, so it needs a Herdr core and a running process (absent, see AC-29).",
+          "partial_evidence": [
+            "adjacent evidence only, and it is strong at the core tier: process.rs a_lost_program_is_lost_and_a_new_shell_is_a_different_process, an_exit_names_the_hosts_reason_and_never_offers_continuation, replacement_continuation_reattachment_and_host_reset_read_differently, ending_asks_first_and_only_a_person_confirms, clicking_end_process_asks_and_enter_confirms, an_agent_cannot_confirm_the_end_and_a_person_can_only_after_it_was_asked — 129 tests green, so lost versus replacement versus explicit-kill are three distinct states in the model and the kill stays human-confirmed"
+          ],
+          "observed": [],
+          "limitations": [
+            "the R46 'task is not rerun or reported resumed' leg against a real killed program is e2e-only"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-35",
@@ -475,7 +1219,27 @@
       "procedure": "Attach A as controller and B as observer; attempt input/resize from B, then transfer control while delayed A input is in flight.",
       "required_observations": "Observer operations are refused; takeover advances generation; stale A input cannot reach the program.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Two-browser integration: needs a deployed workbench with two real browser contexts sharing one terminal lease (no rustyred-thg-server, no deployed route on this runner).",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs an_observer_emits_nothing_shows_the_reason_and_offers_control, requesting_control_attaches_as_controller_and_a_refusal_is_shown_with_its_reason, losing_the_lease_moves_to_observing_without_dropping_output, the_terminal_node_says_why_an_observer_cannot_type; workbench.rs an_answer_after_an_account_switch_is_dropped_and_the_pane_was_told_unknown shows the generation discipline a takeover relies on"
+          ],
+          "observed": [],
+          "limitations": [
+            "the stale-A-input-cannot-reach-the-program leg with delayed input in flight is only observable across two live views"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-36",
@@ -488,7 +1252,27 @@
       "procedure": "Resize an observer pane and a hidden view repeatedly; then resize the active controller.",
       "required_observations": "Only permitted controller changes the program grid; observer-local layout does not steal terminal size ownership.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Two-browser interaction: needs an observer view and a hidden view beside a real controller, so a deployed route and a live process grid are required.",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs the_screen_resizes_only_when_the_host_confirms_and_one_resize_is_in_flight — the grid only changes on the host's confirmation, which is the client half of controller-owned sizing; dock geometry.rs 14 and operations.rs resize_by_cells_moves_the_splitter_and_clears_the_pixel_target keep local layout changes out of the program grid"
+          ],
+          "observed": [],
+          "limitations": [
+            "observer-local layout stealing or not stealing terminal ownership cannot be seen with one view"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-37",
@@ -500,7 +1284,28 @@
       "procedure": "While a workspace opens, continuously create scoped terminals from another authorized client, exceeding snapshot size.",
       "required_observations": "Opening completes after fixed snapshot boundary; later arrivals continue asynchronously; close/restart is not blocked by an unending queue.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "node scripts/e2e/stack.mjs requires E2E_SERVER_BIN: absent"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live event load: requires another authorized client continuously creating scoped terminals while a workspace opens, exceeding the snapshot size. Needs a Herdr core and a deployed identity path (absent, see AC-29).",
+          "partial_evidence": [
+            "adjacent evidence only, and it names the defect honestly: ARCHITECTURE.md section 11 item 5 records that unbounded opening drain is residual backend work on the Herdr branch (terminal-path.md 7), so R30 is not met by that branch as it stands. At the client tier process.rs a_pending_listing_says_the_host_is_still_looking_and_never_says_there_are_none and only_a_settled_listing_says_an_attached_session_is_gone keep the listing honest under a slow snapshot"
+          ],
+          "observed": [],
+          "limitations": [
+            "'opening completes after a fixed snapshot boundary' is a backend property and cannot be tested from this checkout"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-38",
@@ -513,7 +1318,27 @@
       "procedure": "Deliver repeated created/rebound notices, simulate missed events and reconnect with a reset core sequence.",
       "required_observations": "One accepted record per binding; fresh snapshot converges; local launches are not duplicated as adoptions.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live subscription fault: requires repeated real created/rebound notices, missed events and a reconnect with a reset core sequence against a Herdr core (absent, see AC-29).",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs a_listing_for_another_workspace_is_ignored_and_each_message_replaces_both_lists, a_pane_opened_after_the_listing_shows_it_at_once, an_offset_gap_asks_for_a_reset_with_the_current_role, a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped; files.rs a_listing_in_flight_across_a_resync_is_ignored_and_the_directory_is_listed_again — the converge-on-fresh-snapshot discipline exists for listings generally"
+          ],
+          "observed": [],
+          "limitations": [
+            "deduplication of adoption records and 'local launches are not duplicated as adoptions' need the real discovery stream"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-39",
@@ -526,7 +1351,27 @@
       "procedure": "Relabel a terminal out of scope, revoke access, and close/reopen the workspace while an adoption reply is delayed.",
       "required_observations": "Visibility/input and watches stop in the old scope; no late terminal leaks into another scope; process kill is not implied.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Authorization and concurrency race: requires relabeling a terminal out of scope, revoking access and closing or reopening a workspace while an adoption reply is delayed — a deployed gateway and a live core (absent, see AC-29 and AC-41).",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs a_workspace_change_detaches_and_returns_to_the_chooser, a_workspace_change_during_an_open_abandons_it_on_the_next_tick, closing_during_an_open_sends_the_abandon_and_nothing_else; workbench.rs an_answer_after_an_account_switch_is_dropped_and_the_pane_was_told_unknown and a_layout_load_answered_after_an_account_switch_does_not_reach_the_new_account — the client refuses late results into a changed scope"
+          ],
+          "observed": [],
+          "limitations": [
+            "'process kill is not implied' under a revoked scope is asserted at the client tier only (closing_the_pane_detaches_with_the_claim_and_never_ends); the relabel and revoke legs need the gateway"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-40",
@@ -539,7 +1384,27 @@
       "procedure": "Test core unavailable at initial open, subscribe reply timeout, core-closed subscription, and unavailable reattach followed by availability.",
       "required_observations": "State names the failure and recoverable next step; supported paths recover without duplicate launch; no permanently silent dead subscription is accepted.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Fault matrix against a real Herdr core: core unavailable at initial open, subscribe reply timeout, core-closed subscription and unavailable-then-available reattach all require herdr-core, which is absent from this image (see AC-29). ARCHITECTURE.md section 11 item 5 records that no-subscription-when-the-core-is-unavailable-at-open and the closed subscription not being renewed are residual backend defects on the Herdr branch.",
+          "partial_evidence": [
+            "adjacent evidence only: process.rs an_unavailable_backend_is_a_failure_line_with_the_hosts_reason, an_unavailable_listing_gives_the_hosts_reason_and_without_one_still_says_it_cannot_list, a_host_that_does_not_report_adoption_is_drawn_as_before, an_uncertain_open_is_shown_unknown_never_retried_or_resolved; negotiation.test.ts refused-before-anything-is-sent cases for a host that does not offer the pinned core, with no retry and no native shell — so the client never launches twice on a refused identity"
+          ],
+          "observed": [],
+          "limitations": [
+            "the four subscription failures and their recoverable next steps are a host-side matrix; the naming-and-recover half is observable here but the recovery paths are not"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-41",
@@ -553,7 +1418,29 @@
       "procedure": "From an unauthorized account attempt raw backend selection, another workspace terminal ID, forged labels, control takeover and environment path injection.",
       "required_observations": "Gateway/host refuse access; labels are not permission; credentials/raw core endpoints are absent from browser data.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls ~/.theorem: absent (no secrets.json, no provider-keys.env)"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Security integration against a real gateway and host: unauthorized account, foreign workspace terminal id, forged labels, control takeover and environment path injection need the deployed backend. There is no rustyred-thg-server, no theorem-ide-host and no identity provider on this runner, and the stranger account used by scripts/e2e/neon-standin.mjs cannot be provisioned.",
+          "partial_evidence": [
+            "adjacent evidence only, all client-side: files.rs a_listing_of_another_workspace_is_cached_not_applied, an_older_generation_is_dropped_by_the_root; process.rs a_listing_for_another_workspace_is_ignored_and_each_message_replaces_both_lists; local-store.test.ts the directory is per account; restore.test.ts 'a device copy is not shown when access is gone: 401 is signed_out, 403 is forbidden, whatever code the host gave'; account.test.ts 'the key names tenant and principal', 'a 401 is a sign-out; any other failure concludes nothing'",
+            "labels are not permission at the core tier: process.rs binding_reports_the_terminal_and_its_epoch and the_terminal_node_carries_the_visible_screen_and_the_cursor_and_modes read identity, not names"
+          ],
+          "observed": [],
+          "limitations": [
+            "credentials and raw core endpoints being absent from browser data is a deployment property; nothing here inspects a real bundle served to a browser"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-42",
@@ -564,8 +1451,31 @@
       "oracle_class": "protocol + semantic",
       "procedure": "Send absent, unknown, blocked and finished program reports and print instructions resembling workbench actions.",
       "required_observations": "UI preserves provenance/unknown status; task/approval state changes only through real owner; printed content grants no authority.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core -p theorem-workbench-process --locked",
+            "bun test src/lib/workbench/terminal/program-report.test.ts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-terminal-program-report"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate + port) + rendered fixture",
+          "observed": [
+            "absent, unknown, blocked and finished reports stay reported: discipline.rs AC-42 core half — a_programs_exit_report_reaches_its_pane_as_reported_and_decides_nothing (asserted for lost, reported-by-nobody, exited 0 and killed 1), an_unknown_answer_to_an_approval_reaches_the_pane_as_unknown_never_as_approved, text_a_program_prints_is_never_run_as_an_action_or_an_approval, a_run_report_with_nothing_in_it_stays_empty_on_the_wire",
+            "printed content grants no authority: discipline.rs text_a_program_prints_is_never_run_as_an_action_or_an_approval; the story's hostile checks are green — 'hostile: the escape and the right-to-left override are spelled out', 'hostile: no raw control or bidi character reaches the page', 'hostile: shell.end and approval.allow are only words in the band'",
+            "task and approval state changes only through the real owner: program-report.test.ts and the story band keeps the report apart from the pane state — 'the pane still says running after a done report', 'the pane still says running after an error report', 'no report asked the host for anything', 'the header and the tab are the same after every report', 'an older sequence does not replace the newer report', 'after exit the wording is Program’s last report:'",
+            "provenance is preserved in the semantic tree: 'the tree has the program-report node as a status with no actions' and 'after exit the tree still has the node, named as the last report, with no actions'"
+          ],
+          "limitations": [
+            "interact workbench-terminal-program-report is 21 of 22 green on Linux; the one failure, 'after exit the pane says the program ended with the host reason', is the last check and fails byte-identically on the pristine PR head a410b4d0 on this machine (macOS-calibrated), so the exit-wording leg of the case is not verified by this run and is carried as a limitation rather than a pass"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-43",
@@ -577,8 +1487,30 @@
       "oracle_class": "unit + instrumented integration",
       "procedure": "Replay fixed messages; instrument rendering; complete old effects after rebinding a pane.",
       "required_observations": "View has no I/O; effect intent is explicit; repeated render launches nothing; stale completion cannot overwrite the new binding.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core --locked",
+            "bun test src/lib/workbench/conversation src/lib/workbench/documents"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + instrumented port",
+          "observed": [
+            "view has no I/O: discipline.rs drawing_and_reading_the_tree_over_and_over_emit_nothing_and_change_nothing and idle_ticks_launch_nothing — render is called repeatedly and the effect log and buffer are asserted unchanged",
+            "effect intent is explicit and replay is deterministic: discipline.rs a_fixed_script_run_twice_gives_the_same_effects_frames_trees_and_documents (AC-43 a) over a fixed message script",
+            "a stale completion cannot overwrite the new binding: discipline.rs AC-43 c — an_answer_for_what_a_pane_was_bound_to_is_cached_never_applied_for_every_binding_effect, an_answer_that_names_another_resource_than_its_effect_is_dropped, an_answer_for_an_older_generation_of_the_same_binding_is_dropped, an_answer_that_leaves_out_its_generation_is_still_judged_by_the_effects, an_answer_for_a_view_that_was_closed_is_dropped_and_a_closed_view_is_not_reopened",
+            "repeated render launches nothing at the host boundary too: adapter.test.ts every effect completes exactly once, echoing its id, resource, revision and generation; documents.test.ts concurrent opens of one path make one host request"
+          ],
+          "limitations": [
+            "instrumentation is the shared log in these tests plus the counter assertions in the root, not a browser profiler; the mounted leg rests on the story fixtures which do not measure launches independently"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-44",
@@ -590,8 +1522,32 @@
       "oracle_class": "agent + browser integration",
       "procedure": "Inspect panels and invoke a permitted reveal; attempt a human-only approval from a model-origin message.",
       "required_observations": "Stable IDs and allowed actions are inspectable; reveal matches user path; unauthorized approval is refused with preserved actor identity.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core --locked",
+            "bun test src/lib/workbench/agent/operations.test.ts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-agent-operations"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + agent port + rendered fixture",
+          "observed": [
+            "stable IDs and allowed actions are inspectable: discipline.rs every_surface_the_core_owns_is_in_the_tree_with_an_id_and_the_actions_it_allows and the_ids_are_the_same_across_renders_and_across_a_layout_restore; agent/operations.test.ts 'returns the semantic tree as data, content untouched', 'descriptions fit 1024 bytes and schemas 8 KB, and say what the model must know', 'a send never carries more than sixteen operations, all mounted'",
+            "a permitted reveal matches the user path: discipline.rs an_agent_revealing_a_panel_ends_where_the_persons_key_or_click_does; the story's c checks are green — 'c: Files was not focused, then act on its tab.focus is applied and accepted', 'c: the next read shows that tab focused', 'c: the grid shows Files focused'",
+            "unauthorized approval is refused with preserved actor identity: discipline.rs a_model_origin_approval_is_refused_naming_the_actor_and_nothing_changes, an_agents_human_only_request_emits_nothing_and_the_actor_is_restored_after_every_refusal, a_persons_approval_reaches_the_panel_as_the_person_and_an_agents_ordinary_action_as_the_agent, the_agents_catalog_lists_no_human_only_action_and_every_listed_action_resolves_for_it, an_effect_says_who_it_is_for_the_person_or_the_agent_run_that_asked, a_key_after_an_agents_action_is_stamped_for_the_person; process.rs an_agent_cannot_confirm_the_end_and_a_person_can_only_after_it_was_asked",
+            "the same holds over the real frame for the read/act half: workbench-agent-operations 13 of 16 green, including 'd: a human-only action is rejected with its code', 'e: a panel that is not open is rejected unknown_panel', 'f: the effect of a second run names that run as the agent', 'f: no effect of the second run names the first', 'f: what the person typed afterwards has no actor', and both pagination checks in h"
+          ],
+          "limitations": [
+            "three of the story's checks fail on Linux — 'd: nothing on screen changed but the notice', 'g: the operations are no longer declared once the workbench is off', 'g: a pending request is answered \"not on screen\"' — and they fail byte-identically on the pristine PR head a410b4d0 here, so they are macOS-calibrated and establish nothing. The g checks contradict the green bun test 'are declared whether or not the workbench is on screen, so the agent can open it', so that pair is recorded as unverified rather than passed",
+            "no live front model was involved (no provider keys), so the agent origin is a scripted run id, not a real run"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-45",
@@ -604,8 +1560,32 @@
       "oracle_class": "account service + browser",
       "procedure": "Save editor-centered and minimal layouts, reload, load on another viewport, and restore a layout containing unavailable/unknown panels.",
       "required_observations": "Preferences use the real account owner; geometry adapts; missing tools are honest; no process/document is created implicitly; underlying bindings are recoverable.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/layout src/lib/workbench/conversation/port.test.ts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-layouts-page",
+            "same env: interact workbench-device-copy",
+            "cd terminal && cargo test -p theorem-workbench-core -p theorem-workbench-dock --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated account service (port tests) + rendered fixture",
+          "observed": [
+            "preferences use the real account owner: restore.test.ts describe('AC-45: the account layout and its named layouts') — a first save is made against revision 0 and a second browser restores exactly that arrangement; layout.test.ts 'sends the base revision as If-Match and in the body, once, and returns the new revision', 'no record yet is revision 0 with no document, not a failure', 'a 404 that is not workbench_not_found is refused, not an empty record'",
+            "geometry adapts and restore is exact: the layouts-page story is 18/18 green on the real frame — restoring Mine gives the same groups, the same tabs in each group in order, the same active tab, the same group widths and the same focused panel; rename asks with the old name filled in, deletes ask first, and both say so",
+            "missing tools are honest, with no implicit creation: persistence.rs unknown_kinds_stay_as_unavailable_placeholders and small_inconsistencies_are_repaired_and_reported; restore.test.ts 'a layout that names a tool this browser lacks round-trips untouched: the owner never reads into it'; workbench.rs a_document_round_trip_restores_the_same_dock_and_panel_states_with_no_effects asserts zero effects on restore",
+            "bindings are recoverable and the device copy is labelled: restore.test.ts 'when the record cannot be read, the copy kept after the last good read is served labelled device, and the next account read says account' and 'an unreachable record is a failed load, and no document is invented from the device copy'; device-copy story 2/2 green ('the device copy is labelled', 'the save was refused with the reason')"
+          ],
+          "limitations": [
+            "the account service is a stubbed fetch in the bun tier, not the real /api/workbench/v1 owner; the story tier persists to the fixture's own storage, so 'the real account owner' is asserted by shape and revision handling rather than against the deployed record"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-46",
@@ -618,7 +1598,28 @@
       "procedure": "Create artifacts through actual sessions, open pixel previews/originals, choose an explicit mode, change theme/layout, and revise source.",
       "required_observations": "Companion cabinet identity/revision and preview rules hold; original opens correctly; mode override and selection survive; no new artifact store/model call.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/components/cabinet src/components/artifacts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-cabinet-picker"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Connected artifacts: needs real sessions that actually produce artifacts and revisions through the deployed companion cabinet. There is no rustyred-thg-server, no live model (no ~/.theorem/provider-keys.env) and no deployed route on this runner, so 'create artifacts through actual sessions' cannot be done.",
+          "partial_evidence": [
+            "adjacent evidence only, not claimed as a pass: catalog.test.ts 'a review keeps its review identity, not a made-up artifact' and 'uploads and artifacts keep theirs'; image-bounds.test.ts 'a failed preview names why and does not claim the original is gone'; the picker path over the real frame is green at 5/5 — 'the cabinet opens from the picker', 'Enter opens the artifact in a dialog', 'Escape closes it', 'focus returns to the card it came from'"
+          ],
+          "observed": [],
+          "limitations": [
+            "pixel preview versus original rules, an explicit mode override surviving a theme or layout change, and source revision all need the live artifact owner"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-47",
@@ -631,7 +1632,29 @@
       "procedure": "Without a pointer, choose tools, browse/open/edit a document, navigate changes, move/resize a pane, answer an approval and return focus.",
       "required_observations": "All essential actions are reachable; focus is visible and ordered; escape affects the correct transient surface without destroying work.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-keyboard-journey"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "macOS-calibrated: interact workbench-keyboard-journey is 112 of 114 green on Linux, and its two failures are the case's own focus-visibility observations — '12 moved back, still focused: focus is drawn (the Changes tab is in the mark colour, bold)' and '12 moved back, still focused: the focused row is in the mark colour, bold, on the panel or one lighter selected surface'. Both fail byte-identically on the pristine PR head a410b4d0 on this machine.",
+          "partial_evidence": [
+            "almost all of the journey is green on this runner with no pointer event at any step: picker by chord and Escape closing only the transient surface with the unsent draft surviving (step 21), Files and Changes by chord, Enter opening the document in the editor, typing editing the document once, approval answered with y (step 15 'the host is asked to allow it'), a pane widened and narrowed with Mod+Alt+] and [, a panel moved between groups and back with its document (steps 12), the terminal attached via its chooser and taking typed input (steps 16 to 18), and focus returning to the composer at steps 14 and 19",
+            "focus order and never-lost invariants are green as data: 'focus is never lost (one focused panel, one focused group)' holds at every step, 'no item in an unfocused panel is flagged focused at any step', and the focused item is named at each stop",
+            "escape affecting the correct transient surface without destroying work: steps 2 and 21 green, and workbench-default's picker filter staying empty"
+          ],
+          "observed": [],
+          "limitations": [
+            "the drawn-focus half of the case's observation cannot be read on this platform, so the case stays not_run rather than a partial pass; this is recorded as a platform limitation, not a product failure"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-48",
@@ -644,7 +1667,29 @@
       "procedure": "Inspect and operate the mounted composer, file tree, picker, tabs, diff controls and terminal controller indicator with a supported screen reader.",
       "required_observations": "Meaningful names/roles/state are announced once; editable text is usable; cell rendering and semantic mirror do not duplicate the interface.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-semantic-overlay",
+            "bun test src/components/workbench/semantic-overlay"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Manual assistive technology: no screen reader (VoiceOver, NVDA, JAWS or Voice) exists in this Linux runner, and the case requires operating the mounted surfaces with a supported screen reader and hearing what is announced.",
+          "partial_evidence": [
+            "adjacent evidence only, read mechanically from the DOM rather than announced: workbench-semantic-overlay is 39 of 40 green — 'the grid host stays aria-hidden', 'the tab strip is a tablist of named tabs', 'the rows are options with position and size', 'the rows are tree items at level 1', 'the terminal is a text box', 'the status names the session and who controls it', 'a refused save is announced once, as its own text', 'the notice appears once in the tree', 'the tree shows the text once, in the input' (so the cell rendering and the semantic mirror do not duplicate the interface), and 'the frame is byte for byte the same with and without the overlay' is the documented macOS-calibrated failure",
+            "the role map agrees with the Rust side: aria.test.ts maps every role in the wire union and agrees with Rust Role::aria for every role but the two written differently on purpose; names every element by label but a live region by its content; level, position, set size, keyshortcuts and the text box's multiline"
+          ],
+          "observed": [],
+          "limitations": [
+            "'announced once' is inferred from a single node in the accessibility tree, which is not the same observation as a screen reader speaking it; no editable-text usability with a reader is proven here"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-49",
@@ -656,7 +1701,29 @@
       "procedure": "Run the critical journey on recorded Chromium, Firefox and WebKit/Safari targets; include 200% zoom and narrow web layout.",
       "required_observations": "Document/input/terminal flows work or named support limits block release; no experimental browser flag or native application is required.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "ls ~/.cache/ms-playwright",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs matrix (not run to completion: Firefox and WebKit engines missing)"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Cross-browser matrix: node scripts/story-oracle.mjs matrix runs the twelve critical journeys in Chromium, Firefox and WebKit plus Chromium at 200% zoom and at 390 wide. This runner has only chromium-1248 under ~/.cache/ms-playwright; firefox-1555 and the WebKit build are absent and cannot be downloaded. oracle:states already hit exactly this wall after its Chromium leg passed.",
+          "partial_evidence": [
+            "the Chromium column of the matrix is effectively covered by the interact suite: 12 of the 13 JOURNEYS stories are green on this runner in Chromium 156.0.8078.4 (workbench-default, workbench-editor, workbench-recovery-reload, workbench-changes, workbench-changes-binary-conflict, workbench-search, workbench-diagnostics, workbench-account-switch, workbench-terminal, workbench-terminal-adoption-settled, workbench-terminal-program-report minus one check, workbench-markdown-visual minus one check); workbench-resize sets its own viewports and is 40/40 green including the 390x844 leg and the narrow reflow at 390",
+            "no experimental browser flag is required: withPage launches Chromium as ENGINE.launch({}) with no args, and the responsive narrow layout is observed at 390x844 without a flag"
+          ],
+          "observed": [],
+          "limitations": [
+            "Firefox and WebKit flows are entirely unverified, so the named support limits cannot be settled for release"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-50",
@@ -669,8 +1736,32 @@
       "oracle_class": "security + storage",
       "procedure": "Switch accounts with drafts, cached previews and reconnecting effects; revoke one resource while its preview is visible.",
       "required_observations": "Old-scope subscriptions/credentials/visible data are cleared or retained only by explicit secure recovery policy; late effects cannot enter the new account.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/documents/local.test.ts src/lib/workbench/layout src/lib/workbench/delegations src/lib/workbench/adapter.test.ts src/lib/workbench/account.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-core --locked",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-account-switch"
+          ],
+          "result": "pass",
+          "evidence_tier": "simulated storage + pure tests (crate) + rendered fixture",
+          "observed": [
+            "old-scope visible data and drafts are cleared, not leaked: local.test.ts describe('AC-50: another account does not see these drafts') — a draft kept by one account is refused to the next and the document opens without it; adapter.test.ts carries the AC-50 case too",
+            "late effects cannot enter the new account: discipline.rs an_answer_after_an_account_switch_is_dropped_and_the_pane_was_told_unknown and a_layout_load_answered_after_an_account_switch_does_not_reach_the_new_account; delegations.test.ts an account switch drops the cache and an answer still in flight is refused",
+            "subscriptions and credentials are dropped: account.test.ts 'a 401 is a sign-out; any other failure concludes nothing' and 'the same account is no change; another one is, once, with who it was'; conversation.test.ts dispose stops all delivery, drops the runtime subscriptions and refuses actions; local-store.test.ts the directory is per account",
+            "retention is by explicit policy, not by accident: restore.test.ts a device copy is served labelled device and is not shown when access is gone (401 signed_out, 403 forbidden, whatever code the host gave)",
+            "mounted: workbench-account-switch 5/5 green on the real frame — typed, the old draft gone after the switch, the document not left open across accounts, the restored edit offered when the file is reopened and not applied on its own"
+          ],
+          "limitations": [
+            "revocation is simulated with 401 and 403 responses from the stub rather than a real token revocation on a live account"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-51",
@@ -682,8 +1773,32 @@
       "oracle_class": "security fixtures + mounted web",
       "procedure": "Render hostile Markdown/file names/OSC links, a structured error object and unavailable project data.",
       "required_observations": "No markup execution, clipboard takeover or fake approval; errors are readable/scoped; unavailable data is not presented as an empty successful collection.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-markdown -p theorem-workbench-vt -p theorem-workbench-panels -p theorem-workbench-process -p theorem-workbench-markdown-panel --locked",
+            "bun test src/lib/workbench/unavailable.test.ts src/lib/workbench/environment/reason.test.ts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-changes-binary-conflict",
+            "same env: interact workbench-terminal-program-report"
+          ],
+          "result": "pass",
+          "evidence_tier": "hostile fixtures (crate + port) + rendered fixture",
+          "observed": [
+            "no markup execution and no takeover from hostile Markdown, names or OSC links: workbench-markdown/tests/hostile.rs 10 tests and workbench-vt/tests/hostile.rs 5 draw hostile input in every mode; files.rs AC-51 hostile names and unavailable listings; process.rs hostile output cannot reach the clipboard or open anything (no clipboard or end effect) and host errors are readable and scoped",
+            "control and bidi characters are spelled out rather than carried: the story's green checks 'hostile: the escape and the right-to-left override are spelled out', 'hostile: no raw control or bidi character reaches the page', 'hostile: shell.end and approval.allow are only words in the band', plus the delegation panel's hostile path escaping and wrapping",
+            "errors are readable and scoped, never [object Object]: reason.test.ts reads a structured object as one short readable sentence, masks a body that echoes content or a credential, and treats a string body as a raw page never words to show; unavailable.test.ts answers every owner with a readable reason and does not hang",
+            "unavailable data is not presented as an empty successful collection: files.rs refused_unavailable_and_failed_listings_are_drawn_per_directory and an_empty_directory_and_an_empty_answer_are_said_so; unavailable.test.ts answers failed, refused or uncertain with a reason, never as an empty success; markdown-panel AC-51 readable errors"
+          ],
+          "limitations": [
+            "the hostile fixtures are the repository's own corpus driven through the crates and the story frame; no real project with attacker-supplied files was opened in a browser"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-52",
@@ -695,8 +1810,30 @@
       "oracle_class": "instrumented load",
       "procedure": "Run multiple configured terminal streams and preview work while typing and using the command picker; exceed retained-output bounds.",
       "required_observations": "Configured caps hold; overload invokes supported reset/flow control; input/control remains responsive; no silent dropped-output completion claim.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-process -p theorem-workbench-core -p theorem-workbench-changes -p theorem-workbench-markdown --locked",
+            "bun test src/lib/workbench/search src/lib/workbench/run src/lib/workbench/delegations"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + port bounds",
+          "observed": [
+            "configured caps hold: process.rs the_screen_text_is_bounded_by_the_core and an over-long read being cut at the agent boundary in agent/operations.test.ts 'a large tree is cut under the bound, says so, and can be read on'; changes review.rs past_two_hundred_files_only_the_diffs_near_the_viewport_are_read and only_the_files_near_the_top_are_asked_for_and_never_more_than_three_at_once; delegations.test.ts a file over the bound is refused, one at the bound is read and the blob cache holds no more than its bound",
+            "overload invokes supported flow control rather than lying: process.rs an_offset_gap_asks_for_a_reset_with_the_current_role (the byte-offset gate asks for a reset), the_screen_resizes_only_when_the_host_confirms_and_one_resize_is_in_flight, and an_uncertain_open_is_shown_unknown_never_retried_or_resolved",
+            "input stays responsive while streams work: markdown spec.rs R14 (AC-15, AC-52) input is local and an acknowledgement moves only its own baseline; scenarios.rs typing_groups_into_words_and_undo_steps_back under concurrent remote completion",
+            "no silent dropped-output completion claim: search.test.ts a page the host fails to give ends the search with the reason and pages read after the workspace was reopened are dropped and counted; run.test.ts a poll answered after the workspace was reopened is dropped and counted; adapter.test.ts uncertain stays uncertain"
+          ],
+          "limitations": [
+            "this is per-source bounding and gap handling asserted in tests, not a measured instrumented load run: responsiveness is not quantified (no frame-time budget is measured here), and multiple concurrent real terminal streams cannot be started without a Herdr core"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-53",
@@ -708,8 +1845,30 @@
       "oracle_class": "trace inspection",
       "procedure": "Capture a successful, refused and uncertain document/Git/terminal effect containing synthetic secrets in content.",
       "required_observations": "Each outcome correlates to identity/revision/epoch as applicable; diagnostics avoid raw credential/content dumping; uncertain does not become success.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/receipts.test.ts src/lib/workbench/environment/reason.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-core --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate) + port traces",
+          "observed": [
+            "each outcome correlates to identity, revision and epoch as applicable: receipts.test.ts accepted names the document, the operation and the new revision; refused returns the code and a readable reason against the revision the edit was computed on; accepted stage carries the paths staged and the state the host named, once; accepted terminal input names the terminal and the binding epoch; redaction.rs asserts an effect, a completion and a host message with content each print their identities and sizes but never the content",
+            "diagnostics avoid raw credential or content dumping: receipts.test.ts a host that echoes the content in its detail masks the credentials, a diff that holds a secret is delivered to the panel and not to the log, a stale refusal that cannot re-read the head logs one readable line not the error with the echoed body, and paste with a secret stays uncertain; reason.test.ts redacts API keys, bearer tokens, JWTs, key=value pairs and long unlabelled keys while paths, ids, branch names and sentences survive",
+            "uncertain does not become success: receipts.test.ts a timeout after the request was sent is uncertain, never accepted, never resent, and the document does not move; a dropped connection is the same and the host sees the edit once; an uncertain save leaves the document marked unsaved, not saved; uncertain commit is uncertain, not failed and not accepted, and the commit is not sent twice; a repeat of the id resends the one original input",
+            "Changes and editor halves: changes panel.rs AC-53 nothing printed of a request, a diff, a file or a draft holds its content, panel_mounted.rs AC-53 receipts and redaction, and editor.rs AC-53 a save never puts the content in the panel's words or node"
+          ],
+          "limitations": [
+            "synthetic secrets in a scripted host, not a live tracing backend: no real trace exporter was inspected"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-54",
@@ -723,7 +1882,31 @@
       "procedure": "Complete the actual baseline parity register for documents, file search, language, SCM/history, runs, terminals and Follow/Add Selection.",
       "required_observations": "Every required capability has a reachable replacement and evidence; omissions remain blockers or separately approved deprecations.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "bun test src/lib/workbench",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-add-selection",
+            "same env: interact workbench-changes-review"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Consumer trace and integration: completing the baseline parity register needs the mounted Theia application and the real SDK compared against the new consumer, and LEDGER L24 already records that this account's SDK has no call for pin, tags, unread marks or title regeneration, so the live owner grants none of them. There is also no deployed route here to audit consumers against, and the selection-to-chat leg fails byte-identically on the pristine PR head here.",
+          "partial_evidence": [
+            "much of the parity surface does have a green candidate consumer, recorded per row in migration-parity-register.json: files and quick open (workbench-files 24/24), source editing and search-and-replace (workbench-replace 38/38), Markdown (markdown crate plus workbench-recovery-reload 15/15), language and history (workbench-diagnostics, workbench-document-history 21/21), SCM (changes crate suite plus workbench-changes 4/4 and workbench-changes-binary-conflict 13/13), runs (workbench-run-list 2/2, workbench-run-list-exits 7/7, run.test.ts), follow agent (workbench-follow 24/24)",
+            "the gaps that remain are named rather than papered over: add-selection fails its 4096-limit check, changes-review fails its request-count check, threads pin/tag/unread/retitle have no SDK call (LEDGER L24), and Share and Bookmark are not built at all"
+          ],
+          "observed": [],
+          "limitations": [
+            "this case is the audit itself, and an audit needs the actual baseline consumer traced; that is the Gate 6 work START-HERE describes and cannot be closed from a fixture checkout"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-55",
@@ -736,7 +1919,30 @@
       "procedure": "Inspect delivered bundles/routes and follow old Theo/IDE/resource bookmarks after cutover.",
       "required_observations": "No Theia frontend/build/iframe path is needed; appropriate new resource opens or recovery appears; no duplicate session/terminal launch.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "git log --name-only a410b4d..HEAD",
+            "grep theia across package.json scripts, scripts/build.sh, scripts/build-cloudflare.sh, vite.config.ts",
+            "ls ide/"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Build plus deployed navigation: following old Theo, IDE and resource bookmarks after cutover needs a deployed route. There is no rustyred-thg-server and no deployed build on this runner, and START-HERE is explicit that a build inspection cannot establish the flow.",
+          "partial_evidence": [
+            "the delivered build graph is inspected, not followed: no theia entry appears in package.json dependencies or in any of scripts/build.sh, scripts/build-cloudflare.sh or vite.config.ts, so the web bundle needs no Theia frontend, build or iframe path today",
+            "the retirement is not done: the old mounted application is still present and mounted — ide/ exists in the tree and src/components/ide/* (chat-mirror, ide-file-tree, ide-status-bar) is still built and tested, so cutover has not happened and the parity gate in R44 is unmet"
+          ],
+          "observed": [],
+          "limitations": [
+            "old resource recovery behaviour is entirely unverified: it needs the deployed pair"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-56",
@@ -750,7 +1956,28 @@
       "procedure": "Exercise rollback/migration on an isolated account with saved preferences, drafts and a surviving Herdr process.",
       "required_observations": "Documents/bindings/preferences remain recoverable; rollback does not kill/recreate processes or drop pending work.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls ~/.cache and ~/.theorem: no stack binaries, no secrets.json"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Deployment migration: exercising rollback on an isolated account with saved preferences, drafts and a surviving Herdr process needs a deployment and a live core. Neither exists on this runner (no rustyred-thg-server, no herdr-core, no provider keys).",
+          "partial_evidence": [
+            "adjacent durability evidence only, not claimed as a pass: restore.test.ts a first save is made against revision 0 and a second browser restores exactly that arrangement, a stale save is refused with the conflict and nothing is overwritten, a lost answer to a save is uncertain and the same save is not repeated; local.test.ts a reload restores every edit in order; persistence.rs round-trips the dock exactly with stable ids and repairs small inconsistencies rather than dropping them; process.rs serialize_then_restore_attaches_by_identity_and_does_not_relaunch — the client half of not recreating a process on restore"
+          ],
+          "observed": [],
+          "limitations": [
+            "whether rollback drops pending work or kills a process is a deployment property that only a real rollback can show"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-57",
@@ -763,7 +1990,27 @@
       "procedure": "Disconnect or shut down the actual execution environment while a browser/database remains available.",
       "required_observations": "UI shows unavailable/lost state truthfully; no claim that a replacement remote process is the same running job.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Environment fault: disconnecting or shutting down the actual execution environment while a browser and database remain available needs a real host and core. Neither is present (see AC-29), so scripts/e2e/workbench.mjs, which is the covering check, starts nothing.",
+          "partial_evidence": [
+            "adjacent evidence only: the client distinguishes the states honestly at the core tier — process.rs an_unavailable_backend_is_a_failure_line_with_the_hosts_reason, a_lost_program_is_lost_and_a_new_shell_is_a_different_process, replacement_continuation_reattachment_and_host_reset_read_differently, an_exit_names_the_hosts_reason_and_never_offers_continuation, a_restored_pane_whose_terminal_is_gone_says_so_and_offers_the_chooser; the adoption chooser story says the host cannot list its terminals then the reason and does not claim there are no sessions (workbench-terminal-adoption-unavailable 5/5 green)"
+          ],
+          "observed": [],
+          "limitations": [
+            "no real environment was lost, so the truthful-unavailable claim against a live host is unverified; the case stays not_run with the missing-binary blocker"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-58",
@@ -776,7 +2023,29 @@
       "procedure": "Lose a launch reply after acceptance, duplicate an operation within supported dedupe bounds, and delay raw input past ledger retention.",
       "required_observations": "Reconciliation finds existing operation when possible; no blind relaunch or late byte replay; uncertainty is shown when no safe proof exists.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/conversation/conversation.test.ts",
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "run-input queue rework in flight; re-verify after it lands (a review found lifecycle holes: main-thread double queue, thread-switch leaks, side-chat pending-key clobber, retry/dismiss not settling storage). The protocol-fault half against a real launch reply also needs a Herdr core and a deployed host, which are absent.",
+          "partial_evidence": [
+            "the discipline this case asks for is written and green at the client tier today, and is deliberately not recorded as a pass: conversation.test.ts run input recovery — input accepted while a run works is there again for the next owner of the thread, the row leaves the queue once the run shows its receipt, a run that closed before taking the input makes it the next turn, a person's Stop leaves undelivered words listed with Retry and starts no response, a send whose result is unknown keeps its id, run and words for one replay, and a not-delivered receipt the run shows in the transcript leaves the row listed with Retry (commit a9e9dd88)",
+            "no blind relaunch and no late byte replay are asserted elsewhere and stand on their own: process.rs an_uncertain_open_is_shown_unknown_never_retried_or_resolved, closing_during_an_open_sends_the_abandon_and_nothing_else, input_carries_a_fresh_id_and_the_claim_and_a_retry_reuses_the_id, a_non_utf8_mouse_report_reaches_the_wire_intact_and_a_resend_reuses_its_id; run.test.ts a start the host answers without a handle is uncertain, not accepted and a stop with no answer is uncertain and is not sent again; adapter.test.ts a thrown error is failed with its reason and is not retried (R47)"
+          ],
+          "observed": [],
+          "limitations": [
+            "the conversation-tier results above are from tests whose implementation is being reworked in this session, so they are evidence of intent, not of a settled behaviour"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-59",
@@ -789,8 +2058,33 @@
       "oracle_class": "extension integration",
       "procedure": "Install/enable an allowed alternate panel renderer through the existing extension mechanism and bind it to a real document.",
       "required_observations": "It uses the same owner/actions and scoped permissions; no new eval/runtime/credentials; changing appearance retains resource identity.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "cd terminal && cargo test -p theorem-workbench-core -p theorem-workbench-panels --locked",
+            "bun test src/lib/workbench/wire/Presentation.ts src/components/workbench/semantic-overlay",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-presentation"
+          ],
+          "result": "pass",
+          "evidence_tier": "pure tests (crate + port) + rendered fixture",
+          "observed": [
+            "an alternate presentation is registered through the same registry, not a second one: presentation.rs 13 tests green — the_registry_lists_presentations_by_resource_declared_match_and_granted_capability, a_declaration_must_name_a_registered_kind_once_and_match_cleanly, the_chooser_lists_every_way_marks_the_current_and_swaps_on_choose",
+            "it uses the same owner, actions and scoped permissions: a_presentation_that_needs_an_ungranted_capability_cannot_be_chosen_by_a_person_or_an_agent, an_agent_may_switch_presentation_it_is_not_a_mutation, semantics_name_the_current_presentation_and_offer_each_way_with_its_reason",
+            "no new eval, runtime or credentials: a_declaration_is_data_only_with_no_path_to_code_or_a_location — a declaration is data only and is checked as such",
+            "changing appearance retains resource identity: a_swap_keeps_the_panel_its_place_its_focus_and_its_binding_and_destroys_nothing, a_swap_is_refused_while_the_panel_has_unsaved_changes_or_work_in_flight, a_saved_layout_records_the_presentation_and_brings_a_known_one_back, an_unknown_presentation_or_an_incompatible_version_restores_as_a_placeholder_with_a_way_back, a_saved_arrangement_keeps_a_document_placeholder_for_a_presentation_this_build_lacks, a_panel_with_no_document_has_nothing_to_swap",
+            "mounted on the real frame: workbench-presentation 20 of 21 green — the chooser shows the current way marked, Left swaps to Page and the tab says Shown as Page (version 1) with the editor bound to docs/guide.md, the effects of a swap are a close then an open and nothing else, panel.presentation.next swaps in place, a typed character leaves the tab modified and the swap is refused with its reason, and a text file lists only the editor with the reason on its tab"
+          ],
+          "limitations": [
+            "the one failing check, 'the swap is in place: the same tab in the same group at the same position, the keyboard still on it', fails byte-identically on the pristine PR head a410b4d0 here (macOS-calibrated), so the in-place leg is confirmed only at the crate tier in this run",
+            "the installation path is the crate's own registry declaration, not a shipped user-facing extension mechanism"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-60",
@@ -805,7 +2099,29 @@
       "procedure": "Run specification section 17 using actual project artifacts, real editing/SCM, Herdr process and account configuration on the matched deployment.",
       "required_observations": "All required flows and failures have evidence at one known build combination; no mockups/unit tests are substituted for live claims; native work is not required.",
       "status": "not_run",
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "node scripts/e2e/workbench.mjs --list",
+            "ls for the stack binaries: absent"
+          ],
+          "result": "not_run",
+          "evidence_tier": "none",
+          "blocker": "Live end-to-end: specification section 17 needs actual project artifacts, real editing and SCM, a Herdr process and account configuration on a matched deployment. This runner has no rustyred-thg-server, no theorem-ide-host, no herdr-core, no provider keys and no deployed route, and two of its own fixtures fail macOS-calibrated checks here (workbench-add-selection, workbench-changes-review).",
+          "partial_evidence": [
+            "the journey's legs are individually green at lower tiers and are recorded there rather than claimed here: workbench-default-arrangement 14/14, workbench-files 24/24, workbench-editor 3/3, workbench-recovery-reload 15/15, workbench-changes 4/4, workbench-changes-binary-conflict 13/13, workbench-search 2/2, workbench-diagnostics 1/1, workbench-document-history 21/21, workbench-follow 24/24, workbench-delegation-from-chat 8/8, workbench-account-switch 5/5, workbench-layouts-page 18/18, workbench-resize 40/40, workbench-appearance 4/4, workbench-cabinet-picker 5/5, workbench-threads 76/76, workbench-threads-withheld 6/6, workbench-replace 38/38, workbench-presentation 20/21",
+            "no native work is required by any of these: the wasm build is the only Rust gate (bun run build:terminal) and check-layout-isolation reports 0 banned dependencies for the browser target"
+          ],
+          "observed": [],
+          "limitations": [
+            "fixture evidence cannot satisfy a live-only case, which is exactly what START-HERE says; the case stays not_run"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-61",
@@ -819,8 +2135,33 @@
       "oracle_class": "source + WASM + geometry",
       "procedure": "Extract the pinned Herdr TileLayout boundary; compile in the actual browser target and replay splits, moves, focus, restore and last-pane closure with nonterminal panels.",
       "required_observations": "No native/process/Ghostty application dependency enters the browser; stable identities survive restore; geometry is coherent; split/close changes only views and invokes no launch/kill.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun run build:terminal",
+            "CARGO_TARGET_DIR=$HOME/cargo-target-iso node scripts/check-layout-isolation.mjs",
+            "cd terminal && cargo test -p theorem-workbench-layout -p theorem-workbench-dock --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "source + WASM + pure tests (geometry)",
+          "observed": [
+            "no native, process or Ghostty dependency enters the browser: the script built theorem-workbench-layout for wasm32-unknown-unknown with the lockfile, then listed the normal dependency tree of the layout and dock crates for that target — layout 43 dependencies with 0 banned, dock 47 with 0 banned, pin herdrdev/herdr@ee5bfb5041bb3e4a49d591c72308aae3c81ecdde blob aaa207ae, verdict layout isolation: pass",
+            "the whole wasm gate builds: cargo build --locked --release --target wasm32-unknown-unknown finished in 1m 20s and wasm-bindgen --target web emitted src/terminal-wasm, which every story above then ran",
+            "splits, moves, focus, restore and last-pane closure replay with nonterminal panels: replay.rs 12 tests (AC-61, the layout boundary through its public API only with no panel kind anywhere, checking the tiling of the solved rectangles cell by cell) and layout_isolation.rs 8 (AC-61, the dock replayed with documents, a diff and a file list, identity and geometry and views-only checked against a model outside the dock)",
+            "stable identities survive restore: persistence.rs a_document_round_trips_exactly_through_json, group_ids_stay_stable_and_are_not_reused_after_restore, unknown_kinds_stay_as_unavailable_placeholders, malformed_documents_are_refused_not_panicked_on",
+            "split and close change only views and invoke no launch or kill: operations.rs a_split_opens_no_process_it_only_adds_an_empty_destination, closing_a_tab_picks_a_neighbour_and_the_last_tab_collapses_the_leaf, the_last_panel_cannot_be_closed, move_a_tab_between_groups_and_remove_the_emptied_group; workbench.rs a_document_round_trip_restores_the_same_dock_and_panel_states_with_no_effects"
+          ],
+          "limitations": [
+            "the geometry and dependency verdicts are crate-level; the mounted geometry leg is AC-04's story, which is separately green here",
+            "the isolation record the script writes (docs/plans/evidence/workbench-layout-isolation.json) was restored with git checkout -- after the run so committed evidence stays untouched; the verdict is quoted from stdout, not from that file"
+          ]
+        }
+      ]
     },
     {
       "id": "AC-62",
@@ -833,8 +2174,44 @@
       "oracle_class": "contract interoperability",
       "procedure": "Present an older original Herdr/Remux wire fixture to the new client boundary, then connect the pinned supported Core/host pair.",
       "required_observations": "Legacy mismatch is explicitly rejected; only the negotiated supported pair carries commands/frames; no accidental binary-format guess or silent fallback.",
-      "status": "not_run",
-      "evidence": []
+      "status": "pass",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "command": [
+            "bun test src/lib/workbench/terminal/negotiation.test.ts",
+            "cd terminal && cargo test -p theorem-workbench-process --locked"
+          ],
+          "result": "pass",
+          "evidence_tier": "protocol fixtures (crate + port)",
+          "observed": [
+            "legacy mismatch is explicitly rejected, never guessed: negotiation.test.ts the pinned core is identified with the generation it reported, then every older, newer and unrelated version is rejected saying what it offered and what is supported; the generation label alone never identifies a core (version one of another line is rejected); a live frame that is not base64 is dropped, not decoded another way, and the next good frame still lands",
+            "no silent fallback to another binary format: process.rs a_frame_whose_payload_is_not_the_supported_encoding_draws_nothing_and_is_not_guessed feeds raw terminal text, a length-prefixed Remux-style payload and a non-base64 string as both TerminalOutput and TerminalReset, and asserts nothing is drawn and no clipboard or end effect is emitted",
+            "only the negotiated supported pair carries commands and frames, in order: negotiation.test.ts the supported pair negotiates once and only then do commands and frames flow in order; a Herdr launch answered as a native shell is refused (not attached, not typed to, none of its frames delivered) and a native launch answered as Herdr is refused as well; every reader of the host capabilities agrees that a mismatched core is not ready, grants no Herdr capability and keeps native",
+            "the pin is recorded rather than guessed: LEDGER B13 and L01 pin terminput 0.5.16 and herdrdev/herdr@ee5bfb50, and the e2e scenario names the core it requires as 0.1.17, the version the host image pins"
+          ],
+          "limitations": [
+            "the original Herdr/Remux fixture is presented to the client boundary only; connecting the pinned supported Core and host pair for real needs the absent binaries, so the live half of the procedure stays a named blocker (see AC-29)"
+          ]
+        }
+      ]
     }
-  ]
+  ],
+  "execution_record": {
+    "candidate_ui_commit": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+    "candidate_branch": "docs/workbench-acceptance-bookkeeping (branched from review-pr-123 at a9e9dd8878563cf560fda5f12825a1ec6e00f1ae; PR head a410b4d0aaef40271e00bce2d8652401e6c81c45)",
+    "candidate_host_commit": "not recorded: no Theorem backend checkout or deployment exists on this runner (E2E_SERVER_BIN, E2E_IDE_HOST_BIN, E2E_HERDR_HC unset)",
+    "sdk_version_or_hash": "@theoremharness/sdk 0.6.0-alpha.10, vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1da982f23bc7ac4fac0038669f79d0932714e9db7d174790dc7de85320 (note: LEDGER B11 records alpha.5; the checkout installs alpha.10)",
+    "rustyred_browser_version": "@rustyreddb/browser 0.1.0-beta.2, sha256 9cdb8c681ceeea785a43565920ca540815aeb44c805e748a0dd6440db89a59a0",
+    "ratzilla_ratatui_versions": "ratzilla 0.3.1, ratatui 0.30.2 (manifest asks 0.30.1), vt100 0.16.2, terminput 0.5.16, wasm-bindgen 0.2.127",
+    "herdr_binary_version_and_schema_digest": "not recorded: no herdr-core binary on this runner; scripts/e2e/workbench.mjs pins core 0.1.17 and aborts without it",
+    "environment_identity": "linux-cloud-runner (Debian 12, Linux 6.1.189+ x86_64)",
+    "browser_os_device": "Chromium 156.0.8078.4 on Linux, 1280-1440 CSS px wide story viewports, DPR 1, dark scheme, reducedMotion=reduce, story default zoom",
+    "test_fixture_identity": "vite 8.3.5 dev server on http://127.0.0.1:3119 serving /story/* fixtures; story-oracle runs with STORY_ORIGIN set to it and ORACLE_RENDER_DIR pointed outside the repository; design oracles with ORACLE_REVIEW_OUT=$HOME/oracle-out-bookkeeping",
+    "recorded_at": "2026-11-17",
+    "tally": "36 pass, 26 not_run, 0 fail"
+  }
 }
