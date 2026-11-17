@@ -1,4 +1,4 @@
-// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the panels menu: arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the one layout menu: Follow the agent and the Gallery, arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
 import { useAuiState } from '@assistant-ui/react'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
@@ -14,6 +14,7 @@ import {
   Suspense,
   lazy,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -68,7 +69,8 @@ import { adaptDock } from './responsive-dock'
 import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
-import { cn } from '@/lib/utils'
+import { sheetShown } from '@/components/workbench/placement'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 
 import { DelegationPanel } from '@/components/chat/delegation-panel'
 import { ComparePane } from '@/components/review/compare-pane'
@@ -77,6 +79,7 @@ import {
   useThreadDelegation,
 } from '@/lib/theorem/delegations'
 import { useReview, useReviewDock } from '@/lib/theorem/reviews'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ARTIFACT = 'artifact:'
 const NOTE = 'note-panel:'
@@ -125,29 +128,34 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     [api, mode, title],
   )
   // Chat's breadcrumb stands in for the tab while the conversation is
-  // alone in its group; a tab dropped beside it brings the tab bar back.
+  // alone in its group, and Notes' panes draw their own pills; a tab dropped
+  // beside it brings the tab bar back.
   const inChat = mode === 'chat'
+  const ownTop = inChat || mode === 'notes'
   const alone = useSyncExternalStore(
     subscribe(api.group.api.onDidActivePanelChange),
     () => api.group.panels.length === 1,
   )
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability -- dockview's header takes this as a setter, and has no method for it.
-    api.group.header.hidden = inChat && alone
-  }, [api, inChat, alone])
+    api.group.header.hidden = ownTop && alone
+  }, [api, ownTop, alone])
+  const actions = alone ? (
+    <GroupActions group={api.group} containerApi={containerApi} />
+  ) : undefined
   return (
-    <div data-appearance-part="main" data-appearance-width-role="main" className="flex h-full min-w-0 flex-col">
+    <div
+      data-appearance-part="main"
+      data-appearance-width-role="main"
+      className="flex h-full min-w-0 flex-col"
+    >
       {inChat && (
         <ThreadHeader
-          actions={
-            alone ? (
-              <GroupActions group={api.group} containerApi={containerApi} />
-            ) : undefined
-          }
+          actions={actions}
         />
       )}
       <div className="relative min-h-0 flex-1">
-        <ModeView docked />
+        <ModeView docked actions={mode === 'notes' ? actions : undefined} />
       </div>
     </div>
   )
@@ -338,34 +346,29 @@ const tabComponents = {
 
 /** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
 /** Opens and closes the artifact cabinet for the project that is open. */
-function OutputsToggle() {
-  const open = useShell((s) => s.sideDrawer === 'outputs')
+/** A checkbox row in the panels menu. */
+function MenuCheck({
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  children: React.ReactNode
+}) {
   return (
-    <TooltipIconButton
-      tooltip={open ? 'Close gallery' : 'Gallery'}
-      aria-pressed={open}
-      onClick={() =>
-        useShell.getState().setSideDrawer(open ? undefined : 'outputs')
-      }
-      className="size-7 p-1.5"
+    <Menu.CheckboxItem
+      className={menuItem}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
     >
-      <Icon.Apps className="size-4" />
-    </TooltipIconButton>
-  )
-}
-
-function FollowToggle() {
-  const following = useFollow((s) => s.following)
-  const { pause, resume } = useFollow.getState()
-  return (
-    <TooltipIconButton
-      tooltip={following ? 'Following the agent' : 'Follow the agent'}
-      aria-pressed={following}
-      onClick={following ? pause : resume}
-      className={cn('size-7 p-1.5', !following && 'text-ink-faint')}
-    >
-      <Icon.Follow className="size-4" />
-    </TooltipIconButton>
+      <span className="flex size-4 items-center justify-center">
+        <Menu.CheckboxItemIndicator>
+          <Icon.Check className="size-3.5" />
+        </Menu.CheckboxItemIndicator>
+      </span>
+      {children}
+    </Menu.CheckboxItem>
   )
 }
 
@@ -392,8 +395,9 @@ function useShownInspector(api: DockviewApi) {
 }
 
 /**
- * The conversation's panels menu: the arrangements, the inspector beside the
- * files, and the terminal drawers. New chat lives in the sidebar.
+ * The conversation's one layout menu: Follow the agent and the Gallery, the
+ * arrangements, the inspector beside the files, and the terminal drawers.
+ * New chat lives in the sidebar.
  */
 function GroupActions({
   group,
@@ -414,15 +418,15 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
     if (panel) api.removePanel(panel)
     else addInspector(api, tool)
   }
+  const following = useFollow((s) => s.following)
+  const gallery = useShell((s) => s.sideDrawer === 'outputs')
   return (
     <div className="flex h-full items-center pe-1">
-      <FollowToggle />
-      <OutputsToggle />
       <Menu.Root>
         <Menu.Trigger
           render={
             <TooltipIconButton
-              tooltip="Open a panel"
+              tooltip="Layout and panels"
               className="size-7 p-1.5"
             />
           }
@@ -432,6 +436,30 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6} className="z-50">
             <Menu.Popup className={`min-w-52 ${menuPopup}`}>
+              <Menu.Group>
+                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
+                  Workspace
+                </Menu.GroupLabel>
+                <MenuCheck
+                  checked={following}
+                  onCheckedChange={(on) =>
+                    on
+                      ? useFollow.getState().resume()
+                      : useFollow.getState().pause()
+                  }
+                >
+                  Follow the agent
+                </MenuCheck>
+                <MenuCheck
+                  checked={gallery}
+                  onCheckedChange={(on) =>
+                    useShell.getState().setSideDrawer(on ? 'outputs' : undefined)
+                  }
+                >
+                  Gallery
+                </MenuCheck>
+              </Menu.Group>
+              <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Group>
                 <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
                   Arrange
@@ -455,39 +483,40 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 </Menu.GroupLabel>
                 {(Object.keys(INSPECTOR_TOOLS) as Array<InspectorTool>).map(
                   (tool) => (
-                    <Menu.CheckboxItem
+                    <MenuCheck
                       key={tool}
-                      className={menuItem}
                       checked={shown.has(tool)}
                       onCheckedChange={() => toggle(tool)}
                     >
-                      <span className="flex size-4 items-center justify-center">
-                        <Menu.CheckboxItemIndicator>
-                          <Icon.Check className="size-3.5" />
-                        </Menu.CheckboxItemIndicator>
-                      </span>
                       {INSPECTOR_TOOLS[tool]}
-                    </Menu.CheckboxItem>
+                    </MenuCheck>
                   ),
                 )}
               </Menu.Group>
               <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setSideDrawer('terminal')}
+                onClick={() => useShell.getState().setWorkbench('side')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal on the right
+                {`${WORKBENCH_LABEL} on the right`}
               </Menu.Item>
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setTerminalOpen(true)}
+                onClick={() => useShell.getState().setWorkbench('bottom')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal at the bottom
+                {`${WORKBENCH_LABEL} at the bottom`}
                 <span className="ms-auto ps-4 font-mono text-xs text-ink-faint">
                   ctrl+`
                 </span>
+              </Menu.Item>
+              <Menu.Item
+                className={menuItem}
+                onClick={() => useShell.getState().setWorkbench('full')}
+              >
+                <Icon.Terminal className="size-4 text-ink-muted" />
+                {`${WORKBENCH_LABEL} full screen`}
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>
@@ -718,6 +747,15 @@ export function DockShell({
   }, [dock])
   /** Conversation the layout's artifact panels belong to. */
   const layoutThread = useRef<string | undefined>(undefined)
+  // A full-screen workbench covers this dock: a review asked for there (its
+  // Artifacts panel, its conversation's review card) brings the sheet back
+  // beside it so the review can be seen and used.
+  const { requestedPlacement } = useWorkbenchPlacement()
+  const showSheet = useEffectEvent(() => {
+    const shell = useShell.getState()
+    const moved = sheetShown(requestedPlacement, shell.lastCompanion)
+    if (moved) shell.setWorkbench(moved)
+  })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = useShell.getState().layouts[projectId]
@@ -770,8 +808,11 @@ export function DockShell({
       open: (delegationId, title) => openDelegation(dock, delegationId, title),
     })
     useReviewDock.setState({
-      open: (reviewId, options) =>
-        openReviewPanel(dock, reviewId, options?.quiet),
+      open: (reviewId, options) => {
+        // A quiet open is the dock noticing a new review, not someone asking.
+        if (!options?.quiet) showSheet()
+        openReviewPanel(dock, reviewId, options?.quiet)
+      },
       close: (reviewId) => {
         const panel = dock.getPanel(reviewPanelId(reviewId))
         if (panel) dock.removePanel(panel)

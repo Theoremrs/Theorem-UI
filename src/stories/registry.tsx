@@ -2,7 +2,7 @@
 import { AppearanceControls } from './appearance-controls'
 import { ReactFlow, ReactFlowProvider, applyNodeChanges } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { lazy, useEffect, useMemo, useState } from 'react'
+import { lazy, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -37,6 +37,7 @@ import {
 import { Canvas } from '@/components/canvas/canvas'
 import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
+import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { speechAdapter } from '@/lib/speech/adapter'
 import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
@@ -49,11 +50,67 @@ import { ContextPanel } from '@/components/shell/sidebar'
 import { ChatShell } from '@/components/shell/chat-shell'
 import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { GlassCompareStory } from './glass-compare'
+import {
+  WorkbenchBranchesStory,
+  WorkbenchChangesStory,
+  WorkbenchSearchStory,
+  WorkbenchDiagnosticsStory,
+  WorkbenchRunStory,
+  WorkbenchRunListStory,
+  WorkbenchCabinetStory,
+  WorkbenchCabinetPickerStory,
+  WorkbenchFaceStory,
+  WorkbenchFaceCustomStory,
+  WorkbenchAccountSwitchStory,
+  WorkbenchDeviceCopyStory,
+  WorkbenchArrangementsStory,
+  WorkbenchDefaultStory,
+  WorkbenchEditorConflictStory,
+  WorkbenchEditorStory,
+  WorkbenchMarkdownPreviewStory,
+  WorkbenchMarkdownSourceStory,
+  WorkbenchMarkdownSplitStory,
+  WorkbenchMarkdownVisualStory,
+  WorkbenchPickerStory,
+  WorkbenchTerminalStory,
+} from '@/components/workbench/workbench-story'
+import { WorkbenchTerminalProgramReportStory } from '@/components/workbench/workbench-program-report-story'
+import { WorkbenchAppearanceStory } from '@/components/workbench/workbench-appearance-story'
+import { WorkbenchSemanticOverlayStory } from '@/components/workbench/workbench-semantic-overlay-story'
+import {
+  WorkbenchChangesBinaryConflictStory,
+  WorkbenchLayoutsPageStory,
+  WorkbenchRunListExitsStory,
+  WorkbenchRecoveryReloadStory,
+  WorkbenchTerminalAdoptionPendingStory,
+  WorkbenchTerminalAdoptionSettledStory,
+  WorkbenchTerminalAdoptionUnavailableStory,
+} from '@/components/workbench/workbench-state-stories'
+import { WorkbenchAgentOperationsStory } from '@/components/workbench/workbench-agent-story'
+import {
+  WorkbenchAddSelectionStory,
+  WorkbenchFollowStory,
+  WorkbenchDocumentHistoryStory,
+  WorkbenchPresentationStory,
+  WorkbenchDelegationStory,
+  WorkbenchDelegationFromChatStory,
+  WorkbenchReplaceStory,
+  WorkbenchThreadsStory,
+  WorkbenchFilesStory,
+  WorkbenchThreadsWithheldStory,
+  WorkbenchDefaultArrangementStory,
+} from '@/components/workbench/workbench-feature-stories'
+import { WorkbenchResizeStory } from '@/components/workbench/workbench-resize-story'
+import { WorkbenchKeyboardJourneyStory } from '@/components/workbench/workbench-keyboard-journey-story'
+import { PALETTE_MATRIX_REGISTRY } from '@/components/workbench/workbench-palette-stories'
+import { FaceFeel } from '@/components/face/face-feel'
 import { useNote } from '@/lib/theorem/notes'
 import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
 import { useReview } from '@/lib/theorem/reviews'
+import { useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
+import { POPULATED_PINS } from './fixtures/populated'
 import {
   ACTIVITY_STATES,
   activityMessages,
@@ -72,9 +129,20 @@ import { PlanGraph } from '@/components/chat/plan-graph'
 import { ArtifactView } from '@/components/artifacts/artifact-renderers'
 import { NOTEBOOK_DOCUMENTS, notebookPart } from './fixtures/notebook-parts'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
+import {
+  WorkbenchDeltaParityBeforeStory,
+  WorkbenchDeltaParityStory,
+} from '@/components/workbench/workbench-delta-parity-story'
+import { WorkbenchChangesReviewStory } from '@/components/workbench/workbench-review-story'
+import { WorkbenchTheoBlocksStory } from '@/components/workbench/workbench-theo-blocks-story'
+import { WorkbenchTheoComposerStory } from '@/components/workbench/workbench-theo-composer-story'
 
 // The table's settings route is not needed to boot every conversation fixture.
-const SettingsAiStory = lazy(() => import('./settings-ai').then((module) => ({ default: module.SettingsAiStory })))
+const SettingsAiStory = lazy(() =>
+  import('./settings-ai').then((module) => ({
+    default: module.SettingsAiStory,
+  })),
+)
 
 function WithRuntime({ children }: { children: React.ReactNode }) {
   const [threadId, setThreadId] = useState<string | undefined>(
@@ -137,6 +205,28 @@ function ReviewCardStory() {
   )
 }
 
+/**
+ * The whole shell as a person with work in it sees it: three pins on the
+ * shelf, projects and recent chats, and a long reply with a table, inline
+ * code and a code block above the composer. The design overhaul's fixture.
+ */
+function PopulatedShellStory() {
+  // The shelf is persisted, so the person's own pins come back when the story
+  // closes; set before paint, the first frame already shows the fixture's.
+  useLayoutEffect(() => {
+    const { pins } = useSidebarPrefs.getState()
+    useSidebarPrefs.setState({ pins: POPULATED_PINS })
+    return () => {
+      useSidebarPrefs.setState({ pins })
+    }
+  }, [])
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
+    </WithRuntime>
+  )
+}
+
 function ShellCompareStory() {
   return (
     <WithRuntime>
@@ -166,6 +256,29 @@ function ShellNavigationStory() {
         ),
       ]),
       history: createMemoryHistory({ initialEntries: ['/vault'] }),
+    })
+  })
+  return <RouterProvider router={router} />
+}
+
+/** Notes mode at desktop width over the story transport, with a note open and no review beside it. */
+function NotesWorkspaceStory() {
+  const [router] = useState(() => {
+    const root = createRootRoute({ component: Outlet })
+    const shell = createRoute({
+      getParentRoute: () => root,
+      id: '_chat',
+      component: NotesWorkspaceFrame,
+    })
+    return createRouter({
+      routeTree: root.addChildren([
+        shell.addChildren(
+          ['/', 'notes', 'notes/$documentId'].map((path) =>
+            createRoute({ getParentRoute: () => shell, path }),
+          ),
+        ),
+      ]),
+      history: createMemoryHistory({ initialEntries: ['/notes/doc-proposal'] }),
     })
   })
   return <RouterProvider router={router} />
@@ -223,6 +336,14 @@ function SessionGraphStory() {
     })
   })
   return <RouterProvider router={router} />
+}
+
+function NotesWorkspaceFrame() {
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId={undefined} />
+    </WithRuntime>
+  )
 }
 
 function ShellNavigationFrame() {
@@ -474,12 +595,19 @@ function threadStory(
           : message,
       )
     : fixtureId === 'F05'
-      ? [{
-          id: 'design-oracle-draft-context',
-          role: 'assistant',
-          status: { type: 'complete', reason: 'stop' },
-          content: [{ type: 'text', text: 'A short conversation response gives the draft editor a real prose track for typography and alignment measurements.' }],
-        }]
+      ? [
+          {
+            id: 'design-oracle-draft-context',
+            role: 'assistant',
+            status: { type: 'complete', reason: 'stop' },
+            content: [
+              {
+                type: 'text',
+                text: 'A short conversation response gives the draft editor a real prose track for typography and alignment measurements.',
+              },
+            ],
+          },
+        ]
       : []
   const isRunning = state === 'working' || state === 'approval'
   return function ThreadStory() {
@@ -603,14 +731,22 @@ function PlanCardStory() {
       {
         id: 'plan-ask',
         role: 'user',
-        content: [{ type: 'text', text: 'Make the harness easier for agents to use. Plan it before you start.' }],
+        content: [
+          {
+            type: 'text',
+            text: 'Make the harness easier for agents to use. Plan it before you start.',
+          },
+        ],
       },
       {
         id: 'plan-answer',
         role: 'assistant',
         status: { type: 'complete', reason: 'stop' },
         content: [
-          { type: 'text', text: 'Here is the plan. The audit and the scope can start together.' },
+          {
+            type: 'text',
+            text: 'Here is the plan. The audit and the scope can start together.',
+          },
           {
             type: 'tool-call',
             toolCallId: 'call-plan',
@@ -673,22 +809,42 @@ const ORACLE_F02_CONTENT = [
   '```',
 ].join('\n')
 
-function DesignOracleThreadStory({ empty = false, fixtureId = empty ? 'F01' : 'F02', content, draft = empty ? undefined : 'Draft a follow-up question.' }: { empty?: boolean; fixtureId?: string; content?: string; draft?: string }) {
-  const messages: ThreadMessageLike[] = empty ? [] : [
-    {
-      id: 'appearance-oracle-long-answer',
-      role: 'assistant',
-      status: { type: 'complete', reason: 'stop' },
-      content: [
-        // The real Activity metadata line is part of the reading fixture. Two
-        // settled progress steps make its Details label visible through the
-        // production MessageMetadata slot without duplicating that component.
-        { type: 'data', name: 'theorem-progress', data: { label: 'Reading the conversation', status: 'complete' } },
-        { type: 'data', name: 'theorem-progress', data: { label: 'Checking the measure', status: 'complete' } },
-        { type: 'text', text: content ?? ORACLE_F02_CONTENT },
-      ],
-    },
-  ]
+function DesignOracleThreadStory({
+  empty = false,
+  fixtureId = empty ? 'F01' : 'F02',
+  content,
+  draft = empty ? undefined : 'Draft a follow-up question.',
+}: {
+  empty?: boolean
+  fixtureId?: string
+  content?: string
+  draft?: string
+}) {
+  const messages: ThreadMessageLike[] = empty
+    ? []
+    : [
+        {
+          id: 'appearance-oracle-long-answer',
+          role: 'assistant',
+          status: { type: 'complete', reason: 'stop' },
+          content: [
+            // The real Activity metadata line is part of the reading fixture. Two
+            // settled progress steps make its Details label visible through the
+            // production MessageMetadata slot without duplicating that component.
+            {
+              type: 'data',
+              name: 'theorem-progress',
+              data: { label: 'Reading the conversation', status: 'complete' },
+            },
+            {
+              type: 'data',
+              name: 'theorem-progress',
+              data: { label: 'Checking the measure', status: 'complete' },
+            },
+            { type: 'text', text: content ?? ORACLE_F02_CONTENT },
+          ],
+        },
+      ]
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: false,
@@ -700,7 +856,9 @@ function DesignOracleThreadStory({ empty = false, fixtureId = empty ? 'F01' : 'F
       <AssistantRuntimeProvider runtime={runtime}>
         <TheoremPartRenderers />
         {draft && <ComposerDraft text={draft} />}
-        <div className="h-dvh"><Thread autoFocus={false} /></div>
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
       </AssistantRuntimeProvider>
     </div>
   )
@@ -708,20 +866,40 @@ function DesignOracleThreadStory({ empty = false, fixtureId = empty ? 'F01' : 'F
 
 const ORACLE_PREVIEW_USER = [
   'Please compare these workspace choices. '.repeat(22),
-  'I need to understand which source is current, what changed since the last review, and how to keep the draft while moving between conversations. '.repeat(4),
+  'I need to understand which source is current, what changed since the last review, and how to keep the draft while moving between conversations. '.repeat(
+    4,
+  ),
 ].join('')
 
 function DesignOraclePreviewStory() {
   const runtime = useExternalStoreRuntime({
     messages: [
-      { id: 'design-oracle-preview-user', role: 'user', content: [{ type: 'text', text: ORACLE_PREVIEW_USER }] },
-      { id: 'design-oracle-preview-answer', role: 'assistant', status: { type: 'complete', reason: 'stop' }, content: [{ type: 'text', text: 'Short answer.' }] },
+      {
+        id: 'design-oracle-preview-user',
+        role: 'user',
+        content: [{ type: 'text', text: ORACLE_PREVIEW_USER }],
+      },
+      {
+        id: 'design-oracle-preview-answer',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [{ type: 'text', text: 'Short answer.' }],
+      },
     ],
     isRunning: false,
     onNew: async () => {},
     convertMessage: (message: ThreadMessageLike) => message,
   })
-  return <div data-appearance-fixture="F03"><AssistantRuntimeProvider runtime={runtime}><TheoremPartRenderers /><div className="h-dvh"><Thread autoFocus={false} /></div></AssistantRuntimeProvider></div>
+  return (
+    <div data-appearance-fixture="F03">
+      <AssistantRuntimeProvider runtime={runtime}>
+        <TheoremPartRenderers />
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
+      </AssistantRuntimeProvider>
+    </div>
+  )
 }
 
 const ORACLE_MARKUP_CONTENT = [
@@ -741,21 +919,62 @@ const ORACLE_MARKUP_CONTENT = [
   '```',
 ].join('\n')
 
-function DesignOracleContentStory({ fixtureId, content, direction = 'ltr', lang = 'en', includeArtifact = false }: { fixtureId: string; content: string; direction?: 'ltr' | 'rtl'; lang?: string; includeArtifact?: boolean }) {
+function DesignOracleContentStory({
+  fixtureId,
+  content,
+  direction = 'ltr',
+  lang = 'en',
+  includeArtifact = false,
+}: {
+  fixtureId: string
+  content: string
+  direction?: 'ltr' | 'rtl'
+  lang?: string
+  includeArtifact?: boolean
+}) {
   const artifact = ARTIFACT_STORIES[0] as ArtifactStory
-  const contentItems: ThreadMessageLike['content'] = [{ type: 'text', text: content }]
+  const contentItems: ThreadMessageLike['content'] = [
+    { type: 'text', text: content },
+  ]
   if (includeArtifact && Array.isArray(contentItems)) {
-    contentItems.push({ type: 'data', name: ARTIFACT_PART, data: {
-      artifactId: `art_${artifact.id}`, artifactRevision: 'rev_1', artifactKind: 'openui',
-      rendererId: 'theorem-openui', contractVersion: 'theorem-artifact-v1', lifecycle: 'ready',
-      patchSequence: 1, fallbackText: artifact.title,
-      payload: { documentId: `doc_${artifact.id}`, revision: { position: 1 }, title: artifact.title,
-        content: artifact.program, language: 'openui', form: 'openui', formVersion: 1,
-        library: { id: LIBRARY_ID, version: artifact.version ?? LIBRARY_VERSION }, program: artifact.program },
-    } } as ThreadMessageLike['content'][number])
+    contentItems.push({
+      type: 'data',
+      name: ARTIFACT_PART,
+      data: {
+        artifactId: `art_${artifact.id}`,
+        artifactRevision: 'rev_1',
+        artifactKind: 'openui',
+        rendererId: 'theorem-openui',
+        contractVersion: 'theorem-artifact-v1',
+        lifecycle: 'ready',
+        patchSequence: 1,
+        fallbackText: artifact.title,
+        payload: {
+          documentId: `doc_${artifact.id}`,
+          revision: { position: 1 },
+          title: artifact.title,
+          content: artifact.program,
+          language: 'openui',
+          form: 'openui',
+          formVersion: 1,
+          library: {
+            id: LIBRARY_ID,
+            version: artifact.version ?? LIBRARY_VERSION,
+          },
+          program: artifact.program,
+        },
+      },
+    } as ThreadMessageLike['content'][number])
   }
   const runtime = useExternalStoreRuntime({
-    messages: [{ id: `design-oracle-${fixtureId}`, role: 'assistant', status: { type: 'complete', reason: 'stop' }, content: contentItems }],
+    messages: [
+      {
+        id: `design-oracle-${fixtureId}`,
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: contentItems,
+      },
+    ],
     isRunning: false,
     onNew: async () => {},
     convertMessage: (message: ThreadMessageLike) => message,
@@ -764,7 +983,9 @@ function DesignOracleContentStory({ fixtureId, content, direction = 'ltr', lang 
     <div data-appearance-fixture={fixtureId} dir={direction} lang={lang}>
       <AssistantRuntimeProvider runtime={runtime}>
         <TheoremPartRenderers />
-        <div className="h-dvh"><Thread autoFocus={false} /></div>
+        <div className="h-dvh">
+          <Thread autoFocus={false} />
+        </div>
       </AssistantRuntimeProvider>
     </div>
   )
@@ -777,18 +998,98 @@ const ORACLE_RTL_CONTENT = [
 ].join('\n\n')
 
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
+  ...PALETTE_MATRIX_REGISTRY,
+  'workbench-default': WorkbenchDefaultStory,
+  'workbench-semantic-overlay': WorkbenchSemanticOverlayStory,
+  'workbench-picker': WorkbenchPickerStory,
+  'workbench-files': WorkbenchFilesStory,
+  'workbench-threads': WorkbenchThreadsStory,
+  'workbench-threads-withheld': WorkbenchThreadsWithheldStory,
+  'workbench-default-arrangement': WorkbenchDefaultArrangementStory,
+  'workbench-delta-parity': WorkbenchDeltaParityStory,
+  'workbench-delta-parity-before': WorkbenchDeltaParityBeforeStory,
+  'workbench-changes-review': WorkbenchChangesReviewStory,
+  'workbench-theo-blocks': WorkbenchTheoBlocksStory,
+  'workbench-theo-composer': WorkbenchTheoComposerStory,
+  'workbench-terminal': WorkbenchTerminalStory,
+  'workbench-terminal-adoption-pending': WorkbenchTerminalAdoptionPendingStory,
+  'workbench-terminal-adoption-unavailable':
+    WorkbenchTerminalAdoptionUnavailableStory,
+  'workbench-terminal-adoption-settled': WorkbenchTerminalAdoptionSettledStory,
+  'workbench-editor': WorkbenchEditorStory,
+  'workbench-editor-conflict': WorkbenchEditorConflictStory,
+  'workbench-changes': WorkbenchChangesStory,
+  'workbench-changes-binary-conflict': WorkbenchChangesBinaryConflictStory,
+  'workbench-branches': WorkbenchBranchesStory,
+  'workbench-search': WorkbenchSearchStory,
+  'workbench-diagnostics': WorkbenchDiagnosticsStory,
+  'workbench-run': WorkbenchRunStory,
+  'workbench-run-list': WorkbenchRunListStory,
+  'workbench-run-list-exits': WorkbenchRunListExitsStory,
+  'workbench-terminal-program-report': WorkbenchTerminalProgramReportStory,
+  'workbench-recovery-reload': WorkbenchRecoveryReloadStory,
+  'workbench-cabinet': WorkbenchCabinetStory,
+  'workbench-cabinet-picker': WorkbenchCabinetPickerStory,
+  'workbench-face': WorkbenchFaceStory,
+  'workbench-face-custom': WorkbenchFaceCustomStory,
+  'workbench-account-switch': WorkbenchAccountSwitchStory,
+  'workbench-device-copy': WorkbenchDeviceCopyStory,
+  'workbench-arrangements': WorkbenchArrangementsStory,
+  'workbench-layouts-page': WorkbenchLayoutsPageStory,
+  'workbench-agent-operations': WorkbenchAgentOperationsStory,
+  'workbench-add-selection': WorkbenchAddSelectionStory,
+  'workbench-follow': WorkbenchFollowStory,
+  'workbench-document-history': WorkbenchDocumentHistoryStory,
+  'workbench-presentation': WorkbenchPresentationStory,
+  'workbench-delegation': WorkbenchDelegationStory,
+  'workbench-delegation-from-chat': WorkbenchDelegationFromChatStory,
+  'workbench-replace': WorkbenchReplaceStory,
+  'workbench-resize': WorkbenchResizeStory,
+  'workbench-keyboard-journey': WorkbenchKeyboardJourneyStory,
+  'workbench-appearance': WorkbenchAppearanceStory,
+  'workbench-markdown-visual': WorkbenchMarkdownVisualStory,
+  'workbench-markdown-source': WorkbenchMarkdownSourceStory,
+  'workbench-markdown-split': WorkbenchMarkdownSplitStory,
+  'workbench-markdown-preview': WorkbenchMarkdownPreviewStory,
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
   'design-oracle-draft': threadStory(undefined, [], COMPOSER_DRAFT, 'F05'),
-  'design-oracle-stream': threadStory('working', activityMessages('working'), undefined, 'F06'),
-  'design-oracle-failure': threadStory('unfinished', activityMessages('unfinished'), undefined, 'F07'),
+  'design-oracle-stream': threadStory(
+    'working',
+    activityMessages('working'),
+    undefined,
+    'F06',
+  ),
+  'design-oracle-failure': threadStory(
+    'unfinished',
+    activityMessages('unfinished'),
+    undefined,
+    'F07',
+  ),
   'design-oracle-continuity': threadStory(undefined, [], COMPOSER_DRAFT, 'F11'),
   'design-oracle-preview': DesignOraclePreviewStory,
-  'design-oracle-content': () => <DesignOracleContentStory fixtureId="F04" content={ORACLE_MARKUP_CONTENT} includeArtifact />,
+  'design-oracle-content': () => (
+    <DesignOracleContentStory
+      fixtureId="F04"
+      content={ORACLE_MARKUP_CONTENT}
+      includeArtifact
+    />
+  ),
   'design-oracle-error': threadStory('unfinished'),
-  'design-oracle-navigation': () => <div data-appearance-fixture="F08"><ShellCompareStory /></div>,
-  'design-oracle-rtl': () => <DesignOracleContentStory fixtureId="F10" content={ORACLE_RTL_CONTENT} direction="rtl" lang="ar" />,
+  'design-oracle-navigation': () => (
+    <div data-appearance-fixture="F08">
+      <ShellCompareStory />
+    </div>
+  ),
+  'design-oracle-rtl': () => (
+    <DesignOracleContentStory
+      fixtureId="F10"
+      content={ORACLE_RTL_CONTENT}
+      direction="rtl"
+      lang="ar"
+    />
+  ),
   'composer-paper': threadStory(),
   'composer-markdown': threadStory(undefined, [], COMPOSER_DRAFT),
   'chat-program': programStory,
@@ -812,20 +1113,30 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'face-visit': FaceVisitStory,
   'face-point': FacePointStory,
   'face-sound': FaceSoundStory,
+  'theo-face-inverse': TheoFaceInverse,
   'organized-sidebar': OrganizedSidebarStory,
   'librarian-footer': LibrarianFooterStory,
   'compare-pane': ComparePaneStory,
   'compare-pane-standalone': () => <ComparePaneStory standalone />,
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
+  'populated-shell': PopulatedShellStory,
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,
+  'notes-workspace': NotesWorkspaceStory,
   'settings-ai': SettingsAiStory,
   'glass-compare': () => (
     <WithRuntime>
       <GlassCompareStory />
     </WithRuntime>
+  ),
+  // Theo's motion constants, tuned against the live face. A development bench,
+  // not a setting: the product's Appearance page does not show it.
+  'face-feel': () => (
+    <div className="mx-auto max-w-2xl p-6">
+      <FaceFeel />
+    </div>
   ),
   'conversation-wide': ConversationWideStory,
   'note-kinds': NoteKindsStory,

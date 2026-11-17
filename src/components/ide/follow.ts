@@ -7,7 +7,6 @@
 // artifact the turn writes opens in its panel. The person moving somewhere
 // themselves pauses Follow until they resume it.
 import { useAuiState } from '@assistant-ui/react'
-import type { ThreadMessage } from '@assistant-ui/react'
 import type { TheoremLocation } from '@theoremharness/sdk'
 import { useNavigate } from '@tanstack/react-router'
 import type { RemoteProxy } from 'penpal'
@@ -15,7 +14,7 @@ import { useEffect } from 'react'
 import { create } from 'zustand'
 import { useArtifactView } from '@/components/artifacts/artifact-view'
 import { useActiveProject } from '@/components/shell/projects'
-import { DELEGATION_PART, readDelegation } from '@/lib/theorem/delegations'
+import { workingRuns } from '@/lib/theorem/working-runs'
 import type {
   DelegationChanges,
   IdeFrameMethods,
@@ -106,30 +105,7 @@ export function useRevealFile() {
   }
 }
 
-/**
- * The runs a working turn's edits come from: its own and those of the
- * delegations it started. They travel joined, so a selected value compares
- * by content; empty while no turn works.
- */
-export function workingRuns(messages: readonly ThreadMessage[]): string {
-  const last = messages.at(-1)
-  const working =
-    last?.status?.type === 'running' ||
-    last?.status?.type === 'requires-action'
-  if (!last || !working) return ''
-  const runId = (last.metadata.custom as { theoremRunId?: unknown })
-    .theoremRunId
-  return [
-    runId,
-    ...last.content.map((part) =>
-      part.type === 'data' && part.name === DELEGATION_PART
-        ? readDelegation(part.data)?.childRunId
-        : undefined,
-    ),
-  ]
-    .filter((id): id is string => typeof id === 'string' && id.length > 0)
-    .join(' ')
-}
+export { workingRuns }
 
 /** The conversation's working runs, as `workingRuns` joins them. */
 export const useChatRuns = () =>

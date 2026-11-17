@@ -1,0 +1,657 @@
+{
+  "story": "workbench-files",
+  "engine": "chromium",
+  "viewport": "1280x640",
+  "method": "Ratzilla cell spans, getComputedStyle color/background-color; contrast is culori wcagContrast. The problem note comes from a rename (F2, type, Enter) the story host refuses; the pending note from a rename whose completion the script holds. contrastOnRowFill uses the background of the same row's name cell (the focus fill when the cursor is on it).",
+  "profiles": {
+    "github-sharp-light": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "github-sharp",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#202733",
+            "rowOwnInk": "#c8d0d8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 5.86,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#8f98a0",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#202733",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 1.14,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "github-sharp",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#202733",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 1,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#8f98a0",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#202733",
+            "rowOwnInk": "#c8d0d8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 5.12,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "github-sharp",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#202733",
+            "rowOwnInk": "#c8d0d8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 5.86,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#8f98a0",
+            "noteBackground": "#202733",
+            "rowOwnBackground": "#202733",
+            "rowOwnInk": "#c8d0d8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 5.12,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    },
+    "github-sharp-dark": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "github-sharp",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#22272e",
+            "rowOwnInk": "#cad0d4",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.87,
+            "contrastOnRowFill": 5.87,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#92989c",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#22272e",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.15,
+            "contrastOnRowFill": 1.14,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "github-sharp",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#22272e",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.87,
+            "contrastOnRowFill": 1,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#92989c",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#22272e",
+            "rowOwnInk": "#cad0d4",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.15,
+            "contrastOnRowFill": 5.15,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "github-sharp",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#22272e",
+            "rowOwnInk": "#cad0d4",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.87,
+            "contrastOnRowFill": 5.87,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#92989c",
+            "noteBackground": "#22272e",
+            "rowOwnBackground": "#22272e",
+            "rowOwnInk": "#cad0d4",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.15,
+            "contrastOnRowFill": 5.15,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    },
+    "stone-light": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "stone",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#292623",
+            "rowOwnInk": "#d1cfcd",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 5.88,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#999695",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#292623",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 1.15,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "stone",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#292623",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 1,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#999695",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#292623",
+            "rowOwnInk": "#d1cfcd",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 5.12,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "stone",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#292623",
+            "rowOwnInk": "#d1cfcd",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 5.88,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#999695",
+            "noteBackground": "#292623",
+            "rowOwnBackground": "#292623",
+            "rowOwnInk": "#d1cfcd",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.12,
+            "contrastOnRowFill": 5.12,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    },
+    "stone-dark": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "stone",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#db868b",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#232220",
+            "rowOwnInk": "#cbc9c8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.9,
+            "contrastOnRowFill": 5.9,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#949291",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#86a39c",
+            "rowOwnInk": "#232220",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 1.14,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "stone",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#db868b",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#86a39c",
+            "rowOwnInk": "#232220",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.9,
+            "contrastOnRowFill": 1.01,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#949291",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#232220",
+            "rowOwnInk": "#cbc9c8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 5.13,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "stone",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#db868b",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#232220",
+            "rowOwnInk": "#cbc9c8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.9,
+            "contrastOnRowFill": 5.9,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#949291",
+            "noteBackground": "#232220",
+            "rowOwnBackground": "#232220",
+            "rowOwnInk": "#cbc9c8",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 5.13,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    },
+    "vitesse-light": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "vitesse",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#242728",
+            "rowOwnInk": "#cdd0d0",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 5.88,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#959898",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#242728",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.17,
+            "contrastOnRowFill": 1.13,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "vitesse",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#8aa8a0",
+            "rowOwnInk": "#242728",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 1,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#959898",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#242728",
+            "rowOwnInk": "#cdd0d0",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.17,
+            "contrastOnRowFill": 5.17,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "vitesse",
+          "dark": false
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e08a8f",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#242728",
+            "rowOwnInk": "#cdd0d0",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.88,
+            "contrastOnRowFill": 5.88,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#959898",
+            "noteBackground": "#242728",
+            "rowOwnBackground": "#242728",
+            "rowOwnInk": "#cdd0d0",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.17,
+            "contrastOnRowFill": 5.17,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    },
+    "vitesse-dark": {
+      "held": 1,
+      "pending-focused": {
+        "cursorOn": "guide.md",
+        "page": {
+          "pal": "vitesse",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e18a8f",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#272726",
+            "rowOwnInk": "#d0d0cf",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 5.86,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#989796",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#8aa9a0",
+            "rowOwnInk": "#272726",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 1.15,
+            "noteOnRowFill": false
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "problem-focused": {
+        "cursorOn": "architecture.md",
+        "page": {
+          "pal": "vitesse",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e18a8f",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#8aa9a0",
+            "rowOwnInk": "#272726",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 1,
+            "noteOnRowFill": false
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#989796",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#272726",
+            "rowOwnInk": "#d0d0cf",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 5.13,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      },
+      "elsewhere": {
+        "cursorOn": "notes.txt",
+        "page": {
+          "pal": "vitesse",
+          "dark": true
+        },
+        "rows": {
+          "problem": {
+            "y": 4,
+            "rowText": "    architecture.md  refused (\u2502                                                                                             \u2502",
+            "noteInk": "#e18a8f",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#272726",
+            "rowOwnInk": "#d0d0cf",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.86,
+            "contrastOnRowFill": 5.86,
+            "noteOnRowFill": true
+          },
+          "pending": {
+            "y": 5,
+            "rowText": "    guide.md  renaming to guid\u2502                                                                                             \u2502 \u203a Shell  starts a process                \u2325\u2318S",
+            "noteInk": "#989796",
+            "noteBackground": "#272726",
+            "rowOwnBackground": "#272726",
+            "rowOwnInk": "#d0d0cf",
+            "noteOpacity": 1,
+            "contrastOnItsOwnBackground": 5.13,
+            "contrastOnRowFill": 5.13,
+            "noteOnRowFill": true
+          }
+        },
+        "yProblem": 4,
+        "yPending": 5
+      }
+    }
+  },
+  "sheets": "docs/plans/evidence/renders/files-focused-note/<profile>.png"
+}

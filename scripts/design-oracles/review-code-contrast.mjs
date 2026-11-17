@@ -166,20 +166,23 @@ try {
       page.on('pageerror', (error) => errors.push(error.message))
       await page.addInitScript(
         ({ mode, preset, palette, custom }) => {
-          localStorage.setItem('theorem-ui-theme', mode)
-          localStorage.setItem(
-            'theorem-ui:appearance',
-            JSON.stringify({
-              version: 1,
-              state: {
-                preset,
-                overrides: {
-                  palette,
-                  ...(custom && { customPalette: custom }),
+          // Init scripts run in every frame, and a sandboxed app frame has no storage.
+          try {
+            localStorage.setItem('theorem-ui-theme', mode)
+            localStorage.setItem(
+              'theorem-ui:appearance',
+              JSON.stringify({
+                version: 1,
+                state: {
+                  preset,
+                  overrides: {
+                    palette,
+                    ...(custom && { customPalette: custom }),
+                  },
                 },
-              },
-            }),
-          )
+              }),
+            )
+          } catch {}
         },
         { mode, preset, palette, custom },
       )
@@ -187,8 +190,8 @@ try {
         const transcript = await measure(
           page,
           'content',
-          '.aui-shiki-base pre.shiki',
-          '.line > span',
+          '.aui-code-block pre.th-code',
+          '.th-line > .th-token',
           '.aui-md-inline-code',
         )
         const editor = await measure(

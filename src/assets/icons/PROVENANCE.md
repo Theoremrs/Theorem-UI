@@ -667,7 +667,9 @@ Streamline plan.
 | Attachment    | An uploaded file: the sidebar's outputs, a message's attachment, Import | `streamline/control/source/streamline-common-file-upload.png`     | Common File Upload                                                                                                            | `4a6466ea74e63671f226aecb0b04c21bcd2c495677362d54071f26259ea59ff2` |
 | AttachFolder  | The composer's attach button                                            | `streamline/control/source/streamline-folder-image-1.png`         | Folder Image 1                                                                                                                | `74d71e79c46fb27cd299b26114b7e0681892ded3d45d3864bc434235aa67a694` |
 | Plan          | The composer's Plan toggle, a plan card, a workspace's plan entry       | `streamline/control/source/streamline-task-list-quill.png`        | Not carried by the file ("plans.png"); a task list with a quill, so the file name describes the shape                         | `02346fd5f38dc7aece311047950d9abfb19fca5bf557cf00c06961510c272960` |
-| WebSearch     | The composer's Web toggle                                               | `streamline/control/source/streamline-network-search.png`         | Network Search                                                                                                                | `58fccf0874e5c6fc45b0735d8e10d4f5727496669f19dd926ec0cbd2d3806968` |
+| WebSearch     | The + menu's Web search                                                 | `streamline/control/source/streamline-app-window.png`             | App Window (owner's "streamline-ultimate-colors--48x48-PNG(13).zip", 2026-11-16); drew Network Search until then              | `bf2af3fedbfe2ef27e2326eefa76bc188a32bd7b2f02fb483e1e412cc0fdaeb5` |
+| Plugins       | The + menu's Plugins (the MCP servers), in place of Connectors          | `streamline/control/source/streamline-toys-lego.png`              | A Lego brick, the owner's 24 x 24 attachment of 2026-11-16, copied byte for byte; the vector trace enlarges it               | `2cb8247877e910dd240423f73421ece4b3e2262f8fff7cf49705df502ba75865` |
+| CodeMode      | The + menu's Code mode                                                  | `streamline/control/source/streamline-file-code.png`              | File Code, the same bytes as SessionCode (the 2026-11-16 zip's copy is identical)                                             | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
 | NewChat       | New thread and new chat, wherever they are offered                      | `streamline/control/source/streamline-pencil-write.png`           | Pencil Write                                                                                                                  | `db2e92915632cfc26b574bc0eea63fa530d0cd211955663cc707aa50ab6d8e3c` |
 | ToolRunning   | A tool call in progress                                                 | `streamline/control/source/streamline-list-edit.png`              | List Edit                                                                                                                     | `1b15161b5a241c1a7da50c572ea7cb28e676adb920f5d4a0c79503aa042bae3f` |
 | ToolDone      | A finished tool call                                                    | `streamline/control/source/streamline-task-list-multiple.png`     | Task List Multiple                                                                                                            | `142f46f61810fa491aa90b40f084f74f059fffa6d8700255b6010eb988de5288` |
@@ -698,6 +700,43 @@ detail the 48px source did not. The rail's layers are still PNG alpha.
 A failed tool call and one waiting on the user keep the Noun close mark; no
 replacement came with these downloads.
 
+## Row and drop-down icons (Streamline Ultimate, colored style)
+
+The Theo workbench draws a folder for every drop-down (closed or open) and a
+file under it, in place of the arrow marks it had. The five folder sources are
+from the owner's downloads of 2026-11-15, "streamline-ultimate-colors--48x48-PNG (1).zip"
+and "streamline-ultimate-colors--48x48-PNG (2).zip". Each was copied byte for
+byte and renamed in lowercase with a `streamline-` prefix, into
+`streamline/control/source/`. The license is whatever covers the owner's
+Streamline plan (Webalys LLC, Streamline 3.0 licence). The icons remain the
+property of Webalys LLC and are used here only in the context of this
+open-source project. The repository holds fewer than 100 distinct Streamline
+icons (81 distinct names at this date).
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FolderEmpty | A closed drop-down; a project with nothing in it | `streamline/control/source/streamline-folder-empty.png` | Folder Empty | `7dac8ce5d43de0d6ea86808c2c313fc5248c67393a2c8d31c14c0a98dee6d43b` |
+| FolderFile | An open drop-down; a group or thread with rows under it | `streamline/control/source/streamline-folder-file-1.png` | Folder File 1 | `7aa32aecba9012671ab5dfbfa3f87efd81607487f169ef942f73bb841517aff7` |
+| FolderEdit | A changed folder in Changes | `streamline/control/source/streamline-folder-edit.png` | Folder Edit | `78e3a52183dbca54f24647fadbf972929fc4e65531ed90109b50283f9c8bbbe5` |
+| FolderCheck | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-check.png` | Folder Check | `03d157b4ef2b08cd06c40787a13ffe94d2c9fe11a3f5ff35758ced7297e4691e` |
+| FolderHome | In the registry, not yet placed on a row | `streamline/control/source/streamline-folder-home-1.png` | Folder Home 1 | `9a4841f9459274c0aeeb20c951c2165316b298d940e870612e8ae240753d09df` |
+
+The file marks under them were already in `streamline/control/source/` since
+2026-11-14 and had no table here. Their hashes, checked on 2026-11-15:
+
+| Registry name | Draws | File | Streamline name | SHA-256 |
+|---|---|---|---|---|
+| FileCode | A code file | `streamline/control/source/streamline-file-code.png` | File Code | `504bc7985dc8207cdbabf266ac008edf3b5470f890d7931c43499d822032ddb8` |
+| ImageFileEdit | An image file | `streamline/control/source/streamline-image-file-edit.png` | Image File Edit | `13a3338053cda92edc847af330d9609b88b200c2b21fd4d6e3b4b820ed0771ac` |
+| FileText | A text file, a thread, a delegation | `streamline/control/source/streamline-common-file-text.png` | Common File Text | `2a1abfc95d2febc1901d970b21d347206bfa795befae941aa90070b0a690d1be` |
+| FileEmpty | Any other file | `streamline/control/source/streamline-common-file-empty.png` | Common File Empty | `137efab4f8e3130b6852103feda8fce5f095df06a35929651d1388e263898821` |
+| FileAdd | An added file; a session not yet in the workspace | `streamline/control/source/streamline-common-file-add.png` | Common File Add | `d59d1dacdf6d35c1df21ed478e139c7ba500cbc88774d84ff14587f024226ff1` |
+| FileEdit | A modified file in Changes | `streamline/control/source/streamline-common-file-edit.png` | Common File Edit | `454ca451830b9e01debe564d77f1aede64f6e745d7dfdee4d991742846de6e9b` |
+
+They are split into layers by `scripts/rail-icons.mjs` and painted by
+`.rail-mark` like the control marks above. The workbench places them from the
+frame (`terminal/crates/workbench-core/src/icons.rs`, laid over the grid by
+`components/workbench/icon-layer.tsx`).
 ## Noun marks replaced by Streamline (2026-11-15)
 
 The owner's downloads of 2026-11-15 ("streamline-ultimate-colors--48x48-PNG1-10" and

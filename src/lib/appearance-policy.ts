@@ -35,10 +35,11 @@ export type Material = (typeof MATERIALS)[number]
 export type SurfaceRole = (typeof SURFACE_ROLES)[number]
 
 export const TEXT_RECIPES = {
+  // Reading text: 17px on a 27px line, the size long answers are read at.
   prose: {
     family: 'text',
-    size: 1,
-    lineHeight: 1.5,
+    size: 17 / 16,
+    lineHeight: 27 / 17,
     weight: 400,
     tracking: 'normal',
     scale: 'content',
@@ -93,27 +94,28 @@ export const TEXT_RECIPES = {
     tracking: 'normal',
     scale: 'code',
   },
+  // Headings sit clearly above 17px prose in size and weight.
   'heading.small': {
     family: 'text',
-    size: 1.125,
-    lineHeight: 24 / 18,
-    weight: 600,
+    size: 19 / 16,
+    lineHeight: 26 / 19,
+    weight: 650,
     tracking: 'normal',
     scale: 'content',
   },
   'heading.medium': {
     family: 'text',
-    size: 1.25,
-    lineHeight: 28 / 20,
-    weight: 600,
+    size: 22 / 16,
+    lineHeight: 30 / 22,
+    weight: 650,
     tracking: 'normal',
     scale: 'content',
   },
   'heading.large': {
     family: 'text',
-    size: 1.5,
-    lineHeight: 32 / 24,
-    weight: 600,
+    size: 26 / 16,
+    lineHeight: 34 / 26,
+    weight: 650,
     tracking: 'normal',
     scale: 'content',
   },
@@ -136,6 +138,7 @@ export const CALM_COLORS = {
     'on-redwood': '#ffffff',
     'redwood-ink': '#286394',
     focus: '#3379b3',
+    'attention-ink': '#7b5100',
   },
   dark: {
     'surface-neutral': '#1c1d1e',
@@ -153,6 +156,7 @@ export const CALM_COLORS = {
     'on-redwood': '#101112',
     'redwood-ink': '#7ebdf7',
     focus: '#7ebdf7',
+    'attention-ink': '#fac781',
   },
 } as const
 
@@ -170,7 +174,8 @@ export const COLOR_ROLES = {
   primary: 'ink',
   secondary: 'ink-muted',
   placeholder: 'ink-muted',
-  code: 'ink',
+  // Inline code reads in the palette's warm amber, apart from prose.
+  code: 'attention-ink',
   link: 'redwood-ink',
   separator: 'line-separator',
   boundary: 'line-control',

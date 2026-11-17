@@ -17,7 +17,6 @@ import {
   primaryProjectId,
   useOrganization,
   useOrganizedViews,
-  usePlacement,
   useThreadEdits,
 } from '@/lib/theorem/organization'
 import { useStartThreadFrom } from '@/lib/theorem/thread-tree'
@@ -27,7 +26,7 @@ import { ThreadMenuItems } from './thread-menu'
 const headerButton =
   'flex min-h-(--appearance-control-min) min-w-(--appearance-control-min) shrink-0 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover'
 
-/** Where the thread sits and what can be done to it; the dock's layout and follow buttons sit at its end. */
+/** Where the thread sits and what can be done to it; the dock's one layout menu sits at its end. */
 export function ThreadHeader({ actions }: { actions?: ReactNode }) {
   // On a project's home there is no open thread: the header names the project.
   const { threadId, projectId: home } = useParams({ strict: false })
@@ -36,7 +35,6 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
   const { data: organization } = useOrganization()
   const views = useOrganizedViews()
   const navigate = useNavigate()
-  const placement = usePlacement()
   const edits = useThreadEdits()
   const startThread = useStartThreadFrom()
   const [renaming, setRenaming] = useState(false)
@@ -48,16 +46,15 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
     home === undefined
       ? undefined
       : organization?.projects.find((p) => p.projectId === home)
-  const pin = thread?.memberships.find((m) => m.projectId === primary)
   const served = organization?.served ?? false
   const shownTitle = homeProject
     ? homeProject.title
     : thread?.title || title || 'New chat'
 
   return (
-    // The line is lighter than the sidebar's: it runs the full width over the
-    // darker page, where the same colour reads harder.
-    <header className="appearance-thread-header flex shrink-0 items-center gap-1 border-b border-separator/60 px-3 text-sm">
+    // No rule under it: the breadcrumb sits in the conversation's own space,
+    // and pinning lives in the "More" menu with everything else done to it.
+    <header className="appearance-thread-header flex shrink-0 items-center gap-1 px-3 text-sm">
       <Breadcrumb aria-label="Thread location" className="min-w-0">
         <BreadcrumbList className="flex-nowrap gap-1.5 text-ink-muted sm:gap-1.5">
           {!homeProject && project && !project.isInbox && (
@@ -107,33 +104,6 @@ export function ThreadHeader({ actions }: { actions?: ReactNode }) {
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      {thread && served && pin && (
-        <button
-          type="button"
-          aria-pressed={pin.pinned}
-          aria-label={
-            pin.pinned
-              ? `Unpin from ${project?.title}`
-              : `Pin to ${project?.title}`
-          }
-          title={pin.pinned ? 'Pinned to this project' : 'Pin to this project'}
-          className={headerButton}
-          onClick={() =>
-            placement.mutate({
-              threadId: thread.threadId,
-              change: pin.pinned
-                ? { unpin: [pin.projectId] }
-                : { pin: [pin.projectId] },
-            })
-          }
-        >
-          {pin.pinned ? (
-            <Icon.Unpin className="size-4" />
-          ) : (
-            <Icon.Pin className="size-4" />
-          )}
-        </button>
-      )}
       {thread && (
         <Menu>
           <MenuTrigger aria-label="More" className={headerButton}>

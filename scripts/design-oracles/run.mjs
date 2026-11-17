@@ -100,16 +100,16 @@ async function sourceEvidence() {
 }
 
 const RECIPE_REFERENCE = {
-  prose: { size: 1, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
+  prose: { size: 17 / 16, lineHeight: 27 / 17, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
   'composer.content': { size: 1, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'content' },
   'ui.label': { size: 0.875, lineHeight: 20 / 14, weight: 400, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.section': { size: 0.875, lineHeight: 20 / 14, weight: 500, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   'ui.group': { size: 0.9375, lineHeight: 20 / 15, weight: 600, family: 'IBM Plex Sans', scale: 'ui' },
   metadata: { size: 0.75, lineHeight: 1.5, weight: 400, family: 'IBM Plex Sans', scale: 'ui', tracking: 0.01 },
   code: { size: 0.8125, lineHeight: 20 / 13, weight: 400, family: 'JetBrains Mono', scale: 'code' },
-  'heading.small': { size: 1.125, lineHeight: 24 / 18, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
-  'heading.medium': { size: 1.25, lineHeight: 28 / 20, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
-  'heading.large': { size: 1.5, lineHeight: 32 / 24, weight: 600, family: 'IBM Plex Sans', scale: 'content' },
+  'heading.small': { size: 19 / 16, lineHeight: 26 / 19, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
+  'heading.medium': { size: 22 / 16, lineHeight: 30 / 22, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
+  'heading.large': { size: 26 / 16, lineHeight: 34 / 26, weight: 650, family: 'IBM Plex Sans', scale: 'content' },
 }
 
 function auditRecipes(recipes, environment) {
@@ -209,8 +209,11 @@ if (!engine) {
     const context = await browser.newContext({ viewport: { width: environment.viewport.width, height: environment.viewport.height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US', colorScheme: modeArg })
     page = await context.newPage()
     await page.addInitScript(({ preset, mode }) => {
-      localStorage.setItem('theorem-ui:appearance', JSON.stringify({ state: { preset, overrides: {} }, version: 1 }))
-      localStorage.setItem('theorem-ui-theme', mode)
+      // Init scripts run in every frame, and a sandboxed app frame has no storage.
+      try {
+        localStorage.setItem('theorem-ui:appearance', JSON.stringify({ state: { preset, overrides: {} }, version: 1 }))
+        localStorage.setItem('theorem-ui-theme', mode)
+      } catch {}
     }, { preset: presetArg, mode: modeArg })
     page.on('pageerror', (error) => { pageErrors.push(String(error).slice(0,300)); limitations.push(`Page error: ${String(error).slice(0, 300)}`) })
     await page.goto(ORIGIN, { waitUntil: 'domcontentloaded', timeout: 60_000 })

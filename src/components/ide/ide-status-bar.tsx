@@ -7,11 +7,12 @@
 import '@vscode/codicons/dist/codicon.css'
 import { Link } from '@tanstack/react-router'
 import { Icon } from '@/components/icons'
-import { useShell } from '@/components/shell/shell-state'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 import { cn } from '@/lib/utils'
 import type { StatusBarItem } from '../../../ide/theia-extensions/theorem-workspace/src/common/ide-bridge'
 import { useFollow } from './follow'
 import { useIdePage } from './ide-page'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ENTRY =
   'flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs whitespace-nowrap text-ink-muted outline-none focus-visible:outline-2 focus-visible:outline-focus'
@@ -66,7 +67,7 @@ function Entry({ item }: { item: StatusBarItem }) {
 
 export function IdeStatusBar() {
   const statusBar = useIdePage((s) => s.statusBar)
-  const terminalOpen = useShell((s) => s.terminalOpen)
+  const { requestedPlacement, toggle } = useWorkbenchPlacement()
   return (
     <footer
       aria-label="Status bar"
@@ -74,10 +75,10 @@ export function IdeStatusBar() {
     >
       <button
         type="button"
-        aria-label="Agent terminal"
-        aria-pressed={terminalOpen}
-        title="Agent terminal (ctrl+`)"
-        onClick={() => useShell.getState().setTerminalOpen(!terminalOpen)}
+        aria-label={WORKBENCH_LABEL}
+        aria-pressed={requestedPlacement === 'bottom'}
+        title={`${WORKBENCH_LABEL} (ctrl+\`)`}
+        onClick={() => toggle('bottom')}
         className={cn(ENTRY, CLICKABLE, 'aria-pressed:text-ink')}
       >
         <Icon.Terminal className="size-4" strokeWidth={1.75} />

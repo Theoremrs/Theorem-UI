@@ -308,7 +308,7 @@ export function organizationFromThreads(
   }
 }
 
-async function readOrganization(): Promise<OrganizationRead> {
+export async function readOrganization(): Promise<OrganizationRead> {
   try {
     const organization = await theoremJson<Organization>(`${BASE}/organization`)
     return { ...organization, served: true, complete: true }
@@ -477,6 +477,19 @@ export function primaryProjectId(thread: ThreadEntry) {
     (a, b) => Number(b.pinned) - Number(a.pinned) || a.atMs - b.atMs,
   )
   return first?.projectId ?? thread.homeProjectId
+}
+
+/**
+ * The project a thread opens under: the one asked for when the thread is
+ * placed there (its row under that project was the one picked), else its
+ * primary one.
+ */
+export function projectToOpenIn(thread: ThreadEntry, asked?: string) {
+  const placed =
+    asked !== undefined &&
+    (thread.homeProjectId === asked ||
+      thread.memberships.some(({ projectId }) => projectId === asked))
+  return placed ? asked : primaryProjectId(thread)
 }
 
 /**

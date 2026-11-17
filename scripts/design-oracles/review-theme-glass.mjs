@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { PNG } from 'pngjs'
 import { launchReviewBrowser, reviewOutput } from './review-browser.mjs'
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides } from './browser-controls.mjs'
 
 const base = process.env.ORACLE_BASE ?? 'http://127.0.0.1:3117'
 await mkdir(reviewOutput, { recursive: true })
@@ -33,7 +33,7 @@ try {
       .loadSelection({ preset: 'expressive', overrides: { palette: 'stone' } })
   })
   // Clearly named controls keep accessible names without hover popups.
-  for (const name of [/Switch to (light|dark) mode/, 'Agent terminal']) {
+  for (const name of [/Switch to (light|dark) mode/, 'Workspace']) {
     const control = page
       .getByRole('button', { name })
       .filter({ visible: true })
@@ -238,14 +238,14 @@ try {
     .click()
   assert.equal(await page.getByRole('menuitemradio').count(), 0)
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click()
-  await page.waitForURL('**/settings/ai')
+  await page.waitForURL('**/settings/appearance')
   await page
     .getByRole('link', { name: 'Appearance', exact: true })
     .filter({ visible: true })
     .first()
     .click()
   await page.waitForURL('**/settings/appearance')
-  await chooseOption(page, page, 'Composer material', 'Frosted glass')
+  await applyOverrides(page, page, { materials: { composer: 'glass' } })
   await page.waitForFunction(
     () => document.documentElement.dataset.materialComposer === 'glass',
   )

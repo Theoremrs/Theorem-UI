@@ -1,4 +1,4 @@
-import { chooseOption } from './browser-controls.mjs'
+import { applyOverrides } from './browser-controls.mjs'
 // Real browser, shell, editor, attachment adapter, Theorem runtime and SDK.
 // Only selected responses of the existing story transport are controlled.
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -31,19 +31,23 @@ const check = (name, passed, observed) => {
 }
 page.on('pageerror', (error) => pageErrors.push(error.message))
 await page.addInitScript(
-  ({ threadId }) =>
-    localStorage.setItem(
-      'theorem-seen-threads',
-      JSON.stringify({
-        version: 1,
-        state: {
-          at: {
-            [threadId]: Date.now() - 24 * 3600_000,
-            'thread-python-sdk': Date.now() - 3600_000,
+  ({ threadId }) => {
+    // Init scripts run in every frame, and a sandboxed app frame has no storage.
+    try {
+      localStorage.setItem(
+        'theorem-seen-threads',
+        JSON.stringify({
+          version: 1,
+          state: {
+            at: {
+              [threadId]: Date.now() - 24 * 3600_000,
+              'thread-python-sdk': Date.now() - 3600_000,
+            },
           },
-        },
-      }),
-    ),
+        }),
+      )
+    } catch {}
+  },
   { threadId },
 )
 
@@ -359,7 +363,8 @@ try {
     'F08 long translated running row retains name and disclosure without widening its panel',
     row.name.includes(translatedTitle) &&
       row.name.includes('running') &&
-      row.title.split('\n')[0] === translatedTitle &&
+      // The full name lives in the accessible name; rows carry no hover tooltip.
+      row.title === '' &&
       row.scrollWidth <= row.clientWidth + 1,
     row,
   )
@@ -397,12 +402,21 @@ try {
   const before = await assertDomIdentity()
   const dialog = page.getByRole('dialog', { name: 'Appearance settings' })
   await control('Appearance').click()
-  await chooseOption(page, dialog, 'Composer material', 'Frosted glass')
-  await dialog
-    .getByRole('button', { name: 'Tools above editor', exact: true })
-    .click()
+  await applyOverrides(page, dialog, {
+    materials: { composer: 'glass' },
+    layout: 'sidecar',
+  })
   await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  // The dialog returns focus to its trigger as it closes; refocus after that.
+  await dialog.waitFor({ state: 'hidden' })
   await input.focus()
+  // ProseMirror puts its selection back on a short timer after focus. Give it
+  // that time; a selection the change really lost still fails below.
+  await page
+    .waitForFunction(() => Boolean(window.getSelection()?.toString()), null, {
+      timeout: 2000,
+    })
+    .catch(() => {})
   const after = await assertDomIdentity()
   const sameTile = await tile.evaluate(
     (element) => element === window.__appearanceAttachment,
@@ -566,25 +580,28 @@ try {
   )
 
   await page.addInitScript(
-    (codeFamily) =>
-      localStorage.setItem(
-        'theorem-ui:appearance',
-        JSON.stringify({
-          version: 1,
-          state: {
-            preset: 'calm',
-            overrides: {
-              scales: { code: 1.5 },
-              font: {
-                textFamily: 'IBM Plex Sans Variable',
-                codeFamily,
-                comfortableMeasure: 35.75,
-                wideMeasure: 44.75,
+    (codeFamily) => {
+      try {
+        localStorage.setItem(
+          'theorem-ui:appearance',
+          JSON.stringify({
+            version: 1,
+            state: {
+              preset: 'calm',
+              overrides: {
+                scales: { code: 1.5 },
+                font: {
+                  textFamily: 'IBM Plex Sans Variable',
+                  codeFamily,
+                  comfortableMeasure: 35.75,
+                  wideMeasure: 44.75,
+                },
               },
             },
-          },
-        }),
-      ),
+          }),
+        )
+      } catch {}
+    },
     codeFamily,
   )
   await page.goto(`${origin}/story/design-oracle-draft`)

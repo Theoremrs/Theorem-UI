@@ -16,22 +16,18 @@ import {
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
-import { ComposerConnections } from '@/components/chat/composer-connections'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import { ComposerMentionTrigger } from '@/components/chat/composer-mentions'
 import {
   ComposerReferences,
   useComposerReferences,
 } from '@/components/chat/composer-references'
+import { ComposerPlus } from '@/components/chat/composer-plus'
 import {
   COMPOSER_TOOLTIP_DELAY,
-  ComposerPlanToggle,
   ComposerToolTrigger,
-  ComposerWebToggle,
 } from '@/components/chat/composer-tools'
-import { EffortPicker } from '@/components/chat/effort-picker'
 import { ModelPicker } from '@/components/chat/model-picker'
-import { ResponseControl } from '@/components/chat/response-control'
 import {
   RunInputStatus,
   useBusyComposerInput,
@@ -184,7 +180,7 @@ export const Composer: FC<{
           >
             <ComposerEditor
               label="Message input"
-              placeholder="Message Theorem, / for tools"
+              placeholder="Write a message…"
               className="aui-composer-input w-full"
               autoFocus={autoFocus}
               onFocus={() => attendKit(true)}
@@ -242,17 +238,12 @@ export const ComposerContext: FC<{ review: ComposerReview | undefined }> = ({
 export const ComposerTools: FC = () => (
   <>
     <ComposerAddAttachment />
-    <ComposerWebToggle />
-    <ComposerPlanToggle />
-    <ComposerConnections />
+    <ComposerPlus />
   </>
 )
 
 export const ComposerSettings: FC = () => (
   <>
-    <ModelPicker />
-    <EffortPicker />
-    <ResponseControl />
     <AuiIf condition={(s) => s.thread.capabilities.dictation}>
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate
@@ -291,6 +282,7 @@ export const ComposerSettings: FC = () => (
         </ComposerPrimitive.StopDictation>
       </AuiIf>
     </AuiIf>
+    <ModelPicker />
   </>
 )
 
@@ -342,10 +334,11 @@ export const ComposerPrimaryActions: FC<{
             disabled={sendDisabled}
             variant="default"
             size="icon"
-            className="aui-composer-send bg-redwood text-on-redwood hover:bg-redwood-hover active:bg-redwood-pressed disabled:opacity-40"
+            // No tile: the plane itself carries the accent, under an ink outline.
+            className="aui-composer-send text-ink hover:bg-hover active:bg-selected bg-transparent disabled:opacity-40"
             data-appearance-part="composer-primary-action"
             data-appearance-radius-role="control"
-            {...appearancePair('on-accent', 'accent')}
+            {...appearancePair('primary', 'composer')}
             aria-label={
               review
                 ? 'Send feedback'
@@ -370,10 +363,11 @@ export const ComposerPrimaryActions: FC<{
                 type="button"
                 variant="default"
                 size="icon"
-                className="aui-composer-resume bg-redwood text-on-redwood hover:bg-redwood-hover active:bg-redwood-pressed size-9 rounded-lg disabled:opacity-40 p-2"
+                // No tile, as Send: the arrows carry the accent under an ink outline.
+                className="aui-composer-resume text-ink hover:bg-hover active:bg-selected bg-transparent disabled:opacity-40"
                 data-appearance-part="composer-primary-action"
                 data-appearance-radius-role="control"
-                {...appearancePair('on-accent', 'accent')}
+                {...appearancePair('primary', 'composer')}
                 aria-label="Resume generating"
               />
             }

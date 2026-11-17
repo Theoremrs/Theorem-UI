@@ -160,7 +160,7 @@
   --error-container: #d4b9bb;
   --focus: #184d60;
   --attention: #9c6900;
-  --attention-ink: #624000;
+  --attention-ink: #4d3200;
   --graph-plan: #007e74;
   --graph-agent: #6e629f;
   --graph-tag: #55793f;
@@ -499,6 +499,7 @@
   --surface-selected: var(--custom-light-surface-selected);
   --ink: var(--custom-light-ink);
   --ink-muted: var(--custom-light-ink-muted);
+  --attention-ink: var(--custom-light-attention-ink);
   --redwood-ink: var(--custom-light-redwood-ink);
   --line-separator: var(--custom-light-line-separator);
   --line-control: var(--custom-light-line-control);
@@ -527,6 +528,7 @@
   --surface-selected: var(--custom-dark-surface-selected);
   --ink: var(--custom-dark-ink);
   --ink-muted: var(--custom-dark-ink-muted);
+  --attention-ink: var(--custom-dark-attention-ink);
   --redwood-ink: var(--custom-dark-redwood-ink);
   --line-separator: var(--custom-dark-line-separator);
   --line-control: var(--custom-dark-line-control);

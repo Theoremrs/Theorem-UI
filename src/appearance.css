@@ -7,18 +7,18 @@
   --appearance-scale-ui: 1;
   --appearance-scale-code: 1;
   --appearance-prose-line-height: calc(
-    1.5rem * var(--appearance-scale-content)
+    1.6875rem * var(--appearance-scale-content)
   );
-  --recipe-prose: 400 1rem / 1.5 var(--font-sans);
+  --recipe-prose: 400 1.0625rem / 1.5882352941 var(--font-sans);
   --recipe-composer-content: var(--recipe-prose);
   --recipe-ui-label: 400 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-section: 500 0.875rem / 1.4285714286 var(--font-sans);
   --recipe-ui-group: 600 0.9375rem / 1.3333333333 var(--font-sans);
   --recipe-metadata: 400 0.75rem / 1.5 var(--font-sans);
   --recipe-code: 400 0.8125rem / 1.5384615385 var(--font-mono);
-  --recipe-heading-small: 600 1.125rem / 1.3333333333 var(--font-sans);
-  --recipe-heading-medium: 600 1.25rem / 1.4 var(--font-sans);
-  --recipe-heading-large: 600 1.5rem / 1.3333333333 var(--font-sans);
+  --recipe-heading-small: 650 1.1875rem / 1.3684210526 var(--font-sans);
+  --recipe-heading-medium: 650 1.375rem / 1.3636363636 var(--font-sans);
+  --recipe-heading-large: 650 1.625rem / 1.3076923077 var(--font-sans);
   --appearance-gap-within: 0.25rem;
   --appearance-gap-related: 0.5rem;
   --appearance-gap-group: 1rem;
@@ -29,9 +29,11 @@
   --appearance-editor-toolbar-gap: 0.5rem;
   --appearance-radius-control: 0.375rem;
   --appearance-radius-field: 0.5rem;
-  --appearance-radius-message: 0.75rem;
-  --appearance-radius-artifact: 0.75rem;
-  --appearance-radius-composer: 0.75rem;
+  /* Messages, artifacts, code blocks and the composer share one wider corner
+     (15px, owner's choice 2026-11-17). */
+  --appearance-radius-message: 0.9375rem;
+  --appearance-radius-artifact: 0.9375rem;
+  --appearance-radius-composer: 0.9375rem;
   --appearance-border: 1px;
   --appearance-expanded-measure: 67.5rem;
   --appearance-page-padding: 1rem;
@@ -168,7 +170,7 @@
    reading planes; forced colors below still wins. */
 :where(
     :root:not([data-palette='custom'])
-      [data-surface-role='composer']:is(
+      :is([data-surface-role='composer'], [data-surface-role='navigation']):is(
         [data-material='glass'],
         [data-material='liquid']
       )
@@ -373,20 +375,6 @@
   margin-inline-start: auto;
   flex: 0 0 auto;
 }
-/* A narrow composer (project home, a split pane) keeps one toolbar row: the
-   Web and Plan chips drop to their marks (each keeps its aria-label and
-   tooltip) and the model name drops "(default)", instead of the row breaking
-   into two with the name cut off. The box is measured, not the toolbar,
-   because the sidecar layout lays the toolbar out with display: contents. */
-.appearance-composer-box {
-  container: composer-toolbar / inline-size;
-}
-@container composer-toolbar (inline-size < 34rem) {
-  .composer-chip-label,
-  .model-picker-default {
-    display: none;
-  }
-}
 .appearance-composer-toolbar :is(button, [role='button']) {
   font: var(--recipe-ui-label);
   letter-spacing: 0.01em;
@@ -443,7 +431,9 @@
 }
 .theorem-composer.theorem-note .milkdown .ProseMirror {
   color: var(--ink);
-  min-block-size: 0;
+  /* Two lines of room before anything is written, so the empty composer
+     stands about 110px with its action row and invites a longer message. */
+  min-block-size: 3em;
   max-block-size: min(24rem, 40dvh);
   padding: 0;
   overflow-wrap: anywhere;
@@ -469,6 +459,7 @@
   letter-spacing: normal;
 }
 .aui-edit-composer-input.theorem-composer.theorem-note .milkdown .ProseMirror {
+  min-block-size: 0;
   max-block-size: none;
   padding: 0.5rem 1rem;
 }
@@ -496,39 +487,130 @@
 .aui-md :is(.aui-md-li, .aui-md-table) {
   line-height: inherit;
 }
-.aui-shiki-base :is(pre, code),
+
+/* Reading ink: the answer reads a step stronger than the chrome around it,
+   and headings stronger still. Mixed toward the mode's extreme so every
+   palette only gains contrast. */
+.appearance-assistant-prose .aui-md {
+  --appearance-reading-ink: color-mix(
+    in oklab,
+    var(--ink) 78%,
+    light-dark(#000, #fff)
+  );
+  --appearance-section-gap: calc(1.75 * var(--appearance-prose-line-height));
+  color: var(--appearance-reading-ink);
+}
+.appearance-assistant-prose .aui-md :is(h1, h2, h3, h4, h5, h6) {
+  color: color-mix(in oklab, var(--ink) 55%, light-dark(#000, #fff));
+}
+.appearance-assistant-prose .aui-md .aui-md-strong {
+  color: color-mix(in oklab, var(--ink) 60%, light-dark(#000, #fff));
+}
+
+/* Inline code: medium-weight mono at the prose's size in the palette's warm
+   ink on a faint tint of it, with no border. */
+.aui-md-inline-code {
+  font-family: var(--appearance-font-mono, var(--font-mono));
+  font-size: 0.875em;
+  font-weight: 500;
+  letter-spacing: normal;
+  color: var(--attention-ink);
+  background: color-mix(in oklab, var(--attention-ink) 9%, transparent);
+  border-radius: 0.3em;
+  padding: 0.08em 0.32em;
+  overflow-wrap: anywhere;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+/* A long string in backticks becomes a contained diagnostic block. */
+.aui-md-diagnostic {
+  display: block;
+  margin-block: calc(0.5 * var(--appearance-prose-line-height));
+  padding: 0.625rem 0.875rem;
+  color: var(--ink);
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-inline-start: 2px solid var(--line-control);
+  border-radius: var(--appearance-radius-field);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Tables: inside the column on an opaque quiet surface, padded, with a clear
+   header, scrolling sideways in their own container. */
+.aui-md > .aui-md-table-wrapper {
+  margin-block: var(--appearance-paragraph-gap);
+  background: var(--popover);
+  border: var(--appearance-border) solid var(--line-separator);
+  border-radius: var(--appearance-radius-artifact);
+  overflow: hidden;
+  font-size: 0.9375em;
+}
+.aui-md-table-wrapper [data-slot='table-container'] {
+  scrollbar-width: thin;
+}
+.aui-md-table .aui-md-thead {
+  background: color-mix(in oklab, var(--ink) 4%, var(--popover));
+}
+.aui-md-table .aui-md-thead .aui-md-tr {
+  border-block-end: var(--appearance-border) solid var(--line-control);
+}
+.aui-md-table .aui-md-tr {
+  border-block-end: var(--appearance-border) solid var(--line-separator);
+}
+.aui-md-table .aui-md-tbody .aui-md-tr:last-child {
+  border-block-end: 0;
+}
+
+.aui-code-block :is(pre, code),
 .aui-user-markdown :is(pre, code) {
   font: var(--recipe-code);
   letter-spacing: normal;
 }
 
-.aui-shiki-base pre {
-  color: var(--ink) !important;
-}
-.aui-shiki-base :is(pre, pre *)::selection {
+.aui-code-block :is(pre, pre *)::selection {
   color: var(--ink);
   background-color: var(--surface-selected);
 }
-.aui-shiki-base .rs-highlighted-line {
+/* The line-number column, as the owner's CodeBlock draws it: right-aligned
+   in at least two characters, a 1.5rem gutter, in the faint ink. */
+.aui-code-block pre.th-code--line-numbers .th-line::before {
+  min-inline-size: 2ch;
+  inline-size: auto;
+  padding-inline-end: 1.5rem;
+  color: var(--ink-faint);
+}
+.aui-code-block .th-line.highlighted {
   box-shadow: inset 2px 0 var(--line-control);
-  background-color: transparent;
+}
+/* The glass block's body, as the framecn source sets it: a narrow number
+   column and a little air between lines. */
+.aui-code-block[data-code-surface='glass'] .th-line {
+  padding-block: 2px;
+}
+.aui-code-block[data-code-surface='glass'] pre.th-code--line-numbers .th-line::before {
+  padding-inline-end: 1rem;
+}
+/* A block that wraps its lines lets each line wrap inside the pre. */
+.aui-code-block.aui-code-wrap .th-line {
+  inline-size: auto;
+  min-inline-size: 0;
+  display: block;
 }
 
-/* Wider content has a named capacity and its own horizontal scroll region. */
+/* Code stays inside the prose column, as tables do, and scrolls sideways in
+   its own region. */
 .appearance-assistant-prose
   .aui-md
   > :is(
-    .aui-md-table-wrapper,
-    .aui-shiki-base,
+    .aui-code-block,
+    .aui-glass-code,
     .aui-md-pre,
     .aui-code-header-root
   ) {
-  --appearance-expanded-width: min(
-    var(--appearance-expanded-measure),
-    100cqi - 2rem
-  );
-  inline-size: max(100%, var(--appearance-expanded-width));
-  margin-inline-start: min(0px, (100% - var(--appearance-expanded-width)) / 2);
+  inline-size: 100%;
+  max-inline-size: 100%;
 }
 
 [data-appearance-part='popover'],
@@ -653,6 +735,8 @@
 
 /* Non-composer roles have opaque paint. Texture, frost and liquid accents
    affect their perimeter without putting text over a changing backdrop. The
+   menus that open off the composer are the composer's glass instead
+   (glass/menu-glass, styles.css glass-menu). The
    side panel is the exception: as glass it is the sheet frosted over the Life
    field (styles.css glass-panel draws its veil), unless a custom palette asks
    for its validated solid fill. */
@@ -663,7 +747,7 @@
   ),
 :root[data-palette='custom']
   .appearance-surface[data-surface-role='navigation'],
-[data-appearance-part='popover'],
+[data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
 [data-appearance-part='tooltip'],
 [data-appearance-part='artifact'],
 [data-surface-role='status'] {
@@ -678,7 +762,10 @@
 }
 .appearance-surface[data-surface-role='navigation'][data-material='paper'],
 :root[data-material-popover='paper']
-  :is([data-appearance-part='popover'], [data-appearance-part='tooltip']),
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
 :root[data-material-artifact='paper'] [data-appearance-part='artifact'],
 :root[data-material-status='paper'] [data-surface-role='status'] {
   --appearance-rim:
@@ -690,7 +777,10 @@
     [data-surface-role='user-message']
   )[data-material='glass'],
 :root[data-material-popover='glass']
-  :is([data-appearance-part='popover'], [data-appearance-part='tooltip']),
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
 :root[data-material-artifact='glass'] [data-appearance-part='artifact'],
 :root[data-material-status='glass'] [data-surface-role='status'] {
   --appearance-rim:
@@ -703,7 +793,10 @@
     [data-surface-role='user-message']
   )[data-material='liquid'],
 :root[data-material-popover='liquid']
-  :is([data-appearance-part='popover'], [data-appearance-part='tooltip']),
+  :is(
+    [data-appearance-part='popover']:not(.glass-menu, .glass-menu *),
+    [data-appearance-part='tooltip']
+  ),
 :root[data-material-artifact='liquid'] [data-appearance-part='artifact'],
 :root[data-material-status='liquid'] [data-surface-role='status'] {
   --appearance-rim: inset 0 0 2px 1px var(--glass-rim), var(--liquid-elevation);
@@ -719,6 +812,56 @@
 .rail-junction[data-joins='navigation'] > * {
   background-color: var(--surface-sidebar);
   background-image: none;
+}
+/* Under glass the panel is the composer's glass (styles.css): its tone laid
+   over the sheet's field at the pane's body, of which the screen shows all
+   but --lg-show, the rest being the field itself through the thinned body.
+   Where the field is empty that lands on the tone at body x (1 - show) over
+   the sheet, so the tab lays exactly that and the two meet as one colour. */
+:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+  .rail-junction[data-joins='navigation']
+  > * {
+  --junction-veil: color-mix(
+    in srgb,
+    var(--composer-glass-tone)
+      calc(var(--lg-body) * (1 - var(--lg-show)) * 100%),
+    transparent
+  );
+  background-color: transparent;
+  background-image:
+    linear-gradient(var(--junction-veil), var(--junction-veil)),
+    var(--sheet-field);
+}
+/* Under glass the renderer draws the tab (rail.tsx) as a pane of that glass
+   that runs on into the panel through its concave corners, so the panel's
+   glass alone shows the selection. Its live box grows by the corners to make
+   room for them, and the CSS corners and the veil go. It sits over the rail,
+   so it draws what its thinned body would show (--lg-backdrop) instead of a
+   blur of the rail. Until it draws, the veil above stands in. */
+:root:is([data-material-navigation='glass'], [data-material-navigation='liquid'])
+  .rail-junction[data-joins='navigation'] {
+  & > .rail-junction-tab {
+    isolation: isolate;
+    --lg-backdrop: none;
+    --lg-fillet: var(--junction-corner);
+  }
+
+  & > .rail-junction-tab[data-liquid='live'] {
+    top: calc(var(--rail-y) - var(--junction-corner));
+    height: calc(var(--junction-item) + 2 * var(--junction-corner));
+    background: none;
+  }
+
+  &[data-flush] > .rail-junction-tab[data-liquid='live'] {
+    top: calc(var(--rail-y) - var(--junction-lead, 0px));
+    height: calc(
+      var(--junction-item) + var(--junction-lead, 0px) + var(--junction-corner)
+    );
+  }
+
+  &:has(> .rail-junction-tab[data-liquid='live']) > .rail-junction-corner {
+    display: none;
+  }
 }
 :root[data-material-canvas='flat'] .rail-junction[data-joins='sheet'] > * {
   background-color: var(--surface-neutral);
@@ -745,6 +888,23 @@
 .aui-composer-send-icon .icon-mask {
   background-color: currentColor;
 }
+/* Send has no tile: the plane is filled with the accent the tile used to be,
+   under the ink outline, so it reads in light and dark alike. Masks only:
+   without them (Servo) styles.css shows the outline alone. */
+@supports (mask-image: none) {
+  .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-send:is(:hover, :focus-visible)
+    .aui-composer-send-icon
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-send:active .aui-composer-send-icon > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
+  }
+}
 /* The stop mark on a filled action (Cancel, Stop generating) and the
    microphone-off of a running dictation are drawn in their button's own
    colour: the ring and the square on the destructive fill, and the mark in
@@ -768,6 +928,22 @@
     > [data-layer='line'],
   .aui-composer-cancel-icon.rail-mark > [data-layer='tint'] {
     background-color: currentColor;
+  }
+  /* Resume has no tile either: its arrows take the accent, like Send. Refresh
+     is a soft mark, so its arrows are drawn as the paper layer. */
+  .aui-composer-resume-icon.rail-mark > [data-layer='paper'] {
+    background-color: var(--redwood);
+    transition: background-color 150ms;
+  }
+  .aui-composer-resume:is(:hover, :focus-visible)
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-hover);
+  }
+  .aui-composer-resume:active
+    .aui-composer-resume-icon.rail-mark
+    > [data-layer='paper'] {
+    background-color: var(--redwood-pressed);
   }
 }
 /* Keep paired action paints synchronized, including inherited SVG colors. */
@@ -808,8 +984,9 @@
 .appearance-composer-toolbar
   .appearance-composer-tools
   :is(button, [role='button'])[aria-pressed='true'] {
+  /* A mode that is on (Web, Code) is its coloured mark alone, with no box
+     behind it (owner, 2026-11-17). */
   color: var(--link);
-  background: var(--surface-selected);
 }
 .appearance-composer-toolbar :is(button, [role='button']) {
   white-space: normal;

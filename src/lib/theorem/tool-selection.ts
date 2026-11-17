@@ -1,12 +1,14 @@
-// SOURCING: zustand and its persist middleware (the per-thread choice kept across visits, as lib/life/store keeps its controls); the selection rules themselves are pure logic over the roster GET /api/connections/v1/tools answers, so no upstream component applies
+// SOURCING: zustand and its persist middleware (the per-thread choice kept across visits, as lib/life/store keeps its controls); the selection rules themselves are pure logic over the roster GET /api/connections/v1/tools answers, so no upstream component applies. The default a project sets is its context's `connections` (Theorem docs/plans/project-context/CONTRACT.md, What a session gets), which Theorem applies to a turn that sends no selection.
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 /**
  * Which connections' tools one conversation may use, as the contract's
- * `toolSelection` turn field carries it. No selection at all is the default:
- * every enabled connection, with nothing sent. `tools`, when present, names
- * `connectionId/toolName` ids and narrows the selected connections to those.
+ * `toolSelection` turn field carries it. No selection at all is the default,
+ * with nothing sent: every enabled connection, or the connections the
+ * conversation's project names (Theorem applies a project's choice to a turn
+ * that carries none). `tools`, when present, names `connectionId/toolName` ids
+ * and narrows the selected connections to those.
  */
 export type ToolSelection = { connections: string[]; tools?: string[] }
 
@@ -58,22 +60,29 @@ export function toolsOn(
 
 /**
  * Builds the selection that leaves exactly these connections and tools on, or
- * undefined when that is the default, so a person who changes their mind back
- * sends nothing again.
+ * undefined when that is the default (`base`, the project's choice, or every
+ * enabled connection without one), so a person who changes their mind back
+ * sends nothing again. Anything else is sent, even every enabled connection
+ * under a project that names fewer.
  */
 function build(
   roster: readonly RosterGroup[],
   connections: ReadonlySet<string>,
   tools: ReadonlySet<string>,
+  base: ToolSelection | undefined,
+  defaultKnown = true,
 ): ToolSelection | undefined {
   const listed = roster.filter((group) => connections.has(group.connectionId))
   const everyTool = listed.every((group) =>
     group.tools.every((tool) => tools.has(toolId(group.connectionId, tool.name))),
   )
+  const byDefault = connectionsOn(roster, base)
   const isDefault =
+    defaultKnown &&
     everyTool &&
     listed.length === connections.size &&
-    listed.length === roster.filter((group) => group.enabled).length
+    listed.length === byDefault.size &&
+    listed.every((group) => byDefault.has(group.connectionId))
   if (isDefault) return undefined
   return {
     connections: listed.map((group) => group.connectionId),
@@ -89,17 +98,22 @@ function build(
   }
 }
 
-/** The selection after the person turns a connection or one of its tools on or off. */
+/**
+ * The selection after the person turns a connection or one of its tools on or
+ * off, starting from what is on now: their own choice, or the default.
+ */
 export function changeSelection(
   roster: readonly RosterGroup[],
   selection: ToolSelection | undefined,
   change: SelectionChange,
+  base?: ToolSelection,
 ): ToolSelection | undefined {
-  const connections = connectionsOn(roster, selection)
-  const tools = toolsOn(roster, selection)
+  const connections = connectionsOn(roster, selection ?? base)
+  const tools = toolsOn(roster, selection ?? base)
   if ('connection' in change) {
     const group = roster.find((entry) => entry.connectionId === change.connection)
-    if (!group || (change.on && !group.enabled)) return build(roster, connections, tools)
+    if (!group || (change.on && !group.enabled))
+      return build(roster, connections, tools, base)
     for (const tool of group.tools) {
       const id = toolId(group.connectionId, tool.name)
       if (change.on) tools.add(id)
@@ -109,15 +123,39 @@ export function changeSelection(
     else connections.delete(group.connectionId)
   } else if (change.on) tools.add(change.tool)
   else tools.delete(change.tool)
-  return build(roster, connections, tools)
+  return build(roster, connections, tools, base)
 }
 
-/** A stored selection rewritten against the roster as it is now: ids that are gone drop out. */
+/**
+ * A stored selection rewritten against the roster as it is now: ids that are
+ * gone drop out, and a choice that matches the default is no choice.
+ *
+ * While the default is not known yet (`defaultKnown` false: the project's
+ * choice is still on its way) a choice stays a choice. Otherwise one that
+ * names every enabled connection would be dropped as the default, and the
+ * conversation would follow a narrower project choice once it arrived.
+ */
 export const reconcile = (
   roster: readonly RosterGroup[],
   selection: ToolSelection | undefined,
+  base?: ToolSelection,
+  defaultKnown = true,
 ) =>
-  build(roster, connectionsOn(roster, selection), toolsOn(roster, selection))
+  !defaultKnown && !selection
+    ? undefined
+    : build(
+        roster,
+        connectionsOn(roster, selection ?? base),
+        toolsOn(roster, selection ?? base),
+        base,
+        defaultKnown,
+      )
+
+/** A project's connections as the selection its conversations start from; null names none, so every enabled one. */
+export const projectBase = (
+  connections: readonly string[] | null | undefined,
+): ToolSelection | undefined =>
+  connections ? { connections: [...connections] } : undefined
 
 /** The turn field for a selection: nothing at all for the default. */
 export const toolSelectionTurnOptions = (

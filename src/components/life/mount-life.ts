@@ -16,6 +16,8 @@ import {
 } from '@/lib/life/life'
 import type { Field } from '@/lib/life/life'
 import { emit, fill } from '@/lib/life/emitter'
+import { TEXT_QUIET, occlusionMask } from '@/lib/life/occlusion'
+import type { ClientBox } from '@/lib/life/occlusion'
 import { RESTING, beat, decay, glow, pace, pulse, restSeconds, sustain } from '@/lib/life/energy'
 import type { Energy, PulseKind } from '@/lib/life/energy'
 import { createLight, settle, shine } from '@/lib/life/light'
@@ -106,6 +108,8 @@ export interface LifeGame {
   sustain: (running: boolean) => void
   resize: (width: number, height: number) => void
   repaint: () => void
+  /** The lines of text over the field now; the glyphs under them go quiet. */
+  occlude: (boxes: readonly ClientBox[]) => void
   destroy: () => void
 }
 
@@ -151,6 +155,10 @@ export function mountLife(
   let hovered: Point | undefined
   let lastActivity = -Infinity
   let energy: Energy = RESTING
+  let boxes: readonly ClientBox[] = []
+  /** Each cell's share under text, rebuilt when the text moves or the grid changes. */
+  let quiet: Float32Array | undefined
+  let quietFor = ''
 
   const cols = () => t.grid?.cols ?? 0
   const rows = () => t.grid?.rows ?? 0
@@ -237,6 +245,38 @@ export function mountLife(
     })
   }
 
+  /**
+   * The text's boxes in field cells, fractional where a box cuts a cell.
+   * projectClientToGrid would snap each corner to a whole cell (and give up on
+   * one past the grid's edge), so the box is projected the way it projects a
+   * point, without the rounding: device pixels from the grid's offset, over
+   * the cell size. Grid column c is field cell c - floor((cols - 1) / 2) +
+   * left(), as toCell reads a pointer; rows line up with the field.
+   */
+  const quietCells = () => {
+    const key = `${field.cols}x${field.rows}`
+    if (quiet && quietFor === key) return quiet
+    const grid = t.grid
+    if (!grid) return (quiet = new Float32Array(field.cols * field.rows))
+    const bounds = t.canvas.getBoundingClientRect()
+    const scaleX = t.canvas.width / bounds.width
+    const scaleY = t.canvas.height / bounds.height
+    const shift = left() - Math.floor((grid.cols - 1) / 2)
+    const col = (x: number) =>
+      ((x - bounds.left) * scaleX - grid.offsetX) / grid.cellWidth + shift
+    const row = (y: number) =>
+      ((y - bounds.top) * scaleY - grid.offsetY) / grid.cellHeight
+    const rects = boxes.map((box) => ({
+      x0: col(box.left),
+      y0: row(box.top),
+      x1: col(box.right),
+      y1: row(box.bottom),
+    }))
+    quiet = occlusionMask(rects, field.cols, field.rows, 1)
+    quietFor = key
+    return quiet
+  }
+
   /** Cells stay clear, so the sheet behind the canvas shows between glyphs. */
   const drawGlyph = (x: number, y: number, glyph: string, color: Rgb) => {
     t.push()
@@ -308,6 +348,7 @@ export function mountLife(
     t.background(...palette.background, 0)
     const { at } = presence
     const faint = FIELD_WEIGHT * glow(energy.level)
+    const hush = quietCells()
     const ms = seconds * 1000
     for (let y = 0; y < field.rows; y++)
       for (let x = 0; x < field.cols; x++) {
@@ -319,7 +360,8 @@ export function mountLife(
         const near = playsAlong
           ? Math.max(0, 1 - Math.hypot((x - at.x) / 2, y - at.y) / ATTENTION_RADIUS)
           : 0
-        drawGlyph(x, y, glyph, shade(i, faint * (0.75 + 0.5 * near)))
+        const under = 1 - TEXT_QUIET * (hush[i] ?? 0)
+        drawGlyph(x, y, glyph, shade(i, faint * (0.75 + 0.5 * near) * under))
       }
   })
 
@@ -420,6 +462,10 @@ export function mountLife(
     },
     repaint() {
       palette = readPalette(canvas)
+    },
+    occlude(next) {
+      boxes = next
+      quiet = undefined
     },
     destroy() {
       t.destroy()

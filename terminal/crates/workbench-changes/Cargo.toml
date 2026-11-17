@@ -1,0 +1,33 @@
+[package]
+name = "theorem-workbench-changes"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "The Changes (source control) model and view for the Theo Web terminal workbench, translated from the ELY Git panel"
+
+[dependencies]
+# The text and caret a text-edit node publishes (escaped, UTF-16 offsets, bounded).
+theorem-workbench-panels = { path = "../workbench-panels" }
+theorem-workbench-core = { path = "../workbench-core" }
+# The one `visible()` that spells out control and hidden characters.
+theorem-workbench-text = { path = "../workbench-text" }
+# KeyInput, Key and Mods in PanelMsg::Key.
+keybinds = "0.2"
+serde_json = "1"
+ratatui = { version = "0.30.1", default-features = false }
+serde = { version = "1", features = ["derive"] }
+unicode-width = "0.2"
+# The rows a diff line wraps to are `theorem_workbench_text::layout::line_rows`, which takes a
+# rope. Same version and features as workbench-text.
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines"] }
+# Words wrapped on spaces to the pane, as the editor does for its notices. Same version and
+# features as workbench-editor, so the lock gains no package.
+textwrap = { version = "0.16", default-features = false, features = ["unicode-width"] }
+# Word-level marks inside a changed line, as the donor's `mark_words` does. Default features
+# are off but `std` and `unicode` (word segmentation); no deadline is set, so `Instant::now`
+# is never called and the `wasm32_web_time` feature (which pulls wasm-bindgen) is not needed.
+similar = { version = "3.2.1", default-features = false, features = ["std", "unicode"] }
+
+[dev-dependencies]
+theorem-workbench-dock = { path = "../workbench-dock" }

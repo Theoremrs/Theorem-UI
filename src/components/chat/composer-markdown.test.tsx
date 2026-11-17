@@ -106,6 +106,16 @@ test('tool directives keep their protocol syntax when neighboring text is edited
   )
 })
 
+test('skill directives keep their protocol syntax, title and id, when sent', async () => {
+  const payload = await appendAndSend(
+    ':skill[Prototype Theorem]{name=prototype-theorem} and :skill[recall] first',
+    '.',
+  )
+  expect(payload).toBe(
+    ':skill[Prototype Theorem]{name=prototype-theorem} and :skill[recall] first.',
+  )
+})
+
 test('literal link syntax next to a tool directive stays literal', async () => {
   const payload = await appendAndSend(
     'Use :tool\\[recall]\\(https://example.com) literally',

@@ -1,4 +1,4 @@
-// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant and command palette, useGlideHighlight from components/motion, lib/theorem/organization. the assistant-ui tooltip icon button for search in the header, lib/theorem/sidebar-prefs for pins. The shape (search in the header, New thread, Pinned, Projects, Chats, the Librarian below; rows, marks and labels after the ChatGPT and Codex sidebars the owner's review on 2026-11-14 named) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
+// SOURCING: coss ui sidebar, collapsible, menu and input over Base UI, the shadcn button, @dnd-kit/core (DndContext, useDroppable and DragOverlay: a thread dragged onto a project moves there), @dnd-kit/sortable with @dnd-kit/modifiers and @dnd-kit/utilities (a project dragged to another place in its list, as the rail's destinations are), @tanstack/react-router, the shell's tenant and command palette, useGlideHighlight from components/motion, lib/theorem/organization. the assistant-ui tooltip icon button for search in the header, lib/theorem/sidebar-prefs for pins. The shape (search in the header, New thread, Pinned, Projects, Recent, the Librarian below; rows, marks and labels after the ChatGPT and Codex sidebars the owner's review on 2026-11-14 named) is docs/plans/projects-sidebar-and-session-graph.md §5, after the Linear, Claude and Twenty sidebars on Mobbin; thread membership is translated from mikecann/threadbear@78b77e1 (MIT, Mike Cann).
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useAuiState } from '@assistant-ui/react'
 import {
@@ -30,9 +30,10 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
+import { Folder, FolderOpen } from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { KeyboardEvent, ReactNode } from 'react'
+import type { KeyboardEvent } from 'react'
 import { ThreadFromFailure } from '@/components/assistant-ui/elements/thread-list.aui'
 import { focusComposer } from '@/components/chat/composer-references'
 import { Button } from '@/components/ui/button'
@@ -41,8 +42,7 @@ import {
   CollapsiblePanel,
   CollapsibleTrigger,
 } from '@/components/coss/collapsible'
-import { Input } from '@/components/coss/input'
-import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
+import { Kbd } from '@/components/coss/kbd'
 import {
   Menu,
   MenuItem,
@@ -67,7 +67,9 @@ import {
 } from '@/components/coss/sidebar'
 import { Icon } from '@/components/icons'
 import { useGlideHighlight } from '@/components/motion'
-import { ProjectGlyph, SessionGlyph } from './glyphs'
+import { DocumentTile, FolderTile } from '@/components/ui/folder'
+import { FilesystemItem, FilesystemMarks } from '@/components/ui/filesystem-item'
+import { SessionGlyph } from './glyphs'
 import { ProjectStateDialog } from './project-state-dialog'
 import { SessionTypeDialog } from './session-type-dialog'
 import {
@@ -92,6 +94,7 @@ import {
   useMoveThread,
   useOrganization,
   useOrganizedViews,
+  useProjectOutputs,
 } from '@/lib/theorem/organization'
 import { projectHasSessionGraph, scopeParam } from '@/lib/theorem/sessions'
 import type {
@@ -106,7 +109,7 @@ import {
 } from '@/lib/theorem/sidebar-prefs'
 import type { Pin } from '@/lib/theorem/sidebar-prefs'
 import { cn } from '@/lib/utils'
-import { LibrarianFooter } from './librarian-footer'
+import { LibrarianFooter, librarianHasNews } from './librarian-footer'
 
 const HIGHLIGHTED = '[data-organize-row="primary"]'
 const panelMotion =
@@ -316,136 +319,219 @@ function ProjectNode({
     data: { projectId: project.projectId } satisfies DropTarget,
   })
   const accepting = isOver && takes(active, project.projectId)
-  const sessions = `${threads.length} ${threads.length === 1 ? 'session' : 'sessions'}`
+  const subtree = `project-tree-${project.projectId}`
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      render={
-        <SidebarMenuItem
-          ref={setNodeRef}
-          style={{ transform: CSS.Translate.toString(transform), transition }}
-          className={cn(
-            'group/project',
-            accepting && dropRing,
-            isDragging &&
-              'z-10 rounded-lg bg-raised shadow-md ring-1 ring-separator',
-          )}
-        />
-      }
+    <SidebarMenuItem
+      ref={setNodeRef}
+      style={{ transform: CSS.Translate.toString(transform), transition }}
+      className={cn(
+        'group/project',
+        accepting && dropRing,
+        isDragging &&
+          'z-10 rounded-lg bg-raised shadow-md ring-1 ring-separator',
+      )}
     >
-      <ContextMenu.Root>
-        <ContextMenu.Trigger
-          render={
-            <SidebarMenuButton
-              {...listeners}
-              data-appearance-recipe="ui.label"
-              data-organize-row={current ? 'primary' : undefined}
-              aria-current={current ? 'page' : undefined}
-              title={`${project.state?.text ?? project.title}\n${sessions}`}
-              className="relative z-[1] ps-8 pe-8 hover:bg-hover"
-              render={
-                <Link
-                  draggable={false}
-                  to="/projects/$projectId"
-                  params={{ projectId: project.projectId }}
-                  onClick={() =>
-                    useShell.getState().setProjectId(project.projectId)
-                  }
-                />
-              }
-            />
-          }
-        >
-          <span className="min-w-0 flex-1 truncate">{project.title}</span>
-        </ContextMenu.Trigger>
-        <MenuPopup anchor={undefined} className="min-w-48">
-          <MenuItem onClick={() => onNewThread(project.projectId)}>
-            <Icon.NewChat className="size-4" />
-            New thread here
-          </MenuItem>
-          <MenuItem onClick={() => togglePin(pin)}>
-            {pinned ? (
-              <Icon.Unpin className="size-4" />
-            ) : (
-              <Icon.Pin className="size-4" />
-            )}
-            {pinned ? 'Unpin' : 'Pin'}
-          </MenuItem>
-          {served && (
-            <MenuItem onClick={() => setEditingState(true)}>
-              <Icon.Notes className="size-4" />
-              Where it stands
-            </MenuItem>
-          )}
-          {hasGraph && (
-            <MenuLinkItem
-              render={
-                <Link
-                  to="/canvas"
-                  search={{
-                    sessions: scopeParam({
-                      kind: 'project',
-                      projectId: project.projectId,
-                    }),
-                  }}
-                />
-              }
+      <FilesystemItem
+        open={open}
+        row={
+          <>
+            <ContextMenu.Root>
+              <ContextMenu.Trigger
+                render={
+                  <SidebarMenuButton
+                    {...listeners}
+                    data-appearance-recipe="ui.label"
+                    data-organize-row={current ? 'primary' : undefined}
+                    aria-current={current ? 'page' : undefined}
+                    className="relative z-[1] ps-8 pe-8 hover:bg-hover"
+                    render={
+                      <Link
+                        draggable={false}
+                        to="/projects/$projectId"
+                        params={{ projectId: project.projectId }}
+                        onClick={() =>
+                          useShell.getState().setProjectId(project.projectId)
+                        }
+                      />
+                    }
+                  />
+                }
+              >
+                <span className="min-w-0 flex-1 truncate">{project.title}</span>
+              </ContextMenu.Trigger>
+              <MenuPopup anchor={undefined} className="min-w-48">
+                <MenuItem onClick={() => onNewThread(project.projectId)}>
+                  <Icon.NewChat className="size-4" />
+                  New thread here
+                </MenuItem>
+                <MenuItem onClick={() => togglePin(pin)}>
+                  {pinned ? (
+                    <Icon.Unpin className="size-4" />
+                  ) : (
+                    <Icon.Pin className="size-4" />
+                  )}
+                  {pinned ? 'Unpin' : 'Pin'}
+                </MenuItem>
+                {served && (
+                  <MenuItem onClick={() => setEditingState(true)}>
+                    <Icon.Notes className="size-4" />
+                    Where it stands
+                  </MenuItem>
+                )}
+                {hasGraph && (
+                  <MenuLinkItem
+                    render={
+                      <Link
+                        to="/canvas"
+                        search={{
+                          sessions: scopeParam({
+                            kind: 'project',
+                            projectId: project.projectId,
+                          }),
+                        }}
+                      />
+                    }
+                  >
+                    <Icon.Graph className="size-4" />
+                    Open graph
+                  </MenuLinkItem>
+                )}
+                <MenuSeparator />
+                <MenuItem disabled={!onMove.up} onClick={onMove.up}>
+                  <Icon.ArrowUp className="size-4" />
+                  Move up
+                </MenuItem>
+                <MenuItem disabled={!onMove.down} onClick={onMove.down}>
+                  <Icon.ArrowDown className="size-4" />
+                  Move down
+                </MenuItem>
+              </MenuPopup>
+            </ContextMenu.Root>
+            {/* The folder opens the project's entries, as a chevron would; the name beside it opens the project. */}
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={subtree}
+              aria-label={`${open ? 'Hide' : 'Show'} sessions in ${project.title}`}
+              onClick={() => setOpen(!open)}
+              className="absolute start-1.5 top-1 z-[2] flex size-6 items-center justify-center rounded-md outline-none hover:bg-selected focus-visible:outline-2 focus-visible:outline-focus"
             >
-              <Icon.Graph className="size-4" />
-              Open graph
-            </MenuLinkItem>
-          )}
-          <MenuSeparator />
-          <MenuItem disabled={!onMove.up} onClick={onMove.up}>
-            <Icon.ArrowUp className="size-4" />
-            Move up
-          </MenuItem>
-          <MenuItem disabled={!onMove.down} onClick={onMove.down}>
-            <Icon.ArrowDown className="size-4" />
-            Move down
-          </MenuItem>
-        </MenuPopup>
-      </ContextMenu.Root>
-      {/* The folder is also the disclosure: it turns into a chevron under the pointer or the keyboard. */}
-      <CollapsibleTrigger
-        aria-label={`${open ? 'Hide' : 'Show'} sessions in ${project.title}`}
-        className="group/disclose absolute start-1 top-1 z-[2] flex size-6 items-center justify-center rounded-md text-ink-muted outline-none hover:bg-selected hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
+              <FilesystemMarks folder open={open} chevron={false} />
+            </button>
+            <ProjectStateDialog
+              project={project}
+              open={editingState}
+              onOpenChange={setEditingState}
+            />
+            {/* The project's new thread is its own target at the row's end. It shows under the pointer or keyboard, as Linear's and Claude's row actions do, so a list of projects is not a column of repeated buttons; only a click, Enter or Space starts one. */}
+            <SidebarMenuAction
+              aria-label={`New thread in ${project.title}`}
+              title={`New thread in ${project.title}`}
+              className="top-0.5 text-ink-muted transition-opacity hover:bg-selected hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:opacity-0 pointer-coarse:opacity-100"
+              onClick={() => onNewThread(project.projectId)}
+            >
+              <Icon.NewChat className="size-3.5" />
+            </SidebarMenuAction>
+          </>
+        }
       >
-        <ProjectGlyph
-          aria-hidden
-          className="size-4 group-hover/project:hidden group-focus-visible/disclose:hidden"
-        />
-        <Icon.ChevronRight
-          aria-hidden
-          className="hidden size-3.5 transition-transform duration-(--duration-snap) ease-snap group-hover/project:block group-focus-visible/disclose:block group-data-panel-open/disclose:rotate-90"
-        />
-      </CollapsibleTrigger>
-      <ProjectStateDialog
-        project={project}
-        open={editingState}
-        onOpenChange={setEditingState}
-      />
-      {/* The project's new thread sits where a count would: the count is in the row's tooltip. It shows under the pointer or keyboard, as Linear's and Claude's row actions do, so a list of projects is not a column of repeated buttons. */}
-      <SidebarMenuAction
-        aria-label={`New thread in ${project.title}`}
-        title={`New thread in ${project.title}`}
-        className="top-0.5 text-ink-muted transition-opacity hover:bg-selected hover:text-ink focus-visible:opacity-100 group-hover/project:opacity-100 md:opacity-0 pointer-coarse:opacity-100"
-        onClick={() => onNewThread(project.projectId)}
-      >
-        <Icon.NewChat className="size-3.5" />
-      </SidebarMenuAction>
-      <CollapsiblePanel className={panelMotion}>
-        <SidebarMenuSub className="me-0 gap-px pe-0">
+        <SidebarMenuSub id={subtree} className="ms-4 me-0 gap-px pe-0">
           <ThreadRows threads={threads} place={project.projectId} />
-          {threads.length === 0 && (
+          {project.outputCount > 0 && <ProjectOutputs project={project} />}
+          {threads.length === 0 && project.outputCount === 0 && (
             <li className="px-2 py-1 text-xs text-ink-muted">
               No sessions yet. Drag one here, or start a new thread.
             </li>
           )}
         </SidebarMenuSub>
-      </CollapsiblePanel>
-    </Collapsible>
+      </FilesystemItem>
+    </SidebarMenuItem>
+  )
+}
+
+const OUTPUT_MARK = {
+  app: Icon.Apps,
+  artifact: Icon.Artifact,
+  upload: Icon.Attachment,
+  review: Icon.Approval,
+} as const
+
+/**
+ * What the project's sessions made, as a folder in its tree: the agent's
+ * folder colour, read when it is opened. An entry opens the session that
+ * made it.
+ */
+function ProjectOutputs({ project }: { project: ProjectEntry }) {
+  const [open, setOpen] = useSectionOpen(`outputs:${project.projectId}`, false)
+  const outputs = useProjectOutputs(open ? project.projectId : undefined)
+  const list = `project-outputs-${project.projectId}`
+  return (
+    <SidebarMenuSubItem className={TREE_TICK}>
+      <FilesystemItem
+        open={open}
+        row={
+          <SidebarMenuSubButton
+            data-appearance-recipe="ui.label"
+            aria-expanded={open}
+            aria-controls={list}
+            className="w-full translate-x-0 gap-1.5 ps-1 hover:bg-hover"
+            render={<button type="button" onClick={() => setOpen(!open)} />}
+          >
+            <FilesystemMarks
+              folder
+              open={open}
+              chevron={false}
+              icon={
+                open ? (
+                  <FolderOpen
+                    aria-hidden="true"
+                    className="size-4 shrink-0 fill-folder-agent/35 text-folder-agent"
+                  />
+                ) : (
+                  <Folder
+                    aria-hidden="true"
+                    className="size-4 shrink-0 fill-folder-agent text-folder-agent"
+                  />
+                )
+              }
+            />
+            <span className="min-w-0 flex-1 truncate text-start">Outputs</span>
+            <span data-appearance-recipe="ui.meta" className="text-xs text-ink-muted tabular-nums">
+              {project.outputCount}
+            </span>
+          </SidebarMenuSubButton>
+        }
+      >
+        <SidebarMenuSub id={list} className="me-0 gap-px pe-0">
+          {outputs.isPending && (
+            <li className="px-2 py-1 text-xs text-ink-muted">Reading…</li>
+          )}
+          {outputs.error && (
+            <li role="alert" className="px-2 py-1 text-xs text-error-ink">
+              {describeError(outputs.error)}
+            </li>
+          )}
+          {outputs.data?.items.map((output) => {
+            const Mark = OUTPUT_MARK[output.kind]
+            return (
+              <SidebarMenuSubItem key={output.outputId} className={TREE_TICK}>
+                <SidebarMenuSubButton
+                  data-appearance-recipe="ui.label"
+                  title={`${output.title}, from its session`}
+                  className="w-full translate-x-0 hover:bg-hover"
+                  render={
+                    <Link to="/c/$threadId" params={{ threadId: output.threadId }} />
+                  }
+                >
+                  <Mark aria-hidden className="text-ink-muted" />
+                  <span className="min-w-0 flex-1 truncate">{output.title}</span>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            )
+          })}
+        </SidebarMenuSub>
+      </FilesystemItem>
+    </SidebarMenuSubItem>
   )
 }
 
@@ -473,64 +559,78 @@ function PinOrderItems({ index, count }: { index: number; count: number }) {
   )
 }
 
-/** A pinned project: a link to its home, with the pin's own menu. */
-function PinnedProjectRow({
-  project,
+/**
+ * One pinned tile: a folder for a project, a page for a session, and its
+ * name under it. A link like the row it stands for; its menu (right-click,
+ * or the context-menu key) moves it in the shelf or unpins it.
+ */
+function PinnedTile({
+  pin,
+  title,
   index,
   count,
+  current,
 }: {
-  project: ProjectEntry
+  pin: Pin
+  title: string
   index: number
   count: number
+  current: boolean
 }) {
   const togglePin = useSidebarPrefs((s) => s.togglePin)
-  const { projectId: openProjectId } = useParams({ strict: false })
-  const current = openProjectId === project.projectId
+  const link =
+    pin.kind === 'project' ? (
+      <Link
+        to="/projects/$projectId"
+        params={{ projectId: pin.id }}
+        onClick={() => useShell.getState().setProjectId(pin.id)}
+      />
+    ) : (
+      <Link to="/c/$threadId" params={{ threadId: pin.id }} />
+    )
   return (
-    <SidebarMenuSubItem className={TREE_TICK}>
+    <li className="min-w-0">
       <ContextMenu.Root>
         <ContextMenu.Trigger
-          render={
-            <SidebarMenuSubButton
-              data-appearance-recipe="ui.label"
-              data-organize-row={current ? 'also' : undefined}
-              aria-current={current ? 'page' : undefined}
-              className="relative z-[1] h-8 w-full translate-x-0 hover:bg-hover data-[organize-row=also]:bg-hover sm:h-8"
-              render={
-                <Link
-                  to="/projects/$projectId"
-                  params={{ projectId: project.projectId }}
-                  onClick={() =>
-                    useShell.getState().setProjectId(project.projectId)
-                  }
-                />
-              }
-            />
-          }
+          data-pinned-tile={pin.kind}
+          aria-current={current ? 'page' : undefined}
+          title={title}
+          className="group flex w-full min-w-0 flex-col items-center gap-1 rounded-lg px-1 pt-2 pb-1 text-ink outline-none transition-colors duration-100 hover:bg-hover focus-visible:outline-2 focus-visible:outline-focus aria-[current=page]:bg-hover"
+          render={link}
         >
-          <ProjectGlyph aria-hidden className="text-ink-muted" />
-          <span className="min-w-0 flex-1 truncate">{project.title}</span>
+          {pin.kind === 'project' ? (
+            <FolderTile className="mt-0.5" />
+          ) : (
+            <DocumentTile>
+              <SessionGlyph
+                threadId={pin.id}
+                className="size-2.5 text-ink-muted dark:text-raised"
+              />
+            </DocumentTile>
+          )}
+          <span
+            data-appearance-recipe="ui.meta"
+            className="line-clamp-2 w-full text-center text-[11px] leading-3.5 break-words"
+          >
+            {title}
+          </span>
         </ContextMenu.Trigger>
         <MenuPopup anchor={undefined} className="min-w-48">
           <PinOrderItems index={index} count={count} />
-          <MenuItem
-            onClick={() =>
-              togglePin({ kind: 'project', id: project.projectId })
-            }
-          >
+          <MenuItem onClick={() => togglePin(pin)}>
             <Icon.Unpin className="size-4" />
             Unpin
           </MenuItem>
         </MenuPopup>
       </ContextMenu.Root>
-    </SidebarMenuSubItem>
+    </li>
   )
 }
 
 /**
- * The sessions and projects this person keeps at the top, in their order.
- * Kept in this browser until Theorem serves a pin per person; pinning moves
- * nothing and locks nothing.
+ * The sessions and projects this person keeps at the top, in their order,
+ * as a shelf of tiles three across. Kept in this browser until Theorem
+ * serves a pin per person; pinning moves nothing and locks nothing.
  */
 function PinnedGroup({
   projects,
@@ -541,15 +641,33 @@ function PinnedGroup({
 }) {
   const pins = useSidebarPrefs((s) => s.pins)
   const [open, setOpen] = useSectionOpen('pinned', true)
+  const { projectId: openProjectId, threadId: openThreadId } = useParams({
+    strict: false,
+  })
+  // Each pin with what it stands for, in the person's order; a pin whose
+  // project or session is gone is left out.
+  const shelf = pins.flatMap((pin) => {
+    if (pin.kind === 'project') {
+      const project = projects.find((p) => p.projectId === pin.id)
+      return project
+        ? [{ pin, title: project.title, current: openProjectId === pin.id }]
+        : []
+    }
+    const thread = byId.get(pin.id)
+    return thread
+      ? [
+          {
+            pin,
+            title: thread.title || 'New chat',
+            current: openThreadId === pin.id,
+          },
+        ]
+      : []
+  })
   // Shown once something is pinned, as Linear shows Favorites: an empty
   // heading and a standing hint cost a sidebar row on every visit, and Pin is
   // in every row's menu.
-  const shown = pins.some((pin) =>
-    pin.kind === 'project'
-      ? projects.some((p) => p.projectId === pin.id)
-      : byId.has(pin.id),
-  )
-  if (!shown) return null
+  if (shelf.length === 0) return null
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <SidebarGroup className={GROUP}>
@@ -567,96 +685,21 @@ function PinnedGroup({
           />
         </SidebarGroupLabel>
         <CollapsiblePanel className={panelMotion}>
-          <SidebarMenuSub className="mx-0 translate-x-0 gap-px border-l-0 px-0 *:before:hidden">
-            {pins.map((pin, index) => {
-              if (pin.kind === 'project') {
-                const project = projects.find((p) => p.projectId === pin.id)
-                return (
-                  project && (
-                    <PinnedProjectRow
-                      key={`project:${pin.id}`}
-                      project={project}
-                      index={index}
-                      count={pins.length}
-                    />
-                  )
-                )
-              }
-              const thread = byId.get(pin.id)
-              return (
-                thread && (
-                  <ThreadRow
-                    key={`thread:${pin.id}`}
-                    thread={thread}
-                    place="pinned"
-                    menuExtra={
-                      <PinOrderItems index={index} count={pins.length} />
-                    }
-                  />
-                )
-              )
-            })}
-          </SidebarMenuSub>
+          <ul aria-label="Pinned" className="grid grid-cols-3 gap-1 px-1 pt-1">
+            {shelf.map(({ pin, title, current }) => (
+              <PinnedTile
+                key={`${pin.kind}:${pin.id}`}
+                pin={pin}
+                title={title}
+                current={current}
+                index={pins.indexOf(pin)}
+                count={pins.length}
+              />
+            ))}
+          </ul>
         </CollapsiblePanel>
       </SidebarGroup>
     </Collapsible>
-  )
-}
-
-/**
- * A project being named where it will be listed. Enter or leaving the field
- * makes it; Escape, or leaving it empty or after a refusal, drops it.
- */
-function NewProjectRow({
-  onDone,
-  onCreated,
-}: {
-  onDone: () => void
-  onCreated: (projectId: string) => void
-}) {
-  const [title, setTitle] = useState('')
-  const create = useCreateProject()
-  const submit = () => {
-    const name = title.trim()
-    if (!name) return onDone()
-    if (create.isPending) return
-    create.mutate(name, {
-      onSuccess: ({ record }) => {
-        onDone()
-        onCreated(record.projectId)
-      },
-    })
-  }
-  return (
-    <SidebarMenuItem>
-      <div className="flex h-8 items-center gap-2 ps-2 pe-1">
-        <Icon.Folder />
-        <Input
-          autoFocus
-          size="sm"
-          aria-label="Project name"
-          placeholder="Project name"
-          value={title}
-          // Read-only keeps the focus a disabled field would lose.
-          readOnly={create.isPending}
-          aria-busy={create.isPending}
-          className="h-7"
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => (create.isError ? onDone() : submit())}
-          onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return
-            if (event.key === 'Enter') submit()
-            // A create already sent still lands; leaving now would drop its place in the list.
-            else if (event.key === 'Escape' && !create.isPending) onDone()
-          }}
-        />
-      </div>
-      {create.error && (
-        <p role="alert" className="px-2 py-1 text-xs text-error-ink">
-          {describeError(create.error)}
-        </p>
-      )}
-    </SidebarMenuItem>
   )
 }
 
@@ -668,9 +711,11 @@ function NewProjectRow({
 function ChatsGroup({
   threads,
   starting,
+  onNewChat,
 }: {
   threads: readonly ThreadEntry[]
   starting: boolean
+  onNewChat: () => void
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
     id: 'unsorted',
@@ -683,15 +728,23 @@ function ChatsGroup({
         data-appearance-recipe="ui.section"
         className={HEADING}
       >
-        Chats
+        Recent
       </SidebarGroupLabel>
+      <SidebarGroupAction
+        aria-label="New chat"
+        title="New chat"
+        className="top-1 right-1"
+        onClick={onNewChat}
+      >
+        <Icon.Add />
+      </SidebarGroupAction>
       {/* The rows a project nests, here at the top level: no guide line, no ticks. */}
       <SidebarMenuSub className="mx-0 translate-x-0 gap-px border-l-0 px-0 *:before:hidden">
         {starting && <StartingRow />}
         <ThreadRows threads={threads} place="unsorted" first={CHATS_SHOWN} />
         {threads.length === 0 && !starting && (
           <li className="px-2 py-1 text-xs text-ink-muted">
-            No chats yet. Start one above, or drag one out of a project.
+            No chats yet. Start one with +, or drag one out of a project.
           </li>
         )}
       </SidebarMenuSub>
@@ -710,7 +763,7 @@ function WorkspaceHeader({
   const control = useLibrarianControl()
   const librarian = organization?.served ? organization.librarian : undefined
   return (
-    <div className="flex h-14 shrink-0 items-center gap-1 px-1.5">
+    <div className="flex shrink-0 flex-col gap-1 px-1.5 pt-1.5 pb-1">
       <Menu>
         <MenuTrigger
           render={
@@ -752,13 +805,19 @@ function WorkspaceHeader({
           </MenuLinkItem>
         </MenuPopup>
       </Menu>
-      <TooltipIconButton
-        tooltip={`Search ${SEARCH_SHORTCUT}`}
+      {/* Search is a field you can see, not an icon to find: it opens the command palette, whose input takes the typing. */}
+      <button
+        type="button"
+        data-sidebar-search=""
         onClick={() => useCommandPalette.getState().setOpen(true)}
-        className="size-8 shrink-0 p-2 text-ink-muted hover:bg-hover hover:text-ink"
+        className="flex h-8 w-full items-center gap-2 rounded-md bg-raised/55 px-2 text-start text-sm text-ink-muted ring-1 ring-separator transition-colors duration-100 outline-none ring-inset hover:text-ink focus-visible:outline-2 focus-visible:outline-focus"
       >
-        <Icon.SearchMark className="size-4" />
-      </TooltipIconButton>
+        <Icon.SearchMark aria-hidden className="size-4 shrink-0" />
+        <span className="min-w-0 flex-1 truncate">Search</span>
+        <Kbd aria-hidden className="bg-transparent text-ink-faint">
+          {SEARCH_SHORTCUT}
+        </Kbd>
+      </button>
     </div>
   )
 }
@@ -775,17 +834,17 @@ function useFreshAfterRuns(known: (threadId: string) => boolean) {
 }
 
 /** Chat's panel: search in its header, New thread, the person's pins, a stable project tree and the chats outside it, the Librarian below. */
-export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
+export function OrganizedPanel() {
   const { data, error, isPending, dataUpdatedAt } = useOrganization()
   const navigate = useNavigate()
-  const [creating, setCreating] = useState(false)
+  const create = useCreateProject()
   const views = useOrganizedViews()
   useRevealOpenThread(views)
   useFreshAfterRuns((threadId) => views.byId.has(threadId))
 
   const inbox = data?.projects.find((project) => project.isInbox)
   const startingIn = useStartingIn()
-  // A chat started outside every project shows under Chats until it is filed.
+  // A chat started outside every project shows under Recent until it is filed.
   const startingUnsorted =
     startingIn !== undefined &&
     (startingIn === inbox?.projectId ||
@@ -855,6 +914,21 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
   const projectIds = views.projects.map(({ project }) => project.projectId)
   const projectItems = projectIds.map(projectItem)
   const setProjectOrder = useShell((s) => s.setProjectOrder)
+  // A new project opens on its own page, its name ready to type over.
+  const createProject = () => {
+    if (create.isPending) return
+    create.mutate('New project', {
+      onSuccess: ({ record }) => {
+        // It stays where it was made: first in the list.
+        setProjectOrder([record.projectId, ...projectIds])
+        void navigate({
+          to: '/projects/$projectId',
+          params: { projectId: record.projectId },
+          search: { naming: true },
+        })
+      },
+    })
+  }
   const placeProject = (from: number, to: number) => {
     if (from < 0 || to < 0 || from === to || to >= projectIds.length) return
     setProjectOrder(arrayMove(projectIds, from, to))
@@ -901,7 +975,7 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
     <div data-organize-panel className="flex h-full flex-col">
       <WorkspaceHeader
         organization={data}
-        onNewProject={() => setCreating(true)}
+        onNewProject={createProject}
       />
       <SidebarMenu className="shrink-0 px-2 pb-1">
         <SidebarMenuItem>
@@ -957,21 +1031,12 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
                   aria-label="New project"
                   title="New project"
                   className="top-1 right-1"
-                  onClick={() => setCreating(true)}
+                  disabled={create.isPending}
+                  onClick={createProject}
                 >
                   <Icon.Add />
                 </SidebarGroupAction>
                 <SidebarMenu className="gap-px">
-                  {creating && (
-                    <NewProjectRow
-                      onDone={() => setCreating(false)}
-                      onCreated={(projectId) => {
-                        // It stays where it was named: first in the list.
-                        setProjectOrder([projectId, ...projectIds])
-                        newThread(projectId)
-                      }}
-                    />
-                  )}
                   {isPending &&
                     Array.from({ length: 4 }, (_, index) => (
                       <SidebarMenuSkeleton key={index} />
@@ -1002,15 +1067,16 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
                     ))}
                   </SortableContext>
                 </SidebarMenu>
-                {(error ?? mover.error) && (
+                {(error ?? mover.error ?? create.error) && (
                   <p role="alert" className="px-2 py-1 text-xs text-error-ink">
-                    {describeError(error ?? mover.error)}
+                    {describeError(error ?? mover.error ?? create.error)}
                   </p>
                 )}
               </SidebarGroup>
               <ChatsGroup
                 threads={views.unsorted}
                 starting={startingUnsorted}
+                onNewChat={() => newThread()}
               />
             </div>
             <DragOverlay dropAnimation={null}>
@@ -1031,8 +1097,9 @@ export function OrganizedPanel({ footer }: { footer?: ReactNode }) {
       </SidebarContent>
       <ThreadFromFailure />
       <SessionTypeDialog />
-      {data?.served && <LibrarianFooter librarian={data.librarian} />}
-      {footer}
+      {data?.served && librarianHasNews(data.librarian) && (
+        <LibrarianFooter librarian={data.librarian} />
+      )}
     </div>
   )
 }

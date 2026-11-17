@@ -147,9 +147,10 @@ folded into a disclosure above the composer.
     TanStack Table v9 kit (`useAppTable`).
 - **Project context**, the small column (`aside`, "Project context"):
   - Instructions and Where it stands, each with Edit;
-  - Knowledge and connections: Documents, Repositories, Links, and
-    Databases and servers, under one line saying Theorem does not serve
-    these per project yet (§8: no working-looking placeholders).
+  - Knowledge and connections: Documents, Repositories, Links and
+    Connections, read and written through Theorem's project context routes
+    (Project context, below). Before 2026-11-16 these were one line saying
+    Theorem did not serve them.
 
   The owner expects the WASM terminal to hold this context eventually.
 
@@ -291,6 +292,8 @@ chat header and the sessions panel when that session was.
 | Pins | Per browser, in zustand persist | Theorem has no per-user pin route yet. The UI says pins are kept in this browser. |
 | Unserved facets | Present in Show, labelled with Theorem's reason | A facet that draws something made up would break VIEW-03. |
 | Lone sessions in a project graph | Counted, not drawn | A graph is of relations; a project of mostly unforked sessions would otherwise be a grid of unconnected cards. |
+| Project context owners | Each kind points at the owner that holds it: documents are Library references, repositories are the GitHub connection's tracked repositories, connections are the per-turn `toolSelection` | The project says which ones are its own; nothing is copied. Links are the exception, kept on the record, because no owner holds links. |
+| "Databases and servers" | Became Connections | Theorem has no database connection kind. What a session may reach is its connections (GitHub, Google, MCP servers). |
 | Session graph algorithm | ELK layered, not mrtree | Compared on the story fixture (Shared layout, below): mrtree has no orthogonal router, so its edges are diagonals that do not match the canvas's step edges; running down, it spaces rows 72px apart rather than 108px and reports a size 18px short of its tallest node; and it fits a phone worse (0.34 against 0.39). Its edges are shorter. Neither crosses an edge or overlaps a node. |
 
 ## Not in this change
@@ -303,7 +306,6 @@ fabricated here:
 - The session graph routes in the vendored `@theoremharness/sdk`: they are
   reached through `lib/theorem/passthrough` until it carries them.
 - Per-user pins (§5.2): NAV-06 holds today only within one browser.
-- Project documents, repositories, links and connections (§8.2).
 - Graph editing, organization presets and governance (slices D and E).
 
 Not in the shared layout below:
@@ -314,6 +316,77 @@ Not in the shared layout below:
 - The program canvas was not run in a browser for this change: no story
   mounts it, and it opens only against a backend with a saved program. Its
   placement is tested at `layoutProgram` and `ghostPlaces`.
+
+## Project context
+
+The owner, 2026-11-16: "none of the context routes are real." Theorem's
+contract is `docs/plans/project-context/CONTRACT.md` in that repository: one
+record per project (`theorem-chat-project-context/1`), `GET` and `PUT
+/api/chat/v1/projects/:project_id/context`, with `If-Match` on every write.
+
+- **Column** (`src/components/projects/project-context.tsx`): each kind lists
+  up to five entries where they open, then "N more". A document opens its
+  note (`/notes/$documentId`) or its upload's content; a repository opens on
+  GitHub; a link opens in a new tab; a connection shows its name, and says
+  when it is off in Settings, not connected or removed. Connections shows
+  "Every enabled connection" when the project names none.
+- **Editors**, one dialog per kind, mounted on each opening:
+  - Documents: the chat Library (`GET /api/chat/v1/library`), searchable.
+    A source that cannot be read is listed but cannot be added; one the
+    project names that the Library no longer lists can still be taken out.
+    Upload puts a file from this machine in the project and keeps it in the
+    Library (`POST /api/chat/v1/projects/:project_id/uploads`, then `POST
+    /api/chat/v1/library/uploads/:upload_id/retain`), ticked and listed
+    first; Save names it. The intake's bounds are said before Theorem
+    refuses: 16 MB, and the types `DOCUMENT_ACCEPT` lists.
+  - Repositories: the GitHub connection's tracked repositories, or a link to
+    Settings → Connections when there are none or GitHub is not connected.
+  - Links: an address and an optional title, checked as Theorem checks them
+    (http or https, 2048 bytes, a 200-byte title, no repeats).
+  - Connections: every enabled connection, or only the ones chosen.
+  Each kind lists what the project names first. A save sends what was added
+  and removed, applied to the record as Theorem holds it, so it never
+  overwrites another kind. A write refused for its revision (409) is re-read
+  and applied once more. Theorem's other refusals (422) are said in the
+  editor, which stays open.
+- **Entries no longer held:** Theorem asks the owners only about entries a
+  write adds, so a document deleted, a repository no longer tracked or a
+  connection removed afterwards stays on the record and sessions stop being
+  given it. `GET /api/chat/v1/projects/:project_id/context/availability`
+  says which; the column marks each one ("· removed", "· not tracked",
+  "· not readable"). A Theorem that cannot say marks none. Such an entry
+  never blocks another edit, and can be taken out like any other.
+- **From a session:** a conversation turn in the project can read and
+  replace the context itself (`read_project_context`,
+  `write_project_context` in Theorem's contract). This page needs nothing
+  for that: it shows what Theorem holds when it is next read.
+- **States:** loading; a Theorem without the routes (a bare 404 or 405) says
+  "This Theorem does not serve project context yet."; a project Theorem no
+  longer has (`chat_resource_not_found`) says so; any other failure says why,
+  with Try again.
+- **Composer** (`src/components/chat/composer-connections.tsx`,
+  `src/lib/theorem/tool-selection.ts`): a conversation with no choice of its
+  own starts from its project's connections and sends nothing, since Theorem
+  applies the home project's choice to a turn that carries none. The project
+  is the thread's home project, or for a conversation not sent yet the
+  project the shell will create it in. The chip shows the count in a neutral
+  tone when it comes from the project, redwood when the conversation chose.
+  A change that ends where the project started sends nothing again. Every
+  enabled connection under a project that names fewer is sent, because
+  otherwise the project would narrow it. "Use the project's connections"
+  drops the conversation's choice.
+- **Stories:** `src/stories/fixtures/project-context.ts` answers the routes,
+  the Library and the Connections routes in memory, with the contract's
+  refusals, on every story (`/story/project-home` shows the column).
+
+- **End to end:** `bun run e2e:project-context`, against a stack started
+  with `E2E_SCRIPTED_MODEL=1` (`scripts/e2e/scripted-model.mjs`, a model that
+  follows a rule). The real server, sign-in and this UI: a link and an
+  uploaded file are saved from the page, a session in the project is given
+  both and adds a link itself, and a file deleted from the Library afterwards
+  is marked without blocking another edit.
+
+Not in this change: per-project databases.
 
 ## Shared layout
 

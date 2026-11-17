@@ -10,10 +10,9 @@ try {
  for (const density of ['comfortable','touch']) for(const width of [1440,320]){
   const p=await browser.newPage({viewport:{width,height:900},reducedMotion:'reduce'})
   const errors=[];p.on('pageerror',e=>errors.push(e.message))
-  await p.addInitScript(density=>{localStorage.setItem('theorem-ui-theme','light');localStorage.setItem('theorem-ui:appearance',JSON.stringify({version:1,state:{preset:'calm',overrides:{density}}}))},density)
+  await p.addInitScript(density=>{try{localStorage.setItem('theorem-ui-theme','light');localStorage.setItem('theorem-ui:appearance',JSON.stringify({version:1,state:{preset:'calm',overrides:{density}}}))}catch{}},density)
   await p.goto(`${base}/story/design-oracle-navigation`)
-  const pin=p.getByRole('button',{name:'Pin to Theorem',exact:true})
-  await pin.waitFor()
+  await p.locator('header button[aria-label="More"]').waitFor()
   await p.locator('.aui-composer-send').waitFor()
   const editor=p.getByRole('textbox',{name:'Message input'})
   await editor.fill('Draft for density measurement')
@@ -25,10 +24,11 @@ try {
   })
   const measured=await p.evaluate(()=>{
    const minimum=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--appearance-control-min'))*parseFloat(getComputedStyle(document.documentElement).fontSize)
-   const controls=[document.querySelector('button[aria-label="Pin to Theorem"]'),document.querySelector('header button[aria-label="More"]'),document.querySelector('.aui-composer-send')].map(n=>{
+   const layout=[...document.querySelectorAll('header button')].find(n=>n.textContent.includes('Layout and panels'))
+   const controls=[document.querySelector('header button[aria-label="More"]'),layout,document.querySelector('.aui-composer-send')].filter(Boolean).map(n=>{
     const r=n.getBoundingClientRect()
     const hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2)
-    return{label:n.getAttribute('aria-label'),x:r.x,y:r.y,width:r.width,height:r.height,inside:r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight,hit:n.contains(hit)}
+    return{label:n.getAttribute('aria-label')??n.textContent.trim(),x:r.x,y:r.y,width:r.width,height:r.height,inside:r.x>=0&&r.right<=innerWidth&&r.y>=0&&r.bottom<=innerHeight,hit:n.contains(hit)}
    })
    const header=document.querySelector('[data-appearance-part=main] header')
    const inspector=document.querySelector('[data-appearance-part=inspector][data-overlay=true]')
@@ -40,7 +40,7 @@ try {
  for (const settings of [{},{scales:{content:1.25},font:{textFamily:'IBM Plex Sans Variable',comfortableMeasure:35.75,wideMeasure:44.75,contentLineHeight:1.75}}]) {
   const p=await browser.newPage({viewport:{width:1440,height:900},reducedMotion:'reduce'})
   const errors=[];p.on('pageerror',e=>errors.push(e.message))
-  await p.addInitScript(overrides=>{localStorage.setItem('theorem-ui-theme','light');localStorage.setItem('theorem-ui:appearance',JSON.stringify({version:1,state:{preset:'calm',overrides}}))},settings)
+  await p.addInitScript(overrides=>{try{localStorage.setItem('theorem-ui-theme','light');localStorage.setItem('theorem-ui:appearance',JSON.stringify({version:1,state:{preset:'calm',overrides}}))}catch{}},settings)
   await p.goto(`${base}/story/design-oracle-long`)
   await p.getByRole('heading',{name:'Reading and writing',exact:true}).waitFor()
   const measured=await p.evaluate(async ()=>{

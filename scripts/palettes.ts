@@ -493,6 +493,8 @@ export function appearanceTokens(mode: (typeof modes)[number], calm = false) {
     'redwood-ink',
     'line-control',
     'redwood-pressed',
+    // Inline code's ink (COLOR_ROLES.code) reads on every reading surface.
+    'attention-ink',
   ]
   for (const token of readable) {
     const color = toOklch(tokens[token])

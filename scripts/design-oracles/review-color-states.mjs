@@ -232,14 +232,17 @@ for (const engine of engines.filter(
       const errors = []
       page.on('pageerror', (error) => errors.push(error.message))
       await page.addInitScript((mode) => {
-        localStorage.setItem('theorem-ui-theme', mode)
-        localStorage.setItem(
-          'theorem-ui:appearance',
-          JSON.stringify({
-            version: 1,
-            state: { preset: 'calm', overrides: {} },
-          }),
-        )
+        // Init scripts run in every frame, and a sandboxed app frame has no storage.
+        try {
+          localStorage.setItem('theorem-ui-theme', mode)
+          localStorage.setItem(
+            'theorem-ui:appearance',
+            JSON.stringify({
+              version: 1,
+              state: { preset: 'calm', overrides: {} },
+            }),
+          )
+        } catch {}
       }, mode)
       const item = {
         engine,
@@ -304,7 +307,9 @@ for (const engine of engines.filter(
         })
         await stop.waitFor()
         item.rows.push(
-          ...(await buttonStates(page, stop, 'stop', 'svg path', false)),
+          // The stop mark is a painted layer mark, as the send mark is: its
+          // line layer carries the paint, not an inline svg path.
+          ...(await buttonStates(page, stop, 'stop', '.icon-mask[data-layer="line"]', false)),
         )
 
         // The fully wired shell fixture owns the Theorem runtime and model catalog.
@@ -322,7 +327,7 @@ for (const engine of engines.filter(
             descendant: 'span.truncate',
           }),
         )
-        const model = page.locator('[aria-label="Model"]').first()
+        const model = page.locator('[data-model-picker-trigger]').first()
         await model.click()
         const option = page
           .locator('[data-slot="combobox-item"]')

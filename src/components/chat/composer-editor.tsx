@@ -397,6 +397,26 @@ function Editor({
     }
   }, [popover])
 
+  // Text another control puts in the draft (the + menu's Tools writes a
+  // slash), at the end and as if typed, so the / menu and undo follow it.
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const insert = (event: Event) => {
+      const view = viewRef.current
+      const text = (event as CustomEvent<string>).detail
+      if (!view || isDisabled || !text) return
+      const end = Selection.atEnd(view.state.doc)
+      const before = view.state.doc.textBetween(0, end.head, '\n')
+      const written = before && !/\s$/u.test(before) ? ` ${text}` : text
+      const tr = view.state.tr.setSelection(end).insertText(written)
+      view.dispatch(tr.scrollIntoView())
+      view.focus()
+    }
+    wrapper.addEventListener(COMPOSER_INSERT, insert)
+    return () => wrapper.removeEventListener(COMPOSER_INSERT, insert)
+  }, [isDisabled])
+
   // Ahead of the editor's own keys: the / menu's, then the composer's.
   const onKeyDownCapture = (event: KeyboardEvent<HTMLDivElement>) => {
     const view = viewRef.current
@@ -486,6 +506,17 @@ function Editor({
       <Milkdown />
     </div>
   )
+}
+
+/** The event a control dispatches on the editor to write text at the end of the draft. */
+export const COMPOSER_INSERT = 'theorem:composer-insert'
+
+/** Writes `text` at the end of the draft in the composer around `from`, and puts the caret after it. */
+export function insertInComposer(from: Element | null, text: string) {
+  from
+    ?.closest('[data-slot="aui_composer-shell"]')
+    ?.querySelector('.theorem-composer')
+    ?.dispatchEvent(new CustomEvent(COMPOSER_INSERT, { detail: text }))
 }
 
 type ComposerEditorProps = {

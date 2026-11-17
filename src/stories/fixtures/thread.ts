@@ -1,7 +1,7 @@
 // SOURCING: none: the conversation from docs/plans/evidence/refs/sidebar-compare@2026-11-05.webp, in the SDK's own message shape.
 import type { Theorem } from '@/lib/theorem/client'
 
-const message = (
+export const message = (
   messageId: string,
   role: Theorem.MessageRole,
   text: string,

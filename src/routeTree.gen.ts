@@ -33,10 +33,13 @@ import { Route as LoginCodeRouteImport } from './routes/login_.code'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsAiRouteImport } from './routes/settings/ai'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
+import { Route as SettingsCompanionsRouteImport } from './routes/settings/companions'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
+import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
 import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
+import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
 import { Route as TheiaSplatRouteImport } from './routes/theia/$'
@@ -63,6 +66,7 @@ import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
 import { Route as ApiSpacesV1SplatRouteImport } from './routes/api/spaces/v1/$'
+import { Route as ApiWorkbenchV1SplatRouteImport } from './routes/api/workbench/v1/$'
 import { Route as DesktopWorkspaceWorkspaceIdIndexRouteImport } from './routes/desktop/workspace/$workspaceId/index'
 import { Route as DesktopWorkspaceWorkspaceIdBacklinksRouteImport } from './routes/desktop/workspace/$workspaceId/backlinks'
 import { Route as DesktopWorkspaceWorkspaceIdCompiledRouteImport } from './routes/desktop/workspace/$workspaceId/compiled'
@@ -205,6 +209,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsCompanionsRoute = SettingsCompanionsRouteImport.update({
+  id: '/companions',
+  path: '/companions',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
@@ -220,9 +229,19 @@ const SettingsKeysRoute = SettingsKeysRouteImport.update({
   path: '/keys',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsProfileRoute = SettingsProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
+  id: '/responses',
+  path: '/responses',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsWorkRoute = SettingsWorkRouteImport.update({
@@ -353,6 +372,11 @@ const ApiSceneV1SplatRoute = ApiSceneV1SplatRouteImport.update({
 const ApiSpacesV1SplatRoute = ApiSpacesV1SplatRouteImport.update({
   id: '/api/spaces/v1/$',
   path: '/api/spaces/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiWorkbenchV1SplatRoute = ApiWorkbenchV1SplatRouteImport.update({
+  id: '/api/workbench/v1/$',
+  path: '/api/workbench/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const DesktopWorkspaceWorkspaceIdIndexRoute =
@@ -505,10 +529,13 @@ export interface FileRoutesByFullPath {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -536,6 +563,7 @@ export interface FileRoutesByFullPath {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -579,10 +607,13 @@ export interface FileRoutesByTo {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -611,6 +642,7 @@ export interface FileRoutesByTo {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -657,10 +689,13 @@ export interface FileRoutesById {
   '/login_/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
   '/settings/profile': typeof SettingsProfileRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -689,6 +724,7 @@ export interface FileRoutesById {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -736,10 +772,13 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -767,6 +806,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -810,10 +850,13 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -842,6 +885,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -887,10 +931,13 @@ export interface FileRouteTypes {
     | '/login_/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
     | '/settings/profile'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -919,6 +966,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -976,6 +1024,7 @@ export interface RootRouteChildren {
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
   ApiSpacesV1SplatRoute: typeof ApiSpacesV1SplatRoute
+  ApiWorkbenchV1SplatRoute: typeof ApiWorkbenchV1SplatRoute
   DesktopWorkspaceWorkspaceIdBacklinksRoute: typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   DesktopWorkspaceWorkspaceIdCompiledRoute: typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   DesktopWorkspaceWorkspaceIdEventsRoute: typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -1168,6 +1217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/companions': {
+      id: '/settings/companions'
+      path: '/companions'
+      fullPath: '/settings/companions'
+      preLoaderRoute: typeof SettingsCompanionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connections': {
       id: '/settings/connections'
       path: '/connections'
@@ -1189,11 +1245,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsKeysRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/plugins': {
+      id: '/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/profile': {
       id: '/settings/profile'
       path: '/profile'
       fullPath: '/settings/profile'
       preLoaderRoute: typeof SettingsProfileRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/responses': {
+      id: '/settings/responses'
+      path: '/responses'
+      fullPath: '/settings/responses'
+      preLoaderRoute: typeof SettingsResponsesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/work': {
@@ -1376,6 +1446,13 @@ declare module '@tanstack/react-router' {
       path: '/api/spaces/v1/$'
       fullPath: '/api/spaces/v1/$'
       preLoaderRoute: typeof ApiSpacesV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/workbench/v1/$': {
+      id: '/api/workbench/v1/$'
+      path: '/api/workbench/v1/$'
+      fullPath: '/api/workbench/v1/$'
+      preLoaderRoute: typeof ApiWorkbenchV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/desktop/workspace/$workspaceId/': {
@@ -1583,10 +1660,13 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsCompanionsRoute: typeof SettingsCompanionsRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
+  SettingsPluginsRoute: typeof SettingsPluginsRoute
   SettingsProfileRoute: typeof SettingsProfileRoute
+  SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsObserveIndexRoute: typeof SettingsObserveIndexRoute
@@ -1596,10 +1676,13 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsCompanionsRoute: SettingsCompanionsRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
+  SettingsPluginsRoute: SettingsPluginsRoute,
   SettingsProfileRoute: SettingsProfileRoute,
+  SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsObserveIndexRoute: SettingsObserveIndexRoute,
@@ -1645,6 +1728,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,
   ApiSpacesV1SplatRoute: ApiSpacesV1SplatRoute,
+  ApiWorkbenchV1SplatRoute: ApiWorkbenchV1SplatRoute,
   DesktopWorkspaceWorkspaceIdBacklinksRoute:
     DesktopWorkspaceWorkspaceIdBacklinksRoute,
   DesktopWorkspaceWorkspaceIdCompiledRoute:

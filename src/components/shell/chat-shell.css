@@ -1,15 +1,16 @@
 /* Shell policy; material and typography recipes are supplied by appearance.css. */
+/* The drawer is the docked panel's card at the docked panel's width, beside
+   the docked rail; the rail and backdrop it covers stay put. On a phone the
+   docked rail is hidden, so the drawer carries its own. */
 .appearance-navigation-drawer {
-  width: min(24rem, 100vw);
-  overflow: auto;
+  width: calc(var(--drawer-panel, 18rem) + var(--panel-float, 8px));
+  margin-inline-start: var(--spacing-rail);
 }
-.appearance-navigation-drawer > div:last-child {
-  display: flex;
-  flex-direction: column;
+.appearance-drawer-rail {
+  display: none;
 }
-.appearance-navigation-drawer .appearance-surface {
-  flex: 1;
-  min-height: 0;
+.appearance-navigation-backdrop {
+  inset-inline-start: var(--spacing-rail);
 }
 .appearance-docked-rail {
   flex: none;
@@ -25,8 +26,19 @@
   .appearance-docked-rail {
     display: none;
   }
-  .appearance-shell {
+  .appearance-shell,
+  .appearance-navigation-drawer {
     --sheet-inset: 0px;
+  }
+  .appearance-navigation-drawer {
+    width: min(24rem, 100vw);
+    margin-inline-start: 0;
+  }
+  .appearance-drawer-rail {
+    display: block;
+  }
+  .appearance-navigation-backdrop {
+    inset-inline-start: 0;
   }
 }
 .appearance-navigation [data-slot='aui_thread-list-item'],

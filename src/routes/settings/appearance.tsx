@@ -1,4 +1,4 @@
-// SOURCING: next-themes (light/dark), lib/palette (colours), lib/surfaces (what the composer is made of), lib/life/store (the field behind the chat), lib/figures (Kit and Theo), components/face/face-feel (how Theo moves), coss ui SegmentedControl, the settings frame
+// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), coss ui SegmentedControl for choices and Switch for on and off, the settings frame
 import { createFileRoute } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
@@ -26,27 +26,19 @@ import {
   setCalculationsShown,
   useCalculationsShown,
 } from '@/components/crm/calculations-setting'
-import { Icon } from '@/components/icons'
 import {
   SettingsBox,
   SettingsPage,
   SettingsRow,
   SettingsSection,
 } from '@/components/settings/settings-frame'
-import { FaceFeel } from '@/components/face/face-feel'
-import { FaceMark } from '@/components/face/face-mark'
-import { VISORS, useFigures } from '@/lib/figures'
 import { useLifeControls, useLifeShown } from '@/lib/life/store'
-import {
-  PALETTES,
-  SURFACE_ROLES,
-  CALM_COLORS,
-  COLOR_ROLES,
-} from '@/lib/appearance-policy'
+import { PALETTES, CALM_COLORS, COLOR_ROLES } from '@/lib/appearance-policy'
 import {
   APPEARANCE_VERSION,
   appearanceDocumentSchema,
   appearanceOverridesSchema,
+  customCssSchema,
   customFontInputSchema,
   useAppearance,
 } from '@/lib/appearance'
@@ -57,7 +49,6 @@ import type {
   AppearanceInput,
 } from '@/lib/appearance'
 import { LATIN_PROSE_V1_PARAGRAPHS } from '@/lib/appearance-corpus.mjs'
-import { COMPOSER_SURFACES } from '@/lib/surfaces'
 
 export const Route = createFileRoute('/settings/appearance')({
   component: AppearanceSettings,
@@ -70,7 +61,7 @@ const THEMES = [
 ]
 
 /** One choice of a segmented control; the control slides its indicator to the pressed item. */
-function Choice({
+export function Choice({
   pressed,
   onPress,
   label,
@@ -97,13 +88,13 @@ export function AppearanceSettings() {
     useAppearance()
   const lifeShown = useLifeShown()
   const lifeOverride = useLifeControls((state) => state.shown)
+  const lifePlaying = useLifeControls((state) => state.playing)
+  const calculations = useCalculationsShown()
   const reset = () => {
     resetOverrides()
     setTheme('system')
     useLifeControls.setState({ shown: undefined })
   }
-  const figures = useFigures()
-  const calculations = useCalculationsShown()
   return (
     <SettingsPage
       title="Appearance"
@@ -134,7 +125,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Sun}
             title="Theme"
             description="Light, dark, or whatever the system uses."
           >
@@ -150,7 +140,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Layout}
             title="Colors"
             description="The palette for both display modes."
           >
@@ -195,11 +184,11 @@ export function AppearanceSettings() {
             </Select>
           </SettingsRow>
           <SettingsRow
-            title="Content size"
+            title="Text size"
             description="Conversation, headings, and the message editor."
           >
-            <ScaleControl
-              label="Content size"
+            <TextSizeControl
+              label="Text size"
               value={appearance.scales.content}
               onChange={(content) => setOverrides({ scales: { content } })}
             />
@@ -250,7 +239,6 @@ export function AppearanceSettings() {
             </SegmentedControl>
           </SettingsRow>
           <SettingsRow
-            Mark={Icon.Table}
             title="Calculations under record tables"
             description="A Calculate row under each record table: counts, percentages, sums and dates over the records loaded. Off, the table shows only how many records it holds. Kept on this device."
           >
@@ -260,114 +248,50 @@ export function AppearanceSettings() {
               onCheckedChange={setCalculationsShown}
             />
           </SettingsRow>
+        </SettingsBox>
+      </SettingsSection>
+      <SettingsSection
+        title="Background"
+        description="What runs behind the conversation."
+      >
+        <SettingsBox>
           <SettingsRow
-            Mark={Icon.Grip}
             title="Life field"
             description="A Game of Life behind the chat that quickens as the model works. Right-click empty space for its controls."
           >
-            <SegmentedControl size="sm" aria-label="Life field">
-              <Choice
-                label="On"
-                pressed={lifeShown}
-                onPress={() => useLifeControls.setState({ shown: true })}
-              />
-              <Choice
-                label="Off"
-                pressed={!lifeShown}
-                onPress={() => useLifeControls.setState({ shown: false })}
-              />
-            </SegmentedControl>
+            <Switch
+              aria-label="Life field"
+              checked={lifeShown}
+              onCheckedChange={(shown) => useLifeControls.setState({ shown })}
+            />
+          </SettingsRow>
+          <SettingsRow
+            title="Background animation"
+            description={
+              lifeShown
+                ? lifePlaying
+                  ? 'Playing. Pause it to keep the field still behind the conversation.'
+                  : 'Paused. The field stays where it stopped until you play it again.'
+                : 'Turn the Life field on to play or pause it.'
+            }
+          >
+            <Switch
+              aria-label="Background animation playing"
+              checked={lifeShown && lifePlaying}
+              disabled={!lifeShown}
+              onCheckedChange={(playing) => useLifeControls.setState({ playing })}
+            />
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>
       <SettingsSection
-        title="Materials"
-        description="Replies share the background. Choose materials for the background and other surfaces."
+        title="Customize"
+        description="The preset chooses materials, layout and motion. Adjust anything else with a CSS snippet, or edit the full settings as JSON."
       >
-        <SettingsBox>
-          {SURFACE_ROLES.filter((role) => role !== 'assistant-reading').map(
-            (role) => (
-              <SettingsRow key={role} title={SURFACE_LABELS[role]}>
-                <Select
-                  items={COMPOSER_SURFACES}
-                  value={appearance.materials[role]}
-                  onValueChange={(value) => {
-                    const material = COMPOSER_SURFACES.find(
-                      (item) => item.value === value,
-                    )
-                    if (material)
-                      setOverrides({ materials: { [role]: material.value } })
-                  }}
-                >
-                  <SelectTrigger
-                    aria-label={`${SURFACE_LABELS[role]} material`}
-                    data-appearance-recipe="ui.label"
-                    className="w-48 max-w-full min-h-[max(2.25rem,var(--appearance-control-min))]"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectPopup>
-                    {COMPOSER_SURFACES.map(({ value, label }) => (
-                      <SelectItem
-                        key={value}
-                        value={value}
-                        data-appearance-recipe="ui.label"
-                      >
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectPopup>
-                </Select>
-              </SettingsRow>
-            ),
-          )}
-        </SettingsBox>
-      </SettingsSection>
-      <SettingsSection title="Advanced">
-        <SettingsBox>
-          <SettingsRow title="Interface text size">
-            <ScaleControl
-              label="Interface text size"
-              value={appearance.scales.ui}
-              onChange={(ui) => setOverrides({ scales: { ui } })}
-            />
-          </SettingsRow>
-          <SettingsRow title="Code text size">
-            <ScaleControl
-              label="Code text size"
-              value={appearance.scales.code}
-              onChange={(code) => setOverrides({ scales: { code } })}
-            />
-          </SettingsRow>
-          <SettingsRow title="Composer layout">
-            <SegmentedControl size="sm" aria-label="Composer layout">
-              <Choice
-                label="Conversation"
-                pressed={appearance.layout === 'conversation'}
-                onPress={() => setOverrides({ layout: 'conversation' })}
-              />
-              <Choice
-                label="Tools above editor"
-                pressed={appearance.layout === 'sidecar'}
-                onPress={() => setOverrides({ layout: 'sidecar' })}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-          <SettingsRow title="Motion">
-            <SegmentedControl size="sm" aria-label="Motion">
-              <Choice
-                label="System"
-                pressed={appearance.motion === 'system'}
-                onPress={() => setOverrides({ motion: 'system' })}
-              />
-              <Choice
-                label="Reduced"
-                pressed={appearance.motion === 'reduced'}
-                onPress={() => setOverrides({ motion: 'reduced' })}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-        </SettingsBox>
+        <CustomCss
+          value={appearance.css}
+          onApply={(css) => setOverrides({ css })}
+        />
         <AppearanceImport
           selection={{ preset: appearance.preset, overrides }}
           mode={theme as AppearanceMode | undefined}
@@ -375,76 +299,9 @@ export function AppearanceSettings() {
           onModeChange={setTheme}
         />
       </SettingsSection>
-      <SettingsSection title="Figures">
-        <SettingsBox>
-          <SettingsRow
-            Mark={FaceMark}
-            title="Theo"
-            description="The agent’s face. It shows what Theorem is doing, reacts to you, and sleeps when nothing is happening. Tap it, carry it, or double-tap to send it home."
-          >
-            <SegmentedControl size="sm" aria-label="Theo">
-              <Choice
-                label="On"
-                pressed={figures.theo}
-                onPress={() => figures.setTheo(true)}
-              />
-              <Choice
-                label="Off"
-                pressed={!figures.theo}
-                onPress={() => figures.setTheo(false)}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-          <SettingsRow
-            Mark={FaceMark}
-            title="Theo’s visor"
-            description="The dark screen behind Theo’s eyes. Auto keeps it in the light theme and drops it in the dark one, where the eyes glow against the page. Without it in the light theme, the eyes are drawn dark."
-          >
-            <SegmentedControl size="sm" aria-label="Theo’s visor">
-              {VISORS.map(({ value, label }) => (
-                <Choice
-                  key={value}
-                  label={label}
-                  pressed={figures.visor === value}
-                  onPress={() => figures.setVisor(value)}
-                />
-              ))}
-            </SegmentedControl>
-          </SettingsRow>
-          <SettingsRow
-            Mark={Icon.Sparkle}
-            title="Kit"
-            description="The fox that lives in the window. It is just there: it walks, sits and naps on its own."
-          >
-            <SegmentedControl size="sm" aria-label="Kit">
-              <Choice
-                label="On"
-                pressed={figures.kit}
-                onPress={() => figures.setKit(true)}
-              />
-              <Choice
-                label="Off"
-                pressed={!figures.kit}
-                onPress={() => figures.setKit(false)}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-        </SettingsBox>
-      </SettingsSection>
-      {figures.theo ? <FaceFeel /> : null}
     </SettingsPage>
   )
 }
-
-const SURFACE_LABELS = {
-  canvas: 'Background',
-  navigation: 'Navigation',
-  composer: 'Composer',
-  'user-message': 'Sent messages',
-  popover: 'Menus and tooltips',
-  artifact: 'Artifacts',
-  status: 'Status feedback',
-} as const
 
 const DENSITY_OPTIONS = [
   { value: 'compact', label: 'Compact' },
@@ -452,7 +309,16 @@ const DENSITY_OPTIONS = [
   { value: 'touch', label: 'Touch' },
 ] as const
 
-function ScaleControl({
+/** The scale's limits (appearance.ts) and the body text's size at 1 (1rem). */
+const MIN_SCALE = 0.75
+const MAX_SCALE = 2
+
+/**
+ * The size body text renders at, in pixels. It is stored as a multiple of
+ * the browser's own text size, so a reader who enlarged that keeps it; the
+ * field shows and takes what that multiple comes to on this device.
+ */
+function TextSizeControl({
   label,
   value,
   onChange,
@@ -461,27 +327,125 @@ function ScaleControl({
   value: number
   onChange: (value: number) => void
 }) {
+  const base =
+    typeof window === 'undefined'
+      ? 16
+      : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16
   return (
-    <NumberField
-      className="w-28"
-      min={75}
-      max={200}
-      step={5}
-      value={Math.round(value * 100)}
-      format={{ maximumFractionDigits: 0 }}
-      onValueCommitted={(next) => {
-        if (next !== null) onChange(next / 100)
-      }}
+    <div className="flex items-center gap-2">
+      <NumberField
+        className="w-24"
+        min={Math.ceil(base * MIN_SCALE)}
+        max={Math.floor(base * MAX_SCALE)}
+        step={1}
+        value={Math.round(value * base)}
+        format={{ maximumFractionDigits: 0 }}
+        onValueCommitted={(next) => {
+          if (next !== null) onChange(next / base)
+        }}
+      >
+        <NumberFieldGroup>
+          <NumberFieldInput
+            aria-label={label}
+            aria-description="Pixels"
+            data-appearance-recipe="ui.label"
+            className="h-auto min-h-(--appearance-control-min) py-1 sm:h-auto"
+          />
+        </NumberFieldGroup>
+      </NumberField>
+      <span data-appearance-recipe="ui.label" className="text-ink-muted">
+        px
+      </span>
+    </div>
+  )
+}
+
+const CSS_EXAMPLE = `/* Applied after Theorem's own styles. Examples: */
+:root {
+  --appearance-scale-ui: 1.1;     /* sidebar and controls, 1 = 14px */
+  --appearance-scale-code: 0.95;  /* code, 1 = 13px */
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+}
+:root.dark {
+  --redwood: #e0703a;             /* the accent, in dark */
+}`
+
+/**
+ * A CSS snippet for what the page has no control for: interface and code
+ * text size, fonts, colours, blur, anything a selector reaches. It is saved
+ * with the rest of the appearance and goes into the export.
+ */
+function CustomCss({
+  value,
+  onApply,
+}: {
+  value: string
+  onApply: (css: string) => void
+}) {
+  const [text, setText] = useState<string>()
+  const [message, setMessage] = useState('')
+  const [invalid, setInvalid] = useState(false)
+  const apply = (css: string) => {
+    const parsed = customCssSchema.safeParse(css)
+    if (!parsed.success) {
+      setInvalid(true)
+      setMessage(parsed.error.issues.map((issue) => issue.message).join(' '))
+      return
+    }
+    onApply(parsed.data)
+    setText(undefined)
+    setInvalid(false)
+    setMessage(parsed.data ? 'Custom CSS applied.' : 'Custom CSS removed.')
+  }
+  return (
+    <details
+      className="appearance-import rounded-lg border border-separator p-3"
+      open={value ? true : undefined}
     >
-      <NumberFieldGroup>
-        <NumberFieldInput
-          aria-label={label}
-          aria-description="Percentage of browser text size"
-          data-appearance-recipe="ui.label"
-          className="h-auto min-h-(--appearance-control-min) py-1 sm:h-auto"
+      <summary className="cursor-pointer" data-appearance-recipe="ui.label">
+        Custom CSS
+      </summary>
+      <div className="mt-3 flex min-w-0 flex-col gap-3">
+        <p data-appearance-recipe="metadata" className="text-ink-muted">
+          Applied after Theorem’s own styles and saved with your appearance.
+          Fonts must be installed on this device; only data: URLs load.
+        </p>
+        <Textarea
+          className="w-full min-w-0 [&_textarea]:min-h-40"
+          data-appearance-recipe="code"
+          aria-label="Custom CSS"
+          spellCheck={false}
+          placeholder={CSS_EXAMPLE}
+          value={text ?? value}
+          onChange={(event) => setText(event.currentTarget.value)}
         />
-      </NumberFieldGroup>
-    </NumberField>
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={() => apply(text ?? value)}>Apply CSS</Button>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setText(CSS_EXAMPLE)
+              setMessage('')
+            }}
+          >
+            Load example
+          </Button>
+          {value ? (
+            <Button variant="outline" onClick={() => apply('')}>
+              Remove CSS
+            </Button>
+          ) : null}
+        </div>
+        {message && (
+          <p
+            role={invalid ? 'alert' : 'status'}
+            data-appearance-recipe="metadata"
+          >
+            {message}
+          </p>
+        )}
+      </div>
+    </details>
   )
 }
 

@@ -1,0 +1,19 @@
+{
+  "date": "2026-11-14",
+  "product": "Theo web only",
+  "native_delivery": "deferred",
+  "parent_cabinet_zip": {
+    "filename": "theorem-artifact-cabinet-spec-v1.0.zip",
+    "sha256": "2d2f0b6f8b5b14d083ae7285689a0c629b1f82f60990e4172845ea113b7ce02c",
+    "copied_entries": "references/artifact-cabinet-v1.0/",
+    "modified": false
+  },
+  "user_screenshot": {
+    "filename": "Screenshot 2026-11-14 at 9.16.23\u202fPM.png",
+    "sha256": "e205692bd3f3904ec9aca60a6c314899b866dc861b8400e61b038749ec7e4a53",
+    "copy": "visual-reference/codex-tool-picker.png"
+  },
+  "implementation_written": false,
+  "production_tests_run": false,
+  "source_limit": "Mixed inspected source revisions; actual release combination must be reconciled at Gate 0."
+}

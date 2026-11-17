@@ -1,8 +1,10 @@
-// SOURCING: textmode.js through mountLife; assistant-ui useAuiState for the working turn (as ide/follow reads it); ResizeObserver to keep the canvas at its box; MutationObserver on <html> to repaint when next-themes or the palette changes; Base UI context menu for the controls, styled as the thread list's
+// SOURCING: coss Toolbar with the app's TooltipIconButton for the visible pause/hide; textmode.js through mountLife; assistant-ui useAuiState for the working turn (as ide/follow reads it); ResizeObserver to keep the canvas at its box; MutationObserver on <html> to repaint when next-themes or the palette changes; Base UI context menu for the controls, styled as the thread list's
 import { ContextMenu } from '@base-ui/react/context-menu'
 import { useAuiState } from '@assistant-ui/react'
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
 import type { PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
+import { Toolbar, ToolbarButton } from '@/components/coss/toolbar'
 import { Icon } from '@/components/icons'
 import { pulsesSince, signalOf } from '@/lib/life/energy'
 import type { Reading } from '@/lib/life/energy'
@@ -14,6 +16,7 @@ import { prefersReducedMotion } from '@/lib/motion'
 import { mountLife } from './mount-life'
 import { mountLife2d } from './mount-life-2d'
 import type { LifeGame } from './mount-life'
+import type { ClientBox } from '@/lib/life/occlusion'
 
 const BRUSHES: ReadonlyArray<Brush> = ['cell', ...(Object.keys(PATTERNS) as PatternName[])]
 
@@ -56,6 +59,48 @@ const isFieldSpace = (target: EventTarget, field: Element) =>
   target.closest(LIFE_SPACE) !== null &&
   target.closest(CHAT_CONTENT) === null
 
+/**
+ * The blocks of a conversation whose words the field keeps clear of. Code
+ * sits on its own glass, which frosts the field instead.
+ */
+const TEXT_BLOCKS =
+  '[data-message-id] :is(p, li, h1, h2, h3, h4, h5, h6, blockquote, th, td, dt, dd, summary):not(figure[data-glass-code] *)'
+
+/** How far the quiet reaches past the ends of a line: a cell and a half, so the field resumes a word's width away. */
+const LINE_REACH = 14
+
+/**
+ * Each line of the conversation's text that lies over the field, from the
+ * browser's own line boxes (Range.getClientRects). Those boxes are the
+ * glyphs' height, not the line's, so each grows by half the leading above
+ * and below: a paragraph's lines then meet and the field stays quiet between
+ * them, while past a short line's end it keeps running. The ends reach a
+ * little past the ink.
+ */
+function textLines(scope: Element, field: Element): ClientBox[] {
+  const bounds = field.getBoundingClientRect()
+  const range = document.createRange()
+  const lines: ClientBox[] = []
+  for (const block of scope.querySelectorAll(TEXT_BLOCKS)) {
+    const box = block.getBoundingClientRect()
+    if (box.bottom < bounds.top || box.top > bounds.bottom || box.width === 0) continue
+    const style = getComputedStyle(block)
+    const leading = Number.parseFloat(style.lineHeight) || Number.parseFloat(style.fontSize) * 1.2
+    range.selectNodeContents(block)
+    for (const line of range.getClientRects()) {
+      if (line.width === 0 || line.bottom < bounds.top || line.top > bounds.bottom) continue
+      const half = Math.max(1, (leading - line.height) / 2)
+      lines.push({
+        left: line.left - LINE_REACH,
+        top: line.top - half,
+        right: line.right + LINE_REACH,
+        bottom: line.bottom + half,
+      })
+    }
+  }
+  return lines
+}
+
 /** A field above draws for the conversation, which then only marks its box. */
 const FieldAbove = createContext(false)
 
@@ -73,14 +118,60 @@ const menuPopup =
 export function LifeBackdrop({ children }: { children: ReactNode }) {
   if (useContext(FieldAbove))
     return (
-      <div data-life-space="" className="h-full">
+      <div data-life-space="" className="@container relative h-full">
         {children}
+        <LifeControls />
       </div>
     )
   return (
     <LifeField space active>
       {children}
+      <LifeControls />
     </LifeField>
+  )
+}
+
+/**
+ * The field's pause and hide, in sight in the conversation's lower corner
+ * rather than only behind a right click. Hidden in a narrow pane, where the
+ * menu and Settings still reach them.
+ */
+function LifeControls() {
+  const shown = useLifeShown()
+  const playing = useLifeControls((state) => state.playing)
+  const set = useLifeControls.setState
+  if (!shown) return null
+  return (
+    <Toolbar
+      aria-label="Background animation"
+      className="life-controls absolute end-3 bottom-3 z-10 hidden gap-0.5 rounded-lg border-separator bg-(--surface-raised)/80 p-0.5 shadow-xs backdrop-blur-sm @3xl:flex"
+    >
+      <ToolbarButton
+        render={
+          <TooltipIconButton
+            tooltip={playing ? 'Pause the background' : 'Play the background'}
+            side="top"
+            aria-pressed={!playing}
+            className="text-ink-muted hover:text-ink size-7"
+            onClick={() => set({ playing: !playing })}
+          />
+        }
+      >
+        {playing ? <Icon.Pause className="size-4" /> : <Icon.Play className="size-4" />}
+      </ToolbarButton>
+      <ToolbarButton
+        render={
+          <TooltipIconButton
+            tooltip="Hide the background"
+            side="top"
+            className="text-ink-muted hover:text-ink size-7"
+            onClick={() => set({ shown: false })}
+          />
+        }
+      >
+        <Icon.Hide className="size-4" />
+      </ToolbarButton>
+    </Toolbar>
   )
 }
 
@@ -136,7 +227,25 @@ function LifeField({
       ? mountLife2d(host, { reducedMotion })
       : mountLife(host, { reducedMotion })
     setGame(mounted)
-    const resize = new ResizeObserver(() => mounted.resize(host.clientWidth, host.clientHeight))
+    // The text over the field, measured once a frame at most, whenever the
+    // conversation scrolls, streams, or the field changes size.
+    const scope = host.parentElement ?? host
+    let measuring = 0
+    const measure = () => {
+      measuring = 0
+      mounted.occlude(textLines(scope, host))
+    }
+    const remeasure = () => {
+      if (!measuring) measuring = requestAnimationFrame(measure)
+    }
+    scope.addEventListener('scroll', remeasure, { capture: true, passive: true })
+    const text = new MutationObserver(remeasure)
+    text.observe(scope, { subtree: true, childList: true, characterData: true })
+    remeasure()
+    const resize = new ResizeObserver(() => {
+      mounted.resize(host.clientWidth, host.clientHeight)
+      remeasure()
+    })
     resize.observe(host)
     // Styles land after the attribute changes, so read them on the next frame.
     const theme = new MutationObserver(() => requestAnimationFrame(() => mounted.repaint()))
@@ -145,6 +254,9 @@ function LifeField({
       attributeFilter: ['class', 'data-palette'],
     })
     return () => {
+      scope.removeEventListener('scroll', remeasure, { capture: true })
+      text.disconnect()
+      cancelAnimationFrame(measuring)
       resize.disconnect()
       theme.disconnect()
       mounted.destroy()
@@ -202,7 +314,7 @@ function LifeField({
         {draws && (
           <div ref={attach} aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden" />
         )}
-        <div className="relative h-full">{children}</div>
+        <div className="@container relative h-full">{children}</div>
       </ContextMenu.Trigger>
       <LifeMenu game={draws ? game : undefined} />
     </ContextMenu.Root>

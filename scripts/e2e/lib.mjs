@@ -72,8 +72,8 @@ export async function open(
     name === 'firefox'
       ? await firefox.launch({ channel: 'moz-firefox' })
       : await chromium.launch(
-          // A machine whose Chromium is not the revision this Playwright pins
-          // names its own with E2E_CHROMIUM.
+          // E2E_CHROMIUM names a Chromium already on this machine, where
+          // Playwright's own download is not the one installed.
           process.env.E2E_CHROMIUM
             ? { executablePath: process.env.E2E_CHROMIUM }
             : { channel: 'chromium' },

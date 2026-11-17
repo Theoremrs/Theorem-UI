@@ -78,6 +78,16 @@ export function memoryDatabase(): MemoryDatabase {
         reads.delete(publish)
       }
     },
+    // As in the browser, a database kept only in memory has no file to rewrite.
+    compact: () =>
+      Promise.reject(
+        Object.assign(
+          new Error('an in-memory database has no file to compact'),
+          {
+            code: 'in_memory',
+          },
+        ),
+      ),
     close: async () => {
       self.closed = true
       reads.clear()

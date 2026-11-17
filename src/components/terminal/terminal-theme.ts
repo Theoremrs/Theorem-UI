@@ -17,6 +17,13 @@
 //   (the ink in a light workspace, the main screen in a dark one); never
 //   lighter than the slate, where the diff rows already use all the lightness
 //   their text allows;
+// - the mark, the colour of the letters of what is chosen or matched: the
+//   slate's burnt orange carried by its relationships. Its hue is the
+//   background's plus the offset it has from the slate background's hue, so
+//   it sits opposite the surface as on the slate, moved the least that keeps
+//   it clear of every state colour's hue; its chroma is the slate's own; its
+//   lightness is the one that keeps the contrast it has on the slate, lifted
+//   until it also reads on the raised surface;
 // - raised rows, rules and the idle cursor: the slate's steps from its
 //   background;
 // - text and status colours: their hue and chroma, at the lightness that
@@ -88,6 +95,8 @@ export type TerminalTheme = {
   sage: string
   gold: string
   error: string
+  /** The letters of the thing that is chosen or matched. */
+  mark: string
   removedLine: string
   addedLine: string
   removedWords: string
@@ -107,6 +116,7 @@ const SLATE: TerminalTheme = {
   sage: '#8aa8a0',
   gold: '#d6bc8a',
   error: '#e08a8f',
+  mark: '#e2813f',
   removedLine: '#362927',
   addedLine: '#262f26',
   removedWords: '#5e211d',
@@ -127,6 +137,10 @@ export const GITHUB_SHARP = {
 
 /** GitHub Dark's diff red (#da3633) and green (#238636), as OKLCH hues. */
 const DIFF_HUE = { removed: 26.8, added: 146.3 }
+
+/** GitHub Dark's success green and link blue, the hues those families keep. */
+export const SUCCESS = '#7ee787'
+export const LINK = '#58a6ff'
 
 /** The code colours the crate draws: one per token class, with plain text in the ink. */
 const CODE = [...new Set(Object.values(githubDarkTheme.tokens))].filter(
@@ -232,6 +246,27 @@ function text(
   }
   return lift({ ...colour, l: high }, [bg, raised], READABLE)
 }
+
+/** How far the mark's hue stays from each state colour's hue, in degrees. */
+const KEEP_CLEAR = 28
+/** The hues the mark keeps clear of: error, warning, success, the accent and link. */
+const STATE_HUES = [SLATE.error, SLATE.gold, SUCCESS, SLATE.sage, LINK].map(
+  (colour) => at(colour).h!,
+)
+const apart = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180)
+/** The hue nearest `h` that is at least KEEP_CLEAR from every state hue. */
+function clearOfState(h: number) {
+  for (let away = 0; away <= 180; away += 0.25)
+    for (const turned of [h + away, h - away]) {
+      const hue = (turned + 360) % 360
+      if (STATE_HUES.every((state) => apart(hue, state) >= KEEP_CLEAR))
+        return hue
+    }
+  return h
+}
+const MARK_OFFSET = at(SLATE.mark).h! - slate.h!
+/** The mark's hue on `bg`: the one rule to change to put the mark at the slate's hue everywhere. */
+const markHue = (bg: Oklch) => clearOfState(bg.h! + MARK_OFFSET)
 
 /** The distance (ΔE00) each tint keeps on the slate from what it sits on. */
 const DISTANCE = {
@@ -357,6 +392,12 @@ export function terminalTheme(workspace: Workspace): TerminalTheme {
   const status = (name: 'sage' | 'gold' | 'error') =>
     text(at(SLATE[name]), name, bg, raised)
   const ink = grey('ink')
+  const mark = text(
+    { mode: 'oklch', l: 0.5, c: at(SLATE.mark).c, h: markHue(surface) },
+    'mark',
+    bg,
+    raised,
+  )
   const lightStep = (name: keyof TerminalTheme) => at(SLATE[name]).l - slate.l
 
   const rowTexts = [...CODE, ink]
@@ -394,6 +435,7 @@ export function terminalTheme(workspace: Workspace): TerminalTheme {
     sage: status('sage'),
     gold: status('gold'),
     error: status('error'),
+    mark,
     removedLine: rows.removed,
     addedLine: rows.added,
     removedWords: words.removed,

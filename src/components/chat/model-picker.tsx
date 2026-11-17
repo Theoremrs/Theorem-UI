@@ -1,5 +1,5 @@
 import { appearancePair } from '@/lib/appearance-policy'
-// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example), @tanstack/react-router Link (to settings), lib/theorem/models (catalog, stars, pick)
+// SOURCING: coss ui Combobox over Base UI Combobox (input inside the popup, as coss's "With Input Inside Popup" example), ui/tooltip over Base UI Tooltip for the full name on hover and focus, ./model-mark (Lobe Icons' provider marks), ./effort-picker in the popup's footer, @tanstack/react-router Link (to settings), lib/theorem/models (catalog, stars, pick)
 import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo } from 'react'
 import {
@@ -14,7 +14,17 @@ import {
   ComboboxTrigger,
   ComboboxCollection,
 } from '@/components/coss/combobox'
+import { useMenuGlass } from '@/components/glass/menu-glass'
+import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
+import { EffortPicker } from '@/components/chat/effort-picker'
+import { ModelMark } from '@/components/chat/model-mark'
 import { Icon } from '@/components/icons'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   formatContext,
   modelStub,
@@ -23,23 +33,12 @@ import {
   usePickedModels,
 } from '@/lib/theorem/models'
 import type { ModelOption } from '@/lib/theorem/models'
+import { cn } from '@/lib/utils'
 
 /** Theorem's configured choice unless the person picks another. */
 const DEFAULT_ITEM: ModelOption = modelStub('', 'Default model')
 
 type Group = { label: string; items: ModelOption[] }
-
-/** The vendor as a one-letter plate, so a list of models scans by maker. */
-function VendorMark({ vendor }: { vendor: string }) {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-5 shrink-0 items-center justify-center rounded-[5px] bg-raised text-[11px] font-medium text-ink-muted uppercase"
-    >
-      {vendor ? vendor[0] : <Icon.Model className="size-3.5" />}
-    </span>
-  )
-}
 
 function pickerGroups(
   starred: readonly string[],
@@ -66,19 +65,14 @@ function pickerSelection(
     : DEFAULT_ITEM
 }
 
-/** The model's name, with "(default)" a step quieter when Theorem chose it. */
+/** The model's full name, saying "(default)" when Theorem chose it. */
 function pickerLabel(
   selected: ModelOption | undefined,
   defaultName: string | undefined,
 ) {
   if (selected?.ref) return selected.name
   if (!defaultName) return selected?.name ?? 'Model'
-  return (
-    <>
-      {defaultName}
-      <span className="model-picker-default text-ink-faint"> (default)</span>
-    </>
-  )
+  return `${defaultName} (default)`
 }
 
 function PickerOption({
@@ -91,7 +85,7 @@ function PickerOption({
   return (
     <ComboboxItem value={model} className="py-1.5">
       <div className="flex items-center gap-2">
-        <VendorMark vendor={model.vendor} />
+        <ModelMark vendor={model.vendor} className="text-ink-muted" />
         <span className="min-w-0 flex-1 truncate">{model.name}</span>
         {!model.ref && defaultName && (
           <span className="min-w-0 truncate text-xs text-ink-muted">
@@ -116,6 +110,7 @@ export function ModelPicker() {
   const { data: catalog = [], list, error } = useModelCatalog()
   const issue = modelCatalogIssue(list, error)
   const starred = usePickedModels((s) => s.starred)
+  const glass = useMenuGlass('composer')
   const selectedRef = usePickedModels((s) => s.selected)
   const select = usePickedModels((s) => s.select)
 
@@ -134,9 +129,11 @@ export function ModelPicker() {
   }, [pickIsGone, select])
   const selected = pickerSelection(selectedRef, byRef)
   // What Theorem's choice resolves to, so the person knows what an unpinned turn runs on.
-  const defaultName = list?.defaultRef
-    ? byRef.get(list.defaultRef)?.name
-    : undefined
+  const defaultModel = list?.defaultRef ? byRef.get(list.defaultRef) : undefined
+  const defaultName = defaultModel?.name
+  const label = pickerLabel(selected, defaultName)
+  // The mark of the model a turn runs on: the pick, or what the default resolves to.
+  const vendor = selected.ref ? selected.vendor : (defaultModel?.vendor ?? '')
 
   return (
     <Combobox<ModelOption>
@@ -147,19 +144,32 @@ export function ModelPicker() {
       itemToStringValue={(model) => `${model.name} ${model.ref}`}
       isItemEqualToValue={(a, b) => a.ref === b.ref}
     >
-      <ComboboxTrigger
-        aria-label="Model"
-        data-appearance-recipe="ui.label"
-        {...appearancePair('secondary', 'composer')}
-        className="flex h-8 max-w-60 min-w-0 items-center gap-1 rounded-md px-2 text-sm text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
-      >
-        <span className="truncate">{pickerLabel(selected, defaultName)}</span>
-        <Icon.UpDown className="size-3.5 shrink-0" />
-      </ComboboxTrigger>
+      {/* The maker's mark alone: the full name is the tooltip and the
+          button's name, so hover, focus and a screen reader all get it. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            delay={COMPOSER_TOOLTIP_DELAY}
+            render={
+              <ComboboxTrigger
+                aria-label={`Model: ${label}`}
+                data-model-picker-trigger=""
+                {...appearancePair('secondary', 'composer')}
+                className="flex size-8 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors duration-100 outline-none hover:bg-hover hover:text-ink focus-visible:outline-2 focus-visible:outline-focus data-popup-open:bg-hover data-popup-open:text-ink"
+              />
+            }
+          >
+            <ModelMark vendor={vendor} />
+            <span className="sr-only">{label}</span>
+          </TooltipTrigger>
+          <TooltipContent side="top">{label}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <ComboboxPopup
         side="top"
-        align="start"
-        className="w-80 appearance-model-popup"
+        align="end"
+        surfaceRef={glass.attach}
+        className={cn('w-80 appearance-model-popup', glass.className)}
       >
         <div className="border-b border-separator p-1.5">
           <ComboboxInput
@@ -201,10 +211,11 @@ export function ModelPicker() {
             </ComboboxGroup>
           )}
         </ComboboxList>
-        <div className="border-t border-separator p-1">
+        <div className="flex items-center justify-between gap-1 border-t border-separator p-1">
+          <EffortPicker />
           <Link
             to="/settings/ai"
-            className="flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:bg-hover"
+            className="ms-auto flex h-8 items-center gap-2 rounded-md px-2 text-sm text-ink-muted outline-none hover:bg-hover hover:text-ink focus-visible:bg-hover"
           >
             <Icon.Star className="size-3.5" />
             Star more models

@@ -16,11 +16,7 @@ import { TheoremError } from '@theoremharness/sdk'
 import type { ChatModelRunOptions } from '@assistant-ui/react'
 import { act, createElement, useEffect, useState } from 'react'
 import { cleanup, render, waitFor } from '../../../test/workspace'
-import {
-  ComposerPlanToggle,
-  usePlanning,
-  useWebSearch,
-} from '@/components/chat/composer-tools'
+import { usePlanning, useWebSearch } from '@/components/chat/composer-tools'
 import {
   mutateThread,
   pendingSendKey,
@@ -479,7 +475,8 @@ test.each<[boolean, boolean]>([
 })
 
 /**
- * A chat whose composer row holds the Plan chip, opened on `threadId` (a new
+ * A chat whose composer row holds the Plan switch (on and off for the
+ * conversation it sits in, by the same thread key, as the + menu's is), opened on `threadId` (a new
  * conversation when undefined) and switchable to another, as the rail does.
  */
 async function chatWithPlanChip(threadId: string | undefined) {
@@ -490,10 +487,16 @@ async function chatWithPlanChip(threadId: string | undefined) {
     const open = useAuiState(
       (s) => s.threadListItem.remoteId ?? s.threadListItem.id,
     )
+    const planning = usePlanning((state) => state.byThread[open] === true)
     return createElement(
       'div',
       { 'data-open': open },
-      createElement(ComposerPlanToggle),
+      createElement('button', {
+        type: 'button',
+        'aria-label': 'Plan',
+        'aria-pressed': planning,
+        onClick: () => usePlanning.getState().set(open, !planning),
+      }),
     )
   }
   function Chat() {

@@ -4,9 +4,11 @@ import {
   Menu,
   MenuGroup,
   MenuGroupLabel,
+  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
+  MenuSeparator,
   MenuTrigger,
 } from '@/components/coss/menu'
 import { COMPOSER_TOOLTIP_DELAY } from '@/components/chat/composer-tools'
@@ -47,6 +49,10 @@ export function useEffectiveModel(): { model: ModelOption | undefined } {
  * takes none. The level is the conversation's, over the account's default; it
  * goes out whatever the model, and Theorem maps one the model does not list.
  * When the last run was mapped, the menu names the level it ran at.
+ *
+ * A conversation can still hold response limits of its own, set before the
+ * composer dropped its length control or raised from a stopped run's footer.
+ * While it does, the menu offers to drop them for the account's.
  */
 export function EffortPicker() {
   const { model } = useEffectiveModel()
@@ -64,6 +70,10 @@ export function EffortPicker() {
   const standing = accountEffort ?? model?.effortDefault
   // A level kept from another model stays in the list so the choice shows.
   const listed = chosen && !levels.includes(chosen) ? [...levels, chosen] : levels
+  const ownLimits =
+    override.responseDetail !== undefined ||
+    override.maxOutputTokens !== undefined ||
+    override.runBudget !== undefined
   return (
     <Menu>
       <TooltipProvider>
@@ -111,6 +121,18 @@ export function EffortPicker() {
             ))}
           </MenuRadioGroup>
         </MenuGroup>
+        {ownLimits && (
+          <>
+            <MenuSeparator />
+            <MenuItem
+              onClick={() =>
+                change({ responseDetail: undefined, maxOutputTokens: undefined, runBudget: undefined })
+              }
+            >
+              Use account response limits
+            </MenuItem>
+          </>
+        )}
       </MenuPopup>
     </Menu>
   )

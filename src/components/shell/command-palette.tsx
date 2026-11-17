@@ -170,7 +170,7 @@ function useGroups(close: () => void): Group[] {
           label: plugin.name,
           hint: plugin.description,
           Mark: Icon.Plugin,
-          run: go('/settings/ai'),
+          run: go('/settings/plugins'),
         })),
       },
       {
@@ -181,7 +181,7 @@ function useGroups(close: () => void): Group[] {
           hint: skill.plugin,
           keywords: skill.description,
           Mark: Icon.Article,
-          run: go('/settings/ai'),
+          run: go('/settings/plugins'),
         })),
       },
     ]

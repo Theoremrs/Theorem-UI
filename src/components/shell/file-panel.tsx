@@ -1,6 +1,6 @@
-// SOURCING: the assistant-ui SyntaxHighlighter element (react-shiki, in the palette's code themes; the language is the file's extension, which Shiki resolves through its own aliases), @tanstack/react-query via lib/theorem/project-files
+// SOURCING: the SyntaxHighlighter element (TanStack Highlight, in the palette's code themes; the language is the file's extension, which Highlight resolves through its own aliases), @tanstack/react-query via lib/theorem/project-files
 import { useQuery } from '@tanstack/react-query'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
+import { SyntaxHighlighter } from '@/components/assistant-ui/elements/code-highlighter'
 import { describeError } from '@/lib/theorem/client'
 import { fileContentQuery } from '@/lib/theorem/project-files'
 

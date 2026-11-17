@@ -2,6 +2,6 @@ import { createFileRoute, redirect } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/settings/')({
   beforeLoad: () => {
-    throw redirect({ to: '/settings/ai' })
+    throw redirect({ to: '/settings/appearance' })
   },
 })

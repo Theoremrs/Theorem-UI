@@ -7,6 +7,7 @@ import { LifeBackdrop } from '@/components/life/life-backdrop'
 import { Thread } from '@/components/assistant-ui/elements/thread.aui'
 import { VaultPhone } from '@/components/vault/vault-phone'
 import { useCallback } from 'react'
+import type React from 'react'
 import { useMatches, useNavigate, useParams } from '@tanstack/react-router'
 import { IndexMode } from '@/components/pages/mode-page'
 import { NotesView } from '@/components/notes/notes-view'
@@ -120,7 +121,14 @@ export function useOpenMode() {
  * conversation laid out beneath it, and the IDE's page has its own
  * conversation beside Theia; on a phone they take the screen.
  */
-export function ModeView({ docked = false }: { docked?: boolean }) {
+export function ModeView({
+  docked = false,
+  actions,
+}: {
+  docked?: boolean
+  /** The dock's panel controls, for a mode that draws its own top edge (Notes). */
+  actions?: React.ReactNode
+}) {
   const mode = useShellMode()
   // A project's home stands in for the conversation, which stays mounted behind it.
   const { projectId } = useParams({ strict: false })
@@ -138,7 +146,7 @@ export function ModeView({ docked = false }: { docked?: boolean }) {
       {mode === 'ide' && !docked && <IdeFrame />}
       {mode === 'vault' && !docked && <VaultPhone />}
       {mode === 'index' && <IndexMode />}
-      {mode === 'notes' && <NotesView />}
+      {mode === 'notes' && <NotesView docked={docked} actions={actions} />}
       {mode === 'pages' && <PagesView />}
       {mode === 'spaces' && <Canvas />}
       {mode === 'canvas' && <ProgramSurface />}

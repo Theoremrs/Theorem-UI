@@ -188,7 +188,7 @@ test('the input has a name, a role and its placeholder for assistive technology'
   expect(editor.getAttribute('aria-multiline')).toBe('true')
   expect(editor.getAttribute('contenteditable')).toBe('true')
   expect(editor.getAttribute('aria-placeholder')).toBe(
-    'Message Theorem, / for tools',
+    'Write a message…',
   )
   // Crepe's block handle, slash menu and top bar are switched off, not hidden.
   expect(container.querySelector('.milkdown-block-handle')).toBeNull()

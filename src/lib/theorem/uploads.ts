@@ -26,13 +26,16 @@ export async function readUpload(path: string): Promise<Blob> {
   return response.blob()
 }
 
-/** Uploads expire after a day unless something keeps them, and a note does. */
+/**
+ * Keeps an upload in the Library. Uploads expire after a day unless
+ * something keeps them: the Library, a message, or a project that names one.
+ */
 export function retainUpload(uploadId: string) {
   return mutate((headers) =>
-    theoremJson<unknown>(`${BASE}/${encodeURIComponent(uploadId)}/retain`, {
-      method: 'POST',
-      headers,
-    }),
+    theoremJson<unknown>(
+      `/api/chat/v1/library/uploads/${encodeURIComponent(uploadId)}/retain`,
+      { method: 'POST', headers },
+    ),
   )
 }
 
