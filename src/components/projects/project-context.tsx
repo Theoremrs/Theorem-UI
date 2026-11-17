@@ -945,12 +945,19 @@ function LinksEditor({ context, save, onDone }: EditorProps) {
     const removed = context.links.filter(
       (c) => !next.some((l) => l.url === c.url),
     )
-    if (!added.length && !removed.length) return onDone()
+    // A link kept at the same address under a different title is an edit too.
+    const retitled = next.filter((l) =>
+      context.links.some((c) => c.url === l.url && c.title !== l.title),
+    )
+    if (!added.length && !removed.length && !retitled.length) return onDone()
     save.mutate(
       (current) => {
-        const kept = current.links.filter(
-          (l) => !removed.some((r) => r.url === l.url),
-        )
+        const kept = current.links
+          .filter((l) => !removed.some((r) => r.url === l.url))
+          .map((l) => {
+            const edit = retitled.find((r) => r.url === l.url)
+            return edit ? keptLink(edit.url, edit.title ?? '') : l
+          })
         return {
           ...current,
           links: [

@@ -205,6 +205,40 @@ test('a link is checked, added and saved against the revision that was read', as
   expect(document.querySelector('[role="dialog"]')).toBeNull()
 })
 
+test('a link kept at the same address under a new title is saved as an edit', async () => {
+  const { container } = await mount(routes())
+  await click(container.querySelector('[aria-label="Edit links"]')!)
+  const editor = await dialog()
+  // Take the spec link out and put the same address back under another title.
+  await click(
+    editor.querySelector('[aria-label="Remove Project context spec"]')!,
+  )
+  await type(
+    field(editor, 'Address'),
+    'https://example.com/spec/project-context',
+  )
+  await type(field(editor, 'Title'), 'Spec, renamed')
+  await click(buttonNamed(editor, 'Add link')!)
+  await click(buttonNamed(editor, 'Save')!)
+
+  await waitFor(() => anchor(container, 'Spec, renamed'))
+  expect(sent).toHaveLength(1)
+  expect(sent[0]!.body.links).toEqual([
+    {
+      url: 'https://example.com/spec/project-context',
+      title: 'Spec, renamed',
+    },
+    { url: 'https://example.com/notes/ownership' },
+  ])
+
+  // Opening and saving with nothing changed still writes nothing.
+  await click(container.querySelector('[aria-label="Edit links"]')!)
+  const again = await dialog()
+  await click(buttonNamed(again, 'Save')!)
+  await waitFor(() => !document.querySelector('[role="dialog"]'))
+  expect(sent).toHaveLength(1)
+})
+
 test('an edit that loses a race is applied again to what the other writer saved', async () => {
   const story = routes()
   let raced = false
