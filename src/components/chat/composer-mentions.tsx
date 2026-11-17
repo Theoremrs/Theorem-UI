@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover in directive mode (the editor writes the pick at the caret and calls onInserted), with its TriggerAdapter and TriggerMatcher seams and the popover's scope context for the typed query; the composer's context references (./composer-references), which the runtime sends as the turn's contextReferences, kept in step with the composer's text (useAuiState) and its composer.send event, in a zustand store of the chips an @ added; the Index's items binding (q, the Index's own search) for documents and the CRM's readable records of each declared type (useCrmRecordsOf, which leaves out types this sign-in cannot read); TanStack Query keepPreviousData
+// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover in directive mode (the editor writes the pick at the caret and calls onInserted), with its TriggerAdapter and TriggerMatcher seams and the popover's scope context for the typed query; the composer's context references (./composer-references), which the runtime sends as the turn's contextReferences, kept in step with the composer's text (useAuiState) and its composer.send event, in a zustand store of the chips an @ added; the Index's items binding (q, the Index's own search) for documents and a bounded title search of the CRM's readable records of each declared type (useCrmRecordSearch, which leaves out types this sign-in cannot read); TanStack Query, with no earlier query's results kept for a later one
 import {
   unstable_useTriggerPopoverScopeContext,
   useAuiEvent,
@@ -10,13 +10,13 @@ import type {
   TriggerItem,
   TriggerMatcher,
 } from '@assistant-ui/react'
-import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { FC } from 'react'
 import { ComposerTriggerPopover } from '@/components/assistant-ui/elements/composer-trigger-popover.aui'
 import { BUILT_IN, builtInName } from '@/components/crm/model'
 import type { BuiltIn } from '@/components/crm/model'
-import { useCrmRecordsOf } from '@/components/crm/queries'
+import { useCrmRecordSearch } from '@/components/crm/record-search'
 import { recordReference } from '@/components/crm/reference'
 import { BuiltInIcon, TypeIcon } from '@/components/crm/type-icons'
 import { Icon } from '@/components/icons'
@@ -170,14 +170,37 @@ function useDebounced<T>(value: T, ms: number) {
  */
 function MentionHeading({
   onQuery,
+  failed,
+  onRetry,
 }: {
   onQuery: (query: string | undefined) => void
+  /** Whether a record search failed, so an empty list is not an answer. */
+  failed: boolean
+  onRetry: () => void
 }) {
   const { query } = unstable_useTriggerPopoverScopeContext()
   useEffect(() => onQuery(query), [onQuery, query])
   // Closing the list clears the query, so nothing is loaded while it is shut.
   useEffect(() => () => onQuery(undefined), [onQuery])
-  return <>Records and documents</>
+  return (
+    <>
+      Records and documents
+      {failed ? (
+        <span role="alert" className="text-ink-muted block text-xs">
+          Some records could not be searched.{' '}
+          <button
+            type="button"
+            className="underline"
+            // Keep the caret in the message so the list stays open.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={onRetry}
+          >
+            Try again
+          </button>
+        </span>
+      ) : null}
+    </>
+  )
 }
 
 const markOf =
@@ -213,8 +236,61 @@ export const useMentionCites = create<{
   byKey: Readonly<Record<string, MentionCite>>
 }>()(() => ({ byKey: {} }))
 
+/**
+ * The cites of conversations that are not showing, by conversation. `byKey`
+ * is always the showing conversation's: switching puts its cites away and
+ * brings the other's back, so one draft is never pruned by another's text.
+ */
+const setAside = new Map<string, Readonly<Record<string, MentionCite>>>()
+
+/** Puts `from`'s cites away and brings back the ones `to` had. */
+export function switchMentionConversation(from: string, to: string) {
+  if (from === to) return
+  const shown = useMentionCites.getState().byKey
+  if (Object.keys(shown).length) setAside.set(from, shown)
+  else setAside.delete(from)
+  const back = setAside.get(to) ?? {}
+  setAside.delete(to)
+  useMentionCites.setState({ byKey: back })
+}
+
 /** The editor keeps Markdown, which escapes punctuation such as `_` in a title. */
 const unescaped = (text: string) => text.replace(/\\([!-/:-@[-`{-~])/gu, '$1')
+
+const WORD = /[\p{L}\p{N}_]/u
+
+/**
+ * Which cites still have their words in `plain`. Each cite takes its own
+ * occurrence: the longest words claim theirs first and the characters are
+ * used up, so `@Noor` is not found inside the `@Noor Haddad` of another cite
+ * or inside a longer word, and two cites with the same words need two.
+ */
+function presentMentions(
+  plain: string,
+  cites: Readonly<Record<string, MentionCite>>,
+) {
+  const present = new Set<string>()
+  let rest = plain
+  const keys = Object.keys(cites).sort(
+    (a, b) => cites[b]!.words.length - cites[a]!.words.length,
+  )
+  for (const key of keys) {
+    const { words } = cites[key]!
+    for (
+      let at = rest.indexOf(words);
+      at >= 0;
+      at = rest.indexOf(words, at + 1)
+    ) {
+      const before = rest.charAt(at - 1)
+      const after = rest.charAt(at + words.length)
+      if ((before && WORD.test(before)) || (after && WORD.test(after))) continue
+      present.add(key)
+      rest = `${rest.slice(0, at)}${'\u0000'.repeat(words.length)}${rest.slice(at + words.length)}`
+      break
+    }
+  }
+  return present
+}
 
 /** Adds the picked record or document to the turn's context. */
 export function citeMention(item: TriggerItem) {
@@ -245,7 +321,7 @@ export function pruneMentionCites(text: string) {
   if (!keys.length) return
   const { references, remove } = useComposerReferences.getState()
   const held = new Set(references.map(referenceKey))
-  const plain = unescaped(text)
+  const present = presentMentions(unescaped(text), cites)
   const kept: Record<string, MentionCite> = {}
   let changed = false
   for (const key of keys) {
@@ -254,7 +330,7 @@ export function pruneMentionCites(text: string) {
       changed = true
       continue
     }
-    if (plain.includes(cite.words)) {
+    if (present.has(key)) {
       kept[key] = cite.seen ? cite : { ...cite, seen: true }
       changed ||= !cite.seen
     } else if (cite.seen) {
@@ -268,19 +344,28 @@ export function pruneMentionCites(text: string) {
 /** Keeps the chips an "@" added in step with the composer's text. */
 function useMentionCitesFollowText() {
   const text = useAuiState((state) => state.composer.text)
+  const conversation = useAuiState((state) => state.threads.mainThreadId)
+  const shown = useRef(conversation)
   // A send takes its references with the turn and clears the text. Its event
   // arrives a microtask after the text is cleared, so an empty composer waits
   // a tick: a send forgets the chips first and they go with the turn, while
   // clearing everything by hand still removes them.
   useAuiEvent('composer.send', () => useMentionCites.setState({ byKey: {} }))
   useEffect(() => {
+    // The text now is another conversation's draft: keep this one's cites
+    // aside and judge the next text change against the right ones.
+    if (shown.current !== conversation) {
+      switchMentionConversation(shown.current, conversation)
+      shown.current = conversation
+      return
+    }
     if (text.trim()) {
       pruneMentionCites(text)
       return
     }
     const timer = setTimeout(() => pruneMentionCites(text))
     return () => clearTimeout(timer)
-  }, [text])
+  }, [text, conversation])
 }
 
 const DIRECTIVE = { formatter: MENTION_FORMATTER, onInserted: citeMention }
@@ -304,9 +389,10 @@ export function ComposerMentionTrigger() {
       open && allTypes ? allTypes.filter((type) => !type.retired) : NO_TYPES,
     [open, allTypes],
   )
-  const records = useCrmRecordsOf(types)
   // Undefined while shut, so opening waits for what was typed, not the last search.
   const q = useDebounced(query?.trim(), DEBOUNCE_MS)
+  // A bounded search of titles, never every record of every type.
+  const records = useCrmRecordSearch(types, q ?? '', open && q !== undefined)
   const documents = useQuery({
     queryKey: ['index', 'mention-documents', q],
     queryFn: () =>
@@ -316,7 +402,6 @@ export function ComposerMentionTrigger() {
       }),
     enabled: open && q !== undefined,
     staleTime: 10_000,
-    placeholderData: keepPreviousData,
     retry: false,
   })
   const documentItems = useMemo(
@@ -326,23 +411,38 @@ export function ComposerMentionTrigger() {
         : [],
     [documents.data],
   )
+  const failedRecords =
+    open && types.some((t) => records.statusOf(t) === 'failed')
   const adapter = useMemo<TriggerAdapter>(
     () => ({
       categories: () => [],
       categoryItems: () => [],
-      search: (typed) => [
-        ...matchRecords(types, records.recordsOf, typed),
-        ...documentItems,
-      ],
+      // Documents and records were found for `q`; while the person has typed
+      // on, they answer an earlier query and are not offered.
+      search: (typed) =>
+        typed.trim() === q
+          ? [...matchRecords(types, records.recordsOf, typed), ...documentItems]
+          : [],
     }),
-    [types, records, documentItems],
+    [types, records, documentItems, q],
   )
   const loading =
     open &&
     (model.isPending ||
+      query.trim() !== q ||
       documents.isPending ||
       types.some((type) => records.statusOf(type) === 'pending'))
-  const heading = useMemo(() => <MentionHeading onQuery={setQuery} />, [])
+  const retryFailed = records.retryFailed
+  const heading = useMemo(
+    () => (
+      <MentionHeading
+        onQuery={setQuery}
+        failed={failedRecords}
+        onRetry={retryFailed}
+      />
+    ),
+    [failedRecords, retryFailed],
+  )
   return (
     <ComposerTriggerPopover
       char="@"
@@ -355,9 +455,11 @@ export function ComposerMentionTrigger() {
       itemTag={tagOf}
       itemLabelClassName="text-sm"
       emptyItemsLabel={
-        documents.isError
-          ? 'Documents could not be searched.'
-          : 'No matching records or documents'
+        failedRecords
+          ? 'Some records could not be searched.'
+          : documents.isError
+            ? 'Documents could not be searched.'
+            : 'No matching records or documents'
       }
       loadingLabel="Loading…"
       className="w-md"

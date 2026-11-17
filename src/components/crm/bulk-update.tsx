@@ -1,4 +1,4 @@
-// SOURCING: Twenty's "Update records" side panel (Mobbin flow "Updating records", frame 4 of 7) for the anatomy: the table stays in view with its rows still marked, a 420 px panel names how many records it will change, lists the type's fields as label and value rows, and ends in Cancel and Apply; the row grammar and editors the record preview uses (./record-fields, ./cells, components/records/fields); the single-record write that names a revision (./queries `patch`), sent once per record so each leaves its own history entry and its own answer; the app's Button; lucide-react marks
+// SOURCING: Twenty's "Update records" side panel (Mobbin flow "Updating records", frame 4 of 7) for the anatomy: the table stays in view with its rows still marked, a 420 px panel names how many records it will change, lists the type's fields as label and value rows, and ends in Cancel and Apply; the row grammar and editors the record preview uses (./record-fields, ./cells, components/records/fields); the single-record write that names a revision (./queries `patchWhere`), queued once per record when Apply is pressed so each leaves its own history entry and its own answer; the app's Button; lucide-react marks
 import { X } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import type { KeyboardEvent } from 'react'
@@ -37,41 +37,52 @@ const differing = (record: CrmRecord, changes: Record<string, unknown>) =>
   )
 
 /**
- * Apply the same values to a fixed list of records, one write each, in order.
- * The list and each record's revision are the caller's: a record that is not
- * in it is never touched, and one that changed since it was read is refused
- * and reported, not written over. Every record gets its own outcome.
+ * Apply the same values to a fixed list of records, one write each. Every
+ * write is queued when this starts, so each record's queue holds the bulk
+ * write ahead of any edit made after Apply: a later edit is never written
+ * over, and an edit still saving when Apply was pressed is seen before the
+ * bulk value is chosen. Which fields still differ is decided inside the
+ * record's queue, not from the copy read earlier. A record that changed
+ * since it was read is refused and reported, not written over. Every record
+ * gets its own outcome, in the order of the list.
  */
 export async function runBulkUpdate(
   type: ObjectType,
   targets: readonly CrmRecord[],
   changes: Record<string, unknown>,
-  patch: CrmWrites['patch'],
+  patchWhere: CrmWrites['patchWhere'],
   onStep?: (done: number) => void,
 ): Promise<BulkOutcome[]> {
+  const queued = targets.map((record) => {
+    const result = patchWhere(record.id, record.version, (current) =>
+      differing(current ?? record, changes),
+    )
+    // Settled here, so a refusal is never left unhandled while an earlier
+    // record is awaited.
+    return result.then(
+      (saved) => ({ saved }) as const,
+      (error: unknown) => ({ error }) as const,
+    )
+  })
   const outcomes: BulkOutcome[] = []
-  for (const record of targets) {
+  for (const [index, record] of targets.entries()) {
     const head = { id: record.id, title: recordTitle(type, record) }
-    const values = differing(record, changes)
-    if (Object.keys(values).length === 0)
-      outcomes.push({ ...head, result: 'unchanged' })
+    const answer = await queued[index]!
+    if ('error' in answer)
+      outcomes.push({
+        ...head,
+        result: 'refused',
+        reason: crmErrorText(answer.error, type),
+        conflict: answer.error instanceof RevisionConflictError,
+      })
+    else if (!answer.saved) outcomes.push({ ...head, result: 'unchanged' })
     else
-      try {
-        const saved = await patch(record.id, record.version, values)
-        outcomes.push({
-          ...head,
-          result: 'updated',
-          from: record.version,
-          to: saved.version,
-        })
-      } catch (error) {
-        outcomes.push({
-          ...head,
-          result: 'refused',
-          reason: crmErrorText(error, type),
-          conflict: error instanceof RevisionConflictError,
-        })
-      }
+      outcomes.push({
+        ...head,
+        result: 'updated',
+        from: record.version,
+        to: answer.saved.version,
+      })
     onStep?.(outcomes.length)
   }
   return outcomes
@@ -160,7 +171,7 @@ export function BulkUpdatePanel({
       type,
       bound,
       changes,
-      writes.patch,
+      writes.patchWhere,
       (done) => setPhase({ step: 'applying', targets: bound, done }),
     )
     setPhase({ step: 'done', outcomes })

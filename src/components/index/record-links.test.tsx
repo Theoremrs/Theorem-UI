@@ -298,4 +298,11 @@ describe('About', () => {
     const section = await waitFor(() => about(container), 4000)
     expect(section.textContent).toContain('could not be read')
   })
+
+  test('a reply without its lists says so rather than breaking', async () => {
+    history = { schema: 'theorem-document/2', documentId: 'd1' } as never
+    const { container } = await mount()
+    const section = await waitFor(() => about(container), 4000)
+    expect(section.textContent).toContain('could not be read')
+  })
 })

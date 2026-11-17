@@ -1,4 +1,4 @@
-// SOURCING: React context — one reading of the schema register's types, what this sign-in may do, and the loaded records of every listed type, shared by the CRM's table, preview and record page in the Index so a relation's label and a record's "Related" list come from the same records
+// SOURCING: React context — one reading of the schema register's types, what this sign-in may do, and the loaded records of every listed type once a record surface asks for them, shared by the CRM's table, preview and record page in the Index so a relation's label and a record's "Related" list come from the same records; navigation alone (the Index panel) reads the types and their counts from the data model and downloads no record
 import { createContext, useContext, useMemo } from 'react'
 import type { ReactNode } from 'react'
 import type {
@@ -9,7 +9,7 @@ import type {
 import { recordTitle } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
 import type { CrmRecord, LifeContext } from './api'
-import { crmTypes, relationTarget } from './model'
+import { accessFor, crmTypes, relationTarget } from './model'
 import { useCrmRecordsOf, useLifeContext } from './queries'
 import type { RecordsStatus } from './queries'
 
@@ -28,23 +28,51 @@ export type CrmScope = {
   titleOf: (field: FieldSpec, id: string) => string
   /** The record that is the signed-in person, when one is. */
   selfId: string | undefined
+  /** Whether the records of every type are being read; a navigation-only scope reads none. */
+  recordsLoaded: boolean
+  /** The data model's read: whether it failed, and a way to try it again. */
+  modelRead: { failed: boolean; retry: () => void }
 }
+
+const NO_TYPES: ObjectType[] = []
 
 const Context = createContext<CrmScope | null>(null)
 
-/** The CRM's shared reading, for the panel and the view to each build once. */
-export function useCrmScopeValue(): CrmScope {
-  const model = useDataModel().data
+/**
+ * The CRM's shared reading, for the panel and the view to each build once.
+ * With `records: false` no record is downloaded: counts come from the data
+ * model and a type's status is only whether this sign-in may read it.
+ */
+export function useCrmScopeValue({
+  records: withRecords = true,
+}: { records?: boolean } = {}): CrmScope {
+  const read = useDataModel()
+  const model = read.data
   const life = useLifeContext().data
   const types = useMemo(() => crmTypes(model), [model])
-  const records = useCrmRecordsOf(types)
+  const loaded = useCrmRecordsOf(withRecords ? types : NO_TYPES)
+  const refetch = read.refetch
   return useMemo(() => {
     const targetOf = (field: FieldSpec) => relationTarget(model, field)
+    const records = withRecords
+      ? loaded
+      : {
+          ...loaded,
+          statusOf: (type: ObjectType) =>
+            accessFor(life, type).read
+              ? ('pending' as const)
+              : ('denied' as const),
+        }
     return {
       model,
       types,
       life,
       ...records,
+      recordsLoaded: withRecords,
+      modelRead: {
+        failed: !model && read.isError,
+        retry: () => void refetch(),
+      },
       targetOf,
       titleOf: (field, id) => {
         const target = targetOf(field)
@@ -54,7 +82,7 @@ export function useCrmScopeValue(): CrmScope {
       selfId:
         life?.self.state === 'bound' ? life.self.personRecordId : undefined,
     }
-  }, [model, types, life, records])
+  }, [model, types, life, loaded, withRecords, read.isError, refetch])
 }
 
 export function CrmScopeProvider({
@@ -73,16 +101,44 @@ export function useCrmScope(): CrmScope {
   return scope
 }
 
-function OwnScope({ children }: { children: ReactNode }) {
-  const value = useCrmScopeValue()
+function OwnScope({
+  records,
+  children,
+}: {
+  records: boolean
+  children: ReactNode
+}) {
+  const value = useCrmScopeValue({ records })
   return <Context.Provider value={value}>{children}</Context.Provider>
 }
 
 /**
- * The CRM's reading for what is inside: the one already provided around it
- * (Index mode builds one for the panel and the view), else its own.
+ * The CRM's reading for a record surface (a table, a page, a preview): the
+ * one already provided around it when it has the records, else its own with
+ * them. Index mode provides a navigation-only scope, so opening the Index
+ * downloads no record until a record surface is drawn.
  */
 export function CrmBoundary({ children }: { children: ReactNode }) {
   const scope = useContext(Context)
-  return scope ? children : <OwnScope>{children}</OwnScope>
+  return scope?.recordsLoaded ? (
+    children
+  ) : (
+    <OwnScope records>{children}</OwnScope>
+  )
 }
+
+/** The CRM's reading for navigation alone: types and counts, no records. */
+export function CrmNavigationBoundary({ children }: { children: ReactNode }) {
+  const scope = useContext(Context)
+  return scope ? children : <OwnScope records={false}>{children}</OwnScope>
+}
+
+/**
+ * Opens a document where the surrounding inspector opens its other linked
+ * items. Unset, a document opens beside the Index's view.
+ */
+const OpenDocumentContext = createContext<
+  ((documentId: string) => void) | null
+>(null)
+export const OpenDocumentProvider = OpenDocumentContext.Provider
+export const useOpenDocumentHandler = () => useContext(OpenDocumentContext)

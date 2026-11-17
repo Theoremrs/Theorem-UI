@@ -8,6 +8,7 @@ import { describeError } from '@/lib/theorem/client'
 import { useDataModel } from '@/components/records/queries'
 import { workItemId } from '@/components/work/route'
 import { RecordLink } from './context-manifest-part'
+import { staleRecordEverywhere } from './queries'
 import { decideProposal, problemCode, readProposal } from './proposal-api'
 import {
   decodeProposalPart,
@@ -41,8 +42,17 @@ export function RecordChangeProposalView({
   const decide = useMutation({
     mutationFn: (decision: 'approve' | 'dismiss') =>
       decideProposal(proposal, decision),
-    onSuccess: (next) => {
+    onSuccess: (next, decision) => {
       if (next) client.setQueryData(key, next)
+      // An approval saved the change: a record opened before it, in the CRM
+      // or in Records, still holds the old values, revision and history.
+      if (decision === 'approve')
+        staleRecordEverywhere(
+          client,
+          proposal.recordId,
+          proposal.objectTypeId,
+          typeNamed(proposal.objectType),
+        )
     },
     onError: async (error) => {
       // The proposal is now refused, or was decided elsewhere: show what it is.

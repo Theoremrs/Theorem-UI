@@ -26,6 +26,7 @@ import { NamedTypeIcon } from '@/components/crm/type-icons'
 import { DataModelView } from '@/components/records/data-model'
 import { WORK_COMPONENT_NAMES, workComponents } from '@/components/work/library'
 import { AtlasMap } from './atlas'
+import { IndexPlaceContext, useLocalIndexPlace } from './navigation'
 import { dataModelViewId, recordPageViewId, recordsViewId } from './programs'
 import type {
   AtlasSnapshot,
@@ -44,16 +45,22 @@ export type IndexHost = {
   selectedId: string | undefined
   openItem: (documentId: string) => void
   openCollection: (collectionId: string) => void
-  /** Open another view in this scope, such as an object's records. */
-  openView: (viewId: string) => void
+  /**
+   * Open another view in this scope, such as an object's records. A record's
+   * page passes `closeItem`: it has no preview beside it.
+   */
+  openView: (viewId: string, options?: { closeItem?: boolean }) => void
   collectionName: (collectionId: string) => string | undefined
   record: (event: Omit<ObservationEvent, 'atMs' | 'scope' | 'viewId'>) => void
+  /** A preview: record views keep a place of their own and never move the live Index. */
+  preview?: boolean
 }
 
 /** Previews render with a host that opens nothing and records nothing. */
 export const PREVIEW_HOST: IndexHost = {
   scope: { kind: 'home' },
   viewId: 'preview',
+  preview: true,
   selectedId: undefined,
   openItem: () => undefined,
   openCollection: () => undefined,
@@ -64,6 +71,23 @@ export const PREVIEW_HOST: IndexHost = {
 
 export const IndexHostContext = createContext<IndexHost>(PREVIEW_HOST)
 const useHost = () => useContext(IndexHostContext)
+
+/**
+ * A record view reads and moves the Index's place. In a preview that place
+ * is the live Index behind the dialog, so the preview gets one of its own.
+ */
+function PreviewPlace({ children }: { children: ReactNode }) {
+  const place = useLocalIndexPlace({})
+  return (
+    <IndexPlaceContext.Provider value={place}>
+      {children}
+    </IndexPlaceContext.Provider>
+  )
+}
+
+function InHostPlace({ children }: { children: ReactNode }) {
+  return useHost().preview ? <PreviewPlace>{children}</PreviewPlace> : children
+}
 
 const rows = <T,>(value: unknown): T[] =>
   Array.isArray(value) ? (value as T[]) : []
@@ -631,7 +655,9 @@ const IndexComparison = defineComponent({
       id
     const openRecord = (record: IndexRecord) => {
       host.record({ kind: 'item_opened', subjects: [record.itemId] })
-      host.openView(recordPageViewId(record.nameSingular, record.recordId))
+      host.openView(recordPageViewId(record.nameSingular, record.recordId), {
+        closeItem: true,
+      })
     }
     return (
       <div className="flex flex-col gap-4">
@@ -830,9 +856,11 @@ const RecordTable = defineComponent({
   }),
   component: function RecordTableComponent({ props }) {
     return (
-      <div className={RECORD_FRAME}>
-        <CrmTableView object={props.object} fields={props.fields} />
-      </div>
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <CrmTableView object={props.object} fields={props.fields} />
+        </div>
+      </InHostPlace>
     )
   },
 })
@@ -844,9 +872,11 @@ const RecordPage = defineComponent({
   props: z.object({ object: z.string(), record: z.string() }),
   component: function RecordPageComponent({ props }) {
     return (
-      <div className={RECORD_FRAME}>
-        <CrmRecordPageView object={props.object} recordId={props.record} />
-      </div>
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <CrmRecordPageView object={props.object} recordId={props.record} />
+        </div>
+      </InHostPlace>
     )
   },
 })
@@ -858,9 +888,11 @@ const RecordsHome = defineComponent({
   props: z.object({}),
   component: function RecordsHomeComponent() {
     return (
-      <div className={RECORD_FRAME}>
-        <RecordsHome_ />
-      </div>
+      <InHostPlace>
+        <div className={RECORD_FRAME}>
+          <RecordsHome_ />
+        </div>
+      </InHostPlace>
     )
   },
 })

@@ -39,6 +39,28 @@ function staleRecordViews(
   void client.invalidateQueries({ queryKey: [...RECORD_VIEW_RECORD, id] })
 }
 
+/**
+ * A record was changed by something other than this page's own writes (an
+ * approved proposal): make every cached copy of it stale, in the CRM and in
+ * the Records mode. Without the type's node label, all Records rows go stale.
+ */
+export function staleRecordEverywhere(
+  client: QueryClient,
+  recordId: string,
+  objectTypeId: string,
+  objectType?: ObjectType,
+) {
+  void client.invalidateQueries({ queryKey: crmKeys.record(recordId) })
+  void client.invalidateQueries({ queryKey: crmKeys.changes(recordId) })
+  void client.invalidateQueries({ queryKey: crmKeys.records(objectTypeId) })
+  void client.invalidateQueries({
+    queryKey: objectType
+      ? [...RECORD_VIEW_ROWS, objectType.node_label]
+      : RECORD_VIEW_ROWS,
+  })
+  void client.invalidateQueries({ queryKey: [...RECORD_VIEW_RECORD, recordId] })
+}
+
 export const crmKeys = {
   life: [...CRM, 'life'] as const,
   records: (objectTypeId: string) => [...CRM, 'records', objectTypeId] as const,
@@ -520,12 +542,24 @@ export function useCrmWrites(objectType: ObjectType) {
 
   /**
    * Change several fields of one record in one write, against the revision
-   * it was read at. It resolves with the saved record and rejects with the
-   * refusal, for a caller that reports each record itself (the bulk update).
+   * it was read at. `decide` runs inside the record's write queue, so it sees
+   * the record as every earlier write left it, and returns the fields still
+   * worth sending; none means nothing is sent and this resolves undefined.
+   * It rejects with the refusal, for a caller that reports each record
+   * itself (the bulk update).
    */
-  const patch = useCallback(
-    (recordId: string, readRevision: number, values: Record<string, unknown>) =>
+  const patchWhere = useCallback(
+    (
+      recordId: string,
+      readRevision: number,
+      decide: (current: CrmRecord | undefined) => Record<string, unknown>,
+    ) =>
       enqueue(recordId, async () => {
+        const values = decide(
+          client.getQueryData<CrmRecord>(crmKeys.record(recordId)) ??
+            heldRecord(client, objectType, recordId),
+        )
+        if (Object.keys(values).length === 0) return undefined
         const expected = followOwnWrites(recordId, readRevision)
         const record = await api.updateCrmRecord(
           objectTypeId,
@@ -539,6 +573,16 @@ export function useCrmWrites(objectType: ObjectType) {
         return record
       }),
     [client, objectType, objectTypeId],
+  )
+
+  /** Change several fields of one record in one write, as `patchWhere` does with fixed values. */
+  const patch = useCallback(
+    async (
+      recordId: string,
+      readRevision: number,
+      values: Record<string, unknown>,
+    ) => (await patchWhere(recordId, readRevision, () => values))!,
+    [patchWhere],
   )
 
   /** Delete a record as it was read; one that moved on is refused. */
@@ -558,7 +602,7 @@ export function useCrmWrites(objectType: ObjectType) {
     [client, objectType, objectTypeId],
   )
 
-  return { save, saveFrom, patch, reload, apply, discard, remove }
+  return { save, saveFrom, patch, patchWhere, reload, apply, discard, remove }
 }
 
 export type CrmWrites = ReturnType<typeof useCrmWrites>

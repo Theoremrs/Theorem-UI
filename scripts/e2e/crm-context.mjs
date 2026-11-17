@@ -559,6 +559,25 @@ check(
   listed?.outcome,
 )
 const lookUps = asked(await requests(), LIST)
+// The look-up requests are requests of the run too: they join the list, and
+// the privacy checks above are run again over everything sent, so a leak
+// that only a look-up carries (the phone number, the other workspace's
+// contact, the private note) fails here and not silently.
+everyRequest.push(...lookUps)
+const sentWithLookUps = JSON.stringify(everyRequest.map((request) => request.body))
+check(
+  'no request, look-ups included, holds the phone number kept from Theorem',
+  !sentWithLookUps.includes(PHONE),
+)
+check(
+  'no request, look-ups included, holds the private note',
+  !sentWithLookUps.includes(PRIVATE_NOTE),
+)
+check(
+  "no request, look-ups included, holds the other workspace's contact",
+  !sentWithLookUps.includes(OTHER_WORKSPACE) &&
+    !sentWithLookUps.includes(`person:noor-other-${run}`),
+)
 const [offer, afterLookUp] = lookUps
 const planning = id('interaction:planning')
 check(
@@ -620,7 +639,6 @@ check(
   lookedUpText.slice(0, 200),
 )
 await shot('7-looked-up')
-everyRequest.push(...lookUps)
 
 writeFileSync(
   join(DATA_DIR, 'crm-context-requests.json'),

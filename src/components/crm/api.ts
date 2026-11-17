@@ -229,6 +229,56 @@ export async function findRecords(objectTypeId: string) {
   return { records, count: Math.max(count, records.length) }
 }
 
+/** The most records one search of a type returns. */
+export const SEARCH_LIMIT = 20
+
+/**
+ * The spellings of `phrase` a case-sensitive `contains` should try: as typed,
+ * with each word capitalised, and with only the first letter capitalised.
+ */
+export function searchSpellings(phrase: string) {
+  const typed = phrase.trim()
+  const words = typed
+    .split(/\s+/u)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ')
+  const first = typed.charAt(0).toUpperCase() + typed.slice(1)
+  return [...new Set([typed, words, first])]
+}
+
+/**
+ * A bounded look for records of a type by title, for a list that offers a few
+ * matches: never more than `limit` records per read, however many the type
+ * has. The register has no text search, only an exact-case `contains` filter
+ * on one field and no `or`, so each spelling of the query is one filtered
+ * read, and an empty query is one unfiltered page. Records come back once
+ * each; a title that differs in case from every spelling is not found.
+ */
+export async function searchRecords(
+  objectTypeId: string,
+  titleField: string | undefined,
+  phrase: string,
+  limit = SEARCH_LIMIT,
+): Promise<CrmRecord[]> {
+  const typed = phrase.trim()
+  const inputs =
+    typed && titleField
+      ? searchSpellings(typed).map((value) => ({
+          limit,
+          filters: [{ field_key: titleField, operator: 'contains', value }],
+        }))
+      : [{ limit }]
+  const pages = await Promise.all(
+    inputs.map(async (input) =>
+      decodeRecordPage(await invoke(objectTypeId, 'find_many', input)),
+    ),
+  )
+  const byId = new Map<string, CrmRecord>()
+  for (const page of pages)
+    for (const record of page.records) byId.set(record.id, record)
+  return [...byId.values()]
+}
+
 /** One record at its saved revision; a record that is gone is a RecordMissingError. */
 export async function findRecord(objectTypeId: string, id: string) {
   const record = decodeRecordEnvelope(

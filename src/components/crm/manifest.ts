@@ -189,6 +189,20 @@ const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`
 
 /**
+ * A look-up that supplied no records. "Found none" is a claim that nothing
+ * matched, so it is made only when nothing was kept out and nothing failed:
+ * records that were held back or left out for length do exist, and a look-up
+ * that degraded was not fully read.
+ */
+function lookUpWithoutRecords(manifest: ContextManifest) {
+  if (manifest.withheld.length || manifest.overBudget)
+    return 'Looked up saved records and none were supplied'
+  if (manifest.degraded.length)
+    return 'Looked up saved records, but they could not all be read'
+  return 'Looked up saved records and found none'
+}
+
+/**
  * "Used 5 saved records · 1 held back", or "Looked up 2 saved records" for
  * records Theorem asked for itself while answering.
  */
@@ -200,7 +214,7 @@ export function manifestSummary(manifest: ContextManifest) {
     used
       ? `${verb} ${plural(used, 'saved record', 'saved records')}`
       : manifest.lookUp
-        ? 'Looked up saved records and found none'
+        ? lookUpWithoutRecords(manifest)
         : 'Used no saved records',
   ]
   if (held) parts.push(`${held} held back`)

@@ -8,6 +8,7 @@ import {
 } from '@/components/coss/select'
 import { recordTitle } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
+import { Button } from '@/components/ui/button'
 import {
   SettingsBox,
   SettingsPage,
@@ -24,7 +25,8 @@ import { crmErrorText } from './record-fields'
  * as this record and starts from it when it works out who a request is about.
  */
 export function ProfileSettings() {
-  const model = useDataModel().data
+  const modelRead = useDataModel()
+  const model = modelRead.data
   const life = useLifeContext()
   const people = crmTypes(model).find((type) => builtInName(type) === 'person')
   const readable = accessFor(life.data, people).read
@@ -43,23 +45,35 @@ export function ProfileSettings() {
   if (selfId && !items.some((item) => item.value === selfId))
     items.unshift({ value: selfId, label: selfId })
 
+  const readFailed =
+    (!model && modelRead.isError) ||
+    (!life.data && life.isError) ||
+    (readable && !records.data && records.isError)
+  const retry = () => {
+    if (!model && modelRead.isError) void modelRead.refetch()
+    if (!life.data && life.isError) void life.refetch()
+    if (!records.data && records.isError) void records.refetch()
+  }
+
   const note = bind.isError
     ? crmErrorText(bind.error, people)
-    : unavailable
-      ? 'This sign-in names a workspace but not a person, so no record can be marked as you.'
-      : !people
-        ? life.isPending || !model
-          ? 'Loading'
-          : 'This workspace has no People yet. Open the CRM to set them up.'
-        : !readable
-          ? 'This sign-in may not read People here.'
-          : records.isPending
+    : readFailed
+      ? 'Your people could not be read.'
+      : unavailable
+        ? 'This sign-in names a workspace but not a person, so no record can be marked as you.'
+        : !people
+          ? life.isPending || !model
             ? 'Loading'
-            : items.length === 0
-              ? 'Add yourself under People in the CRM, then choose that record here.'
-              : selfId
-                ? 'Theorem reads “I” and “me” as this person.'
-                : 'Not set. Theorem does not know which person is asking.'
+            : 'This workspace has no People yet. Open the CRM to set them up.'
+          : !readable
+            ? 'This sign-in may not read People here.'
+            : records.isPending
+              ? 'Loading'
+              : items.length === 0
+                ? 'Add yourself under People in the CRM, then choose that record here.'
+                : selfId
+                  ? 'Theorem reads “I” and “me” as this person.'
+                  : 'Not set. Theorem does not know which person is asking.'
 
   return (
     <SettingsPage
@@ -71,9 +85,16 @@ export function ProfileSettings() {
           <SettingsRow
             title="Your person record"
             description={
-              <span role={bind.isError ? 'alert' : 'status'}>{note}</span>
+              <span role={bind.isError || readFailed ? 'alert' : 'status'}>
+                {note}
+              </span>
             }
           >
+            {readFailed && !bind.isError && (
+              <Button size="sm" variant="outline" onClick={retry}>
+                Try again
+              </Button>
+            )}
             <Select
               items={items}
               value={selfId ?? null}

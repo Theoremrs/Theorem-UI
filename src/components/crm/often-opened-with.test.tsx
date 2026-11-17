@@ -14,6 +14,7 @@ import { observer } from '@/components/index/observe'
 import type { Binding, QueryResult } from '@/components/index/contract'
 import { createFixtureServer, fixtureFetch } from './fixture'
 import { resetCrmWrites } from './queries'
+import { OpenDocumentProvider } from './context'
 import { IndexRecords, itemOf, mountAt, pageAt } from './test-harness'
 
 const page = (
@@ -111,6 +112,26 @@ const MIXED: QueryResult = {
 }
 
 describe('Often opened with', () => {
+  test("a document opens through the inspector's handler when one is supplied", async () => {
+    stubUsed(MIXED)
+    const handled: string[] = []
+    const { container, search } = await mountAt(
+      `/index?item=${encodeURIComponent(noorItem())}`,
+      () => (
+        <OpenDocumentProvider value={(id) => void handled.push(id)}>
+          <IndexRecords />
+        </OpenDocumentProvider>
+      ),
+    )
+    const list = await waitFor(() => section(container))
+    const before = search()
+    await click(rowNamed(list, 'Kiln notes')!)
+    expect(handled).toEqual(['doc:kiln-notes'])
+    // The surrounding Index place did not move, and nothing was recorded for it.
+    expect(search()).toEqual(before)
+    expect(opened).toEqual([])
+  })
+
   test('lists record and document neighbours, anchored on the record item id', async () => {
     stubUsed(MIXED)
     const { container, search } = await preview()

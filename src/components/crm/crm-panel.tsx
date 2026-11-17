@@ -6,11 +6,12 @@ import { useIndexNavigate } from '@/components/index/navigation'
 import { RECORDS_HOME_VIEW_ID } from '@/components/index/programs'
 import type { ObjectType } from '@/components/records/contract'
 import { recordTitle } from '@/components/records/model'
+import { Button } from '@/components/ui/button'
 import { YouBadge } from './cells'
-import { CrmBoundary, useCrmScope } from './context'
-import { personType, typeByName } from './model'
+import { CrmNavigationBoundary, useCrmScope } from './context'
+import { accessFor, personType, typeByName } from './model'
 import { useCrmNavigate, useCrmPlace } from './navigation'
-import { useInstallLifeContextTypes } from './queries'
+import { useCrmRecord, useInstallLifeContextTypes } from './queries'
 import { TypeIcon } from './type-icons'
 
 const ROW =
@@ -34,10 +35,10 @@ function Heading({ children }: { children: ReactNode }) {
  */
 export function RecordsSection() {
   return (
-    <CrmBoundary>
+    <CrmNavigationBoundary>
       <Me />
       <Types />
-    </CrmBoundary>
+    </CrmNavigationBoundary>
   )
 }
 
@@ -48,8 +49,13 @@ function Me() {
   const { openRecord } = useCrmNavigate()
   const navigate = useNavigate()
   const people = personType(types)
+  // Only the signed-in person's own record is read here, not every person.
+  const read = useCrmRecord(
+    selfId && accessFor(life, people).read ? people : undefined,
+    selfId ?? '',
+  )
   if (!life?.started || !people) return null
-  const self = selfId ? recordById(selfId) : undefined
+  const self = (selfId ? recordById(selfId) : undefined) ?? read.data
   const mark = (
     <UserRound aria-hidden strokeWidth={1.75} className="size-4 shrink-0" />
   )
@@ -91,13 +97,22 @@ function Me() {
 }
 
 function Types() {
-  const { life, types, countOf, statusOf, model } = useCrmScope()
+  const { life, types, countOf, statusOf, model, modelRead } = useCrmScope()
   const { nameSingular, recordId } = useCrmPlace()
   const { openType } = useCrmNavigate()
   const navigate = useIndexNavigate()
   const atHome = useSearch({ strict: false }).view === RECORDS_HOME_VIEW_ID
   // A type's row is current at its table, not at one of its records' pages.
   const current = recordId ? undefined : typeByName(types, nameSingular)
+  if (!model && modelRead.failed)
+    return (
+      <div role="alert" className="flex flex-col items-start gap-1 px-2 py-1">
+        <p className="text-sm text-ink">Your records could not be read.</p>
+        <Button size="xs" variant="ghost" onClick={modelRead.retry}>
+          Try again
+        </Button>
+      </div>
+    )
   if (!model)
     return (
       <p role="status" className="px-2 py-1 text-sm text-ink-faint-sheet">

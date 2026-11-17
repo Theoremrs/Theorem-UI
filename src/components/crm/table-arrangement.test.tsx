@@ -24,7 +24,7 @@ import { createFixtureServer, fixtureFetch } from './fixture'
 import type { FixtureServer } from './fixture'
 import { CALCULATIONS_KEY, setCalculationsShown } from './calculations-setting'
 import { CrmTableView } from './index-views'
-import { resetCrmWrites } from './queries'
+import { resetCrmWrites, useCrmEdits } from './queries'
 import { IndexRecords, mountAt, tableAt } from './test-harness'
 import { useRecordLayouts } from '@/components/records/view-state'
 
@@ -653,4 +653,84 @@ test('Backspace leaves the name, a required field and an empty cell alone', asyn
   await key(email, 'Backspace')
   await settle()
   expect(updates()).toHaveLength(0)
+})
+
+// Review fixes
+
+test('a view that picks its fields offers only those columns in Options and Sort', async () => {
+  const mounted = await mountAt('/index', () => (
+    <CrmTableView
+      object="person"
+      fields={['name', 'email']}
+      viewKey="module:narrow"
+    />
+  ))
+  await waitFor(() => mounted.container.querySelector('[role="grid"]'))
+  await click(buttonNamed(mounted.container, 'Options')!)
+  await menuItem('Export as CSV')
+  const columns = [...document.querySelectorAll('[role="menuitemcheckbox"]')]
+    .map((item) => item.textContent.trim())
+    // The Columns group is the one before the Theorem switch.
+    .filter((_, i, all) => i < all.indexOf('May use people in answers'))
+  expect(columns).toEqual(['Name', 'Email'])
+})
+
+test('Calculate totals use saved values, not edits that are not saved', async () => {
+  setCalculationsShown(true)
+  useRecordLayouts.setState({
+    layouts: {
+      'default:records:person:Person': {
+        aggregates: { role: 'notEmpty' },
+        at: 1,
+      },
+    },
+  })
+  // Avery has no role; an edit the server refused would give her one.
+  useCrmEdits.getState().put({
+    recordId: 'person:avery',
+    objectTypeId: 'Person',
+    fieldKey: 'role',
+    value: 'Potter',
+    readRevision: 3,
+    status: 'failed',
+  })
+  const { container } = await people()
+  const row = container.querySelector<HTMLElement>(
+    '[data-crm-region="calculations"]',
+  )!
+  await waitFor(() => row.textContent.includes('Not empty'))
+  expect(row.textContent).toContain('Not empty1')
+  useCrmEdits.setState({ edits: {} })
+})
+
+test('a search finds a choice by the label its tag shows', async () => {
+  server.state.nodes.push({
+    id: 'goal:book',
+    labels: ['Goal'],
+    properties: { title: 'Finish the book', status: 'set_aside' },
+    version: 1,
+  })
+  server.state.nodes.push({
+    id: 'goal:run',
+    labels: ['Goal'],
+    properties: { title: 'Run daily', status: 'active' },
+    version: 1,
+  })
+  const { container } = await mountAt(tableAt('goal'), () => <IndexRecords />)
+  await waitFor(() => container.querySelector('[role="grid"] [data-r="1"]'))
+  await click(buttonNamed(container, 'Search')!)
+  const input = await waitFor(() =>
+    container.querySelector<HTMLInputElement>(
+      'input[aria-label="Search goals"]',
+    ),
+  )
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      'value',
+    )!.set!.call(input, 'set aside')
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await waitFor(() => names(container).length === 1)
+  expect(names(container)).toEqual(['Finish the book'])
 })

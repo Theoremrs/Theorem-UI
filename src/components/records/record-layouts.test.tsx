@@ -183,6 +183,38 @@ test('an arrangement kept under the earlier localStorage key is picked up and re
   expect(window.localStorage.getItem('theorem.crm.view:b')).toBeNull()
 })
 
+test('changing a view moved from the old key removes the old entry, so a reset elsewhere stays reset', async () => {
+  window.localStorage.setItem(
+    'theorem.crm.view:old',
+    JSON.stringify({ columnOrder: ['email', 'name'] }),
+  )
+  await render(<Probe id="old" />)
+  expect(seen!.columnOrder).toEqual(['email', 'name'])
+  await act(async () =>
+    change!({ ...initial(), aggregates: { name: 'count' } }),
+  )
+  expect(window.localStorage.getItem('theorem.crm.view:old')).toBeNull()
+  // Theorem serves a map with the view reset.
+  await act(async () =>
+    useRecordLayouts.setState({ layouts: mergeLayouts({}, {}) }),
+  )
+  expect(seen).toEqual(initial())
+})
+
+test('a saved layout beside a leftover old entry is not undone by a later reset', async () => {
+  window.localStorage.setItem(
+    'theorem.crm.view:left',
+    JSON.stringify({ columnOrder: ['email', 'name'] }),
+  )
+  useRecordLayouts.setState({
+    layouts: { left: { aggregates: { name: 'count' }, at: 5 } },
+  })
+  await render(<Probe id="left" />)
+  expect(window.localStorage.getItem('theorem.crm.view:left')).toBeNull()
+  await act(async () => useRecordLayouts.setState({ layouts: {} }))
+  expect(seen).toEqual(initial())
+})
+
 test('a change is stored, persisted, and reset forgets it', async () => {
   await render(<Probe id="c" />)
   expect(

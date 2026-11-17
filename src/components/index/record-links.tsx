@@ -49,6 +49,18 @@ export function linkReason(receipt: RecordFilingReceipt) {
 }
 
 /** A record's title by item id, from the receipts the document has carried. */
+/** Whether a reply carries the lists the section reads. */
+function readable(
+  history: RecordFilingHistory | undefined,
+): history is RecordFilingHistory {
+  return (
+    !!history &&
+    Array.isArray(history.links) &&
+    Array.isArray(history.receipts) &&
+    Array.isArray(history.corrections)
+  )
+}
+
 function titles(history: RecordFilingHistory) {
   const byItem = new Map<string, { title: string; generation: number }>()
   for (const receipt of history.receipts) {
@@ -169,7 +181,9 @@ export function RecordLinks({ documentId }: { documentId: string }) {
   const { openRecordNamed } = useCrmNavigate()
 
   if (history.isPending) return null
-  if (!history.data)
+  // A reply without its lists is as unreadable as no reply: it must not take
+  // the rest of the inspector down with it.
+  if (!readable(history.data))
     return (
       <section aria-label="About" className="flex flex-col gap-2">
         <h3 className={heading}>About</h3>

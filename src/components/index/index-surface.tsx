@@ -17,7 +17,11 @@ import {
 } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
 import { WorkInspector } from '@/components/work/inspector'
-import { isWorkView, parseWorkItemId, workItemId } from '@/components/work/route'
+import {
+  isWorkView,
+  parseWorkItemId,
+  workItemId,
+} from '@/components/work/route'
 import { WorkScreenTitle } from '@/components/work/screen-title'
 import { Inspector } from './inspector'
 import type { IndexHost } from './library'
@@ -327,7 +331,8 @@ export function ViewColumn() {
       navigate.openItem(documentId)
     },
     openCollection: navigate.openCollection,
-    openView: (viewId) => navigate.openView(viewId, open.scope),
+    openView: (viewId, options) =>
+      navigate.openView(viewId, open.scope, options),
     collectionName: open.collectionName,
     record: (event) =>
       observer().record({ ...event, scope: open.scope, viewId: open.viewId }),
@@ -375,17 +380,51 @@ export function ViewColumn() {
       />
     )
 
-  // A record table or page is the whole view: it draws its own header,
-  // scrolls inside itself, and a record previewed beside it is the item.
+  // A built-in record view draws its own title; a saved one keeps the
+  // header's Edit, History, Pin and Archive.
+  const header = open.view.origin !== 'default' && (
+    // Keyed so an editor's draft never carries over to another view.
+    <ViewHeader
+      key={open.view.viewId}
+      view={open.view}
+      revision={revision}
+      revisions={open.revisions}
+      onSaved={(saved) => {
+        hold(saved)
+        if (saved.viewId !== open.viewId)
+          navigate.openView(saved.viewId, saved.scope)
+      }}
+      onArchived={open.release}
+    />
+  )
+  const notices = (
+    <ProposalNotices
+      scope={open.scope}
+      viewId={open.viewId}
+      onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
+    />
+  )
+  const newerNotice = newer && (
+    <div className="mb-5 flex items-center gap-3 rounded-lg border border-separator bg-raised px-3 py-2 text-sm">
+      <p className="min-w-0 flex-1">
+        This view has a newer revision.{' '}
+        <span className="text-ink-muted">{newer.note}</span>
+      </p>
+      <Button variant="ghost" size="sm" onClick={() => hold(open.view!)}>
+        Show it
+      </Button>
+    </div>
+  )
+
+  // A record table or page fills the view and scrolls inside itself, under
+  // the view's own header and notices.
   if (isFullBleedProgram(revision.program))
     return (
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 px-3 empty:hidden [&>*]:mt-3 [&>*]:mb-0">
-          <ProposalNotices
-            scope={open.scope}
-            viewId={open.viewId}
-            onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
-          />
+          {header}
+          {notices}
+          {newerNotice}
         </div>
         <div className="min-h-0 flex-1">
           <ViewRenderer
@@ -406,35 +445,9 @@ export function ViewColumn() {
           isWideProgram(revision.program) ? 'max-w-none' : 'max-w-4xl',
         )}
       >
-        {/* Keyed so an editor's draft never carries over to another view. */}
-        <ViewHeader
-          key={open.view.viewId}
-          view={open.view}
-          revision={revision}
-          revisions={open.revisions}
-          onSaved={(saved) => {
-            hold(saved)
-            if (saved.viewId !== open.viewId)
-              navigate.openView(saved.viewId, saved.scope)
-          }}
-          onArchived={open.release}
-        />
-        <ProposalNotices
-          scope={open.scope}
-          viewId={open.viewId}
-          onOpenView={(viewId) => navigate.openView(viewId, open.scope)}
-        />
-        {newer && (
-          <div className="mb-5 flex items-center gap-3 rounded-lg border border-separator bg-raised px-3 py-2 text-sm">
-            <p className="min-w-0 flex-1">
-              This view has a newer revision.{' '}
-              <span className="text-ink-muted">{newer.note}</span>
-            </p>
-            <Button variant="ghost" size="sm" onClick={() => hold(open.view!)}>
-              Show it
-            </Button>
-          </div>
-        )}
+        {header}
+        {notices}
+        {newerNotice}
         <ViewRenderer definition={revision} host={host} actions={actions} />
         {prefer.error && (
           <p role="alert" className="mt-3 text-xs text-error-ink">

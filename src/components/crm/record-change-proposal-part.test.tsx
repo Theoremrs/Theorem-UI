@@ -16,6 +16,7 @@ import {
   RecordChangeOutcomePart,
   RecordChangeProposalPart,
 } from './record-change-proposal-part'
+import { crmKeys } from './queries'
 import { mountAt } from './test-harness'
 
 const page = (
@@ -400,4 +401,40 @@ test('a task proposal decodes its task and an approval its result', () => {
     workItemId: 'wi_materials',
   })
   expect(decodeProposalPart({ proposal: proposal() })!.task).toBeUndefined()
+})
+
+test('an approval makes the record\'s CRM and Records copies stale, so they are read again', async () => {
+  decision = {
+    status: 201,
+    body: {
+      decision: 'approve',
+      proposal: proposal({
+        status: 'applied',
+        applied: true,
+        decision: {
+          decision: 'approve',
+          decided_at_ms: 5,
+          before_revision: 9,
+          after_revision: 10,
+        },
+      }),
+    },
+  }
+  const { container, client } = await part({ proposal: proposal() })
+  const id = 'commitment:materials'
+  const keys = [
+    crmKeys.record(id),
+    crmKeys.changes(id),
+    crmKeys.records('type:commitment'),
+    ['theorem', 'records', 'rows', 'Commitment'],
+    ['theorem', 'records', 'record', id],
+  ]
+  for (const key of keys) client.setQueryData(key, { old: true })
+  const stale = () =>
+    keys.map((key) => client.getQueryState(key)!.isInvalidated)
+  expect(stale()).toEqual(keys.map(() => false))
+
+  await click(button(container, 'Approve'))
+  await waitFor(() => container.textContent.includes('Saved at revision 10'))
+  expect(stale()).toEqual(keys.map(() => true))
 })

@@ -15,6 +15,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { useRouter } from '@tanstack/react-router'
 import { create } from 'zustand'
 import type { StoreApi, UseBoundStore } from 'zustand'
 import { ArtifactPlacement } from '@/components/artifacts/artifact-message'
@@ -36,6 +37,7 @@ import type { IndexPlace } from '@/components/index/navigation'
 import { observer } from '@/components/index/observe'
 import { dataModelViewId } from '@/components/index/programs'
 import { parseRecordItemId, recordItemId } from '@/components/records/model'
+import { OpenDocumentProvider } from '@/components/crm/context'
 import { CrmRecordInspector, CrmTableView } from '@/components/crm/index-views'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
@@ -241,14 +243,17 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   const record = parseRecordItemId(current.id)
   if (record)
     return (
-      <CrmRecordInspector
-        key={current.id}
-        nameSingular={record.nameSingular}
-        recordId={record.recordId}
-        onOpenRelated={(type, id) => open(recordItemId(type, id))}
-        onClose={close}
-        className="h-full"
-      />
+      // A document the record was opened with shows here too, as its records do.
+      <OpenDocumentProvider value={open}>
+        <CrmRecordInspector
+          key={current.id}
+          nameSingular={record.nameSingular}
+          recordId={record.recordId}
+          onOpenRelated={(type, id) => open(recordItemId(type, id))}
+          onClose={close}
+          className="h-full"
+        />
+      </OpenDocumentProvider>
     )
   return (
     <Inspector
@@ -262,12 +267,30 @@ function InspectorModule({ inputs, emit }: ModuleViewProps) {
   )
 }
 
+/**
+ * The saved arrangement of a table in a module. Pages made from one template
+ * keep the same module ids, so the page's own id goes in the key. Outside a
+ * page route the key is the module path alone, as it was before.
+ */
+export const moduleViewKey = (pageId: string | undefined, path: string) =>
+  pageId ? `module:${pageId}:${path}` : `module:${path}`
+
+/** The vault entry of the page on screen, from its route. */
+function usePageId(): string | undefined {
+  // Absent outside a router, as in a page's own tests.
+  const router = useRouter({ warn: false }) as
+    ReturnType<typeof useRouter> | undefined
+  const match = router?.state.location.pathname.match(/\/pages\/([^/]+)/)
+  return match?.[1]
+}
+
 function RecordsModule({ settings, output, emit, path }: ModuleViewProps) {
   const name = text(settings.object)
   // The table keeps a place of its own on the page; a record opened from it
   // is this module's selection, for an inspector connected to it.
   const place = useLocalIndexPlace({})
   const index = useIndexNavigate()
+  const pageId = usePageId()
   const reporting: IndexPlace = {
     search: place.search,
     navigate: {
@@ -291,7 +314,7 @@ function RecordsModule({ settings, output, emit, path }: ModuleViewProps) {
     <IndexPlaceContext.Provider value={reporting}>
       <div className="h-full min-h-[24rem]">
         {/* This module's own arrangement: it is on no Index view of its own. */}
-        <CrmTableView object={name} viewKey={`module:${path}`} />
+        <CrmTableView object={name} viewKey={moduleViewKey(pageId, path)} />
       </div>
     </IndexPlaceContext.Provider>
   )

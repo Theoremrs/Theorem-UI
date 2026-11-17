@@ -77,6 +77,7 @@ import {
   EditMark,
   RecordChip,
   editStyle,
+  optionLabel,
 } from './cells'
 import { useCrmScope } from './context'
 import { downloadCsv, recordsCsv } from './export-csv'
@@ -384,9 +385,20 @@ export function CrmTable({
   const table = useAppTable({
     // The search reads every shown column, as its cells show: a record is
     // found by its name, its email or the title of a record it points to.
-    globalFilterFn: (row, columnId, text) =>
-      !hiddenKeys.includes(columnId) &&
-      shownText(row.getValue(columnId)).toLowerCase().includes(String(text)),
+    globalFilterFn: (row, columnId, text) => {
+      if (hiddenKeys.includes(columnId)) return false
+      const kind = fields.find((f) => f.key === columnId)?.field_type.kind
+      const value = row.getValue(columnId)
+      // A choice is found by the text its tag shows ("Set aside"), as well as
+      // by the stored value.
+      const choices =
+        kind === 'enum' || kind === 'enum_many'
+          ? [value].flat().map((v) => optionLabel(String(v ?? '')))
+          : []
+      return [shownText(value), ...choices].some((found) =>
+        found.toLowerCase().includes(String(text)),
+      )
+    },
     columns: tableColumns,
     data,
     getRowId: (record) => record.id,
@@ -449,7 +461,8 @@ export function CrmTable({
   const headerOf = new Map(
     table.getFlatHeaders().map((header) => [header.column.id, header]),
   )
-  const sortable = shownFields(type)
+  // Only the columns this view has: a view's `fields` leave the rest out.
+  const sortable = fields
   const labelOfKey = (key: string) =>
     type.fields.find((field) => field.key === key)?.label ?? key
   // The field the next rule would sort by: the first not yet used.
@@ -1074,7 +1087,7 @@ export function CrmTable({
                 <MenuPopup align="end" className="w-64">
                   <MenuGroup>
                     <MenuGroupLabel>Columns</MenuGroupLabel>
-                    {shownFields(type).map((field) => (
+                    {fields.map((field) => (
                       <MenuCheckboxItem
                         key={field.key}
                         closeOnClick={false}
@@ -1572,11 +1585,10 @@ export function CrmTable({
                   widthOf={widthOf}
                   aggregates={arrangement.aggregates}
                   partial={total > loaded}
+                  // Saved values only: an edit that is saving, refused or held
+                  // joins the totals once Theorem has it.
                   valuesOf={(field) =>
-                    rows.map((record) => {
-                      const edit = edits[editKey(record.id, field.key)]
-                      return edit ? edit.value : record.values[field.key]
-                    })
+                    rows.map((record) => record.values[field.key])
                   }
                   onChange={setAggregate}
                 />

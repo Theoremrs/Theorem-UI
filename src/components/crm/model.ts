@@ -129,7 +129,14 @@ export type ContextPolicy = {
   excluded_fields?: string[]
   mention_fields?: string[]
   standing?: boolean
+  tie?: ContextTie
 }
+
+/**
+ * How a record that relates two others is read: the record a `from` field
+ * names is what the `relation` text field says to the one a `to` field names.
+ */
+export type ContextTie = { from: string[]; to: string[]; relation: string }
 
 const POLICY_KEYS = [
   'version',
@@ -137,10 +144,24 @@ const POLICY_KEYS = [
   'excluded_fields',
   'mention_fields',
   'standing',
+  'tie',
 ]
 
 const strings = (value: unknown): value is string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+
+/** The server reads a tie with exactly these three keys and no others. */
+const isTie = (value: unknown): value is ContextTie => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return false
+  const tie = value as Record<string, unknown>
+  return (
+    Object.keys(tie).every((key) => ['from', 'to', 'relation'].includes(key)) &&
+    strings(tie.from) &&
+    strings(tie.to) &&
+    typeof tie.relation === 'string'
+  )
+}
 
 /**
  * What the server makes of a type's `theorem.context`, read by the server's
@@ -165,7 +186,8 @@ export function contextPolicy(
     (value.assistance === 'available' || value.assistance === 'excluded') &&
     (value.excluded_fields === undefined || strings(value.excluded_fields)) &&
     (value.mention_fields === undefined || strings(value.mention_fields)) &&
-    (value.standing === undefined || typeof value.standing === 'boolean')
+    (value.standing === undefined || typeof value.standing === 'boolean') &&
+    (value.tie === undefined || isTie(value.tie))
   if (!readable) return { state: 'unreadable' }
   const policy = value as ContextPolicy
   // A retired type is kept out whatever its policy says.

@@ -205,6 +205,11 @@ export function useRecordViewState(
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [key, saved, forgotten],
   )
+  // A saved layout supersedes any old entry, so a reset made elsewhere
+  // cannot fall back to it.
+  useEffect(() => {
+    if (saved) forgetLegacy(key)
+  }, [key, saved])
   const program = useRef(initial)
   useEffect(() => {
     program.current = initial
@@ -221,6 +226,9 @@ export function useRecordViewState(
       useRecordLayouts.setState((all) => ({
         layouts: { ...all.layouts, [key]: { ...value, at: Date.now() } },
       }))
+      // Its values now live in the store; left behind, the old entry would
+      // come back when Theorem's copy of this view is reset.
+      forgetLegacy(key)
     },
     [key],
   )

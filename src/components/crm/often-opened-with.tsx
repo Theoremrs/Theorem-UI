@@ -3,6 +3,7 @@ import { useBinding } from '@/components/index/queries'
 import type { Binding } from '@/components/index/contract'
 import type { ObjectType } from '@/components/records/contract'
 import { recordItemId } from '@/components/records/model'
+import { useOpenDocumentHandler } from './context'
 import { useCrmNavigate } from './navigation'
 import { NamedTypeIcon } from './type-icons'
 
@@ -20,7 +21,10 @@ export function OftenOpenedWith({
   type: ObjectType
   recordId: string
 }) {
-  const { openRecordNamed, openDocument } = useCrmNavigate()
+  const navigation = useCrmNavigate()
+  const { openRecordNamed } = navigation
+  // A document opens where the surrounding inspector opens its other items.
+  const openDocument = useOpenDocumentHandler() ?? navigation.openDocument
   const binding: Binding = {
     kind: 'used_together',
     anchorIds: [recordItemId(type, recordId)],

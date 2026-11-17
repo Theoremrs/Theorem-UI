@@ -5,10 +5,13 @@ import { useSyncExternalStore } from 'react'
 export const CALCULATIONS_KEY = 'theorem.crm.calculations'
 
 const listeners = new Set<() => void>()
-// What was last set here, used only when storage cannot be read.
+// What was last set here, used when storage cannot be read, and when the
+// last write to it failed (storage can still read the older choice then).
 let held = false
+let holding = false
 
 function read() {
+  if (holding) return held
   try {
     return window.localStorage.getItem(CALCULATIONS_KEY) === 'on'
   } catch {
@@ -18,10 +21,12 @@ function read() {
 
 export function setCalculationsShown(on: boolean) {
   held = on
+  holding = false
   try {
     window.localStorage.setItem(CALCULATIONS_KEY, on ? 'on' : 'off')
   } catch {
     // Kept for this visit only.
+    holding = true
   }
   for (const listener of listeners) listener()
 }
