@@ -97,7 +97,12 @@ const storageKey = (threadId: string) => `theorem.run-input.${threadId}`
  * arrives; a later chat keeps the text for an explicit retry.
  */
 const PENDING_KEY = 'theorem.run-input.pending:'
-/** A conversation's own waiting place, when it asked for one. */
+/**
+ * Where kept input waits before it has a thread to belong to: the session's one slot, or a
+ * conversation's own when it names a scope. The format lives here so no caller has to know it.
+ */
+export const pendingInputKey = (scope?: string) =>
+  scope ? `${PENDING_KEY}${scope}` : PENDING_KEY
 const pendingOf = (host: RunInputHost) => host.pendingKey ?? PENDING_KEY
 const TEMPORARY = 'temporary'
 const recoveredElsewhere = 'This message was kept from a chat that was still being created. Retry sends it with the next response.'

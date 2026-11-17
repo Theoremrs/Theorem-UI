@@ -15,12 +15,24 @@ import type { SourceReference } from '../wire/SourceReference'
 import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
 import { describeError, hasStatus, pendingSendText } from '@/lib/theorem/client'
-import { createRunInputQueue, inputReceipt } from '@/lib/theorem/run-input'
+import {
+  createRunInputQueue,
+  inputReceipt,
+  pendingInputKey,
+} from '@/lib/theorem/run-input'
+import type {
+  InputReceipt,
+  PendingRunInput,
+  RunInputHost,
+  RunInputQueue,
+} from '@/lib/theorem/run-input'
 import {
   registerRunInputQueue,
+  retryRunInput,
+  stopRunInputs,
+  submitRunInput,
   useRunInputs,
 } from '@/lib/theorem/run-input-store'
-import type { InputReceipt, PendingRunInput } from '@/lib/theorem/run-input'
 import { workingRuns } from '@/lib/theorem/working-runs'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
@@ -67,7 +79,13 @@ export interface ConversationRuntime {
   threads: {
     getState: () => { readonly mainThreadId: string }
     subscribe: (listener: () => void) => () => void
-    mainItem: { getState: () => { readonly remoteId?: string | undefined } }
+    mainItem: {
+      getState: () => {
+        /** The runtime's own id for the thread now open; the chat's queue is registered under it. */
+        readonly id?: string | undefined
+        readonly remoteId?: string | undefined
+      }
+    }
     switchToThread: (threadId: string) => Promise<void>
     switchToNewThread: () => Promise<void>
     /** Reads the open thread again, as it is stored (after its selected branch changed). */
@@ -401,6 +419,13 @@ export interface ConversationOptions {
    * input for this conversation only.
    */
   storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+  /**
+   * Whose run-input queue this conversation acts through. `shared` (the default): the one
+   * the chat binds for this thread, which the workbench's runtime is the runtime of — a main
+   * conversation must not settle a thread a second time. `own`: make this conversation the
+   * queue for its thread, for a side chat, where the chat binds none.
+   */
+  runInputs?: 'shared' | 'own'
   /** Runs `callback` at the next frame and returns its cancel. Defaults to requestAnimationFrame. */
   schedule?: (callback: () => void) => () => void
 }
@@ -501,6 +526,7 @@ export function createConversation({
   services,
   workspaceId,
   storage = globalThis.sessionStorage,
+  runInputs = 'shared',
   schedule = nextFrame,
 }: ConversationOptions): Conversation {
   const sides = new Set<SideChat>()
@@ -516,8 +542,6 @@ export function createConversation({
   let last: ConversationSnapshot | undefined
   let delivered = 0
   let deliveredKey = ''
-  /** What this conversation's run-input queue last announced, as the snapshot lists it. */
-  let inputRows: readonly QueuedInput[] = []
 
   /** What was sent from here, by client message id: a repeated id returns the first answer. */
   const sends = new Map<string, Completion<Sent>>()
@@ -847,7 +871,7 @@ export function createConversation({
       conversationId: conversationId(),
       loading: state.isLoading,
       ...transcript,
-      queued: [...inputRows],
+      queued: rowsOf(keptInputs()),
       ...(historyOf() && { history: historyOf() }),
       ...(used?.window !== undefined && {
         context: { usedTokens: used.tokens, windowTokens: used.window },
@@ -896,15 +920,38 @@ export function createConversation({
 
   // ---- run input -------------------------------------------------------------------------
 
-  // Words sent to a working run are one recoverable transaction, held to the rule the
-  // main chat's `bindRunInput` follows: saved in `storage` under the thread's own name,
-  // listed until the run shows them, and settled — as a next turn, or as one row with
-  // Retry — once both this chat's stream and Theorem's thread have closed. The queue
-  // decides all of that; nothing here does. What the snapshot lists and what the chat's
-  // own store holds are both announcements of that one decision.
+  // Words sent to a working run are one recoverable transaction: kept before they are sent,
+  // listed until the run shows them, and settled — as a next turn, or as one row with Retry —
+  // only once both this chat's stream and Theorem's thread have closed. ONE queue per thread
+  // decides all of that, and this conversation acts through it rather than beside it. The chat
+  // binds one for its own thread (`bindRunInput`, lib/theorem/run-input-runtime), and the
+  // workbench drives that same runtime, so a main conversation reads that queue and adds none:
+  // a second queue would restore the same record, settle the thread twice, and never hear the
+  // composer's own Stop. A side chat has no classic binding, so its owner makes the queue for
+  // its thread and keeps it while that thread is the one open.
 
-  /** This conversation's own local id, which no reload outlives: what its queue is registered under. */
-  const inputKey = `workbench:${runtime.threads.getState().mainThreadId}`
+  /** This conversation's own name: the waiting place and the registration a side chat owns. */
+  const stableKey = `workbench:${runtime.threads.getState().mainThreadId}`
+  /** The thread now open, which is the key the chat's queue for it is registered under. */
+  const threadKey = () =>
+    runtime.threads.mainItem.getState().id ??
+    runtime.threads.getState().mainThreadId
+  const ownInputs = runInputs === 'own'
+
+  /** What this conversation's thread keeps: one queue's decision, read where it lives. */
+  const keptInputs = (): readonly PendingRunInput[] =>
+    (ownInputs
+      ? runInput?.getSnapshot()
+      : useRunInputs.getState()[threadKey()]) ?? []
+  const submitInputs = (text: string, id: string) =>
+    ownInputs
+      ? (runInput?.submit(text, id) ?? false)
+      : submitRunInput(threadKey(), text, id)
+  const replayInputs = (id: string) =>
+    ownInputs ? runInput?.retry(id) : retryRunInput(threadKey(), id)
+  const stopInputs = () =>
+    ownInputs ? runInput?.stop() : stopRunInputs(threadKey())
+
   /** The receipt parts this chat shows, each under what Theorem called that input. */
   const shownInputs = (messages: readonly ThreadMessage[]) =>
     messages.flatMap((message) =>
@@ -931,15 +978,34 @@ export function createConversation({
           item.retryAsTurn
           ? 'failed'
           : // Unconfirmed: the words may be on the thread. A fresh request key would be a second
-            // message, so this row is listed as uncertain; only a replay of this same request —
-            // the queue's own retry — may send it again.
+            // message, so this row is listed as uncertain; only a replay of this same request
+            // may send it again.
             'uncertain'
         : item.state === 'queued' || item.state === 'next'
           ? 'queued'
           : 'sending',
     ...(item.state === 'failed' && item.error ? { reason: item.error } : {}),
   })
-  const runInput = createRunInputQueue({
+  /**
+   * What the composer still owes a person for words the transcript does not show: a row the
+   * run has taken needs no second listing, but one that settled does — the run's own record of
+   * words it never took is not the person's message, and the Retry they are owed is not
+   * satisfied by a transcript part.
+   */
+  const rowsOf = (items: readonly PendingRunInput[]) =>
+    items
+      .filter(
+        (item) =>
+          !item.visible || item.state === 'failed' || item.state === 'next',
+      )
+      .map(rowOf)
+
+  /** A side chat's own queue, and the stored thread it was made for. */
+  let runInput: RunInputQueue | undefined
+  let queueFor: string | undefined
+  let unregisterInputs: (() => void) | undefined
+
+  const inputHost: RunInputHost = {
     snapshot() {
       const state = runtime.thread.getState()
       return {
@@ -971,7 +1037,7 @@ export function createConversation({
         userTexts: thread.userTexts ?? [],
       }
     },
-    // The message is the key it goes under, so a retry replays it and never a fresh
+    // The message is the key it goes under, so a replay sends it and never a fresh
     // one. A host that confirms nothing leaves the thread's own record to settle it.
     async send(runId, text, requestKey) {
       return (
@@ -996,33 +1062,59 @@ export function createConversation({
         runConfig: { custom: { theoremRunInput: true } },
       }),
     changed: (items) => {
-      // A row the transcript shows needs no second listing under the composer — except one
-      // that settled: the run's own record of words it never took is not the person's
-      // message, and the Retry they are owed is not satisfied by a transcript part.
-      inputRows = items
-        .filter(
-          (item) =>
-            !item.visible || item.state === 'failed' || item.state === 'next',
-        )
-        .map(rowOf)
-      useRunInputs.setState({ [inputKey]: items })
+      useRunInputs.setState({ [stableKey]: items })
       changed()
     },
     describeError,
-    attemptId: inputKey,
+    attemptId: stableKey,
+    // A side chat's waiting place is its own: the main draft's kept words belong to a chat
+    // the person may still be opening, and no other conversation may read or clear them.
+    pendingKey: pendingInputKey(stableKey),
     // A retried message's text is kept until the send recovery on this thread, or the thread
     // itself, holds it: what a person is owed is that it is not lost, not that it is listed twice.
     savedSend: pendingSendText,
     storage,
-  })
-  const unregisterInputs = registerRunInputQueue(inputKey, runInput)
-  /** A run that ends in another tab changes nothing here, so the queue is asked again on a clock. */
-  const inputWatchdog = setInterval(() => {
-    if (runInput.getSnapshot().length) runInput.observe()
-  }, 2_000)
-  ;(inputWatchdog as unknown as { unref?: () => void }).unref?.()
-  // What an earlier owner of this thread kept, this one lists and settles from here on.
-  runInput.observe()
+  }
+
+  const makeInputs = () => {
+    runInput = createRunInputQueue(inputHost)
+    unregisterInputs = registerRunInputQueue(stableKey, runInput)
+    queueFor = runtime.threads.mainItem.getState().remoteId
+    runInput.observe()
+  }
+  /**
+   * A queue belongs to one stored thread, so what thread A kept stays in A's record: a side
+   * chat whose thread becomes another one is given a queue of its own, and the words kept for
+   * the first stay where the next owner of that thread will find them. A first stored id is
+   * not a change — a chat still being created keeps its own words, which is what its waiting
+   * place is for.
+   */
+  const syncInputs = () => {
+    if (!ownInputs) return
+    const thread = runtime.threads.mainItem.getState().remoteId
+    if (!runInput) return makeInputs()
+    if (queueFor && thread && thread !== queueFor) {
+      unregisterInputs?.()
+      unregisterInputs = undefined
+      makeInputs()
+    }
+  }
+  syncInputs()
+  /** A run that ends in another tab changes nothing here, so a queue is asked again on a clock. */
+  const inputWatchdog = ownInputs
+    ? setInterval(() => {
+        if (runInput?.getSnapshot().length) runInput.observe()
+      }, 2_000)
+    : undefined
+  ;(inputWatchdog as unknown as { unref?: () => void } | undefined)?.unref?.()
+  /** The chat's queue announces itself: the snapshot follows its decision, never a copy of it. */
+  const offInputs = ownInputs
+    ? undefined
+    : useRunInputs.subscribe((state, previous) => {
+        const key = threadKey()
+        if (state[key] === previous[key]) return
+        changed()
+      })
 
   const runsListeners = new Set<(runs: string[]) => void>()
   const runsNow = () => {
@@ -1040,13 +1132,15 @@ export function createConversation({
 
   const offThread = runtime.thread.subscribe(() => {
     announceRuns()
-    runInput.observe()
+    syncInputs()
+    runInput?.observe()
     changed()
     announceAttachments()
     announceModels(false)
   })
   const offThreads = runtime.threads.subscribe(() => {
-    runInput.observe()
+    syncInputs()
+    runInput?.observe()
     changed()
     announceAttachments()
     announceModels(false)
@@ -1223,10 +1317,13 @@ export function createConversation({
             'stale_run',
             'That run is no longer the one working',
           )
-        // The words are kept under this id and sent there and then: what the composer
-        // is owed by this answer is that the message is saved for recovery. How the
-        // send turns out belongs to the row, and Retry replays that same request.
-        if (!runInput.submit(request.text, id))
+        // A row this thread already keeps under that id is the same message: the panel's
+        // Retry names the words it still holds, so the request is replayed rather than
+        // submitted afresh. Otherwise the words are kept under this id and sent there and
+        // then — what the composer is owed by this answer is that the message is saved for
+        // recovery, and how the send turns out belongs to the row.
+        if (keptInputs().some((item) => item.id === id)) replayInputs(id)
+        else if (!submitInputs(request.text, id))
           return refused(
             answers,
             'input_not_kept',
@@ -1255,8 +1352,9 @@ export function createConversation({
         return failure(answers, error, true)
       }
       // A person's Stop must not answer itself: what the run never took stays listed
-      // with Retry instead of becoming another response.
-      runInput.stop()
+      // with Retry instead of becoming another response. The queue this thread works
+      // through is the one told, whichever surface it belongs to.
+      stopInputs()
       return accepted(answers, { runId })
     },
 
@@ -1502,6 +1600,8 @@ export function createConversation({
         services,
         workspaceId,
         storage,
+        // No classic queue is bound on a side chat's runtime, so this owner makes the one.
+        runInputs: 'own',
         schedule,
       })
       let closed = false
@@ -1682,12 +1782,14 @@ export function createConversation({
       for (const chat of [...sides]) chat.close()
       pending?.()
       pending = undefined
-      clearInterval(inputWatchdog)
-      // The queue outlives nothing but this owner: closing it leaves the kept words to
-      // the next owner of this thread, and takes this conversation's rows down.
-      unregisterInputs()
+      if (inputWatchdog) clearInterval(inputWatchdog)
+      // A queue this owner made outlives nothing but this owner: closing it leaves the kept
+      // words to the next owner of this thread, and takes this conversation's rows down.
+      // A queue the chat made for its thread is the chat's to close, not this owner's.
+      unregisterInputs?.()
       offThread()
       offThreads()
+      offInputs?.()
       offModels?.()
       listeners.clear()
       attachmentListeners.clear()

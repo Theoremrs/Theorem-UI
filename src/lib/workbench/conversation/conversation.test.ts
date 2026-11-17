@@ -9,6 +9,7 @@ import {
   StubRuntime,
   approvalPart,
   assistant,
+  bindThreadInputs,
   createMemoryStorage,
   userInputPart,
 } from './test-runtime'
@@ -521,9 +522,12 @@ describe('send', () => {
   })
 
   test('a send while a run works is refused, and input joins the run instead', async () => {
-    const { stub, conversation, inputs } = setup()
+    const { stub, conversation } = setup()
     stub.isRunning = true
     stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    // The chat's own queue for this thread, on a storage of its own: the owner reads and
+    // drives it, and sends nothing beside it.
+    const bound = bindThreadInputs(stub, { storage: createMemoryStorage() })
     const turn = await conversation.send({
       ...base('r1'),
       clientMessageId: 'c1',
@@ -536,10 +540,10 @@ describe('send', () => {
       text: 'also',
     })
     expect(input.outcome).toBe('accepted')
-    // The run's inbox is a transaction of its own: the send goes out after the
-    // words are saved for recovery, not before the composer may clear.
+    // The run's inbox is a transaction of its own: the send goes out after the words are
+    // saved for recovery, not before the composer may clear.
     await settle()
-    expect(inputs).toEqual([{ runId: 'run1', inputId: 'c2', text: 'also' }])
+    expect(bound.sent).toEqual([{ runId: 'run1', inputId: 'c2', text: 'also' }])
     expect(conversation.snapshot().queued).toEqual([
       { clientMessageId: 'c2', text: 'also', state: 'queued' },
     ])
@@ -548,7 +552,8 @@ describe('send', () => {
       clientMessageId: 'c2',
       text: 'also',
     })
-    expect(inputs.length).toBe(1)
+    expect(bound.sent.length).toBe(1)
+    bound.dispose()
   })
 
   test('without a way to make a second runtime a side chat is refused as missing', async () => {
@@ -582,14 +587,20 @@ describe('send', () => {
   })
 })
 
+/** Each test's thread is its own conversation, so the session's queue store cannot cross. */
+let serial = 0
+
 describe('run input recovery', () => {
   /**
-   * A conversation whose host reads the thread the way Theorem stores it, on a
-   * storage of its own, so a test can hand one owner's records to the next.
+   * A thread whose run input the classic chat already settled itself: the queue
+   * `bindRunInput` binds for this runtime, on a storage of its own so a test can hand one
+   * owner's records to the next. The owner the workbench makes shares that runtime, so it
+   * reads this queue's rows and adds none of its own.
    */
-  function recovering(key = 'recover-1') {
+  function recovering(key = `recover-${++serial}`) {
     const stub = new StubRuntime()
-    // The local thread id names this conversation's queue; the durable one names its records.
+    // The local thread id is the key the chat's queue is registered under; the durable one
+    // names its records.
     stub.threadId = key
     stub.remoteId = 'remote-1'
     stub.isRunning = true
@@ -602,43 +613,63 @@ describe('run input recovery', () => {
       inputs: InputReceipt[]
       userTexts: string[]
     } = { active: true, runId: 'run1', inputs: [], userTexts: [] }
-    const sends: { runId: string; inputId: string; text: string }[] = []
     let nextFailure: unknown
-    const services = {
-      answerApproval: async () => undefined,
-      sendInput: async (request: {
-        runId: string
-        inputId: string
-        text: string
-      }) => {
-        sends.push(request)
-        if (nextFailure) throw nextFailure
-        return {
-          inputId: `srv-${request.inputId}`,
-          text: request.text,
-          status: 'queued' as const,
-        }
-      },
-      runInput: {
-        thread: async () => durable,
-        receipts: async () => durable.inputs,
-      },
+    /** What the chat's own queue sent to Theorem. */
+    const sends: { runId: string; inputId: string; text: string }[] = []
+    /** What an owner that made a queue of its own would have sent: nothing, once the
+     * thread already has the chat's. */
+    const ownerSends: { runId: string; inputId: string; text: string }[] = []
+    const failure = () => {
+      const thrown = nextFailure
+      nextFailure = undefined
+      if (thrown) throw thrown
     }
+    /** The chat's own binding, over this same runtime. */
+    const bound = bindThreadInputs(stub, {
+      storage,
+      thread: () => durable,
+      send: async (_runId, text, id) => {
+        sends.push({ runId: _runId, inputId: id, text })
+        failure()
+        return { inputId: `srv-${id}`, text, status: 'queued' as const }
+      },
+    })
     const options = {
       runtime: stub.runtime,
-      services,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async (request: {
+          runId: string
+          inputId: string
+          text: string
+        }) => {
+          ownerSends.push(request)
+          failure()
+          return {
+            inputId: `srv-${request.inputId}`,
+            text: request.text,
+            status: 'queued' as const,
+          }
+        },
+        runInput: {
+          thread: async () => durable,
+          receipts: async () => durable.inputs,
+        },
+      },
       storage,
       workspaceId: 'w1',
       schedule: () => () => {},
     }
     return {
       key,
-      /** The queue is registered under the conversation's own local id, clear of the chat's. */
-      queueKey: `workbench:${key}`,
+      /** The one queue this thread has: the chat's. */
+      queueKey: bound.key,
       stub,
       storage,
       durable,
+      bound,
       sends,
+      ownerSends,
       /** What the next send to Theorem throws: a lost reply, or a run that closed. */
       failNextSend: (error: unknown) => void (nextFailure = error),
       /** The run ending, on both sides: what a person's Stop or a closed run looks like here. */
@@ -893,61 +924,294 @@ describe('run input recovery', () => {
     owner.dispose()
   })
 
+  test('a thread has one run-input queue: the owner settles with the chat’s, not beside it', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({
+      requestId: 'r1',
+      clientMessageId: 'c1',
+      text: 'also',
+    })
+    await t.settle()
+    // The words went out through the queue the chat bound for this thread, once, and an
+    // owner that sent them beside it would have asked Theorem twice.
+    expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+    expect(t.ownerSends).toEqual([])
+    expect(t.bound.queue.getSnapshot()).toHaveLength(1)
+    expect(owner.snapshot().queued).toEqual([
+      { clientMessageId: 'c1', text: 'also', state: 'queued' },
+    ])
+    // The owner added no queue of its own to a thread the chat already serves.
+    expect(useRunInputs.getState()[`workbench:${t.key}`]).toBeUndefined()
+
+    // The run closes without taking them, and says so: one settlement, not one per queue.
+    // Absence of a delivered event is not a refusal, so this needs Theorem's own receipt.
+    t.durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_ended',
+      },
+    ]
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    expect(t.stub.appends).toHaveLength(1)
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+    t.bound.dispose()
+  })
+
+  test('a queue the chat binds after this owner opens still settles the thread once', async () => {
+    // The order the page really makes: the workbench builds its owner while connecting, and
+    // the chat's `bindRunInput` is an effect that lands afterwards. Two queues over one
+    // thread's record would each append the fallback turn.
+    const stub = new StubRuntime()
+    stub.threadId = `late-${++serial}`
+    stub.remoteId = 'remote-1'
+    stub.isRunning = true
+    stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    const storage = createMemoryStorage()
+    const durable: {
+      active: boolean
+      runId: string | undefined
+      inputs: InputReceipt[]
+      userTexts: string[]
+    } = { active: true, runId: 'run1', inputs: [], userTexts: [] }
+    const ownerSends: unknown[] = []
+    const owner = createConversation({
+      runtime: stub.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async (request) => {
+          ownerSends.push(request)
+          return {
+            inputId: `srv-${request.inputId}`,
+            text: request.text,
+            status: 'queued' as const,
+          }
+        },
+        runInput: {
+          thread: async () => durable,
+          receipts: async () => durable.inputs,
+        },
+      },
+      storage,
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
+    // The chat binds its queue for this thread, and only then does the person send words.
+    const bound = bindThreadInputs(stub, {
+      storage,
+      thread: () => durable,
+      send: async (_runId, text, id) => ({
+        inputId: `srv-${id}`,
+        text,
+        status: 'queued' as const,
+      }),
+    })
+    expect(
+      (
+        await owner.input({
+          requestId: 'r1',
+          clientMessageId: 'c1',
+          text: 'also',
+        })
+      ).outcome,
+    ).toBe('accepted')
+    await settle()
+    expect(bound.sent).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+    expect(ownerSends).toEqual([])
+
+    durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_ended',
+      },
+    ]
+    stub.isRunning = false
+    stub.messages = [
+      assistant('a1', 'x', {
+        runId: 'run1',
+        status: { type: 'incomplete', reason: 'stop' },
+      }),
+    ]
+    durable.active = false
+    durable.runId = undefined
+    stub.emit()
+    await settle()
+    // One turn for one message, whatever the mount order.
+    expect(stub.appends).toHaveLength(1)
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+    bound.dispose()
+  })
+
+  test("the owner's Stop reaches the queue the chat bound for this thread", async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({
+      requestId: 'r1',
+      clientMessageId: 'c1',
+      text: 'also',
+    })
+    await t.settle()
+    expect(
+      await owner.stop({ requestId: 'r2', runId: 'run1' }),
+    ).toMatchObject({ outcome: 'accepted', value: { runId: 'run1' } })
+    // The chat's queue is the one told: its row is marked stopped, so the words cannot
+    // answer a person's Stop with another response.
+    expect(t.bound.queue.getSnapshot()[0]?.stopped).toBe(true)
+    t.durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_cancelled',
+      },
+    ]
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    expect(t.stub.appends).toEqual([])
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+    ])
+    owner.dispose()
+    t.bound.dispose()
+  })
+
+  test('a switched thread reads its own rows and carries none of the last one’s', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({
+      requestId: 'r1',
+      clientMessageId: 'c1',
+      text: 'also',
+    })
+    await t.settle()
+    expect(owner.snapshot().queued).toHaveLength(1)
+    const kept = t.storage.getItem('theorem.run-input.remote-1')
+    expect(kept).toContain('also')
+
+    // The person opens another thread on this same owner, as switchTo does, and the chat
+    // rebinds its queue for the thread now open.
+    t.bound.dispose()
+    await t.stub.runtime.threads.switchToThread('thread-2')
+    t.stub.remoteId = 'remote-2'
+    t.stub.isRunning = true
+    t.stub.messages = [assistant('a2', 'y', { runId: 'run2' })]
+    const second = bindThreadInputs(t.stub, {
+      storage: t.storage,
+      thread: () => ({ active: true, runId: 'run2', inputs: [] }),
+    })
+    t.stub.emitThreads()
+    t.stub.emit()
+    await t.settle()
+    // Thread two shows no rows of thread one, and nothing of thread one is written into it.
+    expect(owner.snapshot().queued).toEqual([])
+    expect(t.storage.getItem('theorem.run-input.remote-2')).toBeNull()
+    // What thread one kept stays with thread one, for whoever opens it again.
+    expect(t.storage.getItem('theorem.run-input.remote-1')).toBe(kept)
+    owner.dispose()
+    second.dispose()
+  })
+
   test('a reloaded draft chat keeps its recovered words listed, then sends them once as a turn', async () => {
-    const t = recovering('draft-9')
-    // A chat that was still being created when its words were kept: the record names that
-    // attempt, and this owner is a later one, so the words come back for an explicit retry
-    // rather than being sent at whoever opened next.
-    t.storage.setItem(
+    // A chat that was still being created when its words were kept: it has no stored thread,
+    // so the record names that attempt. This owner is a later one over the same session
+    // storage, which is what a reload is.
+    const stub = new StubRuntime()
+    stub.threadId = `draft-${++serial}`
+    stub.remoteId = undefined
+    stub.isRunning = false
+    stub.messages = []
+    const storage = createMemoryStorage()
+    storage.setItem(
       'theorem.run-input.pending:',
       JSON.stringify({
         attemptId: 'an-earlier-attempt',
         items: [{ id: 'c1', text: 'also', state: 'waiting' }],
       }),
     )
-    t.stub.remoteId = undefined
-    t.stub.isRunning = false
-    t.stub.messages = []
-    const owner = t.make()
+    const durable: {
+      active: boolean
+      runId: string | undefined
+      inputs: InputReceipt[]
+      userTexts: string[]
+    } = { active: false, runId: undefined, inputs: [], userTexts: [] }
+    const bound = bindThreadInputs(stub, {
+      storage,
+      thread: () => durable,
+      send: async () => {
+        throw new Error('a recovered draft is not sent on its own')
+      },
+    })
+    const owner = createConversation({
+      runtime: stub.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+      },
+      storage,
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
     expect(owner.snapshot().queued).toMatchObject([
       { clientMessageId: 'c1', text: 'also', state: 'failed' },
     ])
-    expect(t.sends).toEqual([])
+    expect(bound.sent).toEqual([])
 
     // The person retries: the words become a turn of this chat's own, and the record stays
     // kept until the thread actually holds them.
-    retryRunInput(t.queueKey, 'c1')
-    await t.settle()
-    expect(t.stub.appends).toEqual([
+    retryRunInput(bound.key, 'c1')
+    await settle()
+    expect(stub.appends).toEqual([
       {
         role: 'user',
         content: [{ type: 'text', text: 'also' }],
         runConfig: { custom: { theoremRunInput: true } },
       },
     ])
-    expect(t.sends).toEqual([])
+    expect(bound.sent).toEqual([])
     expect(owner.snapshot().queued).toEqual([])
 
     // The chat is created, and its stored thread has the words: nothing more is kept for it.
-    t.stub.remoteId = 'remote-9'
-    t.durable.userTexts = ['also']
-    t.stub.emitThreads()
-    await t.settle()
-    expect(t.storage.getItem('theorem.run-input.pending:')).toBeNull()
-    expect(t.storage.getItem('theorem.run-input.remote-9')).toBeNull()
+    stub.remoteId = 'remote-9'
+    durable.userTexts = ['also']
+    stub.emitThreads()
+    stub.emit()
+    await settle()
+    expect(storage.getItem('theorem.run-input.pending:')).toBeNull()
+    expect(storage.getItem('theorem.run-input.remote-9')).toBeNull()
     expect(owner.snapshot().queued).toEqual([])
     owner.dispose()
+    bound.dispose()
   })
 
-  test('the queue belongs to this owner: registered while it lives, gone when it is closed', async () => {
+  test('the chat’s queue outlives the owner that reads it; a side chat’s does not', async () => {
     const t = recovering()
     const owner = t.make()
-    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await owner.input({
+      requestId: 'r1',
+      clientMessageId: 'c1',
+      text: 'also',
+    })
     await t.settle()
     expect(useRunInputs.getState()[t.queueKey]).toMatchObject([
       { id: 'c1', text: 'also' },
     ])
+    // The owner made no queue, so it closes none: the thread's words stay kept in the queue
+    // the chat bound, for whoever opens this conversation next.
     owner.dispose()
+    expect(useRunInputs.getState()[t.queueKey]).toMatchObject([
+      { id: 'c1', text: 'also' },
+    ])
+    expect(t.bound.queue.getSnapshot()).toHaveLength(1)
+    t.bound.dispose()
     expect(useRunInputs.getState()[t.queueKey]).toBeUndefined()
   })
 

@@ -3,7 +3,13 @@ import { describe, expect, test } from 'bun:test'
 import type { Effect, HostMessage, ResourceRef } from '../wire'
 import { createConversation } from './conversation'
 import { createConversationPort } from './port'
-import { StubRuntime, approvalPart, assistant } from './test-runtime'
+import {
+  StubRuntime,
+  approvalPart,
+  assistant,
+  bindThreadInputs,
+  createMemoryStorage,
+} from './test-runtime'
 
 const thread = (id: string): ResourceRef => ({
   type: 'conversation',
@@ -138,7 +144,14 @@ describe('a run that works', () => {
   }
 
   test('input goes to the run it names', async () => {
-    const { perform, inputs } = working()
+    const { perform, stub, inputs } = working()
+    // The chat's own queue for this thread, which the port drives. An owner that made a
+    // second one would send these words twice over.
+    const bound = bindThreadInputs(stub, {
+      storage: createMemoryStorage(),
+      send: async (runId, text, inputId) =>
+        void inputs.push({ runId, inputId, text }),
+    })
     expect(
       await perform('conversationInput', {
         runId: 'run1',
@@ -157,6 +170,7 @@ describe('a run that works', () => {
         text: 'late',
       }),
     ).toMatchObject({ outcome: 'refused', code: 'stale_run' })
+    bound.dispose()
   })
 
   test('cancel names the run it stopped; another run is stale', async () => {

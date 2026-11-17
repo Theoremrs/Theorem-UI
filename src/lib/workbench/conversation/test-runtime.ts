@@ -1,5 +1,12 @@
-// SOURCING: none — a stub runtime shaped like assistant-ui's AssistantRuntime (thread and threads), shared by the conversation owner's tests, no network
+// SOURCING: none — a stub runtime shaped like assistant-ui's AssistantRuntime (thread and threads), plus the classic chat's own run-input binding (lib/theorem/run-input-runtime's bindRunInput) over it, shared by the conversation owner's tests, no network
 import type { CreateAppendMessage, ThreadMessage } from '@assistant-ui/react'
+import { createRunInputQueue, inputReceipt } from '@/lib/theorem/run-input'
+import {
+  registerRunInputQueue,
+  useRunInputs,
+} from '@/lib/theorem/run-input-store'
+import type { InputReceipt } from '@/lib/theorem/run-input'
+import { runIdOf } from './transcript'
 import type { ConversationRuntime } from './conversation'
 
 export function assistant(
@@ -142,7 +149,7 @@ export class StubRuntime {
         this.threadsListeners.add(l)
         return () => this.threadsListeners.delete(l)
       },
-      mainItem: { getState: () => ({ remoteId: this.remoteId }) },
+      mainItem: { getState: () => ({ id: this.threadId, remoteId: this.remoteId }) },
       switchToThread: async (id) => {
         this.threadId = id
         this.remoteId = undefined
@@ -157,4 +164,109 @@ export class StubRuntime {
       },
     },
   }
+}
+
+/** Where a conversation's kept input is recorded, as the session's storage holds it. */
+export type StorageLike = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
+
+/** What Theorem stores about a thread's run: whether a run works, and what became of its input. */
+export type ThreadStanding = {
+  active: boolean
+  runId?: string
+  inputs: readonly InputReceipt[]
+  /** User text the thread already holds. */
+  userTexts?: readonly string[]
+}
+
+const receiptsOf = (messages: readonly ThreadMessage[]): InputReceipt[] =>
+  messages.flatMap((message) =>
+    message.content.flatMap((part) => {
+      const receipt =
+        part.type === 'data' && part.name === 'theorem-user_input'
+          ? inputReceipt(part.data)
+          : undefined
+      return receipt ? [receipt] : []
+    }),
+  )
+
+const lastRunOf = (messages: readonly ThreadMessage[]) => {
+  const last = messages.at(-1)
+  return last ? runIdOf(last) : undefined
+}
+
+/**
+ * The queue the classic chat binds for its own thread — `bindRunInput` over this stub
+ * runtime, with the SDK reads replaced by what the test scripts. The workbench drives the
+ * same runtime the chat bound, so the thread has this one queue: a test that asks what the
+ * owner does with run input is asking about *this*, not about a second queue of its own.
+ */
+export function bindThreadInputs(
+  stub: StubRuntime,
+  options: {
+    storage: StorageLike
+    /** What Theorem stores; default: whatever this runtime is showing. */
+    thread?: () => ThreadStanding
+    /** How a send to Theorem turns out; default: it is accepted and queued. */
+    send?: (runId: string, text: string, id: string) => Promise<InputReceipt | void>
+  },
+) {
+  const key = stub.runtime.threads.getState().mainThreadId
+  const sent: { runId: string; inputId: string; text: string }[] = []
+  const standing = (): ThreadStanding =>
+    options.thread?.() ?? {
+      active: stub.isRunning,
+      runId: stub.isRunning ? lastRunOf(stub.messages) : undefined,
+      inputs: receiptsOf(stub.messages),
+    }
+  const queue = createRunInputQueue({
+    snapshot: () => ({
+      threadId: stub.remoteId,
+      runId: stub.isRunning ? lastRunOf(stub.messages) : undefined,
+      isRunning: stub.isRunning,
+      isLoading: false,
+      inputs: receiptsOf(stub.messages),
+      localUserTexts: stub.messages.flatMap((message) =>
+        message.role === 'user'
+          ? message.content.flatMap((part) =>
+              part.type === 'text' ? [part.text] : [],
+            )
+          : [],
+      ),
+    }),
+    refresh: async () => {
+      const thread = standing()
+      return {
+        active: thread.active,
+        runId: thread.runId,
+        inputs: thread.inputs,
+        userTexts: thread.userTexts ?? [],
+      }
+    },
+    send: async (runId, text, id) => {
+      sent.push({ runId, inputId: id, text })
+      return (
+        (await options.send?.(runId, text, id)) ?? {
+          inputId: `srv-${id}`,
+          text,
+          status: 'queued' as const,
+        }
+      )
+    },
+    receipts: async () => standing().inputs,
+    append: (text) =>
+      stub.runtime.thread.append({
+        role: 'user',
+        content: [{ type: 'text', text }],
+        runConfig: { custom: { theoremRunInput: true } },
+      }),
+    changed: (items) => useRunInputs.setState({ [key]: items }),
+    describeError: (error) =>
+      error instanceof Error ? error.message : 'Request failed.',
+    attemptId: key,
+    storage: options.storage,
+  })
+  const unregister = registerRunInputQueue(key, queue)
+  const offThread = stub.runtime.thread.subscribe(queue.observe)
+  queue.observe()
+  return { key, queue, sent, dispose: () => void (offThread(), unregister()) }
 }

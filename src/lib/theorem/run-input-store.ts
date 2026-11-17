@@ -16,8 +16,13 @@ export function registerRunInputQueue(threadKey: string, queue: RunInputQueue) {
   }
 }
 
-export const submitRunInput = (threadKey: string, text: string) =>
-  queues.get(threadKey)?.submit(text) ?? false
+/**
+ * Keeps `text` for the thread's working run. A caller that already names the message — the
+ * workbench's composer mints a client id for every send, and the same id must never send
+ * twice — gives it as `id`, so one message is kept and sent once however often it is offered.
+ */
+export const submitRunInput = (threadKey: string, text: string, id?: string) =>
+  queues.get(threadKey)?.submit(text, id) ?? false
 
 export const retryRunInput = (threadKey: string, id: string) =>
   queues.get(threadKey)?.retry(id)
