@@ -1,7 +1,7 @@
 // SOURCING: @theoremharness/sdk programs.startRun and programs.followRun (the durable
 // run-event log and its SSE stream, adopted as-is). Liveness shown on the canvas is what
-// these events said; nothing here simulates a node. The stream's settled frame shares
-// the event stream's generated type, so it is told apart here by having no sequence.
+// these events said; nothing here simulates a node. A stream ends with one of two closing
+// frames: the run settled, or the server lost sight of it and says where to read on from.
 import { TheoremError } from '@theoremharness/sdk'
 import { describeError, mutate, theorem } from '@/lib/theorem/client'
 import { NativeToolError } from '@/lib/theorem/native'
@@ -14,7 +14,6 @@ type Settlement = {
   code?: string | null
   message?: string | null
 }
-type SettledFrame = { settlement?: Settlement | null }
 
 const STREAM_TIMEOUT_SECONDS = 24 * 60 * 60
 const UNSETTLED_STATUSES = new Set(['refused', 'failed', 'interrupted'])
@@ -26,20 +25,32 @@ export function stopFollowing() {
   following = undefined
 }
 
-async function followToEnd(runId: string, signal: AbortSignal) {
-  const stream = await theorem().programs.followRun(
-    { runId },
-    { abortSignal: signal, timeoutInSeconds: STREAM_TIMEOUT_SECONDS },
-  )
-  let settlement: Settlement | undefined
-  for await (const frame of stream) {
-    if (typeof frame.sequence === 'number') {
-      useProgramDoc.getState().runEvent(frame)
-    } else {
-      settlement = (frame as SettledFrame).settlement ?? undefined
+async function followToEnd(
+  runId: string,
+  signal: AbortSignal,
+): Promise<Settlement | undefined> {
+  let cursor: number | undefined
+  for (;;) {
+    const stream = await theorem().programs.followRun(
+      { runId, cursor },
+      { abortSignal: signal, timeoutInSeconds: STREAM_TIMEOUT_SECONDS },
+    )
+    let lost: { next_cursor: number; message: string } | undefined
+    for await (const frame of stream) {
+      if ('sequence' in frame) useProgramDoc.getState().runEvent(frame)
+      else if ('settlement' in frame) return frame.settlement ?? undefined
+      else {
+        lost = frame
+        break
+      }
     }
+    // The stream closed without a closing frame: there is nothing more to read.
+    if (!lost) return undefined
+    // The run goes on unseen. Read on from where the server stopped, unless the last
+    // read brought nothing new: then the server's own words are the answer.
+    if (lost.next_cursor === cursor) throw new Error(lost.message)
+    cursor = lost.next_cursor
   }
-  return settlement
 }
 
 /** The node that stopped a run says why better than the run's summary of it can. */

@@ -14,6 +14,7 @@ import {
   Suspense,
   lazy,
   useEffect,
+  useEffectEvent,
   useRef,
   useState,
   useSyncExternalStore,
@@ -69,6 +70,8 @@ import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
 import { cn } from '@/lib/utils'
+import { sheetShown } from '@/components/workbench/placement'
+import { useWorkbenchPlacement } from '@/components/workbench/use-workbench-placement'
 
 import { DelegationPanel } from '@/components/chat/delegation-panel'
 import { ComparePane } from '@/components/review/compare-pane'
@@ -77,6 +80,7 @@ import {
   useThreadDelegation,
 } from '@/lib/theorem/delegations'
 import { useReview, useReviewDock } from '@/lib/theorem/reviews'
+import { WORKBENCH_LABEL } from '@/components/workbench/label'
 
 const ARTIFACT = 'artifact:'
 const NOTE = 'note-panel:'
@@ -141,7 +145,11 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     <GroupActions group={api.group} containerApi={containerApi} />
   ) : undefined
   return (
-    <div data-appearance-part="main" data-appearance-width-role="main" className="flex h-full min-w-0 flex-col">
+    <div
+      data-appearance-part="main"
+      data-appearance-width-role="main"
+      className="flex h-full min-w-0 flex-col"
+    >
       {inChat && (
         <ThreadHeader
           actions={actions}
@@ -475,20 +483,27 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
               <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setSideDrawer('terminal')}
+                onClick={() => useShell.getState().setWorkbench('side')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal on the right
+                {`${WORKBENCH_LABEL} on the right`}
               </Menu.Item>
               <Menu.Item
                 className={menuItem}
-                onClick={() => useShell.getState().setTerminalOpen(true)}
+                onClick={() => useShell.getState().setWorkbench('bottom')}
               >
                 <Icon.Terminal className="size-4 text-ink-muted" />
-                Terminal at the bottom
+                {`${WORKBENCH_LABEL} at the bottom`}
                 <span className="ms-auto ps-4 font-mono text-xs text-ink-faint">
                   ctrl+`
                 </span>
+              </Menu.Item>
+              <Menu.Item
+                className={menuItem}
+                onClick={() => useShell.getState().setWorkbench('full')}
+              >
+                <Icon.Terminal className="size-4 text-ink-muted" />
+                {`${WORKBENCH_LABEL} full screen`}
               </Menu.Item>
             </Menu.Popup>
           </Menu.Positioner>
@@ -719,6 +734,15 @@ export function DockShell({
   }, [dock])
   /** Conversation the layout's artifact panels belong to. */
   const layoutThread = useRef<string | undefined>(undefined)
+  // A full-screen workbench covers this dock: a review asked for there (its
+  // Artifacts panel, its conversation's review card) brings the sheet back
+  // beside it so the review can be seen and used.
+  const { requestedPlacement } = useWorkbenchPlacement()
+  const showSheet = useEffectEvent(() => {
+    const shell = useShell.getState()
+    const moved = sheetShown(requestedPlacement, shell.lastCompanion)
+    if (moved) shell.setWorkbench(moved)
+  })
 
   const onReady = ({ api }: DockviewReadyEvent) => {
     const saved = useShell.getState().layouts[projectId]
@@ -771,8 +795,11 @@ export function DockShell({
       open: (delegationId, title) => openDelegation(dock, delegationId, title),
     })
     useReviewDock.setState({
-      open: (reviewId, options) =>
-        openReviewPanel(dock, reviewId, options?.quiet),
+      open: (reviewId, options) => {
+        // A quiet open is the dock noticing a new review, not someone asking.
+        if (!options?.quiet) showSheet()
+        openReviewPanel(dock, reviewId, options?.quiet)
+      },
       close: (reviewId) => {
         const panel = dock.getPanel(reviewPanelId(reviewId))
         if (panel) dock.removePanel(panel)

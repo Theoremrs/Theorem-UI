@@ -433,6 +433,113 @@ test('restored pending input remains visible until this runtime actually display
   expect(h.queue.getSnapshot()[0]?.visible).toBe(false)
 })
 
+test('a caller-supplied id names one message and is sent once', async () => {
+  const h = harness()
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+  expect(h.host.send).toHaveBeenCalledWith('run-1', 'Use the smaller design', 'client-1')
+  expect(h.queue.getSnapshot()[0]?.id).toBe('client-1')
+
+  // The same message offered again keeps its row and makes no second request.
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()).toHaveLength(1)
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+
+  // Another message claiming that id is refused: nothing is queued or sent under it.
+  expect(h.queue.submit('Different words altogether', 'client-1')).toBe(false)
+  expect(h.queue.getSnapshot().map((item) => item.text)).toEqual(['Use the smaller design'])
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+})
+
+test('a dismissed row leaves the storage, so a reload does not bring it back', async () => {
+  const h = harness()
+  h.host.send = mock(async () => { throw new TypeError('Reply lost.') })
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()[0]?.state).toBe('failed')
+  h.queue.dismiss('client-1')
+  expect(h.queue.getSnapshot()).toEqual([])
+  h.queue.dispose()
+  const again = createRunInputQueue(h.host)
+  expect(again.getSnapshot()).toEqual([])
+  again.dispose()
+})
+
+test('a reload keeps a caller-supplied id, and its retry replays that same request', async () => {
+  const h = harness()
+  h.host.send = mock(async () => {
+    throw new TypeError('Reply lost.')
+  })
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()[0]?.state).toBe('failed')
+  h.queue.dispose()
+
+  h.host.send = mock(async () => receipt())
+  const reloaded = createRunInputQueue(h.host)
+  reloaded.observe()
+  // The unconfirmed send comes back as the same message, under the same id and run, and recovery
+  // alone does not send it again.
+  expect(reloaded.getSnapshot()[0]?.id).toBe('client-1')
+  expect(reloaded.getSnapshot()[0]?.runId).toBe('run-1')
+  expect(h.host.send).not.toHaveBeenCalled()
+  // Offering that message again after the reload cannot duplicate it.
+  expect(reloaded.submit('Use the smaller design', 'client-1')).toBe(true)
+  expect(reloaded.getSnapshot()).toHaveLength(1)
+  expect(h.host.send).not.toHaveBeenCalled()
+
+  reloaded.retry('client-1')
+  await settle()
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+  expect(h.host.send).toHaveBeenCalledWith('run-1', 'Use the smaller design', 'client-1')
+})
+
+test('a kept record belongs to the conversation that wrote it', async () => {
+  const h = harness()
+  h.local.threadId = undefined
+  h.local.runId = undefined
+  h.host.attemptId = 'attempt-1'
+  h.host.pendingKey = 'theorem.run-input.pending:attempt-1'
+  const first = createRunInputQueue(h.host)
+  expect(first.submit('Use the smaller design')).toBe(true)
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+
+  // Another conversation of the same session opens with no thread of its own, on the same
+  // storage. Its record is its own, so it neither sees nor takes the first one's words.
+  h.host.attemptId = 'attempt-2'
+  h.host.pendingKey = 'theorem.run-input.pending:attempt-2'
+  const second = createRunInputQueue(h.host)
+  second.observe()
+  expect(second.getSnapshot()).toEqual([])
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+
+  // Its own words land in its own record, and settling that record cannot clear the other's.
+  expect(second.submit('Also keep the margins')).toBe(true)
+  expect(h.storage.get('theorem.run-input.pending:attempt-2')).toContain('Also keep the margins')
+  expect(h.storage.get('theorem.run-input.pending:attempt-1')).toContain('Use the smaller design')
+  h.local.threadId = 'thread-2'
+  second.observe()
+  await settle()
+  expect(h.storage.has('theorem.run-input.pending:attempt-1')).toBe(true)
+  expect(h.storage.get('theorem.run-input.thread-2')).toContain('Also keep the margins')
+  expect(h.storage.has('theorem.run-input.thread-1')).toBe(false)
+  first.dispose()
+  second.dispose()
+})
+
+test('a queue with no scoped record keeps the shared one of the session', () => {
+  const h = harness()
+  h.local.threadId = undefined
+  h.local.runId = undefined
+  h.host.attemptId = 'attempt-1'
+  const queue = createRunInputQueue(h.host)
+  expect(queue.submit('Use the smaller design')).toBe(true)
+  expect(h.storage.has('theorem.run-input.pending:')).toBe(true)
+  queue.dispose()
+})
+
 test('raw event decoding requires user_input and carries only the command receipt identity', () => {
   const part = { ...receipt(), type: 'user_input' }
   expect(runInputReceipt({ payload: { part }, idempotencyKey: 'chat-command:key-1' })?.requestKey).toBe('key-1')

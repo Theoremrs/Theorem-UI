@@ -1,0 +1,12 @@
+[package]
+name = "theorem-workbench-vt"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "VT byte-to-screen interpreter, ratatui renderer and input encoder for process panes of the Theo Web terminal workbench"
+
+[dependencies]
+vt100 = "0.16.2"
+tui-term = { version = "0.3.4", default-features = false, features = ["vt100"] }
+ratatui = { version = "0.30.1", default-features = false }
+terminput = "0.5.16"

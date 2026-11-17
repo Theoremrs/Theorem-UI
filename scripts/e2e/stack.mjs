@@ -18,6 +18,11 @@
 // GitHub. The accounts' passwords are in secrets.json under neonPasswords.
 // Generated secrets stay in E2E_DATA_DIR, in a file only this user can read.
 //
+// With E2E_IDE_HOST_BIN (a built theorem-ide-host) and E2E_HERDR_HC (a herdr-core binary) set,
+// for scripts/e2e/workbench.mjs, a real IDE host runs beside the server on E2E_IDE_HOST_PORT, with
+// Herdr terminals in a core session of its own (scripts/e2e/ide-host.mjs), and the server is bound
+// to it. The host is not supervised here, so a scenario can kill it and start it again.
+//
 // With E2E_KEY_STANDIN set, for scripts/e2e/keys.mjs, the deployment has no OpenRouter
 // key and reaches OpenRouter through scripts/e2e/provider-standin.mjs. That takes only
 // a generated test key and swaps in the real one as it forwards, so a page never
@@ -49,6 +54,14 @@ import {
   UI,
   UI_PORT,
 } from './config.mjs'
+import {
+  HOSTS_FILE,
+  hostUp,
+  ideHostEnabled,
+  prepareIdeHost,
+  startHost,
+  stopIdeHost,
+} from './ide-host.mjs'
 
 const CLIENT_ID = 'theorem-ui-e2e'
 const IDENTITY_CLIENT_ID = 'theorem-e2e'
@@ -119,6 +132,7 @@ function start(name, command, args, env) {
 }
 
 function stop(code) {
+  if (ideHostEnabled) stopIdeHost()
   for (const child of children) {
     child.removeAllListeners('exit')
     child.kill()
@@ -248,7 +262,23 @@ if (process.env.E2E_KEY_STANDIN) {
 const searchManifest = join(DATA_DIR, 'offline-search.jsonl')
 if (!existsSync(searchManifest)) writeFileSync(searchManifest, '')
 
+const ideHostEnv = {}
+if (ideHostEnabled) {
+  prepareIdeHost()
+  startHost()
+  for (let attempt = 0; !(await hostUp()); attempt++) {
+    if (attempt === 60) {
+      console.error('The IDE host did not answer.')
+      stop(1)
+    }
+    await new Promise((settle) => setTimeout(settle, 500))
+  }
+  console.log('ide host ready')
+  ideHostEnv.THEOREM_ENVIRONMENT_HOSTS_FILE = HOSTS_FILE
+}
+
 start('server', server, [], {
+  ...ideHostEnv,
   RUSTYWEB_SEARCH_PROVIDERS: 'offline',
   RUSTYWEB_OFFLINE_SEARCH_MANIFEST: searchManifest,
   ...serverEnv,
