@@ -61,7 +61,7 @@ happens (`src/lib/face/signals.ts`):
 A program cannot set one. It ties a channel to one:
 
 ```json
-{ "op": "follow", "channel": "mouth.h", "signal": "sound.level", "amp": 6 }
+{ "op": "follow", "channel": "eyes.scale", "signal": "sound.low", "amp": 0.14 }
 ```
 
 Each frame the channel is `amp` times the signal away from wherever it
@@ -70,10 +70,10 @@ long as the performance holds, which with `keep` is until something lets
 go. A `release` of the channel ends what it followed too, and a `release`
 of everything ends every tie. A tie comes in and goes out over 140 ms.
 
-This is the whole of how a face speaks. Nothing says "speaking": the mouth
-opens because the level is above nothing, and it is above nothing only
-while audio is going out of the loudspeaker. A pause in a sentence shuts
-it.
+This is the whole of how a face hears. Nothing says "playing": the
+loudspeaker's covers pump because the low end is above nothing, and it is
+above nothing only while audio is going out. A pause in a sentence stills
+them.
 
 With motion reduced nothing follows the sound. A tie still ends when it is due to,
 so what reads the ties (the steady arcs) does not show one that is over.
@@ -104,9 +104,12 @@ asks, and is a loudspeaker again after.
 - `face.read` reports it in the state as `form: {name, until}`, with the
   signals that are away from nothing.
 
-Three rules come with Theo: `sound-boombox` (weight 3) and `sound-speak`
-(weight 1) are forms for a sound from start to stop, and `sound-thump` is
-an ordinary reaction to a sound getting loud.
+Two rules come with Theo: `sound-boombox` is the form for a sound from
+start to stop, and `sound-thump` is an ordinary reaction to a sound getting
+loud. A third, `sound-speak`, drew a talking mouth now and then in the
+loudspeaker's place; the owner retired it on 2026-11-16 ("get rid of the
+animation where it appears to be talking and only use the boombox"), with
+the `speak` performance it played.
 
 ## The loudspeaker
 
@@ -152,9 +155,8 @@ go, so a pause does not slide it about.
 With motion reduced the form is taken and does not pump. Two arcs a side
 are drawn still for as long as there is sound, and go when there is none.
 
-`speak` is the other form: a `mouth` feature whose height follows
-`sound.level` and whose width narrows with `sound.mid`. `thump` is a short
-kick for a sudden loud sound.
+`thump` is a short kick for a sudden loud sound. The loudspeaker is the
+only form sound takes.
 
 Later devices are meant to be built the same way: features, meshes, bars
 and rings, and ties to signals.
@@ -276,11 +278,11 @@ src/lib/face/
   program.ts      the `follow` step
   player.ts       ties laid each frame, kept with a kept performance; which signals a channel is tied to
   layers.ts       the `form` layer
-  reactions.ts    `until`, and drawing a form; the three sound rules
+  reactions.ts    `until`, and drawing a form; the two sound rules
   engine.ts       feed, forms taken and let go, emitting, the manual's signals
   feature.ts      mesh, bars and rings
   channels.ts     `mesh`, `slats`, `rings`, `emit.left`, `emit.right`
-  book.ts         boombox, speak, thump
+  book.ts         boombox, thump
   memory.ts       what a sound does to the mood
   operations.ts   `follow` and `until` in the descriptions
 src/lib/sound/
@@ -291,6 +293,7 @@ src/lib/speech/
   phonon.ts       Phonon in the browser
   speakable.ts    a reply as it is read aloud
   adapter.ts      assistant-ui's speech adapter over the seam
+  narrate.ts      narrating a reply sentence by sentence as it streams
 src/components/face/
   driver.ts       hears the graph each frame; sizes a form; draws the arcs
   face-stage.tsx  the arcs' element
@@ -300,6 +303,22 @@ src/lib/theorem/runtime.tsx          the adapter given to the runtime
 src/styles.css                       .face-waves
 src/stories/                         the story `face-sound`; the fake API's origin
 ```
+
+## Narrating as a reply arrives
+
+With "Narrate replies as they arrive" on (Settings, Appearance, Figures;
+`useNarration` in `src/lib/speech/narrate.ts`, off unless turned on),
+Theo starts reading a reply from its first complete sentence instead of
+waiting for Read aloud. The runtime hands each thread's stream to
+`useNarrateReplies`, which acts only for the thread on screen. Text is cut
+at sentence ends (`.`, `!` or `?` before a space, or a line break; at least
+24 characters; nothing inside a code fence still open), the next sentence
+is turned to speech while the one before plays, and every sentence goes to
+the sound graph as one stream, so the meter hears one sound and Theo holds
+the loudspeaker from the first sentence to the last. Turning it off,
+moving to another thread or leaving stops it at once; anything else that
+speaks claims the voice and stops it too. Sentence cutting and the stream
+are tested in `src/lib/speech/narrate.test.ts`.
 
 ## Tests and evidence
 
@@ -312,9 +331,9 @@ src/lib/speech src/stories`):
   following with motion reduced, and a tie with `for` ending then all the
   same; a `release` ending the ties of what it lets go, one channel or
   all; the layer order; a form held from start
-  to stop and the face back to two eyes; never left out, and both forms
-  drawn; the loudspeaker's parts and what it emits; the steady arcs with
-  motion reduced; the mouth; a reaction over a form; no sleep while one is
+  to stop and the face back to two eyes; never left out, and the
+  loudspeaker the only form drawn; the loudspeaker's parts and what it emits; the steady arcs with
+  motion reduced; a reaction over a form; no sleep while one is
   held; a loud sound as a moment; the manual; the three performances
   compiling without a note; rings in bands; bars in rows; a mesh in dots
   inside a rim; a plain feature

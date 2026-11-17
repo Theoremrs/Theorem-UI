@@ -203,10 +203,10 @@ Any number may be `{rand:[low,high]}`, drawn from the invocation's seed, or
 program set in place after it ends, until the layer is stopped or played on
 again; that is how a mood or a sleep holds.
 
-Named expressions are entries in a book of performances (30 to start: blink,
+Named expressions are entries in a book of performances (29 to start: blink,
 wink, nod, shake, perk, squint, glare, worry, happy, joy, think, curious,
 startle, wince, dizzy, sigh, scan, melt, sparkle, skeptic, attend, focus, ask,
-sleep, wake, done, visit, boombox, speak, thump). `use: "curious"` is a shortcut the agent may take; writing
+sleep, wake, done, visit, boombox, thump). `use: "curious"` is a shortcut the agent may take; writing
 the steps is always allowed and needs no name.
 
 A saved performance is never changed. Defining a name again adds a version,
@@ -577,9 +577,9 @@ Renders are under `docs/plans/evidence/theo-face/`.
   live turn may, and the newest wins.
 - **How much the manual costs a turn.** `face.read` with no part is about
   10 KB of JSON. The parts are there so a model can ask for less.
-- **A mouth.** Built as a form that follows the sound the page plays
-  (`theo-sound.md`). Whether it is worth keeping beside the loudspeaker is
-  the owner's to say.
+- **A mouth.** Built as a form that followed the sound the page plays, and
+  retired by the owner on 2026-11-16: sound is shown only as the loudspeaker
+  (`theo-sound.md`).
 
 ## Not yet
 

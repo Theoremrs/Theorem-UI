@@ -1,25 +1,18 @@
-// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover, with its TriggerAdapter and TriggerMatcher seams; the default directive formatter writes the pick into the message; the native tool catalog from lib/theorem/tools; zustand (the Web toggle and the per-conversation Plan toggle state the composer and the runtime share, Plan keyed by the thread as useAuiState names it), Base UI Toggle (the Web and Plan chips), ui/tooltip over Base UI Tooltip, the shared useSpin over anime.js; the SDK's webResearch option requests research without narrowing the turn's tools; planning independently requests a durable plan through draft_plan
-import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
+// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover, with its TriggerAdapter and TriggerMatcher seams; the default directive formatter writes the pick into the message; the native tool catalog from lib/theorem/tools; zustand (the Web and per-conversation Plan and Code mode state the composer's + menu and the runtime share); the SDK's webResearch option requests research without narrowing the turn's tools; planning independently requests a durable plan through draft_plan
+import { defaultDirectiveFormatter } from '@assistant-ui/react'
 import type {
   TriggerAdapter,
   TriggerItem,
   TriggerMatcher,
 } from '@assistant-ui/react'
-import { Toggle } from '@base-ui/react/toggle'
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { create } from 'zustand'
 import { ComposerTriggerPopover } from '@/components/assistant-ui/elements/composer-trigger-popover.aui'
+import { useMenuGlass } from '@/components/glass/menu-glass'
 import { OutputSettingsDialog } from '@/components/chat/response-control'
-import { Icon } from '@/components/icons'
-import { useSpin } from '@/components/motion'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { searchTools, useToolCatalog } from '@/lib/theorem/tools'
 import type { NativeTool, ToolCatalogState } from '@/lib/theorem/tools'
+import { cn } from '@/lib/utils'
 
 /** The composer's buttons are passed on the way to typing, so their tooltips wait for a resting pointer. */
 export const COMPOSER_TOOLTIP_DELAY = 700
@@ -43,11 +36,11 @@ export const useWebSearch = create<WebSearchState>()((set) => ({
 export const webTurnOptions = (): { webResearch?: true } =>
   useWebSearch.getState().on ? { webResearch: true } : {}
 
-type PlanningState = {
-  /** The conversations with Plan on, by the composer's thread key. */
+type ThreadModeState = {
+  /** The conversations with the mode on, by the composer's thread key. */
   byThread: Readonly<Record<string, true>>
   set: (thread: string, on: boolean) => void
-  /** A new conversation's Plan moves to its durable id once it has one. */
+  /** A new conversation's mode moves to its durable id once it has one. */
   adopt: (from: string, to: string) => void
 }
 
@@ -57,125 +50,81 @@ const without = (map: Readonly<Record<string, true>>, key: string) => {
 }
 
 /**
- * Whether a conversation's next turn plans, keyed like its connection choice:
- * the thread's durable id, or its local id before the first send. Each
- * conversation starts with it off. It stays on until a plan is drafted, so a
- * turn where the model first asks a question is followed by another planning
- * turn, and then turns itself off: the conversation after a plan is about it.
+ * A mode of one conversation, keyed like its connection choice: the thread's
+ * durable id, or its local id before the first send. Each conversation starts
+ * with it off.
  */
-export const usePlanning = create<PlanningState>()((set) => ({
-  byThread: {},
-  set: (thread, on) =>
-    set(({ byThread }) => ({
-      byThread: on
-        ? { ...byThread, [thread]: true }
-        : without(byThread, thread),
-    })),
-  adopt: (from, to) =>
-    set(({ byThread }) =>
-      byThread[from]
-        ? { byThread: { ...without(byThread, from), [to]: true } }
-        : {},
-    ),
-}))
+const threadMode = () =>
+  create<ThreadModeState>()((set) => ({
+    byThread: {},
+    set: (thread, on) =>
+      set(({ byThread }) => ({
+        byThread: on
+          ? { ...byThread, [thread]: true }
+          : without(byThread, thread),
+      })),
+    adopt: (from, to) =>
+      set(({ byThread }) =>
+        byThread[from]
+          ? { byThread: { ...without(byThread, from), [to]: true } }
+          : {},
+      ),
+  }))
+
+/** Whether the mode is on for the conversation sending, read at send time. */
+const modeOn = (
+  store: ReturnType<typeof threadMode>,
+  localId: string,
+  remoteId: string | undefined,
+) => {
+  // A conversation that was new when the mode was turned on has its durable
+  // id by the time it sends, so the mode moves there first.
+  if (remoteId && remoteId !== localId) store.getState().adopt(localId, remoteId)
+  return store.getState().byThread[remoteId ?? localId] === true
+}
 
 /**
- * The turn option Plan adds for the conversation sending, read at send time.
- * A conversation that was new when Plan was pressed has its durable id by the
- * time it sends, so Plan moves there first. Theorem gives a planning turn its
- * `draft_plan` operation and tells the model to write the request as one
- * durable plan.
+ * Whether a conversation's next turn plans. It stays on until a plan is
+ * drafted, so a turn where the model first asks a question is followed by
+ * another planning turn, and then turns itself off: the conversation after a
+ * plan is about it.
+ */
+export const usePlanning = threadMode()
+
+/**
+ * The turn option Plan adds for the conversation sending. Theorem gives a
+ * planning turn its `draft_plan` operation and tells the model to write the
+ * request as one durable plan.
  */
 export function planningTurnOptions(
   localId: string,
   remoteId: string | undefined,
 ): { planning?: true } {
-  const { adopt } = usePlanning.getState()
-  if (remoteId && remoteId !== localId) adopt(localId, remoteId)
-  return usePlanning.getState().byThread[remoteId ?? localId]
-    ? { planning: true }
+  return modeOn(usePlanning, localId, remoteId) ? { planning: true } : {}
+}
+
+/**
+ * Whether a conversation is a coding task. Turning it on opens the terminal
+ * beside the chat; it stays on across sends until the person turns it off.
+ */
+export const useCodeMode = threadMode()
+
+/**
+ * The turn option Code mode adds: the coding execution mode the agent
+ * terminal runs every turn in, so Theorem treats the request as a coding task.
+ */
+export function codingTurnOptions(
+  localId: string,
+  remoteId: string | undefined,
+): { executionMode?: 'coding' } {
+  return modeOn(useCodeMode, localId, remoteId)
+    ? { executionMode: 'coding' }
     : {}
 }
 
-const CHIP =
-  'text-ink-muted hover:bg-hover hover:text-ink data-pressed:bg-redwood/15 data-pressed:text-redwood data-pressed:hover:bg-redwood/25 flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors duration-100 outline-none focus-visible:outline-2 focus-visible:outline-focus'
-
-/** The web mark turns while the pointer rests on its toggle, faster on a press. */
-function WebMark({ className }: { className?: string }) {
-  const ref = useRef<HTMLSpanElement>(null)
-  useSpin(ref)
-  return (
-    <span ref={ref} className="flex">
-      <Icon.WebSearch className={className} />
-    </span>
-  )
-}
-
-/** The Web chip asks Theorem to research while keeping its other tools. */
-export function ComposerWebToggle() {
-  const on = useWebSearch((state) => state.on)
-  const toggle = useWebSearch((state) => state.toggle)
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          delay={COMPOSER_TOOLTIP_DELAY}
-          render={
-            <Toggle
-              pressed={on}
-              onPressedChange={toggle}
-              aria-label="Web search"
-              className={CHIP}
-            />
-          }
-        >
-          <WebMark className="size-4" />
-          <span className="composer-chip-label pe-0.5">Web</span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {on
-            ? 'Web research is on. Theorem can still plan and build. Click to turn off.'
-            : 'Use web research with Theorem'}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
-
-/** The Plan chip beside Web: pressed, the next turn writes a Theorem plan the person sees as a graph. */
-export function ComposerPlanToggle() {
-  // A new conversation has only its local id until its first send gives it the durable one.
-  const threadKey = useAuiState(
-    (state) => state.threadListItem.remoteId ?? state.threadListItem.id,
-  )
-  const on = usePlanning((state) => state.byThread[threadKey] === true)
-  const set = usePlanning((state) => state.set)
-  return (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger
-          delay={COMPOSER_TOOLTIP_DELAY}
-          render={
-            <Toggle
-              pressed={on}
-              onPressedChange={(pressed) => set(threadKey, pressed)}
-              aria-label="Plan"
-              className={CHIP}
-            />
-          }
-        >
-          <Icon.Plan className="size-4" />
-          <span className="composer-chip-label pe-0.5">Plan</span>
-        </TooltipTrigger>
-        <TooltipContent side="bottom">
-          {on
-            ? 'The next reply writes a plan you can work through as a graph. Click to turn off.'
-            : 'Turn this into a plan: a move, a trip, a launch, or code'}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  )
-}
+/** A chip beside the + button that says a mode is on; pressing it turns the mode off or opens it. */
+export const COMPOSER_CHIP =
+  'flex h-7 items-center gap-1 rounded-full bg-redwood/12 ps-2 pe-1.5 text-xs font-medium text-redwood transition-colors duration-100 outline-none hover:bg-redwood/20 focus-visible:outline-2 focus-visible:outline-focus'
 
 const toItem = (tool: NativeTool): TriggerItem => ({
   id: tool.name,
@@ -249,6 +198,7 @@ function slashMatcher(
 export function ComposerToolTrigger() {
   const { status, tools } = useToolCatalog()
   const [outputDialog, setOutputDialog] = useState<string>()
+  const glass = useMenuGlass('composer')
   const adapter = useMemo<TriggerAdapter>(
     () => ({
       categories: () => [],
@@ -284,7 +234,8 @@ export function ComposerToolTrigger() {
         itemTag={tagOf}
         emptyItemsLabel={EMPTY[status]}
         loadingLabel={EMPTY.loading}
-        className="w-md"
+        surfaceRef={glass.attach}
+        className={cn('w-md', glass.className)}
       />
       {outputDialog && (
         <OutputSettingsDialog

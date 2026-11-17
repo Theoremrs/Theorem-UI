@@ -1,4 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
+import { AssistantRuntimeProvider, useExternalStoreRuntime } from '@assistant-ui/react'
+import type { ThreadMessageLike } from '@assistant-ui/react'
+import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRouter, RouterProvider } from '@tanstack/react-router'
 import { ModelPicker } from './model-picker'
@@ -15,6 +18,12 @@ afterEach(async () => {
   useCommandPalette.setState({ open: false })
 })
 
+/** The composer's runtime, which the effort menu in the picker's popup reads the conversation from. */
+function Conversation({ children }: { children: ReactNode }) {
+  const runtime = useExternalStoreRuntime({ messages: [] as ThreadMessageLike[], convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {} })
+  return <AssistantRuntimeProvider runtime={runtime}>{children}</AssistantRuntimeProvider>
+}
+
 async function models(palette: boolean, defaultRef?: string) {
   const client = new QueryClient()
   clients.push(client)
@@ -24,7 +33,7 @@ async function models(palette: boolean, defaultRef?: string) {
     ...(defaultRef ? { defaultRef } : {}),
   }))
   client.setQueryData(catalogQuery.queryKey, { plugins: [], skills: [] })
-  const route = createRootRoute({ component: () => <QueryClientProvider client={client}>{palette ? <CommandPalette /> : <ModelPicker />}</QueryClientProvider> })
+  const route = createRootRoute({ component: () => <QueryClientProvider client={client}>{palette ? <CommandPalette /> : <Conversation><ModelPicker /></Conversation>}</QueryClientProvider> })
   const router = createRouter({ routeTree: route, history: createMemoryHistory({ initialEntries: ['/'] }) })
   await router.load()
   return render(<RouterProvider router={router} />)
@@ -33,7 +42,7 @@ async function models(palette: boolean, defaultRef?: string) {
 test('picker exposes invalid default and selecting a starred model sends the exact provider/model', async () => {
   usePickedModels.getState().setStarred(['provider/vendor/available'])
   const { container } = await models(false)
-  await click(container.querySelector('[aria-label="Model"]')!)
+  await click(container.querySelector('[data-model-picker-trigger]')!)
   await waitFor(() => document.querySelector('[role="alert"]'))
   expect(document.querySelector('[role="alert"]')?.textContent).toContain('The configured default is missing.')
   const option = await waitFor(() => [...document.querySelectorAll('[role="option"]')].find((item) => item.textContent.includes('Available')))
@@ -60,7 +69,7 @@ test('command palette exposes invalid default while keeping available model sele
 test('the fallback is a default model choice, not a special Theorem agent', async () => {
   const { container } = await models(false)
 
-  expect(container.querySelector('[aria-label="Model"]')?.textContent).toBe('Default model')
+  expect(container.querySelector('[data-model-picker-trigger]')?.textContent).toBe('Default model')
 })
 
 test('a picked model shows its own name', async () => {
@@ -68,11 +77,11 @@ test('a picked model shows its own name', async () => {
   usePickedModels.getState().select('provider/vendor/available')
   const { container } = await models(false)
 
-  expect(container.querySelector('[aria-label="Model"]')?.textContent).toBe('Available')
+  expect(container.querySelector('[data-model-picker-trigger]')?.textContent).toBe('Available')
 })
 
 test('the default trigger names the model without changing an unpinned send', async () => {
   const { container } = await models(false, 'provider/vendor/available')
-  expect(container.querySelector('[aria-label="Model"]')?.textContent).toBe('Available (default)')
+  expect(container.querySelector('[data-model-picker-trigger]')?.textContent).toBe('Available (default)')
   expect(pickedModel()).toBeUndefined()
 })

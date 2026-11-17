@@ -5,7 +5,6 @@ import { useDraggable } from '@dnd-kit/core'
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { format, isToday, isTomorrow } from 'date-fns'
 import { useContext, createContext, useEffect, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
 import {
   OriginMark,
   TreeGuide,
@@ -184,7 +183,6 @@ export function ThreadRow({
   childrenOf,
   hint,
   nested = false,
-  menuExtra,
 }: {
   thread: ThreadEntry
   /** The project this occurrence is listed under, or a quick view. */
@@ -195,8 +193,6 @@ export function ThreadRow({
   hint?: 'reason' | 'later'
   /** Shown beneath the session it was forked from, so its origin needs no mark. */
   nested?: boolean
-  /** Items this listing adds to the row's menu, such as moving a pin. */
-  menuExtra?: ReactNode
 }) {
   const { projects, views, served } = useTree()
   const navigate = useNavigate()
@@ -267,7 +263,6 @@ export function ThreadRow({
 
   const items = (
     <>
-      {menuExtra}
       <ThreadMenuItems
         thread={thread}
         projects={projects}

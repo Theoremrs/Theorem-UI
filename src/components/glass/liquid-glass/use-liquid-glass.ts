@@ -12,6 +12,18 @@ export interface LiquidEdges {
   left: boolean
 }
 
+/**
+ * A surface the pane runs on into past its right side: a selector for that
+ * pane, whose box spreads the light so the highlight runs on from one into
+ * the other, and whether a concave fillet (--lg-fillet) joins them above and
+ * below. The fillets are drawn inside the pane's own box.
+ */
+export interface LiquidJoin {
+  pane: string
+  top: boolean
+  bottom: boolean
+}
+
 const ALL_EDGES: LiquidEdges = {
   top: true,
   right: true,
@@ -27,9 +39,12 @@ const FIELD_INTERVAL = 1000 / 30
 interface Entry {
   canvas: HTMLCanvasElement
   edges: LiquidEdges
+  join?: LiquidJoin
+  /** --lg-fillet, the radius of a join's fillets. */
+  fillet: number
   material: Material
   radius: number
-  /** The sheet's gradient ends, --sheet-from and --sheet-shade. */
+  /** The sheet's gradient ends, --sheet-top and --sheet-shade. */
   from: Rgb
   shade: Rgb
   key: string
@@ -59,9 +74,21 @@ function readMaterial(element: Element) {
     const parsed = Number.parseFloat(value(name))
     return Number.isFinite(parsed) ? parsed : fallback
   }
+  // A pane over something other than the sheet (the rail's tab, over the
+  // rail) has nothing of its own to show through: --lg-backdrop: none, and
+  // it draws what the thinned body would show, the field over the sheet.
+  const seen = backdropBlur ? number('--lg-show', 0) : 0
+  const thin = value('--lg-backdrop') === 'none' ? 1 - seen : 1
+  const show = thin === 1 ? seen : 0
+  const body = number('--lg-body', 0.7) * thin
   return {
-    radius: Number.parseFloat(style.borderTopLeftRadius) || 0,
-    from: rgb(value('--sheet-from')),
+    // A pane attached on one side squares those corners; the others carry
+    // its radius.
+    radius: Math.max(
+      Number.parseFloat(style.borderTopLeftRadius) || 0,
+      Number.parseFloat(style.borderTopRightRadius) || 0,
+    ),
+    from: rgb(value('--sheet-top')),
     shade: rgb(value('--sheet-shade')),
     material: {
       blur: number('--lg-blur', 12),
@@ -69,7 +96,9 @@ function readMaterial(element: Element) {
       refract: number('--lg-refract', 8),
       clarity: number('--lg-clarity', 0.8),
       tone: rgb(value('--lg-tone')),
-      body: number('--lg-body', 0.7),
+      body,
+      bodyLow: number('--lg-body-low', body / thin) * thin,
+      split: number('--lg-body-split', 1),
       rimBody: number('--lg-rim-body', 0.4),
       lift: number('--lg-lift', 0),
       saturate: number('--lg-saturate', 1.2),
@@ -77,8 +106,9 @@ function readMaterial(element: Element) {
       sheen: number('--lg-sheen', 0),
       stroke: number('--lg-stroke', 0.1),
       shade: number('--lg-shade', 0.2),
-      show: backdropBlur ? number('--lg-show', 0) : 0,
+      show,
     },
+    fillet: number('--lg-fillet', 0),
   }
 }
 
@@ -134,6 +164,13 @@ class Glass {
     return true
   }
 
+  setJoin(element: HTMLElement, join: LiquidJoin | undefined) {
+    const entry = this.entries.get(element)
+    if (!entry) return
+    entry.join = join
+    entry.key = ''
+  }
+
   remove(element: HTMLElement) {
     const entry = this.entries.get(element)
     if (!entry) return
@@ -159,7 +196,13 @@ class Glass {
     })
     this.themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-palette', 'data-glass-study'],
+      attributeFilter: [
+        'class',
+        'style',
+        'data-palette',
+        'data-appearance-preset',
+        'data-glass-study',
+      ],
     })
     const tick = (now: number) => {
       this.frame = requestAnimationFrame(tick)
@@ -198,11 +241,26 @@ class Glass {
     for (const [element, entry] of this.entries) {
       const rect = element.getBoundingClientRect()
       if (rect.width < 1 || rect.height < 1) continue
+      const { join } = entry
+      const light = join
+        ? document.querySelector(join.pane)?.getBoundingClientRect()
+        : undefined
+      // The fillets need the room the live pane's box makes for them; until
+      // it draws, the box is the frost's, so it draws without them.
+      const fillet: [number, number] =
+        join && element.dataset.liquid === 'live'
+          ? [join.top ? entry.fillet : 0, join.bottom ? entry.fillet : 0]
+          : [0, 0]
       const key = [
         rect.left,
         rect.top,
         rect.width,
         rect.height,
+        light?.left,
+        light?.top,
+        light?.width,
+        light?.height,
+        ...fillet,
         dpr,
         this.theme,
         fieldRect?.left,
@@ -215,8 +273,11 @@ class Glass {
         continue
       entry.key = key
       entry.drawn = now
+      // A pane outside the sheet (the rail's tab) still sits on its field.
       const sheet =
-        element.closest('.sheet')?.getBoundingClientRect() ??
+        (
+          element.closest('.sheet') ?? document.querySelector('.sheet')
+        )?.getBoundingClientRect() ??
         fieldRect ??
         new DOMRect(0, 0, window.innerWidth, window.innerHeight)
       const scene: Scene = {
@@ -238,6 +299,8 @@ class Glass {
             edges.right ? 0 : RUN_ON,
             edges.bottom ? 0 : RUN_ON,
           ],
+          light,
+          fillet,
           dpr,
           material: entry.material,
           target: entry.canvas,
@@ -257,12 +320,15 @@ let glass: Glass | undefined
  * it, blurred and settled toward the pane's tone in the body, bent and
  * clearer at a curved rim, lit from the top left. The element is marked
  * data-liquid="live" once it draws; until then, and wherever it cannot
- * (no WebGL, reduced transparency), its own CSS frost shows.
+ * (no WebGL, reduced transparency), its own CSS frost shows. A pane that
+ * runs on into another (`join`) is lit across that pane's box and can meet it
+ * through concave fillets, so the two read as one surface.
  */
 export function useLiquidGlass(
   ref: RefObject<HTMLElement | null>,
   enabled: boolean,
   edges: LiquidEdges = ALL_EDGES,
+  join?: LiquidJoin,
 ) {
   const { top, right, bottom, left } = edges
   useEffect(() => {
@@ -273,4 +339,15 @@ export function useLiquidGlass(
     if (!active.add(element, { top, right, bottom, left })) return
     return () => active.remove(element)
   }, [ref, enabled, top, right, bottom, left])
+  const pane = join?.pane
+  const joinTop = join?.top ?? false
+  const joinBottom = join?.bottom ?? false
+  useEffect(() => {
+    const element = ref.current
+    if (!enabled || !element) return
+    glass?.setJoin(
+      element,
+      pane ? { pane, top: joinTop, bottom: joinBottom } : undefined,
+    )
+  }, [ref, enabled, pane, joinTop, joinBottom])
 }

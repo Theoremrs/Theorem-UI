@@ -23,7 +23,7 @@ export function turns({ context, page }) {
   const json = async (path) => (await api(path)).json()
   const pause = (ms) => page.waitForTimeout(ms)
 
-  const pickerOn = (on) => on.locator('[aria-label="Model"]').first()
+  const pickerOn = (on) => on.locator('[data-model-picker-trigger]').first()
   const picker = pickerOn(page)
 
   /** The headers a mutation needs. */

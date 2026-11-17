@@ -1,4 +1,4 @@
-// SOURCING: zustand and its persist middleware (the controls the popover writes, with the field's on/off kept across visits as lib/palette keeps a preference, and the counts the frame loop publishes)
+// SOURCING: zustand and its persist middleware (the controls the popover writes, with the field's on/off and paused/playing kept across visits as lib/palette keeps a preference, and the counts the frame loop publishes)
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { useAppearance } from '@/lib/appearance'
@@ -27,7 +27,7 @@ export const useLifeControls = create<Controls>()(
     }),
     {
       name: 'theorem-ui:life',
-      partialize: ({ shown, companion }) => ({ shown, companion }),
+      partialize: ({ shown, playing, companion }) => ({ shown, playing, companion }),
     },
   ),
 )

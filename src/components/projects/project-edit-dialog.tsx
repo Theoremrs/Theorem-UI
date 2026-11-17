@@ -25,6 +25,8 @@ export function ProjectEditDialog({
   title: string
   /** The stored instructions, or undefined when they could not be read. */
   instructions: string | undefined
+  /** Just made: the dialog names it, and the placeholder name is selected to type over. */
+  naming?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
@@ -42,11 +44,13 @@ function EditForm({
   projectId,
   title,
   instructions,
+  naming = false,
   onDone,
 }: {
   projectId: string
   title: string
   instructions: string | undefined
+  naming?: boolean
   onDone: () => void
 }) {
   const { describe } = useProjectEdits()
@@ -74,7 +78,7 @@ function EditForm({
     <form onSubmit={submit} className="flex flex-col gap-4">
       <DialogHeader>
         <DialogTitle className="font-heading text-lg font-semibold">
-          Edit project
+          {naming ? 'Name your project' : 'Edit project'}
         </DialogTitle>
         <DialogDescription>
           Instructions are given to every session started in this project.
@@ -82,7 +86,12 @@ function EditForm({
       </DialogHeader>
       <label className="flex flex-col gap-1.5 text-sm">
         Name
-        <Input value={name} onChange={(event) => setName(event.target.value)} />
+        <Input
+          autoFocus={naming}
+          value={name}
+          onFocus={naming ? (event) => event.currentTarget.select() : undefined}
+          onChange={(event) => setName(event.target.value)}
+        />
       </label>
       <label className="flex flex-col gap-1.5 text-sm">
         Instructions

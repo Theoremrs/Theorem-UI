@@ -1,5 +1,5 @@
 // SOURCING: the chat Composer (as the compare pane carries it away from the conversation: the runtime's new thread is filed in the project the shell names), @tanstack/react-router for the session links, date-fns for how long ago, components/projects/project-context for the documents, repositories, links and connections the project gives its sessions (Theorem's project context routes), lib/theorem/organization and components/shell/projects for the records. The layout (one page: a header, a composer, the sessions below it, the project's context in a small column beside them, and its apps and outputs in the artifact cabinet, components/cabinet) follows Claude's project page on Mobbin, with the composer on the artifact cabinet spec's 680px track (docs/plans/artifact-cabinet SPEC §3.4). The owner's call on 2026-11-15: context in a small right column, and below the sessions when the page is too narrow for both (a container query, so an open terminal counts), with the sessions capped so the context stays in reach; docs/plans/projects-sidebar-and-session-graph.md §7.
-import { useParams } from '@tanstack/react-router'
+import { useNavigate, useParams, useSearch } from '@tanstack/react-router'
 import { formatDistanceToNowStrict } from 'date-fns'
 import { useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
@@ -64,7 +64,10 @@ export function useProjectHomeTitle() {
 export function ProjectHome({ projectId }: { projectId: string }) {
   const { data: organization, isPending } = useOrganization()
   const { data: records, isPending: recordsPending } = useProjects()
-  const [editing, setEditing] = useState(false)
+  // A project just made opens with its name dialog up; closing it drops the flag from the URL.
+  const { naming } = useSearch({ strict: false })
+  const navigate = useNavigate()
+  const [editing, setEditing] = useState(naming === true)
   const [editingState, setEditingState] = useState(false)
   const pin = { kind: 'project', id: projectId } as const
   const pinned = useSidebarPrefs((s) => isPinned(s.pins, pin))
@@ -238,8 +241,17 @@ export function ProjectHome({ projectId }: { projectId: string }) {
         projectId={projectId}
         title={project.title}
         instructions={instructions}
+        naming={naming === true}
         open={editing}
-        onOpenChange={setEditing}
+        onOpenChange={(open) => {
+          setEditing(open)
+          if (!open && naming)
+            void navigate({
+              to: '/projects/$projectId',
+              params: { projectId },
+              replace: true,
+            })
+        }}
       />
       {organization?.served && (
         <ProjectStateDialog

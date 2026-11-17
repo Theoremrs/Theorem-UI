@@ -47,9 +47,25 @@ export type Sound = {
 }
 
 /** The page's sound graph. */
-const pageSound: Sound = {
+export const pageSound: Sound = {
   play: (stream, options) => theSound().play(stream, options),
   wake: () => theSound().wake(),
+}
+
+/** Whoever is speaking now, by the way to stop them. */
+let speaker: (() => void) | undefined
+
+/**
+ * Takes the page's one voice: whoever had it is stopped. Returns the way to
+ * give it back, which does nothing once someone else has taken it.
+ */
+export function claimVoice(stop: () => void): () => void {
+  const previous = speaker
+  speaker = stop
+  if (previous && previous !== stop) previous()
+  return () => {
+    if (speaker === stop) speaker = undefined
+  }
 }
 
 /**
@@ -103,6 +119,8 @@ export function speechAdapter(
         })
       }
       current = utterance.cancel
+      // Narration of a reply that is still arriving gives way to this.
+      const release = claimVoice(utterance.cancel)
       void (async () => {
         try {
           const words = speakable(text)
@@ -126,6 +144,7 @@ export function speechAdapter(
           end('error', error)
         } finally {
           useVoice.setState({ fetching: undefined })
+          release()
         }
       })()
       return utterance

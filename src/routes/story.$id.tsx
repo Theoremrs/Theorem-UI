@@ -113,7 +113,7 @@ function ComponentStory({ id }: { id: string }) {
   // effect's cleanup, and takes it out when the story closes, so the app it
   // links into reaches Theorem again.
   const [routes] = useState(() => {
-    const answers = storyRoutes(Date.now())
+    const answers = storyRoutes(Date.now(), findStory(id)?.routes)
     installFakeTheorem(answers)
     return answers
   })

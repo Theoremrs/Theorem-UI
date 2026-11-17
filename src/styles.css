@@ -297,13 +297,13 @@
   border-color: color-mix(in oklab, var(--ink) 18%, var(--line-separator));
 }
 
-/* The sheet's split (chat-shell.tsx) draws its divider on the dock's edge;
-   with the panel closed the dock meets the rail, and the divider goes too. */
+/* The sheet's split (chat-shell.tsx) draws no divider: the side panel is a
+   card floating inside the sheet, edged by its own shadow, and with it
+   closed the dock meets the rail. The sash still drags. */
 .sheet-split
   > .dv-split-view-container
   > .dv-view-container
-  > .dv-view:not(.visible)
-  + .dv-view::before {
+  > .dv-view::before {
   display: none;
 }
 
@@ -417,12 +417,12 @@
     'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular,
     monospace;
 
-  /* Geometry: control/row 6, popover 8, sheet 12, artifact 14, frame/composer 16. */
+  /* Geometry: control/row 6, popover 8, sheet 12, artifact 15, frame 16. */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
   --radius-xl: 12px;
-  --radius-artifact: 14px;
+  --radius-artifact: 15px;
   --radius-2xl: 16px;
 
   --shadow-composer:
@@ -681,7 +681,7 @@
   }
 }
 
-/* The sheet's field: --sheet-from at the top edge darkening to --sheet-shade
+/* The sheet's field: --sheet-top at the top edge darkening to --sheet-shade
    under the composer, and never lightening on the way. Two contributions are
    added into one curve:
    - the broad field, a straight fall that carries a little over half the way,
@@ -700,24 +700,43 @@
    field (the rail's tab, the composer's footer) samples the same colours at
    the same height. Light ends at --sheet-to, the darkest sheet the palette's
    inks are placed against; dark has room below it, where a darker sheet only
-   adds contrast. */
+   adds contrast.
+   The field's top is --sheet-top, the palette's --sheet-from unless the
+   preset lifts it; the glass renderer (liquid-glass/renderer.ts) rebuilds this
+   gradient from --sheet-top and --sheet-shade with the same stops, so the
+   panes, the rail's tab and the sheet stay one surface. */
 :root {
+  --sheet-top: var(--sheet-from);
   --sheet-shade: var(--sheet-to);
   --sheet-field: linear-gradient(
     to bottom,
-    var(--sheet-from),
-    color-mix(in srgb, var(--sheet-shade) 11%, var(--sheet-from)) 18.8%,
-    color-mix(in srgb, var(--sheet-shade) 25%, var(--sheet-from)) 37.6%,
-    color-mix(in srgb, var(--sheet-shade) 43%, var(--sheet-from)) 56.4%,
-    color-mix(in srgb, var(--sheet-shade) 54%, var(--sheet-from)) 65.8%,
-    color-mix(in srgb, var(--sheet-shade) 67%, var(--sheet-from)) 75.2%,
-    color-mix(in srgb, var(--sheet-shade) 82%, var(--sheet-from)) 84.6%,
+    var(--sheet-top),
+    color-mix(in srgb, var(--sheet-shade) 11%, var(--sheet-top)) 18.8%,
+    color-mix(in srgb, var(--sheet-shade) 25%, var(--sheet-top)) 37.6%,
+    color-mix(in srgb, var(--sheet-shade) 43%, var(--sheet-top)) 56.4%,
+    color-mix(in srgb, var(--sheet-shade) 54%, var(--sheet-top)) 65.8%,
+    color-mix(in srgb, var(--sheet-shade) 67%, var(--sheet-top)) 75.2%,
+    color-mix(in srgb, var(--sheet-shade) 82%, var(--sheet-top)) 84.6%,
     var(--sheet-shade) 94%
   );
 }
 
 .dark {
   --sheet-shade: color-mix(in srgb, var(--sheet-to), #000 22%);
+}
+
+/* Expressive restores the field's depth; Calm keeps the flatter sheet (design
+   review, 2026-11-17). Light lifts the top and keeps its foot at --sheet-to,
+   the darkest sheet its inks are placed against; dark lifts the top a little
+   and lets the vignette gather deeper. Only the ends move, so the curve, and
+   everything that samples it, is unchanged. A custom palette keeps its
+   validated flat canvas (appearance.css). */
+:root[data-appearance-preset='expressive']:not([data-palette='custom']) {
+  --sheet-top: color-mix(in srgb, var(--sheet-from), #fff 22%);
+}
+:root.dark[data-appearance-preset='expressive']:not([data-palette='custom']) {
+  --sheet-top: color-mix(in srgb, var(--sheet-from), #fff 5%);
+  --sheet-shade: color-mix(in srgb, var(--sheet-to), #000 34%);
 }
 
 /* The field, sized to the whole sheet (--sheet-h, set by the shell) so every
@@ -885,6 +904,37 @@
   --glass-edge-focus: rgb(255 255 255 / 0.12);
 }
 
+/* The glass code block (glass-code-block.tsx): the frosted glass above, at a
+   code block's strength: thin enough that the Life field moves through it
+   as soft blots, as it does through the side panel. The tint is the sheet's
+   bottom colour, not the warmer code surface, so the block reads top to
+   bottom as its lower edge does over the field (owner's review,
+   2026-11-16); the frame is a hairline lit
+   from the top and fading down, as the framecn source draws it, dark ink in
+   light where a white rim would vanish. */
+:root {
+  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 50%, transparent);
+  --glass-code-blur: 4px;
+  --glass-code-rim: rgb(0 0 0 / 0.12);
+  --glass-code-rim-low: rgb(0 0 0 / 0.05);
+  --glass-code-inner: rgb(255 255 255 / 0.7);
+  --glass-code-line: rgb(0 0 0 / 0.06);
+  --glass-code-shadow:
+    0 1px 2px rgb(var(--shadow-tint) / 0.06),
+    0 14px 36px -14px rgb(var(--shadow-tint) / 0.22);
+}
+
+.dark {
+  --glass-code-tint: color-mix(in oklab, var(--sheet-to) 55%, transparent);
+  --glass-code-blur: 5px;
+  --glass-code-rim: rgb(255 255 255 / 0.18);
+  --glass-code-rim-low: rgb(255 255 255 / 0);
+  --glass-code-inner: rgb(255 255 255 / 0.06);
+  --glass-code-line: rgb(255 255 255 / 0.06);
+  --glass-code-shadow:
+    0 1px 2px rgb(0 0 0 / 0.3), 0 18px 40px -16px rgb(0 0 0 / 0.55);
+}
+
 @utility surface-glass {
   position: relative;
   isolation: isolate;
@@ -1012,7 +1062,11 @@
     var(--surface-composer) 96%,
     transparent
   );
-  --liquid-focus: rgb(var(--shadow-tint) / 0.16);
+  /* Where the composer meets the sheet: a tight shadow under its lower edge
+     that sets it down, below the wider lift of --liquid-elevation. */
+  --liquid-contact:
+    0 1px 1px rgb(var(--shadow-tint) / 0.08),
+    0 3px 6px -3px rgb(var(--shadow-tint) / 0.14);
   --liquid-elevation:
     0 0 0 1px rgb(var(--shadow-tint) / 0.08),
     0 1px 2px rgb(var(--shadow-tint) / 0.06),
@@ -1041,7 +1095,7 @@
   --lg-sheen: 0.045;
   --lg-stroke: 0.09;
   --lg-shade: 0.4;
-  --liquid-focus: rgb(255 255 255 / 0.1);
+  --liquid-contact: 0 1px 2px rgb(0 0 0 / 0.45), 0 4px 8px -4px rgb(0 0 0 / 0.6);
   --liquid-elevation:
     0 0 0 1px rgb(0 0 0 / 0.55), 0 1px 1px rgb(0 0 0 / 0.35),
     0 10px 22px -8px rgb(0 0 0 / 0.55), 0 30px 60px -24px rgb(0 0 0 / 0.65);
@@ -1093,9 +1147,14 @@
   background-color: var(--liquid-fallback);
   -webkit-backdrop-filter: blur(16px) saturate(1.3);
   backdrop-filter: blur(16px) saturate(1.3);
-  box-shadow: var(--liquid-elevation);
+  box-shadow: var(--liquid-elevation), var(--liquid-contact);
 
-  /* The pane draws its own body and contour, over the border. */
+  /* The pane draws its own body and contour, over the border. Its edge is
+     that contour, lit from the top left and shaded along the bottom, as the
+     glass code block's frame fades down; a flat ring while focused (the
+     composer is focused nearly always) would draw the bottom as bright as
+     the top, so focus shows as the caret, and forced colors still draws the
+     border. */
   &[data-liquid='live'] {
     --ink: var(--glass-ink);
     --ink-muted: var(--glass-ink-muted);
@@ -1110,10 +1169,6 @@
     border-color: transparent;
   }
 
-  &[data-liquid='live']:focus-within {
-    outline: 1px solid var(--liquid-focus);
-    outline-offset: -1px;
-  }
 
   /* A file held over the composer shows the drop state, not the glass. */
   &[data-dragging='true'] > [data-liquid-canvas] {
@@ -1204,21 +1259,30 @@
 }
 
 /* The side panel: the composer's material (the --lg-* above, inherited),
-   on the sidebar's own surface colour. It is attached to the window, so
+   on the sidebar's own surface colour. Its lower third is clearer than its
+   upper two-thirds (owner, 2026-11-16): the body eases from
+   --glass-panel-pane-body to --glass-panel-pane-body-low around two-thirds
+   down, so the field shows most behind the panel's quieter lower list. It is attached to the window, so
    only its edge toward the conversation curves (use-liquid-glass edges);
    with the light from the top left that edge sits on the shaded side, so
    it stays quiet without its own values. Only the field lies behind it,
    so the body stays closed (--lg-show: 0) and skips the backdrop blur. Its
    ink steps up as the composer's does. */
 @utility glass-panel-liquid {
-  --lg-tone: var(--surface-sidebar);
+  --lg-tone: var(--glass-panel-tone);
   --lg-show: 0;
+  /* Matte: a surface first, with only a faint lit edge and no sheen. */
+  --lg-light: 0.06;
+  --lg-sheen: 0;
+  --lg-stroke: 0.05;
   /* The field's ink is faint, so the panel keeps the frost's light hand
      (glass-panel below): the cells soften to moving blots behind the list
      instead of vanishing under the composer's heavier body. */
   --lg-blur: var(--glass-panel-pane-blur);
   --lg-body: var(--glass-panel-pane-body);
-  --lg-rim-body: var(--glass-panel-pane-body);
+  --lg-body-low: var(--glass-panel-pane-body-low);
+  --lg-body-split: 0.667;
+  --lg-rim-body: var(--glass-panel-pane-body-low);
 
   /* The pane draws the veil and the frost glass-panel paints. */
   &[data-liquid='live'] {
@@ -1275,13 +1339,96 @@
      sheet, so in light the pane barely blurs or tints them to keep them
      visible; dark cells hold up under more. */
   --glass-panel-pane-blur: 1;
-  --glass-panel-pane-body: 0.1;
+  /* Mostly the panel's own colour, so it reads as a surface and the rail's
+     tab can paint the same colour (appearance.css); the field still moves
+     faintly behind the list. */
+  --glass-panel-pane-body: 0.6;
+  /* The lower third: clearer than the composer's body (--lg-body). */
+  --glass-panel-pane-body-low: 0.24;
+  --glass-panel-tone: var(--surface-sidebar);
 }
 
 .dark {
   --glass-panel-veil: 0.3;
-  --glass-panel-pane-blur: 3;
-  --glass-panel-pane-body: 0.3;
+  --glass-panel-pane-blur: 1.5;
+  --glass-panel-pane-body: 0.62;
+  --glass-panel-pane-body-low: 0.24;
+  /* Warm graphite: the palettes' dark neutrals lean olive or teal, which
+     glass over a dark page shows as green. */
+  --glass-panel-tone: color-mix(in oklab, var(--surface-sidebar) 72%, #342d27);
+}
+
+/* The composer's glass in dark is warm graphite too. Only part of its tone
+   reaches the screen (the body is thinned, --lg-show), so the pull is
+   stronger, toward a darker brown that keeps its lightness; measured, it
+   lands on the sheet's and the panel's hue. A step dimmer than the panel
+   (owner's review, 2026-11-16), so it sits back from the reply it frosts. */
+/* The composer's glass, shared on purpose: the navigation panel wears it too,
+   and the rail's tab paints the colour it lands on (appearance.css), so the
+   composer, the panel and the tab read as one material (owner, 2026-11-17).
+   Under glass the tab is drawn by the same renderer (rail.tsx), so it takes
+   these too, as do the menus the composer and the panel open (glass/menu-glass).
+   On a light sheet the default light (contour 0.42, reflection 0.32, sheen
+   0.11) drew a white hairline and a bright band down the bevel that read as
+   a shiny edge rather than glass (design review, 2026-11-17), so this glass
+   carries less light. In dark, with no focus ring over it, the contour is the
+   whole edge, so it carries a little more light along the top than the dark
+   default. */
+:root {
+  --composer-glass-tone: var(--surface-composer);
+  --composer-glass-stroke: 0.22;
+  --composer-glass-light: 0.16;
+  --composer-glass-sheen: 0.05;
+}
+
+.dark {
+  --composer-glass-tone: color-mix(in oklab, var(--surface-composer) 48%, #221c17);
+  --composer-glass-stroke: 0.16;
+  --composer-glass-light: 0.2;
+  --composer-glass-sheen: 0.045;
+}
+
+:is([data-surface-role='composer'], [data-surface-role='navigation']).surface-liquid,
+.rail-junction-tab,
+.glass-menu {
+  --lg-tone: var(--composer-glass-tone);
+  --lg-stroke: var(--composer-glass-stroke);
+  --lg-light: var(--composer-glass-light);
+  --lg-sheen: var(--composer-glass-sheen);
+}
+
+/* The panel is attached to the rail and the window, so it keeps its own lift
+   (floating-card.tsx panel-lift) instead of the composer's ring and shadows,
+   and its lower third stays clearer than its upper two-thirds (owner,
+   2026-11-16), in proportion to the composer's body. */
+[data-surface-role='navigation'].surface-liquid {
+  --lg-body-low: calc(var(--lg-body) * 0.4);
+  --lg-body-split: 0.667;
+  box-shadow: none;
+}
+
+/* The composer's + menu opens off it and wears the colour it renders in. In
+   dark only part of the composer's tone reaches the screen, so the menu takes
+   the colour that lands (measured on Stone: both read about 31,29,27). */
+.composer-menu:not(.glass-menu) {
+  --composer-menu-fill: var(--surface-composer);
+  background-color: var(--composer-menu-fill);
+}
+.dark .composer-menu:not(.glass-menu) {
+  --composer-menu-fill: color-mix(in oklab, var(--surface-composer) 44%, #191613);
+}
+
+/* Under glass the menus the composer and the navigation panel open are
+   panes of their glass (surface-liquid, glass/menu-glass), so what lies
+   behind shows through their thinned body as it does through the surface's. Once the pane draws, the popup's own
+   fill, hairline border and inner highlight give way to it. */
+.glass-menu[data-liquid='live'] {
+  background-color: transparent;
+  border-color: transparent;
+
+  &::before {
+    content: none;
+  }
 }
 
 @utility glass-panel {
@@ -1300,6 +1447,12 @@
     background-size: 100% var(--sheet-h, 100dvh);
     background-repeat: no-repeat;
     opacity: var(--glass-panel-veil);
+    /* As the liquid pane: the veil thins over the lower third. */
+    mask-image: linear-gradient(
+      to bottom,
+      #000 57%,
+      rgb(0 0 0 / 0.45) 77%
+    );
   }
 
   @supports not (
@@ -1595,7 +1748,7 @@
 
 /* --junction-item is the active destination's height, set by rail.tsx. */
 .rail-junction {
-  --junction-corner: 10px;
+  --junction-corner: 15px;
   position: absolute;
   inset: 0;
   pointer-events: none;
@@ -1702,18 +1855,21 @@
   }
 }
 
-/* The first destination's tab meets the sheet's top edge: it has no upper
-   corner, and the sheet squares its own corner to continue into the tab. */
-.rail-junction[data-flush] .rail-junction-corner[data-edge='top'] {
-  display: none;
+/* A tab that opens onto the panel is part of the panel, not the glowing
+   sheet, so it keeps the shadow and drops the glow. */
+.rail-junction[data-joins='navigation'] {
+  filter: drop-shadow(0 2px 6px rgb(var(--shadow-tint) / 0.18));
 }
 
-:has(> .rail-junction[data-flush]) + * > .sheet {
-  border-start-start-radius: 0;
-}
-
-.sheet {
-  transition: border-start-start-radius var(--duration-snap) var(--ease-snap);
+/* The floating panel's lift: a contact line and a short, soft fall-off that
+   follows its rounded edge. The pane holding the card clips at the edge of
+   its --panel-float gutter (8px), so the whole fall-off ends inside it; a
+   wider one was cut there into a hard line (owner, 2026-11-17). It is on a
+   holder without a backdrop filter, so the glass inside still sees the field. */
+.panel-lift {
+  box-shadow:
+    0 0 1px rgb(var(--shadow-tint) / 0.16),
+    2px 1px 6px -1px rgb(var(--shadow-tint) / 0.34);
 }
 
 .rail-junction-corner {
@@ -1746,6 +1902,30 @@
   @supports not (mask-image: none) {
     display: none;
   }
+}
+
+/* The first destination is level with the sheet's top edge (rail.tsx). While
+   it is the active one its tab runs straight on into that edge: there is no
+   rail above it to curve into, and the sheet's own corner there is squared
+   so no notch opens between the tab and the surface it joins. */
+.rail-junction[data-flush] > .rail-junction-corner[data-edge='top'] {
+  display: none;
+}
+/* The sheet's top can sit a little above the first destination
+   (--junction-lead, rail.tsx), so the flush tab starts level with it. */
+.rail-junction[data-flush] > .rail-junction-tab {
+  top: calc(var(--rail-y) - var(--junction-lead, 0px));
+  height: calc(var(--junction-item) + var(--junction-lead, 0px));
+  background-position: 0
+    calc(var(--sheet-inset) - var(--rail-y) + var(--junction-lead, 0px));
+}
+
+.sheet {
+  transition: border-start-start-radius var(--duration-snap) var(--ease-snap);
+}
+
+.appearance-shell:has(.rail-junction[data-flush]) .sheet {
+  border-start-start-radius: 0;
 }
 
 /* @tailwindcss/typography, re-pointed at the palette tokens. A utility rather

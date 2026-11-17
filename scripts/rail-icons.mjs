@@ -61,7 +61,6 @@ export const CONTROLS = [
     source: 'control/source/streamline-folder-image-1.png',
   },
   { name: 'plan', source: 'control/source/streamline-task-list-quill.png' },
-  { name: 'webSearch', source: 'control/source/streamline-network-search.png' },
   { name: 'newChat', source: 'control/source/streamline-pencil-write.png' },
   { name: 'toolRunning', source: 'control/source/streamline-list-edit.png' },
   {
@@ -128,6 +127,16 @@ export const CONTROLS = [
     source: 'control/source/streamline-button-refresh-arrows.png',
   },
   { name: 'approved', source: 'control/source/streamline-check-2.png' },
+  // Owner's 2026-11-16 set for the composer's + menu: Plugins, Web search.
+  { name: 'plugins', source: 'control/source/streamline-toys-lego.png' },
+  { name: 'browser', source: 'control/source/streamline-app-window.png' },
+  // The + menu's Skills, from the same atom-and-spark art as Icon.Skill; it is
+  // drawn as line art, so its enclosed regions are filled as the others are.
+  {
+    name: 'skill',
+    source: 'streamline-ai-science-spark.png',
+    autofill: true,
+  },
 ]
 
 /**

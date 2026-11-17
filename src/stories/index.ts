@@ -1,6 +1,7 @@
 // SOURCING: none: the list /stories.json serves and the story route looks up, kept free of components so the server route can read it. Each story's lane and reference are the license ledger's, docs/plans/evidence/ledger.md.
 import { ACTIVITY_STATES } from './fixtures/activity'
 import { ARTIFACT_STORIES } from './fixtures/artifacts'
+import type { StoryRouteOptions } from './routes'
 import { PALETTE_STORIES } from './palette-matrix'
 
 export type StoryMeta = {
@@ -21,6 +22,8 @@ export type StoryMeta = {
   evidenceDir?: string
   /** Selected in the sidebar, the way a route would. */
   threadId?: string
+  /** How the fake Theorem answers this story. */
+  routes?: StoryRouteOptions
 }
 
 const SIDEBAR_REF = 'sidebar-compare@2026-11-05.webp'
@@ -194,6 +197,14 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 354, height: 1064 },
     region: [59, 0, 354, 1064],
     threadId: 'thread-app-gallery',
+  },
+  {
+    id: 'populated-shell',
+    title: 'Populated shell: pins, a long reply with a table and code, the composer and its + menu',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
+    threadId: 'thread-app-gallery',
+    routes: { populated: true, reviewless: true },
   },
   { id: 'project-home', title: 'Project home: composer, sessions and context on one page', lane: 'original', viewport: { width: 1440, height: 900 } },
   { id: 'session-graph', title: 'Session graph on the canvas: forks from the main, connections, outputs, Make main chat and saved views', lane: 'original', viewport: { width: 1440, height: 900 } },

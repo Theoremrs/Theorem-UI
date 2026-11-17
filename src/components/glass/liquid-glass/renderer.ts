@@ -16,6 +16,11 @@ export interface Material {
   tone: Rgb
   /** How far the body settles toward the tone, 0 to 1. */
   body: number
+  /** How far the body settles toward the tone below `split`, 0 to 1. */
+  bodyLow: number
+  /** Where down the pane, 0 at the top to 1 at the bottom, the body eases
+   *  from `body` to `bodyLow`; 1 keeps one body throughout. */
+  split: number
   /** How far the edge settles toward the tone, 0 to 1. */
   rimBody: number
   /** Added to the body's colour, -1 to 1. */
@@ -39,7 +44,7 @@ export interface Scene {
   /** The sheet the gradient spans, in client pixels. */
   sheetTop: number
   sheetHeight: number
-  /** --sheet-from and --sheet-shade. */
+  /** --sheet-top and --sheet-shade. */
   from: Rgb
   shade: Rgb
 }
@@ -50,6 +55,12 @@ export interface Pane {
   radius: number
   /** How far the bevel runs past each side, CSS pixels: left, top, right, bottom. */
   extend: readonly [number, number, number, number]
+  /** The box the light sweeps across, in client pixels: the pane's own, or
+      that of a pane it continues, so the two are lit as one piece. */
+  light?: DOMRect
+  /** Concave fillets above and below the right side, CSS pixels, where the
+      pane joins a surface running on past it; they lie within `rect`. */
+  fillet?: readonly [number, number]
   dpr: number
   material: Material
   target: HTMLCanvasElement
@@ -70,12 +81,16 @@ const UNIFORMS = [
   'u_margin',
   'u_radius',
   'u_extend',
+  'u_lightBox',
+  'u_fillet',
   'u_px',
   'u_bevel',
   'u_refract',
   'u_clarity',
   'u_tone',
   'u_body',
+  'u_bodyLow',
+  'u_split',
   'u_rimBody',
   'u_lift',
   'u_saturate',
@@ -245,6 +260,17 @@ export class GlassRenderer {
     gl.uniform1f(u.u_margin, MARGIN)
     gl.uniform1f(u.u_radius, pane.radius)
     gl.uniform4f(u.u_extend, ...pane.extend)
+    // In the shader's pane coordinates: the pane's centre at 0, y down the
+    // screen.
+    const light = pane.light ?? pane.rect
+    gl.uniform4f(
+      u.u_lightBox,
+      light.left + light.width / 2 - (pane.rect.left + pane.rect.width / 2),
+      light.top + light.height / 2 - (pane.rect.top + pane.rect.height / 2),
+      light.width / 2,
+      light.height / 2,
+    )
+    gl.uniform2f(u.u_fillet, ...(pane.fillet ?? [0, 0]))
     gl.uniform1f(u.u_px, 1 / dpr)
     gl.uniform1f(u.u_bevel, material.bevel)
     gl.uniform1f(u.u_refract, material.refract)
@@ -256,6 +282,8 @@ export class GlassRenderer {
       material.tone[2] / 255,
     )
     gl.uniform1f(u.u_body, material.body)
+    gl.uniform1f(u.u_bodyLow, material.bodyLow)
+    gl.uniform1f(u.u_split, material.split)
     gl.uniform1f(u.u_rimBody, material.rimBody)
     gl.uniform1f(u.u_lift, material.lift)
     gl.uniform1f(u.u_saturate, material.saturate)

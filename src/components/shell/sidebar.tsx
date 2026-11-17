@@ -183,7 +183,7 @@ export function ContextPanel({ sections, footer }: { sections?: ReactNode; foote
     >
       <Sidebar collapsible="none" className="w-full bg-transparent">
         <div hidden={filesShown || !threads} className="min-h-0 flex-1">
-          <OrganizedPanel footer={<Explorer />} />
+          <OrganizedPanel />
         </div>
         {mode === 'ide' && (
           <div hidden={filesShown} className="min-h-0 flex-1">
@@ -217,7 +217,8 @@ export function ContextPanel({ sections, footer }: { sections?: ReactNode; foote
             </Suspense>
           </div>
         )}
-        {/* Beside the threads the folders fold into the panel's one Files row. */}
+        {/* The rail's Files control shows the project's own files above the workspace folders. */}
+        {filesShown && <Explorer />}
         {(filesShown || filesUnderPanel(mode)) && (
           <FoldersSection fill={filesShown} />
         )}
