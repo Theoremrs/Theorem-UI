@@ -93,35 +93,13 @@ export type ModuleError = {
   column?: number
 }
 
-/** What the reader picked in a scene, with the values it showed then. */
+/** What the reader picked in a scene. */
 export type SceneEntity = {
   id: string
   label?: string
   kind?: string
   detail?: string
-  values?: Record<string, string | number | boolean>
-  phase?: number | string
 }
-
-/**
- * Where the reader had got to in a scene, as the page reports it: the
- * reader's operations to replay against a fresh mount of the same package,
- * and the step, pick and camera on top. Kept opaque here beyond what decides
- * whether it applies (the page says on mount whether it restored it).
- */
-export type SceneCheckpoint = {
-  version: number
-  packageDigest: string
-} & Record<string, unknown>
-
-/** How a mount took the checkpoint it was given. */
-export type SceneRestore = 'restored' | 'none' | 'stale' | 'incompatible'
-
-/** The most a checkpoint may weigh, as JSON, before the card stops keeping it. */
-export const CHECKPOINT_LIMIT = 256 * 1024
-
-/** The most a still poster may weigh, as a data URL. */
-const POSTER_LIMIT = 1024 * 1024
 
 export type HostMessage =
   | {
@@ -133,26 +111,12 @@ export type HostMessage =
        * on the callout it draws on the picked part.
        */
       ask: boolean
-      /** Where the reader had got to, for the page to restore after it mounts. */
-      checkpoint?: SceneCheckpoint
     }
   | { type: 'sceneos:layout'; layout: SceneLayout }
-  /** A new palette or mode for the mounted scene, without restarting its model. */
-  | { type: 'sceneos:theme'; theme: SceneTheme }
-  /** Asks for a still of what the stage shows, before the frame is unloaded. */
-  | { type: 'sceneos:poster-request' }
 
 export type FrameMessage =
   | { type: 'sceneos:host-ready' }
-  | {
-      type: 'sceneos:mounted'
-      ok: boolean
-      error?: ModuleError
-      /** Present on pages that take checkpoints and live theme changes. */
-      restore?: SceneRestore
-    }
-  | { type: 'sceneos:state'; checkpoint: SceneCheckpoint }
-  | { type: 'sceneos:poster'; image: string }
+  | { type: 'sceneos:mounted'; ok: boolean; error?: ModuleError }
   | { type: 'sceneos:error'; error: ModuleError }
   | { type: 'sceneos:select'; entity: SceneEntity | null }
   | { type: 'sceneos:ask'; entity: SceneEntity }
@@ -186,29 +150,6 @@ function readError(value: unknown): ModuleError | undefined {
   }
 }
 
-const RESTORES: readonly SceneRestore[] = [
-  'restored',
-  'none',
-  'stale',
-  'incompatible',
-]
-
-/** At most 32 values, each a number, a boolean or up to 200 characters. */
-function readValues(
-  value: unknown,
-): Record<string, string | number | boolean> | undefined {
-  const raw = object(value)
-  if (!raw) return undefined
-  const values: Record<string, string | number | boolean> = {}
-  for (const [key, entry] of Object.entries(raw).slice(0, 32)) {
-    if (typeof entry === 'string')
-      values[key.slice(0, 100)] = entry.slice(0, 200)
-    else if (typeof entry === 'boolean' || Number.isFinite(entry))
-      values[key.slice(0, 100)] = entry as number | boolean
-  }
-  return Object.keys(values).length > 0 ? values : undefined
-}
-
 function readEntity(value: unknown): SceneEntity | undefined {
   const entity = object(value)
   const id = text(entity?.id)
@@ -216,36 +157,12 @@ function readEntity(value: unknown): SceneEntity | undefined {
   const label = text(entity.label)
   const kind = text(entity.kind)
   const detail = text(entity.detail)
-  const values = readValues(entity.values)
-  const phase =
-    typeof entity.phase === 'string' || Number.isFinite(entity.phase)
-      ? (entity.phase as string | number)
-      : undefined
   return {
     id,
     ...(label && { label }),
     ...(kind && { kind }),
     ...(detail && { detail }),
-    ...(values && { values }),
-    ...(phase !== undefined && { phase }),
   }
-}
-
-/** A checkpoint the card can keep: versioned, tied to a package, and not too large. */
-export function readCheckpoint(value: unknown): SceneCheckpoint | undefined {
-  const checkpoint = object(value)
-  if (
-    !checkpoint ||
-    !Number.isInteger(checkpoint.version) ||
-    !text(checkpoint.packageDigest)
-  )
-    return undefined
-  try {
-    if (JSON.stringify(checkpoint).length > CHECKPOINT_LIMIT) return undefined
-  } catch {
-    return undefined
-  }
-  return checkpoint as SceneCheckpoint
 }
 
 /** A message from the scene page, or undefined for anything else. */
@@ -259,35 +176,14 @@ export function readFrameMessage(data: unknown): FrameMessage | undefined {
     case 'sceneos:mounted': {
       const ok = message.ok === true
       const error = ok ? undefined : readError(message.error)
-      const restore = RESTORES.find((r) => r === message.restore)
-      return {
-        type: 'sceneos:mounted',
-        ok,
-        ...(error && { error }),
-        ...(restore && { restore }),
-      }
-    }
-    case 'sceneos:state': {
-      const checkpoint = readCheckpoint(message.checkpoint)
-      return checkpoint && { type: 'sceneos:state', checkpoint }
-    }
-    case 'sceneos:poster': {
-      // Only a still image the card can draw, never another kind of URL.
-      const image =
-        typeof message.image === 'string' &&
-        /^data:image\/(webp|png|jpeg);base64,/.test(message.image) &&
-        message.image.length <= POSTER_LIMIT
-          ? message.image
-          : ''
-      return { type: 'sceneos:poster', image }
+      return { type: 'sceneos:mounted', ok, ...(error && { error }) }
     }
     case 'sceneos:error': {
       const error = readError(message.error)
       return error && { type: 'sceneos:error', error }
     }
     case 'sceneos:select': {
-      if (message.entity === null)
-        return { type: 'sceneos:select', entity: null }
+      if (message.entity === null) return { type: 'sceneos:select', entity: null }
       const entity = readEntity(message.entity)
       return entity && { type: 'sceneos:select', entity }
     }

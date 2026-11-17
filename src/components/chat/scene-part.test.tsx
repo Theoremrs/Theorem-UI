@@ -3,7 +3,15 @@
 // that records what is posted to it, and the scene page's messages are
 // dispatched with that window as their source. happy-dom reports each frame
 // page it skips; that report is kept out of the output, as the block tests do.
-import { afterAll, afterEach, expect, jest, mock, spyOn, test } from 'bun:test'
+import {
+  afterAll,
+  afterEach,
+  expect,
+  jest,
+  mock,
+  spyOn,
+  test,
+} from 'bun:test'
 import { QueryClientProvider } from '@tanstack/react-query'
 import { act } from 'react'
 import { cleanup, render } from '../../../test/workspace'
@@ -69,10 +77,7 @@ afterAll(() => {
 
 afterEach(cleanup)
 
-async function card(
-  shown: Scene = scene,
-  options: { asks?: boolean; placement?: 'reply' | 'panel' } = {},
-) {
+async function card(shown: Scene = scene, options: { asks?: boolean } = {}) {
   const asked: SceneEntity[] = []
   const repairs: ModuleError[] = []
   const onAsk = (entity: SceneEntity) => void asked.push(entity)
@@ -81,12 +86,7 @@ async function card(
     onRepair: (error: ModuleError) => void repairs.push(error),
   }
   const rendered = await render(
-    <SceneCard
-      scene={shown}
-      theme={theme}
-      placement={options.placement}
-      {...props}
-    />,
+    <SceneCard scene={shown} theme={theme} {...props} />,
   )
   const dialog = rendered.container.querySelector('dialog')
   const frame = rendered.container.querySelector('iframe')
@@ -119,7 +119,6 @@ async function card(
           <SceneCard
             scene={next.scene ?? shown}
             theme={next.theme ?? theme}
-            placement={options.placement}
             {...props}
           />
         </QueryClientProvider>,
@@ -242,10 +241,7 @@ test('a palette change draws the scene again in the new colours', async () => {
   rerender({ theme: { ...theme } })
   expect(sent).toEqual([])
 
-  const dark: SceneTheme = {
-    colorScheme: 'dark',
-    background: 'rgb(30, 28, 27)',
-  }
+  const dark: SceneTheme = { colorScheme: 'dark', background: 'rgb(30, 28, 27)' }
   rerender({ theme: dark })
   expect(sent).toEqual([
     {
@@ -397,187 +393,4 @@ test('a card that takes no questions tells the page, and is told again when that
   ])
   fromPage({ type: 'sceneos:ask', entity: { id: 'alu' } })
   expect(asked).toEqual([{ id: 'alu' }])
-})
-
-/* -------------------------------------------------- continuity and suspension */
-
-/** A scene of its own, so checkpoints kept by one test are not offered in another. */
-const sceneNamed = (id: string): Scene => ({
-  ...scene,
-  sceneId: id,
-  packageHash: id.padEnd(64, '0'),
-  scenePackage: { id, atoms: [] },
-})
-
-const checkpoint = (digest: string, step: number) => ({
-  version: 1,
-  packageId: 'p',
-  packageDigest: digest,
-  actions: Array.from({ length: step }, () => ({ op: 'step' })),
-})
-
-test('a page that keeps checkpoints repaints in a new palette without drawing the scene again', async () => {
-  const { sent, fromPage, rerender } = await card(sceneNamed('scene:repaint'))
-  fromPage({ type: 'sceneos:host-ready' })
-  fromPage({ type: 'sceneos:mounted', ok: true, restore: 'none' })
-  sent.length = 0
-  const dark: SceneTheme = { ...theme, colorScheme: 'dark' }
-  rerender({ scene: sceneNamed('scene:repaint'), theme: dark })
-  expect(sent).toEqual([{ type: 'sceneos:theme', theme: dark }])
-  // Taking questions changes what the page draws on a pick: it mounts again.
-  sent.length = 0
-  rerender({ scene: sceneNamed('scene:repaint'), theme: dark, asks: false })
-  expect(sent).toEqual([
-    {
-      type: 'sceneos:mount',
-      package: sceneNamed('scene:repaint').scenePackage,
-      theme: dark,
-      ask: false,
-    },
-  ])
-})
-
-test('the last checkpoint goes with the next mount of the scene, and one the page cannot use is dropped', async () => {
-  const shown = sceneNamed('scene:resume')
-  const first = await card(shown)
-  first.fromPage({ type: 'sceneos:host-ready' })
-  first.fromPage({ type: 'sceneos:mounted', ok: true, restore: 'none' })
-  first.fromPage({ type: 'sceneos:state', checkpoint: checkpoint('d1', 3) })
-  cleanup()
-
-  // Opened again (navigated back, or the card was remade): it resumes.
-  const again = await card(shown)
-  again.fromPage({ type: 'sceneos:host-ready' })
-  expect(again.sent[0]).toEqual({
-    type: 'sceneos:mount',
-    package: shown.scenePackage,
-    theme,
-    ask: true,
-    checkpoint: checkpoint('d1', 3),
-  })
-  // The page says it belonged to another revision: it is not offered again.
-  again.fromPage({ type: 'sceneos:mounted', ok: true, restore: 'stale' })
-  again.sent.length = 0
-  again.fromPage({ type: 'sceneos:host-ready' })
-  expect(again.sent[0]).toEqual({
-    type: 'sceneos:mount',
-    package: shown.scenePackage,
-    theme,
-    ask: true,
-  })
-})
-
-test('a checkpoint too large to keep is not read', async () => {
-  const { readFrameMessage } = await import('./scene-model')
-  const huge = { ...checkpoint('d', 0), blob: 'x'.repeat(300 * 1024) }
-  expect(
-    readFrameMessage({ type: 'sceneos:state', checkpoint: huge }),
-  ).toBeUndefined()
-  expect(
-    readFrameMessage({ type: 'sceneos:poster', image: 'javascript:alert(1)' }),
-  ).toEqual({ type: 'sceneos:poster', image: '' })
-})
-
-class FakeObserver {
-  static all: FakeObserver[] = []
-  target: Element | undefined
-  constructor(readonly callback: IntersectionObserverCallback) {
-    FakeObserver.all.push(this)
-  }
-  observe(target: Element) {
-    this.target = target
-  }
-  unobserve() {}
-  disconnect() {
-    FakeObserver.all = FakeObserver.all.filter((o) => o !== this)
-  }
-  takeRecords() {
-    return []
-  }
-}
-
-function inView(target: Element, visible: boolean) {
-  for (const observer of FakeObserver.all.filter((o) => o.target === target))
-    act(() =>
-      observer.callback(
-        [{ isIntersecting: visible, target } as IntersectionObserverEntry],
-        observer as unknown as IntersectionObserver,
-      ),
-    )
-}
-
-test('past the live bound, the scene longest out of view gives up its page for a still, and comes back where it was', async () => {
-  const original = globalThis.IntersectionObserver
-  globalThis.IntersectionObserver =
-    FakeObserver as unknown as typeof IntersectionObserver
-  try {
-    const { LIVE_SCENES } = await import('./scene-part')
-    const cards = []
-    for (let i = 0; i <= LIVE_SCENES; i++) {
-      const shown = await card(sceneNamed(`scene:long-${i}`))
-      shown.fromPage({ type: 'sceneos:host-ready' })
-      shown.fromPage({ type: 'sceneos:mounted', ok: true, restore: 'none' })
-      cards.push(shown)
-    }
-    const oldest = cards[0]!
-    oldest.fromPage({ type: 'sceneos:state', checkpoint: checkpoint('d', 2) })
-    oldest.sent.length = 0
-    // All in view: nothing is suspended, however many there are.
-    expect(oldest.sent).toEqual([])
-
-    inView(oldest.dialog, false)
-    expect(oldest.sent).toEqual([{ type: 'sceneos:poster-request' }])
-    const still = 'data:image/webp;base64,AAAA'
-    await act(async () => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: 'sceneos:poster', image: still },
-          source: oldest.frame.contentWindow as Window,
-        }),
-      )
-      await Promise.resolve()
-    })
-    expect(oldest.dialog.dataset.suspended).toBe('true')
-    expect(oldest.dialog.querySelector('iframe')).toBeNull()
-    expect(oldest.dialog.querySelector('img')?.getAttribute('src')).toBe(still)
-    // The others stay live.
-    expect(cards[1]!.dialog.querySelector('iframe')).not.toBeNull()
-
-    // Back in view: a new page, mounted from where the reader was, the still
-    // shown until it has drawn.
-    inView(oldest.dialog, true)
-    const page = oldest.dialog.querySelector('iframe')
-      ?.contentWindow as unknown as {
-      sent: unknown[]
-    }
-    expect(page).toBeDefined()
-    oldest.fromPage({ type: 'sceneos:host-ready' })
-    expect(page.sent[0]).toEqual({
-      type: 'sceneos:mount',
-      package: sceneNamed('scene:long-0').scenePackage,
-      theme,
-      ask: true,
-      checkpoint: checkpoint('d', 2),
-    })
-    expect(oldest.dialog.querySelector('img')?.getAttribute('src')).toBe(still)
-    oldest.fromPage({ type: 'sceneos:mounted', ok: true, restore: 'restored' })
-    expect(oldest.dialog.querySelector('img')).toBeNull()
-  } finally {
-    globalThis.IntersectionObserver = original
-  }
-})
-
-test('in the workspace panel the scene fills it from the start and offers no Expand', async () => {
-  const { dialog, button, sent, fromPage } = await card(
-    sceneNamed('scene:panel'),
-    { placement: 'panel' },
-  )
-  expect(dialog.dataset.layout).toBe('full')
-  expect(button('Expand')).toBeUndefined()
-  expect(dialog.querySelector('button[aria-expanded]')).toBeNull()
-  fromPage({ type: 'sceneos:host-ready' })
-  expect(sent).toContainEqual({ type: 'sceneos:layout', layout: 'full' })
-  // Dismiss from the page does not shrink a panel's scene.
-  fromPage({ type: 'sceneos:dismiss' })
-  expect(dialog.dataset.layout).toBe('full')
 })

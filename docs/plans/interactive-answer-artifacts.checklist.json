@@ -133,21 +133,21 @@
       "id": "W3",
       "area": "state",
       "claim": "Versioned checkpoint/restore; theme and Ask changes without remounting the runtime; restore after navigation and reload; stale and incompatible checkpoints handled",
-      "built": "partial (UI side): the card keeps the page's last versioned checkpoint per scene revision (sessionStorage, 40 kept, 256 KB each), sends it with every mount, and drops one the page reports stale or incompatible; a page that reports restore support gets sceneos:theme instead of a remount, Ask changes still remount with the checkpoint. Restore after navigation and same-tab reload covered; across devices/sessions not (needs server persistence). SceneOS side (embed.ts checkpoint/restore, live palette) delegated, not yet landed in the fixture page. Tests: scene-part.test.tsx, scene-model.test.ts",
+      "built": "pending",
       "review": ""
     },
     {
       "id": "W4",
       "area": "follow-up",
       "claim": "Agent reads definition and bounded runtime state, applies ScenePatchV1 to the named instance with revision checks, gets an applied receipt; Ask carries exact revision, checkpoint digest, entity and current values",
-      "built": "partial: the frame protocol reads entity values (32, bounded) and phase on picks so Ask can carry them; agent read/patch (ScenePatchV1) and revision-checked receipts pending",
+      "built": "pending",
       "review": ""
     },
     {
       "id": "W5",
       "area": "long chats",
       "claim": "Offscreen scenes suspend and keep a still preview; bounded live instances and trace; composer latency measured with 0/1/many scenes",
-      "built": "partial (UI side): at most 3 live scenes in a conversation; past that the one longest out of view (600px margin) asks the page for a still, swaps its frame for the image, and remounts from its checkpoint when it comes back near view. Expanded scenes never suspend. Composer latency with 0/1/many scenes not measured; trace bound not done",
+      "built": "pending",
       "review": ""
     },
     {
@@ -174,7 +174,6 @@
   ],
   "contracts": {
     "scene-artifact-envelope": "A theorem-artifact part with artifactKind \"scene\" carries, as its payload, exactly the theorem-scene-v1 payload a theorem-scene part carries (contractVersion, sceneId, title, fallbackText, packageHash, scenePackage). The UI reads it as the same scene; a theorem-scene part with the same packageHash beside it is not listed twice.",
-    "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body.",
-    "scene-frame-continuity": "Host to page: sceneos:mount may carry checkpoint; sceneos:theme {theme} repaints without remounting; sceneos:poster-request asks for a still. Page to host: sceneos:mounted may carry restore ('restored'|'none'|'stale'|'incompatible', its presence means the page keeps checkpoints); sceneos:state {checkpoint: {version:int, packageDigest, ...}} after each change; sceneos:poster {image: data:image/(webp|png|jpeg) under 1 MB}."
+    "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body."
   }
 }
