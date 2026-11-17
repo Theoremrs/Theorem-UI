@@ -6,7 +6,7 @@
 
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use theorem_workbench_core::semantics::{Node, NodeAction, Role};
 use theorem_workbench_core::{ActionId, Icon, put_icon};
 
@@ -293,16 +293,6 @@ impl Changes {
             paint(buf, rect, row_style);
             let is_current =
                 file.is_some_and(|f| current.is_some_and(|c| laid.tree.files[c].path == f.path));
-            if is_current {
-                put(
-                    buf,
-                    rect.x,
-                    rect.y,
-                    1,
-                    "\u{258d}",
-                    row_style.patch(styles.heading),
-                );
-            }
             let x = rect.x + 1 + row.depth * 2;
             let icon = match &row.kind {
                 TreeKind::Dir { open: true, .. } => Icon::FolderFile,
@@ -331,8 +321,11 @@ impl Changes {
                     name_style = row_style.patch(styles.removed_line);
                 }
             }
+            // The file the diff is showing: its name in the heading colour, bold.
             if is_current {
-                name_style = name_style.patch(styles.heading);
+                name_style = name_style
+                    .patch(styles.heading)
+                    .add_modifier(Modifier::BOLD);
             }
             let taken = self.put_counts(buf, rect, &row.counts, row_style, styles);
             let room = usize::from(rect.right().saturating_sub(at)).saturating_sub(taken);
