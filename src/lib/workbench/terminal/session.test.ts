@@ -495,6 +495,29 @@ describe('input', () => {
     expect(second.outcome).toBe('accepted')
   })
 
+  test('keys typed faster than the host answers reach it in the order they were typed', async () => {
+    // Each key is its own request; the page sends them without waiting, as fast typing does.
+    const r = rig()
+    await opened(r)
+    const answers: (() => void)[] = []
+    r.handlers.input = () =>
+      new Promise((resolve) => answers.push(() => resolve({ accepted: true })))
+    const sent = ['e', 'c', 'h', 'o'].map((key) => r.session.input(key))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(r.of('input').map((c) => c.bytes)).toEqual(['e'])
+    while (answers.length) {
+      answers.shift()!()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    }
+    expect((await Promise.all(sent)).map((o) => o.outcome)).toEqual([
+      'accepted',
+      'accepted',
+      'accepted',
+      'accepted',
+    ])
+    expect(r.of('input').map((c) => c.bytes)).toEqual(['e', 'c', 'h', 'o'])
+  })
+
   test('a view of a terminal another view also has types, pastes and resizes', async () => {
     const r = rig()
     r.handlers.attach = () =>

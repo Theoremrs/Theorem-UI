@@ -260,6 +260,8 @@ export class TerminalSession {
   private readonly listeners = new Set<(event: TerminalEvent) => void>()
   private readonly stops: (() => void)[] = []
   private readonly ledger = new Map<string, Sent>()
+  /** The last input sent: the next waits for its answer, so keys reach the host in typed order. */
+  private inputTail: Promise<unknown> = Promise.resolve()
   /** Names this session sent that the host replaced with one it minted, with the binding epoch they were replaced in. */
   private readonly superseded = new Map<string, number | undefined>()
   private catchingUp: Promise<Outcome<Bound>> | undefined
@@ -680,23 +682,27 @@ export class TerminalSession {
     }
     sent.uncertain = true
     const receipt = { uncertain: false }
-    const result = await this.write(async (id) => {
-      const reply = await this.host.input({
-        session: id,
-        ...sent.body,
-        input_id: inputId,
-        kind: sent.kind,
-        ...sent.claim,
-      })
-      // The receipt itself can say the bytes may or may not have been delivered.
-      receipt.uncertain =
-        reply.uncertain === true || reply.code === 'terminal_input_uncertain'
-      return {
-        inputId,
-        duplicate: reply.duplicate === true,
-        discarded: reply.discarded === true,
-      }
-    })
+    const turn = this.inputTail.then(() =>
+      this.write(async (id) => {
+        const reply = await this.host.input({
+          session: id,
+          ...sent.body,
+          input_id: inputId,
+          kind: sent.kind,
+          ...sent.claim,
+        })
+        // The receipt itself can say the bytes may or may not have been delivered.
+        receipt.uncertain =
+          reply.uncertain === true || reply.code === 'terminal_input_uncertain'
+        return {
+          inputId,
+          duplicate: reply.duplicate === true,
+          discarded: reply.discarded === true,
+        }
+      }),
+    )
+    this.inputTail = turn.catch(() => undefined)
+    const result = await turn
     if (receipt.uncertain && result.outcome === 'accepted') {
       sent.blocked =
         'The host cannot say whether these keystrokes reached the program (terminal_input_uncertain). They were not sent again; look at the screen and type them again only if they are missing'
