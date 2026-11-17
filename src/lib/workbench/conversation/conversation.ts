@@ -916,15 +916,24 @@ export function createConversation({
         return receipt ? [receipt] : []
       }),
     )
-  /** One kept message, as the panel lists it under the composer. */
+  /**
+   * One kept message, as the panel lists it under the composer. The two settled-at-failed rows
+   * are told apart the way the contract tells them apart: Theorem's receipt saying the run
+   * never took the words, versus a send whose result nobody can confirm.
+   */
   const rowOf = (item: PendingRunInput): QueuedInput => ({
     clientMessageId: item.id,
     text: item.text,
-    // An unconfirmed send is `failed`, not `uncertain`: Retry replays this same
-    // request, and a row the panel cannot retry would take that choice away.
     state:
       item.state === 'failed'
-        ? 'failed'
+        ? // Confirmed not delivered, so it belongs to the next turn: Retry may send these words
+          // again. The panel's Retry names a fresh message, which is safe exactly here.
+          item.retryAsTurn
+          ? 'failed'
+          : // Unconfirmed: the words may be on the thread. A fresh request key would be a second
+            // message, so this row is listed as uncertain; only a replay of this same request —
+            // the queue's own retry — may send it again.
+            'uncertain'
         : item.state === 'queued' || item.state === 'next'
           ? 'queued'
           : 'sending',

@@ -786,10 +786,11 @@ describe('run input recovery', () => {
       ).outcome,
     ).toBe('accepted')
     await t.settle()
-    // Listed, with the words kept: the row is retriable rather than a dead end, because
-    // the contract's Retry replays this same request.
+    // Saved for recovery, but its result is nobody's to confirm: the words may already be
+    // on the thread, so the row is listed as uncertain — a fresh request key would be a
+    // second message.
     expect(owner.snapshot().queued).toMatchObject([
-      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+      { clientMessageId: 'c1', text: 'also', state: 'uncertain' },
     ])
     expect(owner.snapshot().queued[0]?.reason).toContain(
       'Could not confirm delivery',
