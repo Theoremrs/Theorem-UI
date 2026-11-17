@@ -1145,6 +1145,20 @@ describe('run input recovery', () => {
     ])
     expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
     expect(owner.snapshot().queued).toEqual([])
+    // And it does not come back. Nothing under this thread names those words any more, so a
+    // reload of the conversation lists nothing.
+    expect(t.storage.getItem('theorem.run-input.remote-1') ?? '').not.toContain(
+      'also',
+    )
+    const reborn = bindThreadInputs(t.stub, {
+      storage: t.storage,
+      thread: () => t.durable,
+    })
+    const reopened = t.make()
+    expect(reopened.snapshot().queued).toEqual([])
+    reopened.dispose()
+    reborn.dispose()
+
     owner.dispose()
     t.bound.dispose()
   })
@@ -1278,6 +1292,97 @@ describe('run input recovery', () => {
     expect(t.bound.queue.getSnapshot()).toHaveLength(1)
     t.bound.dispose()
     expect(useRunInputs.getState()[t.queueKey]).toBeUndefined()
+  })
+
+  test('a fresh side chat leaves the main draft’s kept words alone', async () => {
+    // The main draft kept words before it had a thread; they wait in the session's record,
+    // named for that draft. A side chat opened with no stored thread of its own shares the
+    // host's storage, and must neither read those words, adopt them, nor clear them.
+    const t = recovering()
+    t.storage.setItem(
+      'theorem.run-input.pending:',
+      JSON.stringify({
+        attemptId: 'the-main-draft',
+        items: [{ id: 'main-1', text: 'main draft words', state: 'waiting' }],
+      }),
+    )
+    const side = new StubRuntime()
+    side.threadId = `side-${++serial}`
+    side.remoteId = undefined
+    side.isRunning = true
+    side.messages = [assistant('sa1', 'x', { runId: 'run2' })]
+    const sideOptions = {
+      runtime: side.runtime,
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+        runInput: {
+          thread: async () => ({ active: true, runId: 'run2', inputs: [] }),
+          receipts: async () => [],
+        },
+      },
+      storage: t.storage,
+      workspaceId: 'w1',
+      runInputs: 'own' as const,
+      schedule: () => () => {},
+    }
+    const withSides = createConversation({
+      runtime: t.stub.runtime,
+      sideChats: {
+        open: async () => ({
+          runtime: side.runtime,
+          threadId: () => side.remoteId,
+          close: () => {},
+        }),
+      },
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async () => undefined,
+        runInput: {
+          thread: async () => t.durable,
+          receipts: async () => t.durable.inputs,
+        },
+      },
+      storage: t.storage,
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    })
+    const opened = await withSides.sideChat({ requestId: 'r1' })
+    expect(opened.outcome).toBe('accepted')
+    if (opened.outcome !== 'accepted') return
+    await opened.value.conversation.input({
+      requestId: 'r2',
+      clientMessageId: 's2',
+      text: 'side words',
+    })
+    await t.settle()
+    // The main draft's record still names the main draft, and holds only its words.
+    expect(t.storage.getItem('theorem.run-input.pending:')).toContain(
+      'main draft words',
+    )
+    expect(t.storage.getItem('theorem.run-input.pending:')).not.toContain(
+      'side words',
+    )
+    expect(opened.value.conversation.snapshot().queued).toEqual([
+      { clientMessageId: 's2', text: 'side words', state: 'queued' },
+    ])
+
+    // A reload of that side chat finds its own words, and still leaves the draft's alone.
+    const reloaded = createConversation(sideOptions)
+    await t.settle()
+    expect(reloaded.snapshot().queued).toMatchObject([
+      { clientMessageId: 's2', text: 'side words' },
+    ])
+    expect(t.storage.getItem('theorem.run-input.pending:')).toContain(
+      'main draft words',
+    )
+    // And none of the side chat's words were written into a record the main conversation
+    // owns: the draft's waiting record and its thread's both stay what the chat left them.
+    expect(t.storage.getItem('theorem.run-input.remote-1')).toBeNull()
+    opened.value.close()
+    reloaded.dispose()
+    withSides.dispose()
+    t.bound.dispose()
   })
 
   test('a side chat keeps its own queue: its input is not the main conversation’s row', async () => {

@@ -149,7 +149,9 @@ export class StubRuntime {
         this.threadsListeners.add(l)
         return () => this.threadsListeners.delete(l)
       },
-      mainItem: { getState: () => ({ id: this.threadId, remoteId: this.remoteId }) },
+      mainItem: {
+        getState: () => ({ id: this.threadId, remoteId: this.remoteId }),
+      },
       switchToThread: async (id) => {
         this.threadId = id
         this.remoteId = undefined
@@ -207,7 +209,11 @@ export function bindThreadInputs(
     /** What Theorem stores; default: whatever this runtime is showing. */
     thread?: () => ThreadStanding
     /** How a send to Theorem turns out; default: it is accepted and queued. */
-    send?: (runId: string, text: string, id: string) => Promise<InputReceipt | void>
+    send?: (
+      runId: string,
+      text: string,
+      id: string,
+    ) => Promise<InputReceipt | void>
   },
 ) {
   const key = stub.runtime.threads.getState().mainThreadId
