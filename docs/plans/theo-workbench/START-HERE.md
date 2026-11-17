@@ -2,15 +2,15 @@
 
 **Scope:** the web-based Theo interface in Theorem-UI. Native Theo, Platinum, native docking and packaging, and mobile-native clients are later work. Host/service changes necessary to support the browser are in scope.
 
-**Status:** specification and acceptance design only. No production implementation, repository mutation, deployment, browser interaction test, or native build is claimed by this handoff.
+**Status:** specification and acceptance design, with a recorded verification pass at candidate build `a9e9dd8878563cf560fda5f12825a1ec6e00f1ae` (2026-11-17, Linux cloud runner). Of the 62 acceptance cases, 36 are recorded `pass` at the source, pure-test, property, simulated-fault, protocol-replay, story-fixture or design-oracle tier, and 26 remain `not_run` with a named blocker; none is recorded `fail`. No production implementation, deployment, live end-to-end journey or native build is claimed by this handoff, and a recorded pass at a lower tier does not satisfy a live-only case.
 
 ## What to read
 
 1. [Main specification](SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0.md): product, UI, ownership, selected source reuse, migration and delivery gates.
 2. [Herdr integration](herdr-integration.md): layout extraction, Core execution, identity, control leases, detach, recovery, compatibility and safety.
 3. [Technical requirements](technical-requirements.md): 48 individually identified obligations, each with an owner and acceptance references.
-4. [Acceptance cases](acceptance-cases.json): 62 acceptance procedures with required observations. Every case is `not_run`; this file is not an executable test suite or a passing report.
-5. [Theia migration parity register](migration-parity-register.json): existing user capabilities that must remain reachable after the old frontend is removed.
+4. [Acceptance cases](acceptance-cases.json): 62 acceptance procedures with required observations, now carrying an execution record per case (build identity, platform, actual commands, tier, observations, limitations, or the named blocker). Each case names the tier its evidence belongs to; this file is still not an executable test suite, and it is not a passing report for the live-only cases.
+5. [Theia migration parity register](migration-parity-register.json): existing user capabilities that must remain reachable after the old frontend is removed. Reconciled against the candidate build at the pure and simulated tiers: P03 and P04 are recorded `pass`, the other thirteen rows stay `not_run` with the blocker named. `current_consumer` is still the seed — the Theia path is mounted and was not traced as a running baseline here.
 6. [Source ledger](SOURCES.md): inspected sources and their limitations. Start by reconciling them against the actual implementation checkout and deployed versions.
 
 The [Codex tool-picker screenshot](visual-reference/codex-tool-picker.png) is supplied unchanged. The previous [Artifact Cabinet handoff](../artifact-cabinet/README.md), including its mockup and screenshots, also travels unchanged. Its visual reference applies to the cabinet, not to the full new workbench.
