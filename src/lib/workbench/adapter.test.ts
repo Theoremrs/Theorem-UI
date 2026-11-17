@@ -2981,7 +2981,7 @@ describe('telling the agent its terminal stopped working', () => {
   }
 
   test('a terminal the agent opened tells that run when its program goes from working to idle', async () => {
-    const { t, told } = await opened({ ...claude, actor: agent } as Effect)
+    const { t, told } = await opened({ ...claude, actor: agent })
     t.port.emit(report('idle'))
     t.port.emit(report('working'))
     expect(told).toEqual([])
@@ -2997,7 +2997,7 @@ describe('telling the agent its terminal stopped working', () => {
   })
 
   test('blocked is waiting for a person, and an exit is news with its code', async () => {
-    const { t, told } = await opened({ ...claude, actor: agent } as Effect)
+    const { t, told } = await opened({ ...claude, actor: agent })
     t.port.emit(report('working'))
     t.port.emit(report('blocked'))
     t.port.emit({ type: 'exited', reason: 'exited', code: 3, signal: null })
