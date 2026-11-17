@@ -4,6 +4,8 @@ import type { Effect, HostMessage, ResourceRef } from '../wire'
 import { useRunInputs } from '@/lib/theorem/run-input-store'
 import { createConversation } from './conversation'
 import { createConversationPort } from './port'
+import { createSessionWatch } from '../agent/sessions'
+import type { SessionNotice } from '../agent/sessions'
 import {
   StubRuntime,
   approvalPart,
@@ -28,7 +30,10 @@ function setup() {
     runtime: stub.runtime,
     services: {
       answerApproval: async (request) => void answers.push(request),
-      sendInput: async (request) => void inputs.push(request),
+      sendInput: async (request) => {
+        inputs.push(request)
+        return { inputId: `in-${inputs.length}` }
+      },
       openUnder: (threadId, projectId) =>
         void asked.push([threadId, projectId]),
     },
@@ -377,7 +382,7 @@ describe('side chats', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
       },
       workspaceId: 'w1',
       schedule: (callback) => {
@@ -385,7 +390,12 @@ describe('side chats', () => {
         return () => void frames.splice(frames.indexOf(callback), 1)
       },
     })
-    const port = createConversationPort({ conversation, project: 'p1' })
+    const told: SessionNotice[] = []
+    const port = createConversationPort({
+      conversation,
+      project: 'p1',
+      sessions: createSessionWatch((notice) => told.push(notice)),
+    })
     const heard: HostMessage[] = []
     port.subscribe?.((message) => heard.push(message))
     let id = 0
@@ -393,6 +403,7 @@ describe('side chats', () => {
       kind: Effect['kind'],
       payload?: unknown,
       resource: ResourceRef = thread('remote-1'),
+      actor?: Effect['actor'],
     ) =>
       port.perform(
         {
@@ -400,6 +411,7 @@ describe('side chats', () => {
           resource,
           kind,
           ...(payload === undefined ? {} : { payload }),
+          ...(actor ? { actor } : {}),
         } as never,
         `req-${id}`,
       )
@@ -433,8 +445,62 @@ describe('side chats', () => {
       flush,
       heard,
       snapshotsOf,
+      told,
     }
   }
+
+  test('a side chat the agent opened tells that run when its run stops working', async () => {
+    const { perform, sides, told } = withSides()
+    const agent = { type: 'agent', runId: 'front-run' } as const
+    const done = await perform(
+      'conversationSideChat',
+      {},
+      thread('remote-1'),
+      agent,
+    )
+    if (
+      done.outcome !== 'accepted' ||
+      done.value?.type !== 'conversationSideOpened'
+    )
+      throw new Error('the side chat did not open')
+    const id = done.value.conversationId
+    const side = sides[0]!
+    side.isRunning = true
+    side.messages = [assistant('r1', 'working', { runId: 'side-run' })]
+    side.emit()
+    expect(told).toEqual([])
+    side.isRunning = false
+    side.messages = [
+      assistant('r1', 'done', {
+        runId: 'side-run',
+        status: { type: 'complete', reason: 'stop' },
+      }),
+    ]
+    side.emit()
+    expect(told).toEqual([
+      {
+        runId: 'front-run',
+        session: id,
+        what: 'the side chat',
+        state: 'finished',
+      },
+    ])
+  })
+
+  test('a side chat the person opened tells no run', async () => {
+    const { open, sides, told } = withSides()
+    await open()
+    const side = sides[0]!
+    side.isRunning = true
+    side.messages = [assistant('r1', 'working', { runId: 'side-run' })]
+    side.emit()
+    side.isRunning = false
+    side.messages = [
+      assistant('r1', 'done', { status: { type: 'complete', reason: 'stop' } }),
+    ]
+    side.emit()
+    expect(told).toEqual([])
+  })
 
   test('the scope reaches the owner, and the list answers the side chats open with their scope', async () => {
     const { perform, opened, port } = withSides()
@@ -617,7 +683,7 @@ describe('switching a branch through the port', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
         history: async () =>
           ({
             rootBranchId: 'b0',

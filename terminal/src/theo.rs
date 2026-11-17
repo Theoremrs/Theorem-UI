@@ -967,6 +967,9 @@ pub(crate) struct TheoPanel {
     /// the agent run that asked: sent as the first message once the owner
     /// names the conversation.
     first_task: Option<(String, Actor)>,
+    /// Words for a working run the owner has not yet named, with the client
+    /// id they are shown under and who sent them: they go once it is named.
+    awaiting_run: Vec<(String, String, Actor)>,
     kind: Kind,
     directory: Directory,
     session: RefCell<Session>,
@@ -1070,6 +1073,7 @@ impl TheoPanel {
             existing: Vec::new(),
             listed: false,
             first_task: None,
+            awaiting_run: Vec::new(),
             kind,
             directory,
             session: RefCell::new(session),
@@ -1810,6 +1814,21 @@ impl TheoPanel {
             return Err("not connected to a conversation yet".into());
         }
         let id = self.mint();
+        // Words for a run that is working but not yet named wait until it is: the side
+        // chat's run answers with its id a moment after it starts. Otherwise the body is
+        // the message these words are — an input to the working run, or a new turn.
+        if self.owner.working() && self.owner.run.run_id.is_none() {
+            let actor = actor.unwrap_or_else(|| cx.actor().clone());
+            self.awaiting_run.push((id.clone(), text.clone(), actor));
+            self.pending.push(Pending {
+                client_message_id: id,
+                text,
+                state: PendingState::Sending,
+                draft: None,
+                editing: None,
+            });
+            return Ok(());
+        }
         let body = self.words_body(&id, &text, None)?;
         let resource = self.resource();
         let build = |effect| Effect::new(effect, resource, body);
@@ -1827,6 +1846,42 @@ impl TheoPanel {
             editing: None,
         });
         Ok(())
+    }
+
+    /// The words that waited for the run to be named go now: as input once it
+    /// is, or as a new turn if it ended first. Each goes as whoever sent it.
+    fn send_awaiting(&mut self, cx: &mut Ctx) {
+        let run_id = match (self.owner.working(), self.owner.run.run_id.clone()) {
+            (true, None) => return,
+            (true, Some(run_id)) => Some(run_id),
+            (false, _) => None,
+        };
+        for (id, text, actor) in std::mem::take(&mut self.awaiting_run) {
+            let body = match &run_id {
+                Some(run_id) => EffectBody::ConversationInput(ConversationInput {
+                    run_id: run_id.clone(),
+                    client_message_id: id.clone(),
+                    text,
+                }),
+                None => EffectBody::ConversationSend(ConversationSend {
+                    client_message_id: id.clone(),
+                    text,
+                    attachments: Vec::new(),
+                    references: Vec::new(),
+                }),
+            };
+            let resource = self.resource();
+            match cx.emit_as(actor, |effect| Effect::new(effect, resource, body)) {
+                Ok(effect) => {
+                    self.tracked.insert(effect, Tracked::Turn(id));
+                }
+                Err(error) => {
+                    if let Some(p) = self.pending.iter_mut().find(|p| p.client_message_id == id) {
+                        p.state = PendingState::Refused(error.to_string());
+                    }
+                }
+            }
+        }
     }
 
     /// `code.start` on a side chat that has no conversation yet: ask for a
@@ -3362,7 +3417,10 @@ impl Panel for TheoPanel {
                 revision: Revision::Seq(revision),
                 snapshot,
                 ..
-            }) => self.adopt(&project, &thread, revision, &snapshot),
+            }) => {
+                self.adopt(&project, &thread, revision, &snapshot);
+                self.send_awaiting(cx);
+            }
             PanelMsg::Host(HostMessage::ConversationAttachments {
                 resource: ResourceRef::Conversation { thread, .. },
                 attachments,
@@ -5938,6 +5996,61 @@ mod tests {
             conversation_effects(&fx)[0].body,
             EffectBody::ConversationSend(_)
         ));
+    }
+
+    #[test]
+    fn code_send_to_a_run_that_has_no_id_yet_waits_for_it_and_goes_as_the_agent() {
+        // code.send right after code.start: the side chat's run is working
+        // but the owner has not yet said which run it is.
+        let mut r = rig();
+        let side = started_side_chat(&mut r, "start");
+        r.send(snapshot(
+            5,
+            "side-1",
+            json!({"messages": [user("s1", "start")], "run": {"state": "streaming"}}),
+        ));
+        let (outcome, fx) = agent_act(
+            &mut r,
+            "code.send",
+            Some(&side),
+            Some(r#"{"input":"also cover the docs"}"#),
+        );
+        assert_eq!(refusal(&outcome), None);
+        assert!(conversation_effects(&fx).is_empty(), "nothing to send to yet: {fx:?}");
+        // The run's id arrives: the words go to it, for the agent that sent them.
+        let fx = r.send(snapshot(
+            6,
+            "side-1",
+            json!({"messages": [user("s1", "start")], "run": {"state": "streaming", "runId": "r-9"}}),
+        ));
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationInput(input) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!((input.run_id.as_str(), input.text.as_str()), ("r-9", "also cover the docs"));
+        assert_eq!(sent[0].actor, the_agent());
+        // Sent once.
+        let fx = r.send(snapshot(
+            7,
+            "side-1",
+            json!({"messages": [user("s1", "start")], "run": {"state": "streaming", "runId": "r-9"}}),
+        ));
+        assert!(conversation_effects(&fx).is_empty(), "{fx:?}");
+    }
+
+    #[test]
+    fn words_waiting_for_a_run_that_ends_unnamed_go_as_a_new_turn() {
+        let mut r = rig();
+        let side = started_side_chat(&mut r, "start");
+        r.send(snapshot(5, "side-1", json!({"run": {"state": "streaming"}})));
+        agent_act(&mut r, "code.send", Some(&side), Some(r#"{"input":"next"}"#));
+        let fx = r.send(snapshot(6, "side-1", json!({"run": {"state": "idle"}})));
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationSend(send) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(send.text, "next");
+        assert_eq!(sent[0].actor, the_agent());
     }
 
     #[test]

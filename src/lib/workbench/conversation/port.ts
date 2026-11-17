@@ -2,6 +2,8 @@
 import { refusal, reply } from '../port'
 import type { Of, OwnerPort } from '../port'
 import type { AttachmentRef, HostMessage, ResourceRef } from '../wire'
+import { sessionWatch } from '../agent/sessions'
+import type { SessionState, SessionWatch } from '../agent/sessions'
 import {
   attachmentsMessage,
   modelsMessage,
@@ -17,7 +19,29 @@ export interface ConversationPortOptions {
   conversation: Conversation
   /** The project the conversation belongs to: the wire names a conversation by project and thread. */
   project: string
+  /** Watches the side chats an agent run acted on; the page's one watch unless a test gives its own. */
+  sessions?: SessionWatch
 }
+
+/** A side chat's run state, as the session watch reads it. */
+function sessionState(
+  run: ConversationSnapshot['run'],
+): [SessionState, string?] | undefined {
+  switch (run.state) {
+    case 'streaming':
+      return ['working']
+    case 'waiting_approval':
+      return ['waiting']
+    case 'idle':
+      return ['finished']
+    case 'stopped':
+      return ['stopped']
+    case 'failed':
+      return ['failed', run.error]
+  }
+}
+
+const SIDE_CHAT = 'the side chat'
 
 /** The thread a conversation resource names, which makes an action drawn against another thread stale. */
 const threadOf = (resource: ResourceRef): string | undefined =>
@@ -38,6 +62,7 @@ const attachment = ({ id, name, contentType }: AttachmentRef) => ({
 export function createConversationPort({
   conversation,
   project,
+  sessions = sessionWatch,
 }: ConversationPortOptions): OwnerPort<Of<'conversation'>> & {
   /** The side chats open now: a side chat's id is the one `conversationSideOpened` gave. */
   sideChats: Conversation['sideChats']
@@ -82,6 +107,9 @@ export function createConversationPort({
         requestId,
         ...(!side && thread ? { conversationId: thread } : {}),
       }
+      // A side chat an agent run opened or sent words to is watched for that run.
+      if (side && effect.actor?.type === 'agent')
+        sessions.acted(thread!, effect.actor.runId, SIDE_CHAT)
       const opened = ({ conversationId: id }: { conversationId: string }) => ({
         value: { type: 'conversationOpened', conversationId: id } as const,
       })
@@ -108,9 +136,13 @@ export function createConversationPort({
           if (done.outcome !== 'accepted') return reply(done)
           const chat = done.value
           const id = chat.conversationId
-          const stopSnapshots = chat.conversation.subscribe((snapshot) =>
-            emit(sideMessage(id, snapshot)),
-          )
+          if (effect.actor?.type === 'agent')
+            sessions.acted(id, effect.actor.runId, SIDE_CHAT)
+          const stopSnapshots = chat.conversation.subscribe((snapshot) => {
+            emit(sideMessage(id, snapshot))
+            const state = sessionState(snapshot.run)
+            if (state) sessions.observe(id, ...state)
+          })
           const stopModels = chat.conversation.onModels((state) =>
             emit(modelsMessage(project, id, state)),
           )
@@ -142,6 +174,7 @@ export function createConversationPort({
           side.stop()
           side.chat.close()
           sides.delete(thread!)
+          sessions.forget(thread!)
           return { outcome: 'accepted' }
         }
         case 'conversationCreate':

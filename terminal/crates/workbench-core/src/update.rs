@@ -874,6 +874,8 @@ impl Model {
     ) -> Vec<Effect> {
         // An action aimed at a panel that is not open is refused whatever its
         // intent, so a wrong handle never falls back to another panel.
+        // code.start aims at nothing: it always opens a panel of its own.
+        let on = on.filter(|_| id.as_str() != crate::panels::ACTION_CODE_START);
         if let Some(panel) = &on
             && !self.panels.contains_key(panel)
         {

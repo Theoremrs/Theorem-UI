@@ -30,6 +30,7 @@ function setup() {
     },
     sendInput: async (r) => {
       inputs.push(r)
+      return { inputId: `in-${r.runId}-${inputs.length}` }
     },
   }
   let frame: (() => void) | undefined
@@ -186,7 +187,7 @@ describe('history', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
         history: async (threadId) => {
           reads.push(threadId)
           return {
@@ -268,7 +269,7 @@ describe('switching a branch', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
         history: async (threadId) => {
           if (state.missing || threadId !== 'remote-1')
             throw new TheoremError({ message: 'gone', statusCode: 404 })
@@ -554,6 +555,32 @@ describe('send', () => {
     })
     expect(bound.sent.length).toBe(1)
     bound.dispose()
+  })
+
+  test('input leaves the queue once the run shows it, under the id Theorem gave it', async () => {
+    const { stub, conversation } = setup()
+    stub.isRunning = true
+    stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    await conversation.input({
+      ...base('r1'),
+      clientMessageId: 'c1',
+      text: 'also',
+    })
+    expect(conversation.snapshot().queued).toHaveLength(1)
+    // Theorem names the input itself; the client id was only the request's key.
+    stub.messages = [
+      assistant('a1', 'x', {
+        runId: 'run1',
+        parts: [
+          {
+            type: 'data',
+            name: 'theorem-user_input',
+            data: { inputId: 'in-run1-1', text: 'also', status: 'delivered' },
+          },
+        ],
+      }),
+    ]
+    expect(conversation.snapshot().queued).toEqual([])
   })
 
   test('without a way to make a second runtime a side chat is refused as missing', async () => {
@@ -1500,7 +1527,7 @@ describe('side chat', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
       },
       workspaceId: 'w1',
       schedule: () => () => undefined,
@@ -1630,7 +1657,7 @@ describe('side chat', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => undefined,
+        sendInput: async () => ({ inputId: 'in-1' }),
       },
       workspaceId: 'w1',
     })
@@ -1831,7 +1858,7 @@ describe('approvals', () => {
           calls.push(1)
           throw new Error('socket closed')
         },
-        sendInput: async () => {},
+        sendInput: async () => ({ inputId: 'in-1' }),
       },
     })
     const request = {
