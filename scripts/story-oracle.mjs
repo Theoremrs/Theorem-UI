@@ -209,7 +209,9 @@ async function motion(story) {
 const pageText = (page) => page.evaluate(() => (document.querySelector('[data-workbench-story]')?.innerText ?? '').replace(/\u00a0/g, ' '))
 
 /** The chord that opens the picker (Alt with Cmd on a Mac, Ctrl elsewhere) and one that names a tool. */
-const CHORD = 'Meta+Alt+'
+// Mod is Cmd on Mac and Ctrl elsewhere, as the workbench parses it; the
+// suite runs on both platforms.
+const CHORD = process.platform === 'darwin' ? 'Meta+Alt+' : 'Control+Alt+'
 /** The picker's route to a tool in More tools: its chord, the name typed into the filter, Enter. */
 const openTool = async (page, name) => {
   await page.keyboard.press(`${CHORD}t`)
@@ -664,7 +666,7 @@ const SCENARIOS = {
       await page.keyboard.press('Alt+2')
       await page.waitForTimeout(500)
       const source = (await sees(page, '[source')) && (await has(page, word))
-      await page.keyboard.press('Meta+z')
+      await page.keyboard.press('ControlOrMeta+z')
       await page.waitForTimeout(400)
       return { typed, 'visible in Source': source, undone: !(await has(page, word)) }
     },
@@ -972,7 +974,9 @@ const SCENARIOS = {
       await press(`${CHORD}t`)
       await arrive('1 picker opens (Mod+Alt+T)', 'Add tool', { leaf: 'menuItem:Changes' })
       const rows = await pageText(page)
-      for (const [name, chord] of [['Changes', '⌥⌘G'], ['Shell', '⌥⌘S'], ['Files', '⌥⌘E']])
+      for (const [name, chord] of process.platform === 'darwin'
+        ? [['Changes', '⌥⌘G'], ['Shell', '⌥⌘S'], ['Files', '⌥⌘E']]
+        : [['Changes', 'Ctrl+Alt+G'], ['Shell', 'Ctrl+Alt+S'], ['Files', 'Ctrl+Alt+E']])
         checks[`1 the picker row ${name} shows its chord ${chord}`] = rows.includes(chord)
       await press('Escape')
       await arrive('2 Escape closes the picker', 'Theo', { leaf: 'textBox:Message to Theo' })
@@ -1442,11 +1446,11 @@ const SCENARIOS = {
       const shot = (n) => page.screenshot({ path: renderPath(`workbench-arrangements-${n}`), clip: { x: 0, y: 0, width: 1280, height: 640 } })
       await page.waitForTimeout(800)
       const start = await pageText(page)
-      await page.keyboard.press('Meta+Alt+F2')
+      await page.keyboard.press(`${CHORD}F2`)
       await page.waitForTimeout(800)
       const editor = await pageText(page)
       await shot('editor')
-      await page.keyboard.press('Meta+Alt+F3')
+      await page.keyboard.press(`${CHORD}F3`)
       await page.waitForTimeout(800)
       const agent = await pageText(page)
       await shot('agent')
@@ -1482,19 +1486,19 @@ const SCENARIOS = {
       const start = await where()
       await shot('start')
       // Widen the Files group: the Theo group's left edge, and the face with it, move right.
-      await page.keyboard.press('Meta+Alt+ArrowLeft')
+      await page.keyboard.press(`${CHORD}ArrowLeft`)
       await page.waitForTimeout(400)
       for (let i = 0; i < 3; i++) {
-        await page.keyboard.press('Meta+Alt+]')
+        await page.keyboard.press(`${CHORD}]`)
         await page.waitForTimeout(300)
       }
       await page.waitForTimeout(900)
       const resized = await where()
       await shot('resized')
       // Back to the Theo group, then the panel moves into the tools group on its right.
-      await page.keyboard.press('Meta+Alt+ArrowRight')
+      await page.keyboard.press(`${CHORD}ArrowRight`)
       await page.waitForTimeout(400)
-      await page.keyboard.press('Meta+Alt+Shift+ArrowRight')
+      await page.keyboard.press(`${CHORD}Shift+ArrowRight`)
       await page.waitForTimeout(1200)
       const moved = await where()
       await shot('moved')
@@ -1891,10 +1895,10 @@ const SCENARIOS = {
       await page.keyboard.type(word)
       await page.waitForTimeout(300)
       const typed = await has(page, word)
-      await page.keyboard.press('Meta+z')
+      await page.keyboard.press('ControlOrMeta+z')
       await page.waitForTimeout(300)
       const undone = !(await has(page, word))
-      await page.keyboard.press('Meta+Shift+z')
+      await page.keyboard.press('ControlOrMeta+Shift+z')
       await page.waitForTimeout(300)
       return { typed, undone, redone: await has(page, word) }
     },
