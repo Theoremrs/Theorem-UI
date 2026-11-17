@@ -161,8 +161,12 @@
     {
       "id": "file-to-records",
       "requirement": "The filing engine files a document to the record it is about, with tier, confidence, correction and undo",
-      "status": "not-started",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "UI: the inspector's About section with Not about / Change… / Undo (src/components/index/record-links.tsx); Documents about this on a record's preview and page from the record_documents binding (src/components/crm/documents-about.tsx); contract, API and queries (src/components/index/contract.ts, api.ts, queries.ts, bindings.ts)",
+        "UI tests: src/components/index/record-links.test.tsx (8), src/components/crm/documents-about.test.tsx (4)",
+        "Server side is in Theorem (rustyred-thg-filing records module, /api/documents/v2 record-filings routes, record_documents binding); no manual link when Theorem linked none; not yet observed against a deployed Theorem"
+      ]
     },
     {
       "id": "extract-to-proposals",

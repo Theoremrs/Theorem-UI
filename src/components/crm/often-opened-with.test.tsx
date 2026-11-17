@@ -1,4 +1,4 @@
-// SOURCING: bun:test rendering the record preview and the record page as the Index draws them (./test-harness) with React into happy-dom. window.fetch is the in-memory CRM fixture (./fixture) with one addition: POST /api/index/v1/query, which answers the used-together binding with a stubbed result and records the binding it was asked, as no Theorem is running. Synthetic records and documents only
+// SOURCING: bun:test rendering the record preview and the record page as the Index draws them (./test-harness) with React into happy-dom. window.fetch is the in-memory CRM fixture (./fixture) with one addition: POST /api/index/v1/query, which answers the used-together binding with a stubbed result and records the binding it was asked (the record_documents binding reads empty), as no Theorem is running. Synthetic records and documents only
 import {
   afterAll,
   afterEach,
@@ -48,9 +48,13 @@ beforeEach(() => {
       'http://localhost:3000',
     )
     if (url.pathname === '/api/index/v1/query') {
-      asked.push(
-        (JSON.parse(String(init?.body)) as { binding: Binding }).binding,
-      )
+      const { binding } = JSON.parse(String(init?.body)) as {
+        binding: Binding
+      }
+      // The record's "Documents about this" asks too; it is not under test here.
+      if (binding.kind === 'record_documents')
+        return Response.json({ kind: 'items', items: [], total: 0 })
+      asked.push(binding)
       return answer()
     }
     return crm(input, init)

@@ -84,9 +84,27 @@ The owner set the order in which records join the self-organizing loop:
    `crm/often-opened-with.test.tsx` ("Often opened with"). The server side is
    in Theorem (`theorem_index_workspace` tests). Nothing here is observed
    against a deployed Theorem yet.
-2. **Filing documents to records.** The filing engine proposes the record a
-   document is about, with the same tier, confidence, correction and undo as
-   filing to a collection.
+2. **Filing documents to records.** When a document is filed, Theorem also
+   links it to up to three saved records it is about, with a receipt (tier,
+   confidence, why) for each, and the person corrects or undoes it; the owner
+   chose filing with Undo over an approval queue, because a link never changes
+   a field of the record. Precedent is an email or phone of exactly one record
+   appearing in the document; learned is the record's name as whole words in
+   the title or text. A dismissed pair is never linked again, and a record
+   dismissed twice by name stops being linked by name. UI side done in
+   source: the document inspector's "About" section (`index/record-links.tsx`)
+   lists each linked record with why it was linked, opens the record page, and
+   offers "Not about <name>", "Change…" (another record of the same type) and
+   Undo for the latest correction, read from Theorem so it survives a reload;
+   nothing shows when the document is about no record. A record's preview and
+   page list "Documents about this" (`crm/documents-about.tsx`) from the
+   `record_documents` binding (`{kind:'record_documents', recordItemId}`,
+   answered as items), hidden while loading, when empty, or when an older
+   Theorem refuses the kind. Tests: `index/record-links.test.tsx` and
+   `crm/documents-about.test.tsx`. There is no way yet to link a document to a
+   record by hand when Theorem linked it to none; "Change…" offers only
+   records of the linked record's type. Nothing here is observed against a
+   deployed Theorem yet.
 3. **Extraction from filed material.** A filed document can lead to a change
    to a record, made only as a proposal the person approves (the agent's
    record change proposals in Theorem are the model).

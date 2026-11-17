@@ -36,6 +36,8 @@ const keys = {
   binding: (binding: Binding) => [...INDEX, 'binding', binding] as const,
   document: (documentId: string) => [...INDEX, 'document', documentId] as const,
   filings: (documentId: string) => [...INDEX, 'filings', documentId] as const,
+  recordFilings: (documentId: string) =>
+    [...INDEX, 'record-filings', documentId] as const,
 }
 
 /** Writes that change filing, so a running view knows to read again. */
@@ -112,6 +114,15 @@ export const useFilings = (documentId: string | undefined) =>
   useQuery({
     queryKey: keys.filings(documentId ?? ''),
     queryFn: () => api.filingHistory(documentId!),
+    enabled: !!documentId,
+    retry,
+  })
+
+/** The records a document is about, why, and the corrections made to that. */
+export const useRecordFilings = (documentId: string | undefined) =>
+  useQuery({
+    queryKey: keys.recordFilings(documentId ?? ''),
+    queryFn: () => api.recordFilingHistory(documentId!),
     enabled: !!documentId,
     retry,
   })
@@ -285,7 +296,7 @@ function useInvalidateMaterial() {
       predicate: ({ queryKey }) =>
         queryKey[0] === INDEX[0] &&
         queryKey[1] === INDEX[1] &&
-        ['collections', 'binding', 'document', 'filings'].includes(
+        ['collections', 'binding', 'document', 'filings', 'record-filings'].includes(
           String(queryKey[2]),
         ),
     })
@@ -333,6 +344,26 @@ export function useUndoCorrection() {
   return useMutation({
     mutationKey: MATERIAL,
     mutationFn: (correctionId: string) => api.undoCorrection(correctionId),
+    onSuccess: () => invalidate(),
+  })
+}
+
+/** Move a record link, or with `recordItemId: null` say the document is not about that record. */
+export function useCorrectRecordFiling() {
+  const invalidate = useInvalidateMaterial()
+  return useMutation({
+    mutationKey: MATERIAL,
+    mutationFn: (input: { receiptId: string; recordItemId: string | null }) =>
+      api.correctRecordFiling(input.receiptId, input.recordItemId),
+    onSuccess: () => invalidate(),
+  })
+}
+
+export function useUndoRecordFiling() {
+  const invalidate = useInvalidateMaterial()
+  return useMutation({
+    mutationKey: MATERIAL,
+    mutationFn: (correctionId: string) => api.undoRecordFiling(correctionId),
     onSuccess: () => invalidate(),
   })
 }
