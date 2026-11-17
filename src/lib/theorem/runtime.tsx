@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react (useRemoteThreadListRuntime + useLocalRuntime) with @theoremharness/sdk/assistant-ui (createTheoremChatAdapter, toAssistantMessages); each thread runtime also reports to Kit (lib/kit) and reads replies aloud through lib/speech
+// SOURCING: @assistant-ui/react (useRemoteThreadListRuntime + useLocalRuntime) with @theoremharness/sdk/assistant-ui (createTheoremChatAdapter, toAssistantMessages); each thread runtime also reports to Kit (lib/kit) and reads replies aloud through lib/speech (on request, or as they stream in when narration is on)
 //
 // Theorem owns durable history, execution and approvals. assistant-ui owns the
 // view state. The thread list maps onto Theorem threads in the active project;
@@ -36,7 +36,7 @@ import { refreshConversation } from './conversation-refresh'
 import type { ReactNode } from 'react'
 import { toastManager } from '@/components/coss/toast'
 import { useComposerReferences } from '@/components/chat/composer-references'
-import { planningTurnOptions, usePlanning, webTurnOptions } from '@/components/chat/composer-tools'
+import { codingTurnOptions, planningTurnOptions, useCodeMode, usePlanning, webTurnOptions } from '@/components/chat/composer-tools'
 import { connectionTurnOptions } from './tool-selection'
 import { DRAFT_PLAN } from './plans'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
@@ -72,6 +72,7 @@ import { useKitRequests } from '@/lib/kit/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
 
 type RemoteThreadMetadata = Awaited<
@@ -646,8 +647,8 @@ function useTheoremThreadRuntime() {
           // The composer's model pick; read at each send, so switching mid-thread takes effect.
           const custom = options.runConfig.custom ?? {}
           const configured = custom.theoremTurnOptions as Record<string,unknown> | undefined
-          // The composer's context, Web and Plan toggles, client surface and connection choice, read at each send like the model pick.
-          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...generationTurnOptions(remoteId)}
+          // The composer's context, Web, Plan and Code mode toggles, client surface and connection choice, read at each send like the model pick.
+          const added = {...(references.length ? {contextReferences:references} : {}),...webTurnOptions(),...planningTurnOptions(localId,remoteId),...codingTurnOptions(localId,remoteId),...clientSurfaceTurnOptions(),...connectionTurnOptions(localId,remoteId),...generationTurnOptions(remoteId)}
           const composed = Object.keys(added).length ? {
             ...options,
             runConfig:{...options.runConfig,custom:{...custom,theoremTurnOptions:{...configured,...added}}},
@@ -680,11 +681,14 @@ function useTheoremThreadRuntime() {
     liveRuns: useLiveRuns,
     subscribe: (listener) => aui.subscribe(listener),
   }), [aui, runtime])
-  // A new chat can get its durable id before any send (an attachment upload creates the thread); Plan moves with it then, so the chip shows what the next send asks for.
+  // A new chat can get its durable id before any send (an attachment upload creates the thread); Plan and Code mode move with it then, so the chip shows what the next send asks for.
   useEffect(() => {
     const follow = () => {
       const { id, remoteId } = aui.threadListItem.getState()
-      if (remoteId && remoteId !== id) usePlanning.getState().adopt(id, remoteId)
+      if (remoteId && remoteId !== id) {
+        usePlanning.getState().adopt(id, remoteId)
+        useCodeMode.getState().adopt(id, remoteId)
+      }
     }
     follow()
     return aui.subscribe(follow)
@@ -692,6 +696,10 @@ function useTheoremThreadRuntime() {
   // The effort this conversation's sends ask for, for Theo to show while one runs.
   const faceEffort = useCallback(() => requestedEffort(aui.threadListItem.getState().remoteId ?? undefined), [aui])
   useKitSource(runtime)
+  // Theo narrates a reply as it streams in, when the person has asked for that.
+  const onScreen = useCallback(() => aui.threads.getState().mainThreadId === aui.threadListItem.getState().id, [aui])
+  const followThreads = useCallback((listener: () => void) => aui.subscribe(listener), [aui])
+  useNarrateReplies(runtime, onScreen, followThreads)
   useKitRequests(runtime)
   // The agent checks Apps with the page's compiler; this answers it.
   useAppRequests(runtime)

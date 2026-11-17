@@ -322,7 +322,7 @@ for (const engine of engines.filter(
             descendant: 'span.truncate',
           }),
         )
-        const model = page.locator('[aria-label="Model"]').first()
+        const model = page.locator('[data-model-picker-trigger]').first()
         await model.click()
         const option = page
           .locator('[data-slot="combobox-item"]')

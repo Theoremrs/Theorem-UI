@@ -1,4 +1,4 @@
-// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), lib/figures (Kit and Theo), coss ui SegmentedControl, the settings frame
+// SOURCING: next-themes (light/dark), lib/palette (colours), lib/appearance (preset, sizes, custom CSS), lib/life/store (the field behind the chat), coss ui SegmentedControl for choices and Switch for on and off, the settings frame
 import { createFileRoute } from '@tanstack/react-router'
 import { useTheme } from 'next-themes'
 import { useState } from 'react'
@@ -16,20 +16,18 @@ import {
   NumberFieldGroup,
   NumberFieldInput,
 } from '@/components/coss/number-field'
+import { Switch } from '@/components/coss/switch'
 import { Textarea } from '@/components/coss/textarea'
 import {
   SegmentedControl,
   SegmentedControlItem,
 } from '@/components/coss/segmented-control'
-import { Icon } from '@/components/icons'
 import {
   SettingsBox,
   SettingsPage,
   SettingsRow,
   SettingsSection,
 } from '@/components/settings/settings-frame'
-import { FaceMark } from '@/components/face/face-mark'
-import { VISORS, useFigures } from '@/lib/figures'
 import { useLifeControls, useLifeShown } from '@/lib/life/store'
 import { PALETTES, CALM_COLORS, COLOR_ROLES } from '@/lib/appearance-policy'
 import {
@@ -59,7 +57,7 @@ const THEMES = [
 ]
 
 /** One choice of a segmented control; the control slides its indicator to the pressed item. */
-function Choice({
+export function Choice({
   pressed,
   onPress,
   label,
@@ -86,12 +84,12 @@ export function AppearanceSettings() {
     useAppearance()
   const lifeShown = useLifeShown()
   const lifeOverride = useLifeControls((state) => state.shown)
+  const lifePlaying = useLifeControls((state) => state.playing)
   const reset = () => {
     resetOverrides()
     setTheme('system')
     useLifeControls.setState({ shown: undefined })
   }
-  const figures = useFigures()
   return (
     <SettingsPage
       title="Appearance"
@@ -235,78 +233,39 @@ export function AppearanceSettings() {
               />
             </SegmentedControl>
           </SettingsRow>
+        </SettingsBox>
+      </SettingsSection>
+      <SettingsSection
+        title="Background"
+        description="What runs behind the conversation."
+      >
+        <SettingsBox>
           <SettingsRow
             title="Life field"
             description="A Game of Life behind the chat that quickens as the model works. Right-click empty space for its controls."
           >
-            <SegmentedControl size="sm" aria-label="Life field">
-              <Choice
-                label="On"
-                pressed={lifeShown}
-                onPress={() => useLifeControls.setState({ shown: true })}
-              />
-              <Choice
-                label="Off"
-                pressed={!lifeShown}
-                onPress={() => useLifeControls.setState({ shown: false })}
-              />
-            </SegmentedControl>
-          </SettingsRow>
-        </SettingsBox>
-      </SettingsSection>
-      <SettingsSection title="Figures">
-        <SettingsBox>
-          <SettingsRow
-            Mark={FaceMark}
-            title="Theo"
-            description="The agent’s face. It shows what Theorem is doing, reacts to you, and sleeps when nothing is happening. Tap it, carry it, or double-tap to send it home."
-          >
-            <SegmentedControl size="sm" aria-label="Theo">
-              <Choice
-                label="On"
-                pressed={figures.theo}
-                onPress={() => figures.setTheo(true)}
-              />
-              <Choice
-                label="Off"
-                pressed={!figures.theo}
-                onPress={() => figures.setTheo(false)}
-              />
-            </SegmentedControl>
+            <Switch
+              aria-label="Life field"
+              checked={lifeShown}
+              onCheckedChange={(shown) => useLifeControls.setState({ shown })}
+            />
           </SettingsRow>
           <SettingsRow
-            Mark={FaceMark}
-            title="Theo’s visor"
-            description="The dark screen behind Theo’s eyes. Auto keeps it in the light theme and drops it in the dark one, where the eyes glow against the page. Without it in the light theme, the eyes are drawn dark."
+            title="Background animation"
+            description={
+              lifeShown
+                ? lifePlaying
+                  ? 'Playing. Pause it to keep the field still behind the conversation.'
+                  : 'Paused. The field stays where it stopped until you play it again.'
+                : 'Turn the Life field on to play or pause it.'
+            }
           >
-            <SegmentedControl size="sm" aria-label="Theo’s visor">
-              {VISORS.map(({ value, label }) => (
-                <Choice
-                  key={value}
-                  label={label}
-                  pressed={figures.visor === value}
-                  onPress={() => figures.setVisor(value)}
-                />
-              ))}
-            </SegmentedControl>
-          </SettingsRow>
-          <SettingsRow
-            Mark={Icon.Sparkle}
-            title="Kit"
-            description="The fox that lives in the window. It is just there: it walks, sits and naps on its own."
-          >
-            <SegmentedControl size="sm" aria-label="Kit">
-              <Choice
-                label="On"
-                pressed={figures.kit}
-                onPress={() => figures.setKit(true)}
-              />
-              <Choice
-                label="Off"
-                pressed={!figures.kit}
-                onPress={() => figures.setKit(false)}
-              />
-            </SegmentedControl>
+            <Switch
+              aria-label="Background animation playing"
+              checked={lifeShown && lifePlaying}
+              disabled={!lifeShown}
+              onCheckedChange={(playing) => useLifeControls.setState({ playing })}
+            />
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>

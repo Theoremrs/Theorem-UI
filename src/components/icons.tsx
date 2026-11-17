@@ -67,6 +67,7 @@ import {
   Circle,
   File as LucideFile,
   Folder as LucideFolder,
+  FolderOpen as LucideFolderOpen,
   AudioLines as Audio,
   Bell,
   Inbox,
@@ -261,6 +262,14 @@ const Folder: SvgMark = ({ className, ...props }) => (
     className={cn('size-4 shrink-0', className, 'fill-folder text-folder')}
   />
 )
+/** An open folder: its front flap drawn over a tinted body, so it reads open beside a filled closed one. */
+const FolderOpen: SvgMark = ({ className, ...props }) => (
+  <LucideFolderOpen
+    aria-hidden="true"
+    {...props}
+    className={cn('size-4 shrink-0', className, 'fill-folder/35 text-folder')}
+  />
+)
 const FileEntry: SvgMark = ({ className, ...props }) => (
   <LucideFile
     aria-hidden="true"
@@ -405,7 +414,14 @@ const Send = painted(CONTROL_LAYERS.send, 0, true)
 const Attachment = painted(CONTROL_LAYERS.upload, 180, true)
 const AttachFolder = painted(CONTROL_LAYERS.attachFolder, 45, true)
 const Plan = painted(CONTROL_LAYERS.plan, 180, true)
-const WebSearch = painted(CONTROL_LAYERS.webSearch, 180, true)
+// The owner's 2026-11-16 + menu set: a browser window for Web search, a Lego
+// brick for Plugins, and the coded page for Code mode.
+const WebSearch = painted(CONTROL_LAYERS.browser, 180, true)
+const Plugins = painted(CONTROL_LAYERS.plugins, 180, true)
+const CodeMode = painted(CONTROL_LAYERS.fileCode, 180, true)
+// Skills in the same menu: Icon.Skill's atom traced as a control mark, so it
+// sits in the painted family beside them rather than as a thinner mask.
+const SkillControl = painted(CONTROL_LAYERS.skill, 180, true)
 // The owner's Streamline file with a plus (review, 2026-11-15) for every new
 // thread: the page softened as the other controls' are, the plus kept at the
 // full accent, turned 260 degrees, which takes the default blue to green.
@@ -518,6 +534,7 @@ export const Icon = {
   First,
   Follow,
   Folder,
+  FolderOpen,
   Fork,
   Grip,
   Hide,
@@ -572,6 +589,9 @@ export const Icon = {
   UpDown,
   Web,
   WebSearch,
+  Plugins,
+  CodeMode,
+  SkillControl,
   Agent,
   Attachments,
   Delegate,

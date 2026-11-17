@@ -1,4 +1,4 @@
-// SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass with only its conversation edge curved), Base UI Drawer (phone sidebar), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the agent TerminalDrawer and the tabbed SideTerminal, the Vault (React.lazy, so cosmos.gl loads only when it opens)
+// SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass curved on all four edges, a card lifted off the sheet after the AG-UI Dojo's floating sidebar the owner's review named), Base UI Drawer (the panel's card over a sheet too narrow to dock it, with the rail on a phone), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the agent TerminalDrawer and the tabbed SideTerminal, the Vault (React.lazy, so cosmos.gl loads only when it opens)
 import type { SplitviewApi, SplitviewReadyEvent } from 'dockview-react'
 import { useParams } from '@tanstack/react-router'
 import { AgentComposer } from '@/components/canvas/agent-composer'
@@ -8,9 +8,7 @@ import { Drawer } from '@base-ui/react/drawer'
 import { Icon } from '@/components/icons'
 import { ThemeToggle } from '@/components/settings/theme-toggle'
 import { LifeSheet } from '@/components/life/life-backdrop'
-import { useLiquidGlass } from '@/components/glass/liquid-glass/use-liquid-glass'
-import { useSurfaceMaterial } from '@/lib/appearance'
-import { appearancePair } from '@/lib/appearance-policy'
+import { FloatingCard, FLOATING_CARD_VARS } from './floating-card'
 import './chat-shell.css'
 import { LayoutPriority, Orientation, SplitviewReact } from 'dockview-react'
 import { modeLabel, navigatorMode, useShellMode } from './modes'
@@ -35,6 +33,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import type { CSSProperties } from 'react'
 
 import { ModePage } from '@/components/pages/mode-page'
 import { IdePageShown, OnIdePage } from '@/components/ide/ide-page'
@@ -77,7 +76,13 @@ function ChatHeader({ onOpenSidebar }: { onOpenSidebar: () => void }) {
   )
 }
 
-/** Navigation becomes an overlay without replacing the mounted conversation. */
+/**
+ * Navigation over the conversation, without replacing the mounted
+ * conversation, where the sheet is too narrow to dock it. It is the same
+ * floating card as the docked panel, beside the docked rail; on a phone,
+ * where the docked rail is hidden, the drawer brings its own rail. Escape,
+ * a press outside and a swipe close it.
+ */
 function NavigationDrawer({
   open,
   onOpenChange,
@@ -85,26 +90,22 @@ function NavigationDrawer({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  const panelWidth = useShell((s) => s.panelWidth)
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange} swipeDirection="left">
       <Drawer.Portal>
-        <Drawer.Backdrop className="fixed inset-0 z-40 bg-black/30" />
+        <Drawer.Backdrop className="appearance-navigation-backdrop fixed inset-0 z-40 bg-black/30" />
         <Drawer.Viewport className="fixed inset-0 z-50 flex items-stretch justify-start">
           <Drawer.Popup
             data-appearance-part="drawer"
-            className="appearance-navigation-drawer flex h-full max-w-full bg-sidebar outline-none"
+            style={{ '--drawer-panel': `${panelWidth}px` } as CSSProperties}
+            className={`appearance-navigation-drawer flex h-full max-w-full outline-none ${FLOATING_CARD_VARS} [--sheet-inset:3px]`}
           >
             <Drawer.Title className="sr-only">Navigation</Drawer.Title>
-            <Rail />
-            <div className="min-w-0 flex-1">
-              <div className="flex justify-end p-2">
-                <TooltipIconButton
-                  tooltip="Close navigation"
-                  onClick={() => onOpenChange(false)}
-                >
-                  <Icon.X />
-                </TooltipIconButton>
-              </div>
+            <div className="appearance-drawer-rail h-full bg-rail">
+              <Rail />
+            </div>
+            <div className="min-w-0 flex-1 py-(--sheet-inset)">
               <GlassPanel />
             </div>
           </Drawer.Popup>
@@ -161,42 +162,18 @@ function DockView() {
 }
 const PANEL = 'panel'
 
-const CONVERSATION_EDGE = {
-  top: false,
-  right: true,
-  bottom: false,
-  left: false,
-}
-
 /**
- * The side panel as frosted glass: the Life field runs under the whole sheet,
- * so it shows through the panel, blurred, instead of stopping at its edge.
- * Under liquid glass it is a liquid pane attached to the window, curved
- * only along its edge toward the conversation.
+ * The side panel as a card lifted off the sheet: inset from the sheet's edges,
+ * rounded on every corner and casting a shadow, with the rail's tab for its
+ * mode bridging the gap to it. As frosted glass the Life field runs under the
+ * whole sheet, so it shows through the card, blurred; under liquid glass the
+ * card is a liquid pane curved on all four edges.
  */
 function GlassPanel() {
-  const ref = useRef<HTMLDivElement>(null)
-  const material = useSurfaceMaterial('navigation')
-  // Both glass choices run the liquid renderer, as the composer's do.
-  const liquid = material === 'liquid' || material === 'glass'
-  useLiquidGlass(ref, liquid, CONVERSATION_EDGE)
   return (
-    <div
-      ref={ref}
-      data-appearance-part="navigation"
-      data-appearance-width-role="navigation"
-      data-surface-role="navigation"
-      data-material={material}
-      {...appearancePair('primary', 'navigation')}
-      className={cn(
-        'appearance-surface h-full',
-        liquid && 'glass-panel glass-panel-liquid',
-      )}
-    >
-      <div className="appearance-reading-plane h-full">
-        <ContextPanel />
-      </div>
-    </div>
+    <FloatingCard>
+      <ContextPanel />
+    </FloatingCard>
   )
 }
 
@@ -348,7 +325,15 @@ function SheetSplit({
       >
         {(overlay || !panelOpen) && (
           <div className="appearance-compact-header">
-            <ChatHeader onOpenSidebar={onOpenSidebar} />
+            {/* With room to dock it, the panel comes back docked; only a
+                sheet too narrow for it takes the drawer. */}
+            <ChatHeader
+              onOpenSidebar={
+                overlay
+                  ? onOpenSidebar
+                  : () => useShell.getState().setPanelOpen(panelMode, true)
+              }
+            />
           </div>
         )}
         <div className="min-h-0 flex-1">
@@ -393,7 +378,7 @@ function DesktopShell(route: DockRoute) {
     <div
       data-appearance-part="shell"
       data-appearance-width-role="usable"
-      className="appearance-shell flex h-full w-full [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px]"
+      className={`appearance-shell flex h-full w-full ${FLOATING_CARD_VARS} [--sheet-h:calc(100dvh-2*var(--sheet-inset))] [--sheet-inset:3px]`}
     >
       <div className="appearance-docked-rail" data-appearance-width-role="rail">
         <Rail collapsible />

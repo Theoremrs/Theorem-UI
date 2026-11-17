@@ -182,7 +182,7 @@ export function ThreadMenuItems({
                   {project.title}
                 </MenuRadioItem>
               ))}
-              <MenuRadioItem value="unsorted">Chats</MenuRadioItem>
+              <MenuRadioItem value="unsorted">Recent</MenuRadioItem>
             </MenuRadioGroup>
           </MenuSubPopup>
         </MenuSub>

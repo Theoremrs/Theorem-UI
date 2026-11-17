@@ -1,9 +1,8 @@
-// SOURCING: the app's FilesystemTree (components/ui/filesystem-tree: lucide icons, framer-motion, tree roles and arrow keys), the coss sidebar's group and row (the heading is a row like a project's, its folder opening with it), @tanstack/react-query via lib/theorem/project-files (the cached root, children and content reads)
+// SOURCING: the app's FilesystemTree (components/ui/filesystem-tree: lucide icons, framer-motion, tree roles and arrow keys), the coss sidebar's group and row (the heading is a row like a project's, its folder opening with it); shown in the rail's Files reveal beside the workspace folders, not under the chats, @tanstack/react-query via lib/theorem/project-files (the cached root, children and content reads)
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { SidebarGroup, SidebarMenuButton } from '@/components/coss/sidebar'
 import { Icon } from '@/components/icons'
-import { FolderTrees } from '@/components/workspace/folders'
 import { FilesystemTree } from '@/components/ui/filesystem-tree'
 import type { FilesystemNode } from '@/components/ui/filesystem-tree'
 import { describeError } from '@/lib/theorem/client'
@@ -115,22 +114,24 @@ function ExplorerBody({ projectId }: { projectId: string }) {
 }
 
 /**
- * The project's files under the chats, at the sidebar's own scale: folders
- * open in place and choosing a file opens it as a panel in the dock.
+ * The project's own files, at the sidebar's own scale, where the rail's Files
+ * control reveals files: folders open in place and choosing a file opens it
+ * as a panel in the dock. A server with no folder bound has none to show.
  */
 export function Explorer() {
   const { project } = useActiveProject()
   const open = useShell((s) => s.explorerOpen)
   const toggle = useShell((s) => s.toggleExplorer)
   const root = useFileRoot(project?.projectId)
+  if (!project || (root.error && isUnconfigured(root.error))) return null
   const name = root.data?.root.name
 
   return (
     <SidebarGroup
       role="region"
-      aria-label="Files"
+      aria-label="Project files"
       className={cn(
-        'min-h-0 overflow-hidden border-t border-separator',
+        'min-h-0 overflow-hidden',
         open ? 'max-h-[50%] shrink' : 'shrink-0',
       )}
     >
@@ -141,14 +142,13 @@ export function Explorer() {
       >
         <Icon.Folder />
         <span className="min-w-0 flex-1 truncate">
-          Files
+          {project.title}
           {name && <span className="text-ink-muted"> · {name}</span>}
         </span>
       </SidebarMenuButton>
       {open && (
         <div className="min-h-0 flex-1 overflow-auto">
-          {project && <ExplorerBody projectId={project.projectId} />}
-          <FolderTrees />
+          <ExplorerBody projectId={project.projectId} />
         </div>
       )}
     </SidebarGroup>

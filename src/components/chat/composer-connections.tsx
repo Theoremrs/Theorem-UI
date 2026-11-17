@@ -1,24 +1,18 @@
-// SOURCING: Base UI Popover (placement, collision, dismissal) as components/program/palette uses it, with ui/tooltip for the chip's hint like the Web and Plan chips beside it; coss ui Switch and Checkbox for the toggles, fuzzysort through connections/search for the filter, the assistant-ui thread item for the conversation's id; the roster is GET /api/connections/v1/tools (lib/theorem/connections) and the per-conversation choice is lib/theorem/tool-selection. A real switch per row, not cmdk: a switch inside a cmdk option is a control inside an option, which screen readers cannot reach.
-import { useAuiState } from '@assistant-ui/react'
+// SOURCING: Base UI Popover (placement, collision, dismissal) as components/program/palette uses it, opened from the composer's + menu and anchored to it; coss ui Switch and Checkbox for the toggles, fuzzysort through connections/search for the filter, the roster is GET /api/connections/v1/tools (lib/theorem/connections) and the per-conversation choice is lib/theorem/tool-selection. A real switch per row, not cmdk: a switch inside a cmdk option is a control inside an option, which screen readers cannot reach.
 import { Popover } from '@base-ui/react/popover'
 import { Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
+import type { RefObject } from 'react'
 import { EffectBadge } from '@/components/connections/parts'
 import { matching } from '@/components/connections/search'
 import { Checkbox } from '@/components/coss/checkbox'
 import { Input } from '@/components/coss/input'
 import { Switch } from '@/components/coss/switch'
+import { useMenuGlass } from '@/components/glass/menu-glass'
 import { Icon } from '@/components/icons'
 import { Button } from '@/components/ui/button'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import { describeError } from '@/lib/theorem/client'
-import { useConnectionTools } from '@/lib/theorem/connections'
-import type { ToolGroup } from '@/lib/theorem/connections'
+import type { ToolGroup, useConnectionTools } from '@/lib/theorem/connections'
 import { isNotServed } from '@/lib/theorem/passthrough'
 import {
   changeSelection,
@@ -29,50 +23,36 @@ import {
   useToolSelections,
 } from '@/lib/theorem/tool-selection'
 import { cn } from '@/lib/utils'
-import { COMPOSER_TOOLTIP_DELAY } from './composer-tools'
+import { COMPOSER_CHIP } from './composer-tools'
 
-const CHIP =
-  'text-ink-muted hover:bg-hover hover:text-ink data-popup-open:bg-hover data-popup-open:text-ink flex h-8 items-center gap-1.5 rounded-md px-2 text-sm transition-colors duration-100 outline-none focus-visible:outline-2 focus-visible:outline-focus'
-/** The chip once the choice differs from the default, like Web and Plan when they are on. */
-const CHIP_CUSTOM =
-  'bg-redwood/15 text-redwood hover:bg-redwood/25 hover:text-redwood data-popup-open:bg-redwood/25 data-popup-open:text-redwood'
+type ConnectionTools = ReturnType<typeof useConnectionTools>
+
+/** Whether this Theorem lists connections at all; the + menu offers them only then. */
+export const connectionsServed = (tools: ConnectionTools) =>
+  !tools.isPending && !(tools.error && isNotServed(tools.error))
 
 /**
- * Which connections' tools this conversation may use. It starts on every
- * connection that is switched on in Settings and sends nothing; once the
- * person narrows it, each turn carries the choice. It stays out of the row
- * when this Theorem has no connections to list.
+ * Which connections' tools this conversation may use, opened from the
+ * composer's + menu and placed against it. It starts on every connection
+ * that is switched on in Settings and sends nothing; once the person narrows
+ * it, each turn carries the choice, and a chip beside the + button says so
+ * and opens it again.
  */
-export function ComposerConnections() {
-  // A new conversation has only its local id until its first send gives it the durable one.
-  const threadKey = useAuiState(
-    (state) => state.threadListItem.remoteId ?? state.threadListItem.id,
-  )
-  const tools = useConnectionTools()
-  if (tools.isPending || (tools.error && isNotServed(tools.error))) return null
-  return (
-    <Control
-      key={threadKey}
-      threadKey={threadKey}
-      roster={tools.data}
-      error={tools.error}
-      retry={() => void tools.refetch()}
-    />
-  )
-}
-
-function Control({
+export function ComposerConnections({
+  tools,
   threadKey,
-  roster,
-  error,
-  retry,
+  open,
+  onOpenChange,
+  anchor,
 }: {
+  /** The roster query, held by the + menu so a failed load is not fetched again on opening. */
+  tools: ConnectionTools
   threadKey: string
-  roster: ToolGroup[] | undefined
-  error: unknown
-  retry: () => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  anchor: RefObject<HTMLElement | null>
 }) {
-  const [open, setOpen] = useState(false)
+  const roster = tools.data
   const stored = useToolSelections((state) => state.byThread[threadKey])
   const save = useToolSelections((state) => state.set)
   const selection = useMemo(
@@ -87,55 +67,53 @@ function Control({
   }, [roster, selection, stored, save, threadKey])
 
   const custom = selection !== undefined
+  const { attach: glassRef, className: glassClass } = useMenuGlass('composer')
   const count = connectionsOn(roster ?? [], selection).size
-  const label = custom ? `Connections, ${count} on` : 'Connections'
 
   return (
-    <Popover.Root open={open} onOpenChange={setOpen}>
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger
-            delay={COMPOSER_TOOLTIP_DELAY}
-            render={
-              <Popover.Trigger
-                aria-label={label}
-                className={cn(CHIP, custom && CHIP_CUSTOM)}
-              />
-            }
-          >
-            <Icon.Plugin className="size-4" />
-            <span className="pe-0.5">Connections</span>
-            {custom && (
-              <span className="bg-redwood/20 -ms-0.5 me-0.5 rounded-full px-1.5 text-xs tabular-nums">
-                {count}
-              </span>
-            )}
-          </TooltipTrigger>
-          <TooltipContent side="bottom">
-            {custom
-              ? `${count} ${count === 1 ? 'connection is' : 'connections are'} on in this conversation`
-              : 'Choose the connections this conversation can use'}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      {custom && (
+        <button
+          type="button"
+          aria-label={`Connections, ${count} on`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          onClick={() => onOpenChange(true)}
+          className={COMPOSER_CHIP}
+        >
+          <Icon.Plugin className="size-3.5" />
+          <span className="tabular-nums">
+            {count} {count === 1 ? 'connection' : 'connections'}
+          </span>
+        </button>
+      )}
       <Popover.Portal>
         <Popover.Positioner
           className="z-50"
+          anchor={anchor}
           side="top"
           align="start"
           sideOffset={6}
           collisionPadding={8}
         >
-          <Popover.Popup className="w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-separator bg-raised text-ink shadow-lg outline-none">
+          <Popover.Popup
+            aria-label="MCP connections"
+            finalFocus={anchor}
+            ref={glassRef}
+            className={cn(
+              'w-80 max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-separator bg-raised text-ink shadow-lg outline-none',
+              glassClass,
+            )}
+          >
             <Roster
               roster={roster}
-              error={error}
-              retry={retry}
+              error={tools.error}
+              retry={() => void tools.refetch()}
               selection={selection}
               onChange={(change) =>
                 save(threadKey, changeSelection(roster ?? [], selection, change))
               }
-              onLeave={() => setOpen(false)}
+              onLeave={() => onOpenChange(false)}
             />
           </Popover.Popup>
         </Popover.Positioner>

@@ -238,7 +238,7 @@ try {
     .click()
   assert.equal(await page.getByRole('menuitemradio').count(), 0)
   await page.getByRole('menuitem', { name: 'Settings', exact: true }).click()
-  await page.waitForURL('**/settings/ai')
+  await page.waitForURL('**/settings/appearance')
   await page
     .getByRole('link', { name: 'Appearance', exact: true })
     .filter({ visible: true })

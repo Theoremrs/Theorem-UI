@@ -624,45 +624,6 @@ export const BUILT_IN: ReadonlyArray<Entry> = [
       ],
     },
   ),
-  own(
-    'speak',
-    'While sound plays: a mouth that opens as far as the sound is loud. The mouth is a feature this adds.',
-    {
-      keep: true,
-      steps: [
-        {
-          op: 'par',
-          steps: [
-            {
-              op: 'feature',
-              id: 'mouth',
-              side: 'centre',
-              set: { x: 0, y: 19, w: 6.5, h: 0.9, round: 2.4, share: 0.3 },
-            },
-            { op: 'to', set: { 'eyes.y': -5, 'eyes.h': 11.5 }, over: 260 },
-            {
-              op: 'follow',
-              channel: 'mouth.h',
-              signal: 'sound.level',
-              amp: 6,
-            },
-            {
-              op: 'follow',
-              channel: 'mouth.w',
-              signal: 'sound.mid',
-              amp: -1.6,
-            },
-            {
-              op: 'follow',
-              channel: 'face.dy',
-              signal: 'sound.beat',
-              amp: -0.8,
-            },
-          ],
-        },
-      ],
-    },
-  ),
   own('thump', 'A jolt through the whole face, as at a loud sound.', {
     steps: [
       { op: 'burst', strength: { arg: 'kick', or: 50 } },

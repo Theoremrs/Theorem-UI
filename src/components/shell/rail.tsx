@@ -1,4 +1,4 @@
-// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out)
+// SOURCING: Base UI Menu (account menu), @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/modifiers (reordering the destinations), @dnd-kit/accessibility (saying a keyboard move aloud), Kit's home slot (the stage stands the fox in it), the agent terminal toggle, ui/tooltip over Base UI Tooltip, ThemeToggle (next-themes light/dark), the shell's mode routes and tenant hook, the opened folders (whether the Vault is offered), the sign-in helpers (sign out), glass/liquid-glass (the junction's tab is a pane of the navigation panel's glass)
 import { Menu } from '@base-ui/react/menu'
 import { LiveRegion, useAnnouncement } from '@dnd-kit/accessibility'
 import { DndContext, PointerSensor, useSensor, useSensors } from '@dnd-kit/core'
@@ -22,9 +22,12 @@ import type {
   ReactNode,
 } from 'react'
 import { Icon } from '@/components/icons'
+import { useLiquidGlass } from '@/components/glass/liquid-glass/use-liquid-glass'
+import type { LiquidEdges } from '@/components/glass/liquid-glass/use-liquid-glass'
 import { Button } from '@/components/ui/button'
 import { ThemeToggle } from '@/components/settings/theme-toggle'
 import { KitPerch } from '@/components/kit/kit-stage'
+import { useSurfaceMaterial } from '@/lib/appearance'
 import { signOut, useSignInConfigured } from '@/lib/theorem/sign-in'
 import { useWorkspaces } from '@/lib/workspace/workspaces'
 import {
@@ -138,32 +141,58 @@ function TerminalToggle() {
  * otherwise the sheet's field at the tab's own height (appearance.css). It
  * slides when the mode changes.
  */
-function Junction({ y, h, t, flush, joins }: Junction) {
+function Junction({ y, lead, h, t, flush, joins }: Junction) {
+  const tab = useRef<HTMLSpanElement>(null)
+  const material = useSurfaceMaterial('navigation')
+  // Under glass the panel is a liquid pane (floating-card.tsx), so the tab
+  // that opens onto it is drawn by the same renderer in the same glass.
+  const liquid =
+    joins === 'navigation' && (material === 'liquid' || material === 'glass')
+  // It runs on into the panel through concave corners drawn in the same
+  // glass, so the panel alone shows the selection; level with the top it runs
+  // straight on into the panel's top edge, with no corner above.
+  useLiquidGlass(tab, liquid, TAB_EDGES, {
+    pane: '[data-appearance-part="navigation"]',
+    top: !flush,
+    bottom: true,
+  })
   return (
     <div
       aria-hidden="true"
       className="rail-junction"
-      data-flush={flush || undefined}
       data-joins={joins}
+      data-flush={flush || undefined}
       style={
         {
           '--rail-y': `${y}px`,
+          '--junction-lead': `${y - lead}px`,
           '--junction-item': `${h}px`,
           '--rail-t': t,
         } as CSSProperties
       }
     >
-      <span className="rail-junction-tab" />
+      <span ref={tab} className="rail-junction-tab" />
       <span className="rail-junction-corner" data-edge="top" />
       <span className="rail-junction-corner" data-edge="bottom" />
     </div>
   )
 }
 
+/** The tab runs on into the panel on its right, so that side does not curve. */
+const TAB_EDGES: LiquidEdges = {
+  top: true,
+  right: false,
+  bottom: true,
+  left: true,
+}
+
 type Junction = {
   y: number
+  /** Where the tab's top edge starts: y, or the sheet's top when it is flush. */
+  lead: number
   h: number
   t: number
+  /** The tab is the first, level with the sheet's top edge, and runs straight on into it. */
   flush: boolean
   /** The surface the tab opens onto: the mode's panel, or the sheet. */
   joins: 'navigation' | 'sheet'
@@ -300,9 +329,9 @@ function Destination({
  * keep their colours as they move.
  * It is the base the sheet sits on, and stacks above the sheet's shadow and
  * glow so the junction's tab stays level with the panel it joins. The first
- * destination is flush with the sheet's top, so its tab continues the sheet's
- * top edge. On the desktop the active destination also shows and hides its
- * mode's panel.
+ * destination is level with the sheet's top edge, so no rail shows above it;
+ * while it is the active one its tab runs straight on into that edge. On the
+ * desktop the active destination also shows and hides its mode's panel.
  */
 export function Rail({ collapsible = false }: { collapsible?: boolean }) {
   const mode = useShellMode()
@@ -336,13 +365,23 @@ export function Rail({ collapsible = false }: { collapsible?: boolean }) {
     const box = rail.getBoundingClientRect()
     const { top, height } = active.getBoundingClientRect()
     const y = top - box.top
+    const flush = modes[0]?.mode === mode
+    // Level with the top, the tab starts where the sheet does, which can sit
+    // a little above the first destination, so the sheet's corner never shows
+    // above the tab.
+    const sheet = rail.closest('.appearance-shell')?.querySelector('.sheet')
+    const lead =
+      flush && sheet ? sheet.getBoundingClientRect().top - box.top : y
     // How far down the rail the tab sits, for the glow colour it takes.
     setJunction({
       y,
+      lead: Math.min(lead, y),
       h: height,
       t: box.height ? y / box.height : 0,
-      flush: mode === order.split(',')[0],
+      flush,
     })
+    // `order` stands for `modes`, whose identity changes every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, order])
 
   /** Puts `moved` where `target` is, among every mode, hidden ones included. */

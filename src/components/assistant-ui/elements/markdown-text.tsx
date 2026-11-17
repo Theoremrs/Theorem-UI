@@ -14,10 +14,18 @@ import type { FC } from "react";
 import type { TextMessagePartProps } from "@assistant-ui/react";
 
 import { MermaidDiagram } from "@/components/assistant-ui/elements/mermaid-diagram.aui";
-import { SyntaxHighlighter } from "@/components/assistant-ui/elements/shiki-highlighter.aui";
-import { TooltipIconButton } from "@/components/assistant-ui/elements/tooltip-icon-button";
+import { SyntaxHighlighter } from "@/components/assistant-ui/elements/code-highlighter.aui";
+import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/icons";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { appearancePair } from "@/lib/appearance-policy";
 
@@ -42,9 +50,10 @@ const useShallowStable = <T extends Record<string, unknown> | undefined>(
   return ref.current;
 };
 
-// Fenced mermaid blocks render as diagrams; every other fence goes through Shiki.
+// Fenced mermaid blocks render as diagrams under the plain header; every
+// other fence is a glass code block, whose chrome is its header.
 const defaultComponentsByLanguage: MarkdownTextPrimitiveProps["componentsByLanguage"] = {
-  mermaid: { SyntaxHighlighter: MermaidDiagram },
+  mermaid: { SyntaxHighlighter: MermaidDiagram, CodeHeader: (props) => <PlainCodeHeader {...props} /> },
 };
 
 const MarkdownTextImpl: FC<MarkdownTextProps> = ({
@@ -74,8 +83,14 @@ const MarkdownTextImpl: FC<MarkdownTextProps> = ({
 
 export const MarkdownText = memo(MarkdownTextImpl);
 
-export const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
-  const { isCopied, copyToClipboard } = useCopyToClipboard();
+/** The glass code block draws its own chrome, so a fence's separate header is empty. */
+export const CodeHeader: FC<CodeHeaderProps> = () => null;
+
+/** The header over a block that is not glass code: a mermaid diagram's language and copy. */
+const PlainCodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
+  const { isCopied, copyToClipboard } = useCopyToClipboard({
+    copiedDuration: 1500,
+  });
   const onCopy = () => {
     if (!code || isCopied) return;
     copyToClipboard(code);
@@ -83,20 +98,29 @@ export const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
 
   return (
     <div className="aui-code-header-root border-separator bg-raised mt-3 flex items-center justify-between rounded-t-lg border border-b-0 py-1 ps-3.5 pe-1 text-xs">
-      <span data-appearance-recipe="metadata" {...appearancePair("secondary", "popover")} className="aui-code-header-language text-ink-muted lowercase">
+      <span data-appearance-recipe="metadata" {...appearancePair("secondary", "popover")} className="aui-code-header-language text-ink-muted font-mono lowercase">
         {language}
       </span>
-      <TooltipIconButton tooltip="Copy" onClick={onCopy}>
-        {!isCopied && (
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={onCopy}
+        aria-label={isCopied ? "Copied" : "Copy code"}
+        className="text-ink-muted"
+      >
+        {isCopied ? (
+          <Icon.Copied className="animate-in fade-in zoom-in-30 -spin-in-20 ease-lift duration-(--duration-lift)" />
+        ) : (
           <Icon.Copy className="animate-in fade-in zoom-in-75" />
         )}
-        {isCopied && (
-          <Icon.Copied className="animate-in fade-in zoom-in-30 -spin-in-20 ease-lift duration-(--duration-lift)" />
-        )}
-      </TooltipIconButton>
+        {isCopied ? "copied!" : "copy"}
+      </Button>
     </div>
   );
 };
+
+/** Inline code longer than this many characters reads as a diagnostic block. */
+const DIAGNOSTIC_LENGTH = 72;
 
 const defaultComponents = memoizeMarkdownComponents({
   SyntaxHighlighter,
@@ -215,41 +239,43 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
+  // A table stays inside the prose column on its own opaque surface and
+  // scrolls sideways in its own region (shadcn Table's container).
   table: ({ className, ...props }) => (
-    <div className="aui-md-table-wrapper my-3 overflow-x-auto">
-      <table
-        className={cn(
-          "aui-md-table w-full border-separate border-spacing-0",
-          className,
-        )}
-        {...props}
-      />
+    <div className="aui-md-table-wrapper">
+      <Table className={cn("aui-md-table", className)} {...props} />
     </div>
   ),
+  thead: ({ className, ...props }) => (
+    <TableHeader className={cn("aui-md-thead", className)} {...props} />
+  ),
+  tbody: ({ className, ...props }) => (
+    <TableBody className={cn("aui-md-tbody", className)} {...props} />
+  ),
   th: ({ className, ...props }) => (
-    <th
+    <TableHead
+      data-appearance-recipe="ui.section"
+      {...appearancePair("primary", "popover")}
       className={cn(
-        "aui-md-th bg-raised border-control border-b px-3 py-1.5 text-start font-medium first:rounded-ss-lg last:rounded-se-lg [[align=center]]:text-center [[align=right]]:text-right",
+        "aui-md-th text-ink h-auto px-3 py-2 align-bottom whitespace-normal [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}
     />
   ),
   td: ({ className, ...props }) => (
-    <td
+    <TableCell
+      {...appearancePair("primary", "popover")}
       className={cn(
-        "aui-md-td border-separator border-b px-3 py-1.5 text-start last:border-e [[align=center]]:text-center [[align=right]]:text-right",
+        "aui-md-td px-3 py-2 align-top whitespace-normal [[align=center]]:text-center [[align=right]]:text-right",
         className,
       )}
       {...props}
     />
   ),
   tr: ({ className, ...props }) => (
-    <tr
-      className={cn(
-        "aui-md-tr m-0 border-b p-0 first:border-t [&:last-child>td:first-child]:rounded-es-lg [&:last-child>td:last-child]:rounded-ee-lg",
-        className,
-      )}
+    <TableRow
+      className={cn("aui-md-tr border-separator hover:bg-transparent", className)}
       {...props}
     />
   ),
@@ -278,19 +304,42 @@ const defaultComponents = memoizeMarkdownComponents({
       {...props}
     />
   ),
-  code: function Code({ className, ...props }) {
+  code: function Code({ className, children, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
+    if (isCodeBlock)
+      return (
+        <code
+          data-appearance-recipe="code"
+          {...appearancePair("primary", "popover")}
+          className={className}
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    // A long string in backticks (an error, a path, a command line) is a
+    // diagnostic: it gets a contained block of its own instead of running
+    // through the sentence.
+    if (typeof children === "string" && children.length > DIAGNOSTIC_LENGTH)
+      return (
+        <code
+          data-appearance-recipe="code"
+          data-diagnostic=""
+          {...appearancePair("primary", "popover")}
+          className={cn("aui-md-diagnostic", className)}
+          {...props}
+        >
+          {children}
+        </code>
+      );
     return (
       <code
-        data-appearance-recipe="code"
-        {...appearancePair("code", "popover")}
-        className={cn(
-          !isCodeBlock &&
-            "aui-md-inline-code text-ink bg-popover border-separator rounded-sm border px-1 py-px font-mono text-[0.85em]",
-          className,
-        )}
+        {...appearancePair("code", "assistant-reading")}
+        className={cn("aui-md-inline-code", className)}
         {...props}
-      />
+      >
+        {children}
+      </code>
     );
   },
   CodeHeader,

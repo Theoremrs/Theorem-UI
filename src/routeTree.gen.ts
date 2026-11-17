@@ -33,9 +33,12 @@ import { Route as LoginCodeRouteImport } from './routes/login_.code'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
 import { Route as SettingsAiRouteImport } from './routes/settings/ai'
 import { Route as SettingsAppearanceRouteImport } from './routes/settings/appearance'
+import { Route as SettingsCompanionsRouteImport } from './routes/settings/companions'
 import { Route as SettingsConnectionsRouteImport } from './routes/settings/connections'
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
+import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
+import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
 import { Route as TheiaSplatRouteImport } from './routes/theia/$'
@@ -204,6 +207,11 @@ const SettingsAppearanceRoute = SettingsAppearanceRouteImport.update({
   path: '/appearance',
   getParentRoute: () => SettingsRoute,
 } as any)
+const SettingsCompanionsRoute = SettingsCompanionsRouteImport.update({
+  id: '/companions',
+  path: '/companions',
+  getParentRoute: () => SettingsRoute,
+} as any)
 const SettingsConnectionsRoute = SettingsConnectionsRouteImport.update({
   id: '/connections',
   path: '/connections',
@@ -217,6 +225,16 @@ const SettingsImportRoute = SettingsImportRouteImport.update({
 const SettingsKeysRoute = SettingsKeysRouteImport.update({
   id: '/keys',
   path: '/keys',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
+  id: '/plugins',
+  path: '/plugins',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
+  id: '/responses',
+  path: '/responses',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsWorkRoute = SettingsWorkRouteImport.update({
@@ -499,9 +517,12 @@ export interface FileRoutesByFullPath {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -572,9 +593,12 @@ export interface FileRoutesByTo {
   '/login/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -649,9 +673,12 @@ export interface FileRoutesById {
   '/login_/code': typeof LoginCodeRoute
   '/settings/ai': typeof SettingsAiRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
+  '/settings/companions': typeof SettingsCompanionsRoute
   '/settings/connections': typeof SettingsConnectionsRoute
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
+  '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
   '/theia/$': typeof TheiaSplatRoute
@@ -727,9 +754,12 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -800,9 +830,12 @@ export interface FileRouteTypes {
     | '/login/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -876,9 +909,12 @@ export interface FileRouteTypes {
     | '/login_/code'
     | '/settings/ai'
     | '/settings/appearance'
+    | '/settings/companions'
     | '/settings/connections'
     | '/settings/import'
     | '/settings/keys'
+    | '/settings/plugins'
+    | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
     | '/theia/$'
@@ -1156,6 +1192,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsAppearanceRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/settings/companions': {
+      id: '/settings/companions'
+      path: '/companions'
+      fullPath: '/settings/companions'
+      preLoaderRoute: typeof SettingsCompanionsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
     '/settings/connections': {
       id: '/settings/connections'
       path: '/connections'
@@ -1175,6 +1218,20 @@ declare module '@tanstack/react-router' {
       path: '/keys'
       fullPath: '/settings/keys'
       preLoaderRoute: typeof SettingsKeysRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/plugins': {
+      id: '/settings/plugins'
+      path: '/plugins'
+      fullPath: '/settings/plugins'
+      preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/responses': {
+      id: '/settings/responses'
+      path: '/responses'
+      fullPath: '/settings/responses'
+      preLoaderRoute: typeof SettingsResponsesRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/work': {
@@ -1564,9 +1621,12 @@ const ChatRouteWithChildren = ChatRoute._addFileChildren(ChatRouteChildren)
 interface SettingsRouteChildren {
   SettingsAiRoute: typeof SettingsAiRoute
   SettingsAppearanceRoute: typeof SettingsAppearanceRoute
+  SettingsCompanionsRoute: typeof SettingsCompanionsRoute
   SettingsConnectionsRoute: typeof SettingsConnectionsRoute
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
+  SettingsPluginsRoute: typeof SettingsPluginsRoute
+  SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
   SettingsObserveIndexRoute: typeof SettingsObserveIndexRoute
@@ -1576,9 +1636,12 @@ interface SettingsRouteChildren {
 const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsAiRoute: SettingsAiRoute,
   SettingsAppearanceRoute: SettingsAppearanceRoute,
+  SettingsCompanionsRoute: SettingsCompanionsRoute,
   SettingsConnectionsRoute: SettingsConnectionsRoute,
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
+  SettingsPluginsRoute: SettingsPluginsRoute,
+  SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,
   SettingsObserveIndexRoute: SettingsObserveIndexRoute,

@@ -33,6 +33,8 @@ import { advance, companion, createPresence, figure } from '@/lib/life/presence'
 import { useLifeControls, useLifeCounts } from '@/lib/life/store'
 import { publishLifeFrame } from './frames'
 import type { LifeGame } from './mount-life'
+import { TEXT_QUIET, occlusionMask } from '@/lib/life/occlusion'
+import type { ClientBox } from '@/lib/life/occlusion'
 
 const CELL_W = 10
 const CELL_H = 16
@@ -64,6 +66,7 @@ export function mountLife2d(
       sustain() {},
       resize() {},
       repaint() {},
+      occlude() {},
       destroy() {},
     }
   }
@@ -137,15 +140,39 @@ export function mountLife2d(
     publish()
   }
 
+  let boxes: readonly ClientBox[] = []
+  let quiet: Float32Array | undefined
+  let quietFor = ''
+  /** Each cell's share under the conversation's text, as the WebGL field reads it. */
+  const quietCells = () => {
+    const key = `${field.cols}x${field.rows}`
+    if (quiet && quietFor === key) return quiet
+    const box = canvas.getBoundingClientRect()
+    quiet = occlusionMask(
+      boxes.map((line) => ({
+        x0: (line.left - box.left) / CELL_W,
+        y0: (line.top - box.top) / CELL_H,
+        x1: (line.right - box.left) / CELL_W,
+        y1: (line.bottom - box.top) / CELL_H,
+      })),
+      field.cols,
+      field.rows,
+      1,
+    )
+    quietFor = key
+    return quiet
+  }
+
   const draw = () => {
     ctx.clearRect(0, 0, width, height)
     const level = 0.34 * glow(energy.level)
+    const hush = quietCells()
     for (let i = 0; i < field.age.length; i++) {
       const look = cellLook(ageAt(field, i), ghostAt(field, i))
       if (!look) continue
       ctx.fillStyle =
         look.tone === 'accent' ? accent : look.tone === 'ink' ? ink : muted
-      ctx.globalAlpha = Math.min(1, look.weight * level)
+      ctx.globalAlpha = Math.min(1, look.weight * level * (1 - TEXT_QUIET * (hush[i] ?? 0)))
       ctx.fillText(
         look.glyph,
         ((i % field.cols) + 0.5) * CELL_W,
@@ -309,6 +336,10 @@ export function mountLife2d(
     repaint() {
       repaint()
       draw()
+    },
+    occlude(next) {
+      boxes = next
+      quiet = undefined
     },
     destroy() {
       stopped = true

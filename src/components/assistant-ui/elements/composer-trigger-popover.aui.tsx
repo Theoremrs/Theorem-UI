@@ -1,8 +1,8 @@
-// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with four changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), and an icon only where one resolves plus an optional heading and per-item tag
+// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with five changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), an icon only where one resolves plus an optional heading and per-item tag, and a surfaceRef, composed with the placement's, for a surface drawn over the popover's box
 'use client'
 
 import { memo, useCallback, useEffect, useRef } from 'react'
-import type { ComponentPropsWithoutRef, FC, ReactNode, RefObject } from 'react'
+import type { ComponentPropsWithoutRef, FC, ReactNode, Ref, RefObject } from 'react'
 import {
   ComposerPrimitive,
   defaultDirectiveFormatter,
@@ -17,6 +17,7 @@ import {
   useFloating,
 } from '@floating-ui/react-dom'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
+import { useComposedRefs } from '@/lib/composition'
 import { cn } from '@/lib/utils'
 
 type IconComponent = FC<{ className?: string }>
@@ -60,6 +61,8 @@ type ComposerTriggerPopoverBaseProps = Omit<
   emptyItemsLabel?: string
   /** Label shown while an async adapter is resolving items. @default "Loading…" */
   loadingLabel?: string
+  /** The popover's own element, for a surface drawn over its box. */
+  surfaceRef?: Ref<HTMLDivElement>
 }
 
 type ComposerTriggerPopoverProps = ComposerTriggerPopoverBaseProps &
@@ -290,9 +293,11 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   className,
   directive,
   action,
+  surfaceRef,
   ...props
 }) => {
   const placement = usePlacement()
+  const ref = useComposedRefs(placement.ref, surfaceRef)
   const warnedRef = useRef(false)
   if (
     import.meta.env.DEV &&
@@ -308,7 +313,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   return (
     <ComposerPrimitive.TriggerPopover
       data-slot="composer-trigger-popover"
-      ref={placement.ref}
+      ref={ref}
       style={placement.style}
       className={cn(
         'aui-composer-trigger-popover bg-popover text-popover-foreground z-50 flex w-64 flex-col overflow-hidden rounded-lg border shadow-lg/5',

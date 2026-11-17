@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -17,8 +17,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import type { FC, ReactNode } from 'react'
 import { ApprovalCard } from '@/components/assistant-ui/elements/approval-card'
 import type { ApprovalState } from '@/components/assistant-ui/elements/approval-card'
-import { CodeHeader } from '@/components/assistant-ui/elements/markdown-text'
-import { SyntaxHighlighter } from '@/components/assistant-ui/elements/shiki-highlighter'
+import { GlassCodeBlock } from '@/components/assistant-ui/elements/glass-code-block'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -57,8 +56,16 @@ import {
 import { SceneCard } from '@/components/chat/scene-part'
 import { useSceneTheme } from '@/components/chat/scene-theme'
 import { Icon } from '@/components/icons'
-import { ToolCallsSection } from '@/components/ui/tool-calls-section'
-import type { ToolCallEntry } from '@/components/ui/tool-calls-section'
+import {
+  Trace,
+  TraceCollapsible,
+  TraceCollapsibleContent,
+  TraceCollapsibleTrigger,
+  TraceIcon,
+  TraceLine,
+  TraceTitle,
+} from '@/components/ui/trace'
+import { getToolCategoryIcon } from '@/components/ui/tool-calls-section-utils/tool-icons'
 import {
   describeError,
   describeRunFailure,
@@ -140,6 +147,28 @@ const ARTIFACT_TOOLS = new Set(['create_artifact', 'update_artifact'])
 /** A host call's state as its row says it: `HostCallState` in theorem-surface-contracts, read against the run. */
 export type CallState =
   'running' | 'done' | 'failed' | 'interrupted' | 'awaiting'
+
+/** One row of a reply's tool trace. */
+export interface ToolCallEntry {
+  tool_name: string
+  /** The icon category the row wears. */
+  tool_category: string
+  /** What the call did, in words that follow its state. */
+  message: string
+  show_category?: boolean
+  /** What the row opens to, when the call has something to show. */
+  output?: string
+  /** Trace's status: absent once the call is done. */
+  status?: 'running' | 'error'
+}
+
+const TRACE_STATUS: Record<CallState, ToolCallEntry['status']> = {
+  running: 'running',
+  awaiting: 'running',
+  failed: 'error',
+  interrupted: 'error',
+  done: undefined,
+}
 
 /**
  * `pending` and `awaiting_approval` are live only while the run is: a call
@@ -248,6 +277,7 @@ export function toolCallEntries(
         tool_category: callCategory(name),
         message: callWords(name, state),
         show_category: false,
+        ...(TRACE_STATUS[state] && { status: TRACE_STATUS[state] }),
       }))
     if (part.name !== 'theorem-client_operation') return []
     const check = appCheckSummary(part.data, running)
@@ -605,16 +635,16 @@ export const TheoremToolCall: ToolCallMessagePartComponent = (props) => {
 
 /* ---------------------------------------------------------------- activity */
 
-/** What a call returned, as the reply's own code block: its header, copy and palette. */
+/** What a call returned, as the reply's own code block: its glass, copy and palette. */
 const ToolOutput: FC<{ text: string }> = ({ text }) => (
-  <div className="min-w-0 [&_.aui-code-header-root]:mt-0">
-    <CodeHeader language="text" code={text} />
-    <SyntaxHighlighter
-      code={text}
-      language="text"
-      className="[&_pre]:max-h-60 [&_pre]:overflow-y-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap"
-    />
-  </div>
+  <GlassCodeBlock
+    code={text}
+    language="text"
+    title="output"
+    lineNumbers={false}
+    frameClassName="my-0"
+    className="aui-code-wrap [&_pre]:max-h-60 [&_pre]:overflow-y-auto [&_pre]:break-words [&_pre]:whitespace-pre-wrap"
+  />
 )
 
 const LIVE_STATUSES = new Set([
@@ -789,13 +819,7 @@ export const Activity: FC<{
         </CollapsibleTrigger>,
       )
   }
-  const tools = (
-    <ToolCallsSection
-      toolCalls={toolCalls}
-      className="px-2"
-      renderContent={(output) => <ToolOutput text={String(output)} />}
-    />
-  )
+  const tools = <ToolTrace calls={toolCalls} />
   if (!speaker && notes.length === 0) return tools
 
   return (
@@ -865,6 +889,74 @@ export const Activity: FC<{
       )}
       {tools}
     </Collapsible>
+  )
+}
+
+/** A call's own row: it opens to its output when it has one. */
+const ToolTraceRow: FC<{ call: ToolCallEntry }> = ({ call }) => {
+  const line = (
+    <TraceLine status={call.status}>
+      <TraceIcon>
+        {getToolCategoryIcon(call.tool_category, {
+          showBackground: false,
+          size: 14,
+          width: 16,
+          height: 16,
+        }) ?? <Icon.ToolDone />}
+      </TraceIcon>
+      <TraceTitle>{call.message}</TraceTitle>
+    </TraceLine>
+  )
+  if (!call.output) return <div>{line}</div>
+  return (
+    <TraceCollapsible>
+      <TraceCollapsibleTrigger>{line}</TraceCollapsibleTrigger>
+      <TraceCollapsibleContent>
+        <ToolOutput text={call.output} />
+      </TraceCollapsibleContent>
+    </TraceCollapsible>
+  )
+}
+
+/**
+ * The reply's tool calls folded into one Trace row above the answer ("Used 3
+ * tools"), opening to a row per call. The summary says in words when a call
+ * is still running or did not finish, since Trace marks those by colour and
+ * motion alone.
+ */
+const ToolTrace: FC<{ calls: ToolCallEntry[] }> = ({ calls }) => {
+  const [choice, setChoice] = useState<boolean>()
+  if (calls.length === 0) return null
+  const count = `${calls.length} tool${calls.length === 1 ? '' : 's'}`
+  const running = calls.some(({ status }) => status === 'running')
+  const failed = calls.filter(({ status }) => status === 'error').length
+  const summary = running
+    ? `Using ${count}…`
+    : failed
+      ? `Used ${count}, ${failed} did not finish`
+      : `Used ${count}`
+  return (
+    <Trace data-slot="tool-trace" className="my-1">
+      <TraceCollapsible open={choice ?? false} onOpenChange={setChoice}>
+        <TraceCollapsibleTrigger>
+          <TraceLine
+            status={running ? 'running' : failed ? 'error' : undefined}
+          >
+            <TraceIcon>
+              {running ? <Icon.ToolRunning /> : <Icon.ToolDone />}
+            </TraceIcon>
+            <TraceTitle>{summary}</TraceTitle>
+          </TraceLine>
+        </TraceCollapsibleTrigger>
+        <TraceCollapsibleContent>
+          <Trace>
+            {calls.map((call, index) => (
+              <ToolTraceRow key={call.tool_name + index} call={call} />
+            ))}
+          </Trace>
+        </TraceCollapsibleContent>
+      </TraceCollapsible>
+    </Trace>
   )
 }
 

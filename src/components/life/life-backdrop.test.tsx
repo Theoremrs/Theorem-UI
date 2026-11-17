@@ -13,7 +13,7 @@ const press = mock(() => {})
 const portalContextMenu = mock(() => {})
 const game: life.LifeGame = {
   press, drag() {}, release() {}, hover() {}, leave() {}, step() {}, clear() {},
-  randomize() {}, pulse() {}, sustain() {}, resize() {}, repaint() {}, destroy() {},
+  randomize() {}, pulse() {}, sustain() {}, resize() {}, repaint() {}, occlude() {}, destroy() {},
 }
 let restore = () => {}
 afterEach(async () => {

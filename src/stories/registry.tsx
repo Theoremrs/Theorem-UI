@@ -55,6 +55,8 @@ import { useOrganization } from '@/lib/theorem/organization'
 import type { NoteFlowNode } from '@/lib/program/flow'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
 import { useReview } from '@/lib/theorem/reviews'
+import { useSidebarPrefs } from '@/lib/theorem/sidebar-prefs'
+import { POPULATED_PINS } from './fixtures/populated'
 import {
   ACTIVITY_STATES,
   activityMessages,
@@ -135,6 +137,20 @@ function ReviewCardStory() {
     <div className="w-[575px] p-4">
       <ReviewCard review={data} />
     </div>
+  )
+}
+
+/**
+ * The whole shell as a person with work in it sees it: three pins on the
+ * shelf, projects and recent chats, and a long reply with a table, inline
+ * code and a code block above the composer. The design overhaul's fixture.
+ */
+function PopulatedShellStory() {
+  useState(() => useSidebarPrefs.setState({ pins: POPULATED_PINS }))
+  return (
+    <WithRuntime>
+      <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />
+    </WithRuntime>
   )
 }
 
@@ -819,6 +835,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'compare-pane-standalone': () => <ComparePaneStory standalone />,
   'review-card': ReviewCardStory,
   'shell-compare': ShellCompareStory,
+  'populated-shell': PopulatedShellStory,
   'project-home': ProjectHomeStory,
   'session-graph': SessionGraphStory,
   'shell-navigation': ShellNavigationStory,

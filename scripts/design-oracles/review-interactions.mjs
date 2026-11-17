@@ -176,20 +176,14 @@ try {
     [
       'ambience on',
       () =>
-        dialog
-          .locator('[aria-label="Life field"]')
-          .getByRole('button', { name: 'On', exact: true })
-          .click(),
+        dialog.getByRole('switch', { name: 'Life field', exact: true }).check(),
       true,
       true,
     ],
     [
       'ambience off',
       () =>
-        dialog
-          .locator('[aria-label="Life field"]')
-          .getByRole('button', { name: 'Off', exact: true })
-          .click(),
+        dialog.getByRole('switch', { name: 'Life field', exact: true }).uncheck(),
       true,
       true,
     ],

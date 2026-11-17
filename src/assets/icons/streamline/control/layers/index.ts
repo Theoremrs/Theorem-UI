@@ -20,10 +20,6 @@ import planLine from './plan-line.svg'
 import planAccent from './plan-accent.svg'
 import planTint from './plan-tint.svg'
 import planPaper from './plan-paper.svg'
-import webSearchLine from './webSearch-line.svg'
-import webSearchAccent from './webSearch-accent.svg'
-import webSearchTint from './webSearch-tint.svg'
-import webSearchPaper from './webSearch-paper.svg'
 import newChatLine from './newChat-line.svg'
 import newChatAccent from './newChat-accent.svg'
 import newChatPaper from './newChat-paper.svg'
@@ -105,6 +101,15 @@ import refreshTint from './refresh-tint.svg'
 import approvedLine from './approved-line.svg'
 import approvedAccent from './approved-accent.svg'
 import approvedTint from './approved-tint.svg'
+import pluginsLine from './plugins-line.svg'
+import pluginsAccent from './plugins-accent.svg'
+import pluginsTint from './plugins-tint.svg'
+import pluginsPaper from './plugins-paper.svg'
+import browserLine from './browser-line.svg'
+import browserAccent from './browser-accent.svg'
+import browserTint from './browser-tint.svg'
+import browserPaper from './browser-paper.svg'
+import skillLine from './skill-line.svg'
 
 /** Each control mark's masks: the SVG's shape is the layer. */
 export const CONTROL_LAYERS = {
@@ -114,7 +119,6 @@ export const CONTROL_LAYERS = {
   upload: { line: uploadLine, accent: uploadAccent, tint: uploadTint, paper: uploadPaper },
   attachFolder: { line: attachFolderLine, accent: attachFolderAccent, paper: attachFolderPaper },
   plan: { line: planLine, accent: planAccent, tint: planTint, paper: planPaper },
-  webSearch: { line: webSearchLine, accent: webSearchAccent, tint: webSearchTint, paper: webSearchPaper },
   newChat: { line: newChatLine, accent: newChatAccent, paper: newChatPaper },
   toolRunning: { line: toolRunningLine, accent: toolRunningAccent, tint: toolRunningTint, paper: toolRunningPaper },
   toolDone: { line: toolDoneLine, tint: toolDoneTint, paper: toolDonePaper },
@@ -142,6 +146,9 @@ export const CONTROL_LAYERS = {
   microphone: { line: microphoneLine, accent: microphoneAccent },
   refresh: { line: refreshLine, tint: refreshTint },
   approved: { line: approvedLine, accent: approvedAccent, tint: approvedTint },
+  plugins: { line: pluginsLine, accent: pluginsAccent, tint: pluginsTint, paper: pluginsPaper },
+  browser: { line: browserLine, accent: browserAccent, tint: browserTint, paper: browserPaper },
+  skill: { line: skillLine },
 } as const
 
 export type ControlIcon = keyof typeof CONTROL_LAYERS

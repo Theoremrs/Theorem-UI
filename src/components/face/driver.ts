@@ -303,12 +303,14 @@ export class FaceDriver {
     return rect
   }
 
-  /** The live message's gutter slot, when it is on screen. */
+  /** The live message's gutter slot, when it is on screen below the thread's header. */
   private livePerch() {
     const rect = this.rectOf('[data-face-perch="live"]')
     if (!rect) return undefined
-    if (rect.bottom < MARGIN || rect.top > window.innerHeight - 96)
-      return undefined
+    // The header lies over the conversation, so a slot scrolled up under it
+    // is hidden and Theo would sit on the breadcrumb.
+    const top = Math.max(MARGIN, this.rectOf('.appearance-thread-header')?.bottom ?? 0)
+    if (rect.top < top || rect.top > window.innerHeight - 96) return undefined
     return rect
   }
 

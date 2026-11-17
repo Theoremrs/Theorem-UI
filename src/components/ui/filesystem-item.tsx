@@ -17,7 +17,10 @@ const spring = { type: 'spring', bounce: 0, duration: 0.4 } as const
 const useSpring = () => (useReducedMotion() ? { duration: 0 } : spring)
 
 /**
- * A row's chevron and icon. A folder's chevron turns as it opens; an empty
+ * A row's chevron and icon. Without a chevron (`chevron={false}`, the
+ * sidebar's project tree, owner's review 2026-11-16) the folder is the
+ * toggle: it shows open while its entries do, and they sit inset under it.
+ * A folder's chevron turns as it opens; an empty
  * folder and a file keep its place, so names line up. `icon` stands in for
  * the folder's or the file's own.
  */
@@ -26,13 +29,17 @@ export function FilesystemMarks({
   open,
   empty = false,
   icon,
+  chevron = true,
 }: {
   folder: boolean
   open: boolean
   empty?: boolean
   icon?: ReactNode
+  chevron?: boolean
 }) {
   const transition = useSpring()
+  if (!chevron)
+    return icon ?? (!folder ? <Icon.FileEntry /> : open ? <Icon.FolderOpen /> : <Icon.Folder />)
   return (
     <>
       <motion.span

@@ -2,7 +2,7 @@
 import { act } from 'react'
 import { afterEach, expect, test } from 'bun:test'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Route } from '@/routes/settings/ai'
+import { Route } from '@/routes/settings/responses'
 import { useGenerationDefaults } from '@/lib/theorem/generation'
 import { buttonNamed, cleanup, click, render, waitFor } from '../../../test/blocks/render'
 import { ResponsesSection } from './responses-section'
@@ -28,7 +28,7 @@ async function enter(input: HTMLInputElement, text: string) {
   })
 }
 
-test('the AI settings page has a Responses section', async () => {
+test('the Responses settings page holds the response defaults', async () => {
   const Component = Route.options.component!
   const { container } = await render(
     <QueryClientProvider client={new QueryClient()}>

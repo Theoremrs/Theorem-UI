@@ -1,4 +1,4 @@
-// SOURCING: adapted from ybouane/liquidglass (MIT, src/shaders.ts): the rounded-rect SDF, the half-circle bevel height field and its finite-difference normal, the separable 9-tap Gaussian, and Blinn-Phong light from that normal. Changed here: the panel samples a scene in CSS pixels with a margin, so refraction near the edge reads real pixels; the body and the rim mix blur, smoke and clarity separately (the library blurs the centre fully and the rim 85%); the bevel can run past chosen sides (a pane attached to the window edge); one directional reflection, with a dimmer counterpart at the far corner, replaces four lights; shadow, chromatic aberration, micro-distortion and fresnel whitening are left out (elevation is CSS, on the element); the body can thin (u_show) over the element's own CSS backdrop blur, so the conversation shows through softened. WebGL 1 / GLSL ES 1.0.
+// SOURCING: adapted from ybouane/liquidglass (MIT, src/shaders.ts): the rounded-rect SDF, the half-circle bevel height field and its finite-difference normal, the separable 9-tap Gaussian, and Blinn-Phong light from that normal. Changed here: the panel samples a scene in CSS pixels with a margin, so refraction near the edge reads real pixels; the body and the rim mix blur, smoke and clarity separately (the library blurs the centre fully and the rim 85%); the bevel can run past chosen sides (a pane attached to the window edge); a pane can join a surface past its right side through concave fillets, with the exact distance to the arcs (the rail's tab into the navigation panel); one directional reflection, with a dimmer counterpart at the far corner, replaces four lights, swept across the pane's box or a box it shares with the pane it continues; shadow, chromatic aberration, micro-distortion and fresnel whitening are left out (elevation is CSS, on the element); the body can be clearer toward the bottom (u_bodyLow below u_split); the body can thin (u_show) over the element's own CSS backdrop blur, so the conversation shows through softened. WebGL 1 / GLSL ES 1.0.
 
 /** A quad over the whole viewport, with UVs from its bottom-left corner. */
 export const VS_QUAD = `
@@ -62,6 +62,11 @@ uniform vec2 u_sceneSize;
 uniform float u_margin;
 uniform float u_radius;
 uniform vec4 u_extend;
+// The box the light sweeps across: centre offset and half size, CSS pixels.
+uniform vec4 u_lightBox;
+// Concave fillets above and below the right side, where the pane joins a
+// surface that runs on past it (0 where there is none).
+uniform vec2 u_fillet;
 uniform float u_px;
 
 uniform float u_bevel;
@@ -69,6 +74,8 @@ uniform float u_refract;
 uniform float u_clarity;
 uniform vec3 u_tone;
 uniform float u_body;
+uniform float u_bodyLow;
+uniform float u_split;
 uniform float u_rimBody;
 uniform float u_lift;
 uniform float u_saturate;
@@ -92,26 +99,76 @@ float bevelHeight(float d, float z) {
   return sqrt(d * (2.0 * z - d));
 }
 
+// Distance from a fillet's arc (centre o, radius f, a quarter turning from
+// the pane's edge, below o, round to the joined surface's side, right of o),
+// or from its end on that side, for a point past where it begins.
+float arcDistance(vec2 p, vec2 o, float f, float side) {
+  bool facing = side < 0.0 ? p.y >= o.y : p.y <= o.y;
+  return facing ? abs(length(p - o) - f) : length(p - vec2(o.x + f, o.y));
+}
+
+// The pane's outline: x is how far inside it a point is (negative outside),
+// y is 1 where its nearest edge is a fillet. Without fillets it is the
+// rounded rect, carried past the sides left out. With them (the rail's tab
+// joining the navigation panel) the fillets lie inside the pane's box, so
+// the rect is inset by them; its top and bottom edges stop where they begin,
+// and the joined surface's side, past the pane's right edge, is no edge.
+vec2 outline(vec2 local, vec2 half_) {
+  vec2 inner = half_ - vec2(0.0, 0.5 * (u_fillet.x + u_fillet.y));
+  vec2 lo = -inner - u_extend.xy;
+  vec2 hi = inner + u_extend.zw;
+  vec2 c = (lo + hi) * 0.5 + vec2(0.0, 0.5 * (u_fillet.x - u_fillet.y));
+  vec2 b = (hi - lo) * 0.5;
+  float r = min(u_radius, min(inner.x, inner.y));
+  float own = -rrSDF(local - c, b, r);
+  if (u_fillet.x <= 0.0 && u_fillet.y <= 0.0) return vec2(own, 0.0);
+
+  float top = -half_.y + u_fillet.x;
+  float bottom = half_.y - u_fillet.y;
+  float d = abs(own);
+  float arc = 0.0;
+  bool shape = own > 0.0 && local.x <= half_.x;
+  // Past where a fillet begins, its edge of the rect is gone.
+  float edgeTop = abs(local.y - top);
+  float edgeBottom = abs(local.y - bottom);
+  float start = half_.x - max(u_fillet.x, u_fillet.y);
+  if (local.x > start) {
+    if (u_fillet.x > 0.0 && local.x > half_.x - u_fillet.x) {
+      float f = u_fillet.x;
+      vec2 o = vec2(half_.x - f, top - f);
+      edgeTop = arcDistance(local, o, f, -1.0);
+      shape = shape || (local.y >= o.y && local.y < top && local.x <= half_.x && length(local - o) > f);
+    }
+    if (u_fillet.y > 0.0 && local.x > half_.x - u_fillet.y) {
+      float f = u_fillet.y;
+      vec2 o = vec2(half_.x - f, bottom + f);
+      edgeBottom = arcDistance(local, o, f, 1.0);
+      shape = shape || (local.y <= o.y && local.y > bottom && local.x <= half_.x && length(local - o) > f);
+    }
+    d = min(edgeTop, edgeBottom);
+    bool nearTop = edgeTop <= edgeBottom;
+    arc = (nearTop ? u_fillet.x : u_fillet.y) > 0.0 ? 1.0 : 0.0;
+  }
+  return vec2(shape ? d : -d, arc);
+}
+
 void main() {
   vec2 half_ = u_size * 0.5;
   vec2 local = vec2(v_uv.x - 0.5, 0.5 - v_uv.y) * u_size;
 
-  // The outline the bevel follows, carried past the sides left out.
-  vec2 lo = -half_ - u_extend.xy;
-  vec2 hi = half_ + u_extend.zw;
-  vec2 c = (lo + hi) * 0.5;
-  vec2 b = (hi - lo) * 0.5;
-  float r = min(u_radius, min(half_.x, half_.y));
-  vec2 p = local - c;
-
-  float inside = -rrSDF(p, b, r);
+  vec2 shape = outline(local, half_);
+  float inside = shape.x;
   float mask = clamp(inside / u_px + 0.5, 0.0, 1.0);
 
   float e = 1.0;
-  float dR = -rrSDF(p + vec2(e, 0.0), b, r);
-  float dL = -rrSDF(p - vec2(e, 0.0), b, r);
-  float dD = -rrSDF(p + vec2(0.0, e), b, r);
-  float dU = -rrSDF(p - vec2(0.0, e), b, r);
+  // A joined pane runs on into the surface past its right side, so a
+  // neighbour sampled past that side reads the pane's own last column
+  // instead of the outside, which would bend and dim that column.
+  float joinedRight = u_fillet.x > 0.0 || u_fillet.y > 0.0 ? half_.x : 1e9;
+  float dR = outline(vec2(min(local.x + e, joinedRight), local.y), half_).x;
+  float dL = outline(local - vec2(e, 0.0), half_).x;
+  float dD = outline(local + vec2(0.0, e), half_).x;
+  float dU = outline(local - vec2(0.0, e), half_).x;
   float z = max(u_bevel, 1.0);
   vec2 slope = vec2(
     bevelHeight(dR, z) - bevelHeight(dL, z),
@@ -136,7 +193,11 @@ void main() {
 
   float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));
   col = mix(vec3(lum), col, u_saturate);
-  col = mix(col, u_tone, mix(u_body, u_rimBody, rim));
+  // The body can be clearer low on the pane: it eases from u_body to
+  // u_bodyLow across a band around u_split (0 top, 1 bottom).
+  float down = clamp((half_.y - local.y) / u_size.y, 0.0, 1.0);
+  float body = mix(u_body, u_bodyLow, smoothstep(u_split - 0.1, u_split + 0.1, down));
+  col = mix(col, u_tone, mix(body, u_rimBody, rim));
   col += u_lift;
 
   vec3 L = normalize(vec3(-0.42, -0.78, 0.62));
@@ -144,7 +205,7 @@ void main() {
   // Where on the pane the light falls: 1 at the corner facing it, -1 at
   // the far corner. A straight edge has one normal along its length, so
   // without this the reflection would run the whole edge evenly.
-  vec2 q = clamp(local / half_, -1.0, 1.0);
+  vec2 q = clamp((local - u_lightBox.xy) / u_lightBox.zw, -1.0, 1.0);
   float sweep = dot(q, toward) / (abs(toward.x) + abs(toward.y));
   float near = clamp(sweep, 0.0, 1.0);
   float far = clamp(-sweep, 0.0, 1.0);
@@ -167,6 +228,20 @@ void main() {
   // Across the body the pane thins by u_show, so what the browser's own
   // backdrop blur sees, the conversation with the field, comes through
   // softened; toward the edge it closes, and the rim is all the pane's.
+  // A fillet's bevel and lines fade as it turns up into the surface it
+  // joins, whose side is no edge, so the two meet as one surface.
+  float join = shape.y * smoothstep(
+    half_.x - max(u_fillet.x, u_fillet.y), half_.x, local.x
+  );
+  if (join > 0.0) {
+    vec2 plain = (local + half_ + u_margin) / u_sceneSize;
+    plain.y = 1.0 - plain.y;
+    vec3 flat_ = texture2D(u_blur, plain).rgb;
+    flat_ = mix(vec3(dot(flat_, vec3(0.2126, 0.7152, 0.0722))), flat_, u_saturate);
+    flat_ = mix(flat_, u_tone, body) + u_lift;
+    col = mix(col, flat_, join);
+  }
+
   float alpha = mask * (1.0 - u_show * (1.0 - rim) * (1.0 - contour));
   gl_FragColor = vec4(clamp(col, 0.0, 1.0), alpha);
 }`

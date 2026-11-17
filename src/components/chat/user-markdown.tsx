@@ -25,8 +25,10 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
     if (decodeString(raw) !== node.value) return
     const parts: Text[] = []
     let cursor = 0
+    // A / tool pick writes `:tool[name]`; a skill from the + menu writes
+    // `:skill[title]`, with `{name=id}` when the pack id differs from its title.
     for (const match of raw.matchAll(
-      /:tool\[([\p{L}\p{N}_.:/-]{1,1024})\]/gu,
+      /:tool\[[\p{L}\p{N}_.:/-]{1,1024}\]|:skill\[[^\]\n]{1,256}\](?:\{name=[^}\n]{1,1024}\})?/gu,
     )) {
       const before = raw.slice(0, match.index)
       if ((before.match(/\\+$/)?.[0].length ?? 0) % 2) continue
@@ -37,8 +39,8 @@ const remarkUserTools: Plugin<[], Root> = () => (tree, file) => {
         parts.push({ type: 'text', value: node.value.slice(cursor, offset) })
       parts.push({
         type: 'text',
-        value: match[1]!,
-        data: { hName: 'span', hProperties: { 'data-user-tool': match[1]! } },
+        value: match[0],
+        data: { hName: 'span', hProperties: { 'data-user-directive': match[0] } },
       })
       cursor = offset + match[0].length
     }
@@ -56,9 +58,9 @@ const components: Components = {
   code: ({ node: _node, ...props }) => <code data-appearance-recipe="code" {...appearancePair('code', 'popover')} {...props} />,
 
   span: ({ node, children, ...props }) => {
-    const tool = node?.properties['data-user-tool']
-    return typeof tool === 'string' ? (
-      <ToolText text={`:tool[${tool}]`} />
+    const directive = node?.properties['data-user-directive']
+    return typeof directive === 'string' ? (
+      <ToolText text={directive} />
     ) : (
       <span {...props}>{children}</span>
     )

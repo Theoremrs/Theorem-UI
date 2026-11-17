@@ -18,6 +18,7 @@ import { organizationFixture } from './fixtures/organization'
 import { reviewFixture, reviewShots } from './fixtures/review'
 import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
+import { POPULATED_ROSTER, POPULATED_SKILLS, populatedMessages } from './fixtures/populated'
 import {
   POINTING_DELEGATION,
   POINTING_PATCH,
@@ -31,7 +32,11 @@ const writtenMarkdown = async (request: Request) =>
   ((await request.json()) as { body: { markdownProjection: string } }).body
     .markdownProjection
 
-export type StoryRouteOptions = { reviewless?: boolean }
+export type StoryRouteOptions = {
+  reviewless?: boolean
+  /** The open thread carries a long reply, and the composer's Connectors section has connections to list. */
+  populated?: boolean
+}
 
 export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeRoutes {
   const organization = organizationFixture(now)
@@ -104,6 +109,10 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   }
   return {
     ...sessionGraphRoutes(now),
+    ...(options.populated && {
+      'GET /api/connections/v1/tools': () => ({ groups: POPULATED_ROSTER }),
+      [`GET ${BASE}/skills`]: () => POPULATED_SKILLS,
+    }),
     [`GET ${BASE}/response-styles`]: (_params, request) => ({
       styles: [
         { id: 'normal', name: 'Normal', description: 'Direct, conversational replies.' },
@@ -150,7 +159,12 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       selectedBranch:
         branchesOf(threadId).find(({ branchId }) => branchId === selected.get(threadId)) ??
         branch(threadId),
-      messages: threadId === 'thread-app-gallery' ? threadMessages(now) : [],
+      messages:
+        threadId !== 'thread-app-gallery'
+          ? []
+          : options.populated
+            ? populatedMessages(now)
+            : threadMessages(now),
     }),
     [`PATCH ${BASE}/threads/:threadId`]: async ({ threadId = '' }, request) => {
       const { selectedBranchId } = (await request.json()) as { selectedBranchId?: string }

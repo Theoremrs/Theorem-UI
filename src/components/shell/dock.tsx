@@ -1,4 +1,4 @@
-// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the panels menu: arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
+// SOURCING: dockview-react (docking layout: tabs, splits, floating and edge groups, maximize, serialization, always-rendered panels), the shell's ModeView (assistant-ui Thread in chat mode), FilePanel, NotePanel (Milkdown Crepe), WorkspaceFilePanel, the inspector's panels (the graph via React.lazy, so cosmos.gl loads only when it opens), the arrangements, the IDE frame (browser-only Theia), Base UI Menu (the one layout menu: Follow the agent and the Gallery, arrangements, the inspector, the terminal drawers), zustand stores for artifact view, note view, workspace file view, the inspected file, saved layouts and the drawers
 import { useAuiState } from '@assistant-ui/react'
 import { Menu } from '@base-ui/react/menu'
 import { DockviewDefaultTab, DockviewReact } from 'dockview-react'
@@ -68,7 +68,6 @@ import { adaptDock } from './responsive-dock'
 import { useFollow } from '@/components/ide/follow'
 import { IdeFrame } from '@/components/ide/ide-frame'
 import { flyGhost, popIn } from '@/lib/motion'
-import { cn } from '@/lib/utils'
 
 import { DelegationPanel } from '@/components/chat/delegation-panel'
 import { ComparePane } from '@/components/review/compare-pane'
@@ -338,34 +337,29 @@ const tabComponents = {
 
 /** Follow the Agent across the dock: files in the IDE, artifacts in their panels. */
 /** Opens and closes the artifact cabinet for the project that is open. */
-function OutputsToggle() {
-  const open = useShell((s) => s.sideDrawer === 'outputs')
+/** A checkbox row in the panels menu. */
+function MenuCheck({
+  checked,
+  onCheckedChange,
+  children,
+}: {
+  checked: boolean
+  onCheckedChange: (checked: boolean) => void
+  children: React.ReactNode
+}) {
   return (
-    <TooltipIconButton
-      tooltip={open ? 'Close gallery' : 'Gallery'}
-      aria-pressed={open}
-      onClick={() =>
-        useShell.getState().setSideDrawer(open ? undefined : 'outputs')
-      }
-      className="size-7 p-1.5"
+    <Menu.CheckboxItem
+      className={menuItem}
+      checked={checked}
+      onCheckedChange={onCheckedChange}
     >
-      <Icon.Apps className="size-4" />
-    </TooltipIconButton>
-  )
-}
-
-function FollowToggle() {
-  const following = useFollow((s) => s.following)
-  const { pause, resume } = useFollow.getState()
-  return (
-    <TooltipIconButton
-      tooltip={following ? 'Following the agent' : 'Follow the agent'}
-      aria-pressed={following}
-      onClick={following ? pause : resume}
-      className={cn('size-7 p-1.5', !following && 'text-ink-faint')}
-    >
-      <Icon.Follow className="size-4" />
-    </TooltipIconButton>
+      <span className="flex size-4 items-center justify-center">
+        <Menu.CheckboxItemIndicator>
+          <Icon.Check className="size-3.5" />
+        </Menu.CheckboxItemIndicator>
+      </span>
+      {children}
+    </Menu.CheckboxItem>
   )
 }
 
@@ -392,8 +386,9 @@ function useShownInspector(api: DockviewApi) {
 }
 
 /**
- * The conversation's panels menu: the arrangements, the inspector beside the
- * files, and the terminal drawers. New chat lives in the sidebar.
+ * The conversation's one layout menu: Follow the agent and the Gallery, the
+ * arrangements, the inspector beside the files, and the terminal drawers.
+ * New chat lives in the sidebar.
  */
 function GroupActions({
   group,
@@ -414,15 +409,15 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
     if (panel) api.removePanel(panel)
     else addInspector(api, tool)
   }
+  const following = useFollow((s) => s.following)
+  const gallery = useShell((s) => s.sideDrawer === 'outputs')
   return (
     <div className="flex h-full items-center pe-1">
-      <FollowToggle />
-      <OutputsToggle />
       <Menu.Root>
         <Menu.Trigger
           render={
             <TooltipIconButton
-              tooltip="Open a panel"
+              tooltip="Layout and panels"
               className="size-7 p-1.5"
             />
           }
@@ -432,6 +427,30 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
         <Menu.Portal>
           <Menu.Positioner align="end" sideOffset={6} className="z-50">
             <Menu.Popup className={`min-w-52 ${menuPopup}`}>
+              <Menu.Group>
+                <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
+                  Workspace
+                </Menu.GroupLabel>
+                <MenuCheck
+                  checked={following}
+                  onCheckedChange={(on) =>
+                    on
+                      ? useFollow.getState().resume()
+                      : useFollow.getState().pause()
+                  }
+                >
+                  Follow the agent
+                </MenuCheck>
+                <MenuCheck
+                  checked={gallery}
+                  onCheckedChange={(on) =>
+                    useShell.getState().setSideDrawer(on ? 'outputs' : undefined)
+                  }
+                >
+                  Gallery
+                </MenuCheck>
+              </Menu.Group>
+              <Menu.Separator className="my-1 h-px bg-separator" />
               <Menu.Group>
                 <Menu.GroupLabel className="px-2 pt-1 pb-1.5 text-xs text-ink-faint">
                   Arrange
@@ -455,19 +474,13 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
                 </Menu.GroupLabel>
                 {(Object.keys(INSPECTOR_TOOLS) as Array<InspectorTool>).map(
                   (tool) => (
-                    <Menu.CheckboxItem
+                    <MenuCheck
                       key={tool}
-                      className={menuItem}
                       checked={shown.has(tool)}
                       onCheckedChange={() => toggle(tool)}
                     >
-                      <span className="flex size-4 items-center justify-center">
-                        <Menu.CheckboxItemIndicator>
-                          <Icon.Check className="size-3.5" />
-                        </Menu.CheckboxItemIndicator>
-                      </span>
                       {INSPECTOR_TOOLS[tool]}
-                    </Menu.CheckboxItem>
+                    </MenuCheck>
                   ),
                 )}
               </Menu.Group>

@@ -15,19 +15,16 @@ import {
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
-import { ComposerConnections } from '@/components/chat/composer-connections'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import {
   ComposerReferences,
   useComposerReferences,
 } from '@/components/chat/composer-references'
+import { ComposerPlus } from '@/components/chat/composer-plus'
 import {
   COMPOSER_TOOLTIP_DELAY,
-  ComposerPlanToggle,
   ComposerToolTrigger,
-  ComposerWebToggle,
 } from '@/components/chat/composer-tools'
-import { EffortPicker } from '@/components/chat/effort-picker'
 import { ModelPicker } from '@/components/chat/model-picker'
 import {
   RunInputStatus,
@@ -180,7 +177,7 @@ export const Composer: FC<{
           >
             <ComposerEditor
               label="Message input"
-              placeholder="Message Theorem, / for tools"
+              placeholder="Write a message…"
               className="aui-composer-input w-full"
               autoFocus={autoFocus}
               onFocus={() => attendKit(true)}
@@ -238,16 +235,12 @@ export const ComposerContext: FC<{ review: ComposerReview | undefined }> = ({
 export const ComposerTools: FC = () => (
   <>
     <ComposerAddAttachment />
-    <ComposerWebToggle />
-    <ComposerPlanToggle />
-    <ComposerConnections />
+    <ComposerPlus />
   </>
 )
 
 export const ComposerSettings: FC = () => (
   <>
-    <ModelPicker />
-    <EffortPicker />
     <AuiIf condition={(s) => s.thread.capabilities.dictation}>
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate
@@ -286,6 +279,7 @@ export const ComposerSettings: FC = () => (
         </ComposerPrimitive.StopDictation>
       </AuiIf>
     </AuiIf>
+    <ModelPicker />
   </>
 )
 
