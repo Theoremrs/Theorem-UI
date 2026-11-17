@@ -11,29 +11,28 @@ const tools = (): NoteTools => ({
   surface: () => null,
 })
 
-const editorOf = (documentId: string) =>
-  useNoteTools.getState().tools[documentId]
+const editorOf = (key: string) => useNoteTools.getState().tools[key]
 
-test('a toolbox finds the editor of its own note', () => {
+test('a toolbox finds the editor of its own pane', () => {
   const a = tools()
   const b = tools()
-  const leaveA = registerNoteTools('doc-a', a)
-  const leaveB = registerNoteTools('doc-b', b)
-  expect(editorOf('doc-a')).toBe(a)
-  expect(editorOf('doc-b')).toBe(b)
+  const leaveA = registerNoteTools('note:doc-a', a)
+  const leaveB = registerNoteTools('note:doc-b', b)
+  expect(editorOf('note:doc-a')).toBe(a)
+  expect(editorOf('note:doc-b')).toBe(b)
   leaveA()
-  expect(editorOf('doc-a')).toBeUndefined()
-  expect(editorOf('doc-b')).toBe(b)
+  expect(editorOf('note:doc-a')).toBeUndefined()
+  expect(editorOf('note:doc-b')).toBe(b)
   leaveB()
 })
 
 test('an editor that closes late does not unseat the one that replaced it', () => {
   const first = tools()
   const second = tools()
-  const leaveFirst = registerNoteTools('doc-a', first)
-  const leaveSecond = registerNoteTools('doc-a', second)
+  const leaveFirst = registerNoteTools('note:doc-a', first)
+  const leaveSecond = registerNoteTools('note:doc-a', second)
   leaveFirst()
-  expect(editorOf('doc-a')).toBe(second)
+  expect(editorOf('note:doc-a')).toBe(second)
   leaveSecond()
-  expect(editorOf('doc-a')).toBeUndefined()
+  expect(editorOf('note:doc-a')).toBeUndefined()
 })

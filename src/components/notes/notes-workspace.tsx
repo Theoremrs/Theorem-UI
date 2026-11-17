@@ -71,7 +71,9 @@ function NotePane({ api, params }: IDockviewPanelProps<{ documentId: string }>) 
   useEffect(() => {
     if (title) api.setTitle(title)
   }, [api, title])
-  return <OpenNote documentId={params.documentId} chrome="page" />
+  return (
+    <OpenNote documentId={params.documentId} chrome="page" toolsKey={api.id} />
+  )
 }
 
 /**
@@ -119,12 +121,12 @@ function useShownNote(group: IDockviewHeaderActionsProps['group']) {
   return { active, documentId: active && documentOfPane(active.id) }
 }
 
-/** The pill after a pane's titles: the tools of the note it shows. */
+/** The pill after a pane's titles: the tools of the editor it shows. */
 function PaneTools({ group }: IDockviewHeaderActionsProps) {
-  const { documentId } = useShownNote(group)
-  return documentId ? (
+  const { active, documentId } = useShownNote(group)
+  return active && documentId ? (
     <div className="notes-pane-tools flex h-full items-center ps-1.5">
-      <NoteToolbox documentId={documentId} />
+      <NoteToolbox toolsKey={active.id} />
     </div>
   ) : null
 }

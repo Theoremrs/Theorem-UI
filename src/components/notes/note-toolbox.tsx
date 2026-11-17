@@ -81,10 +81,11 @@ function Tool({
  * The pill of tools beside a note's title in the notes workspace: the text
  * menu (what the block at the cursor is, and bold, italic and link on the
  * selection), an image, a table, and the block menu `/` opens. Each acts at
- * the cursor of that pane's note. A note that can't be edited has none.
+ * the cursor of that pane's note. `toolsKey` names the pane whose editor it
+ * acts in. A note that can't be edited has no tools.
  */
-export function NoteToolbox({ documentId }: { documentId: string }) {
-  const tools = useNoteTools((state) => state.tools[documentId])
+export function NoteToolbox({ toolsKey }: { toolsKey: string }) {
+  const tools = useNoteTools((state) => state.tools[toolsKey])
   const file = useRef<HTMLInputElement>(null)
   /** A tool was picked from the text menu, so the note takes the keyboard back. */
   const picked = useRef(false)

@@ -160,6 +160,7 @@ export function NotePanel({
   readOnlyNotice,
   chrome = 'header',
   className,
+  toolsKey,
 }: {
   documentId: string
   /**
@@ -174,6 +175,8 @@ export function NotePanel({
   /** Replaces the read-only notice, for a note the person can still make editable. */
   readOnlyNotice?: ReactNode
   className?: string
+  /** The workspace pane this note is in; that pane's toolbox acts in it. */
+  toolsKey?: string
 }) {
   const queryClient = useQueryClient()
   const note = useNote(documentId)
@@ -254,6 +257,7 @@ export function NotePanel({
             <NoteEditor
               note={note.data}
               onAsk={() => ask(caretPoint())}
+              toolsKey={toolsKey}
               className={
                 page
                   ? 'note-page pt-6'

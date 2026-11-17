@@ -1,4 +1,4 @@
-// SOURCING: @milkdown/kit commands (the same ones Crepe's slash menu and selection toolbar call), Crepe's slash menu through its menuAPICtx slice, zustand (which editor answers for which note)
+// SOURCING: @milkdown/kit commands (the same ones Crepe's slash menu and selection toolbar call), Crepe's slash menu through its menuAPICtx slice, zustand (which editor answers for which pane)
 import type { Crepe } from '@milkdown/crepe'
 import { imageBlockSchema } from '@milkdown/kit/component/image-block'
 import { toggleLinkCommand } from '@milkdown/kit/component/link-tooltip'
@@ -52,20 +52,24 @@ export type NoteTools = {
   surface: () => HTMLElement | null
 }
 
-/** The editors that are open, by the note each one edits. */
+/**
+ * The editors that answer to a toolbox, by the key each registered under:
+ * the workspace pane it is in. One note can be open in several places at once
+ * (a pane, the dock, a canvas card); only the pane's editor answers its pill.
+ */
 export const useNoteTools = create<{ tools: Record<string, NoteTools> }>(() => ({
   tools: {},
 }))
 
-/** Names `tools` as the editor of `documentId`; the return takes it back. */
-export function registerNoteTools(documentId: string, tools: NoteTools) {
+/** Names `tools` as the editor behind `key`; the return takes it back. */
+export function registerNoteTools(key: string, tools: NoteTools) {
   useNoteTools.setState((state) => ({
-    tools: { ...state.tools, [documentId]: tools },
+    tools: { ...state.tools, [key]: tools },
   }))
   return () =>
     useNoteTools.setState((state) => {
-      if (state.tools[documentId] !== tools) return state
-      const { [documentId]: _, ...rest } = state.tools
+      if (state.tools[key] !== tools) return state
+      const { [key]: _, ...rest } = state.tools
       return { tools: rest }
     })
 }
@@ -86,9 +90,9 @@ const afterBlock = (view: EditorView) => {
   return $from.depth ? $from.after(1) : to
 }
 
-/** Whether the cursor is alone on an empty line at the top level. */
-const onEmptyLine = (view: EditorView) => {
-  const { $from, empty } = view.state.selection
+/** Whether `selection` is alone on an empty line at the top level. */
+const onEmptyLineAt = (selection: Selection) => {
+  const { $from, empty } = selection
   return (
     empty &&
     $from.depth === 1 &&
@@ -97,22 +101,29 @@ const onEmptyLine = (view: EditorView) => {
   )
 }
 
+/** Whether the cursor is alone on an empty line at the top level. */
+const onEmptyLine = (view: EditorView) => onEmptyLineAt(view.state.selection)
+
 /**
  * Sets `node` as a block of its own: in place of an empty line, otherwise
- * after the block at the cursor. Returns where it starts.
+ * after the block holding `selection`. Returns where it starts.
  */
-const placeBlock = (view: EditorView, node: Node) => {
-  const { state } = view
-  if (onEmptyLine(view)) {
-    const { $from } = state.selection
+const placeBlockAt = (view: EditorView, node: Node, selection: Selection) => {
+  if (onEmptyLineAt(selection)) {
+    const { $from } = selection
     const from = $from.before(1)
-    view.dispatch(state.tr.replaceWith(from, $from.after(1), node))
+    view.dispatch(view.state.tr.replaceWith(from, $from.after(1), node))
     return from
   }
-  const from = afterBlock(view)
-  view.dispatch(state.tr.insert(from, node))
+  const { $from, to } = selection
+  const from = $from.depth ? $from.after(1) : to
+  view.dispatch(view.state.tr.insert(from, node))
   return from
 }
+
+/** placeBlockAt at the cursor as it stands now. */
+const placeBlock = (view: EditorView, node: Node) =>
+  placeBlockAt(view, node, view.state.selection)
 
 /**
  * The toolbox's handle on one Crepe editor. `root` is the editor's element:
@@ -209,12 +220,27 @@ export function createNoteTools({
       }),
     insertImage: (file) => {
       onImage({ uploading: file.name })
+      // Where the image goes is decided when the file is picked, not when
+      // the upload lands: the bookmark keeps the spot through edits made
+      // while it is on its way.
+      const bookmark = crepe.editor.action((ctx) => {
+        const view = ctx.get(editorViewCtx)
+        if (!view.editable) return undefined
+        if (!placed)
+          view.dispatch(
+            view.state.tr.setSelection(Selection.atEnd(view.state.doc)),
+          )
+        return view.state.selection.getBookmark()
+      })
       upload(file).then(
         (src) => {
           onImage({})
           act((ctx, view) => {
             const image = imageBlockSchema.type(ctx).create({ src })
-            const from = placeBlock(view, image)
+            const kept = bookmark?.resolve(view.state.doc)
+            const from = kept
+              ? placeBlockAt(view, image, kept)
+              : placeBlock(view, image)
             select(view, from + image.nodeSize)
           })
         },

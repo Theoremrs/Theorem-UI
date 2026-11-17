@@ -48,15 +48,19 @@ export function NoNoteOpen() {
 export function OpenNote({
   documentId,
   chrome = 'header',
+  toolsKey,
 }: {
   documentId: string
   chrome?: 'header' | 'page'
+  /** The workspace pane this note is in; that pane's toolbox acts in it. */
+  toolsKey?: string
 }) {
   const note = useNote(documentId)
   return (
     <NotePanel
       documentId={documentId}
       chrome={chrome}
+      toolsKey={toolsKey}
       actions={
         chrome === 'header' && note.data && <NoteActions note={note.data} />
       }

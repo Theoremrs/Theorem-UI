@@ -266,8 +266,9 @@ function CrepeEditor({
 /**
  * Markdown in Crepe, with everything a note can hold. Locked when not
  * `editable`. `onAsk` adds "Ask Theorem" to the slash menu, and `exclude` leaves
- * a note out of what can be embedded. `toolsFor` names the note this editor
- * answers for, so that note's toolbox (note-toolbox.tsx) can act in it.
+ * a note out of what can be embedded. `toolsFor` names the key this editor
+ * answers to — the workspace pane it is in — so that pane's toolbox
+ * (note-toolbox.tsx) can act in it. Without one, no toolbox reaches it.
  */
 export function MarkdownBlocks({
   markdown,
@@ -363,11 +364,14 @@ export function NoteEditor({
   autoFocus,
   onAsk,
   className,
+  toolsKey,
 }: {
   note: Note
   autoFocus?: boolean
   onAsk?: () => void
   className?: string
+  /** The workspace pane this editor is in; that pane's toolbox acts in it. */
+  toolsKey?: string
 }) {
   const queryClient = useQueryClient()
   return (
@@ -378,7 +382,7 @@ export function NoteEditor({
       onChange={(markdown) => editNote(queryClient, note.documentId, markdown)}
       onAsk={onAsk}
       exclude={note.documentId}
-      toolsFor={note.documentId}
+      toolsFor={toolsKey}
       className={className}
     />
   )
