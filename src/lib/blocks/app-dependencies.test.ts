@@ -211,6 +211,25 @@ test('CSS, embedded assets and JSON use their actual bundle types', async () => 
   expect(result.problems[0]).toMatchObject({ file: 'main.ts', line: 4, code: 'TS2322' })
 }, 120_000)
 
+test('a .wasm import is the module\'s bytes: bundled into the App and typed as Uint8Array', async () => {
+  const header = '\0asm\x01\0\0\0'
+  const remote = modules({ 'https://modules.example/engine.wasm': { source: header } })
+  const sources = { entry: 'main.ts', files: { 'main.ts': [
+    'import bytes from "https://modules.example/engine.wasm";',
+    'const length: number = bytes.byteLength;',
+    'const wrong: string = bytes;',
+    'export { length, wrong }',
+  ].join('\n') } }
+  const bundle = await bundleAppSources(sources, esbuild, new AppDependencies({}, remote.request))
+  // esbuild's binary loader embeds the bytes (base64) and decodes them at run time.
+  expect(bundle.code).toContain(btoa(header))
+  const declarations = await dependencyDeclarations(sources, new AppDependencies({}, remote.request))
+  expect(declarations.problems).toEqual([])
+  const result = await checkAppSources(sources, tsc, library, {}, declarations)
+  expect(result.problems.map((p) => [p.file, p.line, p.code])).toEqual([['main.ts', 3, 'TS2322']])
+  expect(result.problems[0]!.message).toContain('Uint8Array')
+}, 120_000)
+
 describe('a library Theorem ships', () => {
   const SPATIAL_APP = `import { mount, parts, type Part } from '@theorem/spatial'
 const lamp: Part = {
