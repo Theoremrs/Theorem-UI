@@ -1,0 +1,1242 @@
+{
+  "origin": "http://localhost:3102",
+  "flags": "none: every engine is launched with ENGINE.launch({}) or, for Firefox, { channel: \"moz-firefox\" }",
+  "versions": {
+    "chromium": "156.0.8078.4",
+    "firefox": "160.0",
+    "webkit": "27.2",
+    "chromium 200% zoom": "156.0.8078.4",
+    "chromium 390x844": "156.0.8078.4"
+  },
+  "journeys": [
+    "workbench-default",
+    "workbench-editor",
+    "workbench-markdown-visual",
+    "workbench-recovery-reload",
+    "workbench-changes",
+    "workbench-changes-binary-conflict",
+    "workbench-search",
+    "workbench-diagnostics",
+    "workbench-account-switch",
+    "workbench-terminal",
+    "workbench-terminal-adoption-settled",
+    "workbench-terminal-program-report"
+  ],
+  "runs": [
+    {
+      "story": "workbench-default",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "composer shows the sentence": true,
+        "picker filter stays empty": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-default",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "composer shows the sentence": true,
+        "picker filter stays empty": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-default",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "composer shows the sentence": true,
+        "picker filter stays empty": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-default",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "composer shows the sentence": true,
+        "picker filter stays empty": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-default",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "composer shows the sentence": true,
+        "picker filter stays empty": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-editor",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "undone": true,
+        "redone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-editor",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "undone": true,
+        "redone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-editor",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "undone": true,
+        "redone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-editor",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "undone": true,
+        "redone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-editor",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "undone": true,
+        "redone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-markdown-visual",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "visible in Source": true,
+        "undone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-markdown-visual",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "visible in Source": true,
+        "undone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-markdown-visual",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "visible in Source": true,
+        "undone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-markdown-visual",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "visible in Source": true,
+        "undone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-markdown-visual",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "visible in Source": true,
+        "undone": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-recovery-reload",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "the held edit is reported as unknown, never as saved": true,
+        "status says the typing is kept on this device and unsaved": true,
+        "a device draft record exists before the reload": true,
+        "the reload dropped the typing from the page": true,
+        "the device draft survived the reload": true,
+        "the offer says the edits are in the text and nothing is sent": true,
+        "the offer says where they were kept and against which revision": true,
+        "the offer names its chord and the status says recovered and kept": true,
+        "nothing was sent or dropped by merely offering": true,
+        "the first typed edit is in the text before the choice": true,
+        "everything typed is in the text before the choice": true,
+        "the chord says the edits are sent as new edits": true,
+        "once the host takes them the status no longer says kept": true,
+        "the placed text is still in the document": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-recovery-reload",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "the held edit is reported as unknown, never as saved": true,
+        "status says the typing is kept on this device and unsaved": true,
+        "a device draft record exists before the reload": true,
+        "the reload dropped the typing from the page": true,
+        "the device draft survived the reload": true,
+        "the offer says the edits are in the text and nothing is sent": true,
+        "the offer says where they were kept and against which revision": true,
+        "the offer names its chord and the status says recovered and kept": true,
+        "nothing was sent or dropped by merely offering": true,
+        "the first typed edit is in the text before the choice": true,
+        "everything typed is in the text before the choice": true,
+        "the chord says the edits are sent as new edits": true,
+        "once the host takes them the status no longer says kept": true,
+        "the placed text is still in the document": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-recovery-reload",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "the held edit is reported as unknown, never as saved": true,
+        "status says the typing is kept on this device and unsaved": true,
+        "a device draft record exists before the reload": true,
+        "the reload dropped the typing from the page": true,
+        "the device draft survived the reload": true,
+        "the offer says the edits are in the text and nothing is sent": true,
+        "the offer says where they were kept and against which revision": true,
+        "the offer names its chord and the status says recovered and kept": true,
+        "nothing was sent or dropped by merely offering": true,
+        "the first typed edit is in the text before the choice": true,
+        "everything typed is in the text before the choice": true,
+        "the chord says the edits are sent as new edits": true,
+        "once the host takes them the status no longer says kept": true,
+        "the placed text is still in the document": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-recovery-reload",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "the held edit is reported as unknown, never as saved": true,
+        "status says the typing is kept on this device and unsaved": true,
+        "a device draft record exists before the reload": true,
+        "the reload dropped the typing from the page": true,
+        "the device draft survived the reload": true,
+        "the offer says the edits are in the text and nothing is sent": true,
+        "the offer says where they were kept and against which revision": true,
+        "the offer names its chord and the status says recovered and kept": true,
+        "nothing was sent or dropped by merely offering": true,
+        "the first typed edit is in the text before the choice": true,
+        "everything typed is in the text before the choice": true,
+        "the chord says the edits are sent as new edits": true,
+        "once the host takes them the status no longer says kept": true,
+        "the placed text is still in the document": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-recovery-reload",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "the held edit is reported as unknown, never as saved": true,
+        "status says the typing is kept on this device and unsaved": true,
+        "a device draft record exists before the reload": true,
+        "the reload dropped the typing from the page": true,
+        "the device draft survived the reload": true,
+        "the offer says the edits are in the text and nothing is sent": true,
+        "the offer says where they were kept and against which revision": true,
+        "the offer names its chord and the status says recovered and kept": true,
+        "nothing was sent or dropped by merely offering": true,
+        "the first typed edit is in the text before the choice": true,
+        "everything typed is in the text before the choice": true,
+        "the chord says the edits are sent as new edits": true,
+        "once the host takes them the status no longer says kept": true,
+        "the placed text is still in the document": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-changes",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 1,
+      "checks": {
+        "staged count grew": false
+      },
+      "failed": [
+        "staged count grew"
+      ],
+      "error": null,
+      "renders": "docs/plans/evidence/renders/matrix/chromium/workbench-changes"
+    },
+    {
+      "story": "workbench-changes",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 1,
+      "checks": {
+        "staged count grew": false
+      },
+      "failed": [
+        "staged count grew"
+      ],
+      "error": null,
+      "renders": "docs/plans/evidence/renders/matrix/firefox/workbench-changes"
+    },
+    {
+      "story": "workbench-changes",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 1,
+      "checks": {
+        "staged count grew": false
+      },
+      "failed": [
+        "staged count grew"
+      ],
+      "error": null,
+      "renders": "docs/plans/evidence/renders/matrix/webkit/workbench-changes"
+    },
+    {
+      "story": "workbench-changes",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 1,
+      "checks": {
+        "staged count grew": false
+      },
+      "failed": [
+        "staged count grew"
+      ],
+      "error": null,
+      "renders": "docs/plans/evidence/renders/matrix/chromium-200-zoom/workbench-changes"
+    },
+    {
+      "story": "workbench-changes",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 1,
+      "checks": {
+        "staged count grew": false
+      },
+      "failed": [
+        "staged count grew"
+      ],
+      "error": null,
+      "renders": "docs/plans/evidence/renders/matrix/chromium-390x844/workbench-changes"
+    },
+    {
+      "story": "workbench-changes-binary-conflict",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the conflicted file is listed": true,
+        "Enter opens its sides": true,
+        "the core asked the host for the conflict": true,
+        "says the file is binary and its sides cannot be shown as text": true,
+        "the hint is o take ours   t take theirs, with no merge by hand": true,
+        "both sides are labelled not shown as text": true,
+        "no side text is drawn (no numbered lines, no empty-file or no-file line)": true,
+        "the absent base is not shown": true,
+        "e does nothing for a binary file": true,
+        "o asks first: Take ours, whole side": true,
+        "the loss warning is shown in full, not cut off at the pane edge": true,
+        "confirming sends scmResolve to the host": true,
+        "the file leaves Conflicted": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-changes-binary-conflict",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the conflicted file is listed": true,
+        "Enter opens its sides": true,
+        "the core asked the host for the conflict": true,
+        "says the file is binary and its sides cannot be shown as text": true,
+        "the hint is o take ours   t take theirs, with no merge by hand": true,
+        "both sides are labelled not shown as text": true,
+        "no side text is drawn (no numbered lines, no empty-file or no-file line)": true,
+        "the absent base is not shown": true,
+        "e does nothing for a binary file": true,
+        "o asks first: Take ours, whole side": true,
+        "the loss warning is shown in full, not cut off at the pane edge": true,
+        "confirming sends scmResolve to the host": true,
+        "the file leaves Conflicted": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-changes-binary-conflict",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the conflicted file is listed": true,
+        "Enter opens its sides": true,
+        "the core asked the host for the conflict": true,
+        "says the file is binary and its sides cannot be shown as text": true,
+        "the hint is o take ours   t take theirs, with no merge by hand": true,
+        "both sides are labelled not shown as text": true,
+        "no side text is drawn (no numbered lines, no empty-file or no-file line)": true,
+        "the absent base is not shown": true,
+        "e does nothing for a binary file": true,
+        "o asks first: Take ours, whole side": true,
+        "the loss warning is shown in full, not cut off at the pane edge": true,
+        "confirming sends scmResolve to the host": true,
+        "the file leaves Conflicted": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-changes-binary-conflict",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "the conflicted file is listed": true,
+        "Enter opens its sides": true,
+        "the core asked the host for the conflict": true,
+        "says the file is binary and its sides cannot be shown as text": true,
+        "the hint is o take ours   t take theirs, with no merge by hand": true,
+        "both sides are labelled not shown as text": true,
+        "no side text is drawn (no numbered lines, no empty-file or no-file line)": true,
+        "the absent base is not shown": true,
+        "e does nothing for a binary file": true,
+        "o asks first: Take ours, whole side": true,
+        "the loss warning is shown in full, not cut off at the pane edge": true,
+        "confirming sends scmResolve to the host": true,
+        "the file leaves Conflicted": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-changes-binary-conflict",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the conflicted file is listed": true,
+        "Enter opens its sides": true,
+        "the core asked the host for the conflict": true,
+        "says the file is binary and its sides cannot be shown as text": true,
+        "the hint is o take ours   t take theirs, with no merge by hand": true,
+        "both sides are labelled not shown as text": true,
+        "no side text is drawn (no numbered lines, no empty-file or no-file line)": true,
+        "the absent base is not shown": true,
+        "e does nothing for a binary file": true,
+        "o asks first: Take ours, whole side": true,
+        "the loss warning is shown in full, not cut off at the pane edge": true,
+        "confirming sends scmResolve to the host": true,
+        "the file leaves Conflicted": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-search",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "rows from two files": true,
+        "Enter opens the file in a tab": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-search",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "rows from two files": true,
+        "Enter opens the file in a tab": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-search",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "rows from two files": true,
+        "Enter opens the file in a tab": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-search",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "rows from two files": true,
+        "Enter opens the file in a tab": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-search",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "rows from two files": true,
+        "Enter opens the file in a tab": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-diagnostics",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the editor opens at the finding": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-diagnostics",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the editor opens at the finding": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-diagnostics",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the editor opens at the finding": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-diagnostics",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "the editor opens at the finding": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-diagnostics",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the editor opens at the finding": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-account-switch",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "old draft gone after the switch": true,
+        "the document is not left open across accounts": true,
+        "restored edit offered when the file is reopened": true,
+        "not applied on its own": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-account-switch",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "old draft gone after the switch": true,
+        "the document is not left open across accounts": true,
+        "restored edit offered when the file is reopened": true,
+        "not applied on its own": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-account-switch",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "old draft gone after the switch": true,
+        "the document is not left open across accounts": true,
+        "restored edit offered when the file is reopened": true,
+        "not applied on its own": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-account-switch",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "old draft gone after the switch": true,
+        "the document is not left open across accounts": true,
+        "restored edit offered when the file is reopened": true,
+        "not applied on its own": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-account-switch",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "typed": true,
+        "old draft gone after the switch": true,
+        "the document is not left open across accounts": true,
+        "restored edit offered when the file is reopened": true,
+        "not applied on its own": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the shell echoes the line": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the shell echoes the line": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the shell echoes the line": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "the shell echoes the line": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the shell echoes the line": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-adoption-settled",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the chooser opens": true,
+        "the heading says there are no existing sessions": true,
+        "no incomplete-list note": true,
+        "it does not say none are listed yet": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-adoption-settled",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the chooser opens": true,
+        "the heading says there are no existing sessions": true,
+        "no incomplete-list note": true,
+        "it does not say none are listed yet": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-adoption-settled",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the chooser opens": true,
+        "the heading says there are no existing sessions": true,
+        "no incomplete-list note": true,
+        "it does not say none are listed yet": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-adoption-settled",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "the chooser opens": true,
+        "the heading says there are no existing sessions": true,
+        "no incomplete-list note": true,
+        "it does not say none are listed yet": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-adoption-settled",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the chooser opens": true,
+        "the heading says there are no existing sessions": true,
+        "no incomplete-list note": true,
+        "it does not say none are listed yet": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-program-report",
+      "run": "chromium",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the pane is running before any report": true,
+        "unavailable draws nothing and has no node": true,
+        "never reported: the band says Program has not reported a status": true,
+        "working: the band says Program reports: working · build · cc · the-title · compiling · progress 40": true,
+        "unknown: the band says Program reports: its own word \"pondering\"": true,
+        "cleared: the band says Program withdrew its report": true,
+        "hostile: the band says Program reports: blocked": true,
+        "hostile: the escape and the right-to-left override are spelled out": true,
+        "hostile: no raw control or bidi character reaches the page": true,
+        "hostile: shell.end and approval.allow are only words in the band": true,
+        "an older sequence does not replace the newer report": true,
+        "done: the band says Program reports: done · finished": true,
+        "error: the band says Program reports: error · broke": true,
+        "the header and the tab are the same after every report": true,
+        "the footer is the same after every report": true,
+        "the pane state line is the same after every report": true,
+        "the pane still says running after a done report": true,
+        "the pane still says running after an error report": true,
+        "no report asked the host for anything": true,
+        "the tree has the program-report node as a status with no actions": true,
+        "after exit the wording is Program's last report:": true,
+        "after exit the tree still has the node, named as the last report, with no actions": true,
+        "after exit the pane says the program ended with the host reason": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-program-report",
+      "run": "firefox",
+      "engine": "firefox",
+      "engineVersion": "160.0",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the pane is running before any report": true,
+        "unavailable draws nothing and has no node": true,
+        "never reported: the band says Program has not reported a status": true,
+        "working: the band says Program reports: working · build · cc · the-title · compiling · progress 40": true,
+        "unknown: the band says Program reports: its own word \"pondering\"": true,
+        "cleared: the band says Program withdrew its report": true,
+        "hostile: the band says Program reports: blocked": true,
+        "hostile: the escape and the right-to-left override are spelled out": true,
+        "hostile: no raw control or bidi character reaches the page": true,
+        "hostile: shell.end and approval.allow are only words in the band": true,
+        "an older sequence does not replace the newer report": true,
+        "done: the band says Program reports: done · finished": true,
+        "error: the band says Program reports: error · broke": true,
+        "the header and the tab are the same after every report": true,
+        "the footer is the same after every report": true,
+        "the pane state line is the same after every report": true,
+        "the pane still says running after a done report": true,
+        "the pane still says running after an error report": true,
+        "no report asked the host for anything": true,
+        "the tree has the program-report node as a status with no actions": true,
+        "after exit the wording is Program's last report:": true,
+        "after exit the tree still has the node, named as the last report, with no actions": true,
+        "after exit the pane says the program ended with the host reason": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-program-report",
+      "run": "webkit",
+      "engine": "webkit",
+      "engineVersion": "27.2",
+      "viewport": "story default",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the pane is running before any report": true,
+        "unavailable draws nothing and has no node": true,
+        "never reported: the band says Program has not reported a status": true,
+        "working: the band says Program reports: working · build · cc · the-title · compiling · progress 40": true,
+        "unknown: the band says Program reports: its own word \"pondering\"": true,
+        "cleared: the band says Program withdrew its report": true,
+        "hostile: the band says Program reports: blocked": true,
+        "hostile: the escape and the right-to-left override are spelled out": true,
+        "hostile: no raw control or bidi character reaches the page": true,
+        "hostile: shell.end and approval.allow are only words in the band": true,
+        "an older sequence does not replace the newer report": true,
+        "done: the band says Program reports: done · finished": true,
+        "error: the band says Program reports: error · broke": true,
+        "the header and the tab are the same after every report": true,
+        "the footer is the same after every report": true,
+        "the pane state line is the same after every report": true,
+        "the pane still says running after a done report": true,
+        "the pane still says running after an error report": true,
+        "no report asked the host for anything": true,
+        "the tree has the program-report node as a status with no actions": true,
+        "after exit the wording is Program's last report:": true,
+        "after exit the tree still has the node, named as the last report, with no actions": true,
+        "after exit the pane says the program ended with the host reason": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-program-report",
+      "run": "chromium 200% zoom",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "720x450",
+      "scale": 2,
+      "exitCode": 0,
+      "checks": {
+        "the pane is running before any report": true,
+        "unavailable draws nothing and has no node": true,
+        "never reported: the band says Program has not reported a status": true,
+        "working: the band says Program reports: working · build · cc · the-title · compiling · progress 40": true,
+        "unknown: the band says Program reports: its own word \"pondering\"": true,
+        "cleared: the band says Program withdrew its report": true,
+        "hostile: the band says Program reports: blocked": true,
+        "hostile: the escape and the right-to-left override are spelled out": true,
+        "hostile: no raw control or bidi character reaches the page": true,
+        "hostile: shell.end and approval.allow are only words in the band": true,
+        "an older sequence does not replace the newer report": true,
+        "done: the band says Program reports: done · finished": true,
+        "error: the band says Program reports: error · broke": true,
+        "the header and the tab are the same after every report": true,
+        "the footer is the same after every report": true,
+        "the pane state line is the same after every report": true,
+        "the pane still says running after a done report": true,
+        "the pane still says running after an error report": true,
+        "no report asked the host for anything": true,
+        "the tree has the program-report node as a status with no actions": true,
+        "after exit the wording is Program's last report:": true,
+        "after exit the tree still has the node, named as the last report, with no actions": true,
+        "after exit the pane says the program ended with the host reason": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    },
+    {
+      "story": "workbench-terminal-program-report",
+      "run": "chromium 390x844",
+      "engine": "chromium",
+      "engineVersion": "156.0.8078.4",
+      "viewport": "390x844",
+      "scale": 1,
+      "exitCode": 0,
+      "checks": {
+        "the pane is running before any report": true,
+        "unavailable draws nothing and has no node": true,
+        "never reported: the band says Program has not reported a status": true,
+        "working: the band says Program reports: working · build · cc · the-title · compiling · progress 40": true,
+        "unknown: the band says Program reports: its own word \"pondering\"": true,
+        "cleared: the band says Program withdrew its report": true,
+        "hostile: the band says Program reports: blocked": true,
+        "hostile: the escape and the right-to-left override are spelled out": true,
+        "hostile: no raw control or bidi character reaches the page": true,
+        "hostile: shell.end and approval.allow are only words in the band": true,
+        "an older sequence does not replace the newer report": true,
+        "done: the band says Program reports: done · finished": true,
+        "error: the band says Program reports: error · broke": true,
+        "the header and the tab are the same after every report": true,
+        "the footer is the same after every report": true,
+        "the pane state line is the same after every report": true,
+        "the pane still says running after a done report": true,
+        "the pane still says running after an error report": true,
+        "no report asked the host for anything": true,
+        "the tree has the program-report node as a status with no actions": true,
+        "after exit the wording is Program's last report:": true,
+        "after exit the tree still has the node, named as the last report, with no actions": true,
+        "after exit the pane says the program ended with the host reason": true
+      },
+      "failed": [],
+      "error": null,
+      "renders": null
+    }
+  ]
+}

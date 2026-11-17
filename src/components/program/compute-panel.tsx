@@ -8,6 +8,7 @@ import CodeMirror, { EditorView } from '@uiw/react-codemirror'
 import { useState } from 'react'
 import type { JsonValue } from '@/lib/program/contracts'
 import {
+  AFFECTED_NEIGHBORHOOD,
   affectedNeighborhood,
   commitSpec,
   deriveCommand,
@@ -104,6 +105,10 @@ function Neighborhood() {
     queryFn: listEngines,
     retry: false,
   })
+  // The engine that computes neighborhoods, as Theorem lists it.
+  const engine = engines.data?.engines.find((listed) =>
+    listed.operations.includes(AFFECTED_NEIGHBORHOOD),
+  )
   const records = useQuery({
     queryKey: ['programs', 'node-records', contentId],
     queryFn: () => programNodeRecords(program!),
@@ -150,14 +155,14 @@ function Neighborhood() {
   return (
     <Section title="Affected neighborhood">
       <ToolError error={engines.error} />
-      {engines.data && (
+      {engine && (
         <Badge
           size="sm"
-          variant={engines.data.available ? 'success' : 'warning'}
+          variant={engine.available ? 'success' : 'warning'}
           className="self-start"
         >
-          {engines.data.selected ?? engines.data.engine}
-          {engines.data.available ? ', available' : ', unavailable'}
+          {engine.id}
+          {engine.available ? ', available' : ', unavailable'}
         </Badge>
       )}
       <div className="flex flex-col gap-1.5">

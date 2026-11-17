@@ -62,6 +62,7 @@ import { Route as ApiObserveV1SplatRouteImport } from './routes/api/observe/v1/$
 import { Route as ApiProjectFilesV1SplatRouteImport } from './routes/api/project-files/v1/$'
 import { Route as ApiSceneV1SplatRouteImport } from './routes/api/scene/v1/$'
 import { Route as ApiSpacesV1SplatRouteImport } from './routes/api/spaces/v1/$'
+import { Route as ApiWorkbenchV1SplatRouteImport } from './routes/api/workbench/v1/$'
 import { Route as DesktopWorkspaceWorkspaceIdIndexRouteImport } from './routes/desktop/workspace/$workspaceId/index'
 import { Route as DesktopWorkspaceWorkspaceIdBacklinksRouteImport } from './routes/desktop/workspace/$workspaceId/backlinks'
 import { Route as DesktopWorkspaceWorkspaceIdCompiledRouteImport } from './routes/desktop/workspace/$workspaceId/compiled'
@@ -349,6 +350,11 @@ const ApiSpacesV1SplatRoute = ApiSpacesV1SplatRouteImport.update({
   path: '/api/spaces/v1/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiWorkbenchV1SplatRoute = ApiWorkbenchV1SplatRouteImport.update({
+  id: '/api/workbench/v1/$',
+  path: '/api/workbench/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DesktopWorkspaceWorkspaceIdIndexRoute =
   DesktopWorkspaceWorkspaceIdIndexRouteImport.update({
     id: '/desktop/workspace/$workspaceId/',
@@ -529,6 +535,7 @@ export interface FileRoutesByFullPath {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -603,6 +610,7 @@ export interface FileRoutesByTo {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -680,6 +688,7 @@ export interface FileRoutesById {
   '/api/project-files/v1/$': typeof ApiProjectFilesV1SplatRoute
   '/api/scene/v1/$': typeof ApiSceneV1SplatRoute
   '/api/spaces/v1/$': typeof ApiSpacesV1SplatRoute
+  '/api/workbench/v1/$': typeof ApiWorkbenchV1SplatRoute
   '/desktop/workspace/$workspaceId/backlinks': typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   '/desktop/workspace/$workspaceId/compiled': typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   '/desktop/workspace/$workspaceId/events': typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -757,6 +766,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -831,6 +841,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -907,6 +918,7 @@ export interface FileRouteTypes {
     | '/api/project-files/v1/$'
     | '/api/scene/v1/$'
     | '/api/spaces/v1/$'
+    | '/api/workbench/v1/$'
     | '/desktop/workspace/$workspaceId/backlinks'
     | '/desktop/workspace/$workspaceId/compiled'
     | '/desktop/workspace/$workspaceId/events'
@@ -964,6 +976,7 @@ export interface RootRouteChildren {
   ApiProjectFilesV1SplatRoute: typeof ApiProjectFilesV1SplatRoute
   ApiSceneV1SplatRoute: typeof ApiSceneV1SplatRoute
   ApiSpacesV1SplatRoute: typeof ApiSpacesV1SplatRoute
+  ApiWorkbenchV1SplatRoute: typeof ApiWorkbenchV1SplatRoute
   DesktopWorkspaceWorkspaceIdBacklinksRoute: typeof DesktopWorkspaceWorkspaceIdBacklinksRoute
   DesktopWorkspaceWorkspaceIdCompiledRoute: typeof DesktopWorkspaceWorkspaceIdCompiledRoute
   DesktopWorkspaceWorkspaceIdEventsRoute: typeof DesktopWorkspaceWorkspaceIdEventsRoute
@@ -1359,6 +1372,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSpacesV1SplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/workbench/v1/$': {
+      id: '/api/workbench/v1/$'
+      path: '/api/workbench/v1/$'
+      fullPath: '/api/workbench/v1/$'
+      preLoaderRoute: typeof ApiWorkbenchV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/desktop/workspace/$workspaceId/': {
       id: '/desktop/workspace/$workspaceId/'
       path: '/desktop/workspace/$workspaceId'
@@ -1624,6 +1644,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiProjectFilesV1SplatRoute: ApiProjectFilesV1SplatRoute,
   ApiSceneV1SplatRoute: ApiSceneV1SplatRoute,
   ApiSpacesV1SplatRoute: ApiSpacesV1SplatRoute,
+  ApiWorkbenchV1SplatRoute: ApiWorkbenchV1SplatRoute,
   DesktopWorkspaceWorkspaceIdBacklinksRoute:
     DesktopWorkspaceWorkspaceIdBacklinksRoute,
   DesktopWorkspaceWorkspaceIdCompiledRoute:

@@ -1,0 +1,315 @@
+{
+  "story": "workbench-default",
+  "note": "before = line-height: 1.5 set inline on the grid host plus a window resize event; after = current code (leading-[normal])",
+  "chromium": {
+    "version": "156.0.8078.4",
+    "viewport": "1440x900",
+    "after": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 17,
+      "lineBoxOverlapsNextRow": false,
+      "overlapPx": 0,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 17,
+      "hostLineHeight": "normal",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    },
+    "before": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 18.75,
+      "lineBoxOverlapsNextRow": true,
+      "overlapPx": 1.75,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 18.75,
+      "hostLineHeight": "18.75px",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    }
+  },
+  "firefox": {
+    "version": "160.0",
+    "viewport": "1440x900",
+    "after": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 17,
+      "lineBoxOverlapsNextRow": false,
+      "overlapPx": 0,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 17,
+      "hostLineHeight": "normal",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    },
+    "before": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 18.75,
+      "lineBoxOverlapsNextRow": true,
+      "overlapPx": 1.75,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 18.75,
+      "hostLineHeight": "18.75px",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    }
+  },
+  "webkit": {
+    "version": "27.2",
+    "viewport": "1440x900",
+    "after": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 17,
+      "lineBoxOverlapsNextRow": false,
+      "overlapPx": 0,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 17,
+      "hostLineHeight": "normal",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    },
+    "before": {
+      "rows": 37,
+      "rowPitch": [
+        17,
+        17
+      ],
+      "rowHeightAttr": "17px",
+      "lineBoxHeight": 18.75,
+      "lineBoxOverlapsNextRow": true,
+      "overlapPx": 1.75,
+      "spanBackgroundOffsetFromRowTop": [
+        0,
+        0
+      ],
+      "spanBoxHeight": 18.75,
+      "hostLineHeight": "18.75px",
+      "hostFontSize": "12.5px",
+      "scrollHeight": 640,
+      "clientHeight": 640,
+      "scrollExceedsClient": false
+    }
+  },
+  "pixelsChromium": {
+    "how": "screenshot of workbench-default at 1280x640, column x=3 through the filled Files tab (row 0): vertical extent of the fill and of the glyph ink inside it, per palette profile",
+    "profiles": {
+      "github-sharp-light": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      },
+      "github-sharp-dark": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      },
+      "stone-light": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      },
+      "stone-dark": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      },
+      "vitesse-light": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      },
+      "vitesse-dark": {
+        "before": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        },
+        "after": {
+          "fillRows": [
+            0,
+            16
+          ],
+          "fillHeight": 17,
+          "glyphInkRows": [
+            3,
+            13
+          ],
+          "glyphTopInsideFill": 3,
+          "glyphBottomInsideFill": 3
+        }
+      }
+    }
+  }
+}

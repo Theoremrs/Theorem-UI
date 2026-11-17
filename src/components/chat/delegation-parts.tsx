@@ -164,7 +164,7 @@ const ChangeDiff: FC<{
   const before = useDelegationContent(
     runId,
     delegationId,
-    sides ? change.beforeRef : undefined,
+    sides ? (change.beforeRef ?? undefined) : undefined,
   )
   const after = useDelegationContent(
     runId,
