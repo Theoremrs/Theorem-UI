@@ -1059,9 +1059,10 @@ describe('run input recovery', () => {
       text: 'also',
     })
     await t.settle()
-    expect(
-      await owner.stop({ requestId: 'r2', runId: 'run1' }),
-    ).toMatchObject({ outcome: 'accepted', value: { runId: 'run1' } })
+    expect(await owner.stop({ requestId: 'r2', runId: 'run1' })).toMatchObject({
+      outcome: 'accepted',
+      value: { runId: 'run1' },
+    })
     // The chat's queue is the one told: its row is marked stopped, so the words cannot
     // answer a person's Stop with another response.
     expect(t.bound.queue.getSnapshot()[0]?.stopped).toBe(true)
@@ -1583,6 +1584,52 @@ describe('stop, retry and edit', () => {
     ).toMatchObject({ outcome: 'refused', code: 'missing_capability' })
   })
 
+  test('an edit with no words is refused, and the message is left as it was', async () => {
+    const { stub, conversation } = setup()
+    await conversation.send({ ...base('r'), clientMessageId: 'c1', text: 'hi' })
+    const before = stub.appends.length
+    // A blank draft is not a message, and a blank edit is not either: the words a person
+    // replaces them with are the whole of what an edit carries.
+    expect(
+      await conversation.edit({
+        ...base('r2'),
+        messageId: 'u1',
+        clientMessageId: 'c2',
+        text: '   ',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'blank' })
+    expect(stub.appends.length).toBe(before)
+  })
+
+  test('a send with no words is refused unless something rides on it', async () => {
+    const { stub, conversation } = setup()
+    expect(
+      await conversation.send({
+        ...base('r1'),
+        clientMessageId: 'c1',
+        text: ' ',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'blank' })
+    expect(stub.appends).toEqual([])
+    // A file is a message of its own, so the same blank text with one attached goes.
+    expect(
+      await conversation.send({
+        ...base('r2'),
+        clientMessageId: 'c2',
+        text: ' ',
+        attachments: [
+          {
+            id: 'a1',
+            type: 'document',
+            name: 'notes.txt',
+            status: { type: 'complete' },
+            content: [],
+          },
+        ],
+      }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(stub.appends).toHaveLength(1)
+  })
 })
 
 describe('approvals', () => {

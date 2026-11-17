@@ -1244,6 +1244,20 @@ export function createConversation({
       : undefined
   }
 
+  /**
+   * A blank draft is not a message: either the person said words, or something rides on the
+   * send — a file it carries, or a draft attachment to upload with it. An edit offers only
+   * words, since the message it replaces brings its own attachments.
+   */
+  const nothingSaid = (
+    text: string,
+    carried?: {
+      attachments?: readonly unknown[] | undefined
+      draftIds?: readonly string[] | undefined
+    },
+  ) =>
+    !text.trim() && !carried?.attachments?.length && !carried?.draftIds?.length
+
   /** The run working now: the latest message's run id. */
   function lastRunId() {
     const messages = runtime.thread.getState().messages
@@ -1264,6 +1278,12 @@ export function createConversation({
 
     send(request) {
       return once(request, (answers) => {
+        if (nothingSaid(request.text, request))
+          return refused(
+            answers,
+            'blank',
+            'A message needs words or a file on it',
+          )
         const state = runtime.thread.getState()
         if (state.isRunning)
           return refused(
@@ -1417,6 +1437,12 @@ export function createConversation({
 
     edit(request) {
       return once(request, (answers) => {
+        if (nothingSaid(request.text))
+          return refused(
+            answers,
+            'blank',
+            'An edit needs the words it replaces them with',
+          )
         const state = runtime.thread.getState()
         if (state.isRunning)
           return refused(answers, 'run_active', 'A run is working')
