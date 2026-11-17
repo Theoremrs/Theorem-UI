@@ -307,7 +307,9 @@ for (const engine of engines.filter(
         })
         await stop.waitFor()
         item.rows.push(
-          ...(await buttonStates(page, stop, 'stop', 'svg path', false)),
+          // The stop mark is a painted layer mark, as the send mark is: its
+          // line layer carries the paint, not an inline svg path.
+          ...(await buttonStates(page, stop, 'stop', '.icon-mask[data-layer="line"]', false)),
         )
 
         // The fully wired shell fixture owns the Theorem runtime and model catalog.
