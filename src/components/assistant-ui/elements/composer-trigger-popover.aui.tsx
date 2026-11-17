@@ -1,4 +1,4 @@
-// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with four changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), and an icon only where one resolves plus an optional heading and per-item tag
+// SOURCING: assistant-ui registry element composer-trigger-popover (https://r.assistant-ui.com/styles/base-nova/composer-trigger-popover.json) over ComposerPrimitive.TriggerPopover, vendored with four changes: the coss popup surface and item states, placement by Floating UI against the element that holds it (the primitive's absolute bottom-full placement is clipped by the thread's scroll area when the composer sits mid-screen), a bounded list that keeps the highlighted row in view (the primitive moves the highlight but does not scroll), and an icon only where one resolves plus an optional heading, per-item tag and item label class (mono for tool names, the default; the text face for names of records and documents)
 'use client'
 
 import { memo, useCallback, useEffect, useRef } from 'react'
@@ -52,6 +52,8 @@ type ComposerTriggerPopoverBaseProps = Omit<
   heading?: ReactNode
   /** A short trailing note for an item, such as what it changes. */
   itemTag?: (item: TriggerItem) => ReactNode
+  /** The face of an item's label. @default "font-mono text-[13px]" */
+  itemLabelClassName?: string
   /** Label shown on the back button. @default "Back" */
   backLabel?: string
   /** Label shown when no categories are available. @default "No items available" */
@@ -193,6 +195,7 @@ type ItemsProps = {
   iconMap: Record<string, IconComponent> | undefined
   fallbackIcon: IconComponent | undefined
   itemTag: ((item: TriggerItem) => ReactNode) | undefined
+  itemLabelClassName: string
   backLabel: string
   emptyLabel: string
   loadingLabel: string
@@ -203,6 +206,7 @@ const Items: FC<ItemsProps> = ({
   iconMap,
   fallbackIcon,
   itemTag,
+  itemLabelClassName,
   backLabel,
   emptyLabel,
   loadingLabel,
@@ -244,7 +248,12 @@ const Items: FC<ItemsProps> = ({
                     {Icon && (
                       <Icon className="text-ink-muted size-3.5 shrink-0" />
                     )}
-                    <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
+                    <span
+                      className={cn(
+                        'min-w-0 flex-1 truncate',
+                        itemLabelClassName,
+                      )}
+                    >
                       {item.label}
                     </span>
                     {tag && (
@@ -282,6 +291,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
   fallbackIcon,
   heading,
   itemTag,
+  itemLabelClassName = 'font-mono text-[13px]',
   backLabel = 'Back',
   emptyCategoriesLabel = 'No items available',
   emptyItemsLabel = 'No matching items',
@@ -339,6 +349,7 @@ const ComposerTriggerPopoverImpl: FC<ComposerTriggerPopoverProps> = ({
         iconMap={iconMap}
         fallbackIcon={fallbackIcon}
         itemTag={itemTag}
+        itemLabelClassName={itemLabelClassName}
         backLabel={backLabel}
         emptyLabel={emptyItemsLabel}
         loadingLabel={loadingLabel}
