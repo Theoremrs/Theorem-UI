@@ -1,6 +1,6 @@
 {
   "spec": "SPEC-THEO-WEB-TERMINAL-WORKBENCH-1.0",
-  "status": "inventory_seed_not_verified",
+  "status": "reconciled_at_a9e9dd88_for_the_pure_and_simulated_tiers",
   "scope": "web-only",
   "basis": "Inspected ide/README.md and terminal adapters; reconcile against current mounted implementation at Gate 0. Operations below are responsibilities, not invented endpoint schemas.",
   "entries": [
@@ -16,9 +16,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "the web shell mount (src/components/workbench/*) over src/lib/workbench/environment/* and the workbench record",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/lib/workbench/environment",
+            "git log --name-only a410b4d..HEAD"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-01 pass at source inspection: the workbench mounts inside the existing web shell and no native route or packaging gate is introduced"
+          ],
+          "limitations": [
+            "AC-03 (mounted web) not_run: no deployed route here, so workspace identity, environment display and permission scope surviving the replacement are unobserved"
+          ]
+        }
+      ]
     },
     {
       "id": "P02",
@@ -31,9 +47,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-panels/src/files and src/lib/workbench/{files,search} over the SDK file and search owners",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked",
+            "bun test src/lib/workbench/files src/lib/workbench/search"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-08 pass at the simulated-host tier: lazy scoped listing, partial labelled partial, binary and unavailable states truthful, scope escape refused before sending"
+          ],
+          "limitations": [
+            "AC-54 (the parity audit itself) not_run: the Theia consumer is still mounted (ide/ and src/components/ide/* are built and tested), so no replacement has been audited against the baseline"
+          ]
+        }
+      ]
     },
     {
       "id": "P03",
@@ -47,11 +79,30 @@
         "AC-15",
         "AC-16"
       ],
-      "status": "not_run",
+      "status": "pass",
       "current_consumer": null,
-      "candidate_consumer": null,
-      "verified_source_revision": null,
-      "evidence": []
+      "candidate_consumer": "terminal/crates/workbench-{text,editor,markdown} and src/lib/workbench/documents over the SDK DocumentSession",
+      "verified_source_revision": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked",
+            "bun test src/lib/workbench/documents src/lib/workbench/conversation"
+          ],
+          "result": "pass",
+          "observed": [
+            "no second writer: documents.test.ts two panes share one host session and it closes once, when the last releases; concurrent opens of one path make one host request",
+            "no lost local edit: scenarios.rs refusal_keeps_the_text_and_marks_it_conflicting and the conflict keep/take/keep-both legs; documents.test.ts CONFLICT refusal returns the current revision and keeps the edit, a lost answer is uncertain, kept, not resent",
+            "per-client undo: scenarios.rs typing_groups_into_words_and_undo_steps_back, undo_is_an_edit_for_the_owner, a_remote_change_is_not_an_undo_step_and_undo_still_applies",
+            "save and pending remain distinct: saved-content.test.ts and local.test.ts (a draft at once, checkpointed only when the database commits it)"
+          ],
+          "limitations": [
+            "verified at the pure, property and simulated-fault tiers against the typed stub runtime; not observed against a live DocumentSession, and AC-54 remains a blocker for the retirement decision"
+          ]
+        }
+      ]
     },
     {
       "id": "P04",
@@ -63,11 +114,28 @@
         "AC-12",
         "AC-13"
       ],
-      "status": "not_run",
+      "status": "pass",
       "current_consumer": null,
-      "candidate_consumer": null,
-      "verified_source_revision": null,
-      "evidence": []
+      "candidate_consumer": "terminal/crates/workbench-markdown (the carried ELY port) and workbench-markdown-panel",
+      "verified_source_revision": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked"
+          ],
+          "result": "pass",
+          "observed": [
+            "one source behind all four modes: spec.rs R10 and markdown-panel switching_modes_keeps_the_selection_the_undo_history_and_the_pending_edit, the_scroll_anchor_is_kept_across_modes",
+            "unsupported constructs retained: spec.rs R12 a_visual_edit_leaves_every_other_byte_as_written over the front-matter/comment/fence/unknown-directive/CRLF fixture, opening_and_closing_every_block_without_typing_changes_nothing, front_matter_comments_html_footnotes_and_fences_open_as_their_own_source",
+            "concurrent edits: a_block_edit_is_never_lost_when_the_source_changed_under_it (the LEDGER L06 inversion of the donor drop-asserting tests)"
+          ],
+          "limitations": [
+            "the LEDGER L06 reference capture is still pending against the external ELY gallery, so visual fidelity to the donor is not sealed; the mounted leg is blocked by the macOS-calibrated workbench-markdown-visual \"visible in Source\" check"
+          ]
+        }
+      ]
     },
     {
       "id": "P05",
@@ -81,9 +149,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-ide/src/diagnostics.rs and src/lib/workbench/language over the SDK WorkspaceLanguage",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/lib/workbench/language",
+            "cd terminal && cargo test --workspace --locked"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-22 pass at the simulated-provider tier: results carry their revision, stale sets are dropped, plans go to the host authority; AC-23 pass: a withheld provider is refused naming the operation with no call"
+          ],
+          "limitations": [
+            "AC-54 not_run and no real LSP or build service ran here, so revision-bound parity with the Theia language path is unaudited"
+          ]
+        }
+      ]
     },
     {
       "id": "P06",
@@ -98,9 +182,27 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-changes and src/lib/workbench/scm over the SDK WorkspaceScm",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked",
+            "bun test src/lib/workbench/scm",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-changes"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-19 pass at the simulated-SCM and rendered-fixture tiers: groups reflect reported state, diffs are the host text and parsed hunks, every action sends a real supported operation, discard is its own call",
+            "AC-20 and AC-21 pass at the request/receipt tier: unsaved text cannot be silently committed and receipts identify actual content; a lost answer is uncertain and sent once"
+          ],
+          "limitations": [
+            "AC-54 not_run; the port exposes one diff base (the last commit), so the baseline branch/remote surface cannot be fully reached, and the Theia SCM path is still mounted"
+          ]
+        }
+      ]
     },
     {
       "id": "P07",
@@ -113,9 +215,26 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-ide/src/run.rs and src/lib/workbench/run",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/lib/workbench/run",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-run-list workbench-run-list-exits"
+          ],
+          "result": "not_run",
+          "observed": [
+            "the candidate consumer exists and behaves: run.test.ts configure sends name and argv once, start does not wait and answers the handle, a start answered without a handle is uncertain, a stop with no answer is uncertain and not sent again; the run-list stories are 2/2 and 7/7 green on the real frame",
+            "view closure does not terminate work implicitly: process.rs closing_the_pane_detaches_with_the_claim_and_never_ends and a_destroy_close_still_only_detaches"
+          ],
+          "limitations": [
+            "AC-54 and AC-60 not_run: no real host or core (herdr-core, theorem-ide-host, rustyred-thg-server absent), so start/stop/configuration against a selected environment is unobserved"
+          ]
+        }
+      ]
     },
     {
       "id": "P08",
@@ -129,9 +248,26 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-editor/src/actions.rs and workbench-markdown-panel/src/actions.rs (document.history, document.addSelection)",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-document-history",
+            "same env: interact workbench-add-selection"
+          ],
+          "result": "not_run",
+          "observed": [
+            "workbench-document-history is 21/21 green on the real frame: Alt+V lists and previews, restore is asked first and refused while an edit is unaccepted and for an agent",
+            "workbench-add-selection is 31/32 green; its one failure is the 4096-scalar limit check"
+          ],
+          "limitations": [
+            "AC-54 not_run and the add-selection limit check fails on Linux byte-identically to the pristine PR head a410b4d0, so the typed scoped reference is not verified end to end"
+          ]
+        }
+      ]
     },
     {
       "id": "P09",
@@ -148,9 +284,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-vt and workbench-process over the SDK TerminalChannel",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked",
+            "bun test src/lib/workbench/terminal"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-26 and AC-31 pass at the core and byte-replay tiers: an observer emits nothing and the terminal node says why, the screen resizes only on host confirmation, every split point gives the same screen, a newer epoch reset replaces and an older epoch is dropped, a gap asks for a reset"
+          ],
+          "limitations": [
+            "AC-30, AC-34, AC-35 and AC-54 not_run: no live process, no real kill, no two views, and no deployed route — the lifetime limits the row names cannot be observed here"
+          ]
+        }
+      ]
     },
     {
       "id": "P10",
@@ -164,9 +316,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "src/lib/workbench/terminal/terminal-profile.ts and the negotiation path (src/lib/workbench/terminal/negotiation.test.ts)",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/lib/workbench/terminal/negotiation.test.ts",
+            "node scripts/e2e/workbench.mjs --list"
+          ],
+          "result": "not_run",
+          "observed": [
+            "the readiness gate is written and green at the port tier: a mismatched core is not ready, grants no Herdr capability and keeps native; a refusal sends nothing with no retry and no native shell; a failure to read the identity is a refusal, not a launch"
+          ],
+          "limitations": [
+            "AC-24, AC-29 and AC-47 not_run: herdr-core and theorem-ide-host are absent from this image and the e2e scenario pins core 0.1.17, so a real readiness probe and profile start never ran"
+          ]
+        }
+      ]
     },
     {
       "id": "P11",
@@ -189,9 +357,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-process/src/panel.rs over the Herdr Core adapter",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "cd terminal && cargo test --workspace --locked",
+            "bun test src/lib/workbench/terminal"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-31 and AC-62 pass at the protocol tier: epochs, offsets and resets are judged, a legacy payload draws nothing and is not guessed, only the negotiated pair carries commands and frames in order"
+          ],
+          "limitations": [
+            "AC-32 to AC-40, AC-58 and AC-54 not_run: adoption, observer/control leases across two views, a surviving process across a host restart, and the subscription fault matrix all need the absent Herdr pair and a deployment"
+          ]
+        }
+      ]
     },
     {
       "id": "P12",
@@ -204,9 +388,25 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "terminal/crates/workbench-core follow state and the editor/markdown-panel addSelection actions",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-follow workbench-add-selection"
+          ],
+          "result": "not_run",
+          "observed": [
+            "workbench-follow is 24/24 green on the real frame: a followed run’s edit shows in a panel the person is not in without taking the keyboard, and the person’s own navigation pauses follow",
+            "workbench-add-selection is 31/32 green, failing only its 4096-scalar limit check"
+          ],
+          "limitations": [
+            "AC-54 and AC-60 not_run: no real agent run (no provider keys) and the add-selection limit check fails byte-identically on the pristine PR head here, so the parity row cannot close"
+          ]
+        }
+      ]
     },
     {
       "id": "P13",
@@ -222,9 +422,27 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "src/lib/workbench/layout/{restore,local-store}.ts, workbench-core arrangement and the theme contract (workbench-core/src/theme.rs)",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/lib/workbench/layout",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-layouts-page workbench-appearance",
+            "ORACLE_REVIEW_OUT=$HOME/oracle-out-bookkeeping ORACLE_BASE=http://127.0.0.1:3119 bun run oracle:colors"
+          ],
+          "result": "not_run",
+          "observed": [
+            "AC-45 pass at the simulated-account and rendered-fixture tiers: a saved arrangement restores with the same groups, tabs, active tab, widths and focus, restore emits zero effects, and an unknown kind comes back as an unavailable placeholder",
+            "AC-16 pass and AC-28 pass: a theme switch preserves the draft and identity; 872 palette predicates with 0 failures and no donor purple/gold pair"
+          ],
+          "limitations": [
+            "AC-05 not_run (no check asserts draft, undo and references surviving a dock move) and AC-49 not_run (Firefox and WebKit engines absent), so the row is not fully verified"
+          ]
+        }
+      ]
     },
     {
       "id": "P14",
@@ -237,9 +455,26 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "src/components/cabinet and src/components/artifacts under the approved cabinet contract",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "bun test src/components/cabinet src/components/artifacts",
+            "STORY_ORIGIN=http://127.0.0.1:3119 ORACLE_RENDER_DIR=$HOME/oracle-renders-bookkeeping node scripts/story-oracle.mjs interact workbench-cabinet-picker"
+          ],
+          "result": "not_run",
+          "observed": [
+            "identity is not invented: catalog.test.ts a review keeps its review identity, not a made-up artifact; uploads and artifacts keep theirs; a failed preview names why and does not claim the original is gone",
+            "the picker path over the real frame is 5/5 green, opening an artifact in a dialog and returning focus to the card"
+          ],
+          "limitations": [
+            "AC-46 and AC-60 not_run: no live session produces a real artifact revision here (no server binary, no provider keys), so preview modes and originals against a real revision are unobserved"
+          ]
+        }
+      ]
     },
     {
       "id": "P15",
@@ -254,9 +489,27 @@
       ],
       "status": "not_run",
       "current_consumer": null,
-      "candidate_consumer": null,
+      "candidate_consumer": "the web Theo route mount and the wasm build gate (terminal/build.sh); the Theia path is still present",
       "verified_source_revision": null,
-      "evidence": []
+      "evidence": [
+        {
+          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
+          "platform": "linux-cloud-runner",
+          "command": [
+            "grep -ril theia package.json scripts/build.sh scripts/build-cloudflare.sh vite.config.ts",
+            "ls ide",
+            "git log --name-only a410b4d..HEAD"
+          ],
+          "result": "not_run",
+          "observed": [
+            "the web bundle needs no Theia frontend, build or iframe path today: no theia entry in package.json dependencies or in any build script"
+          ],
+          "limitations": [
+            "retirement has not happened, so there is nothing to record as migrated: ide/ is still in the tree and src/components/ide/* (chat-mirror, ide-file-tree, ide-status-bar) is still built and tested; AC-54, AC-55, AC-56 and AC-60 are all not_run for want of a deployment"
+          ]
+        }
+      ]
     }
-  ]
+  ],
+  "semantics": "Row status is pass only where this build’s checks observed the whole required_parity, and it records the tier in evidence. not_run means a named blocker holds the row, which is a blocker and not a failure. current_consumer is left as seeded: the Theia path is still mounted and was not traced as a running baseline here."
 }
