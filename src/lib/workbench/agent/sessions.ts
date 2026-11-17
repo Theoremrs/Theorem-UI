@@ -23,8 +23,8 @@ export interface SessionNotice {
 /**
  * Watches the sessions an agent run acted on (started, or sent words to) and
  * tells that run when one stops working: finished, waiting for a person,
- * stopped, failed, or its program ended. Idle before any work tells nothing,
- * and the same state twice tells once.
+ * stopped, failed, or its program ended. Finished or stopped before any work
+ * tells nothing, and the same state twice tells once.
  */
 export function createSessionWatch(tell: (notice: SessionNotice) => void) {
   const watched = new Map<
@@ -43,7 +43,10 @@ export function createSessionWatch(tell: (notice: SessionNotice) => void) {
       const last = known.last
       known.last = state
       if (state === 'working' || state === last) return
-      if (last !== 'working' && state !== 'ended') return
+      // Finished or stopped before any work is a session at rest, not news;
+      // one that needs a person, failed or ended is news at any time.
+      if (last !== 'working' && (state === 'finished' || state === 'stopped'))
+        return
       tell({
         runId: known.runId,
         session,

@@ -44,6 +44,19 @@ describe('the session watch', () => {
     expect(told).toMatchObject([{ state: 'ended', detail: 'exit code 1' }])
   })
 
+  test('a session that needs a person, or fails, before it ever works is news', () => {
+    // Claude Code with an expired login reports blocked on auth at once.
+    const { told, watch } = setup()
+    watch.acted('t1', 'run1', 'Claude Code (Herdr)')
+    watch.observe('t1', 'waiting', 'Login expired')
+    watch.acted('s1', 'run1', 'the side chat')
+    watch.observe('s1', 'failed', 'model error')
+    expect(told.map((n) => [n.session, n.state])).toEqual([
+      ['t1', 'waiting'],
+      ['s1', 'failed'],
+    ])
+  })
+
   test('a session nobody asked the agent about is not watched', () => {
     const { told, watch } = setup()
     watch.observe('t9', 'working')
