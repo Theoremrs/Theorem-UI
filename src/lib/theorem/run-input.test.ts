@@ -433,6 +433,55 @@ test('restored pending input remains visible until this runtime actually display
   expect(h.queue.getSnapshot()[0]?.visible).toBe(false)
 })
 
+test('a caller-supplied id names one message and is sent once', async () => {
+  const h = harness()
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+  expect(h.host.send).toHaveBeenCalledWith('run-1', 'Use the smaller design', 'client-1')
+  expect(h.queue.getSnapshot()[0]?.id).toBe('client-1')
+
+  // The same message offered again keeps its row and makes no second request.
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()).toHaveLength(1)
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+
+  // Another message claiming that id is refused: nothing is queued or sent under it.
+  expect(h.queue.submit('Different words altogether', 'client-1')).toBe(false)
+  expect(h.queue.getSnapshot().map((item) => item.text)).toEqual(['Use the smaller design'])
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+})
+
+test('a reload keeps a caller-supplied id, and its retry replays that same request', async () => {
+  const h = harness()
+  h.host.send = mock(async () => {
+    throw new TypeError('Reply lost.')
+  })
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()[0]?.state).toBe('failed')
+  h.queue.dispose()
+
+  h.host.send = mock(async () => receipt())
+  const reloaded = createRunInputQueue(h.host)
+  reloaded.observe()
+  // The unconfirmed send comes back as the same message, under the same id and run, and recovery
+  // alone does not send it again.
+  expect(reloaded.getSnapshot()[0]?.id).toBe('client-1')
+  expect(reloaded.getSnapshot()[0]?.runId).toBe('run-1')
+  expect(h.host.send).not.toHaveBeenCalled()
+  // Offering that message again after the reload cannot duplicate it.
+  expect(reloaded.submit('Use the smaller design', 'client-1')).toBe(true)
+  expect(reloaded.getSnapshot()).toHaveLength(1)
+  expect(h.host.send).not.toHaveBeenCalled()
+
+  reloaded.retry('client-1')
+  await settle()
+  expect(h.host.send).toHaveBeenCalledTimes(1)
+  expect(h.host.send).toHaveBeenCalledWith('run-1', 'Use the smaller design', 'client-1')
+})
+
 test('raw event decoding requires user_input and carries only the command receipt identity', () => {
   const part = { ...receipt(), type: 'user_input' }
   expect(runInputReceipt({ payload: { part }, idempotencyKey: 'chat-command:key-1' })?.requestKey).toBe('key-1')

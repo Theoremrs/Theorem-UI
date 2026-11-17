@@ -27,6 +27,34 @@ export function assistant(
   } as unknown as ThreadMessage
 }
 
+/** The receipt part the run shows for input it took, as the SDK names it. */
+export function userInputPart(receipt: {
+  inputId: string
+  text: string
+  status: string
+  reason?: string
+}) {
+  return { type: 'data', name: 'theorem-user_input', data: receipt }
+}
+
+/**
+ * A sessionStorage-shaped store, so one test can hand a conversation's recovery
+ * records to its next owner the way a reload does. The real one is shared by
+ * every conversation of a thread, which is what makes recovery work; a test
+ * needs its own to see only what it put there.
+ */
+export function createMemoryStorage(): Pick<
+  Storage,
+  'getItem' | 'setItem' | 'removeItem'
+> {
+  const held = new Map<string, string>()
+  return {
+    getItem: (key) => held.get(key) ?? null,
+    setItem: (key, value) => void held.set(key, value),
+    removeItem: (key) => void held.delete(key),
+  }
+}
+
 export function approvalPart() {
   return {
     type: 'tool-call',

@@ -386,10 +386,24 @@ export function createRunInputQueue(host: RunInputHost) {
     observe,
     stop,
     getSnapshot: () => items,
-    submit(text: string) {
+    /**
+     * Keeps words until the run shows them. A caller that already names the message — a composer
+     * that mints its own client id, and must never send that id twice — gives it here: it becomes
+     * the request key, so the same message is queued and sent once however often it is offered.
+     * Returns false only when these words are not, and were not, the message that id names.
+     */
+    submit(text: string, id?: string) {
       if (disposed || !text.trim()) return false
       restore()
-      publish([...items, { id: crypto.randomUUID(), text, state: 'waiting' }])
+      const held = id === undefined ? undefined : items.find((item) => item.id === id)
+      if (held) {
+        // One id names one message: a repeat of the same words neither queues a second row nor
+        // sends again; other words under that id are a different message this id cannot carry.
+        if (held.text !== text) return false
+        observe()
+        return true
+      }
+      publish([...items, { id: id ?? crypto.randomUUID(), text, state: 'waiting' }])
       observe()
       return true
     },
