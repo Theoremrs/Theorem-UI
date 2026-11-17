@@ -2,7 +2,7 @@
 import { useEffect, useEffectEvent, useSyncExternalStore } from 'react'
 import { useShellMode } from '@/components/shell/modes'
 import { useShell } from '@/components/shell/shell-state'
-import { placementOf, toggledPlacement } from './placement'
+import { dockPresentation, placementOf, toggledPlacement } from './placement'
 import type { Companion, Placement } from './placement'
 import { readWorkbenchSwitch } from './workbench-switch'
 
@@ -13,6 +13,7 @@ import { readWorkbenchSwitch } from './workbench-switch'
  */
 export function useWorkbenchPlacement(): {
   placement: Placement | undefined
+  requestedPlacement: Placement | undefined
   toggle: (wanted?: Companion) => void
 } {
   const mode = useShellMode()
@@ -23,12 +24,23 @@ export function useWorkbenchPlacement(): {
     () => false,
   )
   const choice = useShell((s) => s.workbench)
-  const placement = placementOf(choice, switchOn, mode)
+  const requestedPlacement = placementOf(choice, switchOn, mode)
+  const viewport = useSyncExternalStore(
+    (listener) => {
+      window.addEventListener('resize', listener)
+      return () => window.removeEventListener('resize', listener)
+    },
+    () => window.innerWidth,
+    () => 1440,
+  )
+  const placement = dockPresentation(requestedPlacement, viewport)
   const toggle = (wanted?: Companion) => {
     const shell = useShell.getState()
-    shell.setWorkbench(toggledPlacement(placement, shell.lastCompanion, wanted))
+    shell.setWorkbench(
+      toggledPlacement(requestedPlacement, shell.lastCompanion, wanted),
+    )
   }
-  return { placement, toggle }
+  return { placement, requestedPlacement, toggle }
 }
 
 /** ctrl+` toggles the workbench under the conversation. */

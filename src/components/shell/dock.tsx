@@ -736,10 +736,10 @@ export function DockShell({
   // A full-screen workbench covers this dock: a review asked for there (its
   // Artifacts panel, its conversation's review card) brings the sheet back
   // beside it so the review can be seen and used.
-  const { placement } = useWorkbenchPlacement()
+  const { requestedPlacement } = useWorkbenchPlacement()
   const showSheet = useEffectEvent(() => {
     const shell = useShell.getState()
-    const moved = sheetShown(placement, shell.lastCompanion)
+    const moved = sheetShown(requestedPlacement, shell.lastCompanion)
     if (moved) shell.setWorkbench(moved)
   })
 

@@ -86,7 +86,11 @@ function mount(
       sideChats: side.sideChats,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
         history: async (threadId) => {
           historyAsked.push(threadId)
           return null

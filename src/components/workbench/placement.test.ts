@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test'
-import { placementOf, sheetShown, toggledPlacement } from './placement'
+import {
+  dockPresentation,
+  placementOf,
+  sheetShown,
+  toggledPlacement,
+} from './placement'
 
 describe('placementOf', () => {
   test('with no choice, the delivery switch puts the workbench full screen in chat mode only', () => {
@@ -50,5 +55,16 @@ describe('sheetShown', () => {
     expect(sheetShown('side', 'bottom')).toBeUndefined()
     expect(sheetShown('bottom', 'side')).toBeUndefined()
     expect(sheetShown(undefined, 'side')).toBeUndefined()
+  })
+})
+
+describe('dockPresentation', () => {
+  test('a side dock that cannot leave both minimums becomes a bottom dock', () => {
+    expect(dockPresentation('side', 390)).toBe('bottom')
+    expect(dockPresentation('side', 779)).toBe('bottom')
+    expect(dockPresentation('side', 780)).toBe('side')
+    expect(dockPresentation('bottom', 390)).toBe('bottom')
+    expect(dockPresentation('full', 390)).toBe('full')
+    expect(dockPresentation(undefined, 390)).toBeUndefined()
   })
 })

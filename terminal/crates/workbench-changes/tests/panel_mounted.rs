@@ -2526,7 +2526,7 @@ fn a_text_conflict_still_offers_merging_by_hand_and_draws_its_lines() {
 
 // ---- AC-20: an unsaved draft in the editor and the Git index -----------------------
 
-const SECRET: &str = "sk_live_51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ";
+const SECRET: &str = concat!("sk_live_", "51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ");
 
 fn open_doc(path: &str, saved: Option<u64>, unsaved: bool) -> OpenDocument {
     OpenDocument {

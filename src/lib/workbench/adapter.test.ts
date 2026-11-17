@@ -3,8 +3,9 @@ import { describe, expect, test } from 'bun:test'
 import { readFileSync } from 'node:fs'
 import type { AccountChange } from './account'
 import { createAdapter } from './adapter'
-import { createSessionWatch } from './agent/sessions'
+import { createSessionWatch, useSessionNotices } from './agent/sessions'
 import type { SessionNotice } from './agent/sessions'
+import { clearSessionNotices } from './agent/deliver'
 import type {
   AdapterOptions,
   OwnerPort,
@@ -1860,6 +1861,7 @@ describe('host events', () => {
         workspace: of('hc-1').workspace,
         state: 'running',
         name: 'agent',
+        command: 'claude',
         cwd: '/work/app',
         admitted: false,
       })
@@ -2500,6 +2502,27 @@ describe('dispose', () => {
     // Dispose twice is harmless.
     t.adapter.dispose()
   })
+
+  test('disposing lets go of terminal watches and their pending notices', async () => {
+    const told: SessionNotice[] = []
+    const sessions = createSessionWatch((notice) => {
+      told.push(notice)
+      useSessionNotices.setState((state) => ({
+        pending: [...state.pending, notice],
+      }))
+    })
+    const t = await setup({ sessions })
+    t.adapter.perform(effectOf(1, 'terminalOpen'))
+    await t.settle()
+    sessions.acted('t1', 'run1', 'Claude Code (Herdr)', 'working')
+    sessions.observe('t1', 'finished')
+    expect(useSessionNotices.getState().pending).toHaveLength(1)
+    t.adapter.dispose()
+    sessions.observe('t1', 'failed')
+    expect(told).toHaveLength(1)
+    expect(useSessionNotices.getState().pending).toEqual([])
+    clearSessionNotices()
+  })
 })
 
 // ---- AC-50: account change and revoked access --------------------------------------------------
@@ -3013,5 +3036,33 @@ describe('telling the agent its terminal stopped working', () => {
     t.port.emit(report('done'))
     t.port.emit({ type: 'exited', reason: 'exited', code: 0, signal: null })
     expect(told).toEqual([])
+  })
+
+  test('sending to a human-started session already working tells the run when it finishes', async () => {
+    const told: SessionNotice[] = []
+    const t = await setup({
+      sessions: createSessionWatch((notice) => told.push(notice)),
+    })
+    t.adapter.perform(effectOf(909, 'terminalAttach'))
+    await t.settle()
+    t.port.state.profile = { id: 'Claude Code (Herdr)', backend: 'native' }
+    t.port.state.programReport = {
+      kind: 'current',
+      status: { state: 'working' },
+    }
+    t.adapter.perform({
+      ...effectOf(910, 'terminalInput'),
+      actor: agent,
+    })
+    await t.settle()
+    t.port.emit(report('done'))
+    expect(told).toEqual([
+      {
+        runId: 'front-run',
+        session: 't1',
+        what: 'Claude Code (Herdr)',
+        state: 'finished',
+      },
+    ])
   })
 })

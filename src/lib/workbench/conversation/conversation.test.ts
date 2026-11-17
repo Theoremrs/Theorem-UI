@@ -30,7 +30,11 @@ function setup() {
     },
     sendInput: async (r) => {
       inputs.push(r)
-      return { inputId: `in-${r.runId}-${inputs.length}` }
+      return {
+        inputId: `in-${r.runId}-${inputs.length}`,
+        text: r.text,
+        status: 'queued',
+      }
     },
   }
   let frame: (() => void) | undefined
@@ -187,7 +191,11 @@ describe('history', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
         history: async (threadId) => {
           reads.push(threadId)
           return {
@@ -269,7 +277,11 @@ describe('switching a branch', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
         history: async (threadId) => {
           if (state.missing || threadId !== 'remote-1')
             throw new TheoremError({ message: 'gone', statusCode: 404 })
@@ -528,7 +540,14 @@ describe('send', () => {
     stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
     // The chat's own queue for this thread, on a storage of its own: the owner reads and
     // drives it, and sends nothing beside it.
-    const bound = bindThreadInputs(stub, { storage: createMemoryStorage() })
+    const bound = bindThreadInputs(stub, {
+      storage: createMemoryStorage(),
+      send: async () => ({
+        inputId: 'in-run1-1',
+        text: 'also',
+        status: 'queued',
+      }),
+    })
     const turn = await conversation.send({
       ...base('r1'),
       clientMessageId: 'c1',
@@ -561,11 +580,20 @@ describe('send', () => {
     const { stub, conversation } = setup()
     stub.isRunning = true
     stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    const bound = bindThreadInputs(stub, {
+      storage: createMemoryStorage(),
+      send: async (_runId, text) => ({
+        inputId: 'in-run1-1',
+        text,
+        status: 'queued',
+      }),
+    })
     await conversation.input({
       ...base('r1'),
       clientMessageId: 'c1',
       text: 'also',
     })
+    await settle()
     expect(conversation.snapshot().queued).toHaveLength(1)
     // Theorem names the input itself; the client id was only the request's key.
     stub.messages = [
@@ -580,7 +608,9 @@ describe('send', () => {
         ],
       }),
     ]
+    bound.queue.observe()
     expect(conversation.snapshot().queued).toEqual([])
+    bound.dispose()
   })
 
   test('without a way to make a second runtime a side chat is refused as missing', async () => {
@@ -958,12 +988,19 @@ describe('run input recovery', () => {
     await t.settle()
     await owner.stop({ requestId: 'r2', runId: 'run1' })
     t.durable.inputs = [
-      { inputId: 'srv-c1', text: 'also', status: 'not_delivered', reason: 'run_cancelled' },
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_cancelled',
+      },
     ]
     t.runClosed()
     t.stub.emit()
     await t.settle()
-    expect(owner.snapshot().queued).toMatchObject([{ clientMessageId: 'c1', state: 'failed' }])
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', state: 'failed' },
+    ])
     expect(
       await owner.dismissInput({ requestId: 'r3', clientMessageId: 'c1' }),
     ).toMatchObject({ outcome: 'accepted' })
@@ -1527,7 +1564,11 @@ describe('side chat', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
       },
       workspaceId: 'w1',
       schedule: () => () => undefined,
@@ -1657,7 +1698,11 @@ describe('side chat', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
       },
       workspaceId: 'w1',
     })
@@ -1712,9 +1757,7 @@ describe('stop, retry and edit', () => {
     expect(result.outcome).toBe('accepted')
     expect(stub.appends.at(-1)).toMatchObject({
       sourceId: 'u1',
-      attachments: [
-        expect.objectContaining({ id: 'up1', name: 'notes.txt' }),
-      ],
+      attachments: [expect.objectContaining({ id: 'up1', name: 'notes.txt' })],
     })
   })
 
@@ -1858,7 +1901,11 @@ describe('approvals', () => {
           calls.push(1)
           throw new Error('socket closed')
         },
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
       },
     })
     const request = {

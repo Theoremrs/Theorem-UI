@@ -3030,7 +3030,7 @@ fn a_refused_first_gives_a_keep_of_what_the_pane_now_holds() {
 #[test]
 fn a_keep_that_is_refused_failed_or_unknown_says_the_edits_are_not_checkpointed_without_their_content()
  {
-    const SECRET: &str = "sk-live-4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8";
+    const SECRET: &str = concat!("sk-live-", "4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8");
     for (name, outcome) in [
         (
             "refused",

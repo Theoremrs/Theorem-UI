@@ -357,6 +357,44 @@ describe('three versions', () => {
 })
 
 describe('output and reconnect', () => {
+  test('a rebind during the first attach reads the replacement after the old reply settles', async () => {
+    const r = rig()
+    let finishOld!: (reply: ReturnType<typeof attachReply>) => void
+    r.handlers.attach = (request) => {
+      if (request.from_offset === 0 && r.of('attach').length === 1) {
+        return new Promise((resolve) => {
+          finishOld = resolve
+        })
+      }
+      return attachReply({
+        epoch: 2,
+        binding: { epoch: 2, program: 2 },
+        formatted: 'REPLACEMENT',
+        offset_start: 0,
+        offset_end: 11,
+      })
+    }
+    const first = r.session.attach({ terminalId: 'pty-1', fromOffset: 0 })
+    await flush()
+    console.log('DEBUG BEFORE EVENT', r.of('attach').length, r.session.state)
+    r.live('terminal.opened', {
+      session: 'pty-1',
+      epoch: 2,
+      program: 2,
+      origin: 'replacement',
+    })
+    finishOld(attachReply())
+    await first
+    await flush()
+    expect(r.of('attach').length).toBeGreaterThanOrEqual(2)
+    expect(r.session.state).toMatchObject({ bindingEpoch: 2, program: 2 })
+    expect(r.events).toContainEqual({
+      type: 'reset',
+      formatted: 'REPLACEMENT',
+      epoch: 2,
+    })
+  })
+
   test('bytes arrive in order and once', async () => {
     const r = rig()
     await opened(r)

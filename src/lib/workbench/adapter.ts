@@ -18,6 +18,7 @@ import { profileById, TERMINAL_PROFILES } from './terminal'
 import type { ProgramReport } from './terminal/program-report'
 import { sessionWatch } from './agent/sessions'
 import type { SessionState, SessionWatch } from './agent/sessions'
+import { clearSessionNotices } from './agent/deliver'
 import type { TerminalAdoption } from '@theoremharness/sdk'
 import type { Layout } from './layout'
 import type { AccountChange, AccountWatch } from './account'
@@ -459,11 +460,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
   /** The coding profile a foreground program names, if the catalog offers one for it. */
   const codingProfileOf = (command: string): string | undefined => {
     const program = command.trim().split('/').pop()
-    return TERMINAL_PROFILES.find((profile) => profile.argv?.[0] === program)?.id
+    return TERMINAL_PROFILES.find((profile) => profile.argv?.[0] === program)
+      ?.id
   }
 
   /** A row's profile: the program in its foreground now as the host names it, else what an earlier list said, else the backend's own. */
-  const rowProfile = (row: { command?: string }, backend: TerminalBackend, held?: string) =>
+  const rowProfile = (
+    row: { command?: string },
+    backend: TerminalBackend,
+    held?: string,
+  ) =>
     row.command?.trim()
       ? (codingProfileOf(row.command) ?? profileLabel(backend))
       : (held ?? profileLabel(backend))
@@ -577,13 +583,16 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       const name = row.name ?? row.command
       const cwd = row.cwd
       const owned = typeof extra.host === 'string' ? extra.host : undefined
+      const profile = rowProfile(row, row.backend, held?.profile)
       if (terminals.has(row.session)) {
         // The binding owns the rest of its entry; the host's modes, and what the terminal is called
         // and where its program works, are still the host's to say.
         if (held) {
-          const { name: _name, cwd: _cwd, ...rest } = held
+          const { name: _name, cwd: _cwd, profile: _profile, ...rest } = held
           sessions.set(row.session, {
             ...rest,
+            profile,
+            ...(row.command ? { command: row.command } : {}),
             ...(modes ? { modes } : {}),
             ...(name ? { name } : {}),
             ...(cwd ? { cwd } : {}),
@@ -597,7 +606,8 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           ? { programReport: report }
           : {}),
         session: row.session,
-        profile: rowProfile(row, row.backend, sessions.get(row.session)?.profile),
+        profile,
+        ...(row.command ? { command: row.command } : {}),
         backend: row.backend,
         workspace,
         program: row.binding.program,
@@ -620,6 +630,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           : {}),
         session: row.session,
         profile: rowProfile(row, row.backend),
+        ...(row.command ? { command: row.command } : {}),
         backend: row.backend,
         workspace,
         state: row.state,
@@ -698,11 +709,12 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     const session = state.terminalId
     if (!session) return
     const backend = backendOf(port)
-    const profile =
-      state.profile && profileById(state.profile.id)
-        ? state.profile.id
-        : (sessions.get(session)?.profile ?? profileLabel(backend))
     const known = sessions.get(session)
+    const profile = known?.command
+      ? rowProfile({ command: known.command }, backend, known.profile)
+      : state.profile && profileById(state.profile.id)
+        ? state.profile.id
+        : (known?.profile ?? profileLabel(backend))
     sessions.set(session, {
       session,
       profile,
@@ -712,6 +724,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       // What the host called it and where it works: a binding knows neither, so they are kept.
       ...(known?.name ? { name: known.name } : {}),
       ...(known?.cwd ? { cwd: known.cwd } : {}),
+      ...(known?.command ? { command: known.command } : {}),
       ...(state.programReport.kind !== 'unavailable'
         ? { programReport: state.programReport }
         : {}),
@@ -856,10 +869,19 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       effect.resource.type === 'terminal'
     ) {
       const session = effect.resource.session
+      const port = terminals.get(session)?.port
+      const listedProfile = sessions.get(session)?.profile
+      const portProfile = port?.state.profile?.id
+      const defaultProfile = port ? profileLabel(backendOf(port)) : undefined
       agentSessions.acted(
         session,
         effect.actor.runId,
-        terminals.get(session)?.port.state.profile?.id ?? 'the terminal',
+        portProfile && profileById(portProfile)?.argv?.length
+          ? portProfile
+          : listedProfile && listedProfile !== defaultProfile
+            ? listedProfile
+            : (portProfile ?? listedProfile ?? 'the terminal'),
+        port ? reportState(port.state.programReport) : undefined,
       )
     }
     if (effect.kind === 'terminalOpen') {
@@ -1022,6 +1044,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
         if (done.outcome === 'accepted') {
           bound.stop()
           terminals.delete(session)
+          agentSessions.forget(session)
         }
         return reply(done)
       }
@@ -1399,6 +1422,8 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     watched.clear()
     for (const { stop } of terminals.values()) stop()
     terminals.clear()
+    agentSessions.clear()
+    clearSessionNotices()
     if (next.code === 'account_changed') {
       send({ type: 'accountChanged', account: next.account })
     }
@@ -1560,6 +1585,8 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       watched.clear()
       for (const { stop } of terminals.values()) stop()
       terminals.clear()
+      agentSessions.clear()
+      clearSessionNotices()
     },
   }
 }

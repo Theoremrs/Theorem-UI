@@ -1,5 +1,6 @@
 // SOURCING: none — pure logic over the person's placement choice, the delivery switch and the shell mode; no upstream component applies.
 import type { ShellMode } from '@/components/shell/modes'
+import { CONVERSATION_MIN_WIDTH, WORKBENCH_MIN_WIDTH } from './dock-geometry'
 
 /** Where the workbench is drawn: over the whole sheet, docked beside the sheet, or docked under it. */
 export type Placement = 'full' | 'side' | 'bottom'
@@ -9,6 +10,16 @@ export type Companion = Exclude<Placement, 'full'>
 
 /** What the person last chose: a placement, or closed. */
 export type PlacementChoice = Placement | 'closed'
+
+export function dockPresentation(
+  placement: Placement | undefined,
+  viewport: number,
+): Placement | undefined {
+  return placement === 'side' &&
+    viewport < WORKBENCH_MIN_WIDTH + CONVERSATION_MIN_WIDTH
+    ? 'bottom'
+    : placement
+}
 
 /**
  * Where the workbench is drawn now, or `undefined` when it is not. With no

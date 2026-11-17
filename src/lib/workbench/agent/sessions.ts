@@ -33,9 +33,18 @@ export function createSessionWatch(tell: (notice: SessionNotice) => void) {
   >()
   return {
     /** An agent run acted on the session: it is watched, for that run. */
-    acted(session: string, runId: string, what: string) {
+    acted(
+      session: string,
+      runId: string,
+      what: string,
+      current?: SessionState,
+    ) {
       const known = watched.get(session)
-      watched.set(session, { runId, what, last: known?.last })
+      watched.set(session, {
+        runId,
+        what,
+        last: current === 'working' ? current : known?.last,
+      })
     },
     observe(session: string, state: SessionState, detail?: string) {
       const known = watched.get(session)
@@ -58,6 +67,9 @@ export function createSessionWatch(tell: (notice: SessionNotice) => void) {
     forget(session: string) {
       watched.delete(session)
     },
+    clear() {
+      watched.clear()
+    },
   }
 }
 
@@ -78,7 +90,7 @@ export function noticeText(notices: readonly SessionNotice[]): string {
       `- ${n.what} (${n.session}) ${WORDS[n.state]}${n.detail ? `: ${n.detail}` : ''}.`,
   )
   return [
-    'Workbench: a coding session you started has stopped working.',
+    'Workbench: a coding session you worked with has stopped working.',
     ...lines,
     'Read it with workbench.read, then give it feedback with code.send or tell the person what it did.',
   ].join('\n')

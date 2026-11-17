@@ -32,7 +32,11 @@ function setup() {
       answerApproval: async (request) => void answers.push(request),
       sendInput: async (request) => {
         inputs.push(request)
-        return { inputId: `in-${inputs.length}` }
+        return {
+          inputId: `in-${inputs.length}`,
+          text: request.text,
+          status: 'queued',
+        }
       },
       openUnder: (threadId, projectId) =>
         void asked.push([threadId, projectId]),
@@ -382,7 +386,11 @@ describe('side chats', () => {
       },
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
       },
       workspaceId: 'w1',
       schedule: (callback) => {
@@ -683,7 +691,11 @@ describe('switching a branch through the port', () => {
       runtime: stub.runtime,
       services: {
         answerApproval: async () => undefined,
-        sendInput: async () => ({ inputId: 'in-1' }),
+        sendInput: async ({ text }) => ({
+          inputId: 'in-1',
+          text,
+          status: 'queued',
+        }),
         history: async () =>
           ({
             rootBranchId: 'b0',

@@ -67,7 +67,7 @@ function Entry({ item }: { item: StatusBarItem }) {
 
 export function IdeStatusBar() {
   const statusBar = useIdePage((s) => s.statusBar)
-  const { placement, toggle } = useWorkbenchPlacement()
+  const { requestedPlacement, toggle } = useWorkbenchPlacement()
   return (
     <footer
       aria-label="Status bar"
@@ -76,7 +76,7 @@ export function IdeStatusBar() {
       <button
         type="button"
         aria-label={WORKBENCH_LABEL}
-        aria-pressed={placement === 'bottom'}
+        aria-pressed={requestedPlacement === 'bottom'}
         title={`${WORKBENCH_LABEL} (ctrl+\`)`}
         onClick={() => toggle('bottom')}
         className={cn(ENTRY, CLICKABLE, 'aria-pressed:text-ink')}

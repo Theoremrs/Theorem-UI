@@ -59,6 +59,7 @@ fn session(name: &str, backend: TerminalBackend) -> TerminalSessionInfo {
 fn session_named(name: &str, backend: TerminalBackend, profile: &str) -> TerminalSessionInfo {
     TerminalSessionInfo {
         name: None,
+        command: None,
         cwd: None,
         admitted: true,
         session: name.into(),
@@ -4040,6 +4041,68 @@ fn code_send_steers_an_adopted_coding_session_the_host_names() {
     let sent: Vec<String> = inputs(&fx).into_iter().map(|i| i.0).collect();
     assert_eq!(sent, vec!["run the tests".to_owned(), "\r".to_owned()]);
     assert!(fx.iter().all(|e| e.actor == agent()));
+}
+
+#[test]
+fn code_send_and_stop_follow_a_coding_program_started_inside_an_existing_shell() {
+    let mut r = rig();
+    r.live();
+    let mut row = session("s1", TerminalBackend::Herdr);
+    row.command = Some("/usr/local/bin/claude".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"run the tests"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert_eq!(
+        inputs(&effects).into_iter().map(|input| input.0).collect::<Vec<_>>(),
+        vec!["run the tests".to_owned(), "\r".to_owned()]
+    );
+    let (outcome, effects) = act(&mut r.m, "code.stop", Some(&id), None);
+    assert!(matches!(outcome, AgentOutcome::Accepted { .. }), "{outcome:?}");
+    assert_eq!(inputs(&effects)[0].0, "\x03");
+}
+
+#[test]
+fn code_send_does_not_keep_steering_a_coding_session_after_it_returns_to_a_shell() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let mut row = session("s1", TerminalBackend::Herdr);
+    row.command = Some("zsh".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"rm -rf /"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Refused { .. }), "{outcome:?}");
+    assert!(effects.is_empty(), "{effects:?}");
+}
+
+#[test]
+fn code_send_refuses_a_coding_profile_whose_current_program_is_a_shell() {
+    let mut r = rig();
+    r.send(coding_listing());
+    r.live();
+    let mut row = session_named("s1", TerminalBackend::Herdr, "Claude Code (Herdr)");
+    row.command = Some("zsh".into());
+    r.send(listing("w", vec![row]));
+    let id = r.id.as_str().to_owned();
+    let (outcome, effects) = act(
+        &mut r.m,
+        "code.send",
+        Some(&id),
+        Some(r#"{"input":"rm -rf /"}"#),
+    );
+    assert!(matches!(outcome, AgentOutcome::Refused { .. }), "{outcome:?}");
+    assert!(effects.is_empty(), "{effects:?}");
 }
 
 #[test]

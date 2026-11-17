@@ -1195,25 +1195,25 @@
       "oracle_class": "two-browser integration",
       "procedure": "Given two browser views attached to one terminal, when A types and then B types, observe both views.",
       "required_observations": "Both views see each other's output; typing from B reaches the program and shows in both, and typing from A still does; neither view is refused or locked out.",
-      "status": "not_run",
+      "status": "pass",
       "evidence": [
         {
-          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
-          "platform": "linux-cloud-runner",
-          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
-          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "build": "91b9684d02c35faa5671402d46d0b4926e4f45a4 plus the PR #123 review repair working tree",
+          "platform": "macOS local two-browser stack",
+          "environment": "node 22.23.1, bun 1.4.3, cargo 1.96.1, wasm-bindgen 0.2.127; @theoremharness/sdk 0.6.0-alpha.10; herdr-core 0.1.17; IDE host 9b5babedbdb4caeb",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1, two contexts sharing the signed-in account",
           "command": [
-            "node scripts/e2e/workbench.mjs --list"
+            "E2E_UI_PORT=3123 E2E_API_PORT=8413 E2E_IDENTITY_PORT=8419 E2E_IDE_HOST_PORT=8811 E2E_DATA_DIR=$HOME/.theorem/e2e-pr123 node scripts/e2e/workbench.mjs --only AC-35,AC-36"
           ],
-          "result": "not_run",
-          "evidence_tier": "none",
-          "blocker": "Two-browser integration: needs a deployed workbench with two real browser contexts sharing one terminal lease (no rustyred-thg-server, no deployed route on this runner).",
-          "partial_evidence": [
-            "adjacent evidence only: process.rs an_observer_emits_nothing_shows_the_reason_and_offers_control, requesting_control_attaches_as_controller_and_a_refusal_is_shown_with_its_reason, losing_the_lease_moves_to_observing_without_dropping_output, the_terminal_node_says_why_an_observer_cannot_type; workbench.rs an_answer_after_an_account_switch_is_dropped_and_the_pane_was_told_unknown shows the generation discipline a takeover relies on"
+          "result": "pass",
+          "evidence_tier": "live two-browser integration",
+          "observed": [
+            "the second browser saw the first browser's output",
+            "the second browser's typing reached the program and showed in both views",
+            "the first browser's typing still reached the program and showed in both views"
           ],
-          "observed": [],
           "limitations": [
-            "the stale-A-input-cannot-reach-the-program leg with delayed input in flight is only observable across two live views"
+            "this run verifies shared typing and output; it does not inject a delayed stale write"
           ]
         }
       ]
@@ -1228,25 +1228,27 @@
       "oracle_class": "two-browser interaction",
       "procedure": "Given two browser views attached to one terminal, when B is resized and then A is resized, read the program's grid after each; wait, read it again from A; then type in B and read it.",
       "required_observations": "A resize from either view is applied to the program's grid and the latest resize wins; neither view is refused. Neither view sends its size back when it hears the other's, so the grid holds still; the view a person uses last (types in, refocuses or resizes) sets the size, as tmux's latest client.",
-      "status": "not_run",
+      "status": "pass",
       "evidence": [
         {
-          "build": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
-          "platform": "linux-cloud-runner",
-          "environment": "bun 1.4.3, node 22.23.5, cargo 1.96.1, wasm-bindgen 0.2.127, vite 8.3.5; ratatui 0.30.2, ratzilla 0.3.1, vt100 0.16.2, terminput 0.5.16; @theoremharness/sdk 0.6.0-alpha.10 (vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1d), @rustyreddb/browser 0.1.0-beta.2 (sha256 9cdb8c68)",
-          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1 (the only engine installed; Firefox and WebKit absent)",
+          "build": "91b9684d02c35faa5671402d46d0b4926e4f45a4 plus the PR #123 review repair working tree",
+          "platform": "macOS local two-browser stack",
+          "environment": "node 22.23.1, bun 1.4.3, cargo 1.96.1, wasm-bindgen 0.2.127; @theoremharness/sdk 0.6.0-alpha.10; herdr-core 0.1.17; IDE host 9b5babedbdb4caeb",
+          "browser": "Chromium 156.0.8078.4 via playwright-core 1.64.1, two contexts sharing the signed-in account",
           "command": [
-            "node scripts/e2e/workbench.mjs --list"
+            "E2E_UI_PORT=3123 E2E_API_PORT=8413 E2E_IDENTITY_PORT=8419 E2E_IDE_HOST_PORT=8811 E2E_DATA_DIR=$HOME/.theorem/e2e-pr123 node scripts/e2e/workbench.mjs --only AC-35,AC-36"
           ],
-          "result": "not_run",
-          "evidence_tier": "none",
-          "blocker": "Two-browser interaction: needs an observer view and a hidden view beside a real controller, so a deployed route and a live process grid are required.",
-          "partial_evidence": [
-            "adjacent evidence only: process.rs the_screen_resizes_only_when_the_host_confirms_and_one_resize_is_in_flight — the grid only changes on the host's confirmation, which is the client half of controller-owned sizing; dock geometry.rs 14 and operations.rs resize_by_cells_moves_the_splitter_and_clears_the_pixel_target keep local layout changes out of the program grid"
+          "result": "pass",
+          "evidence_tier": "live two-browser interaction",
+          "observed": [
+            "the second browser attached to the same session and its keys reached the program",
+            "resizing the second browser changed the program grid from 43x167 to 31x113",
+            "resizing the first browser changed it again to 41x154",
+            "the grid stayed at 41x154 while both views were open",
+            "typing in the second browser made its own 31x113 size the program's again"
           ],
-          "observed": [],
           "limitations": [
-            "observer-local layout stealing or not stealing terminal ownership cannot be seen with one view"
+            "this run verifies latest-resize-wins and shared input; it does not exercise a hidden third view"
           ]
         }
       ]
@@ -2179,17 +2181,17 @@
     }
   ],
   "execution_record": {
-    "candidate_ui_commit": "a9e9dd8878563cf560fda5f12825a1ec6e00f1ae",
-    "candidate_branch": "docs/workbench-acceptance-bookkeeping (branched from review-pr-123 at a9e9dd8878563cf560fda5f12825a1ec6e00f1ae; PR head a410b4d0aaef40271e00bce2d8652401e6c81c45)",
-    "candidate_host_commit": "not recorded: no Theorem backend checkout or deployment exists on this runner (E2E_SERVER_BIN, E2E_IDE_HOST_BIN, E2E_HERDR_HC unset)",
+    "candidate_ui_commit": "91b9684d02c35faa5671402d46d0b4926e4f45a4 plus the PR #123 review repair working tree",
+    "candidate_branch": "feat/theo-workbench (PR #123; review repairs prepared in an isolated checkout)",
+    "candidate_host_commit": "IDE host 9b5babedbdb4caeb; the local server binary is the existing e2e-workbench build (its source commit was not recorded)",
     "sdk_version_or_hash": "@theoremharness/sdk 0.6.0-alpha.10, vendor/theoremharness-sdk-0.6.0-alpha.10.tgz sha256 cefe0d1da982f23bc7ac4fac0038669f79d0932714e9db7d174790dc7de85320 (note: LEDGER B11 records alpha.5; the checkout installs alpha.10)",
     "rustyred_browser_version": "@rustyreddb/browser 0.1.0-beta.2, sha256 9cdb8c681ceeea785a43565920ca540815aeb44c805e748a0dd6440db89a59a0",
     "ratzilla_ratatui_versions": "ratzilla 0.3.1, ratatui 0.30.2 (manifest asks 0.30.1), vt100 0.16.2, terminput 0.5.16, wasm-bindgen 0.2.127",
-    "herdr_binary_version_and_schema_digest": "not recorded: no herdr-core binary on this runner; scripts/e2e/workbench.mjs pins core 0.1.17 and aborts without it",
-    "environment_identity": "linux-cloud-runner (Debian 12, Linux 6.1.189+ x86_64)",
-    "browser_os_device": "Chromium 156.0.8078.4 on Linux, 1280-1440 CSS px wide story viewports, DPR 1, dark scheme, reducedMotion=reduce, story default zoom",
-    "test_fixture_identity": "vite 8.3.5 dev server on http://127.0.0.1:3119 serving /story/* fixtures; story-oracle runs with STORY_ORIGIN set to it and ORACLE_RENDER_DIR pointed outside the repository; design oracles with ORACLE_REVIEW_OUT=$HOME/oracle-out-bookkeeping",
+    "herdr_binary_version_and_schema_digest": "herdr-core 0.1.17; protocol generation 1 (the pinned workbench contract); binary digest not recorded",
+    "environment_identity": "macOS local stack: UI 3123, API 8413, identity 8419, IDE host 8811, data directory $HOME/.theorem/e2e-pr123",
+    "browser_os_device": "Chromium 156.0.8078.4 on macOS, two 1440x900 contexts; resize checks used 1300x800, 900x600 and 1200x760",
+    "test_fixture_identity": "real signed-in local stack with rustyred-thg-server, theorem-ide-host and herdr-core; AC-35/36 report and screenshots under $HOME/.theorem/e2e-pr123",
     "recorded_at": "2026-11-17",
-    "tally": "36 pass, 26 not_run, 0 fail"
+    "tally": "37 pass, 25 not_run, 0 fail"
   }
 }

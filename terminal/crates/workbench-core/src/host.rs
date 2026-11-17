@@ -114,6 +114,9 @@ pub struct TerminalSessionInfo {
     pub session: String,
     /// The profile it was started from, as people name it.
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "ts", ts(optional))]
+    pub command: Option<String>,
     pub backend: TerminalBackend,
     pub workspace: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -1735,16 +1735,20 @@ impl TheoPanel {
             return Err("not connected to a conversation yet".into());
         }
         let body = if row.kept {
-            // Words the owner holds for the run: naming its id asks it to replay that request,
-            // whatever the run is doing now.
-            let Some(run_id) = self.owner.run.run_id.clone() else {
-                return Err("the run has no id to send input to".into());
-            };
-            EffectBody::ConversationInput(ConversationInput {
-                run_id,
-                client_message_id: row.id.clone(),
-                text: row.text.clone(),
-            })
+            if let Some(run_id) = self.owner.run.run_id.clone() {
+                EffectBody::ConversationInput(ConversationInput {
+                    run_id,
+                    client_message_id: row.id.clone(),
+                    text: row.text.clone(),
+                })
+            } else {
+                EffectBody::ConversationSend(ConversationSend {
+                    client_message_id: row.id.clone(),
+                    text: row.text.clone(),
+                    attachments: Vec::new(),
+                    references: Vec::new(),
+                })
+            }
         } else {
             let editing = self
                 .pending
@@ -7914,6 +7918,26 @@ mod tests {
         let drawn = r.drawn();
         assert_eq!(drawn.matches("try again").count(), 1, "{drawn}");
         assert!(drawn.contains("[remove]"), "{drawn}");
+    }
+
+    #[test]
+    fn a_recovered_draft_retries_under_its_message_id_without_a_run_id() {
+        let queued = json!([
+            {"clientMessageId": "recovered", "text": "finish the edit", "state": "failed", "reason": "no run"},
+        ]);
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"run": {"state": "idle"}, "queued": queued}),
+        );
+        let effects = r.act("theo.view.queue.retry.recovered");
+        let sent = conversation_effects(&effects);
+        let EffectBody::ConversationSend(send) = &sent[0].body else {
+            panic!("recovered text must start a turn: {effects:?}")
+        };
+        assert_eq!(send.client_message_id, "recovered");
+        assert_eq!(send.text, "finish the edit");
     }
 
     #[test]

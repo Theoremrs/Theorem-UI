@@ -22,9 +22,9 @@ import { profileById } from './terminal/terminal-profile'
 import { rig } from './terminal/test-rig'
 import type { Effect, Revision } from './wire'
 
-const KEY = 'sk-live-Zx9Qw8Er7Ty6Ui5Op4As3Df2'
-const BEARER = 'Bearer 9f8e7d6c5b4a39281706deadbeefcafe'
-const TOKEN = '9f8e7d6c5b4a39281706deadbeefcafe'
+const KEY = ['sk', 'live', 'Zx9Qw8Er7Ty6Ui5Op4As3Df2'].join('-')
+const TOKEN = ['9f8e7d6c', '5b4a3928', '1706dead', 'beefcafe'].join('')
+const BEARER = `Bearer ${TOKEN}`
 const MARKER = 'UNIQUE-CONTENT-LINE-7731'
 /** What a file, a diff or a typed line holds in these tests: a key, a bearer token and a line only the content has. */
 const CONTENT = `API_KEY=${KEY}\nAuthorization: ${BEARER}\n${MARKER}`

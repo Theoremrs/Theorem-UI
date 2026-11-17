@@ -2,7 +2,9 @@ import { create } from 'zustand'
 import type { PendingRunInput, RunInputQueue } from './run-input'
 
 const queues = new Map<string, RunInputQueue>()
-export const useRunInputs = create<Partial<Record<string, readonly PendingRunInput[]>>>(() => ({}))
+export const useRunInputs = create<
+  Partial<Record<string, readonly PendingRunInput[]>>
+>(() => ({}))
 
 /** assistant-ui's local thread identity exists before its durable id does. */
 export function registerRunInputQueue(threadKey: string, queue: RunInputQueue) {
@@ -27,7 +29,11 @@ export const submitRunInput = (threadKey: string, text: string, id?: string) =>
 export const retryRunInput = (threadKey: string, id: string) =>
   queues.get(threadKey)?.retry(id)
 
-export const stopRunInputs = (threadKey: string) => queues.get(threadKey)?.stop()
+export const stopRunInputs = (threadKey: string) =>
+  queues.get(threadKey)?.stop()
 
 export const dismissRunInput = (threadKey: string, id: string) =>
   queues.get(threadKey)?.dismiss(id)
+
+export const observeRunInput = (threadKey: string) =>
+  queues.get(threadKey)?.observe()

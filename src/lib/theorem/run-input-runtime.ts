@@ -24,7 +24,7 @@ export async function sendRunInput(runId: string, text: string, key: string) {
 
 /** Binds native input to one assistant-ui observer without replacing its stream. */
 export function bindRunInput(
-  runtime: Pick<AssistantRuntime, 'thread'>,
+  runtime: Pick<AssistantRuntime, 'thread' | 'threads'>,
   {
     threadKey,
     threadId,
@@ -152,6 +152,7 @@ export function bindRunInput(
   const unregister = registerRunInputQueue(threadKey, queue)
   const stopThread = runtime.thread.subscribe(queue.observe)
   const stopRuns = liveRuns.subscribe(queue.observe)
+  const stopItem = runtime.threads.mainItem.subscribe(queue.observe)
   let knownThreadId = threadId()
   const stopIdentity = subscribe?.(() => {
     const next = threadId()
@@ -167,6 +168,7 @@ export function bindRunInput(
     clearInterval(timer)
     stopThread()
     stopRuns()
+    stopItem()
     stopIdentity?.()
     unregister()
   }

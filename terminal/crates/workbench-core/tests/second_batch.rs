@@ -83,6 +83,7 @@ fn the_session_list_message_round_trips_and_defaults_what_the_host_leaves_out() 
         }],
         sessions: vec![TerminalSessionInfo {
             name: None,
+            command: None,
             cwd: None,
             admitted: true,
             session: "s-1".into(),

@@ -78,12 +78,29 @@ describe('the session watch', () => {
     ])
   })
 
+  test('acting on a session already working remembers that state', () => {
+    const { told, watch } = setup()
+    watch.acted('t1', 'run1', 'Claude Code (Herdr)', 'working')
+    watch.observe('t1', 'finished')
+    expect(told).toMatchObject([{ runId: 'run1', state: 'finished' }])
+  })
+
   test('a forgotten session tells nothing more', () => {
     const { told, watch } = setup()
     watch.acted('s1', 'run1', 'the side chat')
     watch.observe('s1', 'working')
     watch.forget('s1')
     watch.observe('s1', 'finished')
+    expect(told).toEqual([])
+  })
+
+  test('clearing the watch lets go of every session', () => {
+    const { told, watch } = setup()
+    watch.acted('t1', 'run1', 'Claude Code (Herdr)', 'working')
+    watch.acted('t2', 'run1', 'Codex (Herdr)', 'working')
+    watch.clear()
+    watch.observe('t1', 'finished')
+    watch.observe('t2', 'finished')
     expect(told).toEqual([])
   })
 })
@@ -108,5 +125,6 @@ describe('noticeText', () => {
     expect(text).toContain('Claude Code (Herdr) (hc-1) finished its work')
     expect(text).toContain('the side chat (side-2) failed: model error')
     expect(text).toContain('workbench.read')
+    expect(text).toContain('you worked with')
   })
 })

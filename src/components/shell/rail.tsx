@@ -117,8 +117,9 @@ function AccountMenu() {
 
 /** Opens the workbench beside the conversation (where it was last docked), and closes it. */
 function TerminalToggle() {
-  const { placement, toggle } = useWorkbenchPlacement()
-  const open = placement === 'side' || placement === 'bottom'
+  const { requestedPlacement, toggle } = useWorkbenchPlacement()
+  const open =
+    requestedPlacement === 'side' || requestedPlacement === 'bottom'
   return (
     <Button
       variant="ghost"

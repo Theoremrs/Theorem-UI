@@ -997,14 +997,25 @@ impl ProcessPanel {
         let Stage::Bound(b) = &self.stage else {
             return None;
         };
-        let named = b.profile.as_ref().map(|c| c.id.clone()).or_else(|| {
-            self.catalog
-                .snapshot(&b.workspace)
-                .sessions
-                .iter()
-                .find(|s| s.session == b.session && s.workspace == b.workspace)
-                .map(|s| s.profile.clone())
-        });
+        let listed = self
+            .catalog
+            .snapshot(&b.workspace)
+            .sessions
+            .into_iter()
+            .find(|session| session.session == b.session && session.workspace == b.workspace);
+        let current = listed
+            .as_ref()
+            .and_then(|session| session.command.as_deref())
+            .map(|command| {
+                let program = command.trim().rsplit('/').next().unwrap_or("");
+                CODING_PROFILES
+                    .iter()
+                    .find(|(option, _)| *option == program)
+                    .map(|(_, profile)| (*profile).to_owned())
+            });
+        let named = current
+            .unwrap_or_else(|| listed.map(|session| session.profile))
+            .or_else(|| b.profile.as_ref().map(|choice| choice.id.clone()));
         named.filter(|id| CODING_PROFILES.iter().any(|(_, label)| id == label))
     }
 

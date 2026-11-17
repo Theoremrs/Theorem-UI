@@ -11,7 +11,7 @@ export type TerminalSessionInfo = { session: string,
 /**
  * The profile it was started from, as people name it.
  */
-profile: string, backend: TerminalBackend, workspace: string, host?: string, 
+profile: string, command?: string, backend: TerminalBackend, workspace: string, host?: string, 
 /**
  * The program's incarnation: 1 is the original, plus one per replacement.
  */

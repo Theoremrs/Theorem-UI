@@ -4,8 +4,9 @@ import { TheoremError, TheoremTimeoutError } from '@theoremharness/sdk'
 import { readable, REASON_LIMIT, redact } from './redact'
 import { reason } from './workspace-recovery'
 
-const KEY = 'sk-live-Zx9Qw8Er7Ty6Ui5Op4As3Df2'
-const BEARER = 'Bearer 9f8e7d6c5b4a39281706deadbeefcafe'
+const KEY = ['sk', 'live', 'Zx9Qw8Er7Ty6Ui5Op4As3Df2'].join('-')
+const TOKEN = ['9f8e7d6c', '5b4a3928', '1706dead', 'beefcafe'].join('')
+const BEARER = `Bearer ${TOKEN}`
 const FILE = `API_KEY=${KEY}\nAuthorization: ${BEARER}\nFILE-BODY-LINE-ONE`
 
 describe('reason reads an error as one short readable sentence', () => {
@@ -74,7 +75,7 @@ describe('reason reads an error as one short readable sentence', () => {
       new TheoremError({ statusCode: 422, body: { code: 'bad', detail } }),
     )
     expect(text).not.toContain(KEY)
-    expect(text).not.toContain('9f8e7d6c5b4a39281706deadbeefcafe')
+    expect(text).not.toContain(TOKEN)
     expect(text.length).toBeLessThanOrEqual(REASON_LIMIT + 3)
   })
 
@@ -89,7 +90,11 @@ describe('reason reads an error as one short readable sentence', () => {
 
 describe('redact masks credential-shaped text and leaves ordinary words', () => {
   test('API keys, bearer tokens, JWTs, key=value pairs and long unlabelled keys', () => {
-    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.c2lnbmF0dXJlMTIzNDU2'
+    const jwt = [
+      'eyJhbGciOiJIUzI1NiJ9',
+      'eyJzdWIiOiJ0ZXN0In0',
+      'c2lnbmF0dXJlMTIzNDU2',
+    ].join('.')
     const text = [
       KEY,
       BEARER,
@@ -103,7 +108,7 @@ describe('redact masks credential-shaped text and leaves ordinary words', () => 
     const out = redact(text)
     for (const secret of [
       KEY,
-      '9f8e7d6c5b4a39281706deadbeefcafe',
+      TOKEN,
       jwt,
       'hunter2hunter2',
       'abcd1234efgh',

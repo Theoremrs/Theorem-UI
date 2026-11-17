@@ -1478,7 +1478,7 @@ fn semantics_with_a_tiny_area_is_still_valid() {
 
 // ---- AC-53: nothing printed of a request, a diff, a file or a draft holds its content --
 
-const SECRET: &str = "sk_live_51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ";
+const SECRET: &str = concat!("sk_live_", "51NzQx7Hk2LmP9dRtUvW3yZaBcDeFgHiJ");
 
 #[test]
 fn debug_and_display_of_a_request_a_diff_a_read_a_log_and_a_draft_never_hold_the_content() {

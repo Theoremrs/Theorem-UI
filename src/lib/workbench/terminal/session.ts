@@ -265,6 +265,7 @@ export class TerminalSession {
   /** Names this session sent that the host replaced with one it minted, with the binding epoch they were replaced in. */
   private readonly superseded = new Map<string, number | undefined>()
   private catchingUp: Promise<Outcome<Bound>> | undefined
+  private catchUpAgain = false
   private linkWasDown = false
 
   constructor(private readonly host: TerminalHost) {}
@@ -780,12 +781,24 @@ export class TerminalSession {
   /** Read what this session has not applied. Catch-ups share one request; open and attach start a fresh one. */
   private catchUp(from?: number): Promise<Outcome<Bound>> {
     if (this.catchingUp) {
+      if (from === 0) this.catchUpAgain = true
       return this.catchingUp
     }
-    const request = this.readFrom(from ?? this.current.offset).finally(() => {
-      if (this.catchingUp === request) {
-        this.catchingUp = undefined
+    const start = from ?? this.current.offset
+    const terminalId = this.current.terminalId
+    const request = (async (): Promise<Outcome<Bound>> => {
+      let result = await this.readFrom(start)
+      while (
+        this.catchUpAgain &&
+        this.current.terminalId === terminalId &&
+        this.current.phase !== 'detached'
+      ) {
+        this.catchUpAgain = false
+        result = await this.readFrom(0)
       }
+      return result
+    })().finally(() => {
+      if (this.catchingUp === request) this.catchingUp = undefined
     })
     this.catchingUp = request
     return request
@@ -793,6 +806,7 @@ export class TerminalSession {
 
   private async readFrom(from: number): Promise<Outcome<Bound>> {
     const id = this.current.terminalId
+    const requestedEpoch = this.current.bindingEpoch
     if (!id) {
       return this.answer({ outcome: 'failed', reason: 'no terminal is bound' })
     }
@@ -827,6 +841,28 @@ export class TerminalSession {
         outcome: 'refused',
         code: 'terminal_reply_mismatch',
         reason: `The host's attach reply was not read (${problem}); none of it was applied`,
+      })
+    }
+    const replyEpoch = reply.epoch ?? reply.binding?.epoch
+    const stale =
+      this.current.terminalId !== id ||
+      (requestedEpoch !== undefined &&
+        replyEpoch !== undefined &&
+        replyEpoch < requestedEpoch) ||
+      (this.current.bindingEpoch !== undefined &&
+        replyEpoch !== undefined &&
+        replyEpoch < this.current.bindingEpoch)
+    if (stale) {
+      if (
+        this.current.terminalId === id &&
+        this.current.bindingEpoch !== requestedEpoch
+      ) {
+        this.catchUpAgain = true
+      }
+      return this.answer({
+        outcome: 'refused',
+        code: 'terminal_control_refused',
+        reason: 'stale_epoch',
       })
     }
     this.apply(reply)
@@ -1034,8 +1070,7 @@ export class TerminalSession {
     }
     const newer =
       epoch !== undefined &&
-      state.bindingEpoch !== undefined &&
-      epoch > state.bindingEpoch
+      (state.bindingEpoch === undefined || epoch > state.bindingEpoch)
     switch (event.kind) {
       case 'terminal.opened': {
         const { program, origin } = event.data

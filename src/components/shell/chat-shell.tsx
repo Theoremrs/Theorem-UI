@@ -381,15 +381,20 @@ function SheetSplit({
  */
 function DesktopShell(route: DockRoute) {
   const mode = useShellMode()
-  const { placement, toggle: toggleWorkbench } = useWorkbenchPlacement()
+  const {
+    placement,
+    requestedPlacement,
+    toggle: toggleWorkbench,
+  } = useWorkbenchPlacement()
   useWorkbenchShortcut(toggleWorkbench)
-  const full = placement === 'full'
+  const full = requestedPlacement === 'full'
   // Mounted on its first showing, then kept, hidden while closed, so its runs
   // and terminals carry on (components/workbench/workbench-dock.tsx).
   const [workbenchMounted, setWorkbenchMounted] = useState(
-    placement !== undefined,
+    requestedPlacement !== undefined,
   )
-  if (placement !== undefined && !workbenchMounted) setWorkbenchMounted(true)
+  if (requestedPlacement !== undefined && !workbenchMounted)
+    setWorkbenchMounted(true)
   const { documentId } = useParams({ strict: false })
   const view = `${mode}:${route.threadId}:${documentId}`
   const [drawerView, setDrawerView] = useState<string | null>(null)
@@ -469,7 +474,10 @@ function DesktopShell(route: DockRoute) {
           </div>
         </div>
         {workbenchMounted && (
-          <WorkbenchDock placement={placement} projectId={route.projectId} />
+          <WorkbenchDock
+            placement={requestedPlacement}
+            projectId={route.projectId}
+          />
         )}
       </div>
       <NavigationDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />

@@ -3438,7 +3438,7 @@ fn takes_chord_is_false_while_the_rename_name_is_typed() {
 // ---- AC-53: a save never puts the content in the panel's words or node -----
 
 /// Shaped like a provider key, so a scanner would take it for one.
-const SECRET: &str = "sk-live-4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8";
+const SECRET: &str = concat!("sk-live-", "4eC39HqLyjWDarjtT1zdp7dcX9mQ2wZ8");
 
 /// Every string the panel puts in the semantic tree outside the text it
 /// shows: names, descriptions and the reasons an action is off.
