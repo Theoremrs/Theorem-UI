@@ -133,12 +133,5 @@ export function CrmNavigationBoundary({ children }: { children: ReactNode }) {
   return scope ? children : <OwnScope records={false}>{children}</OwnScope>
 }
 
-/**
- * Opens a document where the surrounding inspector opens its other linked
- * items. Unset, a document opens beside the Index's view.
- */
-const OpenDocumentContext = createContext<
-  ((documentId: string) => void) | null
->(null)
-export const OpenDocumentProvider = OpenDocumentContext.Provider
-export const useOpenDocumentHandler = () => useContext(OpenDocumentContext)
+// Kept in a module of its own so a chat part can use it without this one.
+export { OpenDocumentProvider, useOpenDocumentHandler } from './open-document'

@@ -47,6 +47,15 @@ export type ProposalField = {
   to: unknown
 }
 
+/** A passage of a document filed to the record, that the change rests on. */
+export type ProposalSource = {
+  documentId: string
+  title: string
+  /** The document's revision when the passage was read. */
+  revision: number | null
+  quote: string
+}
+
 export type RecordProposal = {
   proposalId: string
   threadId: string
@@ -59,6 +68,8 @@ export type RecordProposal = {
   fields: ProposalField[]
   reason: string
   evidence: string[]
+  /** Passages of filed documents the change rests on; empty when none. */
+  sources: ProposalSource[]
   status: ProposalStatus
   applied: boolean
   decision: ProposalDecision | null
@@ -150,12 +161,34 @@ export function decodeProposal(raw: unknown): RecordProposal | undefined {
     evidence: Array.isArray(raw.evidence)
       ? raw.evidence.filter((v): v is string => typeof v === 'string' && !!v)
       : [],
+    sources: decodeSources(raw.sources),
     status,
     applied: raw.applied === true,
     decision: decodeDecision(raw.decision),
     createdAtMs: Number(raw.createdAtMs) || 0,
     task: decodeProposedTask(raw.action),
   }
+}
+
+function decodeSources(raw: unknown): ProposalSource[] {
+  if (!Array.isArray(raw)) return []
+  const sources: ProposalSource[] = []
+  for (const source of raw) {
+    if (!isObject(source)) continue
+    const documentId = text(source.documentId)
+    const quote = text(source.quote)
+    if (!documentId || !quote) continue
+    const revision = isObject(source.revision)
+      ? whole(source.revision.position)
+      : null
+    sources.push({
+      documentId,
+      title: text(source.title) ?? 'Untitled document',
+      revision,
+      quote,
+    })
+  }
+  return sources
 }
 
 /** The part's payload: the proposal at `proposal`, or nested under `payload`. */

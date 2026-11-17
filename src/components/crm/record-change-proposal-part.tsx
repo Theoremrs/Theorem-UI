@@ -1,13 +1,20 @@
-// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
+// SOURCING: assistant-ui data part renderer for Theorem's `record_change_proposal` part (see ./proposal for the decoding and the words); the inspector's document opener (./open-document), else a Link to the document in the Index, for a source; @tanstack/react-query for the proposal's current state and the decision; ui/button for Approve and Dismiss; the manifest part's RecordLink to each record's page in the Index; @tanstack/react-router Link to the conversation; lucide-react marks
 import type { DataMessagePartComponent } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from '@tanstack/react-router'
-import { ArrowRight, CircleAlert, FilePen, ListTodo } from 'lucide-react'
+import {
+  ArrowRight,
+  CircleAlert,
+  FilePen,
+  FileText,
+  ListTodo,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
 import { useDataModel } from '@/components/records/queries'
 import { workItemId } from '@/components/work/route'
 import { RecordLink } from './context-manifest-part'
+import { useOpenDocumentHandler } from './open-document'
 import { staleRecordEverywhere } from './queries'
 import { decideProposal, problemCode, readProposal } from './proposal-api'
 import {
@@ -17,6 +24,9 @@ import {
   valueWords,
 } from './proposal'
 import type { RecordProposal } from './proposal'
+
+const SOURCE_LINK =
+  'underline decoration-ink-faint underline-offset-2 hover:text-ink'
 
 /** The change the assistant proposes, and the two ways to answer it. */
 export function RecordChangeProposalView({
@@ -35,6 +45,9 @@ export function RecordChangeProposalView({
     retry: false,
   })
   const proposal = current.data
+  // A source opens where the surrounding inspector opens documents, if any;
+  // otherwise beside the Index's view.
+  const openDocument = useOpenDocumentHandler()
   const typeNamed = (name: string) =>
     model?.objectTypes.find(
       (type) => type.name_singular.toLowerCase() === name.toLowerCase(),
@@ -172,6 +185,44 @@ export function RecordChangeProposalView({
             )
           })}
         </p>
+      )}
+
+      {proposal.sources.length > 0 && (
+        <ul aria-label="From documents" className="flex flex-col gap-1.5">
+          {proposal.sources.map((source) => (
+            <li
+              key={`${source.documentId}:${source.quote}`}
+              className="flex flex-col gap-0.5 text-xs leading-5"
+            >
+              <blockquote className="border-l-2 border-separator ps-2 text-ink">
+                {source.quote}
+              </blockquote>
+              <span className="flex flex-wrap items-baseline gap-x-1 ps-2.5 text-ink-muted">
+                <FileText aria-hidden className="size-3 self-center" />
+                {openDocument ? (
+                  <button
+                    type="button"
+                    className={SOURCE_LINK}
+                    onClick={() => openDocument(source.documentId)}
+                  >
+                    {source.title}
+                  </button>
+                ) : (
+                  <Link
+                    to="/index"
+                    search={{ item: source.documentId }}
+                    className={SOURCE_LINK}
+                  >
+                    {source.title}
+                  </Link>
+                )}
+                {source.revision !== null && (
+                  <span>{`· revision ${source.revision}`}</span>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
       )}
 
       {pending ? (

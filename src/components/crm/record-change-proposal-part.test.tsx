@@ -10,6 +10,7 @@ import {
 } from 'bun:test'
 import type { ComponentProps } from 'react'
 import { cleanup, click, waitFor } from '../../../test/blocks/render'
+import { OpenDocumentProvider } from './context'
 import { createFixtureServer, fixtureFetch } from './fixture'
 import { decodeProposalPart, parseEvidence } from './proposal'
 import {
@@ -142,6 +143,63 @@ test('it links to the record and to what the proposal rests on', async () => {
   expect(hrefs).toContain(
     `/index?view=${recordPageViewId('Interaction', 'interaction:planning')}`,
   )
+})
+
+test('a change resting on filed documents quotes each, and its title opens the document', async () => {
+  const opened: string[] = []
+  const sources = [
+    {
+      documentId: 'doc:noor-note',
+      title: 'Note from Noor',
+      revision: { position: 3, contentDigest: 'sha256:abc' },
+      quote: 'Her new phone is 555-0142',
+    },
+    // Without a quote it rests on nothing it can show, so it is left out.
+    { documentId: 'doc:empty', title: 'Empty', quote: '' },
+  ]
+  current = { proposal: proposal({ sources }) }
+  const { container } = await mountAt('/', () => (
+    <OpenDocumentProvider value={(id) => void opened.push(id)}>
+      <RecordChangeProposalPart
+        {...({
+          data: { proposal: proposal({ sources }) },
+          name: 'theorem-record_change_proposal',
+        } as PartProps)}
+      />
+    </OpenDocumentProvider>
+  ))
+  const list = container.querySelector('ul[aria-label="From documents"]')!
+  const rows = [...list.querySelectorAll('li')]
+  expect(rows).toHaveLength(1)
+  expect(rows[0]!.querySelector('blockquote')!.textContent).toBe(
+    'Her new phone is 555-0142',
+  )
+  expect(rows[0]!.textContent).toContain('revision 3')
+  await click(button(container, 'Note from Noor'))
+  expect(opened).toEqual(['doc:noor-note'])
+})
+
+test('outside an inspector a source links to its document in the Index', async () => {
+  const sources = [
+    {
+      documentId: 'doc:noor-note',
+      title: 'Note from Noor',
+      quote: 'Her new phone',
+    },
+  ]
+  current = { proposal: proposal({ sources }) }
+  const { container } = await part({ proposal: proposal({ sources }) })
+  const link = [...container.querySelectorAll('a')].find(
+    (a) => a.textContent === 'Note from Noor',
+  )!
+  expect(decodeURIComponent(link.getAttribute('href')!)).toContain(
+    'item=doc:noor-note',
+  )
+})
+
+test('a change resting on nothing filed lists no documents', async () => {
+  const { container } = await part({ proposal: proposal() })
+  expect(container.querySelector('ul[aria-label="From documents"]')).toBeNull()
 })
 
 test('approve sends the decision with the thread revision, CSRF and a fresh idempotency key', async () => {
@@ -403,7 +461,7 @@ test('a task proposal decodes its task and an approval its result', () => {
   expect(decodeProposalPart({ proposal: proposal() })!.task).toBeUndefined()
 })
 
-test('an approval makes the record\'s CRM and Records copies stale, so they are read again', async () => {
+test("an approval makes the record's CRM and Records copies stale, so they are read again", async () => {
   decision = {
     status: 201,
     body: {
