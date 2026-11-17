@@ -31,6 +31,14 @@ const virtualPath = (url: string) =>
 
 const local = (specifier: string) => /^(?:\.{1,2}\/|\/)/.test(specifier)
 
+/** esm.sh can leave a package's own source aliases as unversioned URLs. */
+function npmURL(value: string) {
+  const url = new URL(value)
+  if (url.origin !== 'https://esm.sh') return undefined
+  const match = /^\/(@[^/@]+\/[^/@]+|[^/@]+)(?:@([^/]+))?(?:\/(.*))?$/.exec(url.pathname)
+  return match ? { name: match[1]!, version: match[2], path: match[3] ?? '' } : undefined
+}
+
 /**
  * Local type errors still report normally when a dependency has no types.
  * Missing or broken declarations are separate actionable diagnostics; the
@@ -43,8 +51,31 @@ export async function dependencyDeclarations(
   const { preProcessFile } = await import('typescript')
   const result: DependencyDeclarations = { files: {}, paths: {}, problems: [] }
   const scheduled = new Map<string, Promise<void>>()
+  const packageTypes = new Map<string, { entry: string; directory: string }>()
 
-  async function declarationTarget(value: string): Promise<string> {
+  function rememberTypes(request: string, types: string) {
+    const imported = npmURL(request)
+    const declared = npmURL(types)
+    if (imported && !imported.path && declared?.version && imported.name === declared.name)
+      packageTypes.set(`${declared.name}@${declared.version}`, {
+        entry: types,
+        directory: new URL('./', types).href,
+      })
+  }
+
+  async function declarationTarget(value: string, importer?: string): Promise<string> {
+    const self = npmURL(value)
+    const owner = importer && npmURL(importer)
+    const root = owner && packageTypes.get(`${owner.name}@${owner.version}`)
+    if (self && !self.version && owner && root && self.name === owner.name) {
+      // Resolve the package's own alias against its advertised declaration
+      // root, retaining that package's version and CDN build arguments. For
+      // example, pkg/types/foo inside pkg@1/dist/index.d.ts means that
+      // published types tree, never the latest unversioned pkg on the CDN.
+      return self.path
+        ? declarationTarget(new URL(self.path, root.directory).href)
+        : root.entry
+    }
     const url = new URL(value)
     if (/\.d\.[cm]?ts$/.test(url.pathname)) return value
     const withPath = (path: string) => {
@@ -89,13 +120,14 @@ export async function dependencyDeclarations(
         if (Object.hasOwn(typed, specifier) && dependencies.resolve(specifier).kind === 'vendor') continue
         let target: string
         if (local(specifier) || specifier.startsWith('https://')) {
-          target = await declarationTarget(new URL(specifier, module.url).href)
+          target = await declarationTarget(new URL(specifier, module.url).href, module.url)
         } else {
           const resolved = dependencies.resolve(specifier)
           if (resolved.kind === 'vendor') continue
           const dependency = await dependencies.load(resolved.path)
           if (!dependency.types)
             throw new Error(`No declarations advertised by "${specifier}", imported by ${module.url}`)
+          rememberTypes(resolved.path, dependency.types)
           target = dependency.types
         }
         const start = module.source.indexOf(specifier, ref.pos)
@@ -176,6 +208,7 @@ export async function dependencyDeclarations(
         // its own missing-declaration diagnostic until the author supplies one.
         return
       }
+      rememberTypes(resolved.path, module.types)
       result.paths[specifier] = [schedule(module.types)]
     } catch (error) {
       report(specifier, error instanceof Error ? error.message : String(error), 'APP_DEPENDENCY_RESOLVE')

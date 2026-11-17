@@ -39,6 +39,7 @@ jobs:
         with:
           bun-version: '1.4.3'
       - name: Install locked dependencies
+        id: install
         run: bun install --frozen-lockfile
       - name: Check dependency resolution, compiler diagnostics, and live presentation
         run: >-
@@ -50,10 +51,14 @@ jobs:
           src/components/artifacts/artifact-message.test.tsx
           src/components/artifacts/artifact-registry.test.tsx
       - name: Compile and check a real pinned Luma dependency
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
           THEOREM_TEST_REMOTE_DEPS: '1'
         run: bun test src/lib/blocks/app-dependencies.live.test.ts
       - name: Install Chromium
+        id: browser
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: node node_modules/playwright-core/cli.js install --with-deps chromium
       - name: Build and exercise the browser compiler, checker worker, and live App
+        if: ${{ !cancelled() && steps.browser.outcome == 'success' }}
         run: bun run e2e:app-ts --built

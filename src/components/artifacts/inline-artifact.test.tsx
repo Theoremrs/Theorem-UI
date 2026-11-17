@@ -52,7 +52,7 @@ test('expansion, streamed rerenders, and Escape preserve the authored component 
   expect(cancel.defaultPrevented).toBe(true)
   expect(dialog.open).toBe(true)
   expect(dialog.dataset.layout).toBe('inline')
-  expect(document.activeElement).toBe(buttonNamed(container, 'Expand'))
+  expect(document.activeElement).toBe(buttonNamed(container, 'Expand')!)
   expect(buttonNamed(container, 'Value 1')).toBeDefined()
   expect(container.querySelector('iframe')).toBe(frame)
 

@@ -147,6 +147,26 @@ test('external declarations and their relative imports are checked by tsrs', asy
   expect(result.problems[0]).toMatchObject({ file: 'main.ts', line: 2, code: 'TS2345' })
 }, 120_000)
 
+test('unversioned package self aliases use the pinned published declaration root', async () => {
+  const resolver = new AppDependencies({ '@fixture/core': '1.2.3' })
+  const url = resolver.resolve('@fixture/core').path
+  const remote = modules({
+    [url]: { source: 'export const label = x => String(x)', types: 'https://esm.sh/@fixture/core@1.2.3/X-args/dist/index.d.ts' },
+    'https://esm.sh/@fixture/core@1.2.3/X-args/dist/index.d.ts': { source: 'import type { Count } from "https://esm.sh/@fixture/core/types/count"; export declare function label(value: Count): string;' },
+    'https://esm.sh/@fixture/core@1.2.3/X-args/dist/types/count.d.ts': { source: 'export type Count = number;' },
+  })
+  const sources = { entry: 'main.ts', files: {
+    'main.ts': 'import { label } from "@fixture/core"; const wrong: string = label("wrong");',
+  } }
+  const declarations = await dependencyDeclarations(sources, new AppDependencies(resolver.versions, remote.request))
+  expect(declarations.problems).toEqual([])
+  expect(remote.requested).toContain('https://esm.sh/@fixture/core@1.2.3/X-args/dist/types/count.d.ts')
+  expect(remote.requested).not.toContain('https://esm.sh/@fixture/core/types/count')
+  const result = await checkAppSources(sources, tsc, library, {}, declarations)
+  expect(result.problems).toHaveLength(1)
+  expect(result.problems[0]).toMatchObject({ file: 'main.ts', code: 'TS2345' })
+}, 120_000)
+
 test('a type-only dependency is resolved and missing types are reported without ambient any', async () => {
   const url = new AppDependencies().resolve('untyped-browser-library@1.0.0').path
   const remote = modules({ [url]: { source: 'export const n = 1' } })
