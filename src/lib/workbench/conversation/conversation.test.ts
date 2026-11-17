@@ -633,6 +633,8 @@ describe('run input recovery', () => {
     }
     return {
       key,
+      /** The queue is registered under the conversation's own local id, clear of the chat's. */
+      queueKey: `workbench:${key}`,
       stub,
       storage,
       durable,
@@ -699,7 +701,9 @@ describe('run input recovery', () => {
     t.stub.emit()
     await t.settle()
     expect(owner.snapshot().queued).toEqual([])
-    expect(owner.snapshot().messages.at(-1)?.parts).toMatchObject([
+    // The run's own record of the input is the transcript's now, under Theorem's id.
+    const parts = owner.snapshot().messages.at(-1)?.parts ?? []
+    expect(parts.filter((part) => part.type === 'input')).toMatchObject([
       { type: 'input', inputId: 'srv-c1', text: 'also', status: 'delivered' },
     ])
     owner.dispose()
@@ -768,9 +772,12 @@ describe('run input recovery', () => {
         .outcome,
     ).toBe('accepted')
     await t.settle()
+    // Listed, with the words kept: the row is retriable rather than a dead end, because
+    // the contract's Retry replays this same request.
     expect(owner.snapshot().queued).toMatchObject([
-      { clientMessageId: 'c1', text: 'also', state: 'uncertain' },
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
     ])
+    expect(owner.snapshot().queued[0]?.reason).toContain('Could not confirm delivery')
     // Recovery and every later observation leave it alone: the reply may have gone out.
     t.stub.emit()
     await t.settle()
@@ -780,7 +787,7 @@ describe('run input recovery', () => {
 
     // Retry replays that same request — the same key, run and words — not a fresh send.
     t.failNextSend(undefined)
-    retryRunInput(t.key, 'c1')
+    retryRunInput(t.queueKey, 'c1')
     await t.settle()
     expect(t.sends).toEqual([
       { runId: 'run1', inputId: 'c1', text: 'also' },
@@ -827,11 +834,11 @@ describe('run input recovery', () => {
     const owner = t.make()
     await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
     await t.settle()
-    expect(useRunInputs.getState()[t.key]).toMatchObject([
+    expect(useRunInputs.getState()[t.queueKey]).toMatchObject([
       { id: 'c1', text: 'also' },
     ])
     owner.dispose()
-    expect(useRunInputs.getState()[t.key]).toBeUndefined()
+    expect(useRunInputs.getState()[t.queueKey]).toBeUndefined()
   })
 
   test('a side chat keeps its own queue: its input is not the main conversation’s row', async () => {

@@ -14,9 +14,14 @@ import type { ModelChoice } from '../wire/ModelChoice'
 import type { SourceReference } from '../wire/SourceReference'
 import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
-import type { InputReceipt } from '@/lib/theorem/run-input'
+import { describeError, hasStatus } from '@/lib/theorem/client'
+import { createRunInputQueue, inputReceipt } from '@/lib/theorem/run-input'
+import {
+  registerRunInputQueue,
+  useRunInputs,
+} from '@/lib/theorem/run-input-store'
+import type { InputReceipt, PendingRunInput } from '@/lib/theorem/run-input'
 import { workingRuns } from '@/lib/theorem/working-runs'
-import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
 import { accepted, failure, refused } from '../environment/result'
 import type { Answers, Completion } from '../environment/result'
@@ -202,7 +207,11 @@ export interface ConversationSnapshot extends Transcript {
   /** Goes up by one each time the content changes, across conversation switches. A lower one than already seen is stale. */
   revision: number
   loading: boolean
-  /** Input sent while a run worked and not yet shown in the transcript. */
+  /**
+   * Words kept for a run that the transcript does not show yet: on their way, waiting
+   * for the run's next step, settled for the next turn, or kept with a reason to Retry.
+   * One queue decides each row's standing; this lists what it announces.
+   */
   queued: QueuedInput[]
   /** The thread's versions and branches; absent until Theorem has answered, or for a thread it does not hold yet. */
   history?: ConversationHistory
@@ -491,6 +500,7 @@ export function createConversation({
   sideChats,
   services,
   workspaceId,
+  storage = globalThis.sessionStorage,
   schedule = nextFrame,
 }: ConversationOptions): Conversation {
   const sides = new Set<SideChat>()
@@ -506,11 +516,12 @@ export function createConversation({
   let last: ConversationSnapshot | undefined
   let delivered = 0
   let deliveredKey = ''
+  /** What this conversation's run-input queue last announced, as the snapshot lists it. */
+  let inputRows: readonly QueuedInput[] = []
 
   /** What was sent from here, by client message id: a repeated id returns the first answer. */
   const sends = new Map<string, Completion<Sent>>()
   const inFlight = new Map<string, Promise<Completion<Sent>>>()
-  const outbox = new Map<string, QueuedInput>()
   /** Approvals an answer went out for; an answer that was accepted or whose result is unknown stands. */
   const answered = new Set<string>()
 
@@ -831,19 +842,12 @@ export function createConversation({
     refreshHistory()
     const state = runtime.thread.getState()
     const transcript = transcriptOf(state.messages, state.isRunning)
-    const shown = new Set(
-      transcript.messages.flatMap((m) =>
-        m.parts.flatMap((p) =>
-          p.type === 'input' && p.inputId ? [p.inputId] : [],
-        ),
-      ),
-    )
     const used = contextOf(state.messages)
     const body = {
       conversationId: conversationId(),
       loading: state.isLoading,
       ...transcript,
-      queued: [...outbox.values()].filter((q) => !shown.has(q.clientMessageId)),
+      queued: [...inputRows],
       ...(historyOf() && { history: historyOf() }),
       ...(used?.window !== undefined && {
         context: { usedTokens: used.tokens, windowTokens: used.window },
@@ -890,6 +894,116 @@ export function createConversation({
       })
   }
 
+  // ---- run input -------------------------------------------------------------------------
+
+  // Words sent to a working run are one recoverable transaction, held to the rule the
+  // main chat's `bindRunInput` follows: saved in `storage` under the thread's own name,
+  // listed until the run shows them, and settled — as a next turn, or as one row with
+  // Retry — once both this chat's stream and Theorem's thread have closed. The queue
+  // decides all of that; nothing here does. What the snapshot lists and what the chat's
+  // own store holds are both announcements of that one decision.
+
+  /** This conversation's own local id, which no reload outlives: what its queue is registered under. */
+  const inputKey = `workbench:${runtime.threads.getState().mainThreadId}`
+  /** The receipt parts this chat shows, each under what Theorem called that input. */
+  const shownInputs = (messages: readonly ThreadMessage[]) =>
+    messages.flatMap((message) =>
+      message.content.flatMap((part) => {
+        const receipt =
+          part.type === 'data' && part.name === 'theorem-user_input'
+            ? inputReceipt(part.data)
+            : undefined
+        return receipt ? [receipt] : []
+      }),
+    )
+  /** One kept message, as the panel lists it under the composer. */
+  const rowOf = (item: PendingRunInput): QueuedInput => ({
+    clientMessageId: item.id,
+    text: item.text,
+    // An unconfirmed send is `failed`, not `uncertain`: Retry replays this same
+    // request, and a row the panel cannot retry would take that choice away.
+    state:
+      item.state === 'failed'
+        ? 'failed'
+        : item.state === 'queued' || item.state === 'next'
+          ? 'queued'
+          : 'sending',
+    ...(item.state === 'failed' && item.error ? { reason: item.error } : {}),
+  })
+  const runInput = createRunInputQueue({
+    snapshot() {
+      const state = runtime.thread.getState()
+      return {
+        threadId: runtime.threads.mainItem.getState().remoteId,
+        // The run input may join, which is the one `input` admits to.
+        runId: state.isRunning ? lastRunId() : undefined,
+        isRunning: state.isRunning,
+        isLoading: state.isLoading,
+        inputs: shownInputs(state.messages),
+        localUserTexts: state.messages.flatMap((message) =>
+          message.role === 'user'
+            ? message.content.flatMap((part) =>
+                part.type === 'text' ? [part.text] : [],
+              )
+            : [],
+        ),
+      }
+    },
+    async refresh() {
+      const read = services.runInput
+      const threadId = runtime.threads.mainItem.getState().remoteId
+      if (!read || !threadId)
+        throw new Error('This conversation has no stored thread to read back')
+      const thread = await read.thread(threadId)
+      return {
+        active: thread.active,
+        ...(thread.runId ? { runId: thread.runId } : {}),
+        inputs: thread.inputs,
+        userTexts: thread.userTexts ?? [],
+      }
+    },
+    // The message is the key it goes under, so a retry replays it and never a fresh
+    // one. A host that confirms nothing leaves the thread's own record to settle it.
+    async send(runId, text, requestKey) {
+      return (
+        (await services.sendInput({ runId, inputId: requestKey, text })) ?? {
+          inputId: requestKey,
+          text,
+          status: 'queued' as const,
+        }
+      )
+    },
+    async receipts(runId) {
+      const read = services.runInput
+      if (!read) throw new Error('This host does not read a closed run back')
+      return read.receipts(runId)
+    },
+    // A fallback belongs to its submitted text, not to what the person may since have
+    // added to the draft; the turn it starts carries no references of this one.
+    append: (text) =>
+      runtime.thread.append({
+        role: 'user',
+        content: [{ type: 'text', text }],
+        runConfig: { custom: { theoremRunInput: true } },
+      }),
+    changed: (items) => {
+      inputRows = items.filter((item) => !item.visible).map(rowOf)
+      useRunInputs.setState({ [inputKey]: items })
+      changed()
+    },
+    describeError,
+    attemptId: inputKey,
+    storage,
+  })
+  const unregisterInputs = registerRunInputQueue(inputKey, runInput)
+  /** A run that ends in another tab changes nothing here, so the queue is asked again on a clock. */
+  const inputWatchdog = setInterval(() => {
+    if (runInput.getSnapshot().length) runInput.observe()
+  }, 2_000)
+  ;(inputWatchdog as unknown as { unref?: () => void }).unref?.()
+  // What an earlier owner of this thread kept, this one lists and settles from here on.
+  runInput.observe()
+
   const runsListeners = new Set<(runs: string[]) => void>()
   const runsNow = () => {
     const joined = workingRuns(runtime.thread.getState().messages)
@@ -906,11 +1020,13 @@ export function createConversation({
 
   const offThread = runtime.thread.subscribe(() => {
     announceRuns()
+    runInput.observe()
     changed()
     announceAttachments()
     announceModels(false)
   })
   const offThreads = runtime.threads.subscribe(() => {
+    runInput.observe()
     changed()
     announceAttachments()
     announceModels(false)
@@ -1074,7 +1190,7 @@ export function createConversation({
     },
 
     input(request) {
-      return once(request, async (answers) => {
+      return once(request, (answers) => {
         const id = request.clientMessageId
         const runId = runtime.thread.getState().isRunning
           ? lastRunId()
@@ -1087,32 +1203,15 @@ export function createConversation({
             'stale_run',
             'That run is no longer the one working',
           )
-        outbox.set(id, {
-          clientMessageId: id,
-          text: request.text,
-          state: 'sending',
-        })
-        changed()
-        try {
-          await services.sendInput({ runId, inputId: id, text: request.text })
-        } catch (error) {
-          const result = failure(answers, error, true)
-          outbox.set(id, {
-            clientMessageId: id,
-            text: request.text,
-            state: result.outcome === 'uncertain' ? 'uncertain' : 'failed',
-            reason: 'reason' in result ? result.reason : undefined,
-          })
-          changed()
-          // A refusal sent nothing and may be tried again with the same id.
-          return result.outcome === 'uncertain' ? remember(id, result) : result
-        }
-        outbox.set(id, {
-          clientMessageId: id,
-          text: request.text,
-          state: 'queued',
-        })
-        changed()
+        // The words are kept under this id and sent there and then: what the composer
+        // is owed by this answer is that the message is saved for recovery. How the
+        // send turns out belongs to the row, and Retry replays that same request.
+        if (!runInput.submit(request.text, id))
+          return refused(
+            answers,
+            'input_not_kept',
+            'These words could not be kept for the run under that message id',
+          )
         return remember(id, accepted(answers, { clientMessageId: id }))
       })
     },
@@ -1135,6 +1234,9 @@ export function createConversation({
       } catch (error) {
         return failure(answers, error, true)
       }
+      // A person's Stop must not answer itself: what the run never took stays listed
+      // with Retry instead of becoming another response.
+      runInput.stop()
       return accepted(answers, { runId })
     },
 
@@ -1559,6 +1661,10 @@ export function createConversation({
       for (const chat of [...sides]) chat.close()
       pending?.()
       pending = undefined
+      clearInterval(inputWatchdog)
+      // The queue outlives nothing but this owner: closing it leaves the kept words to
+      // the next owner of this thread, and takes this conversation's rows down.
+      unregisterInputs()
       offThread()
       offThreads()
       offModels?.()
