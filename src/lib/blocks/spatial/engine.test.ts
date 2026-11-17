@@ -1,0 +1,153 @@
+import { describe, expect, it } from 'bun:test'
+import { buildNetwork, ModelState  } from './engine'
+import type {Builder} from './engine';
+import { fullAdder, gate, register, rippleAdder } from './parts'
+
+const model = (describe: (m: Builder) => void) => new ModelState(buildNetwork(describe))
+
+describe('a spatial model', () => {
+  it('adds through a ripple adder opened into full adders and gates', () => {
+    const state = model((m) => {
+      m.part(rippleAdder({ id: 'add', bits: 4 }))
+    })
+    state.set('add', 'a', 7)
+    state.set('add', 'b', 9)
+    const settled = state.settle()
+    expect(settled.readings.get('add')?.outputs).toEqual({ sum: 0, cout: 1 })
+    // Every inner part at every depth has its own reading.
+    expect(settled.readings.get('add/fa3')?.outputs).toEqual({ sum: 0, cout: 1 })
+    expect(settled.readings.get('add/fa0/x1')?.inputs).toEqual({ a: 1, b: 1 })
+  })
+
+  it('orders a network into stages, so the carry is seen travelling', () => {
+    const state = model((m) => {
+      m.part(rippleAdder({ id: 'add', bits: 4 }))
+    })
+    const settled = state.settle()
+    const stage = (path: string) => settled.readings.get(path)?.stage
+    expect(stage('add/sa')).toBe(0)
+    expect(stage('add/fa0')).toBe(1)
+    expect(stage('add/fa1')).toBe(2)
+    expect(stage('add/fa3')).toBe(4)
+    expect(stage('add/js')).toBe(5)
+    expect(stage('add/fa0/x2')).toBeGreaterThan(stage('add/fa0/x1')!)
+  })
+
+  it('propagates a change to an unwired input through the wires', () => {
+    const state = model((m) => {
+      m.part(gate({ id: 'g1', kind: 'and' }))
+      m.part(gate({ id: 'g2', kind: 'not' }))
+      m.wire('g1.out', 'g2.a')
+    })
+    expect(state.settle().readings.get('g2')?.outputs).toEqual({ out: 1 })
+    state.set('g1', 'a', 1)
+    state.set('g1', 'b', 1)
+    expect(state.isPin('g2', 'a')).toBe(false)
+    expect(state.settle().readings.get('g2')?.outputs).toEqual({ out: 0 })
+  })
+
+  it('steps a clocked part from what the last settle saw', () => {
+    const state = model((m) => {
+      m.part(register({ id: 'pc', bits: 4 }))
+      m.part(rippleAdder({ id: 'inc', bits: 4 }))
+      m.wire('pc.out', 'inc.a')
+      m.wire('inc.sum', 'pc.in')
+    })
+    state.set('inc', 'b', 1)
+    let settled = state.settle()
+    for (let count = 0; count < 17; count++) settled = state.step(settled)
+    expect(state.states.get('pc')).toEqual({ value: 1 })
+    expect(settled.readings.get('inc')?.outputs).toEqual({ sum: 2, cout: 0 })
+  })
+
+  it('settles a loop with no clock in it', () => {
+    // A latch from two NOR gates holds what it was last set to.
+    const state = model((m) => {
+      m.part(gate({ id: 'n1', kind: 'nor' }))
+      m.part(gate({ id: 'n2', kind: 'nor' }))
+      m.wire('n1.out', 'n2.a')
+      m.wire('n2.out', 'n1.b')
+    })
+    state.set('n1', 'a', 1)
+    const settled = state.settle()
+    expect(settled.readings.get('n1')?.outputs).toEqual({ out: 0 })
+    expect(settled.readings.get('n2')?.outputs).toEqual({ out: 1 })
+  })
+
+  it("runs every part's checks and says what failed", () => {
+    const state = model((m) => {
+      m.part(fullAdder({ id: 'fa' }))
+      m.part({
+        id: 'wrong',
+        ports: { a: 'in', out: 'out' },
+        compute: ({ a }) => ({ out: a }),
+        checks: [{ name: 'doubles', inputs: { a: 2 }, expect: { out: 4 } }],
+      })
+    })
+    expect(state.check()).toEqual(['wrong: doubles: out is 2, expected 4'])
+  })
+
+  it('keeps what the person changed across a revision that adds a part', () => {
+    const before = model((m) => {
+      m.part(register({ id: 'r', bits: 8 }))
+      m.part(gate({ id: 'g', kind: 'and' }))
+    })
+    before.set('g', 'a', 1)
+    before.states.set('r', { value: 42 })
+    const snapshot = JSON.parse(JSON.stringify(before.snapshot()))
+    const after = model((m) => {
+      m.part(register({ id: 'r', bits: 8 }))
+      m.part(gate({ id: 'g', kind: 'and' }))
+      m.part(gate({ id: 'new', kind: 'or' }))
+      m.wire('g.out', 'new.a')
+    })
+    after.restore(snapshot)
+    expect(after.value('g', 'a')).toBe(1)
+    expect(after.states.get('r')).toEqual({ value: 42 })
+  })
+
+  it('names what is wrong with a description', () => {
+    expect(() => buildNetwork((m) => void m.part({ id: 'a b' }))).toThrow(/needs an id/)
+    expect(() =>
+      buildNetwork((m) => {
+        m.part(gate({ id: 'g', kind: 'and' }))
+        m.wire('g.out', 'g.c')
+      }),
+    ).toThrow(/g has no port "c" \(it has a, b, out\)/)
+    expect(() =>
+      buildNetwork((m) => {
+        m.part(gate({ id: 'g', kind: 'and' }))
+        m.part(gate({ id: 'h', kind: 'and' }))
+        m.wire('g.a', 'h.a')
+      }),
+    ).toThrow(/wires run from outputs to inputs/)
+    expect(() =>
+      buildNetwork((m) => {
+        m.part(gate({ id: 'g', kind: 'and' }))
+        m.part(gate({ id: 'h', kind: 'and' }))
+        m.wire('g.out', 'h.a')
+        m.wire('h.out', 'h.a')
+      }),
+    ).toThrow(/an input takes one/)
+    expect(() =>
+      buildNetwork((m) => {
+        m.part({
+          id: 'p',
+          ports: { a: 'in' },
+          inside: (inner) => inner.wire('.a', '.a'),
+        })
+      }),
+    ).toThrow(/Inside p, ".a" is an input/)
+  })
+
+  it('describes a part in words', () => {
+    const state = model((m) => {
+      m.part(fullAdder({ id: 'fa' }))
+    })
+    state.set('fa', 'a', 1)
+    const text = state.describe('fa', state.settle())
+    expect(text).toContain('Full adder (fa)')
+    expect(text).toContain('outputs: sum=1 cout=0')
+    expect(text).toContain('contains: XOR, XOR, AND, AND, OR')
+  })
+})

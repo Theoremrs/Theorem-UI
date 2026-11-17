@@ -5,6 +5,7 @@ import type { FileReference } from 'typescript'
 import type { AppProblem, AppSources } from './app-source'
 import { appDependencies } from './app-dependencies'
 import type { AppDependencies } from './app-dependencies'
+import { appLibrary } from './app-libraries'
 
 export interface DependencyDeclarations {
   files: Record<string, string>
@@ -158,9 +159,14 @@ export async function dependencyDeclarations(
       imports.push({ fileName: 'react/jsx-runtime', pos: 0, end: 0 })
     for (const ref of imports) {
       if (local(ref.fileName)) continue
-      const uses = roots.get(ref.fileName) ?? []
-      uses.push({ file, source, ref })
-      roots.set(ref.fileName, uses)
+      // A library's declarations are in the check library; the packages they
+      // import are fetched as if the App imported them itself.
+      const library = appLibrary(ref.fileName)
+      for (const specifier of library ? Object.keys(library.dependencies) : [ref.fileName]) {
+        const uses = roots.get(specifier) ?? []
+        uses.push({ file, source, ref })
+        roots.set(specifier, uses)
+      }
     }
   }
 

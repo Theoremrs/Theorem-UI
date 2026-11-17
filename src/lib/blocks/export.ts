@@ -27,6 +27,7 @@ import { encodeRows } from './sandbox/standalone'
 import { toBase64 } from './state'
 import { importMap } from './vendor/manifest'
 import { vendorModules } from './vendor/modules'
+import { librarySources } from './app-library-sources'
 
 type Bundler = Pick<typeof Esbuild, 'build'>
 
@@ -68,6 +69,7 @@ const NAMESPACE = {
   vendor: 'theorem-vendor',
   app: 'theorem-app',
   dependency: 'theorem-app-dependency',
+  library: 'theorem-library',
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -338,6 +340,14 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
             : { errors: [{ text: `No file "${path}" in this App` }] }
         },
       )
+      // A library's own modules, `./name` beside the one importing them.
+      build.onResolve(
+        { filter: /^\.\/[\w-]+$/, namespace: NAMESPACE.library },
+        ({ path, importer }) => ({
+          path: `${importer.slice(0, importer.lastIndexOf('/'))}/${path.slice(2)}`,
+          namespace: NAMESPACE.library,
+        }),
+      )
       build.onResolve({ filter: /.*/ }, async ({ path, importer, namespace, kind }) => {
         if (kind === 'url-token' && /^(?:data:|#)/.test(path))
           return { path, external: true }
@@ -348,6 +358,8 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
           )
           if (resolved.kind === 'vendor')
             return { path: resolved.path, namespace: NAMESPACE.vendor }
+          if (resolved.kind === 'library')
+            return { path: `${resolved.path}/index`, namespace: NAMESPACE.library }
           // Follow redirects before choosing the namespace path, so a remote
           // module's relative imports use its final URL, not its request URL.
           const module = await dependencies.load(resolved.path)
@@ -364,6 +376,13 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
         { filter: /.*/, namespace: NAMESPACE.vendor },
         ({ path }) => ({ contents: vendorModules[path], loader: 'js' }),
       )
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.library }, ({ path }) => {
+        const slash = path.lastIndexOf('/')
+        const source = librarySources[path.slice(0, slash)]?.[path.slice(slash + 1)]
+        return source === undefined
+          ? { errors: [{ text: `No module "${path}"` }] }
+          : { contents: source, loader: 'ts' }
+      })
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.dependency },
         async ({ path }) => {

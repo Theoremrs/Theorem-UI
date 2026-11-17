@@ -3,6 +3,7 @@
 // are fetched while building and are included in the same sandboxed bundle.
 import type { Loader } from 'esbuild-wasm'
 import type { AppSources } from './app-source'
+import { appLibrary, libraryDependencies } from './app-libraries'
 import { importMap, vendorSources } from './vendor/manifest'
 
 const CDN = 'https://esm.sh/'
@@ -59,6 +60,8 @@ function declaredDependencies(sources: AppSources): Record<string, string> {
 export type AppDependency =
   | { kind: 'vendor'; path: string; specifier?: string }
   | { kind: 'url'; path: string }
+  /** A library Theorem ships (app-libraries.ts), built from its own sources. */
+  | { kind: 'library'; path: string }
 
 export interface AppModule {
   /** The final URL, after redirects; relative imports are resolved from here. */
@@ -105,6 +108,7 @@ export class AppDependencies {
     if (importer && /^(?:\.{0,2}\/)/.test(specifier))
       return this.remote(new URL(specifier, importer).href)
     if (/^https:\/\//.test(specifier)) return this.remote(specifier)
+    if (appLibrary(specifier)) return { kind: 'library', path: specifier }
     const parsed = packageImport(specifier)
     const peerVersion = parsed.name === 'react'
       ? this.versions.react ?? this.versions['react-dom'] ?? defaultReact
@@ -191,7 +195,7 @@ const sessions = new Map<string, AppDependencies>()
 
 /** Build and check obtain the same responses, even when they run concurrently. */
 export function appDependencies(sources: AppSources): AppDependencies {
-  const versions = declaredDependencies(sources)
+  const versions = { ...libraryDependencies(sources.files), ...declaredDependencies(sources) }
   const key = JSON.stringify(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)))
   let resolver = sessions.get(key)
   if (!resolver) {

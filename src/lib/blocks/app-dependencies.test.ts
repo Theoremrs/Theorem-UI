@@ -210,3 +210,51 @@ test('CSS, embedded assets and JSON use their actual bundle types', async () => 
   expect(result.problems).toHaveLength(1)
   expect(result.problems[0]).toMatchObject({ file: 'main.ts', line: 4, code: 'TS2322' })
 }, 120_000)
+
+describe('a library Theorem ships', () => {
+  const SPATIAL_APP = `import { mount, parts, type Part } from '@theorem/spatial'
+const lamp: Part = {
+  id: 'lamp',
+  label: 'Lamp',
+  form: (three) => new three.TorusKnotGeometry(0.4),
+  ports: { power: 'in', light: 'out' },
+  compute: ({ power }) => ({ light: power ? 1 : 0 }),
+  show: (object, { values }) => { object.name = String(values.light) },
+}
+const model = mount(document.body, (m) => {
+  m.part(parts.gate({ id: 'switch', kind: 'and' }))
+  m.part(lamp)
+  m.wire('switch.out', 'lamp.power')
+  m.part({ id: 'bad', ports: { a: 'sideways' } })
+}, { remember: 'model' })
+model.open('lamp')`
+
+  test('pins the packages it is built on unless the App names a version', () => {
+    expect(appDependencies({ entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }).versions)
+      .toEqual({ three: '0.187.0' })
+    expect(appDependencies({ entry: 'main.ts', files: {
+      'main.ts': SPATIAL_APP,
+      'package.json': '{"dependencies":{"three":"0.188.0"}}',
+    } }).versions).toEqual({ three: '0.188.0' })
+    expect(new AppDependencies().resolve('@theorem/spatial'))
+      .toEqual({ kind: 'library', path: '@theorem/spatial' })
+  })
+
+  test('is checked against its declarations and the three.js it is pinned to', async () => {
+    const resolver = new AppDependencies({ three: '0.187.0' })
+    const threeUrl = resolver.resolve('three').path
+    const remote = modules({
+      [threeUrl]: { source: 'export {}', types: 'https://esm.sh/@types/three@0.187.0/index.d.ts' },
+      'https://esm.sh/@types/three@0.187.0/index.d.ts': { source: `export declare class Object3D { name: string }
+export declare class BufferGeometry { name: string }
+export declare class Mesh extends Object3D { constructor(geometry?: BufferGeometry) }
+export declare class TorusKnotGeometry extends BufferGeometry { constructor(radius?: number) }` },
+    })
+    const sources = { entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }
+    const dependencies = await dependencyDeclarations(sources, new AppDependencies({ three: '0.187.0' }, remote.request))
+    expect(dependencies.problems).toEqual([])
+    expect(remote.requested).toContain(threeUrl)
+    const result = await checkAppSources(sources, tsc, library, {}, dependencies)
+    expect(result.problems.map((p) => [p.file, p.line, p.code])).toEqual([['main.ts', 14, 'TS2322']])
+  }, 120_000)
+})
