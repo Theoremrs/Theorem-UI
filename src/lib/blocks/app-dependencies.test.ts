@@ -101,7 +101,14 @@ test('remote component CSS imports and relative fonts are bundled into the App',
     'main.ts': 'import "https://modules.example/theme.css"; document.body.className = "widget";',
   } }, esbuild, new AppDependencies({}, remote.request))
   expect(bundle.css).toContain('border-box')
-  expect(bundle.css).toContain('data:font/woff2;base64,')
+  // esbuild chooses the shorter encoding; printable test bytes may use a
+  // URL-encoded payload while an actual binary font normally uses base64.
+  const embedded = /url\(data:font\/woff2(;base64)?,([^)]*)\)/.exec(bundle.css)
+  expect(embedded).not.toBeNull()
+  const payload = embedded![1]
+    ? atob(embedded![2]!)
+    : decodeURIComponent(embedded![2]!.replace(/\\(.)/g, '$1'))
+  expect(payload).toBe('font bytes')
   expect(bundle.css).not.toContain('url("./font.woff2")')
   expect(remote.requested.sort()).toEqual([
     'https://modules.example/font.woff2',
