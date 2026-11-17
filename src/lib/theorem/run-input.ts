@@ -442,6 +442,11 @@ export function createRunInputQueue(host: RunInputHost) {
         void send(item, item.runId)
       }
     },
+    /** Takes a row off the queue and forgets its record, so a reload does not bring it back. */
+    dismiss(id: string) {
+      if (disposed) return
+      publish(items.filter((item) => item.id !== id))
+    },
     dispose() { disposed = true },
   }
 }

@@ -453,6 +453,20 @@ test('a caller-supplied id names one message and is sent once', async () => {
   expect(h.host.send).toHaveBeenCalledTimes(1)
 })
 
+test('a dismissed row leaves the storage, so a reload does not bring it back', async () => {
+  const h = harness()
+  h.host.send = mock(async () => { throw new TypeError('Reply lost.') })
+  expect(h.queue.submit('Use the smaller design', 'client-1')).toBe(true)
+  await settle()
+  expect(h.queue.getSnapshot()[0]?.state).toBe('failed')
+  h.queue.dismiss('client-1')
+  expect(h.queue.getSnapshot()).toEqual([])
+  h.queue.dispose()
+  const again = createRunInputQueue(h.host)
+  expect(again.getSnapshot()).toEqual([])
+  again.dispose()
+})
+
 test('a reload keeps a caller-supplied id, and its retry replays that same request', async () => {
   const h = harness()
   h.host.send = mock(async () => {

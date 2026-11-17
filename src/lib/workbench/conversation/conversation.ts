@@ -27,6 +27,7 @@ import type {
   RunInputQueue,
 } from '@/lib/theorem/run-input'
 import {
+  dismissRunInput,
   registerRunInputQueue,
   retryRunInput,
   stopRunInputs,
@@ -274,6 +275,10 @@ export interface Conversation {
       runId?: string
     },
   ) => Promise<Completion<Sent>>
+  /** Drops a queued input the owner keeps, by the id its row carries. */
+  dismissInput: (
+    request: Request & { clientMessageId: string },
+  ) => Promise<Completion<{ clientMessageId: string }>>
   /** `runId` names the run the person saw; absent means whichever run the thread has now. */
   stop: (
     request: Request & { runId?: string },
@@ -949,6 +954,8 @@ export function createConversation({
       : submitRunInput(threadKey(), text, id)
   const replayInputs = (id: string) =>
     ownInputs ? runInput?.retry(id) : retryRunInput(threadKey(), id)
+  const dismissInputs = (id: string) =>
+    ownInputs ? runInput?.dismiss(id) : dismissRunInput(threadKey(), id)
   const stopInputs = () =>
     ownInputs ? runInput?.stop() : stopRunInputs(threadKey())
 
@@ -1372,6 +1379,14 @@ export function createConversation({
           )
         return remember(id, accepted(answers, { clientMessageId: id }))
       })
+    },
+
+    async dismissInput(request) {
+      const { answers, refusal } = begin(request)
+      if (refusal) return refusal
+      const id = request.clientMessageId
+      dismissInputs(id)
+      return accepted(answers, { clientMessageId: id })
     },
 
     async stop(request) {

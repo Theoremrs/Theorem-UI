@@ -924,6 +924,28 @@ describe('run input recovery', () => {
     owner.dispose()
   })
 
+  test('a dismissed row leaves the queue and its record, and a reload does not bring it back', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    await owner.stop({ requestId: 'r2', runId: 'run1' })
+    t.durable.inputs = [
+      { inputId: 'srv-c1', text: 'also', status: 'not_delivered', reason: 'run_cancelled' },
+    ]
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    expect(owner.snapshot().queued).toMatchObject([{ clientMessageId: 'c1', state: 'failed' }])
+    expect(
+      await owner.dismissInput({ requestId: 'r3', clientMessageId: 'c1' }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(owner.snapshot().queued).toEqual([])
+    // The record is gone too, so a new owner does not restore the dismissed row.
+    const reopened = t.make()
+    expect(reopened.snapshot().queued).toEqual([])
+  })
+
   test('a thread has one run-input queue: the owner settles with the chat’s, not beside it', async () => {
     const t = recovering()
     const owner = t.make()

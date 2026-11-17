@@ -46,7 +46,8 @@ use theorem_workbench_core::{
     draft::EXCERPT_LIMIT,
     effect::{
         ApprovalDecision, AttachRemove, AttachmentRef, ClipboardWrite, ConversationApproval,
-        ConversationCancel, ConversationEdit, ConversationInput, ConversationRetry,
+        ConversationCancel, ConversationDismissInput, ConversationEdit, ConversationInput,
+        ConversationRetry,
         ConversationSend, ConversationSwitch, ConversationSwitchBranch, FilesSearch, SetEffort,
         SetModel, SideChatOpen, SideChatScope,
     },
@@ -1675,7 +1676,7 @@ impl TheoPanel {
     }
 
     /// Take a failed or uncertain row off the queue. True when one was.
-    fn remove_queued(&mut self, id: &str) -> bool {
+    fn remove_queued(&mut self, id: &str, cx: &mut Ctx) -> bool {
         let Some(row) = self.queue().into_iter().find(|r| r.id == id) else {
             return false;
         };
@@ -1686,6 +1687,22 @@ impl TheoPanel {
         self.pending.retain(|p| p.client_message_id != id);
         if self.pending.len() == before {
             self.dismissed.insert(id.to_owned());
+        }
+        // The owner keeps its own record of a held row; ask it to drop that too, so the
+        // removal survives a reload instead of the row coming back.
+        if self.bound() {
+            let resource = self.resource();
+            if let Ok(effect) = cx.emit(|effect| {
+                Effect::new(
+                    effect,
+                    resource,
+                    EffectBody::ConversationDismissInput(ConversationDismissInput {
+                        client_message_id: id.to_owned(),
+                    }),
+                )
+            }) {
+                self.tracked.insert(effect, Tracked::Turn(id.to_owned()));
+            }
         }
         true
     }
@@ -1919,7 +1936,7 @@ impl TheoPanel {
                 }
             }
             (Key::Delete | Key::Backspace, true) => {
-                if !self.remove_queued(&row.id) {
+                if !self.remove_queued(&row.id, cx) {
                     self.session
                         .borrow_mut()
                         .notify("the owner holds this one for the run");
@@ -2032,7 +2049,7 @@ impl TheoPanel {
                 return true;
             }
             if remove.is_some_and(|r| r.contains(cell)) {
-                self.remove_queued(&row.id);
+                self.remove_queued(&row.id, cx);
                 return true;
             }
             if line.contains(cell) {
@@ -3404,7 +3421,7 @@ impl Panel for TheoPanel {
                 }
                 name if name.starts_with(ACTION_QUEUE_REMOVE) => {
                     let id = name[ACTION_QUEUE_REMOVE.len()..].to_owned();
-                    if !self.remove_queued(&id) {
+                    if !self.remove_queued(&id, cx) {
                         self.session
                             .borrow_mut()
                             .notify("the owner holds this one for the run");
@@ -4740,6 +4757,7 @@ mod tests {
                     e.kind(),
                     EffectKind::ConversationSend
                         | EffectKind::ConversationInput
+                        | EffectKind::ConversationDismissInput
                         | EffectKind::ConversationCancel
                         | EffectKind::ConversationRetry
                         | EffectKind::ConversationEdit
@@ -7693,6 +7711,22 @@ mod tests {
         let drawn = r.drawn();
         assert_eq!(drawn.matches("steer left").count(), 1, "{drawn}");
         assert!(!r.tree().nodes.iter().any(|n| local(n) == "q:c1"));
+    }
+
+    #[test]
+    fn removing_a_kept_row_asks_the_owner_to_drop_its_record() {
+        let queued = json!([
+            {"clientMessageId": "c2", "text": "lost one", "state": "failed", "reason": "no run"},
+        ]);
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued));
+        let fx = r.act("theo.view.queue.remove.c2");
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationDismissInput(drop) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(drop.client_message_id, "c2");
+        assert!(!r.drawn().contains("lost one"));
     }
 
     #[test]

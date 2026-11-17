@@ -1270,6 +1270,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
       case 'conversationCreate':
       case 'conversationSend':
       case 'conversationInput':
+      case 'conversationDismissInput':
       case 'conversationCancel':
       case 'conversationRetry':
       case 'conversationEdit':

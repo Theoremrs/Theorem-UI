@@ -1,6 +1,7 @@
 // SOURCING: none — bun:test over ./port, with the real conversation owner over the stub runtime
 import { describe, expect, test } from 'bun:test'
 import type { Effect, HostMessage, ResourceRef } from '../wire'
+import { useRunInputs } from '@/lib/theorem/run-input-store'
 import { createConversation } from './conversation'
 import { createConversationPort } from './port'
 import {
@@ -170,6 +171,26 @@ describe('a run that works', () => {
         text: 'late',
       }),
     ).toMatchObject({ outcome: 'refused', code: 'stale_run' })
+    bound.dispose()
+  })
+
+  test('a dismissed input leaves the queue, and its id is free again', async () => {
+    const { perform, stub } = working()
+    const bound = bindThreadInputs(stub, {
+      storage: createMemoryStorage(),
+      send: async () => {},
+    })
+    expect(
+      await perform('conversationInput', {
+        runId: 'run1',
+        clientMessageId: 'c1',
+        text: 'also',
+      }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(
+      await perform('conversationDismissInput', { clientMessageId: 'c1' }),
+    ).toMatchObject({ outcome: 'accepted' })
+    expect(useRunInputs.getState()[stub.threadId] ?? []).toEqual([])
     bound.dispose()
   })
 

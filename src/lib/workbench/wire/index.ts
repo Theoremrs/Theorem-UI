@@ -41,6 +41,7 @@ export type { ConnectivityState } from "./ConnectivityState";
 export type { ConversationApproval } from "./ConversationApproval";
 export type { ConversationApproved } from "./ConversationApproved";
 export type { ConversationCancel } from "./ConversationCancel";
+export type { ConversationDismissInput } from "./ConversationDismissInput";
 export type { ConversationEdit } from "./ConversationEdit";
 export type { ConversationInput } from "./ConversationInput";
 export type { ConversationOpened } from "./ConversationOpened";

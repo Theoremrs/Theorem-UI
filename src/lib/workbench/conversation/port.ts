@@ -231,6 +231,8 @@ export function createConversationPort({
             await target.input({ ...request, ...effect.payload }),
             sent,
           )
+        case 'conversationDismissInput':
+          return reply(await target.dismissInput({ ...request, ...effect.payload }))
         case 'conversationCancel':
           return reply(
             await target.stop({ ...request, ...effect.payload }),

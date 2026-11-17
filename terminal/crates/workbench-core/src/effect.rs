@@ -265,6 +265,8 @@ pub enum EffectBody {
     ConversationSend(ConversationSend),
     /// Steer a running run (`runs.command` `input`).
     ConversationInput(ConversationInput),
+    /// Drop a queued input the owner keeps, so a dismissed row does not come back on reload.
+    ConversationDismissInput(ConversationDismissInput),
     /// Stop the working run. Intent `Destroy`: closing a view never stops a run.
     ConversationCancel(ConversationCancel),
     /// Run the reply to a user message again as a new branch.
@@ -365,6 +367,7 @@ impl EffectKind {
             ConversationCreate
             | ConversationSend
             | ConversationInput
+            | ConversationDismissInput
             | ConversationCancel
             | ConversationRetry
             | ConversationEdit
@@ -1036,6 +1039,16 @@ pub struct ConversationInput {
     pub run_id: String,
     pub client_message_id: String,
     pub text: String,
+}
+
+/// Drop a queued input the owner keeps, by the id its row carries. The panel takes the row
+/// off its own queue; this asks the owner to forget the record too, so a reload does not
+/// bring the dismissed row back. The answer is the row's id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "ts", derive(ts_rs::TS))]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationDismissInput {
+    pub client_message_id: String,
 }
 
 /// Stops a run. `run_id` names the run the person saw working; absent means

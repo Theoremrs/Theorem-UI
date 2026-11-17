@@ -28,3 +28,6 @@ export const retryRunInput = (threadKey: string, id: string) =>
   queues.get(threadKey)?.retry(id)
 
 export const stopRunInputs = (threadKey: string) => queues.get(threadKey)?.stop()
+
+export const dismissRunInput = (threadKey: string, id: string) =>
+  queues.get(threadKey)?.dismiss(id)
