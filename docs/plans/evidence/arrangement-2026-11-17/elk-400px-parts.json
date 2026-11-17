@@ -1,0 +1,184 @@
+{
+ "top": [
+  {
+   "path": "a",
+   "label": "Register A",
+   "inputs": {},
+   "outputs": {
+    "out": 7
+   },
+   "state": {
+    "value": 7
+   },
+   "at": [
+    -3.3,
+    0.925,
+    0
+   ],
+   "screen": [
+    85,
+    204
+   ],
+   "pulled": false
+  },
+  {
+   "path": "b",
+   "label": "Register B",
+   "inputs": {},
+   "outputs": {
+    "out": 5
+   },
+   "state": {
+    "value": 5
+   },
+   "at": [
+    -3.3,
+    -0.775,
+    0
+   ],
+   "screen": [
+    87,
+    265
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu",
+   "label": "ALU",
+   "inputs": {
+    "a": 7,
+    "b": 5,
+    "op": 0
+   },
+   "outputs": {
+    "result": 12,
+    "carry": 0
+   },
+   "state": {},
+   "at": [
+    -0.05,
+    0.125,
+    0
+   ],
+   "screen": [
+    190,
+    255
+   ],
+   "pulled": false
+  },
+  {
+   "path": "acc",
+   "label": "Accumulator",
+   "inputs": {
+    "in": 12,
+    "load": 1
+   },
+   "outputs": {
+    "out": 0
+   },
+   "state": {
+    "value": 0
+   },
+   "at": [
+    3.25,
+    0.645,
+    0
+   ],
+   "screen": [
+    315,
+    259
+   ],
+   "pulled": false
+  },
+  {
+   "path": "lamp",
+   "label": "Carry",
+   "inputs": {
+    "on": 0
+   },
+   "outputs": {},
+   "state": {},
+   "at": [
+    3.01,
+    -0.965,
+    0
+   ],
+   "screen": [
+    302,
+    322
+   ],
+   "pulled": false
+  }
+ ],
+ "inside": [
+  {
+   "path": "alu/add",
+   "label": "4-bit adder",
+   "inputs": {
+    "a": 7,
+    "b": 5,
+    "cin": 0
+   },
+   "outputs": {
+    "sum": 12,
+    "cout": 0
+   },
+   "state": {},
+   "at": [
+    -0.597,
+    0.546,
+    0
+   ],
+   "screen": [
+    143,
+    208
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu/and",
+   "label": "AND bank",
+   "inputs": {
+    "a": 7,
+    "b": 5
+   },
+   "outputs": {
+    "out": 5
+   },
+   "state": {},
+   "at": [
+    -0.509,
+    -0.429,
+    0
+   ],
+   "screen": [
+    152,
+    305
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu/pick",
+   "label": "Mux",
+   "inputs": {
+    "a": 12,
+    "b": 5,
+    "sel": 0
+   },
+   "outputs": {
+    "out": 12
+   },
+   "state": {},
+   "at": [
+    0.703,
+    0.547,
+    0
+   ],
+   "screen": [
+    266,
+    230
+   ],
+   "pulled": false
+  }
+ ]
+}

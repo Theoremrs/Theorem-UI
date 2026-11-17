@@ -1,0 +1,184 @@
+{
+ "top": [
+  {
+   "path": "a",
+   "label": "Register A",
+   "inputs": {},
+   "outputs": {
+    "out": 7
+   },
+   "state": {
+    "value": 7
+   },
+   "at": [
+    -3.4,
+    1,
+    0
+   ],
+   "screen": [
+    234,
+    179
+   ],
+   "pulled": false
+  },
+  {
+   "path": "b",
+   "label": "Register B",
+   "inputs": {},
+   "outputs": {
+    "out": 5
+   },
+   "state": {
+    "value": 5
+   },
+   "at": [
+    -3.4,
+    -1,
+    0
+   ],
+   "screen": [
+    239,
+    271
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu",
+   "label": "ALU",
+   "inputs": {
+    "a": 7,
+    "b": 5,
+    "op": 0
+   },
+   "outputs": {
+    "result": 12,
+    "carry": 0
+   },
+   "state": {},
+   "at": [
+    0,
+    0,
+    0
+   ],
+   "screen": [
+    375,
+    254
+   ],
+   "pulled": false
+  },
+  {
+   "path": "acc",
+   "label": "Accumulator",
+   "inputs": {
+    "in": 12,
+    "load": 1
+   },
+   "outputs": {
+    "out": 0
+   },
+   "state": {
+    "value": 0
+   },
+   "at": [
+    3.2,
+    0.8,
+    0
+   ],
+   "screen": [
+    539,
+    242
+   ],
+   "pulled": false
+  },
+  {
+   "path": "lamp",
+   "label": "Carry",
+   "inputs": {
+    "on": 0
+   },
+   "outputs": {},
+   "state": {},
+   "at": [
+    3.2,
+    -1.3,
+    0
+   ],
+   "screen": [
+    531,
+    356
+   ],
+   "pulled": false
+  }
+ ],
+ "inside": [
+  {
+   "path": "alu/add",
+   "label": "4-bit adder",
+   "inputs": {
+    "a": 7,
+    "b": 5,
+    "cin": 0
+   },
+   "outputs": {
+    "sum": 12,
+    "cout": 0
+   },
+   "state": {},
+   "at": [
+    -0.467,
+    0.54,
+    0
+   ],
+   "screen": [
+    316,
+    176
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu/and",
+   "label": "AND bank",
+   "inputs": {
+    "a": 7,
+    "b": 5
+   },
+   "outputs": {
+    "out": 5
+   },
+   "state": {},
+   "at": [
+    -0.467,
+    -0.66,
+    0
+   ],
+   "screen": [
+    319,
+    331
+   ],
+   "pulled": false
+  },
+  {
+   "path": "alu/pick",
+   "label": "Mux",
+   "inputs": {
+    "a": 12,
+    "b": 5,
+    "sel": 0
+   },
+   "outputs": {
+    "out": 12
+   },
+   "state": {},
+   "at": [
+    0.653,
+    -0.02,
+    0
+   ],
+   "screen": [
+    456,
+    280
+   ],
+   "pulled": false
+  }
+ ]
+}

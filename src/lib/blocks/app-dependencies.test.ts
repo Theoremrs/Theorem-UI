@@ -231,19 +231,21 @@ model.open('lamp')`
 
   test('pins the packages it is built on unless the App names a version', () => {
     expect(appDependencies({ entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }).versions)
-      .toEqual({ three: '0.187.0' })
+      .toEqual({ three: '0.187.0', elkjs: '0.12.1' })
     expect(appDependencies({ entry: 'main.ts', files: {
       'main.ts': SPATIAL_APP,
       'package.json': '{"dependencies":{"three":"0.188.0"}}',
-    } }).versions).toEqual({ three: '0.188.0' })
+    } }).versions).toEqual({ three: '0.188.0', elkjs: '0.12.1' })
     expect(new AppDependencies().resolve('@theorem/spatial'))
       .toEqual({ kind: 'library', path: '@theorem/spatial' })
   })
 
   test('is checked against its declarations and the three.js it is pinned to', async () => {
-    const resolver = new AppDependencies({ three: '0.187.0' })
+    const resolver = new AppDependencies({ three: '0.187.0', elkjs: '0.12.1' })
     const threeUrl = resolver.resolve('three').path
     const remote = modules({
+      [resolver.resolve('elkjs').path]: { source: 'export {}', types: 'https://esm.sh/elkjs@0.12.1/lib/main.d.ts' },
+      'https://esm.sh/elkjs@0.12.1/lib/main.d.ts': { source: 'export {}' },
       [threeUrl]: { source: 'export {}', types: 'https://esm.sh/@types/three@0.187.0/index.d.ts' },
       'https://esm.sh/@types/three@0.187.0/index.d.ts': { source: `export declare class Object3D { name: string }
 export declare class BufferGeometry { name: string }
@@ -251,7 +253,7 @@ export declare class Mesh extends Object3D { constructor(geometry?: BufferGeomet
 export declare class TorusKnotGeometry extends BufferGeometry { constructor(radius?: number) }` },
     })
     const sources = { entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }
-    const dependencies = await dependencyDeclarations(sources, new AppDependencies({ three: '0.187.0' }, remote.request))
+    const dependencies = await dependencyDeclarations(sources, new AppDependencies({ three: '0.187.0', elkjs: '0.12.1' }, remote.request))
     expect(dependencies.problems).toEqual([])
     expect(remote.requested).toContain(threeUrl)
     const result = await checkAppSources(sources, tsc, library, {}, dependencies)

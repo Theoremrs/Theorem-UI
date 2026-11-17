@@ -8,7 +8,7 @@
 
 /** Each library an App can import by name, with the npm packages its source imports. */
 export const APP_LIBRARIES: Record<string, { dependencies: Record<string, string> }> = {
-  '@theorem/spatial': { dependencies: { three: '0.187.0' } },
+  '@theorem/spatial': { dependencies: { three: '0.187.0', elkjs: '0.12.1' } },
 }
 
 /** The library a bare specifier names, if it names one. */
