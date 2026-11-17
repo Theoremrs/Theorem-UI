@@ -1111,8 +1111,8 @@ export function createConversation({
   const offInputs = ownInputs
     ? undefined
     : useRunInputs.subscribe((state, previous) => {
-        const key = threadKey()
-        if (state[key] === previous[key]) return
+        const thread = threadKey()
+        if (state[thread] === previous[thread]) return
         changed()
       })
 
@@ -1304,8 +1304,32 @@ export function createConversation({
     },
 
     input(request) {
+      const id = request.clientMessageId
+      // A row this thread already keeps under that id is the same message, not a new send:
+      // the panel's Retry names the row it shows, and the words may then have no run left to
+      // join. What becomes of them belongs to the queue — replayed to a run that works, or
+      // sent as the next turn — so this goes past the once-a-message rule below, which
+      // governs words not offered yet.
+      const kept = keptInputs().find((item) => item.id === id)
+      if (kept) {
+        const { answers, refusal } = begin(request)
+        if (refusal) return Promise.resolve(refusal)
+        // One id names one message: other words under it are a different message this id
+        // cannot carry, and replaying the kept words would send what nobody offered.
+        if (kept.text !== request.text)
+          return Promise.resolve(
+            refused(
+              answers,
+              'input_not_kept',
+              'That message id already names other words',
+            ),
+          )
+        replayInputs(id)
+        return Promise.resolve(
+          remember(id, accepted(answers, { clientMessageId: id })),
+        )
+      }
       return once(request, (answers) => {
-        const id = request.clientMessageId
         const runId = runtime.thread.getState().isRunning
           ? lastRunId()
           : undefined
@@ -1317,17 +1341,14 @@ export function createConversation({
             'stale_run',
             'That run is no longer the one working',
           )
-        // A row this thread already keeps under that id is the same message: the panel's
-        // Retry names the words it still holds, so the request is replayed rather than
-        // submitted afresh. Otherwise the words are kept under this id and sent there and
-        // then — what the composer is owed by this answer is that the message is saved for
-        // recovery, and how the send turns out belongs to the row.
-        if (keptInputs().some((item) => item.id === id)) replayInputs(id)
-        else if (!submitInputs(request.text, id))
+        // New words are kept under this id and sent there and then: what the composer is
+        // owed by this answer is that the message is saved for recovery, and how the send
+        // turns out belongs to the row.
+        if (!submitInputs(request.text, id))
           return refused(
             answers,
             'input_not_kept',
-            'These words could not be kept for the run under that message id',
+            'These words could not be kept for the run, so nothing was sent for them',
           )
         return remember(id, accepted(answers, { clientMessageId: id }))
       })

@@ -1084,6 +1084,70 @@ describe('run input recovery', () => {
     t.bound.dispose()
   })
 
+  test('a retry naming a kept row replays that request, with no run working', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({
+      requestId: 'r1',
+      clientMessageId: 'c1',
+      text: 'also',
+    })
+    await t.settle()
+    // One id names one message: other words claiming it are a different message this id
+    // cannot carry, so nothing is kept or sent under it.
+    expect(
+      await owner.input({
+        requestId: 'r2',
+        clientMessageId: 'c1',
+        text: 'different words',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'input_not_kept' })
+    expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+
+    // A person's Stop leaves the row listed with Retry and starts no response.
+    await owner.stop({ requestId: 'r3', runId: 'run1' })
+    t.durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_cancelled',
+      },
+    ]
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+    ])
+    expect(t.stub.appends).toEqual([])
+
+    // The panel's Retry names the row it shows: the same message id and words, with no run
+    // working any more. Admission is for new words; these were already admitted.
+    expect(
+      (
+        await owner.input({
+          requestId: 'r4',
+          clientMessageId: 'c1',
+          text: 'also',
+        })
+      ).outcome,
+    ).toBe('accepted')
+    await t.settle()
+    // The kept words go as the next turn, once, and no second request is made to Theorem.
+    expect(t.stub.appends).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'also' }],
+        runConfig: { custom: { theoremRunInput: true } },
+      },
+    ])
+    expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+    t.bound.dispose()
+  })
+
   test('a switched thread reads its own rows and carries none of the last one’s', async () => {
     const t = recovering()
     const owner = t.make()
@@ -1518,6 +1582,7 @@ describe('stop, retry and edit', () => {
       await conversation.edit({ ...edit, clientMessageId: 'c3' }),
     ).toMatchObject({ outcome: 'refused', code: 'missing_capability' })
   })
+
 })
 
 describe('approvals', () => {

@@ -848,22 +848,26 @@ enum QueueState {
     Queued,
     /// Nothing was sent, and why.
     Failed(Option<String>),
-    /// Whether the owner took it is not known; it is never sent again.
+    /// Whether the owner took it is not known; it is never sent again under a fresh key.
     Uncertain,
 }
 
-/// One row of the queue: the owner's outbox entry or the panel's own pending send.
+/// One row of the queue: the owner's kept entry or the panel's own pending send.
 #[derive(Clone, Debug)]
 struct QueueRow {
     id: String,
     text: String,
     state: QueueState,
+    /// Whether the owner holds these words for the run, rather than only this panel.
+    kept: bool,
 }
 
 impl QueueRow {
-    /// A failed send was never made: it can go again.
+    /// A row the owner may be asked again for: one it certainly refused, and one whose result
+    /// nobody can confirm. A replay names the row's own request key, so an uncertain row is
+    /// played again as the same request, never as a second message.
     fn retries(&self) -> bool {
-        matches!(self.state, QueueState::Failed(_))
+        matches!(self.state, QueueState::Failed(_) | QueueState::Uncertain)
     }
 
     /// A row nothing more will happen to can be taken off the queue. One the owner holds
@@ -1649,6 +1653,7 @@ impl TheoPanel {
             .map(|q| QueueRow {
                 id: q.client_message_id.clone(),
                 text: q.text.clone(),
+                kept: true,
                 state: match q.state.as_str() {
                     "sending" => QueueState::Sending,
                     "failed" => QueueState::Failed(q.reason.clone()),
@@ -1659,6 +1664,7 @@ impl TheoPanel {
         let mine = self.pending.iter().map(|p| QueueRow {
             id: p.client_message_id.clone(),
             text: p.text.clone(),
+            kept: false,
             state: match &p.state {
                 PendingState::Sending => QueueState::Sending,
                 PendingState::Refused(reason) => QueueState::Failed(Some(reason.clone())),
@@ -1684,8 +1690,10 @@ impl TheoPanel {
         true
     }
 
-    /// Send a failed row's words again, as a new message: input while the run works, else
-    /// a new turn. The old row leaves the queue for the new one.
+    /// Send a queue row's words again, as the message it already is: the retry names the row's
+    /// own id, so the owner replays that request instead of being asked the same words under a
+    /// fresh one. What becomes of them is the owner's — a run that works takes them again, a
+    /// settled row goes as the next turn — and the row stays listed meanwhile.
     fn retry_queued(&mut self, id: &str, cx: &mut Ctx) {
         let Some(row) = self.queue().into_iter().find(|r| r.id == id && r.retries()) else {
             self.session
@@ -1693,12 +1701,86 @@ impl TheoPanel {
                 .notify("that message is not one to send again");
             return;
         };
-        match self.send_words(row.text.clone(), None, cx) {
-            Ok(()) => {
-                self.remove_queued(&row.id);
-            }
-            Err(reason) => self.session.borrow_mut().notify(reason),
+        if let Err(reason) = self.replay_queued(&row, cx) {
+            self.session.borrow_mut().notify(reason);
         }
+        self.refresh();
+    }
+
+    /// Re-issue `row` under the id it carries. An edit keeps the message it edits: turning a
+    /// refused edit into a plain new turn would lose the branch the words were asked for.
+    fn replay_queued(&mut self, row: &QueueRow, cx: &mut Ctx) -> Result<(), String> {
+        if !self.bound() {
+            return Err("not connected to a conversation yet".into());
+        }
+        let body = if row.kept {
+            // Words the owner holds for the run: naming its id asks it to replay that request,
+            // whatever the run is doing now.
+            let Some(run_id) = self.owner.run.run_id.clone() else {
+                return Err("the run has no id to send input to".into());
+            };
+            EffectBody::ConversationInput(ConversationInput {
+                run_id,
+                client_message_id: row.id.clone(),
+                text: row.text.clone(),
+            })
+        } else {
+            let editing = self
+                .pending
+                .iter()
+                .find(|p| p.client_message_id == row.id)
+                .and_then(|p| p.editing.clone());
+            self.words_body(&row.id, &row.text, editing.as_deref())?
+        };
+        let resource = self.resource();
+        let effect = cx
+            .emit(|effect| Effect::new(effect, resource, body))
+            .map_err(|error| error.to_string())?;
+        self.tracked.insert(effect, Tracked::Turn(row.id.clone()));
+        // The same message, so its row is not duplicated and not taken off: a panel row goes
+        // back to sending, and a kept one the owner will announce again on its own.
+        if let Some(at) = self
+            .pending
+            .iter()
+            .position(|p| p.client_message_id == row.id)
+        {
+            self.pending[at].state = PendingState::Sending;
+        }
+        Ok(())
+    }
+
+    /// What `text` goes as under the id that names it: an edit keeps the message it edits;
+    /// other words join a working run's inbox, or start a turn of their own.
+    fn words_body(
+        &self,
+        id: &str,
+        text: &str,
+        editing: Option<&str>,
+    ) -> Result<EffectBody, String> {
+        if let Some(message_id) = editing {
+            return Ok(EffectBody::ConversationEdit(ConversationEdit {
+                message_id: message_id.to_owned(),
+                client_message_id: id.to_owned(),
+                text: text.to_owned(),
+                references: Vec::new(),
+            }));
+        }
+        if self.owner.working() {
+            let Some(run_id) = self.owner.run.run_id.clone() else {
+                return Err("the run has no id to send input to".into());
+            };
+            return Ok(EffectBody::ConversationInput(ConversationInput {
+                run_id,
+                client_message_id: id.to_owned(),
+                text: text.to_owned(),
+            }));
+        }
+        Ok(EffectBody::ConversationSend(ConversationSend {
+            client_message_id: id.to_owned(),
+            text: text.to_owned(),
+            attachments: Vec::new(),
+            references: Vec::new(),
+        }))
     }
 
     /// Send `text` as a message of its own, never through the composer, so a
@@ -1711,23 +1793,7 @@ impl TheoPanel {
             return Err("not connected to a conversation yet".into());
         }
         let id = self.mint();
-        let body = if self.owner.working() {
-            let Some(run_id) = self.owner.run.run_id.clone() else {
-                return Err("the run has no id to send input to".into());
-            };
-            EffectBody::ConversationInput(ConversationInput {
-                run_id,
-                client_message_id: id.clone(),
-                text: text.clone(),
-            })
-        } else {
-            EffectBody::ConversationSend(ConversationSend {
-                client_message_id: id.clone(),
-                text: text.clone(),
-                attachments: Vec::new(),
-                references: Vec::new(),
-            })
-        };
+        let body = self.words_body(&id, &text, None)?;
         let resource = self.resource();
         let build = |effect| Effect::new(effect, resource, body);
         let sent = match actor {
@@ -2619,8 +2685,9 @@ impl TheoPanel {
                         let reason = said(other).unwrap_or_default();
                         self.pending[at].state = PendingState::Refused(reason);
                         // The draft comes back whole, unless the person has
-                        // already begun another.
-                        let editing = self.pending[at].editing.take();
+                        // already begun another. The row keeps what it was, so
+                        // retrying it is still the same kind of message.
+                        let editing = self.pending[at].editing.clone();
                         if let Some(draft) = self.pending[at].draft.take()
                             && self.composer.borrow_mut().put_back(draft)
                         {
@@ -7676,38 +7743,104 @@ mod tests {
     }
 
     #[test]
-    fn retry_sends_a_failed_message_again_as_new_input_and_its_old_row_goes() {
+    fn a_retry_of_a_kept_row_names_that_row_and_mints_no_fresh_message() {
+        // The owner keeps the words a run never took, so the panel's Retry is a request about
+        // that message: it names the row's own id, and the owner replays that same request.
         let queued = json!([
             {"clientMessageId": "c2", "text": "try again", "state": "failed", "reason": "no run"},
         ]);
-        let check = |fx: &[Effect], r: &Rig| {
-            let sent = conversation_effects(fx);
-            let EffectBody::ConversationInput(input) = &sent[0].body else {
-                panic!("{fx:?}")
-            };
-            assert_eq!(input.text, "try again");
-            assert_eq!(input.run_id, "run-1");
-            assert_ne!(input.client_message_id, "c2", "a new message");
-            let drawn = r.drawn();
-            assert_eq!(drawn.matches("try again").count(), 1, "{drawn}");
-            assert!(!drawn.contains("not sent"), "{drawn}");
-            assert!(drawn.contains("sending"), "{drawn}");
-        };
-        let mut r = rig();
-        r.show(1, "t1", working_with(queued.clone()));
-        r.key(Key::Char('q'), Mods::ALT);
-        let fx = r.enter();
-        check(&fx, &r);
-
-        let mut r = rig();
-        r.show(1, "t1", working_with(queued.clone()));
-        let fx = click_on(&mut r, "[retry]");
-        check(&fx, &r);
-
         let mut r = rig();
         r.show(1, "t1", working_with(queued));
         let fx = r.act("theo.view.queue.retry.c2");
-        check(&fx, &r);
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationInput(input) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(input.text, "try again");
+        assert_eq!(input.run_id, "run-1");
+        assert_eq!(
+            input.client_message_id, "c2",
+            "the same message, not a fresh one beside it"
+        );
+        // The row the person is watching is that request, so it stays listed until the owner
+        // settles it; taking it back off is a separate act.
+        let drawn = r.drawn();
+        assert_eq!(drawn.matches("try again").count(), 1, "{drawn}");
+        assert!(drawn.contains("[remove]"), "{drawn}");
+    }
+
+    #[test]
+    fn an_uncertain_row_is_retried_under_its_own_request_key() {
+        // An ambiguous result keeps its original run, key and text, and Retry replays that
+        // same request; it must not invite a fresh duplicate send as though the owner had
+        // certainly refused it. So an uncertain row is playable, under its own id.
+        let queued = json!([
+            {"clientMessageId": "c1", "text": "lost one", "state": "uncertain"},
+        ]);
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued.clone()));
+        assert!(r.drawn().contains("[retry]"), "{}", r.drawn());
+        let fx = r.act("theo.view.queue.retry.c1");
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationInput(input) = &sent[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(
+            input.client_message_id, "c1",
+            "the same request key, replayed"
+        );
+        assert_eq!(input.text, "lost one");
+        assert_eq!(input.run_id, "run-1");
+        // A row the owner holds is still one the person can take off the queue.
+        assert!(r.drawn().contains("[remove]"), "{}", r.drawn());
+
+        // Through the queue's keys, the same.
+        let mut r = rig();
+        r.show(1, "t1", working_with(queued));
+        r.key(Key::Char('q'), Mods::ALT);
+        let fx = r.enter();
+        let EffectBody::ConversationInput(input) = &conversation_effects(&fx)[0].body else {
+            panic!("{fx:?}")
+        };
+        assert_eq!(input.client_message_id, "c1");
+    }
+
+    #[test]
+    fn a_refused_edit_is_retried_as_the_edit_it_was() {
+        // A refused edit keeps the message it edits: retrying it must not turn into a plain
+        // new turn, which would lose the branch the words were asked for.
+        let mut r = rig();
+        r.show(
+            1,
+            "t1",
+            json!({"messages": [user("m1", "start"), assistant("m2", json!([{"type": "text", "text": "ok"}]), "complete")]}),
+        );
+        r.act("theo.edit");
+        r.typed(" changed");
+        let fx = r.enter();
+        let EffectBody::ConversationEdit(first) = &conversation_effects(&fx)[0].body else {
+            panic!("{fx:?}")
+        };
+        let (id, message_id) = (first.client_message_id.clone(), first.message_id.clone());
+        r.send(Msg::Completion(Completion::new(
+            fx[0].id,
+            fx[0].resource.clone(),
+            Outcome::Refused {
+                code: "unavailable".into(),
+                reason: "busy".into(),
+            },
+        )));
+        let fx = r.act(&format!("theo.view.queue.retry.{id}"));
+        let sent = conversation_effects(&fx);
+        let EffectBody::ConversationEdit(edit) = &sent[0].body else {
+            panic!("{:?}", sent[0])
+        };
+        assert_eq!(edit.text, "start changed");
+        assert_eq!(edit.message_id, message_id, "the message it edits");
+        assert_eq!(
+            edit.client_message_id, id,
+            "the same message, not a fresh one beside it"
+        );
     }
 
     #[test]
