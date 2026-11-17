@@ -27,6 +27,10 @@
 // key and reaches OpenRouter through scripts/e2e/provider-standin.mjs. That takes only
 // a generated test key and swaps in the real one as it forwards, so a page never
 // holds a real key.
+//
+// With E2E_SCRIPTED_MODEL set, for scripts/e2e/project-context.mjs, Theorem's
+// catalog also lists fixture/scripted, served by scripts/e2e/scripted-model.mjs:
+// a model that follows a rule, so a scenario can say what a turn will do.
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import {
@@ -49,6 +53,9 @@ import {
   IDENTITY_MODE,
   NEON,
   NEON_ACCOUNTS,
+  SCRIPTED,
+  SCRIPTED_MODEL,
+  SCRIPTED_PORT,
   STANDIN,
   STANDIN_PORT,
   UI,
@@ -233,6 +240,47 @@ async function identity() {
 const signIn = await identity()
 
 const serverEnv = { ...process.env, ...providerKeys() }
+if (process.env.E2E_KEY_STANDIN && process.env.E2E_SCRIPTED_MODEL) {
+  console.error(
+    'E2E_KEY_STANDIN and E2E_SCRIPTED_MODEL each write the catalog. Set one.',
+  )
+  process.exit(1)
+}
+if (process.env.E2E_SCRIPTED_MODEL) {
+  start(
+    'scripted-model',
+    process.execPath,
+    ['scripts/e2e/scripted-model.mjs'],
+    {
+      ...process.env,
+      E2E_SCRIPTED_PORT: String(SCRIPTED_PORT),
+    },
+  )
+  await ready('scripted model', `${SCRIPTED}/__calls`)
+  serverEnv.THEOREM_MODELS_JSON = join(DATA_DIR, 'scripted-models.json')
+  writeFileSync(
+    serverEnv.THEOREM_MODELS_JSON,
+    JSON.stringify({
+      models: {
+        [SCRIPTED_MODEL.provider]: {
+          [SCRIPTED_MODEL.model]: {
+            provider: SCRIPTED_MODEL.provider,
+            model_id: SCRIPTED_MODEL.model,
+            request_shape: 'openai_chat_completions',
+            context_window: 262144,
+            max_output_tokens: 4096,
+            endpoint: SCRIPTED,
+            credential_ref: 'env:FIXTURE_API_KEY',
+            native_tools: true,
+            supports_streaming: false,
+          },
+        },
+      },
+    }),
+  )
+  // The scripted model checks no credential; the catalog wants one named.
+  serverEnv.FIXTURE_API_KEY = 'scripted-model-not-a-secret'
+}
 if (process.env.E2E_KEY_STANDIN) {
   start('standin', process.execPath, ['scripts/e2e/provider-standin.mjs'], {
     ...process.env,

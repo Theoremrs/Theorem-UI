@@ -1,5 +1,6 @@
-// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted.
+// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted; so do project context and its Library (fixtures/project-context).
 import type { Theorem } from '@/lib/theorem/client'
+import type { LibraryItem } from '@/lib/theorem/project-context'
 import type { Review, ReviewResponse } from '@/lib/theorem/reviews'
 import type { FakeRoutes } from './fake-theorem'
 import {
@@ -16,6 +17,7 @@ import {
 } from './fixtures/notebook-parts'
 import { CABINET_ARTIFACTS, CABINET_DESCRIPTIONS, cabinetMessages, cabinetRevision } from './fixtures/cabinet'
 import { organizationFixture } from './fixtures/organization'
+import { projectContextRoutes, uploadedItem } from './fixtures/project-context'
 import { reviewFixture, reviewShots } from './fixtures/review'
 import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
@@ -92,6 +94,8 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   // Notes and uploads a scripted story writes stay readable for its life.
   const notes = new Map(Object.entries(documentFixtures))
   const uploads = new Map<string, Response>()
+  // What goes up is in the Library a project picks its documents from.
+  const added: LibraryItem[] = []
   const snapshot = (documentId: string) => {
     const markdown = notes.get(documentId)
     return markdown === undefined
@@ -105,6 +109,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   }
   return {
     ...sessionGraphRoutes(now),
+    ...projectContextRoutes(now, { added }),
     [`GET ${BASE}/response-styles`]: (_params, request) => ({
       styles: [
         { id: 'normal', name: 'Normal', description: 'Direct, conversational replies.' },
@@ -198,8 +203,12 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       spaces.set(decodeURIComponent(spaceId), saved)
       return saved
     },
-    [`POST ${BASE}/projects/:projectId/uploads`]: async (_, request) => {
+    [`POST ${BASE}/projects/:projectId/uploads`]: async (
+      { projectId = '' },
+      request,
+    ) => {
       const uploadId = `upload-new-${uploads.size}`
+      added.unshift(uploadedItem(decodeURIComponent(projectId), uploadId, request))
       uploads.set(
         uploadId,
         new Response(await request.arrayBuffer(), {
@@ -216,7 +225,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       const bytes = await (await fetch(upload.url)).arrayBuffer()
       return new Response(bytes, { headers: { 'content-type': upload.mime } })
     },
-    [`POST ${BASE}/uploads/:uploadId/retain`]: () => ({ retained: true }),
+    [`POST ${BASE}/library/uploads/:uploadId/retain`]: () => ({ retained: true }),
     [`GET ${BASE}/organization`]: () => organization,
     [`GET ${BASE}/runs/${POINTING_RUN}/delegations`]: () => ({
       delegations: [pointingDelegation],
