@@ -195,7 +195,7 @@ void main() {
   col = mix(vec3(lum), col, u_saturate);
   // The body can be clearer low on the pane: it eases from u_body to
   // u_bodyLow across a band around u_split (0 top, 1 bottom).
-  float down = clamp((half_.y - local.y) / u_size.y, 0.0, 1.0);
+  float down = clamp((local.y + half_.y) / u_size.y, 0.0, 1.0);
   float body = mix(u_body, u_bodyLow, smoothstep(u_split - 0.1, u_split + 0.1, down));
   col = mix(col, u_tone, mix(body, u_rimBody, rim));
   col += u_lift;

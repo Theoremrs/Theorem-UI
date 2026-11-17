@@ -1,7 +1,8 @@
-// SOURCING: bun:test over lib/speech/narrate's chunker and narrator, with a provider and a player the test supplies: no model is fetched and nothing is played.
+// SOURCING: bun:test over lib/speech/narrate's chunker, narrator and thread follower, with a provider and a player the test supplies: no model is fetched and nothing is played.
 import { describe, expect, test } from 'bun:test'
 import type { Playback, PlaybackEnding, Stream } from '@/lib/sound/graph'
-import { narrate, sentences } from './narrate'
+import { narrate, narrateReplies, sentences, useNarration } from './narrate'
+import type { Narration } from './narrate'
 import type { SpeechProvider } from './provider'
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0))
@@ -103,5 +104,47 @@ describe('narrate', () => {
     narration.feed('This sentence comes after the stop was pressed.')
     await tick()
     expect(asked).toEqual([])
+  })
+})
+
+describe('narrateReplies', () => {
+  test('a finished reply can still be stopped while its speech plays', () => {
+    const state = {
+      messages: [
+        {
+          id: 'reply',
+          role: 'assistant',
+          content: [{ type: 'text', text: 'A reply long enough to be spoken aloud.' }],
+        },
+      ],
+      isRunning: true,
+    }
+    let listener = () => {}
+    const runtime = {
+      thread: {
+        getState: () => state,
+        subscribe: (next: () => void) => {
+          listener = next
+          return () => {}
+        },
+      },
+    }
+    const calls: string[] = []
+    const narration: Narration = {
+      feed: () => calls.push('feed'),
+      finish: () => calls.push('finish'),
+      stop: () => calls.push('stop'),
+    }
+    useNarration.setState({ live: true })
+    const end = narrateReplies(runtime, () => true, () => () => {}, () => narration)
+    listener()
+    state.isRunning = false
+    listener()
+    expect(calls).toContain('finish')
+    expect(calls).not.toContain('stop')
+    // Narration is turned off while the queued speech is still playing.
+    useNarration.setState({ live: false })
+    expect(calls.at(-1)).toBe('stop')
+    end()
   })
 })

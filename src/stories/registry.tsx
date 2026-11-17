@@ -2,7 +2,7 @@
 import { AppearanceControls } from './appearance-controls'
 import { ReactFlow, ReactFlowProvider, applyNodeChanges } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { lazy, useEffect, useMemo, useState } from 'react'
+import { lazy, useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import {
   createMemoryHistory,
   createRootRoute,
@@ -211,7 +211,15 @@ function ReviewCardStory() {
  * code and a code block above the composer. The design overhaul's fixture.
  */
 function PopulatedShellStory() {
-  useState(() => useSidebarPrefs.setState({ pins: POPULATED_PINS }))
+  // The shelf is persisted, so the person's own pins come back when the story
+  // closes; set before paint, the first frame already shows the fixture's.
+  useLayoutEffect(() => {
+    const { pins } = useSidebarPrefs.getState()
+    useSidebarPrefs.setState({ pins: POPULATED_PINS })
+    return () => {
+      useSidebarPrefs.setState({ pins })
+    }
+  }, [])
   return (
     <WithRuntime>
       <ChatShell projectId="project-theorem" threadId="thread-app-gallery" />

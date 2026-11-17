@@ -198,41 +198,57 @@ export function useNarrateReplies(
   onScreen: () => boolean,
   subscribe: (listener: () => void) => () => void,
 ) {
-  useEffect(() => {
-    let current: { id: string; narration: Narration } | undefined
-    const check = () => {
-      const { messages, isRunning } = runtime.thread.getState()
-      const last = messages.at(-1)
-      if (!useNarration.getState().live || !onScreen()) {
-        current?.narration.stop()
-        current = undefined
-        return
-      }
-      if (last?.role !== 'assistant') return
-      const text = last.content
-        .filter((part) => part.type === 'text')
-        .map((part) => part.text ?? '')
-        .join('\n\n')
-      if (isRunning) {
-        if (current?.id !== last.id) {
-          current?.narration.stop()
-          current = { id: last.id, narration: narrate() }
-        }
-        current.narration.feed(text)
-      } else if (current?.id === last.id) {
-        current.narration.feed(text)
-        current.narration.finish()
-        current = undefined
-      }
-    }
-    const stops = [
-      runtime.thread.subscribe(check),
-      useNarration.subscribe(check),
-      subscribe(check),
-    ]
-    return () => {
-      for (const stop of stops) stop()
+  useEffect(
+    () => narrateReplies(runtime, onScreen, subscribe),
+    [runtime, onScreen, subscribe],
+  )
+}
+
+/**
+ * What useNarrateReplies runs: follows the thread and returns what ends it.
+ * A finished reply keeps its narration, since finishing only queues the rest
+ * of its speech: turning narration off, moving away or leaving still stops
+ * what is playing.
+ */
+export function narrateReplies(
+  runtime: NarratedThread,
+  onScreen: () => boolean,
+  subscribe: (listener: () => void) => () => void,
+  start: () => Narration = narrate,
+): () => void {
+  let current: { id: string; narration: Narration } | undefined
+  const check = () => {
+    const { messages, isRunning } = runtime.thread.getState()
+    const last = messages.at(-1)
+    if (!useNarration.getState().live || !onScreen()) {
       current?.narration.stop()
+      current = undefined
+      return
     }
-  }, [runtime, onScreen, subscribe])
+    if (last?.role !== 'assistant') return
+    const text = last.content
+      .filter((part) => part.type === 'text')
+      .map((part) => part.text ?? '')
+      .join('\n\n')
+    if (isRunning) {
+      if (current?.id !== last.id) {
+        current?.narration.stop()
+        current = { id: last.id, narration: start() }
+      }
+      current.narration.feed(text)
+    } else if (current?.id === last.id) {
+      // Both are no-ops once the narration has finished.
+      current.narration.feed(text)
+      current.narration.finish()
+    }
+  }
+  const stops = [
+    runtime.thread.subscribe(check),
+    useNarration.subscribe(check),
+    subscribe(check),
+  ]
+  return () => {
+    for (const stop of stops) stop()
+    current?.narration.stop()
+  }
 }
