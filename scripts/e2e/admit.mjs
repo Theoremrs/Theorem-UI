@@ -198,7 +198,7 @@ try {
 
   // The pane it opens in is the owner's own program: what is typed runs there.
   const opened = await waitFor(
-    new RegExp(`${offered.session} \\| Herdr \\| (\\w+)`),
+    new RegExp(`${offered.session} \\| Herdr \\| epoch \\d+`),
     'the admitted session open in a pane',
     30_000,
   ).catch((error) => error)
@@ -208,13 +208,6 @@ try {
     Array.isArray(opened) ? opened[0] : String(opened.message).slice(0, 400),
   )
   if (Array.isArray(opened)) {
-    if (opened[1] !== 'controlling') {
-      // An observer's first key sends nothing: the pane offers control, and Enter takes it.
-      await page.keyboard.press('x')
-      await waitFor(/Enter requests control/, 'the offer of control')
-      await page.keyboard.press('Enter')
-      await waitFor(/\| controlling \|/, 'control of the pane')
-    }
     const status = async () =>
       (await lines()).find((line) => line.includes(offered.session)) ?? ''
     log('the pane says', (await status()).slice(30, 110).trim())

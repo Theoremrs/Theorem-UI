@@ -564,7 +564,7 @@ const SCENARIOS = {
       const checks = {}
       await page.waitForTimeout(800)
       const base = await parts()
-      checks['the pane is running before any report'] = /controlling/.test(base.header) && !/exited/.test(base.header)
+      checks['the pane is running before any report'] = /\| epoch \d+/.test(base.header) && !/exited/.test(base.header)
       checks['unavailable draws nothing and has no node'] = (await band()) === '' && (await node('program-report')) === null
       await snapNow('unavailable')
       await recordEffects(page)
@@ -578,7 +578,7 @@ const SCENARIOS = {
         unchanged.header &&= now.header === base.header
         unchanged.footer &&= now.footer === base.footer
         unchanged.state &&= now.state === base.state
-        running[name] = /controlling/.test(now.header) && !/exited|has ended/.test((await pane()).join('\n'))
+        running[name] = /\| epoch \d+/.test(now.header) && !/exited|has ended/.test((await pane()).join('\n'))
         asked[name] = (await effectsSince(page)).length
         await snapNow(shot)
         const said = await band()
@@ -806,19 +806,17 @@ const SCENARIOS = {
         'a delete lands in the input and the core': afterDelete === 'hello ther',
       }
     },
-    // The terminal: its status line names the controller; the control button says why it is off.
+    // The terminal: its status line names the session; any view types, so there is no control to request.
     async (page) => {
       await page.keyboard.press(`${CHORD}s`)
       await page.waitForTimeout(700)
       await page.keyboard.press('Enter')
       await page.waitForTimeout(2500)
       const tree = await treeText(page)
-      const request = overlayBox(page).getByRole('button', { name: 'Request control' })
       return {
-        'the status names the session and who controls it': /status: sh-1 \| native \| controlling/.test(tree),
+        'the status names the session': /status: sh-1 \| native \| epoch \d+/.test(tree),
         'the terminal is a text box': (await countByRole(page, 'textbox', 'Terminal sh-1')) === 1,
-        'Request control is disabled': (await request.getAttribute('aria-disabled')) === 'true',
-        'and gives its reason': /already controls the terminal/.test(await describedBy(page, 'p4/request-control')),
+        'there is no Request control button': (await countByRole(page, 'button', 'Request control')) === 0,
         'a remark from the host is a status, not an alert': /status: Adopted a terminal/.test(tree) && !/alert: Adopted a terminal/.test(tree),
       }
     },

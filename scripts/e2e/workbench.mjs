@@ -107,25 +107,19 @@ const CASES = {
     ],
   },
   'AC-35': {
-    title: 'Observer control and late input',
+    title: 'Every view types',
     checks: [
-      'the observer sees the controller\'s output',
-      'an observer\'s typing is refused with a reason and an offer',
-      'the observer\'s typing did not reach the program',
-      'taking control makes the first browser the observer and advances the generation',
-      'the refused text was not replayed once control moved',
-      'the first browser\'s late typing cannot reach the program',
-      'the new controller\'s input reaches the program and shows in both',
+      'the second browser sees the first browser\'s output',
+      'the second browser\'s typing reaches the program and shows in both',
+      'the first browser\'s typing still reaches the program and shows in both',
     ],
   },
   'AC-36': {
-    title: 'Controller-independent local resizing',
+    title: 'Every view resizes',
     checks: [
-      'the second browser attaches as an observer',
-      'resizing the observer repeatedly leaves the program\'s grid alone',
-      'resizing the controller changes the program\'s grid',
-      'the observer still cannot change the grid afterwards',
-      'a hidden view\'s resizes leave the grid alone',
+      'the second browser attaches to the same session and its pane accepts keys',
+      'resizing the second browser changes the program\'s grid',
+      'resizing the first browser changes the program\'s grid again',
     ],
   },
   'AC-37': {
@@ -254,7 +248,8 @@ if (!versions.core.includes(PINNED_CORE))
 // ---- the page --------------------------------------------------------------------------------
 
 const GRID = '[id^="workbench-"]'
-const STATUS = /(hc-[0-9a-f-]{36}) \| Herdr \| ([^|\n]+?) \| epoch (\d+)/
+/** A bound Herdr pane: its session, what it says when it is not simply running, and its binding epoch. */
+const STATUS = /(hc-[0-9a-f-]{36}) \| Herdr \| (?:([^|\n]+?) \| )?epoch (\d+)/
 const VIEWPORT = { width: 1440, height: 900 }
 const pause = (ms) => new Promise((settle) => setTimeout(settle, ms))
 
@@ -313,7 +308,7 @@ async function ensureChooser(page) {
   if (!/Start a new process/.test(await screen(page))) await openChooser(page)
 }
 
-/** Moves the chooser's selection to the row whose title matches, then presses `key` (Enter chooses, o observes, t takes control). */
+/** Moves the chooser's selection to the row whose title matches, then presses `key` (Enter chooses or attaches). */
 async function choose(page, re, key = 'Enter') {
   await page.keyboard.press('Home')
   await pause(250)
@@ -324,15 +319,6 @@ async function choose(page, re, key = 'Enter') {
     await pause(120)
   }
   throw new Error(`No chooser row matched ${re}:\n${(await screen(page)).slice(0, 500)}`)
-}
-
-/** Takes control the way a person does: a key to be told why not, then Enter to ask. */
-/** An observer's first key sends nothing: the pane offers control, and Enter takes it. */
-async function takeControl(page) {
-  await page.keyboard.press('x')
-  await waitFor(page, /Enter requests control/, 'the offer of control')
-  await page.keyboard.press('Enter')
-  await waitFor(page, /\| controlling \|/, 'controlling')
 }
 
 /** The colour of the first cell of `needle` in a row that does not hold `notIn`. */
@@ -397,13 +383,13 @@ async function reloaded(page) {
   await waitFor(page, /Theo|Shell/, 'the workbench after a reload', 90_000)
 }
 
-/** A new session made through the host, attached from the chooser with `key`, with the pane's input proven to reach it. */
-async function attachFresh(page, name, key = 't') {
+/** A new session made through the host and attached from the chooser. */
+async function attachFresh(page, name) {
   const made = await hostShell(name)
   await ensureChooser(page)
   await waitFor(page, new RegExp(made.session), 'the new session in the chooser', 40_000)
-  await choose(page, new RegExp(made.session), key)
-  await waitFor(page, new RegExp(`${made.session} \\| Herdr \\| ${key === 't' ? 'controlling' : 'observing'}`), 'the attached session')
+  await choose(page, new RegExp(made.session))
+  await waitFor(page, new RegExp(`${made.session} \\| Herdr \\| epoch \\d+`), 'the attached session')
   return made
 }
 
@@ -598,7 +584,6 @@ await ac('AC-32', async () => {
   chk('AC-32', 'the pane is bound to the same session after a reload', now.id === was.id, `${was.id} -> ${now.id}`, a)
   chk('AC-32', 'earlier output is still on the screen', (await screen(a)).includes('WBPID='), '', a)
   await shot(a, 'ac32-reloaded')
-  if (!/controlling/.test(now.what)) await takeControl(a)
   await say(a, 'echo WBPID2=$$=')
   const after = await waitFor(a, /\nWBPID2=(\d+)=/, 'a new command to run')
   chk('AC-32', 'a new command runs in the same shell process (no second launch)', after[1] === pid, `${pid} / ${after[1]}`, a)
@@ -618,83 +603,57 @@ const freshSize = async (page) => {
   }
 }
 
-async function observer(mine) {
+/** A second browser of the same account, attached to `mine` from its chooser. */
+async function secondView(mine) {
   const b = await secondBrowser()
   await b.goto(`${UI}/?workbench=1`, { waitUntil: 'domcontentloaded' })
   await waitFor(b, /Theo/, 'the second workbench', 90_000)
   await openChooser(b)
   await waitFor(b, new RegExp(mine.session), 'the session in the second chooser', 40_000)
-  await choose(b, new RegExp(mine.session), 'o')
-  await waitFor(b, /\| observing \|/, 'the observer')
+  await choose(b, new RegExp(mine.session))
+  await waitFor(b, new RegExp(`${mine.session} \\| Herdr \\| epoch \\d+`), 'the second view attached')
   return b
 }
 
 await ac('AC-36', async () => {
   const mine = await attachFresh(a, 'wb-resize')
   await inputWorks(a)
-  const b = await observer(mine)
-  chk('AC-36', 'the second browser attaches as an observer', true, '', b)
-  const s0 = await freshSize(a)
-  for (const [w, h] of [[1100, 700], [1300, 800], [900, 600], [1200, 760], [1000, 650]]) {
-    await b.setViewportSize({ width: w, height: h })
-    await pause(400)
-  }
-  const s1 = await freshSize(a)
-  chk('AC-36', 'resizing the observer repeatedly leaves the program\'s grid alone', Boolean(s0) && s0 === s1, `${s0} -> ${s1}`, a)
+  const b = await secondView(mine)
+  await say(b, 'echo BKEYS$((2+2))')
+  const keys = await waitFor(a, (t) => t.split('\n').some((l) => l.trim().endsWith('BKEYS4')), 'the second view\'s keys in A', 15_000).then(() => true, () => false)
+  chk('AC-36', 'the second browser attaches to the same session and its pane accepts keys', keys, '', b)
+  await b.setViewportSize({ width: 1300, height: 800 })
+  await pause(800)
+  const s0 = await freshSize(b)
+  await b.setViewportSize({ width: 900, height: 600 })
+  await pause(800)
+  const s1 = await freshSize(b)
+  chk('AC-36', 'resizing the second browser changes the program\'s grid', Boolean(s0) && Boolean(s1) && s0 !== s1, `${s0} -> ${s1}`, b)
   await a.setViewportSize({ width: 1200, height: 760 })
   await pause(800)
   const s2 = await freshSize(a)
-  chk('AC-36', 'resizing the controller changes the program\'s grid', Boolean(s2) && s2 !== s1, `${s1} -> ${s2}`, a)
-  await b.setViewportSize({ width: 1500, height: 900 })
-  await pause(600)
-  await b.setViewportSize({ width: 800, height: 500 })
-  await pause(600)
-  const s3 = await freshSize(a)
-  chk('AC-36', 'the observer still cannot change the grid afterwards', s3 === s2, `${s2} -> ${s3}`, a)
-  // A view that is not shown: the observer's page goes to the background and is resized there.
-  const hidden = await b.context().newPage()
-  await hidden.bringToFront()
-  for (const [w, h] of [[700, 500], [1300, 850], [640, 480]]) {
-    await b.setViewportSize({ width: w, height: h })
-    await pause(300)
-  }
-  await a.bringToFront()
-  const s4 = await freshSize(a)
-  chk('AC-36', 'a hidden view\'s resizes leave the grid alone', s4 === s3, `${s3} -> ${s4}`, a)
-  await shot(a, 'ac36-controller')
-  await shot(b, 'ac36-observer')
+  chk('AC-36', 'resizing the first browser changes the program\'s grid again', Boolean(s2) && s2 !== s1, `${s1} -> ${s2}`, a)
+  await a.setViewportSize(VIEWPORT)
+  await shot(a, 'ac36-first')
+  await shot(b, 'ac36-second')
 })
 
 await ac('AC-35', async () => {
-  const mine = await attachFresh(a, 'wb-lease')
+  const mine = await attachFresh(a, 'wb-shared')
   await inputWorks(a)
-  const b = await observer(mine)
+  const b = await secondView(mine)
+  const inBoth = (page, end, what) =>
+    waitFor(page, (t) => t.split('\n').some((l) => l.trim().endsWith(end)), what, 15_000).then(() => true, () => false)
   await say(a, 'echo SEEN$((1+2))')
-  const seen = await waitFor(b, (t) => t.split('\n').some((l) => l.trim().endsWith('SEEN3')), 'A\'s output in the observer', 15_000).then(() => true, () => false)
-  chk('AC-35', 'the observer sees the controller\'s output', seen, '', b)
-  await b.keyboard.type('echo LATEB$((6*7))')
-  const told = await waitFor(b, /Enter requests control/, 'the observer being told why', 8_000).then(() => true, () => false)
-  chk('AC-35', 'an observer\'s typing is refused with a reason and an offer', told, '', b)
-  await pause(800)
-  chk('AC-35', 'the observer\'s typing did not reach the program', !(await screen(a)).includes('LATEB'), '', a)
-  await shot(b, 'ac35-observer-refused')
-  await say(a, 'echo AFTER$((1+1))')
-  await waitFor(a, (t) => t.split('\n').some((l) => l.trim().endsWith('AFTER2')), 'the controller still working')
-  await b.keyboard.press('Enter')
-  await waitFor(b, /\| controlling \|/, 'the second browser to take control')
-  await waitFor(a, /\| observing \|/, 'the first browser to become the observer')
-  const note = await waitFor(a, /Another viewer took control \(lease generation (\d+)\)/, 'the generation advance', 15_000).catch(() => null)
-  chk('AC-35', 'taking control makes the first browser the observer and advances the generation', Boolean(note), note?.[0] ?? 'no generation note shown', a)
-  await pause(800)
-  chk('AC-35', 'the refused text was not replayed once control moved', !(await screen(b)).includes('LATEB') && !(await screen(a)).includes('LATEB'), '', b)
-  await a.keyboard.type('echo STALE$((9+9))')
-  await pause(1000)
-  chk('AC-35', 'the first browser\'s late typing cannot reach the program', !(await screen(b)).includes('STALE18') && !(await screen(a)).includes('STALE18'), '', a)
+  chk('AC-35', 'the second browser sees the first browser\'s output', await inBoth(b, 'SEEN3', 'A\'s output in B'), '', b)
   await say(b, 'echo BWRITES$((5+5))')
-  const bw = await waitFor(a, (t) => t.split('\n').some((l) => l.trim().endsWith('BWRITES10')), 'the new controller\'s output in A', 15_000).then(() => true, () => false)
-  chk('AC-35', 'the new controller\'s input reaches the program and shows in both', bw, '', a)
-  await shot(a, 'ac35-a-observer')
-  await shot(b, 'ac35-b-controller')
+  const bw = (await inBoth(a, 'BWRITES10', 'B\'s output in A')) && (await inBoth(b, 'BWRITES10', 'B\'s output in B'))
+  chk('AC-35', 'the second browser\'s typing reaches the program and shows in both', bw, '', a)
+  await say(a, 'echo AWRITES$((3+4))')
+  const aw = (await inBoth(a, 'AWRITES7', 'A\'s output in A')) && (await inBoth(b, 'AWRITES7', 'A\'s output in B'))
+  chk('AC-35', 'the first browser\'s typing still reaches the program and shows in both', aw, '', b)
+  await shot(a, 'ac35-first')
+  await shot(b, 'ac35-second')
 })
 
 // ---- AC-33 and AC-57: the host restarts, the core stays ---------------------------------------
@@ -732,7 +691,6 @@ await ac('AC-33', async () => {
   const text = await screen(a)
   chk('AC-33', 'bytes from the old epoch are not repainted onto the new binding', (text.match(/WBPID3=/g) ?? []).length <= 2, `${(text.match(/WBPID3=/g) ?? []).length} copies of the old command's echo on screen`, a)
   if (!now || now.epoch <= was.epoch) return
-  if (!/controlling/.test(now.what)) await takeControl(a)
   await say(a, 'echo WBBACK=$WBVAR=$$=')
   const back = await waitFor(a, /\nWBBACK=(\w+)=(\d+)=/, 'the program\'s answer after the restart', 20_000).catch(() => null)
   chk('AC-33', 'the program is the same live process (variable and pid survived)', Boolean(back) && back[1] === 'alive123' && back[2] === p3, back ? `${back[1]} ${back[2]} vs ${p3}` : 'no answer from the program after the restart', a)
@@ -779,7 +737,6 @@ await ac('AC-34', async () => {
   await shot(a, 'ac34-kept-replaced')
   chk('AC-34', 'a kept terminal\'s replacement is announced as a replacement that did not resume the work', Boolean(replaced) && /Program replaced/.test(replaced[0]), replaced?.[0]?.slice(0, 120) ?? 'the pane said neither', a)
   if (replaced && /Program replaced/.test(replaced[0])) {
-    if (!/controlling/.test((await status(a)).what)) await takeControl(a)
     await say(a, 'echo NEWPID=$$=')
     const fresh = (await waitFor(a, /\nNEWPID=(\d+)=/, 'the replacement shell'))[1]
     chk('AC-34', 'the replacement is a different process', fresh !== keptPid, `${keptPid} -> ${fresh}`, a)
@@ -876,7 +833,7 @@ await ac('AC-40', async () => {
   await choose(a, /Start Herdr shell/).catch(() => {})
   await pause(3000)
   const afterStart = await screen(a)
-  chk('AC-29', 'with the core unavailable the Herdr row names the failure and starting it leaves no shell of any kind', !/\| controlling \|/.test(afterStart) && coreTerminals().length === terminalsBefore, `row: ${row}; core ${terminalsBefore} -> ${coreTerminals().length}`, a)
+  chk('AC-29', 'with the core unavailable the Herdr row names the failure and starting it leaves no shell of any kind', !/\| Herdr \| epoch \d+/.test(afterStart) && coreTerminals().length === terminalsBefore, `row: ${row}; core ${terminalsBefore} -> ${coreTerminals().length}`, a)
   skip('AC-40', 'subscribe reply timeout', 'needs a core that accepts the subscribe and never answers; this scenario has only the real core and may not edit the backend')
   // Availability returns: the host comes back with its core.
   await ensureHost({})
