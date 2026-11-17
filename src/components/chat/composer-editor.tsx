@@ -29,6 +29,7 @@ import {
 import { uploadPlugin } from '@milkdown/kit/plugin/upload'
 import { remarkPreserveEmptyLinePlugin } from '@milkdown/kit/preset/commonmark'
 import { Plugin, PluginKey, Selection } from '@milkdown/kit/prose/state'
+import type { Node as ProseMirrorNode } from '@milkdown/kit/prose/model'
 import type { EditorView } from '@milkdown/kit/prose/view'
 import type { Serializer } from '@milkdown/kit/transformer'
 import { $prose } from '@milkdown/kit/utils'
@@ -237,6 +238,17 @@ function Editor({
         })
         .use(
           $prose((ctx) => {
+            // The document's Markdown, written out once per document. ProseMirror
+            // keeps the same doc object until an edit replaces it, so a repeated
+            // read of an unchanged document reuses this string instead of
+            // serializing the whole document again.
+            let written: { doc: ProseMirrorNode; markdown: string } | undefined
+            const markdownOf = (doc: ProseMirrorNode) => {
+              if (written && written.doc === doc) return written.markdown
+              const markdown = asText(ctx.get(serializerCtx)(doc))
+              written = { doc, markdown }
+              return markdown
+            }
             return new Plugin({
               key: new PluginKey('theorem-composer'),
               view: (view) => {
@@ -247,16 +259,21 @@ function Editor({
                   // uses what is on screen; Milkdown's own listener waits.
                   update: (current, before) => {
                     const edited = !before.doc.eq(current.state.doc)
-                    if (edited)
-                      editor.report(
-                        asText(ctx.get(serializerCtx)(current.state.doc)),
-                      )
+                    if (edited) editor.report(markdownOf(current.state.doc))
                     if (current.composing) return
-                    if (edited || !before.selection.eq(current.state.selection))
+                    // The caret's Markdown offset only changes when the document
+                    // changes or the caret head moves; extending or collapsing a
+                    // selection around a fixed head leaves the / menu's position
+                    // unchanged, so it needs no new serialization.
+                    if (
+                      edited ||
+                      before.selection.head !== current.state.selection.head
+                    )
                       live.current.place(current)
                   },
                   destroy: () => {
                     viewRef.current = undefined
+                    written = undefined
                   },
                 }
               },
