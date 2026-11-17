@@ -751,7 +751,16 @@ describe('stop, retry and edit', () => {
       ...base('r'),
       clientMessageId: 'c1',
       text: 'hi',
-      attachments: [{ id: 'up1', name: 'notes.txt', contentType: 'text/plain' }],
+      attachments: [
+        {
+          id: 'up1',
+          type: 'document',
+          name: 'notes.txt',
+          contentType: 'text/plain',
+          content: [],
+          status: { type: 'complete' },
+        },
+      ],
     })
     const result = await conversation.edit({
       ...base('r2'),
