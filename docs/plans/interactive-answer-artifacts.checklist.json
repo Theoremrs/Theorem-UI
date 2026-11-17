@@ -4,7 +4,8 @@
     "built is the implementer's report; review is set only by the owner.",
     "Subjective presentation gets an owner-picked visual target (labelled fixture studies) before it spreads to other artifact kinds.",
     "Fixture evidence proves rendering only. W0/W7 rows need live runs with the real agent across varied questions; never the same question twice, never a stand-in page presented as the feature.",
-    "The agent writes artifact code; the sandboxed frame is the boundary. Checks only help it repair (load/runtime errors, size, deadlines)."
+    "The agent writes artifact code; the sandboxed frame is the boundary. Checks only help it repair (load/runtime errors, size, deadlines).",
+    "Agents have no catalog limits (owner, 2026-11-17): they write TypeScript and invent their own components and rendering; no fixed schema, projection catalog or pre-built renderer stands between them and the page."
   ],
   "out_of_scope_here": [
     "Artifact browser / Ratatui-derived thread list (icons, left rail, status hierarchy): another session owns it"
@@ -21,35 +22,35 @@
       "id": "FIX-01",
       "area": "fixture",
       "claim": "Scene idle: the real SceneOS host page (Theorem main build, revision and hash recorded) drawing a compiled scene inline in a reply",
-      "built": "done: stories scene-cpu-inline and scene-adder-inline draw host.html from Theorem main a7ea1f19d2 (sha256 recorded in src/stories/fixtures/scenes.ts)",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App (fixtures kept for older saved scenes)",
       "review": ""
     },
     {
       "id": "FIX-02",
       "area": "fixture",
       "claim": "Scene with a part selected: the page's callout with Ask",
-      "built": "done: ALU picked, the page draws its callout with Ask (the story thread has a saved id, as a real one does)",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
       "id": "FIX-03",
       "area": "fixture",
       "claim": "Scene expanded: the same frame in the top layer",
-      "built": "done: scene-cpu-expanded; also scene-cpu-panel, the same scene in the workspace panel",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
       "id": "FIX-04",
       "area": "fixture",
       "claim": "Scene failure: the agent's code throws; the error line and Fix under a scene that still draws, and a failed mount",
-      "built": "done: scene-adder-throws (error line and Fix under a scene that still draws, after three steps) and scene-adder-load-fails (failed mount)",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
       "id": "FIX-05",
       "area": "fixture",
       "claim": "Scene fallback: the page never loads (or there is no GPU) and the fallback text explains it",
-      "built": "partial: scene-host-unreachable (the page never loads, fallback text shown). No-GPU fallback not covered: SceneOS needs a forced-no-WebGL switch to fixture it",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
@@ -77,14 +78,14 @@
       "id": "FIX-09",
       "area": "evidence",
       "claim": "Captures of FIX-01..08 in dark and light, full page and tight crop, labelled on the image",
-      "built": "partial: 26 scene captures in docs/plans/evidence/scenes-2026-11-17/ (dark and light, full and crop, labelled RENDER on the image). UI artifact captures wait on FIX-06/07",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App; study captures deleted, other scene captures kept as history",
       "review": ""
     },
     {
       "id": "P1",
       "area": "scene presentation",
       "claim": "Inline scene finished: chromeless, part of the answer, minimal material plane, no title bar or Open-first model; loading/failed/fallback states consistent",
-      "built": "studies built: plane and open over today (scene-study-*), sent to the owner; implementation in SceneOS and scene-part.tsx waits on the pick",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App; plane/open studies deleted. The inline look waits on the owner's breakdown",
       "review": "awaiting owner pick"
     },
     {
@@ -112,48 +113,48 @@
       "id": "W1",
       "area": "receipts and bounds",
       "claim": "Receipts separate admitted from mounted/running, over the App client-check path; authored code runs in a terminable worker with deadlines and size bounds; the agent gets the failure and can repair on a new revision",
-      "built": "pending",
+      "built": "partial: write_app already returns build, type and runtime problems to the agent for repair on a new revision; a package npm cannot serve is now a build problem naming it. Terminable worker deadlines not done",
       "review": ""
     },
     {
       "id": "W2-backend",
       "area": "artifact identity",
       "claim": "show_scene emits a canonical theorem-artifact envelope (identity, revision, lifecycle, run, payload hash) alongside the scene package",
-      "built": "pending",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
       "id": "W2-ui",
       "area": "artifact identity",
       "claim": "A SceneOS contribution in the artifact registry delegating to SceneCard (chromeless, no Interact gate); scenes enumerate with the thread's artifacts, open in the workspace, export source; saved theorem-scene-v1 parts read through a compatibility reader with stable identity and no duplicates on replay",
-      "built": "built: theorem.scene contribution (bare in the reply, fills a panel, no Interact), saved theorem-scene-v1 parts read as scene:<sceneId> artifacts with the package hash as revision, deduped on replay and against an envelope that carries the same package; export is the package JSON; kind labels Scene and Interface. Tests: src/components/artifacts/scene-artifact.test.ts",
+      "built": "built: theorem.scene contribution (bare in the reply, fills a panel, no Interact), saved theorem-scene-v1 parts read as scene:<sceneId> artifacts with the package hash as revision, deduped on replay and against an envelope that carries the same package; export is the package JSON; kind labels Scene and Interface. Tests: src/components/artifacts/scene-artifact.test.ts. Kept only so scenes saved in older conversations render",
       "review": ""
     },
     {
       "id": "W3",
       "area": "state",
       "claim": "Versioned checkpoint/restore; theme and Ask changes without remounting the runtime; restore after navigation and reload; stale and incompatible checkpoints handled",
-      "built": "pending",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App; the UI checkpoint/theme/suspension commit (9bbf20f9) was reverted",
       "review": ""
     },
     {
       "id": "W4",
       "area": "follow-up",
       "claim": "Agent reads definition and bounded runtime state, applies ScenePatchV1 to the named instance with revision checks, gets an applied receipt; Ask carries exact revision, checkpoint digest, entity and current values",
-      "built": "pending",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App",
       "review": ""
     },
     {
       "id": "W5",
       "area": "long chats",
       "claim": "Offscreen scenes suspend and keep a still preview; bounded live instances and trace; composer latency measured with 0/1/many scenes",
-      "built": "pending",
+      "built": "superseded 2026-11-17: SceneOS bound agents to a catalog and was removed from agents; the interactive answer is the agent's own App; reverted with W3. An App off screen keeps a poster and no live frame (LIM-04)",
       "review": ""
     },
     {
       "id": "W6",
       "area": "generality",
-      "claim": "A second, non-CPU subject authored by a real model through the same path; continuous-state contract evaluated",
+      "claim": "A non-CPU subject authored by a real model as its own TypeScript App, importing whatever packages it needs",
       "built": "pending",
       "review": ""
     },
@@ -170,10 +171,53 @@
       "claim": "Same artifact revision and checkpoint in native Theo/Platinum",
       "built": "pending",
       "review": ""
+    },
+    {
+      "id": "LIM-01",
+      "area": "no limits",
+      "claim": "show_scene, its scene.md schema and the scene guidance removed from agents in Theorem",
+      "built": "done (Theorem branch claude/agent-artifacts-without-limits): agent/src/scene.rs, scene.md, operations/scene.rs, conversation_scene.rs and its flow tests deleted; agent no longer depends on scene-os-core. scene-os crates kept for old saved scenes and other consumers",
+      "review": ""
+    },
+    {
+      "id": "LIM-02",
+      "area": "no limits",
+      "claim": "agentd render_scene / render_scene_patch (which told the model never to write React, HTML or script) and the harness scene stubs removed",
+      "built": "done (same branch): removed from daemon defaults, daemon_tool_definitions and the harness catalog",
+      "review": ""
+    },
+    {
+      "id": "LIM-03",
+      "area": "no limits",
+      "claim": "An App can import any npm package, not just the seven in the import map",
+      "built": "done: export.ts resolves any other bare import from esm.sh at build time and bundles it in (react/react-dom shared), so the frame keeps no network; app_contract.md tells the agent; app-check types them as untyped. Test: app-source.test.ts",
+      "review": ""
+    },
+    {
+      "id": "LIM-04",
+      "area": "no limits",
+      "claim": "An App runs live in its reply: no card, no Interact gate; Open takes it to the workspace",
+      "built": "done: theorem-app.reply renderer (AppInReply), bare and live; off screen it holds a poster and no frame. Tests: inline-app.test.tsx, artifact-registry.test.tsx",
+      "review": "awaiting owner's look breakdown"
+    },
+    {
+      "id": "LIM-05",
+      "area": "no limits",
+      "claim": "Index workspace improver generates OpenUI limited to published components with template fallback",
+      "built": "not done: a separate feature redesign, offered as its own task",
+      "review": ""
+    },
+    {
+      "id": "LIM-06",
+      "area": "no limits",
+      "claim": "Live run: the real agent, asked varied questions in a real signed-in conversation, writes a TypeScript App importing packages of its choosing that runs live inline",
+      "built": "pending",
+      "review": ""
     }
   ],
   "contracts": {
     "scene-artifact-envelope": "A theorem-artifact part with artifactKind \"scene\" carries, as its payload, exactly the theorem-scene-v1 payload a theorem-scene part carries (contractVersion, sceneId, title, fallbackText, packageHash, scenePackage). The UI reads it as the same scene; a theorem-scene part with the same packageHash beside it is not listed twice.",
-    "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body."
+    "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body.",
+    "app-npm-imports": "A bare import outside the App's import map resolves to https://esm.sh/<spec>?target=es2022&external=react,react-dom, fetched by the person's browser while it builds the App and bundled in; root-relative and relative paths inside fetched modules resolve against esm.sh. A fetch failure is a build problem: 'Could not fetch <url> from npm: ...'."
   }
 }

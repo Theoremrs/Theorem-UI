@@ -18,11 +18,7 @@ import { useArtifactView } from '@/components/artifacts/artifact-view'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import { SCENE_CONTRACT, SCENE_PART } from '@/components/chat/scene-model'
 import { SceneHost } from '@/components/chat/scene-part'
-import {
-  SCENE_STORIES,
-  SCENE_STUDY_CARD_CSS,
-  STORY_SCENE_HOST,
-} from './fixtures/scenes'
+import { SCENE_STORIES, STORY_SCENE_HOST } from './fixtures/scenes'
 import type { SceneFixture, SceneStory } from './fixtures/scenes'
 import cpu from './fixtures/scene/cpu.json?raw'
 import adder from './fixtures/scene/adder.json?raw'
@@ -132,9 +128,7 @@ function sceneStory(story: SceneStory): ComponentType {
         story.unreachable
           ? { path: '/story-assets/no-scene-page', mountTimeoutMs: 3_000 }
           : {
-              path: story.study
-                ? `${STORY_SCENE_HOST}?study=${story.study}`
-                : STORY_SCENE_HOST,
+              path: STORY_SCENE_HOST,
               mountTimeoutMs: 20_000,
             },
       [],
@@ -154,7 +148,6 @@ function sceneStory(story: SceneStory): ComponentType {
     })
     return (
       <SceneHost value={host}>
-        {story.study && <style>{SCENE_STUDY_CARD_CSS[story.study]}</style>}
         <AssistantRuntimeProvider runtime={runtime}>
           <TheoremPartRenderers />
           <div className="flex h-dvh">

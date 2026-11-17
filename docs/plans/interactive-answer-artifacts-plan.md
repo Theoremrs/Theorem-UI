@@ -1,5 +1,7 @@
 # Closing the gap: interactive particle artifacts in Theorem answers
 
+> Superseded in part on 2026-11-17: agents no longer draw answers through SceneOS, whose catalog bound them to fixed parts. They write their own App in TypeScript (see "Direction change" in `interactive-answer-artifacts.md`). The SceneOS-specific packages below are kept as history.
+
 **Execution plan · November 17, 2026 · Planning deliverable; no product implementation or deployment performed**
 
 ## 1. Decision

@@ -6,6 +6,33 @@ Owner's direction of 2026-11-17, with the execution plan it extends
 Ratatui-derived thread and artifact list) is being redesigned in another
 session and is out of scope here.
 
+## Direction change, 2026-11-17: no catalogs
+
+The owner's ruling, later the same day: agents have no limits on what they
+make. They write TypeScript, invent their own components and draw their own
+rendering. Nothing confines them to a catalog, a schema of parts, or a
+renderer someone else built. The sandboxed frame is the only boundary.
+
+SceneOS failed that. `show_scene` compiled a fixed schema (components with
+catalog roles, catalog projections and chrome), and agentd's `render_scene`
+tools told the model never to write React, HTML or script. It was removed
+from agents in Theorem (branch `claude/agent-artifacts-without-limits`). The
+scene card stays in the UI only so scenes saved in older conversations
+still render.
+
+The interactive answer is now the App (`write_app`): a complete page, with
+TypeScript files when it needs them, built in the person's browser and
+checked, with build, type and runtime problems going back to the agent to
+repair. Any npm package can be imported. The browser fetches it from esm.sh
+at build time and bundles it in, so the running App still has no network.
+In the reply the App runs live, with no card around it and no Interact gate.
+Open takes it to the workspace.
+
+Where this document or the plan below says "scene", read "the agent's
+App". The SceneOS-specific work packages (scene identity envelope, scene
+checkpoints, scene suspension, ScenePatchV1) are superseded, not pending.
+The inline look waits on the owner's own breakdown.
+
 ## Three surfaces, not one
 
 1. **Explanation scenes** (SceneOS on luma.gl): spatial, explorable, the

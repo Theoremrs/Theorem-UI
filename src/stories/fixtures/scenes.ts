@@ -23,45 +23,6 @@ export const STORY_SCENE_HOST = '/story-assets/scene-host.html'
 
 export type SceneFixture = 'cpu' | 'adder' | 'adder-throws' | 'adder-load-fails'
 
-/**
- * Inline presentations for the owner to pick between before SceneOS and the
- * card change. Each is CSS over today's page and card, inline only: expanded
- * stays as it is.
- *
- * - plane: the page drops its header band (the reply already asks the
- *   question) and its zoom tools; the card keeps its faint plane but loses
- *   its edge, and Expand shows on hover or focus.
- * - open: as plane, and the page and card are transparent, so the diagram
- *   sits on the reply itself.
- */
-export type SceneStudy = 'plane' | 'open'
-
-const PLANE_PAGE = `
-  [data-layout="inline"] .ex-header > :not(.ex-note) { display: none; }
-  [data-layout="inline"] .ex-header { padding: 0 16px; border-bottom: 0; }
-  [data-layout="inline"] .ex-stage-tools { display: none; }`
-
-/** Added to the frame page by the story route (?study=). */
-export const SCENE_STUDY_PAGE_CSS: Record<SceneStudy, string> = {
-  plane: PLANE_PAGE,
-  open: `${PLANE_PAGE}
-  html[data-layout="inline"], html[data-layout="inline"] body { background: transparent !important; }`,
-}
-
-const CARD = '[data-slot="theorem-scene-card"]:not(:modal)'
-const PLANE_CARD = `
-  ${CARD} { border-color: transparent; }
-  ${CARD} > button[aria-expanded] { opacity: 0; transition: opacity 150ms; }
-  ${CARD}:hover > button[aria-expanded], ${CARD}:focus-within > button[aria-expanded] { opacity: 1; }
-  @media (pointer: coarse) { ${CARD} > button[aria-expanded] { opacity: 1; } }`
-
-/** Added to the story page over the card. */
-export const SCENE_STUDY_CARD_CSS: Record<SceneStudy, string> = {
-  plane: PLANE_CARD,
-  open: `${PLANE_CARD}
-  ${CARD} { background: transparent; }`,
-}
-
 export type SceneStory = {
   id: string
   title: string
@@ -74,8 +35,6 @@ export type SceneStory = {
   expanded?: boolean
   /** The frame page cannot be reached: the card gives up after a short wait. */
   unreachable?: boolean
-  /** An inline presentation study instead of today's. */
-  study?: SceneStudy
   /** Also open in the workspace panel beside the conversation. */
   panel?: boolean
 }
@@ -127,22 +86,6 @@ export const SCENE_STORIES: readonly SceneStory[] = [
     id: 'scene-adder-load-fails',
     title: "The agent's code fails as it loads: the scene could not be drawn",
     fixture: 'adder-load-fails',
-    ...ADDER,
-  },
-  { id: 'scene-study-plane-cpu', title: 'Study plane: the CPU scene inline', study: 'plane', ...CPU },
-  {
-    id: 'scene-study-plane-adder',
-    title: 'Study plane: the model the agent wrote, inline',
-    study: 'plane',
-    fixture: 'adder',
-    ...ADDER,
-  },
-  { id: 'scene-study-open-cpu', title: 'Study open: the CPU scene inline', study: 'open', ...CPU },
-  {
-    id: 'scene-study-open-adder',
-    title: 'Study open: the model the agent wrote, inline',
-    study: 'open',
-    fixture: 'adder',
     ...ADDER,
   },
   {
