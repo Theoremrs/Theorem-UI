@@ -421,6 +421,18 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
     TERMINAL_PROFILES.find((profile) => profile.backend === backend)?.id ??
     backend
 
+  /** The coding profile a foreground program names, if the catalog offers one for it. */
+  const codingProfileOf = (command: string): string | undefined => {
+    const program = command.trim().split('/').pop()
+    return TERMINAL_PROFILES.find((profile) => profile.argv?.[0] === program)?.id
+  }
+
+  /** A row's profile: the program in its foreground now as the host names it, else what an earlier list said, else the backend's own. */
+  const rowProfile = (row: { command?: string }, backend: TerminalBackend, held?: string) =>
+    row.command?.trim()
+      ? (codingProfileOf(row.command) ?? profileLabel(backend))
+      : (held ?? profileLabel(backend))
+
   function profiles(): TerminalProfileInfo[] {
     const herdr = env.backends().includes('herdr')
     // Not ready and not the pinned core are different facts; the identity says which, so a host
@@ -550,8 +562,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           ? { programReport: report }
           : {}),
         session: row.session,
-        profile:
-          sessions.get(row.session)?.profile ?? profileLabel(row.backend),
+        profile: rowProfile(row, row.backend, sessions.get(row.session)?.profile),
         backend: row.backend,
         workspace,
         program: row.binding.program,
@@ -574,7 +585,7 @@ export function createAdapter(options: AdapterOptions): AccountAdapter {
           ? { programReport: report }
           : {}),
         session: row.session,
-        profile: profileLabel(row.backend),
+        profile: rowProfile(row, row.backend),
         backend: row.backend,
         workspace,
         state: row.state,

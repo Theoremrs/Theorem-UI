@@ -1798,6 +1798,48 @@ describe('host events', () => {
       ).toEqual(['pty-1'])
     })
 
+    test('a foreground coding program names the session’s profile, and the program now wins over an earlier list', async () => {
+      let answer: TerminalListReply = {
+        sessions: [
+          { ...row('hc-1', 'herdr'), command: 'claude' },
+          { ...row('hc-2', 'herdr'), command: '/usr/local/bin/codex' },
+          { ...row('hc-3', 'herdr'), command: 'zsh' },
+        ],
+        adoption: { state: 'settled' },
+      }
+      const t = await setup(
+        {},
+        undefined,
+        {},
+        {
+          canList: async () => true,
+          list: async () => answer,
+        },
+      )
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.map((s) => [s.session, s.profile]),
+      ).toEqual([
+        ['hc-1', 'Claude Code (Herdr)'],
+        ['hc-2', 'Codex (Herdr)'],
+        ['hc-3', 'Herdr shell'],
+      ])
+
+      answer = {
+        sessions: [{ ...row('hc-1', 'herdr'), command: 'zsh' }],
+        adoption: { state: 'settled' },
+      }
+      t.announce({ kind: 'terminal.adoption', data: { state: 'settled' } })
+      await t.settle()
+      expect(
+        sessionLists(t)
+          .at(-1)!
+          .sessions.map((s) => [s.session, s.profile]),
+      ).toEqual([['hc-1', 'Herdr shell']])
+    })
+
     test('a terminal the host offers to admit is listed with admitted: false, and the workspace’s own do not say', async () => {
       const t = await setup(
         {},
@@ -1840,10 +1882,11 @@ describe('host events', () => {
       await t.settle()
       const listed = sessionLists(t).at(-1)!.sessions
       const of = (id: string) => listed.find((s) => s.session === id)!
-      // What its owner called it, and where its program works.
+      // What its owner called it, and where its program works. Its foreground
+      // program is claude, so it carries the coding profile, not the backend's.
       expect(of('hc-mine')).toEqual({
         session: 'hc-mine',
-        profile: of('hc-1').profile,
+        profile: 'Claude Code (Herdr)',
         backend: 'herdr',
         workspace: of('hc-1').workspace,
         state: 'running',
