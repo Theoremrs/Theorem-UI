@@ -320,6 +320,15 @@ export const editStyle = (field: FieldSpec) =>
       ? 'popover'
       : KIND[field.field_type.kind].edit
 
+/**
+ * Whether the drawn value changes where it is, without opening an editor: a
+ * yes or no, and a number drawn as a rating, whose stars are clicked.
+ */
+export const changesInPlace = (type: ObjectType, field: FieldSpec) =>
+  editStyle(field) === 'toggle' ||
+  (editStyle(field) !== 'none' &&
+    displayHint(type, field.key)?.display === 'rating')
+
 /** What an edit that is not saved says beside its value. */
 export function EditMark({ edit }: { edit: FieldEdit | undefined }) {
   if (!edit) return null

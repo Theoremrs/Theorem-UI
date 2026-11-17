@@ -37,6 +37,7 @@ import {
   EditMark,
   RecordMark,
   YouBadge,
+  changesInPlace,
   editStyle,
 } from './cells'
 import { useCrmScope } from './context'
@@ -391,7 +392,9 @@ function PropertyRow({
                   field={field}
                   value={value}
                   onOpenRelated={onOpenRelated}
-                  onToggle={canEdit && style === 'toggle' ? commit : undefined}
+                  onToggle={
+                    canEdit && changesInPlace(type, field) ? commit : undefined
+                  }
                 />
               )}
             </span>

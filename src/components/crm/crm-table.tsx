@@ -76,6 +76,7 @@ import {
   CrmFieldValue,
   EditMark,
   RecordChip,
+  changesInPlace,
   editStyle,
   optionLabel,
 } from './cells'
@@ -1458,7 +1459,7 @@ export function CrmTable({
                                       }
                                       onToggle={
                                         editable(field) &&
-                                        editStyle(field) === 'toggle'
+                                        changesInPlace(type, field)
                                           ? (next) =>
                                               void writes.save(
                                                 record,

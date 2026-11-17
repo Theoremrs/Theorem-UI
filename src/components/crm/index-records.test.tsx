@@ -599,6 +599,10 @@ test('a row opens the preview: saved revision, private switch, and the ways on',
     'Commitment: Send Noor the materials list',
   )
   expect(preview.textContent).toContain('Saved revision 9')
+  // The phone Index moves keyboard focus to the preview's close button.
+  expect(
+    preview.querySelector('[data-index-close]')?.getAttribute('aria-label'),
+  ).toBe('Close preview')
   expect(preview.textContent).toContain('Private to me')
   expect(buttonNamed(preview, 'Ask Theorem')).toBeDefined()
   expect(buttonNamed(preview, 'Delete')).toBeDefined()

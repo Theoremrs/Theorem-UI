@@ -90,6 +90,8 @@ export function RecordPreview({
         <Button
           size="icon-xs"
           variant="ghost"
+          // The phone Index moves focus here when the preview opens.
+          data-index-close
           aria-label="Close preview"
           onClick={onClose}
         >
