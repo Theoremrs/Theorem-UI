@@ -14,6 +14,7 @@ import type { ModelChoice } from '../wire/ModelChoice'
 import type { SourceReference } from '../wire/SourceReference'
 import { contextOf } from '@/lib/face/operations'
 import { approvalChoice } from '@/lib/theorem/approval'
+import type { InputReceipt } from '@/lib/theorem/run-input'
 import { workingRuns } from '@/lib/theorem/working-runs'
 import { hasStatus } from '@/lib/theorem/client'
 import type { ThreadTree } from '@/lib/theorem/thread-origin'
@@ -69,6 +70,19 @@ export interface ConversationRuntime {
   }
 }
 
+/**
+ * The thread as Theorem stores it, for words sent to a run: whether a run works
+ * and which one, the input it holds, and the user text already on it. The
+ * authoritative half of a send's settlement — what a local stream cannot tell.
+ */
+export interface RunInputThread {
+  active: boolean
+  runId?: string
+  inputs: readonly InputReceipt[]
+  /** User text the thread holds, so a fallback need not send it again. */
+  userTexts?: readonly string[]
+}
+
 /** What the chat sends to Theorem that the runtime does not carry. A rejection is read as an SDK request error. */
 export interface ConversationServices {
   answerApproval: (request: {
@@ -77,12 +91,18 @@ export interface ConversationServices {
     toolCallId: string
     choice: { optionId: string } | { decision: ApprovalDecision }
   }) => Promise<void>
-  /** Words for a run that is working; they join it and never stop it. */
+  /**
+   * Words for a run that is working; they join it and never stop it. The host
+   * answers with what Theorem confirmed for this request — the key the send went
+   * under names it. A host that reports nothing leaves the thread's own record
+   * (`runInput`) to settle whether the run took the words.
+   */
   sendInput: (request: {
     runId: string
+    /** The idempotency key: the message this one is, never a fresh one per attempt. */
     inputId: string
     text: string
-  }) => Promise<void>
+  }) => Promise<InputReceipt | void>
   /**
    * Says which project a thread is to open under before it is switched to (a thread placed in several
    * projects, picked under one of them), or takes that back with no project when the switch fails. Absent:
@@ -91,6 +111,17 @@ export interface ConversationServices {
   openUnder?: (threadId: string, projectId: string | undefined) => void
   /** The thread's branches and standing, read when it opens and when a run ends. Absent: snapshots carry no history. */
   history?: (threadId: string) => Promise<ThreadTree | null>
+  /**
+   * What Theorem stores about words sent to a run, read to settle one the local
+   * stream has not shown: whether the run still works, and what became of the
+   * input it was given. Absent: an accepted send cannot be confirmed or settled,
+   * so its words stay listed and nothing more is sent for them.
+   */
+  runInput?: {
+    thread: (threadId: string) => Promise<RunInputThread>
+    /** A closed run's input receipts, read once it has finished recording them. */
+    receipts: (runId: string) => Promise<readonly InputReceipt[]>
+  }
   /** Makes a branch the thread's selected one, as the thread list does. */
   selectBranch?: (threadId: string, branchId: string) => Promise<unknown>
   /** Puts context references in the composer's store, which the next turn carries as the React composer's do. */
@@ -355,6 +386,12 @@ export interface ConversationOptions {
   sideChats?: SideChats
   services: ConversationServices
   workspaceId: string
+  /**
+   * Where a conversation's accepted-but-undelivered input is kept, so it survives
+   * a reload. Defaults to the session's own storage; a host that offers none keeps
+   * input for this conversation only.
+   */
+  storage?: Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>
   /** Runs `callback` at the next frame and returns its cancel. Defaults to requestAnimationFrame. */
   schedule?: (callback: () => void) => () => void
 }

@@ -2,9 +2,22 @@
 
 import { describe, expect, test } from 'bun:test'
 import { TheoremError } from '@theoremharness/sdk'
+import { retryRunInput, useRunInputs } from '@/lib/theorem/run-input-store'
+import type { InputReceipt } from '@/lib/theorem/run-input'
 import { createConversation, snapshotMessage } from './conversation'
-import { StubRuntime, approvalPart, assistant } from './test-runtime'
+import {
+  StubRuntime,
+  approvalPart,
+  assistant,
+  createMemoryStorage,
+  userInputPart,
+} from './test-runtime'
 import type { ConversationServices, ConversationSnapshot } from './conversation'
+
+/** A send crosses a network boundary and the thread is read again; no timers are owed. */
+const settle = async () => {
+  for (let i = 0; i < 12; i++) await Promise.resolve()
+}
 
 function setup() {
   const stub = new StubRuntime()
@@ -20,18 +33,23 @@ function setup() {
   }
   let frame: (() => void) | undefined
   let cancelled = 0
-  const conversation = createConversation({
+  // One conversation's recovery records are its own: an owner made here sees only
+  // what an earlier owner of this same conversation wrote.
+  const storage = createMemoryStorage()
+  const options = {
     runtime: stub.runtime,
     services,
+    storage,
     workspaceId: 'w1',
-    schedule: (cb) => {
+    schedule: (cb: () => void) => {
       frame = cb
       return () => {
         frame = undefined
         cancelled += 1
       }
     },
-  })
+  }
+  const conversation = createConversation(options)
   return {
     stub,
     answers,
@@ -518,6 +536,9 @@ describe('send', () => {
       text: 'also',
     })
     expect(input.outcome).toBe('accepted')
+    // The run's inbox is a transaction of its own: the send goes out after the
+    // words are saved for recovery, not before the composer may clear.
+    await settle()
     expect(inputs).toEqual([{ runId: 'run1', inputId: 'c2', text: 'also' }])
     expect(conversation.snapshot().queued).toEqual([
       { clientMessageId: 'c2', text: 'also', state: 'queued' },
@@ -558,6 +579,321 @@ describe('send', () => {
     expect(
       await conversation.stop({ ...base('r3'), runId: 'run1' }),
     ).toMatchObject({ outcome: 'accepted', value: { runId: 'run1' } })
+  })
+})
+
+describe('run input recovery', () => {
+  /**
+   * A conversation whose host reads the thread the way Theorem stores it, on a
+   * storage of its own, so a test can hand one owner's records to the next.
+   */
+  function recovering(key = 'recover-1') {
+    const stub = new StubRuntime()
+    // The local thread id names this conversation's queue; the durable one names its records.
+    stub.threadId = key
+    stub.remoteId = 'remote-1'
+    stub.isRunning = true
+    stub.messages = [assistant('a1', 'x', { runId: 'run1' })]
+    const storage = createMemoryStorage()
+    /** Theorem's own standing for this thread: whether a run works, and the input it holds. */
+    const durable: {
+      active: boolean
+      runId: string | undefined
+      inputs: InputReceipt[]
+      userTexts: string[]
+    } = { active: true, runId: 'run1', inputs: [], userTexts: [] }
+    const sends: { runId: string; inputId: string; text: string }[] = []
+    let nextFailure: unknown
+    const services = {
+      answerApproval: async () => undefined,
+      sendInput: async (request: {
+        runId: string
+        inputId: string
+        text: string
+      }) => {
+        sends.push(request)
+        if (nextFailure) throw nextFailure
+        return {
+          inputId: `srv-${request.inputId}`,
+          text: request.text,
+          status: 'queued' as const,
+        }
+      },
+      runInput: {
+        thread: async () => durable,
+        receipts: async () => durable.inputs,
+      },
+    }
+    const options = {
+      runtime: stub.runtime,
+      services,
+      storage,
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    }
+    return {
+      key,
+      stub,
+      storage,
+      durable,
+      sends,
+      /** What the next send to Theorem throws: a lost reply, or a run that closed. */
+      failNextSend: (error: unknown) => void (nextFailure = error),
+      /** The run ending, on both sides: what a person's Stop or a closed run looks like here. */
+      runClosed() {
+        stub.isRunning = false
+        stub.messages = [
+          assistant('a1', 'x', {
+            runId: 'run1',
+            status: { type: 'incomplete', reason: 'cancelled' },
+          }),
+        ]
+        durable.active = false
+        durable.runId = undefined
+      },
+      make: () => createConversation(options),
+      settle,
+    }
+  }
+
+  test('input accepted while a run works is there again for the next owner of the thread', async () => {
+    const t = recovering()
+    const owner = t.make()
+    expect(
+      (await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }))
+        .outcome,
+    ).toBe('accepted')
+    await t.settle()
+    // Theorem took the words and the run has not shown them: they stay listed.
+    expect(owner.snapshot().queued).toEqual([
+      { clientMessageId: 'c1', text: 'also', state: 'queued' },
+    ])
+
+    owner.dispose() // the page goes away, with the run still working
+    const reopened = t.make()
+    expect(reopened.snapshot().queued).toEqual([
+      { clientMessageId: 'c1', text: 'also', state: 'queued' },
+    ])
+    // It is already accepted, so the reload does not send it a second time.
+    expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+    reopened.dispose()
+  })
+
+  test('the row leaves the queue once the run shows its receipt, and the transcript keeps it', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    expect(owner.snapshot().queued).toHaveLength(1)
+    t.stub.messages = [
+      assistant('a1', 'x', {
+        runId: 'run1',
+        parts: [
+          userInputPart({ inputId: 'srv-c1', text: 'also', status: 'delivered' }),
+        ],
+      }),
+    ]
+    t.durable.inputs = [
+      { inputId: 'srv-c1', text: 'also', status: 'delivered' },
+    ]
+    t.stub.emit()
+    await t.settle()
+    expect(owner.snapshot().queued).toEqual([])
+    expect(owner.snapshot().messages.at(-1)?.parts).toMatchObject([
+      { type: 'input', inputId: 'srv-c1', text: 'also', status: 'delivered' },
+    ])
+    owner.dispose()
+  })
+
+  test('a run that closed before taking the input makes it the next turn', async () => {
+    const t = recovering()
+    t.failNextSend({ body: { code: 'run_input_closed' } })
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    // Both the local stream and Theorem have settled: the words go as a turn of their own.
+    expect(t.stub.appends).toEqual([
+      {
+        role: 'user',
+        content: [{ type: 'text', text: 'also' }],
+        runConfig: { custom: { theoremRunInput: true } },
+      },
+    ])
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+  })
+
+  test("a person's Stop leaves undelivered words listed with Retry and starts no response", async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    const stopped = await owner.stop({ requestId: 'r2', runId: 'run1' })
+    expect(stopped).toMatchObject({
+      outcome: 'accepted',
+      value: { runId: 'run1' },
+    })
+    // Theorem records that the cancelled run never took the words.
+    t.durable.inputs = [
+      {
+        inputId: 'srv-c1',
+        text: 'also',
+        status: 'not_delivered',
+        reason: 'run_cancelled',
+      },
+    ]
+    t.runClosed()
+    t.stub.emit()
+    await t.settle()
+    const rows = owner.snapshot().queued
+    expect(rows).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'failed' },
+    ])
+    expect(rows[0]?.reason).toBeTruthy()
+    // A person's Stop must not answer itself with another response.
+    expect(t.stub.appends).toEqual([])
+    owner.dispose()
+  })
+
+  test('a send whose result is unknown keeps its id, run and words for one replay', async () => {
+    const t = recovering()
+    t.failNextSend(new Error('socket closed'))
+    const owner = t.make()
+    // Saved for recovery, so the composer may clear however the send turns out.
+    expect(
+      (await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }))
+        .outcome,
+    ).toBe('accepted')
+    await t.settle()
+    expect(owner.snapshot().queued).toMatchObject([
+      { clientMessageId: 'c1', text: 'also', state: 'uncertain' },
+    ])
+    // Recovery and every later observation leave it alone: the reply may have gone out.
+    t.stub.emit()
+    await t.settle()
+    t.stub.emit()
+    await t.settle()
+    expect(t.sends).toEqual([{ runId: 'run1', inputId: 'c1', text: 'also' }])
+
+    // Retry replays that same request — the same key, run and words — not a fresh send.
+    t.failNextSend(undefined)
+    retryRunInput(t.key, 'c1')
+    await t.settle()
+    expect(t.sends).toEqual([
+      { runId: 'run1', inputId: 'c1', text: 'also' },
+      { runId: 'run1', inputId: 'c1', text: 'also' },
+    ])
+    owner.dispose()
+  })
+
+  test('input with no run working is refused, and nothing is kept or sent', async () => {
+    const t = recovering()
+    t.stub.isRunning = false
+    t.stub.messages = []
+    const owner = t.make()
+    expect(
+      await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' }),
+    ).toMatchObject({ outcome: 'refused', code: 'no_active_run' })
+    expect(t.sends).toEqual([])
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+    // Nothing was kept, so the next owner of this thread has no row for it either.
+    const reopened = t.make()
+    expect(reopened.snapshot().queued).toEqual([])
+    reopened.dispose()
+  })
+
+  test('input for another run than the one working is refused and kept nowhere', async () => {
+    const t = recovering()
+    const owner = t.make()
+    expect(
+      await owner.input({
+        requestId: 'r1',
+        clientMessageId: 'c1',
+        text: 'also',
+        runId: 'old',
+      }),
+    ).toMatchObject({ outcome: 'refused', code: 'stale_run' })
+    expect(t.sends).toEqual([])
+    expect(owner.snapshot().queued).toEqual([])
+    owner.dispose()
+  })
+
+  test('the queue belongs to this owner: registered while it lives, gone when it is closed', async () => {
+    const t = recovering()
+    const owner = t.make()
+    await owner.input({ requestId: 'r1', clientMessageId: 'c1', text: 'also' })
+    await t.settle()
+    expect(useRunInputs.getState()[t.key]).toMatchObject([
+      { id: 'c1', text: 'also' },
+    ])
+    owner.dispose()
+    expect(useRunInputs.getState()[t.key]).toBeUndefined()
+  })
+
+  test('a side chat keeps its own queue: its input is not the main conversation’s row', async () => {
+    const t = recovering()
+    const side = new StubRuntime()
+    side.threadId = 'side-1'
+    side.remoteId = 'remote-2'
+    side.isRunning = true
+    side.messages = [assistant('sa1', 'x', { runId: 'run2' })]
+    const main = t.make()
+    const sideOptions = {
+      runtime: t.stub.runtime,
+      sideChats: {
+        open: async () => ({
+          runtime: side.runtime,
+          threadId: () => side.remoteId,
+          close: () => {},
+        }),
+      },
+      services: {
+        answerApproval: async () => undefined,
+        sendInput: async (request: {
+          runId: string
+          inputId: string
+          text: string
+        }) => {
+          t.sends.push(request)
+          return {
+            inputId: `srv-${request.inputId}`,
+            text: request.text,
+            status: 'queued' as const,
+          }
+        },
+        runInput: {
+          thread: async () => ({ ...t.durable, runId: 'run2' }),
+          receipts: async () => [],
+        },
+      },
+      storage: t.storage,
+      workspaceId: 'w1',
+      schedule: () => () => {},
+    }
+    const withSides = createConversation(sideOptions)
+    const opened = await withSides.sideChat({ requestId: 'r1' })
+    expect(opened.outcome).toBe('accepted')
+    if (opened.outcome !== 'accepted') return
+    await opened.value.conversation.input({
+      requestId: 'r2',
+      clientMessageId: 's1',
+      text: 'side words',
+    })
+    await t.settle()
+    expect(opened.value.conversation.snapshot().queued).toEqual([
+      { clientMessageId: 's1', text: 'side words', state: 'queued' },
+    ])
+    // The main conversation never carries the side chat's words.
+    expect(main.snapshot().queued).toEqual([])
+    expect(withSides.snapshot().queued).toEqual([])
+    expect(t.sends).toEqual([{ runId: 'run2', inputId: 's1', text: 'side words' }])
+    opened.value.close()
+    withSides.dispose()
+    main.dispose()
   })
 })
 
