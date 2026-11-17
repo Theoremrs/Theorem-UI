@@ -23,6 +23,9 @@ import type { Binding, IndexItem } from '@/components/index/contract'
 import { useComposerReferences } from './composer-references'
 import {
   MENTION_FORMATTER,
+  citeMention,
+  pruneMentionCites,
+  useMentionCites,
   mentionMatcher,
   mentionRank,
   mentionReference,
@@ -48,6 +51,7 @@ const realFetch = window.fetch
 beforeEach(() => {
   asked = []
   useComposerReferences.setState({ references: [] })
+  useMentionCites.setState({ byKey: {} })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const crm = fixtureFetch(createFixtureServer())
   window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -124,10 +128,29 @@ async function type(input: HTMLElement, value: string) {
   })
 }
 
-const press = (input: HTMLElement, key: string) =>
+const press = (
+  input: HTMLElement,
+  key: string,
+  modifiers: KeyboardEventInit = {},
+) =>
   act(async () => {
-    input.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', { key, bubbles: true, ...modifiers }),
+    )
   })
+
+const NOOR = {
+  id: 'record:Person/person:noor',
+  type: 'record',
+  label: 'Noor',
+  metadata: { cite: 'record', objectType: 'Person', objectId: 'person:noor' },
+}
+const keys = () =>
+  useComposerReferences
+    .getState()
+    .references.map(
+      (r) => (r.location.resource as { objectId: string }).objectId,
+    )
 
 const options = () => [
   ...document.querySelectorAll<HTMLElement>('[role="option"]'),
@@ -213,6 +236,59 @@ describe('mentionReference', () => {
     expect(
       MENTION_FORMATTER.serialize({ id: 'x', type: 'record', label: 'Noor' }),
     ).toBe('@Noor')
+  })
+})
+
+describe('pruneMentionCites', () => {
+  test('a chip goes once its words have been in the message and are gone', () => {
+    citeMention(NOOR)
+    // Before the words arrive, the chip stays.
+    pruneMentionCites('@noo')
+    expect(keys()).toEqual(['person:noor'])
+    pruneMentionCites('ask @Noor about the glaze')
+    expect(keys()).toEqual(['person:noor'])
+    pruneMentionCites('ask about the glaze')
+    expect(keys()).toEqual([])
+    expect(useMentionCites.getState().byKey).toEqual({})
+  })
+
+  test('Markdown escaping in the message still counts as the words', () => {
+    const plan = {
+      ...NOOR,
+      id: 'document:doc:q3',
+      type: 'document',
+      label: 'Q3_plan',
+      metadata: { cite: 'document', objectType: 'note', objectId: 'doc:q3' },
+    }
+    citeMention(plan)
+    pruneMentionCites('see @Q3\\_plan')
+    pruneMentionCites('see @Q3\\_plan today')
+    expect(keys()).toEqual(['doc:q3'])
+  })
+
+  test('a chip something else added is never taken away by the words', () => {
+    useComposerReferences.getState().add({
+      location: {
+        resource: {
+          kind: 'record',
+          objectId: 'person:noor',
+          objectType: 'Person',
+        },
+      },
+      label: 'Noor',
+    })
+    citeMention(NOOR)
+    pruneMentionCites('@Noor')
+    pruneMentionCites('')
+    expect(keys()).toEqual(['person:noor'])
+  })
+
+  test('a chip the person removed is forgotten, and its words stay text', () => {
+    citeMention(NOOR)
+    pruneMentionCites('@Noor')
+    useComposerReferences.getState().remove('record:Person/person:noor')
+    pruneMentionCites('@Noor')
+    expect(useMentionCites.getState().byKey).toEqual({})
   })
 })
 
@@ -307,6 +383,55 @@ describe('the @ list in the composer', () => {
         label: 'Notes on the kiln visit',
       },
     ])
+  })
+
+  test('deleting the @ words in the composer removes their chip', async () => {
+    const { container } = await mount()
+    const input = inputOf(container)
+    await type(input, '@noo')
+    await waitFor(() => options()[0]?.textContent === 'NoorPerson')
+    await press(input, 'Enter')
+    await waitFor(() => !options().length)
+    await waitFor(() => container.querySelector('ul[aria-label="Context"]'))
+    expect(keys()).toEqual(['person:noor'])
+    await type(input, 'ask about the glaze')
+    await waitFor(() => !container.querySelector('ul[aria-label="Context"]'))
+    expect(keys()).toEqual([])
+  })
+
+  test('clearing the whole message removes the chips its @ words added', async () => {
+    const { container } = await mount()
+    const input = inputOf(container)
+    await type(input, '@noo')
+    await waitFor(() => options()[0]?.textContent === 'NoorPerson')
+    await press(input, 'Enter')
+    await waitFor(() => !options().length)
+    expect(keys()).toEqual(['person:noor'])
+    await act(async () => {
+      input.querySelector('p')!.textContent = ''
+      input.dispatchEvent(
+        new InputEvent('input', { bubbles: true, inputType: 'deleteContent' }),
+      )
+      await Bun.sleep(10)
+    })
+    await waitFor(() => composerText().trim() === '')
+    await waitFor(() => keys().length === 0)
+  })
+
+  test('sending keeps the cited record for the turn', async () => {
+    const { container } = await mount()
+    const input = inputOf(container)
+    await type(input, '@noo')
+    await waitFor(() => options()[0]?.textContent === 'NoorPerson')
+    await press(input, 'Enter')
+    await waitFor(() => !options().length)
+    expect(composerText()).toStartWith('@Noor')
+    await press(input, 'Enter', { ctrlKey: true })
+    await waitFor(() => composerText() === '')
+    await act(() => Bun.sleep(50))
+    // The runtime takes it with the turn; the cleared text is not a delete.
+    expect(keys()).toEqual(['person:noor'])
+    expect(useMentionCites.getState().byKey).toEqual({})
   })
 
   test('an email address opens no list', async () => {

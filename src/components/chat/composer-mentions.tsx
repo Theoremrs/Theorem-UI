@@ -1,5 +1,9 @@
-// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover in directive mode (the editor writes the pick at the caret and calls onInserted), with its TriggerAdapter and TriggerMatcher seams and the popover's scope context for the typed query; the composer's context references (./composer-references), which the runtime sends as the turn's contextReferences; the Index's items binding (q, the Index's own search) for documents and the CRM's readable records of each declared type (useCrmRecordsOf, which leaves out types this sign-in cannot read); TanStack Query keepPreviousData
-import { unstable_useTriggerPopoverScopeContext } from '@assistant-ui/react'
+// SOURCING: assistant-ui ComposerPrimitive.TriggerPopover through the vendored registry element ComposerTriggerPopover in directive mode (the editor writes the pick at the caret and calls onInserted), with its TriggerAdapter and TriggerMatcher seams and the popover's scope context for the typed query; the composer's context references (./composer-references), which the runtime sends as the turn's contextReferences, kept in step with the composer's text (useAuiState) and its composer.send event, in a zustand store of the chips an @ added; the Index's items binding (q, the Index's own search) for documents and the CRM's readable records of each declared type (useCrmRecordsOf, which leaves out types this sign-in cannot read); TanStack Query keepPreviousData
+import {
+  unstable_useTriggerPopoverScopeContext,
+  useAuiEvent,
+  useAuiState,
+} from '@assistant-ui/react'
 import type {
   DirectiveFormatter,
   TriggerAdapter,
@@ -21,7 +25,8 @@ import type { IndexItem } from '@/components/index/contract'
 import type { ObjectType, RecordRow } from '@/components/records/contract'
 import { recordItemId, recordTitle } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
-import { useComposerReferences } from './composer-references'
+import { create } from 'zustand'
+import { referenceKey, useComposerReferences } from './composer-references'
 import type { ComposerReference } from './composer-references'
 
 /** At most this many of each kind are offered, records first. */
@@ -192,10 +197,90 @@ const tagOf = (item: TriggerItem) =>
 
 const NO_TYPES: ObjectType[] = []
 
+/**
+ * The references an "@" added, by reference key, with the words that cite
+ * them. A reference something else added first ("Ask about", a page) is not
+ * one of them, so deleting words never takes away a chip they did not make.
+ */
+type MentionCite = {
+  /** The words in the message, `@Title`. */
+  words: string
+  /** Whether the message has held them yet: a chip goes only once they are gone. */
+  seen: boolean
+}
+
+export const useMentionCites = create<{
+  byKey: Readonly<Record<string, MentionCite>>
+}>()(() => ({ byKey: {} }))
+
+/** The editor keeps Markdown, which escapes punctuation such as `_` in a title. */
+const unescaped = (text: string) => text.replace(/\\([!-/:-@[-`{-~])/gu, '$1')
+
 /** Adds the picked record or document to the turn's context. */
 export function citeMention(item: TriggerItem) {
   const reference = mentionReference(item)
-  if (reference) useComposerReferences.getState().add(reference)
+  if (!reference) return
+  const key = referenceKey(reference)
+  const references = useComposerReferences.getState()
+  const held = references.references.some((r) => referenceKey(r) === key)
+  const cites = useMentionCites.getState().byKey
+  if (!held || cites[key] !== undefined)
+    useMentionCites.setState({
+      byKey: {
+        ...cites,
+        [key]: { words: MENTION_FORMATTER.serialize(item), seen: false },
+      },
+    })
+  references.add(reference)
+}
+
+/**
+ * Removes each chip an "@" added once its words are gone from the message,
+ * and forgets a chip the person removed themselves. The words and the chip
+ * are one citation: deleting either deletes it.
+ */
+export function pruneMentionCites(text: string) {
+  const cites = useMentionCites.getState().byKey
+  const keys = Object.keys(cites)
+  if (!keys.length) return
+  const { references, remove } = useComposerReferences.getState()
+  const held = new Set(references.map(referenceKey))
+  const plain = unescaped(text)
+  const kept: Record<string, MentionCite> = {}
+  let changed = false
+  for (const key of keys) {
+    const cite = cites[key]!
+    if (!held.has(key)) {
+      changed = true
+      continue
+    }
+    if (plain.includes(cite.words)) {
+      kept[key] = cite.seen ? cite : { ...cite, seen: true }
+      changed ||= !cite.seen
+    } else if (cite.seen) {
+      remove(key)
+      changed = true
+    } else kept[key] = cite
+  }
+  if (changed) useMentionCites.setState({ byKey: kept })
+}
+
+/** Keeps the chips an "@" added in step with the composer's text. */
+function useMentionCitesFollowText() {
+  const text = useAuiState((state) => state.composer.text)
+  // A send takes its references with the turn and clears the text. Its event
+  // arrives a microtask after the text is cleared, so an empty composer waits
+  // a tick: a send forgets the chips first and they go with the turn, while
+  // clearing everything by hand still removes them.
+  useAuiEvent('composer.send', () => useMentionCites.setState({ byKey: {} }))
+  useEffect(() => {
+    if (text.trim()) {
+      pruneMentionCites(text)
+      return
+    }
+    const timer = setTimeout(() => pruneMentionCites(text))
+    return () => clearTimeout(timer)
+  }, [text])
 }
 
 const DIRECTIVE = { formatter: MENTION_FORMATTER, onInserted: citeMention }
@@ -204,10 +289,11 @@ const DIRECTIVE = { formatter: MENTION_FORMATTER, onInserted: citeMention }
  * The "@" list in the main composer: the person's saved records and Index
  * documents. A pick writes `@Title` into the message and adds the record or
  * document to the turn's context, the same reference "Ask about" adds, so
- * Theorem reads it for the model when the turn is sent. Removing the chip
- * leaves the words; the reference is what carries the context.
+ * Theorem reads it for the model when the turn is sent. Deleting the words
+ * removes the chip they added; removing the chip leaves the words as text.
  */
 export function ComposerMentionTrigger() {
+  useMentionCitesFollowText()
   const [query, setQuery] = useState<string | undefined>(undefined)
   // The heading is shown only while the list is open, so a query means open.
   const open = query !== undefined
