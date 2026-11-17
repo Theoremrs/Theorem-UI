@@ -357,6 +357,41 @@ test('an approved task says which task was made and opens it in the work tracker
   )
 })
 
+test('a refused task approval says no task was made, and a stale one that the commitment changed', async () => {
+  const refused = (code: string, detail: string) =>
+    taskProposal({
+      status: 'refused',
+      decision: {
+        decision: 'approve',
+        decided_at_ms: 5,
+        before_revision: 9,
+        after_revision: 10,
+        refusal: { code, detail },
+      },
+    })
+  current = {
+    proposal: refused(
+      'record_write_not_granted',
+      'this request may not change commitments',
+    ),
+  }
+  const { container } = await part({ proposal: taskProposal() })
+  await waitFor(() =>
+    container.textContent.includes(
+      'No task was made: this request may not change commitments',
+    ),
+  )
+  expect(container.textContent).not.toContain('Not applied')
+  await cleanup()
+  current = { proposal: refused('record_revision_stale', 'moved') }
+  const stale = await part({ proposal: taskProposal() })
+  await waitFor(() =>
+    stale.container.textContent.includes(
+      'Not applied: this commitment changed after it was proposed',
+    ),
+  )
+})
+
 test('a task proposal decodes its task and an approval its result', () => {
   const decoded = decodeProposalPart({ proposal: taskProposal() })!
   expect(decoded.task).toEqual({

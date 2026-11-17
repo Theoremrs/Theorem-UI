@@ -219,6 +219,8 @@ export function outcomeWords(proposal: RecordProposal): string | undefined {
     case 'dismissed':
       return "Dismissed. Theorem won't propose this again unless something new supports it."
     case 'refused':
+      if (proposal.task && decision?.refusal?.code !== 'record_revision_stale')
+        return `No task was made: ${decision?.refusal?.detail || 'the approval was refused.'}`
       return decision?.refusal?.code === 'record_revision_stale'
         ? `Not applied: this ${proposal.objectType.toLowerCase()} changed after it was proposed, so it keeps its current values.`
         : `Not applied: ${decision?.refusal?.detail || 'the change could not be made.'}`
