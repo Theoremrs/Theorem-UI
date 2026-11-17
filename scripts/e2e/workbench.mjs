@@ -10,6 +10,7 @@
 // then the same E2E_* ports and data directory here:
 //   node scripts/e2e/workbench.mjs           run every case
 //   node scripts/e2e/workbench.mjs --list    print the cases and their checks; starts nothing
+//   node scripts/e2e/workbench.mjs --only AC-36,AC-35   run only those cases
 //
 // Everything is read from the page's text (the grid the workbench draws is real DOM) and from the
 // computed colour of its cells; the page's internals are never called. Where the scenario has to
@@ -120,6 +121,8 @@ const CASES = {
       'the second browser attaches to the same session and its pane accepts keys',
       'resizing the second browser changes the program\'s grid',
       'resizing the first browser changes the program\'s grid again',
+      'with both browsers open the grid stays at the latest size, with no back and forth',
+      'typing in the second browser makes its size the program\'s again',
     ],
   },
   'AC-37': {
@@ -165,6 +168,10 @@ if (process.argv.includes('--list')) {
   console.log('harness  (checks of the scenario itself, filed as harness and never as an AC)')
   process.exit(0)
 }
+
+const ONLY = process.argv.includes('--only')
+  ? process.argv[process.argv.indexOf('--only') + 1].split(',')
+  : undefined
 
 // ---- the report ------------------------------------------------------------------------------
 
@@ -308,13 +315,35 @@ async function ensureChooser(page) {
   if (!/Start a new process/.test(await screen(page))) await openChooser(page)
 }
 
-/** Moves the chooser's selection to the row whose title matches, then presses `key` (Enter chooses or attaches). */
+/** The colour of the first drawn cell of the first grid row whose text matches `re`. */
+const rowColour = (page, re) =>
+  page.evaluate(
+    ([grid, source]) => {
+      const re = new RegExp(source)
+      for (const row of document.querySelectorAll(`${grid} pre`)) {
+        const cells = [...row.children]
+        const text = cells.map((cell) => cell.textContent).join('')
+        if (!re.test(text)) continue
+        const at = cells.findIndex((cell) => cell.textContent.trim())
+        return at >= 0 ? getComputedStyle(cells[at]).color : null
+      }
+      return null
+    },
+    [GRID, re.source],
+  )
+
+/**
+ * Moves the chooser's selection to the row whose title matches, then presses `key` (Enter
+ * chooses or attaches). The chosen row is told by its colours, not by a marker: an unchosen
+ * row is drawn in the headings' colour.
+ */
 async function choose(page, re, key = 'Enter') {
   await page.keyboard.press('Home')
   await pause(250)
+  const plain = await rowColour(page, /^Start a new process/)
   for (let i = 0; i < 400; i++) {
-    const selected = (await lines(page)).find((line) => line.startsWith('> '))
-    if (selected && re.test(selected)) return void (await page.keyboard.press(key))
+    const colour = await rowColour(page, re)
+    if (plain && colour && colour !== plain) return void (await page.keyboard.press(key))
     await page.keyboard.press('ArrowDown')
     await pause(120)
   }
@@ -416,6 +445,7 @@ async function secondBrowser() {
 
 /** One case, with its own setup and teardown. Whatever happens in it, the next case starts clean. */
 async function ac(id, run) {
+  if (ONLY && !ONLY.includes(id)) return
   log(`--- ${id}`)
   caseId = id
   lastShot = undefined
@@ -633,6 +663,12 @@ await ac('AC-36', async () => {
   await pause(800)
   const s2 = await freshSize(a)
   chk('AC-36', 'resizing the first browser changes the program\'s grid again', Boolean(s2) && s2 !== s1, `${s1} -> ${s2}`, a)
+  // Each view hears the other's size; neither sends its own back unless it is used.
+  await pause(2000)
+  const s2b = await freshSize(a)
+  chk('AC-36', 'with both browsers open the grid stays at the latest size, with no back and forth', s2b === s2, `${s2} then ${s2b}`, a)
+  const s3 = await freshSize(b)
+  chk('AC-36', 'typing in the second browser makes its size the program\'s again', s3 === s1, `${s2} -> ${s3}, the second view's own ${s1}`, b)
   await a.setViewportSize(VIEWPORT)
   await shot(a, 'ac36-first')
   await shot(b, 'ac36-second')

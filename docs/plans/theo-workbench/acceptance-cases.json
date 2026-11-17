@@ -1226,8 +1226,8 @@
         "R06"
       ],
       "oracle_class": "two-browser interaction",
-      "procedure": "Given two browser views attached to one terminal, when B is resized and then A is resized, read the program's grid after each.",
-      "required_observations": "A resize from either view is applied to the program's grid and the latest resize wins; neither view is refused.",
+      "procedure": "Given two browser views attached to one terminal, when B is resized and then A is resized, read the program's grid after each; wait, read it again from A; then type in B and read it.",
+      "required_observations": "A resize from either view is applied to the program's grid and the latest resize wins; neither view is refused. Neither view sends its size back when it hears the other's, so the grid holds still; the view a person uses last (types in, refocuses or resizes) sets the size, as tmux's latest client.",
       "status": "not_run",
       "evidence": [
         {
