@@ -10,8 +10,11 @@ import { onLifeFrame } from './frames'
 import { mountLife } from './mount-life'
 
 let setup: () => void
+let drawField: () => void
 let drawOverlay: () => void
 let disposed = false
+let looping = true
+let redraws = 0
 let createSpy: ReturnType<typeof spyOn>
 
 const fake = {
@@ -27,7 +30,36 @@ const fake = {
   setup: (callback: () => void) => {
     setup = callback
   },
-  draw() {},
+  draw(callback: () => void) {
+    drawField = callback
+  },
+  noLoop() {
+    looping = false
+  },
+  loop() {
+    looping = true
+  },
+  redraw(count = 1) {
+    redraws += count
+    for (let index = 0; index < count; index++) {
+      drawField()
+      drawOverlay()
+    }
+  },
+  resizeCanvas() {
+    this.redraw()
+  },
+  deltaTime: () => 16,
+  secs: 1,
+  noise: () => 0.5,
+  push() {},
+  translate() {},
+  char() {},
+  charColor() {},
+  cellColor() {},
+  point() {},
+  pop() {},
+  background() {},
   pixelDensity() {
     if (disposed)
       throw new TypeError("Cannot read properties of undefined (reading 'Xh')")
@@ -43,12 +75,36 @@ const fake = {
 
 beforeEach(() => {
   disposed = false
+  looping = true
+  redraws = 0
+  drawField = () => {}
+  drawOverlay = () => {}
+  document.body.replaceChildren()
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  })
   useLifeCounts.setState({ generation: -1, population: -1, pace: -1 })
+  useLifeControls.setState({ shown: true, playing: true, companion: true })
   createSpy = spyOn(textmode, 'create').mockImplementation(
     () => fake as unknown as Textmodifier,
   )
 })
-afterEach(() => createSpy.mockRestore())
+afterEach(() => {
+  createSpy.mockRestore()
+  document.body.replaceChildren()
+})
+
+function visibleHost() {
+  const host = document.createElement('div')
+  host.style.position = 'absolute'
+  host.style.width = '80px'
+  host.style.height = '80px'
+  Object.defineProperty(host, 'clientWidth', { configurable: true, value: 80 })
+  Object.defineProperty(host, 'clientHeight', { configurable: true, value: 80 })
+  document.body.append(host)
+  return host
+}
 
 test('a live field sets up and publishes its counts', () => {
   mountLife(document.createElement('div'), { reducedMotion: true })
@@ -74,17 +130,96 @@ test('glass receives the background frame when the companion is off', () => {
   useLifeControls.setState({ companion: false })
   const frames: HTMLCanvasElement[] = []
   const stop = onLifeFrame((canvas) => frames.push(canvas))
-  const field = mountLife(document.createElement('div'), {
+  const field = mountLife(visibleHost(), {
     reducedMotion: true,
   })
   try {
     setup()
+    const canvas = document.querySelector('canvas')!
+    canvas.style.position = 'absolute'
+    canvas.style.visibility = ''
     drawOverlay()
-    expect(frames).toHaveLength(1)
+    expect(frames.length).toBeGreaterThan(0)
     expect(frames[0]).toBeInstanceOf(HTMLCanvasElement)
   } finally {
     stop()
     field.destroy()
     useLifeControls.setState({ companion: before })
   }
+})
+
+test('pause stops textmode drawing; play and an explicit step redraw', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  drawField()
+  expect(canvas.style.visibility).toBe('')
+  useLifeControls.setState({ playing: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(false)
+  redraws = 0
+  drawOverlay()
+  expect(redraws).toBe(0)
+
+  game.step()
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(redraws).toBeGreaterThan(0)
+  expect(looping).toBe(false)
+  useLifeControls.setState({ playing: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(true)
+  game.destroy()
+})
+
+test('a hidden field or document stops textmode and resumes without a stale frame', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(true)
+
+  host.style.visibility = 'hidden'
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(false)
+  redraws = 0
+  host.style.visibility = ''
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => requestAnimationFrame(resolve))
+  expect(looping).toBe(true)
+  expect(redraws).toBeGreaterThan(0)
+
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'hidden',
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+  expect(looping).toBe(false)
+  redraws = 0
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+  expect(looping).toBe(true)
+  expect(redraws).toBeGreaterThan(0)
+  game.destroy()
+})
+
+test('a field mounted off or hidden does not draw until it becomes visible', async () => {
+  const host = visibleHost()
+  host.style.display = 'none'
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  expect(looping).toBe(false)
+  redraws = 0
+  host.style.display = ''
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  await new Promise((resolve) => requestAnimationFrame(resolve))
+  expect(looping).toBe(true)
+  expect(redraws).toBeGreaterThan(0)
+  game.destroy()
 })

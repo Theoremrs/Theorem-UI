@@ -1,7 +1,11 @@
-// SOURCING: one requestAnimationFrame loop shared by every pane, which redraws a pane when its box moves or resizes, when the theme changes (MutationObserver on <html>) and, at most thirty times a second, when the Life field draws (life/frames.ts). Materials are CSS custom properties (styles.css --lg-*), read with getComputedStyle; colours resolve to sRGB through a 1px canvas, as mount-life.ts resolves its palette. Where WebGL is missing, the context is lost, or the person asks for less transparency, the element keeps its CSS frost.
+// SOURCING: native ResizeObserver, IntersectionObserver and MutationObserver signal the shared on-demand redraw frame; scroll and visibility signals cover movement and hiding. Life frames arrive through life/frames.ts. Materials are CSS custom properties (styles.css --lg-*), read with getComputedStyle; colours resolve to sRGB through a 1px canvas, as mount-life.ts resolves its palette. Where WebGL is missing, the context is lost, or the person asks for less transparency, the element keeps its CSS frost.
 import { useEffect } from 'react'
 import type { RefObject } from 'react'
-import { onLifeFrame } from '@/components/life/frames'
+import {
+  isVisible,
+  observeVisibility,
+  onLifeFrame,
+} from '@/components/life/frames'
 import { GlassRenderer } from './renderer'
 import type { Material, Rgb, Scene } from './renderer'
 
@@ -33,7 +37,7 @@ const ALL_EDGES: LiquidEdges = {
 
 /** A side left out runs on past the element, so nothing bends there. */
 const RUN_ON = 4096
-/** The field moves continuously; thirty redraws a second keep up with it. */
+/** A fresh Life frame is sampled at most thirty times a second. */
 const FIELD_INTERVAL = 1000 / 30
 
 interface Entry {
@@ -49,6 +53,8 @@ interface Entry {
   shade: Rgb
   key: string
   drawn: number
+  visible: boolean
+  stopGeometry: (() => void) | null
 }
 
 const probe =
@@ -129,6 +135,12 @@ class Glass {
   private stopField: (() => void) | null = null
   private themeObserver: MutationObserver | null = null
   private theme = 0
+  private themeFrame = 0
+  private fieldTimer: ReturnType<typeof setTimeout> | null = null
+  private scrollFrame = 0
+  private stopScroll: (() => void) | null = null
+  private started = false
+  private stopDocument: (() => void) | null = null
 
   /** False where the element should keep its CSS frost. */
   add(element: HTMLElement, edges: LiquidEdges): boolean {
@@ -159,7 +171,10 @@ class Glass {
       ...readMaterial(element),
       key: '',
       drawn: 0,
+      visible: true,
+      stopGeometry: null,
     })
+    this.observe(element)
     this.start()
     return true
   }
@@ -176,22 +191,29 @@ class Glass {
     if (!entry) return
     entry.canvas.remove()
     delete element.dataset.liquid
+    entry.stopGeometry?.()
     this.entries.delete(element)
     if (!this.entries.size) this.stop()
   }
 
   private start() {
-    if (this.frame) return
+    if (this.started) return
+    this.started = true
     this.stopField = onLifeFrame((canvas) => {
+      const changed = this.field !== canvas
       this.field = canvas
-      this.fieldFresh = true
+      this.fieldFresh = isVisible(canvas)
+      if (changed) this.watchField(canvas)
+      if (changed || this.fieldFresh) this.wake()
     })
     this.themeObserver = new MutationObserver(() => {
-      // Styles land after the attribute changes; read them next frame.
-      requestAnimationFrame(() => {
+      if (this.themeFrame) return
+      this.themeFrame = requestAnimationFrame(() => {
+        this.themeFrame = 0
         this.theme++
         for (const [element, entry] of this.entries)
           Object.assign(entry, readMaterial(element), { key: '' })
+        this.wake()
       })
     })
     this.themeObserver.observe(document.documentElement, {
@@ -204,43 +226,134 @@ class Glass {
         'data-glass-study',
       ],
     })
-    const tick = (now: number) => {
-      this.frame = requestAnimationFrame(tick)
-      this.draw(now)
+    const scroll = () => {
+      if (this.scrollFrame) return
+      this.scrollFrame = requestAnimationFrame(() => {
+        this.scrollFrame = 0
+        this.wake()
+      })
     }
-    this.frame = requestAnimationFrame(tick)
+    document.addEventListener('scroll', scroll, {
+      capture: true,
+      passive: true,
+    })
+    window.addEventListener('resize', scroll)
+    const visibility = () => this.wake()
+    document.addEventListener('visibilitychange', visibility)
+    if (this.field) this.watchField(this.field)
+    this.stopScroll = () => {
+      document.removeEventListener('scroll', scroll, { capture: true })
+      window.removeEventListener('resize', scroll)
+      document.removeEventListener('visibilitychange', visibility)
+    }
+    this.wake()
+  }
+
+  private watchField(canvas: HTMLCanvasElement) {
+    this.stopDocument?.()
+    this.stopDocument = observeVisibility(canvas, () => {
+      this.fieldFresh = isVisible(canvas)
+      this.wake()
+    })
+  }
+
+  private observe(element: HTMLElement) {
+    const entry = this.entries.get(element)
+    if (!entry) return
+    const changed = () => {
+      Object.assign(entry, readMaterial(element), { key: '' })
+      this.wake()
+    }
+    const resize = new ResizeObserver(changed)
+    resize.observe(element)
+    const intersection = new IntersectionObserver(changed)
+    intersection.observe(element)
+    const mutation = new MutationObserver(changed)
+    const targets = new Set<Element>()
+    for (let node: Element | null = element; node; node = node.parentElement)
+      targets.add(node)
+    for (const target of targets)
+      mutation.observe(target, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden'],
+      })
+    entry.stopGeometry = () => {
+      resize.disconnect()
+      intersection.disconnect()
+      mutation.disconnect()
+    }
+  }
+
+  private wake() {
+    if (!this.started || this.frame || this.renderer?.lost) return
+    if (document.visibilityState === 'hidden') return
+    this.frame = requestAnimationFrame((now) => {
+      this.frame = 0
+      this.draw(now)
+    })
   }
 
   private stop() {
     cancelAnimationFrame(this.frame)
+    cancelAnimationFrame(this.themeFrame)
+    cancelAnimationFrame(this.scrollFrame)
     this.frame = 0
+    this.themeFrame = 0
+    if (this.fieldTimer) clearTimeout(this.fieldTimer)
+    this.fieldTimer = null
+    this.scrollFrame = 0
+    this.started = false
     this.stopField?.()
     this.stopField = null
+    this.stopDocument?.()
+    this.stopDocument = null
+    this.stopScroll?.()
+    this.stopScroll = null
     this.themeObserver?.disconnect()
     this.themeObserver = null
   }
 
   private onLost(lost: boolean) {
+    if (lost) {
+      cancelAnimationFrame(this.frame)
+      this.frame = 0
+      if (this.fieldTimer) clearTimeout(this.fieldTimer)
+      this.fieldTimer = null
+    }
     for (const [element, entry] of this.entries) {
       if (lost) delete element.dataset.liquid
       entry.key = ''
     }
+    if (!lost) this.wake()
   }
 
   private draw(now: number) {
     const renderer = this.renderer
-    if (!renderer || renderer.lost) return
+    if (!renderer || renderer.lost || document.visibilityState === 'hidden')
+      return
     const field =
-      this.field?.isConnected && this.field.style.visibility !== 'hidden'
+      this.field &&
+      isVisible(this.field) &&
+      this.field.style.visibility !== 'hidden'
         ? this.field
         : null
     const fieldRect = field?.getBoundingClientRect() ?? null
     const fresh = this.fieldFresh
     this.fieldFresh = false
     const dpr = window.devicePixelRatio || 1
+    let sampled = false
     for (const [element, entry] of this.entries) {
+      entry.visible = isVisible(element)
+      if (!entry.visible) {
+        entry.key = ''
+        continue
+      }
       const rect = element.getBoundingClientRect()
-      if (rect.width < 1 || rect.height < 1) continue
+      if (rect.width < 1 || rect.height < 1) {
+        entry.visible = false
+        entry.key = ''
+        continue
+      }
       const { join } = entry
       const light = join
         ? document.querySelector(join.pane)?.getBoundingClientRect()
@@ -273,6 +386,7 @@ class Glass {
         continue
       entry.key = key
       entry.drawn = now
+      sampled ||= fresh && field !== null
       // A pane outside the sheet (the rail's tab) still sits on its field.
       const sheet =
         (
@@ -309,6 +423,21 @@ class Glass {
       )
       // The frost stays until the pane has drawn, so it never shows empty.
       element.dataset.liquid = 'live'
+    }
+    if (fresh && field && !sampled) {
+      const delay = Math.max(
+        0,
+        ...[...this.entries.values()]
+          .filter((entry) => entry.visible)
+          .map((entry) => FIELD_INTERVAL - (now - entry.drawn)),
+      )
+      if (delay && !this.fieldTimer) {
+        this.fieldTimer = setTimeout(() => {
+          this.fieldTimer = null
+          this.fieldFresh = true
+          this.wake()
+        }, delay)
+      }
     }
   }
 }

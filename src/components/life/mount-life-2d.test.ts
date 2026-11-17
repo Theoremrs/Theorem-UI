@@ -77,12 +77,19 @@ function setup(reducedMotion = false) {
     },
   )
   const dpr = Object.getOwnPropertyDescriptor(window, 'devicePixelRatio')
+  const visibility = Object.getOwnPropertyDescriptor(
+    document,
+    'visibilityState',
+  )
   Object.defineProperty(window, 'devicePixelRatio', {
     configurable: true,
     value: 3,
   })
 
   const host = document.createElement('div')
+  host.style.position = 'absolute'
+  host.style.width = '240px'
+  host.style.height = '192px'
   Object.defineProperty(host, 'clientWidth', { configurable: true, value: 240 })
   Object.defineProperty(host, 'clientHeight', {
     configurable: true,
@@ -92,6 +99,11 @@ function setup(reducedMotion = false) {
   document.body.append(host)
   const game = mountLife2d(host, { reducedMotion })
   const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  })
   Object.defineProperty(canvas, 'getBoundingClientRect', {
     configurable: true,
     value: () => ({ left: 0, top: 0 }),
@@ -107,6 +119,9 @@ function setup(reducedMotion = false) {
   cleanups.push(() => {
     game.destroy()
     host.remove()
+    if (visibility)
+      Object.defineProperty(document, 'visibilityState', visibility)
+    else Reflect.deleteProperty(document, 'visibilityState')
     if (dpr) Object.defineProperty(window, 'devicePixelRatio', dpr)
     else Reflect.deleteProperty(window, 'devicePixelRatio')
     cancel.mockRestore()
@@ -117,22 +132,89 @@ function setup(reducedMotion = false) {
   return { host, canvas, game, ctx, drawn, scheduled, frame }
 }
 
-test('reduced motion starts paused but explicitly choosing Play advances the field', () => {
-  const { game, frame } = setup(true)
+test('reduced motion starts paused but explicitly choosing Play advances the field', async () => {
+  const { game, frame, scheduled, ctx } = setup(true)
   game.clear()
-  for (let i = 0; i < 8; i++) frame()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  ctx.clearRect.mockClear()
+  let callbacks = 0
+  for (let i = 0; i < 8; i++) {
+    callbacks += scheduled.size
+    frame()
+  }
   expect(useLifeCounts.getState().generation).toBe(0)
+  expect({ callbacks, draws: ctx.clearRect.mock.calls.length }).toEqual({
+    callbacks: 0,
+    draws: 0,
+  })
 
   useLifeControls.setState({ playing: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
   for (let i = 0; i < 14; i++) frame()
   expect(useLifeCounts.getState().generation).toBeGreaterThan(0)
 
   const generation = useLifeCounts.getState().generation
   useLifeControls.setState({ playing: false })
-  for (let i = 0; i < 10; i++) frame()
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  callbacks = 0
+  const drawn = ctx.clearRect.mock.calls.length
+  for (let i = 0; i < 10; i++) {
+    callbacks += scheduled.size
+    frame()
+  }
   expect(useLifeCounts.getState().generation).toBe(generation)
+  expect({ callbacks, draws: ctx.clearRect.mock.calls.length - drawn }).toEqual(
+    {
+      callbacks: 0,
+      draws: 0,
+    },
+  )
   game.step()
   expect(useLifeCounts.getState().generation).toBe(generation + 1)
+})
+
+test('a hidden field or document stops drawing and resumes on the next frame', async () => {
+  const { host, game, frame, scheduled, ctx } = setup()
+  useLifeControls.setState({ playing: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(scheduled.size).toBe(1)
+  frame()
+  expect(ctx.clearRect).toHaveBeenCalled()
+
+  host.style.visibility = 'hidden'
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(scheduled.size).toBe(0)
+  let draws = ctx.clearRect.mock.calls.length
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBe(draws)
+
+  host.style.visibility = ''
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(scheduled.size).toBe(1)
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(draws)
+
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'hidden',
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+  expect(scheduled.size).toBe(0)
+  draws = ctx.clearRect.mock.calls.length
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBe(draws)
+
+  Object.defineProperty(document, 'visibilityState', {
+    configurable: true,
+    value: 'visible',
+  })
+  document.dispatchEvent(new Event('visibilitychange'))
+  expect(scheduled.size).toBe(1)
+  frame()
+  expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(draws)
+
+  game.destroy()
+  expect(scheduled.size).toBe(0)
 })
 
 test('coalesced pointer motion paints every cell in a segment and stops after release', () => {
@@ -231,7 +313,7 @@ test('brush preview wraps horizontally like stamp and clips beyond vertical edge
   expect(useLifeCounts.getState().population).toBe(4)
 })
 
-test('real Canvas 2D path handles drawing, resize, palette repaint, and teardown', () => {
+test('real Canvas 2D path handles drawing, resize, palette repaint, and teardown', async () => {
   const { host, canvas, game, ctx, drawn, scheduled, frame } = setup()
   expect(canvas.style.pointerEvents).toBe('none')
   expect(canvas.width).toBe(480) // DPR 3 is deliberately capped at 2
@@ -260,6 +342,8 @@ test('real Canvas 2D path handles drawing, resize, palette repaint, and teardown
     true,
   )
 
+  useLifeControls.setState({ playing: true })
+  await new Promise((resolve) => setTimeout(resolve, 0))
   const staleFrame = [...scheduled.values()][0]!
   game.destroy()
   expect(host.querySelector('canvas')).toBeNull()
