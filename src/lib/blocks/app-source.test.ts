@@ -143,7 +143,7 @@ createRoot(document.getElementById('root')!).render(
     expect(problemText(problems[0]!)).toStartWith('value.ts:2:')
   }, 60_000)
 
-  test('an import of a file the App lacks, or a module outside the import map, is refused', async () => {
+  test('missing local files and Node-only imports are actionable build errors', async () => {
     const missing = await problemsOf(() =>
       bundleAppSources(
         appSourcesOf(typescriptApp({ 'main.ts': "import './absent'" }))!,
@@ -153,11 +153,11 @@ createRoot(document.getElementById('root')!).render(
     expect(missing[0]?.message).toContain('No file "./absent" in this App')
     const outside = await problemsOf(() =>
       bundleAppSources(
-        appSourcesOf(typescriptApp({ 'main.ts': "import 'lodash'" }))!,
+        appSourcesOf(typescriptApp({ 'main.ts': "import 'node:fs'" }))!,
         esbuild,
       ),
     )
-    expect(outside[0]?.message).toContain("not in the blocks' import map")
+    expect(outside[0]?.message).toContain('Node-only modules cannot run in an App')
     const above = await problemsOf(() =>
       bundleAppSources(
         appSourcesOf(typescriptApp({ 'main.ts': "import '../../etc'" }))!,

@@ -1,0 +1,59 @@
+name: Authored App artifacts
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/app-artifacts.yml'
+      - 'package.json'
+      - 'bun.lock'
+      - 'bunfig.toml'
+      - 'src/lib/blocks/**'
+      - 'src/lib/theorem/apps.ts'
+      - 'src/lib/theorem/app-*.ts'
+      - 'src/components/blocks/**'
+      - 'src/components/artifacts/**'
+      - 'scripts/e2e/app-ts/**'
+      - 'scripts/e2e/app-ts.mjs'
+      - 'scripts/e2e/harness.mjs'
+      - 'test/blocks/**'
+      - 'vendor/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-artifacts-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  artifacts:
+    name: Compile, check, and interact with authored Apps
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.4.3'
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Check dependency resolution, compiler diagnostics, and live presentation
+        run: >-
+          bun test
+          src/lib/blocks/app-dependencies.test.ts
+          src/lib/blocks/app-source.test.ts
+          src/lib/blocks/app-check.test.ts
+          src/components/artifacts/inline-artifact.test.tsx
+          src/components/artifacts/artifact-message.test.tsx
+          src/components/artifacts/artifact-registry.test.tsx
+      - name: Compile and check a real pinned Luma dependency
+        env:
+          THEOREM_TEST_REMOTE_DEPS: '1'
+        run: bun test src/lib/blocks/app-dependencies.live.test.ts
+      - name: Install Chromium
+        run: node node_modules/playwright-core/cli.js install --with-deps chromium
+      - name: Build and exercise the browser compiler, checker worker, and live App
+        run: bun run e2e:app-ts --built

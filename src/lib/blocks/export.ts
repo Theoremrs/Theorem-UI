@@ -12,6 +12,8 @@ import { checkPath, decodeFile } from './bridge'
 import type { StateCollections } from './bridge'
 import { AppBuildError } from './app-source'
 import type { AppProblem, AppSources } from './app-source'
+import { appDependencies } from './app-dependencies'
+import type { AppDependencies } from './app-dependencies'
 import { compileCell } from './compile'
 import type { CompiledCell } from './compile'
 import {
@@ -65,6 +67,7 @@ const NAMESPACE = {
   runtime: 'theorem-runtime',
   vendor: 'theorem-vendor',
   app: 'theorem-app',
+  dependency: 'theorem-app-dependency',
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -301,10 +304,10 @@ export function jsxDEV(type, props, key, isStatic, source) {
 `
 
 /**
- * Resolves an App's own files from memory and every other import through the
- * import map to the vendored files: the modules a block frame has, no others.
+ * Resolves the App's files and browser-compatible npm/HTTPS dependencies.
+ * Vendored modules remain an offline fast path, not an import ceiling.
  */
-function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
+function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies): Esbuild.Plugin {
   return {
     name: 'theorem-app',
     setup(build) {
@@ -335,7 +338,24 @@ function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
             : { errors: [{ text: `No file "${path}" in this App` }] }
         },
       )
-      build.onResolve({ filter: /.*/ }, ({ path }) => vendored(path))
+      build.onResolve({ filter: /.*/ }, async ({ path, importer, namespace, kind }) => {
+        if (kind === 'url-token' && /^(?:data:|#)/.test(path))
+          return { path, external: true }
+        try {
+          const resolved = dependencies.resolve(
+            path,
+            namespace === NAMESPACE.dependency ? importer : undefined,
+          )
+          if (resolved.kind === 'vendor')
+            return { path: resolved.path, namespace: NAMESPACE.vendor }
+          // Follow redirects before choosing the namespace path, so a remote
+          // module's relative imports use its final URL, not its request URL.
+          const module = await dependencies.load(resolved.path)
+          return { path: module.url, namespace: NAMESPACE.dependency }
+        } catch (error) {
+          return { errors: [{ text: error instanceof Error ? error.message : String(error) }] }
+        }
+      })
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.app }, ({ path }) => ({
         contents: files[path],
         loader: LOADERS[path.slice(path.lastIndexOf('.') + 1)] ?? 'js',
@@ -343,6 +363,13 @@ function appPlugin({ files, entry }: AppSources): Esbuild.Plugin {
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.vendor },
         ({ path }) => ({ contents: vendorModules[path], loader: 'js' }),
+      )
+      build.onLoad(
+        { filter: /.*/, namespace: NAMESPACE.dependency },
+        async ({ path }) => {
+          const module = await dependencies.load(path)
+          return { contents: module.bytes ?? module.source, loader: module.loader }
+        },
       )
     },
   }
@@ -414,6 +441,7 @@ const fromApp = (file: string) =>
 export async function bundleAppSources(
   sources: AppSources,
   esbuild?: Bundler,
+  dependencies?: AppDependencies,
 ): Promise<AppBundle> {
   let result: Esbuild.BuildResult
   try {
@@ -433,7 +461,7 @@ export async function bundleAppSources(
       sourcesContent: false,
       legalComments: 'none',
       logLevel: 'silent',
-      plugins: [appPlugin(sources)],
+      plugins: [appPlugin(sources, dependencies ?? appDependencies(sources))],
     })
   } catch (error) {
     const messages = (error as Partial<Esbuild.BuildFailure>).errors

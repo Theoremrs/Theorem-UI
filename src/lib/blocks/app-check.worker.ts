@@ -9,13 +9,11 @@ import { checkLibrary } from './app-check-library'
 import { rpcOver, serve } from './sandbox/protocol'
 
 const rpc = rpcOver(self)
-serve<CheckWorkerMethods, 'check'>(rpc, 'check', async ({ sources }) => {
+serve<CheckWorkerMethods, 'check'>(rpc, 'check', async ({ sources, dependencies }) => {
   try {
     return {
       ok: true,
-      result: await checkAppSources(sources, tsc, await checkLibrary(), {
-        url: wasm,
-      }),
+      result: await checkAppSources(sources, tsc, await checkLibrary(), { url: wasm }, dependencies),
     }
   } catch (error) {
     return {

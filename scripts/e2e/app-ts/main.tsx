@@ -4,6 +4,7 @@
 // server is needed.
 import { createRoot } from 'react-dom/client'
 import { DocumentAppView } from '@/components/blocks/document-app'
+import { InlineArtifact } from '@/components/artifacts/inline-artifact'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { checkInWorker } from '@/lib/blocks/app-checker'
 import { inspectApp } from '@/lib/blocks/app-inspect'
@@ -70,7 +71,9 @@ const references = () => useComposerReferences.getState().take()
 
 function show(): void {
   createRoot(document.getElementById('view')!).render(
-    <DocumentAppView app={app} initiallyRunning />,
+    <InlineArtifact title="Authored TypeScript App">
+      <DocumentAppView app={app} initiallyRunning />
+    </InlineArtifact>,
   )
 }
 

@@ -38,7 +38,7 @@ function app(content = PINNED) {
 
 afterEach(cleanup)
 
-test('an App resolves to a passive preview in the conversation and a live session in the workspace', () => {
+test('an App has a passive thumbnail and a live representation for answers and workspaces', () => {
   expect(representationOf(app(), 'preview').renderer).toBe(
     'theorem-app.preview',
   )
