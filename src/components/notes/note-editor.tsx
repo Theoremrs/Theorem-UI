@@ -11,7 +11,7 @@ import {
   useNodeViewFactory,
 } from '@prosemirror-adapter/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import askIcon from '@/assets/icons/rail/noun-chat-52762.svg?raw'
@@ -38,6 +38,8 @@ import { DataTable } from './kinds/embed-block'
 import { useBlockPickers } from './kinds/pickers'
 import type { BlockRequest } from './kinds/pickers'
 import { EMBED_ATTR } from './note-excerpt'
+import { createNoteTools, registerNoteTools } from './note-tools'
+import type { NoteTools } from './note-tools'
 import { useNoteView } from './note-view'
 
 type Callbacks = {
@@ -136,6 +138,8 @@ function CrepeEditor({
   callbacks,
   onInsertReady,
   onFlushReady,
+  onToolsReady,
+  onImage,
 }: {
   markdown: string
   editable: boolean
@@ -144,6 +148,8 @@ function CrepeEditor({
   callbacks: React.RefObject<Callbacks>
   onInsertReady: (insertMarkdown: (markdown: string) => void) => void
   onFlushReady: (flush: () => void) => void
+  onToolsReady: (tools: NoteTools) => void
+  onImage: (state: { uploading?: string; error?: string }) => void
 }) {
   const nodeViewFactory = useNodeViewFactory()
   const crepeRef = useRef<Crepe>(undefined)
@@ -156,6 +162,14 @@ function CrepeEditor({
       urls.clear()
     }
   }, [])
+
+  const upload = async (file: File) => {
+    const { projectId } = callbacks.current
+    if (!projectId) throw new Error('Pick a project before adding images.')
+    const { uploadId } = await uploadFile(projectId, file)
+    await retainUpload(uploadId)
+    return uploadContentPath(uploadId)
+  }
 
   const { flush } = useCrepeMarkdown({
     markdown,
@@ -174,14 +188,7 @@ function CrepeEditor({
             previewOnlyByDefault: true,
           },
           [Crepe.Feature.ImageBlock]: {
-            onUpload: async (file) => {
-              const { projectId } = callbacks.current
-              if (!projectId)
-                throw new Error('Pick a project before adding images.')
-              const { uploadId } = await uploadFile(projectId, file)
-              await retainUpload(uploadId)
-              return uploadContentPath(uploadId)
-            },
+            onUpload: upload,
             proxyDomURL: async (url) => {
               if (!isUploadPath(url)) return url
               const blob = URL.createObjectURL(await readUpload(url))
@@ -240,6 +247,7 @@ function CrepeEditor({
         )
       onInsertReady((next) => crepe.editor.action(insert(next)))
       onFlushReady(editor.flush)
+      onToolsReady(createNoteTools({ crepe, root, upload, onImage }))
       return crepe
     },
   })
@@ -258,7 +266,9 @@ function CrepeEditor({
 /**
  * Markdown in Crepe, with everything a note can hold. Locked when not
  * `editable`. `onAsk` adds "Ask Theorem" to the slash menu, and `exclude` leaves
- * a note out of what can be embedded.
+ * a note out of what can be embedded. `toolsFor` names the key this editor
+ * answers to — the workspace pane it is in — so that pane's toolbox
+ * (note-toolbox.tsx) can act in it. Without one, no toolbox reaches it.
  */
 export function MarkdownBlocks({
   markdown,
@@ -267,6 +277,7 @@ export function MarkdownBlocks({
   onChange,
   onAsk,
   exclude,
+  toolsFor,
   className,
 }: {
   markdown: string
@@ -275,9 +286,15 @@ export function MarkdownBlocks({
   onChange: (markdown: string) => void
   onAsk?: () => void
   exclude?: string
+  toolsFor?: string
   className?: string
 }) {
   const { project } = useActiveProject()
+  const [tools, setTools] = useState<NoteTools>()
+  const [image, setImage] = useState<{ uploading?: string; error?: string }>({})
+  useEffect(() => {
+    if (toolsFor && tools && editable) return registerNoteTools(toolsFor, tools)
+  }, [toolsFor, tools, editable])
   const insertRef = useRef<(markdown: string) => void>(undefined)
   const flushRef = useRef<() => void>(() => undefined)
   const pickers = useBlockPickers({
@@ -321,16 +338,20 @@ export function MarkdownBlocks({
             callbacks={callbacks}
             onInsertReady={(fn) => (insertRef.current = fn)}
             onFlushReady={(fn) => (flushRef.current = fn)}
+            onToolsReady={setTools}
+            onImage={setImage}
           />
         </ProsemirrorAdapterProvider>
       </MilkdownProvider>
-      {pickers.uploading && (
+      {(pickers.uploading ?? image.uploading) && (
         <p className="px-3 py-1 text-xs text-ink-muted">
-          Uploading {pickers.uploading}…
+          Uploading {pickers.uploading ?? image.uploading}…
         </p>
       )}
-      {pickers.error && (
-        <p className="px-3 py-1 text-xs text-error-ink">{pickers.error}</p>
+      {(pickers.error ?? image.error) && (
+        <p role="alert" className="px-3 py-1 text-xs text-error-ink">
+          {pickers.error ?? image.error}
+        </p>
       )}
       {pickers.element}
     </div>
@@ -343,11 +364,14 @@ export function NoteEditor({
   autoFocus,
   onAsk,
   className,
+  toolsKey,
 }: {
   note: Note
   autoFocus?: boolean
   onAsk?: () => void
   className?: string
+  /** The workspace pane this editor is in; that pane's toolbox acts in it. */
+  toolsKey?: string
 }) {
   const queryClient = useQueryClient()
   return (
@@ -358,6 +382,7 @@ export function NoteEditor({
       onChange={(markdown) => editNote(queryClient, note.documentId, markdown)}
       onAsk={onAsk}
       exclude={note.documentId}
+      toolsFor={toolsKey}
       className={className}
     />
   )

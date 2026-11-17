@@ -129,16 +129,21 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     [api, mode, title],
   )
   // Chat's breadcrumb stands in for the tab while the conversation is
-  // alone in its group; a tab dropped beside it brings the tab bar back.
+  // alone in its group, and Notes' panes draw their own pills; a tab dropped
+  // beside it brings the tab bar back.
   const inChat = mode === 'chat'
+  const ownTop = inChat || mode === 'notes'
   const alone = useSyncExternalStore(
     subscribe(api.group.api.onDidActivePanelChange),
     () => api.group.panels.length === 1,
   )
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability -- dockview's header takes this as a setter, and has no method for it.
-    api.group.header.hidden = inChat && alone
-  }, [api, inChat, alone])
+    api.group.header.hidden = ownTop && alone
+  }, [api, ownTop, alone])
+  const actions = alone ? (
+    <GroupActions group={api.group} containerApi={containerApi} />
+  ) : undefined
   return (
     <div
       data-appearance-part="main"
@@ -147,15 +152,11 @@ function ThreadPanel({ api, containerApi }: IDockviewPanelProps) {
     >
       {inChat && (
         <ThreadHeader
-          actions={
-            alone ? (
-              <GroupActions group={api.group} containerApi={containerApi} />
-            ) : undefined
-          }
+          actions={actions}
         />
       )}
       <div className="relative min-h-0 flex-1">
-        <ModeView docked />
+        <ModeView docked actions={mode === 'notes' ? actions : undefined} />
       </div>
     </div>
   )

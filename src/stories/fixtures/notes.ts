@@ -75,7 +75,43 @@ const EVERYTHING = [
   embedFence({ kind: 'document', id: 'doc-hello', title: 'Hello World!' }),
 ].join('\n\n')
 
+const PROPOSAL = `# Research workspace proposal
+
+## What I would like to build
+
+A small research workspace around one question the team already cares about. A person preparing for a conversation could find related past work, compare how others approached the same problem, and follow the question as new material arrives. Every finding stays tied to its source, so the evidence can be checked before anyone decides what to make of it.
+
+## Starting from work already under way
+
+The first step is learning what the team has tried: which searches they repeat, which documents they reopen, and where a question usually stalls. The workspace should fit that habit rather than replace it.
+
+- Collect the sources the team already trusts.
+- Write the question down where everyone can see it.
+- Keep a record of what each review decided.
+
+## Three things the workspace could do
+
+**Prepare a briefing that can be checked.** A short summary of earlier work on a topic, with every claim linked to the passage behind it.
+
+**Compare approaches side by side.** Two or three past efforts laid out against the same questions, so their differences read at a glance.
+
+**Follow a question over time.** New material that bears on an open question is flagged, with a note on why it might matter.
+`
+
+const MEETING = `# Kickoff notes
+
+- Agreed the first question with the program team.
+- Sources: annual reports, grant summaries, two evaluations.
+- Next review in two weeks.
+
+## Open questions
+
+Which earlier evaluations are reliable enough to cite? Who signs off on a briefing before it goes out?
+`
+
 export const documentFixtures: Readonly<Record<string, string>> = {
+  'doc-proposal': PROPOSAL,
+  'doc-kickoff': MEETING,
   'doc-everything': EVERYTHING,
   'doc-paper': noteHolding('Spaces and their notes.pdf', PDF),
   'doc-hello': 'Hello World!\n',
