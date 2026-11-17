@@ -1,0 +1,27 @@
+[package]
+name = "theorem-workbench-markdown"
+version = "0.1.0"
+edition = "2024"
+publish = false
+license = "MIT"
+description = "ELY Markdown parse, block ranges, edit commands and the Visual, Source, Split and Preview modes for the Theo Web terminal workbench"
+
+[dependencies]
+theorem-workbench-text = { path = "../workbench-text" }
+pulldown-cmark = { version = "0.13", default-features = false }
+tui-markdown = { version = "0.3.12", default-features = false }
+ratatui = { version = "0.30.1", default-features = false, features = ["unstable-rendered-line-info"] }
+unicode-segmentation = "1.13"
+unicode-width = "0.2"
+entities = "1"
+emojis = "0.9"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+[dev-dependencies]
+web-time = "1.1"
+
+[target.'cfg(unix)'.dev-dependencies]
+rustix = { version = "1", default-features = false, features = ["time"] }

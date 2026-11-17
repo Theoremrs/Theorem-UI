@@ -14,8 +14,15 @@ import { useMemo } from 'react'
 import { create } from 'zustand'
 import { TERMINAL_RUN_EVENTS, describeError, theorem } from './client'
 import type { Theorem } from './client'
+import {
+  DELEGATION_PART,
+  isRecord,
+  isString,
+  readDelegation,
+} from './working-runs'
 
-export const DELEGATION_PART = 'theorem-delegation'
+export { DELEGATION_PART, readDelegation }
+
 export const REVIEW_PART = 'theorem-review'
 export const INTENT_PART = 'theorem-intent'
 
@@ -38,23 +45,6 @@ export type ReviewPart = Omit<Theorem.ReviewPart, 'verdicts'> & {
 /** A context reference to a delegation or one of its changes. */
 export type DelegationReference = Omit<TheoremContextReference, 'location'> & {
   location: { resource: DelegationResource; range?: TheoremRange }
-}
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  value !== null && typeof value === 'object' && !Array.isArray(value)
-
-const isString = (value: unknown): value is string =>
-  typeof value === 'string' && value.length > 0
-
-/** A delegation part's data, or undefined when it is not one. */
-export function readDelegation(data: unknown): DelegationPart | undefined {
-  if (!isRecord(data)) return undefined
-  return isString(data.delegationId) &&
-    isString(data.parentRunId) &&
-    isString(data.state) &&
-    isRecord(data.intent)
-    ? (data as unknown as DelegationPart)
-    : undefined
 }
 
 export function readReview(data: unknown): ReviewPart | undefined {
@@ -104,7 +94,10 @@ export const LIVE_DELEGATION_STATES: ReadonlySet<DelegationState> = new Set([
   'started',
 ])
 
-const POLLING_DELEGATION_STATES = new Set([...LIVE_DELEGATION_STATES, 'published'])
+const POLLING_DELEGATION_STATES = new Set([
+  ...LIVE_DELEGATION_STATES,
+  'published',
+])
 
 /** The side of a change that exists: the new file, or the base of a deletion. */
 export const changeSide = (change: ChangeSetEntry): 'before' | 'after' =>
@@ -123,11 +116,10 @@ export function useDelegationContent(
     gcTime: 10 * 60_000,
     queryFn: async ({ signal }) => {
       try {
-        const content = await theorem().chat.runs.delegationContent(
+        return await theorem().chat.runs.delegationContent(
           { runId, delegationId, ref: ref! },
           { abortSignal: signal },
         )
-        return new TextDecoder().decode(await content.arrayBuffer())
       } catch (error) {
         throw new Error(
           error instanceof TheoremError && error.statusCode === 404
@@ -164,7 +156,9 @@ function currentDelegation(
   records: readonly DelegationPart[] | undefined,
 ) {
   if (!seed) return undefined
-  const polled = records?.find((item) => item.delegationId === seed.delegationId)
+  const polled = records?.find(
+    (item) => item.delegationId === seed.delegationId,
+  )
   return polled && polled.updatedAtMs >= seed.updatedAtMs ? polled : seed
 }
 
@@ -182,7 +176,8 @@ export function useLiveDelegation(
       ),
     refetchInterval: ({ state }) => {
       const current = currentDelegation(seed, state.data?.delegations)
-      if (!current || !POLLING_DELEGATION_STATES.has(current.state)) return undefined
+      if (!current || !POLLING_DELEGATION_STATES.has(current.state))
+        return undefined
       if (current.state === 'published' && current.problem) return undefined
       return 2000
     },

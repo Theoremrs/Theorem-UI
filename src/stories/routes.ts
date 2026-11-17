@@ -1,5 +1,6 @@
-// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted.
+// SOURCING: src/stories/fake-theorem's route map, answered from the committed fixtures (the artifact host and notebook outputs from fixtures/notebook-parts). Reviews keep their state in memory so the pane's draft and submit can be scripted; so do project context and its Library (fixtures/project-context).
 import type { Theorem } from '@/lib/theorem/client'
+import type { LibraryItem } from '@/lib/theorem/project-context'
 import type { Review, ReviewResponse } from '@/lib/theorem/reviews'
 import type { FakeRoutes } from './fake-theorem'
 import {
@@ -14,7 +15,9 @@ import {
   artifactHost,
   outputsAnswer,
 } from './fixtures/notebook-parts'
+import { CABINET_ARTIFACTS, CABINET_DESCRIPTIONS, cabinetMessages, cabinetRevision } from './fixtures/cabinet'
 import { organizationFixture } from './fixtures/organization'
+import { projectContextRoutes, uploadedItem } from './fixtures/project-context'
 import { reviewFixture, reviewShots } from './fixtures/review'
 import { sessionGraphRoutes } from './fixtures/session-graph'
 import { threadMessages } from './fixtures/thread'
@@ -96,6 +99,8 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
   // Notes and uploads a scripted story writes stay readable for its life.
   const notes = new Map(Object.entries(documentFixtures))
   const uploads = new Map<string, Response>()
+  // What goes up is in the Library a project picks its documents from.
+  const added: LibraryItem[] = []
   const snapshot = (documentId: string) => {
     const markdown = notes.get(documentId)
     return markdown === undefined
@@ -113,6 +118,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       'GET /api/connections/v1/tools': () => ({ groups: POPULATED_ROSTER }),
       [`GET ${BASE}/skills`]: () => POPULATED_SKILLS,
     }),
+    ...projectContextRoutes(now, { added }),
     [`GET ${BASE}/response-styles`]: (_params, request) => ({
       styles: [
         { id: 'normal', name: 'Normal', description: 'Direct, conversational replies.' },
@@ -159,12 +165,14 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       selectedBranch:
         branchesOf(threadId).find(({ branchId }) => branchId === selected.get(threadId)) ??
         branch(threadId),
-      messages:
-        threadId !== 'thread-app-gallery'
+      messages: [
+        ...(threadId !== 'thread-app-gallery'
           ? []
           : options.populated
             ? populatedMessages(now)
-            : threadMessages(now),
+            : threadMessages(now)),
+        ...cabinetMessages(threadId, now),
+      ],
     }),
     [`PATCH ${BASE}/threads/:threadId`]: async ({ threadId = '' }, request) => {
       const { selectedBranchId } = (await request.json()) as { selectedBranchId?: string }
@@ -208,8 +216,12 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       spaces.set(decodeURIComponent(spaceId), saved)
       return saved
     },
-    [`POST ${BASE}/projects/:projectId/uploads`]: async (_, request) => {
+    [`POST ${BASE}/projects/:projectId/uploads`]: async (
+      { projectId = '' },
+      request,
+    ) => {
       const uploadId = `upload-new-${uploads.size}`
+      added.unshift(uploadedItem(decodeURIComponent(projectId), uploadId, request))
       uploads.set(
         uploadId,
         new Response(await request.arrayBuffer(), {
@@ -226,7 +238,7 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
       const bytes = await (await fetch(upload.url)).arrayBuffer()
       return new Response(bytes, { headers: { 'content-type': upload.mime } })
     },
-    [`POST ${BASE}/uploads/:uploadId/retain`]: () => ({ retained: true }),
+    [`POST ${BASE}/library/uploads/:uploadId/retain`]: () => ({ retained: true }),
     [`GET ${BASE}/organization`]: () => organization,
     [`GET ${BASE}/runs/${POINTING_RUN}/delegations`]: () => ({
       delegations: [pointingDelegation],
@@ -236,14 +248,35 @@ export function storyRoutes(now: number, options: StoryRouteOptions = {}): FakeR
     [`GET ${BASE}/librarian/history`]: () => ({
       items: organization.librarian.recent,
     }),
-    [`GET ${BASE}/projects/:projectId/outputs`]: () => ({
-      items: [
-        { outputId: 'output-1', kind: 'app', title: 'Gallery prototype', threadId: 'thread-app-gallery', revisionCount: 3, updatedAtMs: now - 20 * 60_000 },
-        { outputId: 'output-2', kind: 'artifact', title: 'SDK surface', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 40 * 60_000 },
-        { outputId: 'output-3', kind: 'review', title: 'App gallery', threadId: 'thread-app-gallery', reviewId: review.reviewId, revisionCount: 1, updatedAtMs: now - 8 * 60_000 },
-      ],
-      total: 5,
-    }),
+    [`GET ${BASE}/projects/:projectId/outputs`]: (_, request) => {
+      // The authority filters and searches (the cabinet asks with `category` and `q`).
+      const url = new URL(request.url)
+      const category = url.searchParams.get('category')
+      const q = (url.searchParams.get('q') ?? '').toLowerCase()
+      const items = [
+        { outputId: 'output-1', kind: 'app', category: 'app', title: 'Gallery prototype', threadId: 'thread-app-gallery', revisionCount: 3, updatedAtMs: now - 20 * 60_000 },
+        { outputId: 'output-2', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'SDK surface', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 40 * 60_000 },
+        { outputId: 'output-3', kind: 'review', category: 'other', title: 'App gallery', threadId: 'thread-app-gallery', reviewId: review.reviewId, revisionCount: 1, updatedAtMs: now - 8 * 60_000 },
+        { outputId: 'output-4', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'Survey notes', threadId: 'thread-python-sdk', revisionCount: 1, updatedAtMs: now - 3 * 60 * 60_000 },
+        { outputId: 'output-5', kind: 'artifact', category: 'image', mediaType: 'image/png', title: 'Headland map', threadId: 'thread-app-gallery', revisionCount: 4, updatedAtMs: now - 5 * 60 * 60_000 },
+        { outputId: 'output-6', kind: 'artifact', category: 'document', mediaType: 'text/markdown', title: 'Release checklist', threadId: 'thread-python-sdk', revisionCount: 2, updatedAtMs: now - 26 * 60 * 60_000 },
+      ]
+        // An output backed by a stored part names the artifact and revision the cabinet opens.
+        .map((item) => ({
+          ...item,
+          description: CABINET_DESCRIPTIONS[item.outputId],
+          ...(CABINET_ARTIFACTS.some((a) => a.outputId === item.outputId) && {
+            artifactId: item.outputId,
+            revision: cabinetRevision(item.outputId),
+          }),
+        }))
+        .filter(
+        (item) =>
+          (!category || item.category === category) &&
+          (!q || item.title.toLowerCase().includes(q)),
+      )
+      return { items, total: items.length }
+    },
     [`GET ${BASE}/threads/:threadId/reviews`]: ({ threadId }) => ({
       items: !options.reviewless && threadId === review.threadId ? [review] : [],
     }),

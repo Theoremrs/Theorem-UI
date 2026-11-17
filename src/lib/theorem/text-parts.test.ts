@@ -1,4 +1,4 @@
-// SOURCING: @theoremharness/sdk (assistant-ui adapter: the patched text part)
+// SOURCING: @theoremharness/sdk (assistant-ui adapter: the text part)
 import { expect, test } from 'bun:test'
 import { toAssistantMessages } from '@theoremharness/sdk/assistant-ui'
 import type { Theorem } from './client'
@@ -14,7 +14,7 @@ test('a text part keeps its purpose, segment and status as provider metadata', (
     { partId: 't0', type: 'text', payload: { text: 'On it.', purpose: 'commentary', segment: 0, status: 'complete' } },
   ])
   expect(text).toEqual({
-    type: 'text', id: 't0', text: 'On it.',
+    type: 'text', id: 't0', text: 'On it.', status: { type: 'complete' },
     providerMetadata: { theorem: { purpose: 'commentary', segment: 0, status: 'complete' } },
   })
 })

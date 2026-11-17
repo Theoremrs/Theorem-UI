@@ -13,7 +13,7 @@ import { useShellMode } from '@/components/shell/modes'
 import { useActiveProject } from '@/components/shell/projects'
 import { useShell } from '@/components/shell/shell-state'
 import { describeError, isSignedOut } from '@/lib/theorem/client'
-import { primaryProjectId, useOrganization } from '@/lib/theorem/organization'
+import { projectToOpenIn, useOrganization } from '@/lib/theorem/organization'
 import { PreferencesSync } from '@/lib/theorem/models'
 import { TheoremRuntimeProvider } from '@/lib/theorem/runtime'
 
@@ -38,15 +38,28 @@ function ChatLayout() {
     if (mode === 'chat') useShell.getState().setChatThreadId(threadId)
   }, [mode, threadId])
 
-  // A thread opens in the project it belongs to, wherever it was reached from.
+  // A thread opens in a project it belongs to, wherever it was reached from: the one its row was
+  // picked under when it is placed in several, else its primary one.
   const { data: organization } = useOrganization()
   const openThread = organization?.threads.find(
     (thread) => thread.threadId === openThreadId,
   )
-  const homeOfThread = openThread && primaryProjectId(openThread)
+  const asked = useShell((s) => s.askedProject)
+  const homeOfThread =
+    openThread &&
+    projectToOpenIn(
+      openThread,
+      asked && asked.threadId === openThreadId ? asked.projectId : undefined,
+    )
   useEffect(() => {
     if (homeOfThread) useShell.getState().setProjectId(homeOfThread)
   }, [openThreadId, homeOfThread])
+  // What was asked for one thread says nothing about the next one opened.
+  useEffect(() => {
+    const shell = useShell.getState()
+    if (shell.askedProject && shell.askedProject.threadId !== openThreadId)
+      shell.askProject(undefined)
+  }, [openThreadId])
 
   // Outside chat the mode stays on screen and only the conversation behind it moves.
   const onThreadIdChange = useCallback(

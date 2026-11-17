@@ -63,13 +63,15 @@ export function turns({ context, page }) {
     return (await json(`/threads/${encodeURIComponent(threadId())}`)).thread?.lastRun
   }
 
-  /** Send a message, wait for its run to be recorded, and say which model it ran on. */
-  async function send(text) {
+  /**
+   * Send a message, wait for its run to be recorded, and say which model it ran on.
+   * `box` is the composer to type in and `keys` what sends from it.
+   */
+  async function send(text, { box = page.getByRole('textbox').first(), keys = 'Enter' } = {}) {
     const before = (await lastRunOf())?.runId
-    const box = page.getByRole('textbox').first()
     await box.click()
     await box.fill(text)
-    await page.keyboard.press('Enter')
+    await page.keyboard.press(keys)
     for (let look = 0; look < LOOKS; look++) {
       const run = await lastRunOf().catch(() => undefined)
       if (run?.runId && run.runId !== before) {

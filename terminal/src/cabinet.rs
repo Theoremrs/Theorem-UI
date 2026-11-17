@@ -14,10 +14,11 @@ use std::{cell::RefCell, rc::Rc};
 
 use ratatui::{
     Frame,
+    buffer::Buffer,
     layout::Rect,
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, BorderType, Borders, Clear, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Widget},
 };
 use ratzilla::{
     event::{KeyCode, KeyEvent},
@@ -52,10 +53,10 @@ const MIN_GALLERY_ROWS: u16 = 6;
 /// One card as the controller projects it.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
-struct Entry {
-    key: String,
-    revision: String,
-    title: String,
+pub(crate) struct Entry {
+    pub(crate) key: String,
+    pub(crate) revision: String,
+    pub(crate) title: String,
     /// "Image · 1000 × 625" and the like: facts only.
     meta: String,
     description: String,
@@ -65,7 +66,7 @@ struct Entry {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
-struct Filter {
+pub(crate) struct Filter {
     id: String,
     label: String,
 }
@@ -73,7 +74,7 @@ struct Filter {
 /// Everything the controller decides; the view only draws it.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase", default)]
-struct View {
+pub(crate) struct View {
     title: String,
     scope: String,
     /// "06 objects", "24 of 80 loaded", "loaded only": the controller words
@@ -82,13 +83,13 @@ struct View {
     /// The preference control's text: "Theme default", "Pixel", "Original".
     preference_label: String,
     filters: Vec<Filter>,
-    filter: String,
-    query: String,
-    expanded: bool,
+    pub(crate) filter: String,
+    pub(crate) query: String,
+    pub(crate) expanded: bool,
     /// A line under the filters when the collection is stale, offline or empty.
     status: String,
     footer_note: String,
-    entries: Vec<Entry>,
+    pub(crate) entries: Vec<Entry>,
     /// The card to select when the view arrives, if the controller has one.
     selected: Option<String>,
     /// The host's minimum target in CSS px (24, or 44 for a coarse pointer).
@@ -98,11 +99,11 @@ struct View {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
-struct Area {
-    x: i32,
-    y: i32,
-    w: u16,
-    h: u16,
+pub(crate) struct Area {
+    pub(crate) x: i32,
+    pub(crate) y: i32,
+    pub(crate) w: u16,
+    pub(crate) h: u16,
 }
 
 impl From<Rect> for Area {
@@ -117,35 +118,50 @@ impl From<Rect> for Area {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-struct Slot {
-    key: String,
-    revision: String,
-    index: usize,
+pub(crate) struct Slot {
+    pub(crate) key: String,
+    pub(crate) revision: String,
+    pub(crate) index: usize,
     /// The preview's inner rectangle in cells, unclipped.
-    preview: Area,
+    pub(crate) preview: Area,
     /// The whole card in cells, unclipped: the open target.
-    card: Area,
+    pub(crate) card: Area,
     selected: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-struct Control {
+pub(crate) struct Control {
     id: String,
-    area: Area,
+    pub(crate) area: Area,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize)]
-struct Geometry {
+pub(crate) struct Geometry {
     /// Cell size in CSS pixels, as the backend measured it.
     cell: (f32, f32),
     cols: u16,
     rows: u16,
     columns: usize,
     /// The gallery's visible area: previews are clipped to it.
-    clip: Area,
-    slots: Vec<Slot>,
-    controls: Vec<Control>,
+    pub(crate) clip: Area,
+    pub(crate) slots: Vec<Slot>,
+    pub(crate) controls: Vec<Control>,
     selected: Option<String>,
+}
+
+/// What the layout draws into: a buffer addressed from its own top left
+/// corner. A `Frame` lends its buffer for the mounted cabinet; the workbench
+/// panel draws into one of its own and copies it into its body.
+pub(crate) struct Canvas<'a>(pub(crate) &'a mut Buffer);
+
+impl Canvas<'_> {
+    fn area(&self) -> Rect {
+        self.0.area
+    }
+
+    fn render_widget<W: Widget>(&mut self, widget: W, area: Rect) {
+        widget.render(area, self.0);
+    }
 }
 
 /// A card's column, signed top row (above the gallery when scrolled) and width.
@@ -157,11 +173,11 @@ struct CardBox {
 }
 
 pub(crate) struct Cabinet {
-    view: View,
+    pub(crate) view: View,
     cell: (f32, f32),
-    selected: Option<String>,
+    pub(crate) selected: Option<String>,
     /// First gallery row shown, in rows of the card layout.
-    scroll: u16,
+    pub(crate) scroll: u16,
     columns: usize,
     /// Card height in rows, the last layout's.
     card_rows: u16,
@@ -172,10 +188,15 @@ pub(crate) struct Cabinet {
     laid_out: (usize, u16, u16),
     /// The selection changed outside a key or click and should be shown.
     reveal_pending: bool,
-    geometry: Option<Geometry>,
+    /// A scroll restored from a saved layout, applied once the entries it
+    /// scrolls over have arrived.
+    restore_scroll: Option<u16>,
+    pub(crate) geometry: Option<Geometry>,
     epoch: u64,
     sent_epoch: u64,
-    on_geometry: js_sys::Function,
+    /// None for a cabinet drawn inside the workbench, which reports through
+    /// its link instead.
+    on_geometry: Option<js_sys::Function>,
 }
 
 /// Rows between the centres of two stacked controls so that neither grown
@@ -254,6 +275,30 @@ fn clip_text(text: &str, width: usize) -> String {
 
 impl Cabinet {
     fn new(on_geometry: js_sys::Function) -> Self {
+        Self::with_report(Some(on_geometry))
+    }
+
+    /// A cabinet that reports no geometry epochs of its own.
+    pub(crate) fn detached() -> Self {
+        Self::with_report(None)
+    }
+
+    /// Puts back what a saved layout kept before any view has arrived. The
+    /// scroll waits for the entries it scrolls over.
+    pub(crate) fn restore(
+        &mut self,
+        scroll: Option<u16>,
+        filter: &str,
+        query: &str,
+        expanded: bool,
+    ) {
+        self.restore_scroll = scroll;
+        self.view.filter = filter.to_owned();
+        self.view.query = query.to_owned();
+        self.view.expanded = expanded;
+    }
+
+    fn with_report(on_geometry: Option<js_sys::Function>) -> Self {
         Self {
             view: View::default(),
             cell: (0.0, 0.0),
@@ -264,6 +309,7 @@ impl Cabinet {
             gallery_rows: 1,
             laid_out: (0, 0, 0),
             reveal_pending: false,
+            restore_scroll: None,
             geometry: None,
             epoch: 0,
             sent_epoch: 0,
@@ -271,7 +317,7 @@ impl Cabinet {
         }
     }
 
-    fn set_view(&mut self, json: &str) -> Result<(), serde_json::Error> {
+    pub(crate) fn set_view(&mut self, json: &str) -> Result<(), serde_json::Error> {
         let view: View = serde_json::from_str(json)?;
         if let Some(selected) = &view.selected
             && self.selected.as_ref() != Some(selected)
@@ -299,12 +345,12 @@ impl Cabinet {
         Ok(())
     }
 
-    fn index_of_selected(&self) -> Option<usize> {
+    pub(crate) fn index_of_selected(&self) -> Option<usize> {
         let key = self.selected.as_ref()?;
         self.view.entries.iter().position(|e| &e.key == key)
     }
 
-    fn select(&mut self, index: usize) -> Option<String> {
+    pub(crate) fn select(&mut self, index: usize) -> Option<String> {
         let key = self.view.entries.get(index)?.key.clone();
         self.selected = Some(key.clone());
         self.reveal(index);
@@ -326,7 +372,7 @@ impl Cabinet {
 
     /// A key while a card has focus. Arrows select; Enter opens; neither
     /// activates an application.
-    fn key(&mut self, event: KeyEvent) -> (bool, Option<serde_json::Value>) {
+    pub(crate) fn key(&mut self, event: KeyEvent) -> (bool, Option<serde_json::Value>) {
         let count = self.view.entries.len();
         if count == 0 {
             return (false, None);
@@ -363,7 +409,7 @@ impl Cabinet {
         }
     }
 
-    fn scroll_by(&mut self, rows: i32) {
+    pub(crate) fn scroll_by(&mut self, rows: i32) {
         let rows_total =
             self.view.entries.len().div_ceil(self.columns.max(1)) as u16 * self.card_rows;
         let max = rows_total.saturating_sub(self.gallery_rows);
@@ -380,7 +426,7 @@ impl Cabinet {
     /// beneath the full header.
     fn draw_header(
         &self,
-        frame: &mut Frame,
+        frame: &mut Canvas,
         area: Rect,
         controls: &mut Vec<Control>,
         compact: bool,
@@ -390,7 +436,7 @@ impl Cabinet {
         let pitch = target_pitch(self.view.target_px, self.cell.1);
         let (group, related) = if compact { (0, 0) } else { (GROUP_ROWS, 1) };
         let mut y = area.y + u16::from(!compact);
-        let line = |frame: &mut Frame, y: u16, left: Line, right: Line| {
+        let line = |frame: &mut Canvas, y: u16, left: Line, right: Line| {
             let rw = right.width() as u16;
             frame.render_widget(
                 Paragraph::new(left),
@@ -559,7 +605,7 @@ impl Cabinet {
         y - area.y
     }
 
-    fn draw_footer(&self, frame: &mut Frame, area: Rect) {
+    fn draw_footer(&self, frame: &mut Canvas, area: Rect) {
         let p = palette();
         frame.render_widget(
             Block::new()
@@ -600,7 +646,7 @@ impl Cabinet {
     #[allow(clippy::too_many_arguments)]
     fn draw_card(
         &self,
-        frame: &mut Frame,
+        frame: &mut Canvas,
         entry: &Entry,
         index: usize,
         (x, top, width): (u16, i32, u16),
@@ -610,7 +656,7 @@ impl Cabinet {
         let p = palette();
         let selected = self.selected.as_deref() == Some(entry.key.as_str());
         let card = CardBox { x, y: top, width };
-        let put = |frame: &mut Frame, y: i32, line: Line<'static>| {
+        let put = |frame: &mut Canvas, y: i32, line: Line<'static>| {
             if y >= i32::from(clip.y) && y < i32::from(clip.y + clip.height) {
                 frame.render_widget(
                     Paragraph::new(line),
@@ -697,6 +743,12 @@ impl Cabinet {
     }
 
     fn layout_and_draw(&mut self, frame: &mut Frame) -> Geometry {
+        self.layout_and_draw_in(&mut Canvas(frame.buffer_mut()))
+    }
+
+    /// Draws the whole cabinet into `frame` and reports where its previews and
+    /// controls sit, in cells from the canvas's top left corner.
+    pub(crate) fn layout_and_draw_in(&mut self, frame: &mut Canvas) -> Geometry {
         let p = palette();
         let area = frame.area();
         frame.render_widget(Block::new().style(Style::new().bg(p.bg).fg(p.ink)), area);
@@ -759,6 +811,11 @@ impl Cabinet {
         }
         self.laid_out = laid_out;
         self.reveal_pending = false;
+        if !self.view.entries.is_empty()
+            && let Some(scroll) = self.restore_scroll.take()
+        {
+            self.scroll = scroll;
+        }
         self.scroll_by(0);
 
         let mut slots = Vec::new();
@@ -841,9 +898,9 @@ impl Drawn for Cabinet {
         self.sent_epoch = self.epoch;
         if let Some(geometry) = &self.geometry {
             let json = json!({"epoch": self.epoch, "geometry": geometry}).to_string();
-            let _ = self
-                .on_geometry
-                .call1(&JsValue::NULL, &JsValue::from_str(&json));
+            if let Some(on_geometry) = &self.on_geometry {
+                let _ = on_geometry.call1(&JsValue::NULL, &JsValue::from_str(&json));
+            }
         }
     }
 }

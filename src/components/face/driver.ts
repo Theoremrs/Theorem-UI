@@ -19,6 +19,8 @@ import { enterWorld, leaveWorld, loadRapier, theWorld } from '@/lib/world'
 import { createPainter } from './painter'
 import type { Painter } from './painter'
 import { PlateMotion } from './plate'
+import { terminalFace } from './terminal-face'
+import type { TerminalFace } from './terminal-face'
 import { forget, locate, reveal, thingsOnPage } from './things'
 
 /** The canvas's own width in CSS pixels; the face is scaled from this. */
@@ -124,6 +126,8 @@ export class FaceDriver {
   private samples: Array<Sample> = []
   /** When it got to the thing it points at; `undefined` while it is on its way or points at nothing. */
   private pointingSince: number | undefined
+  /** The terminal face last worked out, and for which colours. */
+  private dressed: { key: string; appearance: TerminalFace } | undefined
   /** What the mark last showed, so the page is written to only when it changes. */
   private marked = ''
   /** The form it has emits arcs past its sides, so it stands clear of the words by that much. */
@@ -303,6 +307,37 @@ export class FaceDriver {
     return rect
   }
 
+  /**
+   * The terminal's cells the workbench keeps for Theo, when it has any: an
+   * element the page lays over them (`data-face-perch="terminal"`) that says
+   * the terminal's surface and ink (`data-face-surface`, `data-face-ink`).
+   * Theo rests there, small enough for the cells, and is drawn for that surface.
+   */
+  private terminalPerch() {
+    if (this.place !== 'home' || this.free) return undefined
+    const element = document.querySelector<HTMLElement>(
+      '[data-face-perch="terminal"]',
+    )
+    if (!element) return undefined
+    const rect = element.getBoundingClientRect()
+    const { faceSurface: surface, faceInk: ink } = element.dataset
+    if ((rect.width === 0 && rect.height === 0) || !surface || !ink)
+      return undefined
+    // Read several times a frame: the colours are worked out once for a surface.
+    const key = `${surface}|${ink}|${this.face.hue}`
+    if (this.dressed?.key !== key) {
+      try {
+        this.dressed = {
+          key,
+          appearance: terminalFace(surface, ink, this.face.hue),
+        }
+      } catch {
+        return undefined
+      }
+    }
+    return { rect, appearance: this.dressed.appearance }
+  }
+
   /** The live message's gutter slot, when it is on screen below the thread's header. */
   private livePerch() {
     const rect = this.rectOf('[data-face-perch="live"]')
@@ -384,6 +419,12 @@ export class FaceDriver {
       return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
     if (place === 'person')
       return { x: window.innerWidth / 2, y: window.innerHeight * 0.62 }
+    const terminal = place === 'home' ? this.terminalPerch() : undefined
+    if (terminal)
+      return {
+        x: terminal.rect.left + terminal.rect.width / 2,
+        y: terminal.rect.top + terminal.rect.height / 2,
+      }
     if (place === 'home' || place === 'text') {
       const perch = this.livePerch()
       if (perch) {
@@ -427,6 +468,8 @@ export class FaceDriver {
   private target(): Point {
     const { width, height } = this.dimensions()
     const raw = this.free ?? this.pointOf(this.place, width, height)
+    // The terminal's cells are on screen, and the face is the size of them: no clamp to the page's margin.
+    if (!this.free && this.terminalPerch()) return raw
     // Its arcs stay on the page with it.
     const side = MARGIN + width / 2 + this.spill(width)
     return {
@@ -462,8 +505,21 @@ export class FaceDriver {
     }
   }
 
-  /** How big it wants to be: as asked, or by what it is doing. */
+  /** How big it wants to be. In the terminal's cells it is as big as they hold and no bigger: a performance changes the matter, not the size, so no row grows or is covered. */
   private wantedSize() {
+    const terminal = this.terminalPerch()
+    if (!terminal) return this.chosenSize()
+    const height =
+      REST_PX * (this.face.identity.height / this.face.identity.width)
+    return Math.min(
+      1,
+      terminal.rect.width / REST_PX,
+      terminal.rect.height / height,
+    )
+  }
+
+  /** How big it wants to be: as asked, or by what it is doing. */
+  private chosenSize() {
     if (this.size !== undefined) return this.size
     // Thrown, it stays the size it was carried at until it lands.
     if (this.press?.carried || this.physical()?.state === 'coasting') return 2
@@ -718,6 +774,18 @@ export class FaceDriver {
     })
   }
 
+  /** Gives the plate the body colour of the terminal surface it rests on, or gives it back to the stylesheet and the page's look. */
+  private dress(appearance: TerminalFace | undefined) {
+    if (appearance) {
+      if (this.plate.style.getPropertyValue('--face-plate') !== appearance.body)
+        this.plate.style.setProperty('--face-plate', appearance.body)
+      if (this.plate.dataset.visor !== 'on') this.plate.dataset.visor = 'on'
+    } else if (this.plate.style.getPropertyValue('--face-plate') !== '') {
+      this.plate.style.removeProperty('--face-plate')
+      this.plate.dataset.visor = this.look.visor ? 'on' : 'off'
+    }
+  }
+
   // Frames --------------------------------------------------------------------
 
   private readonly frame = (now: number) => {
@@ -777,8 +845,14 @@ export class FaceDriver {
 
     const grains = face.frame(now)
     // With a plate, an orb is the face's light on a ball of its dark: the plate draws in round it, and what is left outside is ink on a light page.
-    if (this.look.visor) this.plateMotion.step(face.ball(), dt, still)
-    const drawnIn = this.look.visor && !this.plateMotion.whole
+    const inverse = this.terminalPerch()?.appearance
+    this.dress(inverse)
+    const look = inverse?.look ?? this.look
+    const flat = inverse?.flat ?? false
+    // Ink over the whole body keeps the plate whole: an orb is ink on it, not light on a ball of dark.
+    if (look.visor)
+      this.plateMotion.step(flat ? undefined : face.ball(), dt, still || flat)
+    const drawnIn = look.visor && !flat && !this.plateMotion.whole
     this.plateMotion.lay(this.back, VISOR_PX / face.identity.width)
     this.painter?.draw(
       grains,
@@ -786,8 +860,8 @@ export class FaceDriver {
       face.identity.width,
       face.identity.height,
       drawnIn
-        ? { ink: this.look.paper, plate: this.plateMotion.plate }
-        : { ink: this.look.ink },
+        ? { ink: look.paper, plate: this.plateMotion.plate }
+        : { ink: look.ink },
     )
 
     const head = face.head()

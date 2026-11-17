@@ -1,4 +1,4 @@
-// SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass curved on all four edges, a card lifted off the sheet after the AG-UI Dojo's floating sidebar the owner's review named), Base UI Drawer (the panel's card over a sheet too narrow to dock it, with the rail on a phone), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the agent TerminalDrawer and the tabbed SideTerminal, the Vault (React.lazy, so cosmos.gl loads only when it opens)
+// SOURCING: dockview-react via DockShell (desktop layout), the Life field under the desktop sheet (LifeSheet) seen through the side panel's frosted glass (styles.css glass-panel; under liquid glass, glass/liquid-glass curved on all four edges, a card lifted off the sheet after the AG-UI Dojo's floating sidebar the owner's review named), Base UI Drawer (the panel's card over a sheet too narrow to dock it, with the rail on a phone), Base UI useMediaQuery, the shell's ModeView (assistant-ui Thread in chat mode), AgentComposer (Base UI Popover), NotePanel (Milkdown Crepe), WorkspaceFilePanel, WorkspaceCommands (the folder dialogs and their shortcuts), the workbench docked full screen, beside or under the sheet (WorkbenchDock) and the SideTerminal's gallery, the Vault (React.lazy, so cosmos.gl loads only when it opens)
 import type { SplitviewApi, SplitviewReadyEvent } from 'dockview-react'
 import { useParams } from '@tanstack/react-router'
 import { AgentComposer } from '@/components/canvas/agent-composer'
@@ -19,7 +19,11 @@ import {
   SideTerminal,
   useCabinetExpanded,
 } from '@/components/terminal/side-terminal'
-import { TerminalDrawer } from '@/components/terminal/terminal-drawer'
+import {
+  useWorkbenchPlacement,
+  useWorkbenchShortcut,
+} from '@/components/workbench/use-workbench-placement'
+import { WorkbenchDock } from '@/components/workbench/workbench-dock'
 import { ThreadListPrimitive, useAuiState } from '@assistant-ui/react'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { WorkspaceCommands } from '@/components/workspace/workspace-commands'
@@ -362,6 +366,20 @@ function SheetSplit({
  */
 function DesktopShell(route: DockRoute) {
   const mode = useShellMode()
+  const {
+    placement,
+    requestedPlacement,
+    toggle: toggleWorkbench,
+  } = useWorkbenchPlacement()
+  useWorkbenchShortcut(toggleWorkbench)
+  const full = requestedPlacement === 'full'
+  // Mounted on its first showing, then kept, hidden while closed, so its runs
+  // and terminals carry on (components/workbench/workbench-dock.tsx).
+  const [workbenchMounted, setWorkbenchMounted] = useState(
+    requestedPlacement !== undefined,
+  )
+  if (requestedPlacement !== undefined && !workbenchMounted)
+    setWorkbenchMounted(true)
   const { documentId } = useParams({ strict: false })
   const view = `${mode}:${route.threadId}:${documentId}`
   const [drawerView, setDrawerView] = useState<string | null>(null)
@@ -384,48 +402,68 @@ function DesktopShell(route: DockRoute) {
         <Rail collapsible />
       </div>
       {/* A docked cabinet reserves its width here (side-terminal sets
-          --cabinet-dock); an overlay or the terminal reserves none. */}
+          --cabinet-dock); an overlay reserves none. The workbench docks
+          beside or under the sheet in the same row or column, so moving it
+          never remounts it. */}
       <div
-        className="relative my-(--sheet-inset) me-[calc(var(--sheet-inset)+var(--cabinet-dock,0px))] min-w-0 flex-1 transition-[margin] duration-(--duration-glide) ease-glide data-[covered]:opacity-40"
-        data-appearance-part="sheet-frame"
-        data-covered={covered || undefined}
-        inert={covered}
+        className={cn(
+          'flex min-h-0 min-w-0 flex-1 me-(--cabinet-dock,0px) transition-[margin] duration-(--duration-glide) ease-glide',
+          placement === 'bottom' ? 'flex-col' : 'flex-row',
+        )}
       >
-        <div aria-hidden="true" className="lift-glow" />
-        <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
-          {/* Dockview layers its panels with z-index; isolate keeps them under the Vault. */}
-          <div inert={vault} className="isolate flex h-full flex-col">
-            <div className="min-h-0 flex-1">
-              {/* The field runs under the panel as well as the conversation,
-                  while the conversation is the sheet's view. */}
-              <LifeSheet active={mode === 'chat'}>
-                <SheetSplit
-                  {...route}
-                  onOpenSidebar={() => setDrawerOpen(true)}
-                />
-              </LifeSheet>
-            </div>
-            {ide && <IdeStatusBar />}
-          </div>
-          {vaultLoaded && (
-            <div
-              inert={!vault}
-              className={cn(
-                'absolute inset-0 isolate flex flex-col bg-sheet',
-                !vault && HIDDEN_LAYER,
-              )}
-            >
-              <div className="appearance-vault-header shrink-0">
-                <ChatHeader onOpenSidebar={() => setDrawerOpen(true)} />
-              </div>
-              <div className="min-h-0 flex-1">
-                <Suspense>
-                  <VaultWorkspace active={vault} />
-                </Suspense>
-              </div>
-            </div>
+        <div
+          className={cn(
+            'relative my-(--sheet-inset) me-(--sheet-inset) min-h-0 min-w-0 flex-1 data-[covered]:opacity-40',
+            placement === 'side' && 'me-0',
+            placement === 'bottom' && 'mb-0',
           )}
+          data-appearance-part="sheet-frame"
+          data-covered={covered || undefined}
+          hidden={full}
+          inert={covered}
+        >
+          <div aria-hidden="true" className="lift-glow" />
+          <div className="sheet relative h-full overflow-hidden rounded-xl bg-sheet shadow-sheet">
+            {/* Dockview layers its panels with z-index; isolate keeps them under the Vault. */}
+            <div inert={vault} className="isolate flex h-full flex-col">
+              <div className="min-h-0 flex-1">
+                {/* The field runs under the panel as well as the conversation,
+                  while the conversation is the sheet's view. */}
+                <LifeSheet active={mode === 'chat' && !full}>
+                  <SheetSplit
+                    {...route}
+                    onOpenSidebar={() => setDrawerOpen(true)}
+                  />
+                </LifeSheet>
+              </div>
+              {ide && <IdeStatusBar />}
+            </div>
+            {vaultLoaded && (
+              <div
+                inert={!vault}
+                className={cn(
+                  'absolute inset-0 isolate flex flex-col bg-sheet',
+                  !vault && HIDDEN_LAYER,
+                )}
+              >
+                <div className="appearance-vault-header shrink-0">
+                  <ChatHeader onOpenSidebar={() => setDrawerOpen(true)} />
+                </div>
+                <div className="min-h-0 flex-1">
+                  <Suspense>
+                    <VaultWorkspace active={vault} />
+                  </Suspense>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+        {workbenchMounted && (
+          <WorkbenchDock
+            placement={requestedPlacement}
+            projectId={route.projectId}
+          />
+        )}
       </div>
       <NavigationDrawer open={drawerOpen} onOpenChange={setDrawerOpen} />
     </div>
@@ -444,7 +482,6 @@ export function ChatShell({
       <DesktopShell projectId={projectId} threadId={threadId} />
       <AgentComposer projectId={projectId} />
       <WorkspaceCommands />
-      <TerminalDrawer />
       <SideTerminal />
     </div>
   )

@@ -10,19 +10,35 @@ export const listEngines = () =>
     action: 'availability',
   })
 
+/** The graph_compute operation that answers "what does this change reach". */
+export const AFFECTED_NEIGHBORHOOD = 'affected_neighborhood'
+
+export type NeighborhoodDirection = 'forward' | 'reverse' | 'both'
+
 export type NeighborhoodRequest = {
   seeds?: Array<string>
   change_ref?: string
   hops: number
   attach_to: string
-  direction: Theorem.GraphAffectedNeighborhood.Direction
+  direction: NeighborhoodDirection
   edge_types?: Array<string>
+}
+
+/** The answer of graph_compute's affected_neighborhood, as its tool schema states it. */
+export type AffectedNeighborhood = {
+  engine: string
+  seeds: Array<string>
+  affected: Array<{ node_id: string; hop: number }>
+  affected_count: number
+  truncated: boolean
+  result_ref: string
+  attached_to: string
 }
 
 /** Theorem stores the result and links it from attach_to; the answer names both. */
 export const affectedNeighborhood = (request: NeighborhoodRequest) =>
-  callTool<Theorem.GraphAffectedNeighborhood>('graph_compute', {
-    action: 'affected_neighborhood',
+  callTool<AffectedNeighborhood>('graph_compute', {
+    action: AFFECTED_NEIGHBORHOOD,
     ...request,
   })
 

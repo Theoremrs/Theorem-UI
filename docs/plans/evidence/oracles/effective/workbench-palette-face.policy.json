@@ -1,0 +1,1176 @@
+{
+  "name": "workbench-palette:face",
+  "version": "1.0",
+  "description": "AC-28 (coordinated palette) and the theme half of AC-27 for the Theo workbench, evaluated per surface per palette profile from rendered observations of the live story. Each check names the surfaces that draw its role; a surface that does not draw a role is not scored on it.",
+  "profiles": {
+    "mapping": "Neutral = github-sharp, Paper = stone, Forest = vitesse (the app's PALETTES); every palette in light and dark. Slate has no profile of its own: the terminal's slate is github-sharp's cool tint."
+  },
+  "fixed_roles": {
+    "success": "Terminal ANSI green and the added marker are GitHub Dark's token colour (terminal-roles.ts, githubDarkTheme), kept so test output reads as a terminal does.",
+    "link": "GitHub Dark's link blue, kept as the mention colour in every profile.",
+    "warning": "pi slate's gold (terminal-theme.ts SLATE.gold), held at its slate hue and shifted only as far as readability on the profile's surfaces requires (status()).",
+    "error": "pi slate's error red (SLATE.error), same rule as warning.",
+    "accent": "pi slate's sage (SLATE.sage), the focus and active-tab colour, same rule as warning.",
+    "syntax": "The syntax roles are githubDarkTheme.tokens constants (terminal-roles.ts); the diff hues are GitHub Dark's red and green hues placed at a lightness that follows the profile's background."
+  },
+  "classes": {
+    "standard": "a published threshold the interface must meet",
+    "contract": "a statement about the build that must hold",
+    "target": "a goal; a miss is review, not a failure",
+    "diagnostic": "reported with its number, never a verdict"
+  },
+  "checks": [
+    {
+      "id": "WB-FACE-01.eyes-on-plate.github-sharp-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-github-sharp-light",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.github-sharp-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-github-sharp-dark",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.stone-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-stone-light",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.stone-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-stone-dark",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.vitesse-light",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-vitesse-light",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-01.eyes-on-plate.vitesse-dark",
+      "class": "standard",
+      "predicate": "contrast",
+      "required_evidence": "rendered_web",
+      "observation": "eyes-vitesse-dark",
+      "surfaces": [
+        "face"
+      ],
+      "minimum": 3,
+      "note": "AC-27 theme half: the face's eyes against its plate, WCAG 1.4.11 3:1, read from the face's own pixels"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.0",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-0",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.0",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-0",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.1",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-1",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.1",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-1",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.2",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-2",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.2",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-2",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.3",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-3",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.3",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-3",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.4",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-4",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.4",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-4",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.5",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-5",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.5",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-5",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.6",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-6",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.6",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-6",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.7",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-7",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.7",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-7",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.8",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-8",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.8",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-8",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.9",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-9",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.9",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-9",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.10",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-10",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.10",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-10",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.11",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-11",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.11",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-11",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.12",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-12",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.12",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-12",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.13",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-13",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.13",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-13",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.14",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-14",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.14",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-14",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.15",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-15",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.15",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-15",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.16",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-16",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.16",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-16",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.17",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-17",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.17",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-17",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.18",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-18",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.18",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-18",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.19",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-19",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.19",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-19",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.20",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-20",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.20",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-20",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.21",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-21",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.21",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-21",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.22",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-22",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.22",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-22",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.23",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-23",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.23",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-23",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.24",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-24",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.24",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-24",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.25",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-25",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.25",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-25",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.26",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-26",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.26",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-26",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.27",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-27",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.27",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-27",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.28",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-28",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.28",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-28",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    },
+    {
+      "id": "WB-FACE-02.status-row-geometry.29",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-geometry-29",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "row.height",
+        "perch.width",
+        "perch.height",
+        "perch.x",
+        "perch.y"
+      ],
+      "numeric_tolerance": 0.5,
+      "note": "AC-27: switching profile while Theo is working leaves the status row and the face's perch where they were"
+    },
+    {
+      "id": "WB-FACE-03.expression-kept.29",
+      "class": "contract",
+      "predicate": "state_invariant",
+      "required_evidence": "interaction",
+      "observation": "switch-state-29",
+      "surfaces": [
+        "face"
+      ],
+      "preserve": [
+        "liveness",
+        "asleep",
+        "working",
+        "form"
+      ],
+      "note": "AC-27: switching profile while Theo is working keeps him working"
+    }
+  ]
+}

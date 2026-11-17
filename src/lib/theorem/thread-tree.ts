@@ -8,20 +8,13 @@
 import { useAui } from '@assistant-ui/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { create } from 'zustand'
-import { describeError, mutate, mutateThread, theorem } from './client'
+import { describeError, mutate, theorem } from './client'
 import { organizationKey } from './organization'
+import { loadThreadTree, selectBranch, threadOriginFor } from './thread-origin'
+import type { ThreadFrom, ThreadTree } from './thread-origin'
 import type { Theorem } from './client'
 
-export type ThreadTree = {
-  rootBranchId: string
-  /** Every branch but the root, oldest first. */
-  forks: Theorem.Branch[]
-  selectedBranchId: string
-  /** A run in progress on the authority, which may belong to another tab or device. */
-  activeRunId: string | null
-  lastRunOutcome: Theorem.RunEnding | undefined
-  lastReplyAtMs: number | undefined
-}
+export type { ThreadTree } from './thread-origin'
 
 export const threadTreeKey = (threadId: string) =>
   ['theorem', 'thread-tree', threadId] as const
@@ -30,25 +23,7 @@ export function useThreadTree(threadId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: threadTreeKey(threadId ?? ''),
     enabled: enabled && threadId !== undefined,
-    queryFn: async (): Promise<ThreadTree | null> => {
-      const { thread, branches, messages } = await theorem().chat.threads.get({
-        threadId: threadId!,
-      })
-      const root = branches.find((branch) => !branch.parentBranchId)
-      if (!root) return null
-      return {
-        rootBranchId: root.branchId,
-        forks: branches
-          .filter((branch) => branch !== root)
-          .sort((a, b) => a.createdAtMs - b.createdAtMs),
-        selectedBranchId: thread.selectedBranchId,
-        activeRunId: thread.activeRunId,
-        lastRunOutcome: thread.lastRun?.outcome,
-        lastReplyAtMs: messages.findLast(
-          (message) => message.role === 'assistant',
-        )?.createdAtMs,
-      }
-    },
+    queryFn: () => loadThreadTree(threadId!),
     staleTime: 5 * 60_000,
     // A run this tab is not streaming ends without telling it; poll until it does.
     refetchInterval: (query) => (query.state.data?.activeRunId ? 5_000 : false),
@@ -94,14 +69,7 @@ export function useSelectBranch() {
     }: {
       threadId: string
       branchId: string
-    }) =>
-      mutateThread(threadId, (headers) =>
-        theorem().chat.threads.update({
-          threadId,
-          selectedBranchId: branchId,
-          ...headers,
-        }),
-      ),
+    }) => selectBranch(threadId, branchId),
     onMutate: ({ threadId, branchId }) => {
       const key = threadTreeKey(threadId)
       const previous = queryClient.getQueryData<ThreadTree | null>(key)
@@ -126,52 +94,6 @@ export const threadOrigin = (
   custom: Readonly<Record<string, unknown>> | undefined,
 ) => custom?.origin as Theorem.ThreadOrigin | undefined
 
-/** A message as the chat shows it. One sent this session has a local id, and the run that wrote it. */
-export type ForkPoint = { messageId: string; runId?: string }
-
-export type ThreadFrom =
-  | { kind: 'forked'; threadId: string; at?: ForkPoint }
-  | { kind: 'continued'; threadId: string }
-
-/**
- * The durable message a fork copies through: the one named, on whichever of
- * the thread's branches holds it, or the selected branch's last message.
- */
-async function forkOrigin(
-  { thread, messages, branches }: Theorem.ThreadSnapshot,
-  at: ForkPoint | undefined,
-): Promise<Theorem.ThreadOrigin.Forked> {
-  const origin = (branchId: string, messageId: string) =>
-    ({
-      kind: 'forked',
-      threadId: thread.threadId,
-      branchId,
-      messageId,
-    }) as const
-  if (!at) {
-    const last = messages.at(-1)
-    if (!last) throw new Error('This thread has no messages to fork.')
-    return origin(thread.selectedBranchId, last.messageId)
-  }
-  const matches = (message: Theorem.Message) =>
-    message.messageId === at.messageId ||
-    (at.runId !== undefined &&
-      message.role === 'assistant' &&
-      message.runId === at.runId)
-  const found = messages.findLast(matches)
-  if (found) return origin(thread.selectedBranchId, found.messageId)
-  for (const { branchId } of branches) {
-    if (branchId === thread.selectedBranchId) continue
-    const branch = await theorem().chat.threads.get({
-      threadId: thread.threadId,
-      branchId,
-    })
-    const message = branch.messages.findLast(matches)
-    if (message) return origin(branchId, message.messageId)
-  }
-  throw new Error('That message is not stored yet.')
-}
-
 /** The last fork or continuation that failed, for the thread list to show. */
 export const useThreadFromFailure = create<{
   failure: string | undefined
@@ -191,21 +113,11 @@ export function useStartThreadFrom() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (from: ThreadFrom) => {
-      const client = theorem()
-      const source = await client.chat.threads.get({ threadId: from.threadId })
-      const origin: Theorem.ThreadOrigin =
-        from.kind === 'forked'
-          ? await forkOrigin(source, from.at)
-          : { kind: 'continued', threadId: from.threadId }
+      const { projectId, origin, title } = await threadOriginFor(from)
       const created = await mutate((headers) =>
-        client.chat.threads.create({
-          projectId: source.thread.projectId,
-          // A fork carries its source's history, so it keeps its name; a
-          // continuation is named by its own first turn.
-          title:
-            from.kind === 'forked'
-              ? source.thread.title || undefined
-              : undefined,
+        theorem().chat.threads.create({
+          projectId,
+          title,
           origin,
           ...headers,
         }),

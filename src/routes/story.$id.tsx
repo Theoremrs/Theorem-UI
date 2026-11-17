@@ -141,10 +141,17 @@ function StoryReady() {
     if (fetching > 0) return
     let live = true
     let timer: ReturnType<typeof setTimeout> | undefined
-    // A quiet moment, since a query can start the commit after another ends.
-    void document.fonts.ready.then(() => {
-      if (live) timer = setTimeout(() => setSettled(true), 400)
-    })
+    // A quiet moment, since a query can start the commit after another ends; and nothing on the
+    // page still saying it has yet to draw (a story marks that with `data-story-pending`).
+    const settle = () => {
+      if (!live) return
+      timer = document.querySelector('[data-story-pending]')
+        ? setTimeout(settle, 50)
+        : setTimeout(() => {
+            if (live) setSettled(true)
+          }, 400)
+    }
+    void document.fonts.ready.then(settle)
     return () => {
       live = false
       clearTimeout(timer)

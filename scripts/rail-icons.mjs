@@ -105,6 +105,12 @@ export const CONTROLS = [
     name: 'imageFileEdit',
     source: 'control/source/streamline-image-file-edit.png',
   },
+  // Folder marks: a closed and an open folder, and the folders that say what they hold.
+  { name: 'folderEmpty', source: 'control/source/streamline-folder-empty.png' },
+  { name: 'folderFile', source: 'control/source/streamline-folder-file-1.png' },
+  { name: 'folderHome', source: 'control/source/streamline-folder-home-1.png' },
+  { name: 'folderCheck', source: 'control/source/streamline-folder-check.png' },
+  { name: 'folderEdit', source: 'control/source/streamline-folder-edit.png' },
   // Owner's 2026-11-15 set, replacing the Noun marks: grey at rest, coloured
   // when their control is chosen (styles.css).
   { name: 'settings', source: 'control/source/streamline-cog.png' },

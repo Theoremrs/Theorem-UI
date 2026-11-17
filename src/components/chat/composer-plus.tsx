@@ -1,4 +1,4 @@
-// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the turn's model reads which skill was asked for and loads it with skill_get, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the right-hand terminal through the shell store; MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
+// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the turn's model reads which skill was asked for and loads it with skill_get, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
 import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
 import { Toggle } from '@base-ui/react/toggle'
 import { useRef, useState } from 'react'
@@ -6,6 +6,7 @@ import type { ReactNode } from 'react'
 import {
   ComposerConnections,
   connectionsServed,
+  useProjectConnections,
 } from '@/components/chat/composer-connections'
 import { insertInComposer } from '@/components/chat/composer-editor'
 import {
@@ -78,14 +79,20 @@ export function ComposerPlus() {
   const roster = tools.data ?? []
   const stored = useToolSelections((state) => state.byThread[threadKey])
   const saveSelection = useToolSelections((state) => state.set)
-  const selection = reconcile(roster, stored)
-  const on = connectionsOn(roster, selection)
+  // The conversation starts on its project's connections, as the roster does.
+  const { base, baseKnown } = useProjectConnections()
+  const selection = reconcile(roster, stored, base, baseKnown)
+  const on = connectionsOn(roster, selection ?? base)
   const { skills } = useCatalogEntries()
 
   const setCode = (checked: boolean) => {
     setCodeMode(threadKey, checked)
-    // A coding task works beside the terminal; turning the mode off leaves it open.
-    if (checked) useShell.getState().setSideDrawer('terminal')
+    // A coding task works beside the workbench, docked where it was last kept
+    // (beside or under the conversation, so the composer stays in view); one
+    // already open stays put, and turning the mode off leaves it open.
+    const shell = useShell.getState()
+    if (checked && (shell.workbench === undefined || shell.workbench === 'closed'))
+      shell.setWorkbench(shell.lastCompanion)
   }
 
   // Base UI decides where focus returns as the popup unmounts, after this
@@ -156,10 +163,12 @@ export function ComposerPlus() {
                         onCheckedChange={(checked) =>
                           saveSelection(
                             threadKey,
-                            changeSelection(roster, selection, {
-                              connection: group.connectionId,
-                              on: checked,
-                            }),
+                            changeSelection(
+                              roster,
+                              selection,
+                              { connection: group.connectionId, on: checked },
+                              base,
+                            ),
                           )
                         }
                       >
@@ -295,6 +304,8 @@ export function ComposerPlus() {
           key={threadKey}
           tools={tools}
           threadKey={threadKey}
+          base={base}
+          baseKnown={baseKnown}
           open={connections}
           onOpenChange={setConnections}
           anchor={anchor}

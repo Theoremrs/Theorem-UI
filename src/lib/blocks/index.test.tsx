@@ -64,10 +64,12 @@ test('a new tool or app declares nothing, and declares it without errors', () =>
   expect(app.extension).toBe('html')
   expect(parseCodeDeclarations(tool.initial())).toEqual({
     capabilities: { read: [], write: [], state: [], net: [], run: [], db: [] },
+    dbHistoryDays: {},
     errors: [],
   })
   expect(appDeclarations(app.initial())).toEqual({
     capabilities: { read: [], write: [], state: [], net: [], run: [], db: [] },
+    dbHistoryDays: {},
     errors: [],
   })
 })

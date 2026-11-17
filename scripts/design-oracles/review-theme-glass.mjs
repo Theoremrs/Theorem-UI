@@ -33,7 +33,7 @@ try {
       .loadSelection({ preset: 'expressive', overrides: { palette: 'stone' } })
   })
   // Clearly named controls keep accessible names without hover popups.
-  for (const name of [/Switch to (light|dark) mode/, 'Agent terminal']) {
+  for (const name of [/Switch to (light|dark) mode/, 'Workspace']) {
     const control = page
       .getByRole('button', { name })
       .filter({ visible: true })

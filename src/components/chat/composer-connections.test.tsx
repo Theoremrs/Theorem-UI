@@ -1,4 +1,4 @@
-// SOURCING: bun:test and the block render helpers over an assistant-ui external-store runtime (the thread item whose id keys the choice), the composer's + menu that opens the roster, TanStack Router (the popover's link to Settings), and stories/fake-theorem answering GET /api/connections/v1/tools in process
+// SOURCING: bun:test and the block render helpers over an assistant-ui external-store runtime (the thread item whose id keys the choice), the composer's + menu that opens the roster, TanStack Router (the popover's link to Settings), and stories/fake-theorem answering GET /api/connections/v1/tools, the project list and the project's context (Theorem docs/plans/project-context/CONTRACT.md) in process
 import { act } from 'react'
 import {
   afterAll,
@@ -82,8 +82,39 @@ function Host() {
   )
 }
 
+const PROJECT = {
+  schema: 'theorem.chat.project.v1',
+  projectId: 'project-a',
+  tenantId: 'test',
+  title: 'Project A',
+  instructions: '',
+  status: 'regular',
+  revision: 1,
+  createdAtMs: 1,
+  updatedAtMs: 1,
+}
+
+/** The project a new conversation is created in, with no context route: a Theorem from before project context. */
+const projectRoutes: FakeRoutes = {
+  'GET /api/chat/v1/projects': () => ({ items: [PROJECT] }),
+  'GET /api/chat/v1/projects/:projectId/threads': () => ({ items: [] }),
+}
+
+const projectContext = (connections: string[] | null): FakeRoutes => ({
+  'GET /api/chat/v1/projects/:projectId/context': ({ projectId }) => ({
+    schema: 'theorem-chat-project-context/1',
+    projectId,
+    revision: 1,
+    documents: [],
+    repositories: [],
+    links: [],
+    connections,
+    updatedAtMs: 1,
+  }),
+})
+
 async function mount(routes: FakeRoutes, settle = true) {
-  restore = installFakeTheorem(routes)
+  restore = installFakeTheorem({ ...projectRoutes, ...routes })
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   const root = createRootRoute({
     component: () => (
@@ -364,4 +395,120 @@ test('with no skills served, Skills still offers Plan and the way to browse them
     anchor.textContent.includes('Browse skills'),
   )
   expect(link?.getAttribute('href')).toBe('/settings/plugins')
+})
+
+test("a new conversation starts from its project's connections and sends nothing", async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(['github']),
+  })
+  // It follows the project, so there is no choice of its own to show.
+  expect(chip(container)).toBeNull()
+  await openMenu(container)
+  expect(menuSwitch('GitHub')!.getAttribute('aria-checked')).toBe('true')
+  expect(menuSwitch('Docs server')!.getAttribute('aria-checked')).toBe('false')
+  await click(
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
+      /Choose tools/.test(item.textContent),
+    )!,
+  )
+  await waitFor(() => named('GitHub available in this conversation'))
+  expect(
+    named('GitHub available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
+  expect(
+    named('Docs server available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('false')
+  expect(document.body.textContent).toContain("This project's connections.")
+  // Theorem applies the project's choice to a turn that carries none.
+  expect(chosen()).toEqual([])
+})
+
+test("turning on more than the project names is sent, and Use the project's connections drops it", async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(['github']),
+  })
+  expect(chip(container)).toBeNull()
+  await open(container)
+  await click(named('Docs server available in this conversation')!)
+  // Every enabled connection, which is the default only without a project choice.
+  expect(chosen()).toEqual([{ connections: ['github', 'mcp:abc'] }])
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 2 on')
+  expect(document.body.textContent).toContain(
+    'This conversation has its own choice.',
+  )
+
+  const reset = [...document.querySelectorAll('button')].find(
+    (button) => button.textContent.trim() === "Use the project's connections",
+  )!
+  await click(reset)
+  expect(chosen()).toEqual([])
+  expect(chip(container)).toBeNull()
+})
+
+test("a choice made before the project's connections arrive is kept when they do", async () => {
+  let arrive: () => void = () => {}
+  const held = new Promise<void>((resolve) => {
+    arrive = resolve
+  })
+  const answer = projectContext(['github'])[
+    'GET /api/chat/v1/projects/:projectId/context'
+  ]!
+  const { container } = await mount(
+    {
+      'GET /api/connections/v1/tools': () => ({ groups: roster }),
+      'GET /api/chat/v1/projects/:projectId/context': async (params, request) => {
+        await held
+        return answer(params, request)
+      },
+    },
+    false,
+  )
+  // The roster arrives while the project's context is held back.
+  await openMenu(container)
+  await click(
+    await waitFor(() =>
+      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+        (item) => /Choose tools/.test(item.textContent),
+      ),
+    ),
+  )
+  await waitFor(() => named('GitHub available in this conversation'))
+  // The thread key is only known once something is kept under it.
+  await click(named('GitHub available in this conversation')!)
+  const [key] = Object.keys(useToolSelections.getState().byThread)
+  // Every enabled connection: the default only if the project names none, which is not known yet.
+  const everything = { connections: ['github', 'mcp:abc'] }
+  await act(async () => {
+    useToolSelections.getState().set(key!, everything)
+  })
+  await act(() => new Promise((resolve) => setTimeout(resolve)))
+  expect(chosen()).toEqual([everything])
+
+  await act(async () => arrive())
+  await waitFor(() => !client.isFetching())
+  await act(() => new Promise((resolve) => setTimeout(resolve)))
+  // The project names fewer, so this is the person's own choice and still sent.
+  expect(chosen()).toEqual([everything])
+  expect(chip(container)?.getAttribute('aria-label')).toBe('Connections, 2 on')
+})
+
+test('a project that names none leaves every enabled connection on', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(null),
+  })
+  expect(chip(container)).toBeNull()
+  await open(container)
+  expect(
+    named('Docs server available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
+  expect(document.body.textContent).not.toContain("This project's connections.")
 })

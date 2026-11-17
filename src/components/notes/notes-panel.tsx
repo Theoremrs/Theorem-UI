@@ -80,6 +80,7 @@ import {
 import type { DropStep } from './note-drop'
 import { useNote, useNoteStatus } from '@/lib/theorem/notes'
 import { cn } from '@/lib/utils'
+import { useNotesWorkspace } from './notes-workspace-state'
 
 const row =
   'group relative flex h-7 w-full items-center gap-2 rounded-md px-2 text-start text-sm transition-colors duration-100 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus data-active:bg-pill data-active:shadow-pill'
@@ -104,6 +105,7 @@ export function NotesPanel() {
   // The folder right-clicked, the one a new folder is being named inside,
   // and the one being renamed.
   const [folderTarget, setFolderTarget] = useState<string | null>(null)
+  const [noteTarget, setNoteTarget] = useState<string | null>(null)
   const [namingIn, setNamingIn] = useState<string | null>(null)
   const [renamingFolder, setRenamingFolder] = useState<string | null>(null)
   const removeFolder = useDeleteFolder()
@@ -186,12 +188,13 @@ export function NotesPanel() {
             render={<nav aria-label="Notes" className={navClass} />}
             // The section and folder the click was in name themselves as the event goes by.
             onContextMenuCapture={(event) => {
-              const at = (key: 'sectionId' | 'folderId', selector: string) =>
+              const at = (key: 'sectionId' | 'folderId' | 'noteId', selector: string) =>
                 (event.target instanceof Element &&
                   event.target.closest<HTMLElement>(selector)?.dataset[key]) ||
                 null
               setTarget(at('sectionId', '[data-section-id]'))
               setFolderTarget(at('folderId', '[data-folder-id]'))
+              setNoteTarget(at('noteId', '[data-note-id]'))
             }}
           >
             <NoteSections
@@ -210,6 +213,7 @@ export function NotesPanel() {
           <SectionsMenu
             target={target}
             folder={folderTarget}
+            note={noteTarget}
             onNewNote={newNote}
             onNewFolder={newFolder}
             onNewFolderIn={setNamingIn}
@@ -848,6 +852,7 @@ function NoteSectionBlock({
 function SectionsMenu({
   target,
   folder,
+  note,
   onNewNote,
   onNewFolder,
   onNewFolderIn,
@@ -858,6 +863,8 @@ function SectionsMenu({
   target: SectionId | null
   /** The folder right-clicked, if the click was on one. */
   folder: string | null
+  /** The note right-clicked, if the click was on one. */
+  note: string | null
   onNewNote: (into: SectionId | null) => void
   onNewFolder: (into: SectionId | null) => void
   onNewFolderIn: (folder: string) => void
@@ -866,6 +873,7 @@ function SectionsMenu({
   onDeleteFolder: (folder: string) => void
 }) {
   const { layout, edit } = useNotesLayout()
+  const navigate = useNavigate()
   const count = layout.sections.length
   return (
     <ContextMenu.Portal>
@@ -875,6 +883,24 @@ function SectionsMenu({
           finalFocus={false}
           className={`min-w-44 ${menuPopup}`}
         >
+          {note && (
+            <>
+              <ContextMenu.Item
+                className={menuItem}
+                onClick={() => {
+                  if (!useNotesWorkspace.getState().openBeside(note))
+                    void navigate({
+                      to: '/notes/$documentId',
+                      params: { documentId: note },
+                    })
+                }}
+              >
+                <Icon.Panels className="size-4" />
+                Open to the side
+              </ContextMenu.Item>
+              <ContextMenu.Separator className="my-1 h-px bg-separator" />
+            </>
+          )}
           {folder && (
             <>
               <ContextMenu.Item
@@ -1144,19 +1170,25 @@ function NoteRow({
   const { documentId } = useParams({ strict: false })
   const active = documentId === entry.opens
   return (
-    <li ref={drag?.ref} style={drag?.style}>
+    <li ref={drag?.ref} style={drag?.style} data-note-id={entry.opens}>
       <button
         type="button"
         {...drag?.props}
         className={cn(row, 'gap-1 ps-1')}
         data-active={active || undefined}
         aria-current={active ? 'page' : undefined}
-        onClick={() =>
+        onClick={(event) => {
+          // Ctrl or Cmd opens it in a new pane beside the focused one.
+          if (
+            (event.metaKey || event.ctrlKey) &&
+            useNotesWorkspace.getState().openBeside(entry.opens)
+          )
+            return
           void navigate({
             to: '/notes/$documentId',
             params: { documentId: entry.opens },
           })
-        }
+        }}
       >
         <FilesystemMarks
           folder={false}

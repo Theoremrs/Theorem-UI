@@ -105,7 +105,7 @@ afterEach(async () => {
   useWebSearch.setState({ on: false })
   usePlanning.setState({ byThread: {} })
   useCodeMode.setState({ byThread: {} })
-  useShell.setState({ sideDrawer: undefined })
+  useShell.setState({ sideDrawer: undefined, workbench: undefined, lastCompanion: 'side' })
   useGenerationOverrides.setState({ byThread: {} })
   useGenerationDefaults.setState({ defaults: {} })
   usePickedModels.setState({ selected: undefined, starred: [] })
@@ -509,7 +509,7 @@ test('Plan in the + menu makes the next turns planning turns, and stays on acros
   await waitFor(() => !chipOf(container, 'plan'))
 })
 
-test('Code mode in the + menu opens the terminal and sends the next turns as coding tasks', async () => {
+test('Code mode in the + menu opens the workbench in the page and sends the next turns as coding tasks', async () => {
   const sent: AppendMessage[] = []
   const { container } = await mount(<Harness text="Fix the flaky test" sent={sent} />)
   expect(chipOf(container, 'code')).toBeNull()
@@ -518,7 +518,9 @@ test('Code mode in the + menu opens the terminal and sends the next turns as cod
 
   await act(() => code.click())
   await waitFor(() => chipOf(container, 'code'))
-  expect(useShell.getState().sideDrawer).toBe('terminal')
+  // Docked beside the conversation, the companion last used, not a drawer.
+  expect(useShell.getState().workbench).toBe('side')
+  expect(useShell.getState().sideDrawer).toBeUndefined()
   const [thread] = Object.keys(useCodeMode.getState().byThread)
   expect(codingTurnOptions(thread!, undefined)).toEqual({ executionMode: 'coding' })
 
@@ -531,11 +533,11 @@ test('Code mode in the + menu opens the terminal and sends the next turns as cod
   expect(sentText(sent[0]!)).toBe('Fix the flaky test')
   expect(chipOf(container, 'code')).not.toBeNull()
 
-  // The chip turns it off and leaves the terminal where it is.
+  // The chip turns it off and leaves the workbench where it is.
   await act(() => chipOf(container, 'code')!.click())
   await waitFor(() => !chipOf(container, 'code'))
   expect(codingTurnOptions(thread!, undefined)).toEqual({})
-  expect(useShell.getState().sideDrawer).toBe('terminal')
+  expect(useShell.getState().workbench).toBe('side')
 })
 
 test('the + menu reads Web search, Connectors, Skills, Code mode, then Manage tools', async () => {

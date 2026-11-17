@@ -8,13 +8,14 @@ an agent edit the same running interface. The checklist is
 The owner's design (pasted with the request on 2026-11-10) is the requirement,
 together with these decisions:
 
-| Decision                                                                 | Owner's words                                                                |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| Standalone RustyRedDB is the shared engine; the browser binding wraps it | "use the standalone, embeddable RustyRed as the shared engine"               |
-| The browser binding is a new crate in RustyRedDB                         | `rustyred-web` in Theorem is the crawler; `apps/theoremweb` is being removed |
-| tsrs (`@tsrs/wasm`) is the type checker                                  | "the new TypeScript compiler, which was rewritten in Rust to WASM"           |
-| Work starts from `main` on `feat/artifact-db-compiler`                   | "yes"                                                                        |
-| Plan first, then build, then revise the plan as the build teaches us     | "I would prefer plan, build, and then revise as needed"                      |
+| Decision                                                                                   | Owner's words                                                                           |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Standalone RustyRedDB is the shared engine; the browser binding wraps it                   | "use the standalone, embeddable RustyRed as the shared engine"                          |
+| The browser binding is a new crate in RustyRedDB                                           | `rustyred-web` in Theorem is the crawler; `apps/theoremweb` is being removed            |
+| App databases move onto Theorem's canonical engine (2026-11-16); old App data starts fresh | "Move theorem.rs onto the canonical engine"; "It's disposable enough for a fresh start" |
+| tsrs (`@tsrs/wasm`) is the type checker                                                    | "the new TypeScript compiler, which was rewritten in Rust to WASM"                      |
+| Work starts from `main` on `feat/artifact-db-compiler`                                     | "yes"                                                                                   |
+| Plan first, then build, then revise the plan as the build teaches us                       | "I would prefer plan, build, and then revise as needed"                                 |
 
 ## What is true today (read 2026-11-10)
 
@@ -223,7 +224,18 @@ Open, in the order they matter:
 1. **A builder run.** Theorem PR #1002 tells the builder about `db`, the
    TypeScript form, the repair selection and `selection.source`. Nothing here
    has been exercised by a model yet: that needs the deployed stack.
-2. **Compaction of the browser store**, a storage-core change in RustyRedDB.
+2. **Bounded history in the browser store: built 2026-11-16.** App
+   databases run on Theorem's canonical engine (`@rustyreddb/browser` 0.2.0,
+   built from `rustyred-thg-browser`). Each keeps 90 days of past versions
+   (`APP_HISTORY_DAYS` in `src/lib/blocks/app-db.ts`) unless its declaration
+   chooses a window: `db("crm", { historyDays: 365 })`, any number of days,
+   zero or more. Two different windows for one name are a declaration
+   error. The current records are always kept. Each opening of the App
+   compacts each database once, with the window its current source declares,
+   when its oldest version is more than a day past the window; a saved
+   revision never compacts. A check's in-memory databases open under the
+   same rules as the App on screen (`appDatabaseRules`), so `ownership` is
+   an ordinary property in a check as it is live.
 3. **The phone measurement** of the checker.
 4. **Component plugins and style books.** Not started, and it needs decisions:
    where a library's source lives, how an App names the one it uses, and how

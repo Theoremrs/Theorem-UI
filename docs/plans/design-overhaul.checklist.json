@@ -315,7 +315,7 @@
       "claim": "Code blocks highlight with TanStack Highlight (not Shiki) in the palette's code themes, with a line-number column and a header with language and a labelled copy button, following the owner's CodeBlock component",
       "built": "done",
       "review": "awaiting owner review",
-      "note": "code-highlighter.tsx replaces shiki-highlighter.tsx for every caller (replies, tool output, artifacts, notebooks, programs, the file panel); react-shiki removed, shiki kept for Pierre diffs. Vitesse is a theme object from codemirror-theme-vitesse's colours (Highlight ships none). Tokens pass readableCodeColor on --popover. Tool output keeps wrapping and drops line numbers. Captures c-dark/code-light."
+      "note": "2026-11-17 owner ask. origin/main (41f71c67) merged into this branch. composer-plus.tsx: turning Code mode on opens the workbench at the companion last used (beside or under the conversation, so the composer stays in view) through useShell setWorkbench, unless it is already open; turning it off leaves it where it is. composer-tools.test.tsx checks workbench=side and no side drawer. Seen live in populated-shell: data-workbench-placement=side with its Threads panel, the Code mark beside +, the composer on screen. At 1440px the side panel steps aside into its overlay then, by the existing 35rem rule in chat-shell.tsx (on both sides of the merge)."
     },
     {
       "id": "GLASS-03",

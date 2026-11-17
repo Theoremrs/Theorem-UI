@@ -1,0 +1,1796 @@
+{
+ "generated": "2026-11-15",
+ "head": "c5108b43",
+ "note": "Read-only audit. All 62 cases are not_run in acceptance-cases.json. No e2e or story run has a recorded pass or fail on disk. evidence_on_disk means a deterministic in-repo test observes the requirement and the oracle does not name a live service, manual run or browser matrix. needs_live_stack means the oracle names a live host or browser matrix. Lower-class tests are cited as partial evidence. A caveats array may qualify an evidence_on_disk case. The working tree has uncommitted changes.",
+ "counts": {
+  "partial": 23,
+  "needs_live_stack": 26,
+  "evidence_on_disk": 9,
+  "needs_person": 2,
+  "blocked_on_backend": 1,
+  "missing": 1
+ },
+ "cases": [
+  {
+   "id": "AC-01",
+   "title": "Web-only build scope",
+   "requirements": [
+    "R01",
+    "R04",
+    "R44"
+   ],
+   "oracle_class": "source/build",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "source",
+     "path": "src/components/workbench/workbench-switch.ts",
+     "name_or_line": "readWorkbenchSwitch",
+     "observes": "Workbench mounts only with ?workbench=1 or localStorage theorem-ui:workbench=1."
+    },
+    {
+     "kind": "source",
+     "path": "src/routes/theia/$.ts",
+     "name_or_line": "route",
+     "observes": "Theia route still exists."
+    }
+   ],
+   "gaps": [
+    "The web Theo route is not replaced. The workbench is opt-in.",
+    "ide/ and the vite /theia proxy remain.",
+    "No build-graph or changed-file report is on disk.",
+    "No native-code check output is recorded, although the source shows no native executable."
+   ],
+   "next": "Record a build-graph and changed-file report. Make the workbench the default route (AC-55)."
+  },
+  {
+   "id": "AC-02",
+   "title": "Owner and donor audit",
+   "requirements": [
+    "R02",
+    "R03",
+    "R24",
+    "R48"
+   ],
+   "oracle_class": "source/contracts",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/theo-workbench/LEDGER.md",
+     "name_or_line": "lanes L01-L13",
+     "observes": "Names donor lanes and licences."
+    },
+    {
+     "kind": "source",
+     "path": "terminal/crates/workbench-layout/LICENSE-HERDR",
+     "name_or_line": "file",
+     "observes": "Licence file present for the Herdr layout lane."
+    }
+   ],
+   "gaps": [
+    "LEDGER rows for L06, L07 and the markdown mode references are pending. LEDGER says an incomplete row blocks verify.",
+    "No owner trace per concept is on disk.",
+    "No duplicate-runtime audit is on disk."
+   ],
+   "next": "Complete the pending reference artifacts. Write the owner trace and a duplicate-runtime scan."
+  },
+  {
+   "id": "AC-03",
+   "title": "Workbench route and orientation",
+   "requirements": [
+    "R04",
+    "R20",
+    "R46"
+   ],
+   "oracle_class": "mounted web",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "source",
+     "path": "src/components/workbench/workbench.tsx",
+     "name_or_line": "props",
+     "observes": "Mount takes projectId only."
+    },
+    {
+     "kind": "source",
+     "path": "src/components/chat-shell.tsx",
+     "name_or_line": "mount",
+     "observes": "Mounts Workbench only when mode is chat and the switch is on."
+    }
+   ],
+   "gaps": [
+    "The conversation link is not passed to the mount, only projectId.",
+    "No mounted-web check of orientation or route state is recorded."
+   ],
+   "next": "Pass the conversation identity. Check the mounted route in a live stack."
+  },
+  {
+   "id": "AC-04",
+   "title": "Resize without clipping",
+   "requirements": [
+    "R06",
+    "R39"
+   ],
+   "oracle_class": "rendered geometry",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-dock/tests/geometry.rs",
+     "name_or_line": "fractional_cell_metrics_keep_the_sum_exact",
+     "observes": "Exact tiling at fractional cell metrics."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-dock/tests/geometry.rs",
+     "name_or_line": "files_collapses_first_then_one_principal_panel",
+     "observes": "Collapse thresholds and one principal panel."
+    }
+   ],
+   "gaps": [
+    "Rust geometry only. No 1024x768, 390x844 or text-scale measurement in a browser.",
+    "No clipping check on rendered DOM."
+   ],
+   "next": "Add a browser geometry scenario at the three viewports and a text-scale step."
+  },
+  {
+   "id": "AC-05",
+   "title": "Dock moves preserve work",
+   "requirements": [
+    "R05",
+    "R36"
+   ],
+   "oracle_class": "interaction",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "dock move tests",
+     "observes": "Model-level move and restore keeps panel state."
+    }
+   ],
+   "gaps": [
+    "No browser drag or keyboard move recorded.",
+    "The story oracle records only screenshots."
+   ],
+   "next": "Add an interaction scenario that moves a panel and asserts state survives."
+  },
+  {
+   "id": "AC-06",
+   "title": "Empty tool picker is inert",
+   "requirements": [
+    "R07"
+   ],
+   "oracle_class": "effects + interaction",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/picker.rs",
+     "name_or_line": "26 picker tests",
+     "observes": "Picker emits zero effects in the model."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "picker zero effects",
+     "observes": "Empty picker is inert at the model."
+    }
+   ],
+   "gaps": [
+    "No mounted interaction check that an empty picker does nothing."
+   ],
+   "next": "Add a mounted scenario: open the picker, press keys, assert no network or host call."
+  },
+  {
+   "id": "AC-07",
+   "title": "Registry and shortcut coherence",
+   "requirements": [
+    "R05",
+    "R07",
+    "R48"
+   ],
+   "oracle_class": "contracts + mounted web",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "key_routing_precedence",
+     "observes": "Shortcut precedence in the model."
+    }
+   ],
+   "gaps": [
+    "No contract check that the registry and shortcut table agree.",
+    "No mounted-web check."
+   ],
+   "next": "Add a registry-to-shortcut coherence test and a mounted check."
+  },
+  {
+   "id": "AC-08",
+   "title": "File operations and partial search",
+   "requirements": [
+    "R08",
+    "R40"
+   ],
+   "oracle_class": "connected service",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-panels/tests/files.rs",
+     "name_or_line": "58 tests",
+     "observes": "Files panel against scripted owners."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-ide/tests/search.rs",
+     "name_or_line": "search tests",
+     "observes": "Search with cancel and partial results at the model."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/files/files.test.ts",
+     "name_or_line": "files owner",
+     "observes": "Owner behaviour against a double."
+    }
+   ],
+   "gaps": [
+    "No connected-service run.",
+    "No symlink-escape test.",
+    "Copy is refused when the host does not advertise workspace.files.copy (not advertised on main)."
+   ],
+   "next": "Run file operations and search against the real IDE host. Add a symlink-escape fixture."
+  },
+  {
+   "id": "AC-09",
+   "title": "Explicit page creation",
+   "requirements": [
+    "R07",
+    "R09",
+    "R36"
+   ],
+   "oracle_class": "connected service",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-editor/tests/editor.rs",
+     "name_or_line": "a_new_page_asks_for_a_name_and_creates_it_through_the_owner",
+     "observes": "Page creation asks for a name and goes through the owner."
+    }
+   ],
+   "gaps": [
+    "No cancel or orphan test.",
+    "No connected service."
+   ],
+   "next": "Add cancel and orphan tests. Run against the live host."
+  },
+  {
+   "id": "AC-10",
+   "title": "Local source input under latency",
+   "requirements": [
+    "R09",
+    "R14",
+    "R41"
+   ],
+   "oracle_class": "interaction + network fault",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-text/tests/scenarios.rs",
+     "name_or_line": "a_late_ack_does_not_replace_the_newer_draft",
+     "observes": "Local text survives a late acknowledgement."
+    }
+   ],
+   "gaps": [
+    "No latency injection in a browser.",
+    "No network fault run."
+   ],
+   "next": "Add a delayed-acknowledgement scenario in the mounted app."
+  },
+  {
+   "id": "AC-11",
+   "title": "Markdown four-mode continuity",
+   "requirements": [
+    "R10",
+    "R36"
+   ],
+   "oracle_class": "mounted web",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "the modes tests",
+     "observes": "Four modes keep content and position at the model."
+    },
+    {
+     "kind": "story_scenario",
+     "path": "src/stories/registry.tsx",
+     "name_or_line": "workbench-markdown-visual, workbench-markdown-source",
+     "observes": "Renders for two modes."
+    }
+   ],
+   "gaps": [
+    "No mounted four-mode continuity run with recorded result."
+   ],
+   "next": "Run the mode cycle in the mounted app and record caret, scroll and draft."
+  },
+  {
+   "id": "AC-12",
+   "title": "Concurrent visual block edit",
+   "requirements": [
+    "R11",
+    "R14"
+   ],
+   "oracle_class": "document concurrency",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "a_block_edit_is_never_lost_when_the_source_changed_under_it",
+     "observes": "Block edit survives a source change."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "a_change_elsewhere_is_merged_under_the_open_block_without_a_conflict",
+     "observes": "Remote change elsewhere is merged."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Tests run against scripted owners, not a live document service."
+   ]
+  },
+  {
+   "id": "AC-13",
+   "title": "Markdown lossless untouched spans",
+   "requirements": [
+    "R12"
+   ],
+   "oracle_class": "pure + integration",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "opening_a_block_edits_its_source_and_writes_back_only_that_block",
+     "observes": "Mixed fixture with front matter, comment, fence, raw HTML and footnote is byte-identical outside the block."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "The oracle class names pure plus integration. The integration half is the panel test, not a host run."
+   ]
+  },
+  {
+   "id": "AC-14",
+   "title": "Unicode coordinate conversion",
+   "requirements": [
+    "R13",
+    "R21"
+   ],
+   "oracle_class": "property + mounted input",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-text/tests/properties.rs",
+     "name_or_line": "proptest units, snapping, graphemes, lines",
+     "observes": "Property half: coordinate round trips and snapping."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "UNITS fixture",
+     "observes": "CRLF, CJK and ZWJ."
+    }
+   ],
+   "gaps": [
+    "No mounted typing of CJK or emoji in a browser."
+   ],
+   "next": "Add a mounted input scenario with CJK and emoji."
+  },
+  {
+   "id": "AC-15",
+   "title": "Late acknowledgement preserves newer draft",
+   "requirements": [
+    "R14",
+    "R47"
+   ],
+   "oracle_class": "document concurrency",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-text/tests/scenarios.rs",
+     "name_or_line": "a_late_ack_does_not_replace_the_newer_draft",
+     "observes": "Late ack keeps the newer draft."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-editor/tests/editor.rs",
+     "name_or_line": "a_save_of_revision_n_does_not_clear_the_dirt_of_edits_typed_after_it",
+     "observes": "Save of revision n keeps later dirt."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Scripted owners only."
+   ]
+  },
+  {
+   "id": "AC-16",
+   "title": "Checkpoint and reload",
+   "requirements": [
+    "R15",
+    "R36"
+   ],
+   "oracle_class": "storage integration",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/documents/local.test.ts",
+     "name_or_line": "quota, recovery, account refusal",
+     "observes": "Local store owner against doubles."
+    }
+   ],
+   "gaps": [
+    "The story host uses localStorage, not the real createLocalStore from @rustyreddb/browser.",
+    "No reload run against the real store."
+   ],
+   "next": "Reload test on the real store in a browser."
+  },
+  {
+   "id": "AC-17",
+   "title": "Storage failure is honest",
+   "requirements": [
+    "R15",
+    "R40"
+   ],
+   "oracle_class": "fault injection",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/layout/local-store.test.ts",
+     "name_or_line": "quota, denied, blocked, unavailable doubles",
+     "observes": "Store failure is reported."
+    }
+   ],
+   "gaps": [
+    "No named export action for the user's draft on failure.",
+    "Doubles only."
+   ],
+   "next": "Add an export action and test it. Fault-inject the real store."
+  },
+  {
+   "id": "AC-18",
+   "title": "One DB owner across views/tabs",
+   "requirements": [
+    "R16",
+    "R41"
+   ],
+   "oracle_class": "storage integration",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/layout/local-store.test.ts",
+     "name_or_line": "two-tab owner handover with Web Locks double",
+     "observes": "Single owner across tabs against a double."
+    }
+   ],
+   "gaps": [
+    "Web Locks double, not two real tabs.",
+    "No check that views share one owner in the mounted app."
+   ],
+   "next": "Run two real tabs against the real store."
+  },
+  {
+   "id": "AC-19",
+   "title": "Real Changes groups and history",
+   "requirements": [
+    "R17"
+   ],
+   "oracle_class": "connected SCM",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "groups and history tests",
+     "observes": "Groups and history against scripted owners."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/scm/scm.test.ts",
+     "name_or_line": "scm owner",
+     "observes": "Owner against a double."
+    }
+   ],
+   "gaps": [
+    "No isolated real repository.",
+    "No connected SCM run."
+   ],
+   "next": "Build a fixture repository and run Changes against the real host."
+  },
+  {
+   "id": "AC-20",
+   "title": "Unsaved editor versus Git index",
+   "requirements": [
+    "R18"
+   ],
+   "oracle_class": "document + SCM",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "draft-versus-index marks and receipts",
+     "observes": "Unsaved draft is marked apart from the index."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Scripted SCM owner."
+   ]
+  },
+  {
+   "id": "AC-21",
+   "title": "Concurrent Git operations and commit text",
+   "requirements": [
+    "R18",
+    "R47"
+   ],
+   "oracle_class": "SCM concurrency",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "text_typed_while_a_commit_runs_survives_its_acknowledgement",
+     "observes": "Commit text survives."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "an_uncertain_commit_is_never_retried_and_blocks_the_next_mutation",
+     "observes": "Uncertain commit is not retried."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "a_manual_refresh_reconciles_an_unknown_result",
+     "observes": "Refresh reconciles."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Scripted SCM owner. No concurrent run against a real repository."
+   ]
+  },
+  {
+   "id": "AC-22",
+   "title": "Revision-bound language results",
+   "requirements": [
+    "R19",
+    "R13"
+   ],
+   "oracle_class": "connected language provider",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-editor/tests/editor.rs",
+     "name_or_line": "hover, rename and diagnostics tests for older revisions",
+     "observes": "Results bound to a revision at the model."
+    }
+   ],
+   "gaps": [
+    "No connected language provider run.",
+    "language.diagnostics and language.rename are not advertised on origin/main."
+   ],
+   "next": "Run against a host that advertises them."
+  },
+  {
+   "id": "AC-23",
+   "title": "Unavailable IDE provider",
+   "requirements": [
+    "R19",
+    "R40"
+   ],
+   "oracle_class": "fault injection",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/unavailable.test.ts",
+     "name_or_line": "unavailable",
+     "observes": "Provider unavailable is reported at the owner."
+    }
+   ],
+   "gaps": [
+    "No fault injected into a live host."
+   ],
+   "next": "Fault the live host and observe the panel."
+  },
+  {
+   "id": "AC-24",
+   "title": "Theo and external CLI are different bindings",
+   "requirements": [
+    "R20",
+    "R24"
+   ],
+   "oracle_class": "connected agent + terminal",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "chooser and binding tests",
+     "observes": "Theo and external CLI choices at the model."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/src/theo.rs",
+     "name_or_line": "a_paste_into_the_composer_never_becomes_terminal_input",
+     "observes": "Composer paste is not terminal input."
+    }
+   ],
+   "gaps": [
+    "No connected agent plus terminal run."
+   ],
+   "next": "Run both bindings against a live host."
+  },
+  {
+   "id": "AC-25",
+   "title": "Composer input/IME/caret",
+   "requirements": [
+    "R21",
+    "R38"
+   ],
+   "oracle_class": "mounted browser + manual IME",
+   "verdict": "needs_person",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-composer/tests/",
+     "name_or_line": "IME, caret, attachments",
+     "observes": "Composer model behaviour."
+    }
+   ],
+   "gaps": [
+    "Manual IME run is required by the oracle.",
+    "No browser input check."
+   ],
+   "next": "A person runs IME input in the mounted composer."
+  },
+  {
+   "id": "AC-26",
+   "title": "Chat versus shell shortcut routing",
+   "requirements": [
+    "R20",
+    "R21",
+    "R28"
+   ],
+   "oracle_class": "interaction",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "key_routing_precedence",
+     "observes": "Routing at the model."
+    }
+   ],
+   "gaps": [
+    "No mounted interaction check of chat versus shell keys."
+   ],
+   "next": "Add a mounted routing scenario."
+  },
+  {
+   "id": "AC-27",
+   "title": "Inverse Theo theme behavior",
+   "requirements": [
+    "R22",
+    "R23"
+   ],
+   "oracle_class": "rendered + state",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/evidence/oracles/workbench-palette-summary.json",
+     "name_or_line": "summary",
+     "observes": "Face contrast and palette runs for 6 profiles."
+    }
+   ],
+   "gaps": [
+    "No check that face expression survives a theme switch.",
+    "No header-growth check."
+   ],
+   "next": "Add a theme-switch scenario on the face."
+  },
+  {
+   "id": "AC-28",
+   "title": "Complete coordinated palette",
+   "requirements": [
+    "R23",
+    "R37"
+   ],
+   "oracle_class": "rendered contrasts + interaction",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/evidence/oracles/workbench-palette-summary.json",
+     "name_or_line": "30 runs",
+     "observes": "702 pass, 0 fail, 114 review, 48 not_measurable."
+    }
+   ],
+   "gaps": [
+    "114 items are review and 48 are not measurable (cabinet ink, WB-DONOR rows, chat syntax roles).",
+    "Profile names differ from the spec's Neutral/Paper/Slate/Forest-equivalent.",
+    "Several roles are unchanged between profiles."
+   ],
+   "next": "Resolve review items. Name profiles as the spec does or amend the spec."
+  },
+  {
+   "id": "AC-29",
+   "title": "Herdr readiness and explicit profiles",
+   "requirements": [
+    "R24",
+    "R25"
+   ],
+   "oracle_class": "host capability integration",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    },
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/theo-workbench/gate-0/theia-parity-inventory.md",
+     "name_or_line": "host capabilities",
+     "observes": "Notes backends.herdr is not advertised on origin/main."
+    }
+   ],
+   "gaps": [
+    "A live Herdr run passed 11 of 28 checks (reported by the user). The run is not on disk.",
+    "backends.herdr exists only on feat/herdr-live-adoption."
+   ],
+   "next": "Land the host branch. Re-run and record the result."
+  },
+  {
+   "id": "AC-30",
+   "title": "Real terminal rendering interoperability",
+   "requirements": [
+    "R26"
+   ],
+   "oracle_class": "live process + screen capture",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "The e2e covers shell, vim and pager. It does not cover pinned CLI profiles."
+   ],
+   "next": "Add pinned CLI profiles to the scenario and run it."
+  },
+  {
+   "id": "AC-31",
+   "title": "Split stream sequences and reset order",
+   "requirements": [
+    "R26",
+    "R27"
+   ],
+   "oracle_class": "protocol replay + integration",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-vt/tests/stream.rs",
+     "name_or_line": "every_split_point_gives_the_same_screen",
+     "observes": "Same screen at every byte split over 7 fixtures."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "a_newer_epoch_reset_replaces_the_screen_and_an_older_epoch_is_dropped",
+     "observes": "Reset ordering by epoch."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Replay against fixtures. Herdr wire fixtures for older protocol versions are synthetic (see AC-62)."
+   ]
+  },
+  {
+   "id": "AC-32",
+   "title": "Herdr detach/refresh identity",
+   "requirements": [
+    "R27",
+    "R29"
+   ],
+   "oracle_class": "live process",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded live result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-33",
+   "title": "Workspace-host restart with surviving core",
+   "requirements": [
+    "R27",
+    "R29"
+   ],
+   "oracle_class": "live restart fault",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded live result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-34",
+   "title": "Process loss and replacement",
+   "requirements": [
+    "R27",
+    "R29",
+    "R46"
+   ],
+   "oracle_class": "live loss fault",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "ending_asks_first_and_only_a_person_confirms",
+     "observes": "End asks first."
+    }
+   ],
+   "gaps": [
+    "terminal.kill is not advertised on origin/main. It exists only on feat/herdr-live-adoption."
+   ],
+   "next": "Land the host branch. Run and record."
+  },
+  {
+   "id": "AC-35",
+   "title": "Every view types",
+   "requirements": [
+    "R28"
+   ],
+   "oracle_class": "two-browser integration",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded two-browser result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-36",
+   "title": "Every view resizes",
+   "requirements": [
+    "R28",
+    "R06"
+   ],
+   "oracle_class": "two-browser interaction",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded two-browser result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-37",
+   "title": "Bounded opening adoption",
+   "requirements": [
+    "R30"
+   ],
+   "oracle_class": "live event load",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded live result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-38",
+   "title": "Discovery deduplication and missed events",
+   "requirements": [
+    "R30",
+    "R27"
+   ],
+   "oracle_class": "live subscription fault",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "adoption pending and unavailable tests",
+     "observes": "Model-level adoption."
+    }
+   ],
+   "gaps": [
+    "scripts/e2e/workbench.mjs has no checks for AC-38."
+   ],
+   "next": "Add live checks for deduplication and missed events."
+  },
+  {
+   "id": "AC-39",
+   "title": "Scope removal and workspace close race",
+   "requirements": [
+    "R30",
+    "R31"
+   ],
+   "oracle_class": "authorization/concurrency",
+   "verdict": "needs_live_stack",
+   "evidence": [],
+   "gaps": [
+    "No test observes scope removal or a workspace close race.",
+    "scripts/e2e/workbench.mjs has no checks for AC-39."
+   ],
+   "next": "Write the scenario against a live host."
+  },
+  {
+   "id": "AC-40",
+   "title": "Failed Herdr subscription recovery",
+   "requirements": [
+    "R30",
+    "R40"
+   ],
+   "oracle_class": "fault matrix",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "live_check",
+     "path": "scripts/e2e/workbench.mjs",
+     "name_or_line": "check() calls",
+     "observes": "Script exists and needs a real IDE host and Herdr core. No result is recorded on disk."
+    }
+   ],
+   "gaps": [
+    "No recorded live result."
+   ],
+   "next": "Run and record."
+  },
+  {
+   "id": "AC-41",
+   "title": "Gateway trust and label forgery",
+   "requirements": [
+    "R31",
+    "R34",
+    "R48"
+   ],
+   "oracle_class": "security integration",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "OSC 52 and OSC 8 inertness, printed approvals inert",
+     "observes": "Printed text grants nothing."
+    }
+   ],
+   "gaps": [
+    "No gateway trust or label-forgery run.",
+    "A grep of session.ts and host.ts for token found nothing, so whether a token reaches browser data is not determined."
+   ],
+   "next": "Write a security scenario against the gateway."
+  },
+  {
+   "id": "AC-42",
+   "title": "Reported status versus task authority",
+   "requirements": [
+    "R32"
+   ],
+   "oracle_class": "protocol + semantic",
+   "verdict": "blocked_on_backend",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/discipline.rs",
+     "name_or_line": "an exit report decides nothing",
+     "observes": "Exit report is not authority."
+    }
+   ],
+   "gaps": [
+    "The host does not carry program-reported status. The wire has exit reports and an origin word only.",
+    "R32 has no implementing code."
+   ],
+   "next": "Add the field on the host and the wire, then the model and tests."
+  },
+  {
+   "id": "AC-43",
+   "title": "Elm effect/replay discipline",
+   "requirements": [
+    "R33",
+    "R47"
+   ],
+   "oracle_class": "unit + instrumented integration",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/discipline.rs",
+     "name_or_line": "24 tests",
+     "observes": "Replay determinism; render and idle emit nothing; stale or rebound completions dropped; model-origin approval refused; printed text is never an action."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "The oracle names unit plus instrumented integration. The instrumented half is not on disk."
+   ]
+  },
+  {
+   "id": "AC-44",
+   "title": "Semantic inspection and approval provenance",
+   "requirements": [
+    "R34",
+    "R38"
+   ],
+   "oracle_class": "agent + browser integration",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/discipline.rs",
+     "name_or_line": "model-origin approval refused with the actor named",
+     "observes": "Provenance at the model."
+    },
+    {
+     "kind": "source",
+     "path": "src/components/workbench/workbench.tsx",
+     "name_or_line": "SemanticsFeed, useWorkbenchSemantics",
+     "observes": "Semantic tree is published as a feed."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/agent/operations.test.ts",
+     "name_or_line": "25 tests",
+     "observes": "workbench.read (tree, catalogue, subtree, size cut, not drawn yet) and workbench.act (run id from the request, each refusal code reaches the receipt, unmounted, throwing handle), each answered once."
+    },
+    {
+     "kind": "browser_scenario",
+     "path": "scripts/story-oracle.mjs",
+     "name_or_line": "workbench-agent-operations (interact)",
+     "observes": "Through the real wasm and the page path: read tree and catalogue, act focuses a tab from the tree, human_only and unknown_panel refused, an effect carries actor agent with the run id and a person's typing carries none, an over-long read is cut and followed by next, unmounted turn declares nothing and is answered not on screen."
+    }
+   ],
+   "gaps": [
+    "No browser approval run: the story drives the agent's act on a human-only action (refused) but not a person approving.",
+    "The accessible overlay is another piece of work; the agent reads the tree through workbench.read, not through the overlay.",
+    "The page half is proven against the real wasm in a fixture story, not against a live Theorem run: the thread and the SDK receipt command are stood in."
+   ],
+   "next": "Build the accessible overlay; run one live agent turn against a deployed workbench."
+  },
+  {
+   "id": "AC-45",
+   "title": "Account layout restore",
+   "requirements": [
+    "R35",
+    "R36",
+    "R48"
+   ],
+   "oracle_class": "account service + browser",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/layout/restore.test.ts",
+     "name_or_line": "restore",
+     "observes": "Restore against doubles."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/account.test.ts",
+     "name_or_line": "account",
+     "observes": "Account change against doubles."
+    }
+   ],
+   "gaps": [
+    "No account service run."
+   ],
+   "next": "Run with the local claude-e2e account."
+  },
+  {
+   "id": "AC-46",
+   "title": "Cabinet real identities and mode override",
+   "requirements": [
+    "R37",
+    "R23"
+   ],
+   "oracle_class": "connected artifacts",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/components/cabinet/",
+     "name_or_line": "cabinet tests",
+     "observes": "Cabinet logic against doubles."
+    }
+   ],
+   "gaps": [
+    "No connected artifacts run."
+   ],
+   "next": "Run against real artifacts."
+  },
+  {
+   "id": "AC-47",
+   "title": "Keyboard-only complete workflow",
+   "requirements": [
+    "R38",
+    "R07"
+   ],
+   "oracle_class": "mounted browser",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "key routing",
+     "observes": "Keys at the model."
+    }
+   ],
+   "gaps": [
+    "No keyboard-only workflow in a browser.",
+    "No accessible overlay (R38)."
+   ],
+   "next": "Build the overlay. Script a keyboard-only journey."
+  },
+  {
+   "id": "AC-48",
+   "title": "Screen-reader semantics",
+   "requirements": [
+    "R38",
+    "R21"
+   ],
+   "oracle_class": "manual assistive technology",
+   "verdict": "needs_person",
+   "evidence": [],
+   "gaps": [
+    "Manual screen-reader run is required.",
+    "The grid host is aria-hidden and there is no overlay."
+   ],
+   "next": "Build the overlay first. A person then runs a screen reader."
+  },
+  {
+   "id": "AC-49",
+   "title": "Browser matrix and responsive web",
+   "requirements": [
+    "R39"
+   ],
+   "oracle_class": "cross-browser integration",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "source",
+     "path": "scripts/story-oracle.mjs",
+     "name_or_line": "chromium",
+     "observes": "The story oracle uses Chromium only."
+    }
+   ],
+   "gaps": [
+    "scripts/e2e/lib.mjs has Firefox only for the e2e. No Safari or WebKit.",
+    "No responsive matrix result."
+   ],
+   "next": "Run the matrix and record it."
+  },
+  {
+   "id": "AC-50",
+   "title": "Account switch and revoked access",
+   "requirements": [
+    "R40",
+    "R15",
+    "R31"
+   ],
+   "oracle_class": "security + storage",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/account.test.ts",
+     "name_or_line": "account switch",
+     "observes": "Switch against doubles."
+    },
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/documents/local.test.ts",
+     "name_or_line": "account refusal",
+     "observes": "Refusal against doubles."
+    }
+   ],
+   "gaps": [
+    "No live revoked-access run."
+   ],
+   "next": "Run with two accounts and a revoked scope."
+  },
+  {
+   "id": "AC-51",
+   "title": "Unsafe content and readable errors",
+   "requirements": [
+    "R40",
+    "R38"
+   ],
+   "oracle_class": "security fixtures + mounted web",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-markdown-panel/tests/markdown.rs",
+     "name_or_line": "hostile-link and approval-imitation tests",
+     "observes": "Hostile content at the model."
+    }
+   ],
+   "gaps": [
+    "No browser hostile fixture."
+   ],
+   "next": "Add a browser fixture and read the rendered result."
+  },
+  {
+   "id": "AC-52",
+   "title": "Bounded busy-stream responsiveness",
+   "requirements": [
+    "R41",
+    "R14"
+   ],
+   "oracle_class": "instrumented load",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-core/tests/workbench.rs",
+     "name_or_line": "busy stream bounded with reset",
+     "observes": "Bound at the model."
+    }
+   ],
+   "gaps": [
+    "No instrumented load in a browser."
+   ],
+   "next": "Add a load scenario that measures input latency."
+  },
+  {
+   "id": "AC-53",
+   "title": "Operation receipts and redaction",
+   "requirements": [
+    "R42",
+    "R47"
+   ],
+   "oracle_class": "trace inspection",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/receipts.test.ts",
+     "name_or_line": "accepted, refused, uncertain for document, git, terminal",
+     "observes": "Receipts with secrets redacted."
+    },
+    {
+     "kind": "browser_scenario",
+     "path": "scripts/story-oracle.mjs",
+     "name_or_line": "workbench-agent-operations (interact)",
+     "observes": "Each agent request gets exactly one receipt with outcome applied, rejected or failed and, for a refusal, its code and reason; the accepted receipt says dispatched with its effect count. The story panel shows the requests and receipts."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "The oracle names trace inspection. The test inspects receipts, not a live trace."
+   ]
+  },
+  {
+   "id": "AC-54",
+   "title": "Theia parity audit",
+   "requirements": [
+    "R43",
+    "R19",
+    "R17"
+   ],
+   "oracle_class": "consumer trace + integration",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/theo-workbench/migration-parity-register.json",
+     "name_or_line": "15 entries",
+     "observes": "All not_run."
+    },
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/theo-workbench/gate-0/migration-parity-register.json",
+     "name_or_line": "27 entries",
+     "observes": "All not_run."
+    }
+   ],
+   "gaps": [
+    "See the parity array. Several capabilities are lacking: workspace replace, revision restore, delegation diffs, Follow, Add Selection to chat, Theia retirement.",
+    "No consumer trace is on disk."
+   ],
+   "next": "Close the lacking entries or record them as accepted loss. Write the consumer trace."
+  },
+  {
+   "id": "AC-55",
+   "title": "Cutover and old links",
+   "requirements": [
+    "R44",
+    "R04"
+   ],
+   "oracle_class": "build + deployed navigation",
+   "verdict": "missing",
+   "evidence": [
+    {
+     "kind": "source",
+     "path": "src/routes/theia/$.ts",
+     "name_or_line": "route",
+     "observes": "Theia route still shipped."
+    }
+   ],
+   "gaps": [
+    "The cutover has not happened. No old-link redirect evidence."
+   ],
+   "next": "Cut over and record navigation evidence."
+  },
+  {
+   "id": "AC-56",
+   "title": "Rollback preserves work",
+   "requirements": [
+    "R44",
+    "R29",
+    "R35"
+   ],
+   "oracle_class": "deployment migration",
+   "verdict": "needs_live_stack",
+   "evidence": [],
+   "gaps": [
+    "No deployment migration or rollback evidence."
+   ],
+   "next": "Run on a deployed environment."
+  },
+  {
+   "id": "AC-57",
+   "title": "Host loss is not migration",
+   "requirements": [
+    "R46",
+    "R27"
+   ],
+   "oracle_class": "environment fault",
+   "verdict": "needs_live_stack",
+   "evidence": [],
+   "gaps": [
+    "scripts/e2e/workbench.mjs has no checks for AC-57."
+   ],
+   "next": "Write the environment fault scenario."
+  },
+  {
+   "id": "AC-58",
+   "title": "Uncertain launch/input recovery",
+   "requirements": [
+    "R47",
+    "R29"
+   ],
+   "oracle_class": "protocol fault",
+   "verdict": "needs_live_stack",
+   "evidence": [
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-process/tests/process.rs",
+     "name_or_line": "restore does not relaunch",
+     "observes": "Restore does not relaunch."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-changes/tests/panel.rs",
+     "name_or_line": "an_uncertain_commit_is_never_retried_and_blocks_the_next_mutation",
+     "observes": "Uncertain mutation is not retried."
+    }
+   ],
+   "gaps": [
+    "No protocol fault run against a live core.",
+    "scripts/e2e/workbench.mjs has no checks for AC-58."
+   ],
+   "next": "Write the fault scenario."
+  },
+  {
+   "id": "AC-59",
+   "title": "Registered alternate presentation",
+   "requirements": [
+    "R48",
+    "R05",
+    "R35"
+   ],
+   "oracle_class": "extension integration",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "source",
+     "path": "terminal/crates/workbench-core/src/registry.rs",
+     "name_or_line": "registry.extend",
+     "observes": "The only extension point found."
+    }
+   ],
+   "gaps": [
+    "No registered alternate presentation test.",
+    "R48 has no extension mechanism beyond registry.extend."
+   ],
+   "next": "Add an alternate presentation and an integration test."
+  },
+  {
+   "id": "AC-60",
+   "title": "Full web journey and release evidence",
+   "requirements": [
+    "R45",
+    "R01",
+    "R43",
+    "R44"
+   ],
+   "oracle_class": "live end-to-end",
+   "verdict": "needs_live_stack",
+   "evidence": [],
+   "gaps": [
+    "No end-to-end journey.",
+    "Theia is not retired and the workbench is opt-in."
+   ],
+   "next": "Run the full journey after cutover."
+  },
+  {
+   "id": "AC-61",
+   "title": "Herdr layout extraction isolation",
+   "requirements": [
+    "R03",
+    "R05",
+    "R29",
+    "R48"
+   ],
+   "oracle_class": "source + WASM + geometry",
+   "verdict": "evidence_on_disk",
+   "evidence": [
+    {
+     "kind": "evidence_file",
+     "path": "docs/plans/evidence/workbench-layout-isolation.json",
+     "name_or_line": "result",
+     "observes": "wasm32 build exit 0; banned_hits empty; result pass."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-layout/tests/replay.rs",
+     "name_or_line": "replay",
+     "observes": "Replay runs natively."
+    },
+    {
+     "kind": "rust_test",
+     "path": "terminal/crates/workbench-dock/tests/layout_isolation.rs",
+     "name_or_line": "isolation",
+     "observes": "Geometry isolation natively."
+    }
+   ],
+   "gaps": [],
+   "next": "None.",
+   "caveats": [
+    "Replay runs natively, not under wasm. No wasm_bindgen_test exists. The JSON records no head."
+   ]
+  },
+  {
+   "id": "AC-62",
+   "title": "Protocol identity is not product branding",
+   "requirements": [
+    "R24",
+    "R25",
+    "R27"
+   ],
+   "oracle_class": "contract interoperability",
+   "verdict": "partial",
+   "evidence": [
+    {
+     "kind": "ts_test",
+     "path": "src/lib/workbench/terminal/negotiation.test.ts",
+     "name_or_line": "negotiation",
+     "observes": "Negotiation against fixtures."
+    },
+    {
+     "kind": "source",
+     "path": "src/lib/workbench/terminal/fixtures/herdr-wire.ts",
+     "name_or_line": "LEGACY_*",
+     "observes": "Explicitly synthetic."
+    }
+   ],
+   "gaps": [
+    "The older Herdr and Remux bytes were never recorded. The legacy half is synthetic only."
+   ],
+   "next": "Capture real legacy bytes."
+  }
+ ],
+ "parity": [
+  {
+   "id": "P01",
+   "capability": "Connect to a project workspace",
+   "status": "differently",
+   "evidence": "src/lib/workbench/environment/environment.ts; terminal/crates/workbench-process chooser::host_of",
+   "how": "connectEnvironment(projectId) at the chat-shell mount. No shell-level host display found."
+  },
+  {
+   "id": "P02",
+   "capability": "File tree and quick open",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-panels/src/files; src/lib/workbench/files/files.ts",
+   "how": "Tree, new, rename, delete, cut, paste and copy exist. Name search exists. No Quick Open UI found. Copy is refused when the host lacks workspace.files.copy."
+  },
+  {
+   "id": "P03",
+   "capability": "Code editor",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-editor",
+   "how": "Editor crate with 109 tests."
+  },
+  {
+   "id": "P04",
+   "capability": "Markdown editing",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-markdown-panel",
+   "how": "Four modes in the panel, not the Theia vscode.markdown plugins."
+  },
+  {
+   "id": "P05",
+   "capability": "Language features",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-editor",
+   "how": "Hover, completion, definition, references, rename and format. No code actions found. Host does not advertise diagnostics and rename on main."
+  },
+  {
+   "id": "P06",
+   "capability": "Source control",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-changes",
+   "how": "Groups, diff, stage, commit, amend, branches, fetch, push and merge."
+  },
+  {
+   "id": "P07",
+   "capability": "Run and tasks",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-ide/src/run.rs",
+   "how": "Run owner and tests."
+  },
+  {
+   "id": "P08",
+   "capability": "Git history and editor actions",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-changes",
+   "how": "History and show-at-revision exist. No Follow. No Add Selection to chat in the editor actions."
+  },
+  {
+   "id": "P09",
+   "capability": "Terminal pane",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-process",
+   "how": "Process pane with 89 tests."
+  },
+  {
+   "id": "P10",
+   "capability": "Terminal profiles",
+   "status": "has",
+   "evidence": "src/lib/workbench/terminal/terminal-profile.ts",
+   "how": "Copied verbatim, plus a chooser."
+  },
+  {
+   "id": "P11",
+   "capability": "Terminal session identity and reattach",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-process/src/bound.rs; src/lib/workbench/terminal/session.ts",
+   "how": "Epochs and adoption."
+  },
+  {
+   "id": "P12",
+   "capability": "Follow and send selection to chat",
+   "status": "lacks",
+   "evidence": "",
+   "how": "No Follow and no selection-to-chat action found."
+  },
+  {
+   "id": "P13",
+   "capability": "Account layouts and appearance",
+   "status": "differently",
+   "evidence": "src/lib/workbench/layout; src/lib/workbench/appearance",
+   "how": "Arrangements, appearance and device copy have story evidence. No live account run."
+  },
+  {
+   "id": "P14",
+   "capability": "Cabinet",
+   "status": "has",
+   "evidence": "terminal/src/cabinet_panel.rs",
+   "how": "Cabinet panel."
+  },
+  {
+   "id": "P15",
+   "capability": "Retire Theia",
+   "status": "lacks",
+   "evidence": "src/routes/theia/$.ts; ide/",
+   "how": "Theia routes and build remain."
+  },
+  {
+   "id": "P16",
+   "capability": "Diagnostics and Problems",
+   "status": "has",
+   "evidence": "terminal/crates/workbench-ide/src/diagnostics.rs; src/lib/workbench/language/feed.ts",
+   "how": "Owner and feed. Host does not advertise language.diagnostics on main."
+  },
+  {
+   "id": "P17",
+   "capability": "Workspace search and replace",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-ide/src/search.rs",
+   "how": "Regex, case, whole word, globs and cancel. Workspace replace is absent. Only in-file replace exists."
+  },
+  {
+   "id": "P18",
+   "capability": "Blame, history and revision restore",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-changes",
+   "how": "Blame and history exist. No journal revision restore found."
+  },
+  {
+   "id": "P19",
+   "capability": "Terminal kill",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-process",
+   "how": "End process with confirmation. Gated on terminal.kill, which main does not advertise."
+  },
+  {
+   "id": "P20",
+   "capability": "Chat mirror, approvals and change sets",
+   "status": "differently",
+   "evidence": "terminal/src/theo.rs; src/lib/workbench/conversation",
+   "how": "Theo conversation panel with owners. Approvals in theo.rs and transcript."
+  },
+  {
+   "id": "P21",
+   "capability": "Delegation before and after diffs",
+   "status": "lacks",
+   "evidence": "",
+   "how": "A search for delegation in the workbench code found nothing."
+  },
+  {
+   "id": "P22",
+   "capability": "Connection status and recovery",
+   "status": "has",
+   "evidence": "src/lib/workbench/environment/environment.ts; workspace-recovery.ts",
+   "how": "Recovery copied verbatim. Connection line in the files panel."
+  },
+  {
+   "id": "P23",
+   "capability": "Grammars and Monaco-local features",
+   "status": "differently",
+   "evidence": "src/lib/workbench/documents/tokens.ts",
+   "how": "Syntax spans come from host tokens. No TextMate grammars, multi-cursor or outline."
+  },
+  {
+   "id": "P24",
+   "capability": "Frame chrome",
+   "status": "differently",
+   "evidence": "",
+   "how": "Not applicable in the same form. The grid replaces the frame."
+  },
+  {
+   "id": "P25",
+   "capability": "Parent IDE surfaces",
+   "status": "differently",
+   "evidence": "src/components/chat-shell.tsx",
+   "how": "Chat-shell mount exists. Open in IDE links and IDE modes not verified."
+  },
+  {
+   "id": "P26",
+   "capability": "File copy and binary write",
+   "status": "differently",
+   "evidence": "terminal/crates/workbench-panels/src/files",
+   "how": "Panel emits copy. Refused when the host lacks it. Binary write not found."
+  },
+  {
+   "id": "P27",
+   "capability": "SDK vendoring and Theia patches",
+   "status": "differently",
+   "evidence": "package.json; ide/",
+   "how": "Root has one @theoremharness/sdk, 0.6.0-alpha.9, with no patch and no sdk-ide. ide/ still has alpha.3 and its patches."
+  }
+ ],
+ "requirements_without_cases_or_code": [
+  {
+   "requirement": "R38",
+   "sentence": "Accessibility overlay exposing the semantic tree.",
+   "finding": "Feed published (SemanticsFeed, useWorkbenchSemantics) with a comment calling the overlay a separate piece of work. Nothing consumes it. The grid host is aria-hidden."
+  },
+  {
+   "requirement": "R32",
+   "sentence": "Program-reported status is distinct from task authority.",
+   "finding": "No field on the wire or in the model. Only exit reports and an origin word."
+  },
+  {
+   "requirement": "R43",
+   "sentence": "Theia parity.",
+   "finding": "Theia routes and ide/ remain. No consumer trace."
+  },
+  {
+   "requirement": "R44",
+   "sentence": "Cutover from Theia.",
+   "finding": "Workbench is opt-in. No cutover."
+  },
+  {
+   "requirement": "R34",
+   "sentence": "Agent reads and acts on the workbench.",
+   "finding": "src/lib/workbench/agent/operations.ts declares workbench.read and workbench.act; client-surface.ts adds them to a send while the workbench is mounted, runtime.tsx serves them, and operations.test.ts plus the workbench-agent-operations scenario prove them against the real wasm. A live Theorem run has not used them."
+  },
+  {
+   "requirement": "R48",
+   "sentence": "Alternate presentations register.",
+   "finding": "Only registry.extend. No alternate presentation registered."
+  }
+ ]
+}

@@ -209,8 +209,11 @@ if (!engine) {
     const context = await browser.newContext({ viewport: { width: environment.viewport.width, height: environment.viewport.height }, deviceScaleFactor: 1, reducedMotion: 'reduce', locale: 'en-US', colorScheme: modeArg })
     page = await context.newPage()
     await page.addInitScript(({ preset, mode }) => {
-      localStorage.setItem('theorem-ui:appearance', JSON.stringify({ state: { preset, overrides: {} }, version: 1 }))
-      localStorage.setItem('theorem-ui-theme', mode)
+      // Init scripts run in every frame, and a sandboxed app frame has no storage.
+      try {
+        localStorage.setItem('theorem-ui:appearance', JSON.stringify({ state: { preset, overrides: {} }, version: 1 }))
+        localStorage.setItem('theorem-ui-theme', mode)
+      } catch {}
     }, { preset: presetArg, mode: modeArg })
     page.on('pageerror', (error) => { pageErrors.push(String(error).slice(0,300)); limitations.push(`Page error: ${String(error).slice(0, 300)}`) })
     await page.goto(ORIGIN, { waitUntil: 'domcontentloaded', timeout: 60_000 })
