@@ -1178,7 +1178,12 @@ impl Panel for ProcessPanel {
                     b.set_want(term);
                 }
             }
-            PanelMsg::Focus(focused) => self.pending_focus = Some(focused),
+            PanelMsg::Focus(focused) => {
+                if focused && let Some(b) = self.bound_mut() {
+                    b.reclaim_size();
+                }
+                self.pending_focus = Some(focused);
+            }
             PanelMsg::Completion(c) => self.on_completion(c, cx),
             PanelMsg::Cached(_) => {}
             PanelMsg::Host(message) => self.on_host(message, cx),

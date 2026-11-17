@@ -518,6 +518,9 @@ impl Bound {
         kind: InputKind,
     ) -> Result<(), Block> {
         self.gate()?;
+        if kind == InputKind::Human {
+            self.reclaim_size();
+        }
         let input_id = self.mint();
         let claim = self.claim();
         let body = match std::str::from_utf8(bytes) {
@@ -590,6 +593,11 @@ impl Bound {
     }
 
     // ---- resize ---------------------------------------------------------
+
+    /// This view is in use again: its size follows, as tmux's latest view.
+    pub(crate) fn reclaim_size(&mut self) {
+        self.requested = None;
+    }
 
     /// One resize in flight; the latest wanted size follows it.
     pub(crate) fn pump_resize(&mut self, cx: &mut Ctx) {
@@ -912,10 +920,9 @@ impl Bound {
                     if self.screen.size() != (*rows, *cols) {
                         self.screen.resize(*rows, *cols);
                     }
+                    // Another view's size stands: this view asks again only
+                    // when its own size changes or it is used again.
                     self.size_known = true;
-                    if self.requested != Some((*cols, *rows)) {
-                        self.requested = None;
-                    }
                     self.flush_held(cx);
                 }
             }

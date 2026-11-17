@@ -679,6 +679,47 @@ fn the_screen_resizes_only_when_the_host_confirms_and_one_resize_is_in_flight() 
 }
 
 #[test]
+fn another_views_size_stands_until_this_view_is_used_again() {
+    let mut r = rig();
+    r.live();
+    let b = r.body();
+    let mine = (b.width, b.height - 2);
+    // Another view of the same terminal set its own size.
+    let mut fx = r.host(HostMessage::TerminalResized {
+        resource: terminal(),
+        epoch: Some(1),
+        cols: 46,
+        rows: 70,
+    });
+    fx.extend(r.tick());
+    assert_eq!(kinds(&fx), Vec::<&str>::new(), "no fight over the size");
+    // Coming back to this window makes this the latest view: its size
+    // follows.
+    r.send(Msg::Focus(false));
+    r.tick();
+    r.send(Msg::Focus(true));
+    let fx = r.tick();
+    let sizes: Vec<_> = fx
+        .iter()
+        .filter_map(|e| match &e.body {
+            EffectBody::TerminalResize(s) => Some((s.cols, s.rows)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(sizes, [mine]);
+    r.settle_resize(fx);
+    // So does typing, after the other view resizes again.
+    r.host(HostMessage::TerminalResized {
+        resource: terminal(),
+        epoch: Some(1),
+        cols: 46,
+        rows: 70,
+    });
+    let fx = r.typed("l");
+    assert!(kinds(&fx).contains(&"resize"), "{:?}", kinds(&fx));
+}
+
+#[test]
 fn color_cursor_and_wide_characters_draw_the_expected_cells() {
     let mut r = rig();
     r.live();
@@ -2459,7 +2500,9 @@ fn a_later_attach_asks_by_the_hosts_name_and_a_new_answer_replaces_it_again() {
     let mut o = opened(2, 2, 80, 24, "reattached");
     o.attachment = Some("ta-host-2".into());
     r.accept_attach(&attach, o);
-    assert_eq!(claim_of(&r.typed("a")), ["ta-host-2"]);
+    // Typing names the new attachment (a resize may ride along with it).
+    let claims = claim_of(&r.typed("a"));
+    assert!(!claims.is_empty() && claims.iter().all(|c| c == "ta-host-2"), "{claims:?}");
 }
 
 #[test]
