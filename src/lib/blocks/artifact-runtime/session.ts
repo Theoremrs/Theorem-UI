@@ -62,7 +62,11 @@ export function sameSource(
   return false
 }
 
-/** Whether two observation references name the same moment of the same run. */
+/**
+ * Whether two observation references name the same moment of the same run:
+ * the run, the index, the domain and time it is counted in, and the state.
+ * An event at time 0 is not the same moment as physical time 999999.
+ */
 export const sameObservation = (
   a: ObservationRef | undefined,
   b: ObservationRef | undefined,
@@ -72,6 +76,8 @@ export const sameObservation = (
     b &&
     a.runId === b.runId &&
     a.index === b.index &&
+    a.domain === b.domain &&
+    a.time === b.time &&
     a.stateDigest === b.stateDigest,
   )
 
@@ -86,7 +92,7 @@ export type Resolved<T> =
   | {
       status: 'unavailable'
       ref: ObservationRef
-      reason: 'not-kept' | 'evicted' | 'digest-mismatch'
+      reason: 'not-kept' | 'evicted' | 'digest-mismatch' | 'identity-mismatch'
     }
 
 const keyOf = (ref: ObservationRef) => `${ref.runId}\u0000${ref.index}`
@@ -94,6 +100,9 @@ const keyOf = (ref: ObservationRef) => `${ref.runId}\u0000${ref.index}`
 /**
  * Observations kept for this session, at most `limit`, oldest dropped first.
  * A dropped observation resolves as `evicted`, not as whatever is newest.
+ * What is kept is a copy, and what is resolved is another: a caller changing
+ * its own object after keeping it, or the value it was handed, cannot change
+ * what a later question reads under the old digest.
  */
 export class SessionObservations<T> {
   private readonly kept = new Map<string, { ref: ObservationRef; value: T }>()
@@ -105,7 +114,7 @@ export class SessionObservations<T> {
     const key = keyOf(ref)
     this.kept.delete(key)
     this.evicted.delete(key)
-    this.kept.set(key, { ref, value })
+    this.kept.set(key, { ref: structuredClone(ref), value: structuredClone(value) })
     while (this.kept.size > this.limit) {
       const oldest = this.kept.keys().next().value!
       this.kept.delete(oldest)
@@ -113,6 +122,7 @@ export class SessionObservations<T> {
     }
   }
 
+  /** The kept moment the reference names exactly, with the reference as it was kept. */
   resolve(ref: ObservationRef): Resolved<T> {
     const key = keyOf(ref)
     const kept = this.kept.get(key)
@@ -124,7 +134,14 @@ export class SessionObservations<T> {
       }
     if (kept.ref.stateDigest !== ref.stateDigest)
       return { status: 'unavailable', ref, reason: 'digest-mismatch' }
-    return { status: 'available', ref, value: kept.value, lifetime: 'session' }
+    if (!sameObservation(kept.ref, ref))
+      return { status: 'unavailable', ref, reason: 'identity-mismatch' }
+    return {
+      status: 'available',
+      ref: structuredClone(kept.ref),
+      value: structuredClone(kept.value),
+      lifetime: 'session',
+    }
   }
 
   get size(): number {

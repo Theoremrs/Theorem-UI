@@ -14,7 +14,8 @@ import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.j
 import {
   allParts,
   buildNetwork,
-  ModelState
+  ModelState,
+  valueText,
   
   
   
@@ -271,7 +272,11 @@ const short = (value: unknown): string => {
   if (typeof value === 'boolean') return value ? '1' : '0'
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, '')
   if (typeof value === 'string') return value.length > 18 ? `${value.slice(0, 17)}…` : value
-  const text = JSON.stringify(value)
+  if (typeof value === 'bigint') {
+    const digits = value.toString()
+    return digits.length > 18 ? `${digits.slice(0, 17)}…` : digits
+  }
+  const text = valueText(value) ?? String(value)
   return text.length > 18 ? `${text.slice(0, 17)}…` : text
 }
 
@@ -871,7 +876,7 @@ export function mount(
     const different = new Set<string>()
     for (const [path, now] of settled.readings) {
       const before = previous.readings.get(path)
-      if (!before || JSON.stringify(before.outputs) !== JSON.stringify(now.outputs) || JSON.stringify(before.inputs) !== JSON.stringify(now.inputs))
+      if (!before || valueText(before.outputs) !== valueText(now.outputs) || valueText(before.inputs) !== valueText(now.inputs))
         different.add(path)
     }
     const end = timeline()
@@ -1108,7 +1113,7 @@ export function mount(
         text: format(value, port.name),
         editable: port.dir === 'in' && model.isPin(path, port.name),
         control: spec.controls?.[port.name],
-        changed: travelling && JSON.stringify(was) !== JSON.stringify(value),
+        changed: travelling && valueText(was) !== valueText(value),
         on: truthy(value),
       }
     })

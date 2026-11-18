@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   ARTIFACT_RUNTIME_SCHEMA,
+  CANONICAL_JSON,
   ContextSession,
   SessionObservations,
   bitsOf,
@@ -10,9 +11,11 @@ import {
   integerOf,
   integerText,
   readObservationRef,
+  sameObservation,
   sameSource,
   signalText,
   signalValue,
+  unresolvedBits,
 } from './index'
 import type { ContextBinding, ObservationRef } from './index'
 
@@ -190,5 +193,99 @@ describe('session observations', () => {
     expect(session.current?.subject).toMatchObject({
       observation: { index: '2' },
     })
+  })
+})
+
+describe('the identity and value contract', () => {
+  const at = async (count: number): Promise<ObservationRef> => ({
+    schema: ARTIFACT_RUNTIME_SCHEMA,
+    runId: 'r',
+    index: '0',
+    domain: 'event',
+    time: '0',
+    stateDigest: await digestOf({ count }),
+  })
+
+  test('a kept value is the session’s own: changing the original or a resolved copy changes nothing', async () => {
+    const kept = new SessionObservations<{ count: number }>()
+    const value = { count: 1 }
+    const ref = await at(1)
+    kept.keep(ref, value)
+    value.count = 99
+    const first = kept.resolve(ref)
+    expect(first).toMatchObject({ status: 'available', value: { count: 1 } })
+    if (first.status === 'available') first.value.count = 42
+    expect(kept.resolve(ref)).toMatchObject({ value: { count: 1 } })
+  })
+
+  test('a moment is the same only in the same domain at the same time', async () => {
+    const kept = new SessionObservations<number>()
+    const ref = await at(1)
+    kept.keep(ref, 1)
+    expect(kept.resolve({ ...ref, domain: 'physical-time', time: '999999' })).toMatchObject({
+      status: 'unavailable',
+      reason: 'identity-mismatch',
+    })
+    expect(sameObservation(ref, { ...ref, time: '1' })).toBe(false)
+    expect(sameObservation(ref, { ...ref })).toBe(true)
+  })
+
+  test('values JSON has no form for are written explicitly and stay distinct', () => {
+    const forms = [
+      new Date(0),
+      new ArrayBuffer(2),
+      new DataView(new ArrayBuffer(2)),
+      new Uint8Array(2),
+      new Uint16Array(1),
+      [],
+      {},
+    ].map((value) => canonicalJson(value))
+    expect(new Set(forms).size).toBe(forms.length)
+    expect(canonicalJson(new Uint8Array([1, 255]))).toBe('{"$bytes":"01ff","type":"Uint8Array"}')
+    expect(canonicalJson(new Date(0))).toBe('{"$date":"1970-01-01T00:00:00.000Z"}')
+    expect(canonicalJson(new Map([['b', 1], ['a', 2]]))).toBe('{"a":2,"b":1}')
+  })
+
+  test('values with no canonical form are refused, not changed', () => {
+    // eslint-disable-next-line no-sparse-arrays
+    const holed = [1, , 3]
+    for (const value of [
+      new Array(1),
+      holed,
+      [undefined],
+      new Set([1]),
+      new Map([[1, 'a']]),
+      { $bigint: '5' },
+      new Map([['$date', 'x']]),
+      new (class Point { x = 1 })(),
+      new Date(Number.NaN),
+      Number.NaN,
+      () => 1,
+    ])
+      expect(() => canonicalJson(value)).toThrow()
+    expect(canonicalJson(5n)).toBe('{"$bigint":"5"}')
+  })
+
+  test('numbers are written as the backend writes them (shared vector)', async () => {
+    // The same text, parsed, is asserted to give this digest by theorem-apps'
+    // artifact_run.rs tests: whole-valued floats, negative zero, exponents.
+    const text =
+      '{"h":123456789012345680000,"g":5e-324,"f":1.7976931348623157e308,"e":2.0,"d":1.5,"c":-0,"b":1e21,"a":0.000001,"i":-2.5e-10,"j":[0.1,100,1e-7]}'
+    const value: unknown = JSON.parse(text)
+    expect(canonicalJson(value)).toBe(
+      '{"a":0.000001,"b":1e+21,"c":0,"d":1.5,"e":2,"f":1.7976931348623157e+308,"g":5e-324,"h":123456789012345680000,"i":-2.5e-10,"j":[0.1,100,1e-7]}',
+    )
+    expect(await digestOf(value)).toBe(
+      'sha256:7a000f41b5a1094388092e326c62c3bc8571b78fa98cd393744174ecec3efd43',
+    )
+    expect(CANONICAL_JSON).toBe('theorem.canonical-json/1')
+  })
+
+  test('unknown and high-impedance bits show as X and Z and have no number', () => {
+    const value = { type: 'bits' as const, width: 4, hex: '0', unknown: 'f' }
+    expect(signalText(value)).toBe('0bXXXX')
+    expect(signalText({ type: 'bits', width: 4, hex: '9', highZ: '2' })).toBe('0b10Z1')
+    expect(() => bitsValue(value)).toThrow('no number')
+    expect(unresolvedBits({ type: 'bits', width: 4, hex: '9' })).toBe(false)
   })
 })

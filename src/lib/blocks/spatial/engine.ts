@@ -286,7 +286,17 @@ export interface Settled {
 
 const CYCLE_PASSES = 32
 
-const equal = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+/**
+ * A value as JSON text, with a bigint written exactly (`{"$bigint":"…"}`)
+ * where JSON.stringify would throw. Used wherever the model compares or
+ * shows a value, so a part may produce a 64-bit integer.
+ */
+export const valueText = (value: unknown): string | undefined =>
+  JSON.stringify(value, (_key, item: unknown) =>
+    typeof item === 'bigint' ? { $bigint: item.toString() } : item,
+  )
+
+const equal = (a: unknown, b: unknown) => valueText(a) === valueText(b)
 
 /**
  * The live model: the network, the state of every part, and what the person
@@ -386,6 +396,7 @@ export class ModelState {
   ): Array<Array<string>> {
     const outputs = new Map<string, Values>()
     const stageOf = new Map<string, number>()
+    const nested = new Map<string, Array<string>>()
     const sourceOf = (path: string, port: string): unknown => {
       const wire = network.wires.find(
         (candidate) =>
@@ -408,7 +419,11 @@ export class ModelState {
       const state = this.states.get(part.path) ?? {}
       let result: Values
       if (part.inside) {
-        this.settleNetwork(part.inside, inputs, readings, unsettled)
+        // A nested network's status is its latest evaluation's: an early
+        // outer pass that left it changing is replaced once it rests.
+        const inner: Array<string> = []
+        this.settleNetwork(part.inside, inputs, readings, inner)
+        nested.set(part.path, inner)
         result = this.boundaryOutputs(part.inside, readings, inputs)
       } else if (part.spec.compute) {
         // A compute written in plain JavaScript may return nothing.
@@ -467,7 +482,8 @@ export class ModelState {
       }
       if (!changing.length) break
     }
-    for (const path of changing) if (!unsettled.includes(path)) unsettled.push(path)
+    for (const path of [...changing, ...[...nested.values()].flat()])
+      if (!unsettled.includes(path)) unsettled.push(path)
     const stages: Array<Array<string>> = []
     for (const part of ordered) {
       const stage = stageOf.get(part.path)!
@@ -506,7 +522,7 @@ export class ModelState {
           for (const [port, expected] of Object.entries(check.expect))
             if (!equal(got[port], expected))
               failures.push(
-                `${part.path}: ${name}: ${port} is ${JSON.stringify(got[port])}, expected ${JSON.stringify(expected)}`,
+                `${part.path}: ${name}: ${port} is ${valueText(got[port])}, expected ${valueText(expected)}`,
               )
         } catch (error) {
           failures.push(
@@ -565,7 +581,7 @@ export class ModelState {
     const reading = settled.readings.get(path)
     const write = (values: Values) =>
       Object.entries(values)
-        .map(([key, value]) => `${key}=${part.spec.format?.(value, key) ?? JSON.stringify(value)}`)
+        .map(([key, value]) => `${key}=${part.spec.format?.(value, key) ?? (typeof value === 'bigint' ? value.toString() : valueText(value))}`)
         .join(' ')
     return [
       `${part.spec.label ?? part.spec.id} (${path})`,

@@ -9,13 +9,14 @@ export type { BitsValue } from './values'
 export {
   bitsOf,
   bitsValue,
+  unresolvedBits,
   integerOf,
   integerText,
   isIntegerText,
   signalText,
   signalValue,
 } from './values'
-export { canonicalJson, digestBytes, digestOf, isDigest } from './digest'
+export { CANONICAL_JSON, canonicalJson, digestBytes, digestOf, isDigest } from './digest'
 export {
   SessionObservations,
   readObservationRef,

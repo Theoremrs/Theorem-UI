@@ -6,6 +6,7 @@
 
 import { ARTIFACT_RUNTIME_SCHEMA, digestOf, integerText } from '@theorem/runtime'
 import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
+import { valueText } from './engine'
 import type { ModelState, Settled } from './engine'
 
 /** A primitive value a trace records: a number or text. */
@@ -102,7 +103,7 @@ const MAX_TEXT = 4000
 
 export const causeText = (cause: TraceCause): string =>
   cause.kind === 'set'
-    ? `${cause.path}.${cause.key} = ${JSON.stringify(cause.value) ?? String(cause.value)}`
+    ? `${cause.path}.${cause.key} = ${typeof cause.value === 'bigint' ? cause.value.toString() : (valueText(cause.value) ?? String(cause.value))}`
     : cause.kind
 
 const clone = <T>(value: T): T => {
@@ -145,7 +146,7 @@ export function flatten(name: string, value: unknown, into: Record<string, Trace
     return
   }
   try {
-    into[name] = (JSON.stringify(value) ?? String(value)).slice(0, MAX_TEXT)
+    into[name] = (valueText(value) ?? String(value)).slice(0, MAX_TEXT)
   } catch {
     into[name] = String(value).slice(0, MAX_TEXT)
   }

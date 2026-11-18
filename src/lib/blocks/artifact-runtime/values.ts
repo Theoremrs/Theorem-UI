@@ -62,10 +62,27 @@ export function bitsOf(
   }
 }
 
-/** The bits' value as a bigint: unsigned, or two's complement when `signed`. */
+/** A mask's bits as a bigint (0 when there is no mask). */
+const maskOf = (mask: string | undefined, width: number): bigint => {
+  if (mask === undefined || mask === '') return 0n
+  if (!HEX.test(mask)) throw new RangeError(`${JSON.stringify(mask)} is not lowercase hex`)
+  return BigInt(`0x${mask}`) & ((1n << BigInt(width)) - 1n)
+}
+
+/** Whether any bit is unknown (X) or high-impedance (Z). */
+export const unresolvedBits = (value: BitsValue): boolean =>
+  maskOf(value.unknown, value.width) !== 0n || maskOf(value.highZ, value.width) !== 0n
+
+/**
+ * The bits' value as a bigint: unsigned, or two's complement when `signed`.
+ * Refused when any bit is unknown or high-impedance: such a value has no
+ * number.
+ */
 export function bitsValue(value: BitsValue, signed = false): bigint {
   if (!HEX.test(value.hex))
     throw new RangeError(`${JSON.stringify(value.hex)} is not lowercase hex`)
+  if (unresolvedBits(value))
+    throw new RangeError('These bits include unknown or high-impedance bits and have no number')
   const raw = BigInt(`0x${value.hex}`)
   const span = 1n << BigInt(value.width)
   if (raw >= span)
@@ -135,6 +152,18 @@ export function signalValue(
 export function signalText(value: SignalValue): string {
   switch (value.type) {
     case 'bits': {
+      if (unresolvedBits(value)) {
+        // Written bit by bit, most significant first: X unknown, Z high-impedance.
+        const known = BigInt(`0x${value.hex}`)
+        const unknown = maskOf(value.unknown, value.width)
+        const highZ = maskOf(value.highZ, value.width)
+        let bits = ''
+        for (let bit = value.width - 1; bit >= 0; bit--) {
+          const at = 1n << BigInt(bit)
+          bits += unknown & at ? 'X' : highZ & at ? 'Z' : known & at ? '1' : '0'
+        }
+        return value.width === 1 ? bits : `0b${bits}`
+      }
       const unsigned = bitsValue(value)
       return value.width === 1
         ? unsigned.toString()
