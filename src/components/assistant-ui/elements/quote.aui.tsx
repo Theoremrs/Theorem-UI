@@ -1,12 +1,15 @@
 "use client";
 
-import { memo, type ComponentProps, type FC } from "react";
+import { memo   } from "react";
+import type {ComponentProps, FC} from "react";
 import type { QuoteMessagePartComponent } from "@assistant-ui/react";
 import {
   ComposerPrimitive,
   SelectionToolbarPrimitive,
+  useAuiState,
 } from "@assistant-ui/react";
-import { QuoteIcon, XIcon } from "lucide-react";
+import { LinkIcon, QuoteIcon, XIcon } from "lucide-react";
+import { askAbout } from "@/components/chat/composer-references";
 import { cn } from "@/lib/utils";
 
 function QuoteBlockRoot({ className, ...props }: ComponentProps<"div">) {
@@ -123,6 +126,67 @@ function SelectionToolbarQuote({
 }
 
 /**
+ * Adds the selected passage to the composer as a durable context reference
+ * (Theorem's `askAbout`), not a pasted quote: the next turn reads the
+ * referenced message with the selection as its excerpt. Reads the selection
+ * the way the toolbar's Quote does — the nearest `data-message-id` — so it
+ * works inside the same `SelectionToolbarPrimitive.Root`.
+ */
+function SelectionToolbarContext({
+  className,
+  children,
+  ...props
+}: ComponentProps<"button">) {
+  const threadId = useAuiState((s) => s.threadListItem.remoteId);
+  const addContext = () => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const text = selection.toString().trim();
+    if (!text) return;
+    const node = selection.anchorNode;
+    let element =
+      node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+    let messageId: string | undefined;
+    while (element) {
+      const id = element.getAttribute("data-message-id");
+      if (id) {
+        messageId = id;
+        break;
+      }
+      element = element.parentElement;
+    }
+    if (!messageId || !threadId) return;
+    askAbout({
+      label: "Selected passage",
+      excerpt: text,
+      location: {
+        resource: { kind: "message", threadId, messageId },
+      },
+    });
+    selection.removeAllRanges();
+  };
+  return (
+    <button
+      type="button"
+      data-slot="selection-toolbar-context"
+      onClick={addContext}
+      className={cn(
+        "text-popover-foreground hover:bg-accent flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm transition-colors",
+        className,
+      )}
+      {...props}
+    >
+      {children ?? (
+        <>
+          <LinkIcon className="size-3.5" />
+          Add to context
+        </>
+      )}
+    </button>
+  );
+}
+
+/**
  * Floating toolbar that appears when text is selected in a message.
  *
  * Render anywhere inside `ThreadPrimitive.Root` (or any `AssistantRuntimeProvider` scope).
@@ -142,6 +206,7 @@ const SelectionToolbarImpl: FC<ComponentProps<typeof SelectionToolbarRoot>> = ({
   return (
     <SelectionToolbarRoot className={className} {...props}>
       <SelectionToolbarQuote />
+      <SelectionToolbarContext />
     </SelectionToolbarRoot>
   );
 };
@@ -281,6 +346,7 @@ export {
   SelectionToolbar,
   SelectionToolbarRoot,
   SelectionToolbarQuote,
+  SelectionToolbarContext,
   ComposerQuotePreview,
   ComposerQuotePreviewRoot,
   ComposerQuotePreviewIcon,

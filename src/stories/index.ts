@@ -51,6 +51,12 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1024, height: 768 },
   },
   {
+    id: 'assistant-context-usage',
+    title: 'assistant-ui: context usage ring beside the composer',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
     id: 'design-oracle-long',
     title: 'Design oracle F02: fixed Latin calibration prose',
     lane: 'original',
@@ -407,6 +413,12 @@ export const STORIES: readonly StoryMeta[] = [
   {
     id: 'face-sound',
     title: 'Theo on a page with a reply to read aloud',
+    lane: 'original',
+    viewport: { width: 1280, height: 800 },
+  },
+  {
+    id: 'face-listen',
+    title: 'Theo as a microphone, listening to the person',
     lane: 'original',
     viewport: { width: 1280, height: 800 },
   },

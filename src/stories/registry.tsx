@@ -39,6 +39,8 @@ import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
 import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { theFace } from '@/lib/face/store'
+import { useMicLevel } from '@/lib/speech/dictation'
 import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
 import { NoteExcerpt } from '@/components/notes/note-excerpt'
@@ -720,6 +722,44 @@ function FaceSoundStory() {
 }
 
 /**
+ * Theo as a microphone: the form it takes while the person holds it to speak.
+ * The face is told to listen and the mic level is held steady, so the grille
+ * throbs at a fixed loudness and the arcs stand where they are: a deterministic
+ * render of the listening form, with no microphone opened.
+ */
+function FaceListenStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: SOUND_MESSAGES,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  useEffect(() => {
+    const face = theFace()
+    face.notice('person.listen')
+    useMicLevel.setState({ level: 0.5 })
+    const hold = setInterval(() => {
+      face.feed({ 'mic.level': 0.5 })
+    }, 100)
+    return () => {
+      clearInterval(hold)
+      face.notice('person.listen.end')
+      face.feed({ 'mic.level': 0 })
+      useMicLevel.setState({ level: 0 })
+    }
+  }, [])
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+      <FaceStage />
+    </AssistantRuntimeProvider>
+  )
+}
+
+/**
  * The harness plan as the thread draws its draft_plan call, at the thread's
  * own reading width. The result names no plan id, so the card shows the plan
  * as drafted and reads no live copy.
@@ -1059,6 +1099,12 @@ function MathStory() {
     isRunning: false,
     onNew: async () => {},
     convertMessage: (message: ThreadMessageLike) => message,
+    adapters: {
+      threadList: {
+        threadId: 'story-math',
+        threads: [{ status: 'regular', id: 'story-math', remoteId: 'thread_story_math' }],
+      },
+    },
   })
   return (
     <AssistantRuntimeProvider runtime={runtime}>
@@ -1091,6 +1137,47 @@ function PresentStory() {
               expectedRevision: 0,
               receipt: { outcome: 'applied', result: { painted: 'Col' } },
             },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+/** A conversation whose last run reported its context occupancy, so the
+ *  composer's context ring has real Theorem usage to draw. */
+function ContextUsageStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-usage-user',
+        role: 'user',
+        content: [{ type: 'text', text: 'How full is this conversation?' }],
+      },
+      {
+        id: 'message-usage',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          {
+            type: 'text',
+            text: 'The conversation has room left. The ring beside the composer shows how much of the model\'s context the last request used.',
+          },
+          {
+            type: 'data',
+            name: 'theorem-usage',
+            data: { contextTokens: 84_000, contextWindow: 200_000 },
           },
         ],
       },
@@ -1166,6 +1253,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
   'assistant-math': MathStory,
   'assistant-present': PresentStory,
+  'assistant-context-usage': ContextUsageStory,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
   'design-oracle-draft': threadStory(undefined, [], COMPOSER_DRAFT, 'F05'),

@@ -143,3 +143,37 @@ added, and force-relinked so the tree is flat (one copy of each).
 - The 16-operation server cap is shared with Kit/App/face/workbench; the
   bridge admits MCP tools only into the free slots and says which servers
   did not fit.
+
+## Selection as context (2026-11-17, owner's ask)
+
+The owner wants the common AI-app move: select text in a reply, then add it
+to the composer as context for the next response — or open a side chat /
+task from it. assistant-ui ships Quote (select → composer quote), but not
+"add as a durable context reference" or "open a side chat from selection".
+
+**Finding:** Theorem already has the right foundation, richer than pasting
+text: `askAbout` (`composer-references.tsx`) puts a typed
+`TheoremContextReference` (location + excerpt + label) in the composer, and
+the front role reads the referenced passage. `TheoremResource` has a
+`message` kind (threadId + messageId); `TheoremLocation` carries an optional
+range and revision. Scene parts and delegation changes already use it.
+Plannotator's `AnnotationToolbar` (backnotprop/plannotator, MIT) is the
+reference for the *interaction*: a portal above the selection, copy /
+comment / quick-label, type-to-comment, dismiss on outside/Escape. We take
+the interaction pattern, not its editor, theme, or persistence — per the
+owner's attached guidance ("Theorem-owned experience, selective upstream
+reuse").
+
+**Decision:** extend the installed assistant-ui `SelectionToolbar` (already
+in the thread root) with an "Add to context" action beside Quote. It reads
+the same selection info the Quote button reads (`messageId` + text), builds
+a `message`-kind context reference with the selected text as excerpt, and
+hands it to `askAbout`. The selection toolbar's `useSelectionToolbarInfo`
+is not publicly exported, so the action is composed inside the element's
+`SelectionToolbar.Root` using a small local selection read (the same
+`data-message-id` scoping the library uses), keeping one toolbar.
+
+Side chat from selection is a follow-up: the workbench already has
+`conversationSideChat` (port.ts), but wiring a selection into a new side
+chat needs the workbench's conversation port and is a larger surface; it is
+named, not silently shipped.

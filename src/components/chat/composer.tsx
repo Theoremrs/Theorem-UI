@@ -16,6 +16,7 @@ import {
 } from '@/components/assistant-ui/elements/attachment.aui'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
+import { ComposerContextUsage } from '@/components/chat/context-usage'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import {
   ComposerReferences,
@@ -199,6 +200,7 @@ export const Composer: FC<{
               <Settings />
             </div>
             <div className="appearance-composer-actions appearance-reading-plane">
+              <ComposerContextUsage />
               <Actions review={review} />
             </div>
           </div>
