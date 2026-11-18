@@ -187,6 +187,11 @@ export function observeSnapshots(
  * taller), so it is known by growing when nothing but its frame changed.
  * Its root and body do not resize as its content arrives, so content changes
  * are measured too.
+ *
+ * A page that exactly fills its frame goes on being measured: laid out by its
+ * viewport, it is as tall as any frame the host gives it, so resizing the
+ * frame changes nothing it reports. A page that measures any other height
+ * only happened to fit its first frame, and goes back to its content height.
  */
 export function observeHeight(
   report: (height: number, fills?: boolean) => void,
@@ -194,6 +199,7 @@ export function observeHeight(
   let last = -1
   let outgrew = 0
   let following = true
+  let filling = false
   const initial = window.innerHeight
   const measure = (resized = false) => {
     if (!following) return
@@ -203,6 +209,12 @@ export function observeHeight(
         ? root.scrollHeight
         : root.getBoundingClientRect().height,
     )
+    if (filling) {
+      if (height === window.innerHeight) return
+      filling = false
+      report((last = height))
+      return
+    }
     if (resized && window.innerHeight === last) {
       // Twice taller than a frame just sized to it: it follows its frame.
       outgrew = height > last ? outgrew + 1 : 0
@@ -236,9 +248,8 @@ export function observeHeight(
     // Loaded and exactly as tall as the frame it started in: it fills it.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        if (following && window.innerHeight === initial && last === initial) {
-          // The host's fill height follows the window, so this page does too.
-          following = false
+        if (following && !filling && window.innerHeight === initial && last === initial) {
+          filling = true
           report(last, true)
         }
       }),
