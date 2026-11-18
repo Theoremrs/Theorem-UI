@@ -17,6 +17,7 @@ import {
 } from './display'
 import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
+  ArtifactObservation,
   DossierContext,
   DossierState,
   FrameError,
@@ -244,6 +245,38 @@ const theorem = {
   trace: {
     recording: async (trace: ModelTrace) =>
       call<PageMethods, 'trace.recording'>((await context_()).rpc, 'trace.recording', trace),
+  },
+  /**
+   * Keeps runs and results beyond this open App, for this person: a question
+   * about a moment or a result can then be resolved exactly from another
+   * conversation or App. Each is written once; writing it again is a no-op.
+   */
+  artifacts: {
+    /**
+     * Records a run's next observations (`@theorem/runtime`'s RunRef, then
+     * observations continuing from index 0 with no gaps). A run that names no
+     * source is recorded as run by this App's revision.
+     */
+    record: async (run: object, domain: string, observations: Array<ArtifactObservation>) =>
+      call<PageMethods, 'artifacts.record'>((await context_()).rpc, 'artifacts.record', {
+        run,
+        domain,
+        observations,
+      }),
+    /** Keeps a result (a ResultRef whose `content` is the digest of `bytes`) with its bytes. */
+    result: async (result: object, bytes: Uint8Array) =>
+      call<PageMethods, 'artifacts.result'>((await context_()).rpc, 'artifacts.result', { result, bytes }),
+    /** Whether a subject is held exactly; never answered with the latest instead. */
+    resolve: async (subject: object) =>
+      call<PageMethods, 'artifacts.resolve'>((await context_()).rpc, 'artifacts.resolve', { subject }),
+    /** The revision running (an ArtifactSourceRef), for a result computed now to name as its source. */
+    source: async () => call<PageMethods, 'artifacts.source'>((await context_()).rpc, 'artifacts.source', {}),
+    /**
+     * A kept result and its bytes, by the result's id, from this or any other
+     * conversation or App; both are checked against their digests.
+     */
+    open: async (id: string) =>
+      call<PageMethods, 'artifacts.open'>((await context_()).rpc, 'artifacts.open', { id }),
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

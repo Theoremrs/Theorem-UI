@@ -4,7 +4,7 @@
 // here besides the frames is the model's exact state after each one, so a
 // scrubbed cycle can be shown as it was and run again from.
 
-import { ARTIFACT_RUNTIME_SCHEMA, digestOf, integerText } from '@theorem/runtime'
+import { ARTIFACT_RUNTIME_SCHEMA, canonicalJson, digestOf, integerText } from '@theorem/runtime'
 import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
 import { valueText } from './engine'
 import type { ModelState, Settled } from './engine'
@@ -170,6 +170,14 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
 }
 
 /** The exact reference of a kept settle of `runId`. */
+/**
+ * What a kept settle's digest is of: its values, every part's state and every
+ * input set, as canonical JSON. Written with a durable run, so the moment can
+ * be read back exactly once the App is closed.
+ */
+export const capturedState = (capture: TraceCapture): string =>
+  canonicalJson({ values: capture.kept.frame.values, states: capture.kept.states, pins: capture.kept.pins })
+
 async function observationOf(runId: string, kept: Kept): Promise<ObservationRef> {
   return {
     schema: ARTIFACT_RUNTIME_SCHEMA,
@@ -187,10 +195,18 @@ async function observationOf(runId: string, kept: Kept): Promise<ObservationRef>
  * from their causes under a new recording id, and the old run stays in the
  * viewer to compare.
  */
+/** The most replaced runs whose settles stay held, as the parents a fork is written after. */
+const MAX_RETAINED_RUNS = 16
+
 export class CycleTrace {
   private kept: Array<Kept> = []
   private run = 0
   private parent: Promise<NonNullable<SpatialRun['parent']>> | undefined
+  /** Replaced runs, up to where a re-run forked from them, so a fork's parent can still be written. */
+  private readonly retained = new Map<
+    string,
+    { first: number; kept: Array<Kept>; parent: Promise<NonNullable<SpatialRun['parent']>> | undefined }
+  >()
   private readonly listeners = new Set<() => void>()
 
   constructor(
@@ -262,6 +278,22 @@ export class CycleTrace {
   }
 
   /**
+   * Captures of `runId`'s cycles `from` through `to`: the current run, or a
+   * replaced run a re-run forked from, up to where it forked. Undefined when
+   * any of those cycles is no longer held.
+   */
+  captures(runId: string, from: number, to: number): Array<TraceCapture> | undefined {
+    const held =
+      runId === this.recordingId
+        ? { first: this.first, kept: this.kept, parent: this.parent }
+        : this.retained.get(runId)
+    if (!held || from < held.first || to < from || to - held.first >= held.kept.length) return undefined
+    return held.kept
+      .slice(from - held.first, to - held.first + 1)
+      .map((kept) => ({ runId, parent: held.parent, kept }))
+  }
+
+  /**
    * Whether `observation` names a settle this trace holds now: the same run,
    * a kept index, and the same state. A run's kept settles never change under
    * one name, so the digest check guards only against a forged or mistyped
@@ -327,6 +359,15 @@ export class CycleTrace {
     // kept as its parent rather than overwritten in name.
     const runId = this.recordingId
     const change = causeText({ kind: 'set', path, key, value })
+    // The replaced run stays held through the cycle forked from: a kept
+    // settle is never changed, so these are the same objects the fork shares.
+    this.retained.set(runId, {
+      first: this.first,
+      kept: this.kept.slice(0, cycle - this.first + 1),
+      parent: this.parent,
+    })
+    for (const old of [...this.retained.keys()].slice(0, Math.max(0, this.retained.size - MAX_RETAINED_RUNS)))
+      this.retained.delete(old)
     this.parent = observationOf(runId, from).then((at) => ({ runId, at, change }))
     return this.rerunFrom(cycle, path, key, value)
   }

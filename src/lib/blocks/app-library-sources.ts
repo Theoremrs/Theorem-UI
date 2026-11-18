@@ -15,6 +15,7 @@ import annotateThemeCss from './annotate/theme.css?raw'
 import annotateTheme from './annotate/theme.tsx?raw'
 import runtimeContext from './artifact-runtime/context.ts?raw'
 import runtimeDigest from './artifact-runtime/digest.ts?raw'
+import runtimeEvaluation from './artifact-runtime/evaluation.ts?raw'
 import runtimeIndex from './artifact-runtime/index.ts?raw'
 import runtimeOperations from './artifact-runtime/operations.ts?raw'
 import runtimeSession from './artifact-runtime/session.ts?raw'
@@ -25,6 +26,7 @@ import spatialBits from './spatial/bits.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
 import spatialDossier from './spatial/dossier.tsx?raw'
+import spatialDurable from './spatial/durable.ts?raw'
 import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
@@ -52,6 +54,7 @@ export const librarySources: Record<string, Record<string, string>> = {
   '@theorem/runtime': {
     'context.ts': runtimeContext,
     'digest.ts': runtimeDigest,
+    'evaluation.ts': runtimeEvaluation,
     'index.ts': runtimeIndex,
     'operations.ts': runtimeOperations,
     'session.ts': runtimeSession,
@@ -64,6 +67,7 @@ export const librarySources: Record<string, Record<string, string>> = {
     'chrome.css': spatialChromeCss,
     'chrome.tsx': spatialChrome,
     'dossier.tsx': spatialDossier,
+    'durable.ts': spatialDurable,
     'engine.ts': spatialEngine,
     'form.ts': spatialForm,
     'index.ts': spatialIndex,

@@ -1,0 +1,100 @@
+main {
+  font:
+    15px/1.45 system-ui,
+    sans-serif;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 16px;
+  color: CanvasText;
+  background: Canvas;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+}
+h1 {
+  font-size: 1.3rem;
+  margin: 0;
+}
+.zone {
+  margin: 0;
+  opacity: 0.7;
+}
+.history {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  align-items: end;
+}
+label {
+  display: grid;
+  gap: 2px;
+  font-size: 0.85rem;
+}
+input,
+select,
+button {
+  font: inherit;
+  padding: 6px 8px;
+}
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+.refused {
+  border-left: 4px solid #c0392b;
+  padding: 8px 12px;
+  margin: 8px 0 16px;
+  background: color-mix(in srgb, #c0392b 10%, Canvas);
+}
+.refused p {
+  margin: 0 0 4px;
+  font-weight: 600;
+}
+section {
+  margin: 12px 0;
+}
+h2 {
+  font-size: 1rem;
+  margin: 0 0 4px;
+}
+ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 12%, Canvas);
+}
+.holder {
+  font-weight: 600;
+  margin-right: auto;
+}
+.empty {
+  opacity: 0.6;
+  margin: 0;
+}
+kbd {
+  font-size: 0.75em;
+  opacity: 0.7;
+}
+footer {
+  margin-top: 16px;
+  font-size: 0.85rem;
+  opacity: 0.7;
+}
