@@ -14,6 +14,7 @@ import {
   useAuiState,
   useLocalRuntime,
   useRemoteThreadListRuntime,
+  WebSpeechDictationAdapter,
 } from '@assistant-ui/react'
 import type {
   ChatModelAdapter,
@@ -69,6 +70,7 @@ import { isUntitledTitle, threadTitle } from './thread-title'
 
 import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
+import { usePresentRequests } from '@/lib/generative/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
@@ -676,7 +678,16 @@ function useTheoremThreadRuntime() {
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
-  const runtime = useLocalRuntime(adapter, { adapters: { speech } })
+  // Dictation is the browser's own speech recognition, where it has one; the
+  // composer's mic appears only then.
+  const dictation = useMemo(
+    () =>
+      typeof window !== 'undefined' && WebSpeechDictationAdapter.isSupported()
+        ? new WebSpeechDictationAdapter()
+        : undefined,
+    [],
+  )
+  const runtime = useLocalRuntime(adapter, { adapters: { speech, dictation } })
   useEffect(() => bindRunInput(runtime, {
     threadKey: aui.threadListItem.getState().id,
     threadId: () => aui.threadListItem.getState().remoteId,
@@ -709,6 +720,8 @@ function useTheoremThreadRuntime() {
   useFaceRequests(runtime, faceEffort)
   // The agent reads and acts on the workbench; this answers it.
   useWorkbenchRequests(runtime)
+  // The agent paints an interface into its reply; this answers it.
+  usePresentRequests(runtime)
   // A coding session the agent started that stops working wakes the agent; this tells it.
   useSessionNoticeDelivery(runtime)
   useEffect(() => {

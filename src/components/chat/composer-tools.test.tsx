@@ -206,10 +206,16 @@ const options = () => [
 test('a slash lists the native tools, with their first sentence and what they change', async () => {
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 6)
+  await waitFor(() => options().length === 12)
   expect(container.textContent).toContain('Theorem tools')
   const rows = options().map((option) => option.textContent)
   expect(rows).toEqual([
+    'newStart a new chat.',
+    'webToggle web search for this conversation.',
+    'planToggle Plan mode for this conversation.',
+    'codeToggle Code mode and the workbench.',
+    'read-aloudRead the latest reply aloud, or stop reading.',
+    'connectionsOpen the connections settings.',
     'document_deletedestructiveDelete a document.',
     'recallRecall prior memory for a query.',
     'rememberwritesStore a memory for this person.',
@@ -233,7 +239,7 @@ test('the tools heading shows only while the slash list is open', async () => {
   const { container } = await mount(<Harness text="" sent={[]} />)
   expect(container.textContent).not.toContain('Theorem tools')
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 6)
+  await waitFor(() => options().length === 12)
   expect(container.textContent).toContain('Theorem tools')
   await type(inputOf(container), 'Hello')
   await waitFor(() => !options().length)
@@ -246,7 +252,9 @@ test('typing after the slash narrows the list, best name match first', async () 
   await waitFor(() => options().length)
   expect(options()[0]!.textContent).toStartWith('recall')
   await type(inputOf(container), '/web')
-  await waitFor(() => options()[0]?.textContent.startsWith('rustyweb_search'))
+  // The web action command ranks first; the search tool follows it.
+  await waitFor(() => options()[0]?.textContent.startsWith('web'))
+  expect(options().some((option) => option.textContent.startsWith('rustyweb_search'))).toBe(true)
 })
 
 test('Enter picks the highlighted tool, and the message names it for the turn', async () => {
@@ -264,6 +272,21 @@ test('Enter picks the highlighted tool, and the message names it for the turn', 
   await press(input, 'Enter', { ctrlKey: true })
   await waitFor(() => sent.length)
   expect(sentText(sent[0]!)).toBe(':tool[recall] what did we decide')
+})
+
+test('an action command runs and strips its trigger text, leaving no chip', async () => {
+  const { container } = await mount(<Harness text="" sent={[]} />)
+  const input = inputOf(container)
+  const before = useWebSearch.getState().on
+  await type(input, '/web')
+  await waitFor(() => options()[0]?.textContent.startsWith('web'))
+  await press(input, 'Enter')
+  await waitFor(() => !options().length)
+  expect(useWebSearch.getState().on).toBe(!before)
+  // No directive chip is left behind, and the draft holds only whitespace.
+  expect(container.querySelector('[data-slot="directive-text-chip"]')).toBeNull()
+  expect(composerText().replace(/&#x20;|\s/g, '')).toBe('')
+  useWebSearch.setState({ on: before })
 })
 
 test('a slash typed at the end of bold text still lists and picks a tool', async () => {
@@ -319,9 +342,15 @@ test('output commands stay available when the tools route is unavailable', async
   toolsStatus = 404
   const { container } = await mount(<Harness text="" sent={[]} />)
   await type(inputOf(container), '/')
-  await waitFor(() => options().length === 2)
+  await waitFor(() => options().length === 8)
   expect(container.textContent).toContain('This Theorem does not list its tools yet.')
   expect(options().map((item) => item.textContent)).toEqual([
+    'newStart a new chat.',
+    'webToggle web search for this conversation.',
+    'planToggle Plan mode for this conversation.',
+    'codeToggle Code mode and the workbench.',
+    'read-aloudRead the latest reply aloud, or stop reading.',
+    'connectionsOpen the connections settings.',
     'output-styleChoose how Theorem writes its replies.',
     'output-settingsResponse detail and optional limits for this conversation.',
   ])
@@ -409,17 +438,19 @@ test('the arrow keys move through the tools, and Escape closes the list and keep
   const { container } = await mount(<Harness text="" sent={[]} />)
   const input = inputOf(container)
   await type(input, '/')
-  await waitFor(() => options().length === 6)
+  await waitFor(() => options().length === 12)
   expect(input.getAttribute('aria-expanded')).toBe('true')
   const first = input.getAttribute('aria-activedescendant')
   await press(input, 'ArrowDown')
   await waitFor(() => input.getAttribute('aria-activedescendant') !== first)
+  // The list opens on the action commands; step down to recall, the second tool.
+  for (let step = 0; step < 6; step++) await press(input, 'ArrowDown')
   await press(input, 'Enter')
   await waitFor(() => !options().length)
   expect(composerText()).toStartWith(':tool[recall]')
 
   await type(input, 'see /')
-  await waitFor(() => options().length === 6)
+  await waitFor(() => options().length === 12)
   await press(input, 'Escape')
   await waitFor(() => !options().length)
   expect(input.hasAttribute('aria-expanded')).toBe(false)

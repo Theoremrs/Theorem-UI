@@ -39,6 +39,18 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1440, height: 900 },
   },
   {
+    id: 'assistant-math',
+    title: 'assistant-ui: LaTeX math in a reply',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
+    id: 'assistant-present',
+    title: 'assistant-ui: a painted interface in a reply',
+    lane: 'translation',
+    viewport: { width: 1024, height: 768 },
+  },
+  {
     id: 'design-oracle-long',
     title: 'Design oracle F02: fixed Latin calibration prose',
     lane: 'original',

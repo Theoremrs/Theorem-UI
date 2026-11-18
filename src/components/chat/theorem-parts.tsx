@@ -7,6 +7,9 @@
 // gives the artifact tools a pending card while they run. Delegated work has
 // its own cards in delegation-parts.
 import { useAui, useAuiState, useAssistantDataUI } from '@assistant-ui/react'
+import { renderGenerativeUI } from '@assistant-ui/generative-ui/react'
+import { styledGenerativeUILibrary } from '@/components/assistant-ui/elements/generative-ui'
+import { PRESENT } from '@/lib/generative/operations'
 import { CatchBoundary } from '@tanstack/react-router'
 import type {
   AssistantState,
@@ -381,9 +384,23 @@ export function appCheckProblems(data: unknown): string | undefined {
 /**
  * Something the agent asked this page to do. Nothing draws here: a check of
  * an App is a row of the tool-calls section, and the fox on the stage shows
- * what Kit's operations did.
+ * what Kit's operations did. A `ui.present` call is the exception: the tree
+ * it carries is the reply's interface, drawn from the styled vocabulary.
  */
-const ClientOperationPart: DataMessagePartComponent = () => null
+const ClientOperationPart: DataMessagePartComponent = ({ data }) => {
+  const call = object(data)
+  const args = object(call.args)
+  const running = useAuiState((s) => s.message.status?.type === 'running')
+  if (str(call.operation) !== PRESENT) return null
+  const state = str(call.state) ?? 'pending'
+  // While the call streams, the tree is partial; the renderer tolerates that.
+  const status = state === 'pending' && running ? 'streaming' : 'done'
+  return (
+    <div data-slot="theorem-present" className="aui-p-present my-2">
+      {renderGenerativeUI(args, styledGenerativeUILibrary, { status })}
+    </div>
+  )
+}
 
 /* ------------------------------------------------------------------ approvals */
 
