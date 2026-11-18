@@ -38,7 +38,8 @@ import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
 import type { ChromeActions, ChromeProps, ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
-import { CycleTrace } from './trace'
+import type { ObservationRef } from '@theorem/runtime'
+import { CycleTrace, groundCapture } from './trace'
 import type { TraceFrame } from './trace'
 
 export type SpatialBuilder = Builder<Form, THREE.Object3D>
@@ -914,27 +915,38 @@ export function mount(
   }
 
   /**
-   * The exact run and moment of `cycle` in the run current now, resolved when
-   * called (a snapshot is made often; a digest is made only for a question).
-   * Once that run is replaced by a re-run, the moment is reported missing
-   * rather than read from the new run.
+   * The exact run and moment of `cycle` in the run current when the snapshot
+   * was made. Everything is captured together when a question asks, before
+   * any waiting, so a re-run during hashing cannot mix one run's name with
+   * another's values. Once that run is replaced, or the cycle is no longer
+   * kept, the moment is reported unavailable rather than read from what is
+   * there now.
    */
   function groundAt(cycle: number): () => Promise<Grounding> {
     const runId = trace.recordingId
     return async () => {
-      const run = await trace.runRef()
-      const current = run.id === runId
-      if (!current) {
+      const captured = trace.recordingId === runId ? trace.capture(cycle) : undefined
+      if (!captured) {
+        const run = await trace.runRef()
         // Only the replaced run's name is still known here, not its lineage.
         const { parent: _replaced, ...rest } = run
-        return { run: { ...rest, id: runId }, observation: undefined, unsettled: [] }
+        return { run: run.id === runId ? run : { ...rest, id: runId }, observation: undefined, frame: undefined, unsettled: [] }
       }
-      return {
-        run,
-        observation: await trace.observation(cycle),
-        unsettled: trace.unsettled(cycle) ?? [],
-      }
+      return groundCapture(captured)
     }
+  }
+
+  /**
+   * Shows exactly the settle a reference names: the run current now, a kept
+   * cycle and the same state. False, and nothing moves, otherwise; it never
+   * shows the nearest kept cycle or the latest instead.
+   */
+  async function reveal(observation: ObservationRef): Promise<boolean> {
+    if (!(await trace.holds(observation))) return false
+    const cycle = Number(observation.index)
+    if (cycle === trace.cycle) scrub(null)
+    else scrub(cycle)
+    return true
   }
 
   function scrub(cycle: number | null) {
@@ -1164,6 +1176,7 @@ export function mount(
         recent: trace.frames(Math.max(trace.first, (viewing ?? trace.cycle) - 7)).filter(
           (frame) => frame.cycle <= (viewing ?? trace.cycle),
         ),
+        first: trace.first,
         runId: trace.recordingId,
         ground: groundAt(viewing ?? trace.cycle),
       },
@@ -1216,6 +1229,7 @@ export function mount(
       notify()
     },
     scrub,
+    reveal,
   }
 
   // Renders once per task however many changes asked for it.

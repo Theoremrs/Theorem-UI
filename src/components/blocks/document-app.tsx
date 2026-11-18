@@ -44,10 +44,11 @@ import {
   dossierReference,
   questionBinding,
   dossierState,
+  markUndelivered,
   sourceOf,
-  subjectOf,
+  withHeld,
 } from '@/lib/theorem/app-dossier'
-import type { ConversationMessage, Displayed } from '@/lib/theorem/app-dossier'
+import type { ConversationMessage, Displayed, HeldQuestion } from '@/lib/theorem/app-dossier'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
 import { AppElement } from './app-element'
 import { AppProblems } from './app-problems'
@@ -568,10 +569,7 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
  * person is; the App is told the questions it asked and their replies.
  */
 /** A question held while the conversation's turn runs, so asking does not stop it. */
-interface Queued {
-  id: string
-  text: string
-  context: Record<string, unknown>
+interface Queued extends HeldQuestion {
   displayed: Displayed
 }
 
@@ -603,7 +601,7 @@ function useAppDossier(
     let state = CLOSED
     let said = JSON.stringify(state)
     const listeners = new Set<(next: DossierState) => void>()
-    const send = (question: Omit<Queued, 'id'>) => {
+    const send = (question: Omit<Queued, 'id' | 'failed'>) => {
       const { thread } = latest.current.aui
       if (!thread.source)
         throw new Error('This App is not shown in a conversation.')
@@ -668,40 +666,24 @@ function useAppDossier(
       },
     }
   }, [app, displayedRef])
-  // Held questions go, in order, once the turn that was running ends.
+  // Held questions go, in order, once the turn that was running ends. One
+  // that cannot be sent stays, marked with why, rather than vanishing.
   useEffect(() => {
-    if (running || !queued.length) return
-    const [next, ...rest] = queued
-    // The turn that held it has ended: the next held question goes now.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setQueued(rest)
+    if (running) return
+    const next = queued.find((question) => question.failed === undefined)
+    if (!next) return
     try {
-      dossier.send(next!)
-    } catch {
-      // The conversation went away; the question is dropped visibly with the queue.
+      dossier.send(next)
+      // The turn that held it has ended and it has gone: it leaves the queue.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setQueued((previous) => previous.filter((question) => question.id !== next.id))
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error)
+      setQueued((previous) => markUndelivered(previous, next.id, reason))
     }
   }, [running, queued, dossier])
   useEffect(() => {
-    const base = dossierState(messages, app.documentId, available)
-    dossier.set(
-      queued.length
-        ? {
-            ...base,
-            running: true,
-            messages: [
-              ...base.messages,
-              ...queued.map((question) => ({
-                id: question.id,
-                role: 'user' as const,
-                text: question.text,
-                status: 'complete' as const,
-                queued: true,
-                subject: subjectOf(question.context),
-              })),
-            ],
-          }
-        : base,
-    )
+    dossier.set(withHeld(dossierState(messages, app.documentId, available), queued))
   }, [dossier, messages, available, app.documentId, queued])
   return dossier
 }

@@ -4,6 +4,8 @@ import { appDocumentFixture } from '../../../test/blocks/app-documents'
 import { AppDocument } from './apps'
 import {
   discoveredOperations,
+  markUndelivered,
+  withHeld,
   DOSSIER_METADATA,
   MAX_REFERENCE_BYTES,
   dossierReference,
@@ -255,4 +257,51 @@ test('a run another revision executed keeps its own source when a newer presenta
   })
   expect(binding.subject?.kind === 'moment' && binding.subject.run?.source).toEqual(solver)
   expect(binding.presentation.source).toMatchObject({ kind: 'document', documentId: snapshot.documentId })
+})
+
+test('a long list of parts that never settled is shortened, never dropped, and the binding stays', async () => {
+  const snapshot = await loaded()
+  const observation = await moment('5')
+  const unsettled = Array.from({ length: 700 }, (_, index) => `cpu/loop${index}/inverter`)
+  const context = {
+    selected: { id: 'cpu' },
+    observation,
+    run: { id: 'spatial-x:0' },
+    settled: false,
+    unsettled,
+    facts: [{ entity: 'cpu', key: 'a', value: { type: 'integer', text: '1' }, text: '1' }],
+  }
+  const { binding } = questionBinding({ snapshot }, snapshot, context)
+  const reference = dossierReference(snapshot, context, binding)
+  expect(new TextEncoder().encode(JSON.stringify(reference)).length).toBeLessThanOrEqual(MAX_REFERENCE_BYTES)
+  const excerpt = JSON.parse(reference.excerpt!)
+  expect(excerpt.binding.subject.observation).toEqual(observation)
+  expect(excerpt.dossier.settled).toBe(false)
+  expect(excerpt.dossier.unsettled.length).toBeGreaterThan(0)
+  expect(excerpt.dossier.unsettled.length + excerpt.dossier.unsettledOmitted).toBe(700)
+  expect(excerpt.dossier.facts.length + (excerpt.dossier.factsOmitted ?? 0)).toBe(1)
+})
+
+test('a reference whose required part cannot fit fails loudly instead of losing it', async () => {
+  const snapshot = await loaded()
+  const context = { selection: { schema: 'x', version: '1', value: 'v' }, subject: { kind: 'source', source: { kind: 'commit', repository: 'r', commit: 'c'.repeat(9000) } } }
+  expect(() => dossierReference(snapshot, context, questionBinding({ snapshot }, snapshot, context).binding)).toThrow('more than the 8192')
+})
+
+test('a held question that could not be sent stays shown with why, keeping its subject', async () => {
+  const observation = await moment('3')
+  const held = [
+    { id: 'q1', text: 'First', context: { observation } },
+    { id: 'q2', text: 'Second', context: {} },
+  ]
+  const base = { available: true, running: false, messages: [] }
+  const failed = markUndelivered(held, 'q1', 'This App is not shown in a conversation.')
+  const state = withHeld(base, failed)
+  expect(state.messages).toEqual([
+    { id: 'q1', role: 'user', text: 'First', status: 'incomplete', undelivered: 'This App is not shown in a conversation.', subject: { kind: 'moment', observation } },
+    { id: 'q2', role: 'user', text: 'Second', status: 'complete', queued: true },
+  ])
+  expect(state.running).toBe(true)
+  expect(withHeld(base, markUndelivered(failed, 'q2', 'gone')).running).toBe(false)
+  expect(withHeld(base, [])).toBe(base)
 })

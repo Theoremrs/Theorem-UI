@@ -141,10 +141,11 @@ export function discoveredOperations(
 }
 
 /**
- * Keys of the App's account that are never left out to fit: what is
- * selected and the exact moment and run the question is about. Facts are
- * shortened, not dropped, and say how many were left out; the exact moment
- * is enough to read the rest again.
+ * Keys of the App's account that are never left out to fit: what the
+ * question is about and where, the exact moment and run, and whether the
+ * values can be relied on. Long lists among them (facts, parts that never
+ * settled) are shortened from the end and say how many went; they are never
+ * dropped whole.
  */
 const KEPT = new Set([
   'subject',
@@ -159,12 +160,20 @@ const KEPT = new Set([
   'unavailable',
 ])
 
+/** Lists shortened, in this order, when what is kept still does not fit; each says how many it lost. */
+const SHORTENED = [
+  ['facts', 'factsOmitted'],
+  ['unsettled', 'unsettledOmitted'],
+] as const
+
 /**
  * The reference a question asked from an App goes with: the App's revision
  * on screen, the part it says is selected, and its own account of where the
  * person is. What does not fit the backend's limit is left out largest
- * first, and the excerpt says which keys were. With a binding, the excerpt
- * carries it whole, outside what may be left out.
+ * first, and the excerpt says which keys were; then the kept lists are
+ * shortened, saying by how many. The binding and the kept keys are never
+ * left out: when even they cannot fit, this throws rather than sending a
+ * question that has quietly lost what it was about.
  */
 export function dossierReference(
   snapshot: AppSnapshot,
@@ -178,8 +187,10 @@ export function dossierReference(
     selection && { selection, source: snapshot.html, revision: snapshot.revision },
   )
   const dossier: Record<string, unknown> = { ...context }
+  // What is selected is kept, in the bounded form the selection names it.
+  if (entity) dossier.selected = { id: entity.entityId, ...(entity.entityLabel && { label: entity.entityLabel }) }
   const omitted: Array<string> = []
-  let factsOmitted = 0
+  const lost: Record<string, number> = {}
   const fitted = () => ({
     ...reference,
     excerpt: JSON.stringify({
@@ -188,7 +199,7 @@ export function dossierReference(
       dossier: {
         ...dossier,
         ...(omitted.length ? { omitted } : {}),
-        ...(factsOmitted ? { factsOmitted } : {}),
+        ...lost,
       },
     }),
   })
@@ -197,22 +208,20 @@ export function dossierReference(
     const largest = Object.keys(dossier)
       .filter((key) => !KEPT.has(key))
       .sort((a, b) => bytes(dossier[b]) - bytes(dossier[a]))[0]
-    const facts = Array.isArray(dossier.facts) ? dossier.facts : []
     if (largest !== undefined) {
       delete dossier[largest]
       omitted.push(largest)
-    } else if (facts.length) {
-      const keep = Math.floor(facts.length / 2)
-      factsOmitted += facts.length - keep
-      dossier.facts = facts.slice(0, keep)
     } else {
-      // Still marked as the dossier's, so the question is found again on
-      // reload; the moment it was about is kept with it.
-      const kept = Object.fromEntries(['subject', 'observation', 'run'].filter((key) => key in dossier).map((key) => [key, dossier[key]]))
-      shaped = { ...reference, excerpt: JSON.stringify({ selection, dossier: { ...kept, omitted } }) }
-      if (bytes(shaped) > MAX_REFERENCE_BYTES)
-        shaped = { ...reference, excerpt: JSON.stringify({ selection, dossier: { subject: binding?.subject ?? subjectOf(dossier), omitted } }) }
-      break
+      const list = SHORTENED.find(([key]) => Array.isArray(dossier[key]) && (dossier[key] as Array<unknown>).length > 0)
+      if (!list)
+        throw new Error(
+          `This question's reference needs ${bytes(shaped)} bytes for what it is about, more than the ${MAX_REFERENCE_BYTES} a reference may hold.`,
+        )
+      const [key, count] = list
+      const items = dossier[key] as Array<unknown>
+      const keep = Math.floor(items.length / 2)
+      lost[count] = (lost[count] ?? 0) + items.length - keep
+      dossier[key] = items.slice(0, keep)
     }
     shaped = fitted()
   }
@@ -383,4 +392,49 @@ export function sourceOf(
       return { file, line: text.slice(0, at).split('\n').length }
   }
   return undefined
+}
+
+/** A question held while the conversation answers another, and why it could not be sent, when it could not. */
+export interface HeldQuestion {
+  id: string
+  text: string
+  context: DossierContext
+  failed?: string
+}
+
+/** The held questions with one marked as not delivered, in place. */
+export function markUndelivered<T extends HeldQuestion>(
+  held: ReadonlyArray<T>,
+  id: string,
+  reason: string,
+): Array<T> {
+  return held.map((question) => (question.id === id ? { ...question, failed: reason } : question))
+}
+
+/**
+ * The dossier's messages with the held questions after them: waiting ones
+ * marked queued, and ones that could not be sent marked incomplete with why.
+ * Each keeps the subject it was asked about.
+ */
+export function withHeld(base: DossierState, held: ReadonlyArray<HeldQuestion>): DossierState {
+  if (!held.length) return base
+  return {
+    ...base,
+    running: base.running || held.some((question) => question.failed === undefined),
+    messages: [
+      ...base.messages,
+      ...held.map((question): DossierMessage => {
+        const subject = subjectOf(question.context)
+        return {
+          id: question.id,
+          role: 'user',
+          text: question.text,
+          ...(question.failed === undefined
+            ? { status: 'complete', queued: true }
+            : { status: 'incomplete', undelivered: question.failed }),
+          ...(subject && { subject }),
+        }
+      }),
+    ],
+  }
 }

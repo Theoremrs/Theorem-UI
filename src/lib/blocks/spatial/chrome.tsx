@@ -95,6 +95,8 @@ export interface ChromeSnapshot {
     latest: number
     viewing: boolean
     recent: Array<TraceFrame>
+    /** The earliest cycle still kept. */
+    first: number
     runId: string
     ground: () => Promise<Grounding>
   }
@@ -103,8 +105,10 @@ export interface ChromeSnapshot {
 /** The exact run and moment a question about the model is about. */
 export interface Grounding {
   run: SpatialRun
-  /** Undefined only when the cycle is no longer kept; never the latest instead. */
+  /** Undefined when the cycle is no longer kept or its run was replaced; never the latest instead. */
   observation: ObservationRef | undefined
+  /** The recorded frame of that same moment, from the same capture; undefined with the observation. */
+  frame: TraceFrame | undefined
   /** Parts still changing when that cycle's settle gave up; empty when it came to rest. */
   unsettled: Array<string>
 }
@@ -124,6 +128,8 @@ export interface ChromeActions {
   pause: (on: boolean) => void
   /** Shows a recorded cycle as it was; null goes back to the latest. */
   scrub: (cycle: number | null) => void
+  /** Shows exactly the settle a reference names, or nothing and false when it is not held. */
+  reveal: (observation: ObservationRef) => Promise<boolean>
 }
 
 export interface ChromeProps {
@@ -504,7 +510,7 @@ export function SpatialChrome({ snapshot, actions, anchors, stage, glass }: Chro
       held={heldOn === part.path}
       hold={(held) => setHeldOn(held ? part.path : null)}
       bring={() => (heldOn ? setHeldOn(part.path) : actions.select(part.path))}
-      show={actions.scrub}
+      reveal={actions.reveal}
     />
   )
   // The glass refracts the whole view; its own chrome is left out of what it sees.

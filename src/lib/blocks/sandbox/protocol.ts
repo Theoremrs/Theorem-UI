@@ -204,6 +204,8 @@ export interface DossierMessage {
   subject?: unknown
   /** Held until the conversation's current turn ends, so asking does not stop it. */
   queued?: boolean
+  /** Why a held question could not be sent; it stays shown, not dropped. */
+  undelivered?: string
 }
 
 /**

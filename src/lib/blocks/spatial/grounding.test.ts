@@ -2,12 +2,12 @@
 // come from the recorded moment it names, and the four-bit adder they are
 // read from agrees with integer arithmetic everywhere.
 import { describe, expect, it } from 'bun:test'
-import { signalText } from '@theorem/runtime'
+import { digestOf, signalText } from '@theorem/runtime'
 import type { ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
-import { groundedContext, observedFacts, referencedMoment } from './dossier'
+import { dossierContext, groundedContext, observedFacts, referencedMoment } from './dossier'
 import { buildNetwork, ModelState } from './engine'
 import { rippleAdder } from './parts'
-import { CycleTrace } from './trace'
+import { CycleTrace, groundCapture } from './trace'
 
 function adder(a: number, b: number, cin = 0) {
   const model = new ModelState(
@@ -100,6 +100,16 @@ describe('facts a question about the adder carries', () => {
   })
 })
 
+/** What view.ts's groundAt does: capture at once, then resolve only the capture. */
+function groundOf(trace: CycleTrace, cycle: number) {
+  const runId = trace.recordingId
+  return async (): Promise<Grounding> => {
+    const captured = trace.recordingId === runId ? trace.capture(cycle) : undefined
+    if (!captured) return { run: { ...(await trace.runRef()), id: runId }, observation: undefined, frame: undefined, unsettled: [] }
+    return groundCapture(captured)
+  }
+}
+
 const part = {
   path: 'add',
   label: 'Adder',
@@ -121,12 +131,9 @@ function shown(
       latest: trace.cycle,
       viewing,
       recent: trace.frames(),
+      first: trace.first,
       runId: trace.recordingId,
-      ground: async (): Promise<Grounding> => ({
-        run: await trace.runRef(),
-        observation: await trace.observation(cycle),
-        unsettled: trace.unsettled(cycle) ?? [],
-      }),
+      ground: groundOf(trace, cycle),
     },
   } as unknown as ChromeSnapshot
 }
@@ -165,6 +172,7 @@ describe('a grounded question', () => {
     const context = await groundedContext(part, snapshot, {}, async () => ({
       run: await trace.runRef(),
       observation: undefined,
+      frame: undefined,
       unsettled: [],
     }))
     expect(context.observation).toBeNull()
@@ -196,15 +204,118 @@ describe('the referenced moment', () => {
       ],
     }
     expect(referencedMoment(state, shown(trace, 1))).toEqual({
+      observation: asked!,
       cycle: 0,
-      runId: 'adder:0',
-      current: true,
+      status: 'held',
     })
     expect(referencedMoment(state, shown(trace, 0, true))).toBeUndefined()
     trace.rerun(0, 'add', 'b', 3)
     expect(referencedMoment(state, shown(trace, 1))).toMatchObject({
       cycle: 0,
-      current: false,
+      status: 'replaced',
     })
+  })
+})
+
+describe('a question grounds one capture, whatever happens while it is hashed', () => {
+  it('a re-run started while grounding cannot pair the old run with the new run’s values', async () => {
+    const { model, trace } = adder(7, 5)
+    model.set('add', 'b', 9)
+    trace.record({ kind: 'set', path: 'add', key: 'b', value: 9 }, model.settle())
+    const snapshot = shown(trace, 1)
+    // The question is asked, then a re-run replaces cycle 1 before hashing finishes.
+    const asking = groundedContext(part, snapshot, { selected: { id: 'add' } })
+    trace.rerun(0, 'add', 'b', 3)
+    const context = await asking
+    const observation = context.observation as { runId: string; index: string }
+    expect((context.run as { id: string }).id).toBe('adder:0')
+    expect(observation.runId).toBe('adder:0')
+    const facts = context.facts as Array<{ entity: string; key: string; text: string }>
+    // 7 + 9 = 16, which is 0 in four bits: the values of adder:0's cycle 1, not adder:1's 7 + 3.
+    expect(facts.find((item) => item.entity === 'add' && item.key === 'sum')?.text).toBe('0')
+    expect(facts.find((item) => item.entity === 'add' && item.key === 'b')?.text).toBe('9')
+  })
+
+  it('a question asked after the re-run is told the moment is gone, with no values', async () => {
+    const { model, trace } = adder(7, 5)
+    model.set('add', 'b', 9)
+    trace.record({ kind: 'set', path: 'add', key: 'b', value: 9 }, model.settle())
+    const snapshot = shown(trace, 1)
+    trace.rerun(0, 'add', 'b', 3)
+    const context = await groundedContext(part, snapshot, {})
+    expect(context.observation).toBeNull()
+    expect(context.facts).toEqual([])
+    expect((context.run as { id: string }).id).toBe('adder:0')
+  })
+})
+
+describe('unavailable means no values anywhere in the question', () => {
+  it('drops the live account’s numbers, recent frames, interactables and settling', async () => {
+    const { trace } = adder(7, 5)
+    const live = {
+      ...part,
+      about: 'Adds two four-bit numbers.',
+      ports: [
+        { name: 'a', label: 'A', dir: 'in', value: 7, text: '7', editable: true },
+        { name: 'sum', label: 'Sum', dir: 'out', value: 12, text: '12' },
+      ],
+      state: [{ name: 'mode', value: 'binary', text: 'binary', control: { kind: 'select' } }],
+      openable: false,
+    } as unknown as PartSnapshot
+    const snapshot = {
+      ...shown(trace, 0),
+      replay: { active: false, stage: 0, end: 0, paused: false },
+      running: false,
+      ticking: false,
+    } as unknown as ChromeSnapshot
+    const context = dossierContext(live, snapshot, [{ id: 'slider', value: 7 }])
+    expect(JSON.stringify(context)).toContain('"12"')
+    const grounded = await groundedContext(live, snapshot, context, async () => ({
+      run: await trace.runRef(),
+      observation: undefined,
+      frame: undefined,
+      unsettled: [],
+    }))
+    expect(grounded.observation).toBeNull()
+    expect(grounded.settled).toBeNull()
+    expect(grounded.facts).toEqual([])
+    expect(grounded).not.toHaveProperty('interactables')
+    expect(grounded.outputs).toEqual([{ name: 'sum', label: 'Sum' }])
+    expect(grounded.inputs).toEqual([{ name: 'a', label: 'A', editable: true }])
+    expect(grounded.cycle).toEqual({ shown: 0, latest: 0, lookingBack: false })
+    const text = JSON.stringify(grounded)
+    expect(text).not.toContain('12')
+    expect(text).not.toContain('"value"')
+    // What can be done there is still said.
+    expect(grounded.actions).toContain('set a')
+    expect(grounded.selected).toEqual({ id: 'add', label: 'Adder' })
+  })
+})
+
+describe('showing the referenced moment is exact', () => {
+  it('a same-run cycle no longer kept is said to be gone, never shown as the earliest kept', async () => {
+    const { trace } = adder(7, 5)
+    const asked = await trace.observation(0)
+    const state = {
+      available: true,
+      running: false,
+      messages: [{ id: 'q', role: 'user' as const, text: 'why?', status: 'complete' as const, subject: { kind: 'moment' as const, observation: asked! } }],
+    }
+    const snapshot = shown(trace, 0)
+    const later = { ...snapshot, trace: { ...snapshot.trace, cycle: 5001, latest: 5001, first: 2 } }
+    expect(referencedMoment(state, later)).toEqual({ observation: asked!, cycle: 0, status: 'evicted' })
+  })
+
+  it('the trace holds a reference only for its own run, a kept index and the same state', async () => {
+    const { model, trace } = adder(7, 5)
+    const at = (await trace.observation(0))!
+    expect(await trace.holds(at)).toBe(true)
+    expect(await trace.holds({ ...at, stateDigest: await digestOf('other') })).toBe(false)
+    expect(await trace.holds({ ...at, domain: 'physical-time', time: '999999' })).toBe(false)
+    expect(await trace.holds({ ...at, index: '7', time: '7' })).toBe(false)
+    model.set('add', 'b', 9)
+    trace.record({ kind: 'set', path: 'add', key: 'b', value: 9 }, model.settle())
+    trace.rerun(0, 'add', 'b', 3)
+    expect(await trace.holds(at)).toBe(false)
   })
 })

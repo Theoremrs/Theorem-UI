@@ -52,8 +52,49 @@ interface Kept {
   unsettled: Array<string>
 }
 
-/** A run of the model as a run reference names it, without the source, which only the host knows. */
+/**
+ * A run of the model as a run reference names it. It leaves out its source:
+ * the model runs inside the presentation, so the host names the revision
+ * running.
+ */
 export type SpatialRun = Omit<RunRef, 'source'>
+
+/** A kept settle and its run's name and lineage, taken together (CycleTrace.capture). */
+export interface TraceCapture {
+  readonly runId: string
+  readonly parent: Promise<NonNullable<SpatialRun['parent']>> | undefined
+  readonly kept: Readonly<Kept>
+}
+
+/** A capture resolved: the run, the exact moment, its frame and whether it came to rest. All from one capture. */
+export async function groundCapture(capture: TraceCapture): Promise<{
+  run: SpatialRun
+  observation: ObservationRef
+  frame: TraceFrame
+  unsettled: Array<string>
+}> {
+  const parent = await capture.parent
+  return {
+    run: runOf(capture.runId, parent),
+    observation: await observationOf(capture.runId, capture.kept),
+    frame: capture.kept.frame,
+    unsettled: [...capture.kept.unsettled],
+  }
+}
+
+function runOf(id: string, parent: NonNullable<SpatialRun['parent']> | undefined): SpatialRun {
+  return {
+    schema: ARTIFACT_RUNTIME_SCHEMA,
+    id,
+    engine: SPATIAL_ENGINE,
+    ...(parent && { parent }),
+    domains: [TRACE_DOMAIN],
+    // A part's compute or tick may read time, randomness or outside data, so
+    // the model is not claimed reproducible from its inputs; what is claimed
+    // is what was recorded.
+    reproducibility: 'recorded',
+  }
+}
 
 /** The most cycles kept; a model left running drops its oldest. */
 export const MAX_CYCLES = 5000
@@ -190,15 +231,7 @@ export class CycleTrace {
   /** The current run as a run reference names it. */
   async runRef(): Promise<SpatialRun> {
     const id = this.recordingId
-    const parent = await this.parent
-    return {
-      schema: ARTIFACT_RUNTIME_SCHEMA,
-      id,
-      engine: SPATIAL_ENGINE,
-      ...(parent && { parent }),
-      domains: [TRACE_DOMAIN],
-      reproducibility: 'deterministic',
-    }
+    return runOf(id, await this.parent)
   }
 
   /**
@@ -209,6 +242,33 @@ export class CycleTrace {
   async observation(cycle: number): Promise<ObservationRef | undefined> {
     const kept = this.kept[cycle - this.first]
     return kept && observationOf(this.recordingId, kept)
+  }
+
+  /**
+   * Everything a question about `cycle` relies on, taken at once and before
+   * any waiting: the run's name and lineage as they are now, and the kept
+   * settle itself (its frame, states, pins and whether it came to rest). A
+   * kept settle is never changed after it is recorded, and a re-run gives the
+   * run a new name, so a later re-run or eviction cannot alter a capture.
+   * Undefined when the cycle is not kept.
+   */
+  capture(cycle: number): TraceCapture | undefined {
+    const kept = this.kept[cycle - this.first]
+    if (!kept) return undefined
+    return { runId: this.recordingId, parent: this.parent, kept }
+  }
+
+  /**
+   * Whether `observation` names a settle this trace holds now: the same run,
+   * a kept index, and the same state. A run's kept settles never change under
+   * one name, so the digest check guards only against a forged or mistyped
+   * reference.
+   */
+  async holds(observation: ObservationRef): Promise<boolean> {
+    const captured = this.capture(Number(observation.index))
+    if (!captured || captured.runId !== observation.runId) return false
+    const at = await observationOf(captured.runId, captured.kept)
+    return at.stateDigest === observation.stateDigest && at.domain === observation.domain && at.time === observation.time
   }
 
   subscribe(listener: () => void): () => void {
