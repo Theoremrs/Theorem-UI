@@ -10,7 +10,9 @@ import {
 } from '../../src/lib/theorem/artifact-store'
 import type { TraceChunk } from '../../src/lib/theorem/artifact-store'
 
-export function backend(options: { staleToken?: boolean } = {}) {
+export function backend(
+  options: { staleToken?: boolean; pageChunks?: number } = {},
+) {
   const blobs = new Map<string, Uint8Array>()
   const chunks: Array<TraceChunk> = []
   const runs = new Map<string, string>()
@@ -54,6 +56,22 @@ export function backend(options: { staleToken?: boolean } = {}) {
           return refuse(409, 'apps_immutable_conflict')
         runs.set(body.id as string, text)
         return ok(body)
+      }
+      case 'GET runs': {
+        // Bounded pages, as the backend answers (MAX_RUN_PAGE_CHUNKS).
+        const runId = url.searchParams.get('run_id')!
+        const held = runs.get(runId)
+        if (!held) return refuse(404, 'artifact_run_not_found')
+        const own = chunks.filter((stored) => stored.runId === runId)
+        const from = Number(url.searchParams.get('from_sequence') ?? 0)
+        const size = options.pageChunks ?? 64
+        const next = from + size < own.length ? String(from + size) : undefined
+        return ok({
+          run: JSON.parse(held),
+          chunks: own.slice(from, from + size),
+          checkpoints: [],
+          ...(next !== undefined && { next_sequence: next }),
+        })
       }
       case 'POST chunks': {
         const chunk = body as unknown as TraceChunk

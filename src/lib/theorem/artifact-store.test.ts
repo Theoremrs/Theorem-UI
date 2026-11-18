@@ -67,6 +67,24 @@ test('a run is written first, then each chunk after its bytes, in order from ind
   expect(await digestBytes(chunkBytes(first.observations))).toBe(first.blob)
 })
 
+test('a run read back from bounded pages is the whole run, in order', async () => {
+  const fake = backend({ pageChunks: 2 })
+  const writer = new RunWriter(fake.store, run)
+  for (let start = 0; start < 5; start++)
+    void writer.append('settlement', observations(start * 2, 2))
+  await writer.settled()
+  const opened = await fake.store.openRun(run.id)
+  expect(opened.run).toEqual(run)
+  expect(opened.chunks.map((chunk) => chunk.sequence)).toEqual([
+    '0',
+    '1',
+    '2',
+    '3',
+    '4',
+  ])
+  expect(fake.log.filter((entry) => entry === 'GET runs')).toHaveLength(3)
+})
+
 test('a run larger than one chunk is split, never truncated', async () => {
   const fake = backend()
   const writer = new RunWriter(fake.store, run)

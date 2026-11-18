@@ -175,8 +175,22 @@ export function artifactStore(options: ArtifactStoreOptions = {}) {
       return bytes
     },
     putRun: (run: RunRef): Promise<RunRef> => write('runs', run),
-    openRun: (runId: string): Promise<RunRecords> =>
-      read('runs', { run_id: runId }),
+    /** The whole run: the backend answers it in bounded pages, read here in order. */
+    async openRun(runId: string): Promise<RunRecords> {
+      type Page = RunRecords & { next_sequence?: string }
+      const first = await read<Page>('runs', { run_id: runId })
+      const chunks = [...first.chunks]
+      let next = first.next_sequence
+      while (next !== undefined) {
+        const page: Page = await read<Page>('runs', {
+          run_id: runId,
+          from_sequence: next,
+        })
+        chunks.push(...page.chunks)
+        next = page.next_sequence
+      }
+      return { run: first.run, chunks, checkpoints: first.checkpoints }
+    },
     /** Appends a chunk whose bytes are stored; `appended` is `already-present` for a retry. */
     appendChunk: (
       chunk: TraceChunk,
