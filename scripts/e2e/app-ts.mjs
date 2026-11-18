@@ -12,6 +12,19 @@ import { writeFileSync } from 'node:fs'
 import { chromium } from 'playwright-core'
 import { servePage } from './harness.mjs'
 
+const BLOCK_SANDBOX = [
+  'allow-scripts',
+  'allow-forms',
+  'allow-modals',
+  'allow-popups',
+  'allow-popups-to-escape-sandbox',
+  'allow-downloads',
+  'allow-pointer-lock',
+  'allow-presentation',
+  'allow-orientation-lock',
+  'allow-top-navigation-by-user-activation',
+].join(' ')
+
 const source = (files) =>
   Object.entries(files)
     .map(
@@ -385,10 +398,14 @@ try {
       ms: Date.now() - started,
     },
   )
+  // Every App frame gets BLOCK_SANDBOX (src/lib/blocks/executor.ts): every
+  // allow token but allow-same-origin, so it is an origin of its own and is
+  // never signed in as the person.
+  const sandbox = (await page.$eval('iframe', (el) => el.getAttribute('sandbox'))) ?? ''
   check(
-    'its frame is the same sandbox as any App',
-    (await page.$eval('iframe', (el) => el.getAttribute('sandbox'))) ===
-      'allow-scripts',
+    'its frame is the same sandbox as any App, with no origin of the site',
+    sandbox === BLOCK_SANDBOX && !sandbox.split(' ').includes('allow-same-origin'),
+    sandbox,
   )
   check(
     'the type check of a correct App finds nothing',
