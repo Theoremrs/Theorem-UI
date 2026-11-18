@@ -74,11 +74,15 @@ try {
       window.__longTasks = []
       if (window.__installed) return
       window.__installed = true
-      let started = 0
+      // Each key owns its own start and handler delta. A shared variable is
+      // overwritten by the next key before this key's second frame callback
+      // runs, which produced negative and collapsed intervals.
+      let current
       // Bubble phase on the window runs after ProseMirror's own handler.
       window.addEventListener('keydown', (event) => {
         if (event.key.length !== 1) return
-        started = performance.now()
+        const sample = { started: performance.now(), handler: 0 }
+        current = sample
         // The frame callback runs before this frame paints. A second
         // callback, requested from inside the first, runs on the following
         // frame, so by then the first frame's paint has been presented.
@@ -86,16 +90,16 @@ try {
           const afterCallback = performance.now()
           requestAnimationFrame(() => {
             window.__samples.push({
-              handler: window.__handler ?? 0,
-              toNextFrame: afterCallback - started,
-              afterPaint: performance.now() - started,
+              handler: sample.handler,
+              toNextFrame: afterCallback - sample.started,
+              afterPaint: performance.now() - sample.started,
             })
           })
         })
       })
       document.addEventListener('input', (event) => {
-        if (!event.target?.closest?.('.ProseMirror')) return
-        window.__handler = performance.now() - started
+        if (!event.target?.closest?.('.ProseMirror') || !current) return
+        current.handler = performance.now() - current.started
       })
       window.__tasks_observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries())
@@ -121,6 +125,17 @@ try {
       throw new Error(
         `chars=${size}: expected ${KEYS} samples, collected ${measured.samples.length}`,
       )
+    // Every interval must be positive and ordered; a shared-state race shows
+    // up here as a negative or collapsed value rather than a plausible number.
+    for (const sample of measured.samples)
+      if (
+        !(sample.handler >= 0) ||
+        !(sample.toNextFrame > 0) ||
+        !(sample.afterPaint >= sample.toNextFrame)
+      )
+        throw new Error(
+          `chars=${size}: impossible interval ${JSON.stringify(sample)}`,
+        )
     const samples = measured.samples
     rows.push({
       chars: size,

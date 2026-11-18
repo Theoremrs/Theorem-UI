@@ -657,3 +657,35 @@ test('typing inside the pane does not redraw the glass', async () => {
     rafCalls: 0,
   })
 })
+
+test('an existing message growing in place moves the pane', async () => {
+  instrument()
+  const resize = instrumentGeometry()
+  const { pane, paneBox } = await mount()
+  // An EXISTING sibling, already in the DOM, grows: streaming text, an image
+  // resolving its height, or a content-visibility row settling. No node is
+  // inserted, no class or style changes, the pane keeps its size and stays
+  // fully visible, and nothing scrolls.
+  const message = document.createElement('div')
+  message.textContent = 'short'
+  pane.parentElement!.insertBefore(message, pane)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+  renders.length = 0
+  layoutReads = 0
+
+  message.firstChild!.textContent = 'a much longer streamed answer'.repeat(20)
+  measure(
+    pane,
+    rect(paneBox.left, paneBox.top + 120, paneBox.width, paneBox.height),
+  )
+  // happy-dom does no layout, so report the container's new box the way a
+  // browser's ResizeObserver would. The point under test is that the glass
+  // renderer observes the container at all: with no ancestor observation
+  // this notification has no listener and nothing redraws.
+  resize(pane.parentElement!)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+
+  expect(renders.at(-1)?.pane.rect.top).toBe(paneBox.top + 120)
+})

@@ -293,7 +293,14 @@ export function mountLife(
   const requestDraw = () => {
     if (!canDraw()) return
     syncLoop()
-    if (!useLifeControls.getState().playing) t.redraw()
+    // A paused field draws now. `syncLoop` may already have queued the same
+    // picture for the next frame; drop that so one interaction draws once.
+    if (!useLifeControls.getState().playing) {
+      if (redrawFrame) cancelAnimationFrame(redrawFrame)
+      redrawFrame = 0
+      pending = false
+      t.redraw()
+    }
   }
 
   const touch = () => {

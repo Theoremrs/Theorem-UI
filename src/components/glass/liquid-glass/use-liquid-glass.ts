@@ -264,8 +264,6 @@ class Glass {
       Object.assign(entry, readMaterial(element), { key: '' })
       this.wake()
     }
-    const resize = new ResizeObserver(changed)
-    resize.observe(element)
     const intersection = new IntersectionObserver(changed)
     intersection.observe(element)
     const mutation = new MutationObserver(changed)
@@ -291,6 +289,14 @@ class Glass {
         attributeFilter: ['class', 'style', 'hidden'],
         ...(target === element ? {} : { childList: true }),
       })
+    // Structure and attributes alone miss a container that grows in place:
+    // a message streaming text, an image resolving its height, a
+    // content-visibility row settling, or an ancestor's margin/height
+    // transition. Each changes an ancestor's box without inserting a node or
+    // touching an attribute, so watch the boxes too. The pane's own box is
+    // included, which is what a resized pane needs.
+    const resize = new ResizeObserver(changed)
+    for (const target of targets) resize.observe(target)
     entry.stopGeometry = () => {
       resize.disconnect()
       intersection.disconnect()
@@ -325,6 +331,10 @@ class Glass {
     this.stopScroll = null
     this.themeObserver?.disconnect()
     this.themeObserver = null
+    // The field's canvas belongs to a Life mount that may already be gone.
+    // Keeping it would watch a detached element until the next field publish.
+    this.field = null
+    this.fieldFresh = false
   }
 
   private onLost(lost: boolean) {

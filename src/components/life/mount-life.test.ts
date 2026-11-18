@@ -266,3 +266,21 @@ test('a paused textmode field repaints when the brush preview changes', async ()
   expect(looping).toBe(false)
   game.destroy()
 })
+
+test('a paused interaction draws once, not twice', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  drawField()
+  useLifeControls.setState({ playing: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(false)
+  redraws = 0
+  game.step()
+  // The synchronous draw and any queued frame must not both render.
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  expect(redraws).toBe(1)
+  game.destroy()
+})

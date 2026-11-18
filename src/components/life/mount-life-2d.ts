@@ -362,17 +362,14 @@ export function mountLife2d(
     step() {
       field = step(emit(field, energy.level, Math.random))
       redraw()
-      publish()
     },
     clear() {
       field = clear(field)
       redraw()
-      publish()
     },
     randomize() {
       field = fill(clear(field), Math.random)
       redraw()
-      publish()
     },
     pulse(kind) {
       energy = pulse(energy, kind)

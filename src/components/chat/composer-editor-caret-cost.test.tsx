@@ -218,10 +218,9 @@ const pickFirst = () =>
     await Bun.sleep(30)
   })
 
-// The authoritative Markdown is cached by ProseMirror doc identity, and caret
-// placement is skipped when neither the doc nor the selection head changed.
-// The caret's offset is located inside that one serialized string, so an edit
-// costs one full-document write rather than two.
+// Caret placement is skipped when neither the doc nor the selection head
+// changed, and skipped entirely while the serialized text carries no trigger
+// character. An ordinary edit therefore costs one full-document write.
 
 test('a selection change with a fixed head does not serialize the document', async () => {
   await mount('Hello world')
@@ -254,11 +253,11 @@ test('a selection change with a fixed head does not serialize the document', asy
   expect(serializations).toBe(0)
 })
 
-test('a repeated read of an unchanged document reuses one serialization', async () => {
+test('caret moves between edits add no serialization', async () => {
   await mount('Hello world')
   await caret(endOf('Hello world'))
-  // Two edits that each leave the doc changed serialize once per new doc; a
-  // selection-only read between them must not add a plain-doc serialization.
+  // Each edit writes its new document once. The caret moves between them read
+  // no document at all, because the text carries no trigger character.
   serializations = 0
   await insert('a')
   const afterFirst = serializations
@@ -268,8 +267,6 @@ test('a repeated read of an unchanged document reuses one serialization', async 
   // Each edit serializes the new doc once for the authoritative text and once
   // for the caret mark; the caret moves between them add only the marked one.
   expect(composer.getState().text).toBe('Hello worldab')
-  // Each edit writes the new document once; the caret moves between them read
-  // the cached string and add nothing.
   expect(afterFirst).toBe(1)
   expect(serializations).toBe(2)
 })
