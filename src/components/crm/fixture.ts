@@ -473,7 +473,26 @@ export function createFixtureServer(options: FixtureOptions = {}) {
     })
     switch (name) {
       case 'find_many': {
-        const all = ofType()
+        // As the register does: `contains` is an exact-case substring test
+        // on one field.
+        const filters = Array.isArray(input.filters)
+          ? (input.filters as {
+              field_key: string
+              operator: string
+              value: unknown
+            }[])
+          : []
+        const all = ofType().filter((candidate) =>
+          filters.every((filter) => {
+            if (filter.operator !== 'contains') return true
+            const actual = candidate.properties[filter.field_key]
+            return (
+              typeof actual === 'string' &&
+              typeof filter.value === 'string' &&
+              actual.includes(filter.value)
+            )
+          }),
+        )
         const offset = Number(input.offset ?? 0)
         const limit = Number(input.limit ?? 200)
         return result({

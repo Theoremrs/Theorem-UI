@@ -74,7 +74,9 @@ test('the spellings a case-sensitive search tries', () => {
     'Noor Had',
     'Noor had',
   ])
-  expect(searchSpellings('Noor')).toEqual(['Noor'])
+  expect(searchSpellings('Noor')).toEqual(['Noor', 'noor'])
+  // Typed in capitals, the lowercase and capitalised spellings are tried too.
+  expect(searchSpellings('NOOR')).toEqual(['NOOR', 'noor', 'Noor'])
 })
 
 let server: FixtureServer
@@ -113,4 +115,18 @@ test('a record search reads a bounded page filtered on the title, never every pa
   server.state.verbs.length = 0
   await searchRecords(FIXTURE_TYPE.person, 'name', '', 5)
   expect(server.state.verbs.map((v) => v.input)).toEqual([{ limit: 5 }])
+})
+
+test('a search typed in capitals finds the record a lowercase one does', async () => {
+  const names = (records: { values: Record<string, unknown> }[]) =>
+    records.map((r) => r.values.name).sort()
+  const lower = await searchRecords(FIXTURE_TYPE.person, 'name', 'noor')
+  expect(names(lower)).toContain('Noor')
+  // The fixture filters by exact case, so every record found names Noor.
+  for (const name of names(lower)) expect(String(name)).toContain('Noor')
+  const upper = await searchRecords(FIXTURE_TYPE.person, 'name', 'NOOR')
+  expect(names(upper)).toEqual(names(lower))
+  // Typed as it is stored, only that spelling and its lowercase are tried.
+  const exact = await searchRecords(FIXTURE_TYPE.person, 'name', 'Noor')
+  expect(names(exact)).toEqual(names(lower))
 })

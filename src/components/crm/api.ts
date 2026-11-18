@@ -234,16 +234,23 @@ export const SEARCH_LIMIT = 20
 
 /**
  * The spellings of `phrase` a case-sensitive `contains` should try: as typed,
- * with each word capitalised, and with only the first letter capitalised.
+ * and, from both the typed and the lowercased phrase, with each word
+ * capitalised and with only the first letter capitalised, plus the phrase
+ * all in lowercase. So `NOOR`, `noor` and `Noor` all find a record titled
+ * Noor. A title cased unusually inside a word (McAllister typed as
+ * mcallister) can still be missed: the register's filter has no case-blind
+ * operator.
  */
 export function searchSpellings(phrase: string) {
   const typed = phrase.trim()
-  const words = typed
-    .split(/\s+/u)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-  const first = typed.charAt(0).toUpperCase() + typed.slice(1)
-  return [...new Set([typed, words, first])]
+  const capitalise = (word: string) =>
+    word.charAt(0).toUpperCase() + word.slice(1)
+  const variants = (spelling: string) => [
+    spelling.split(/\s+/u).map(capitalise).join(' '),
+    capitalise(spelling),
+  ]
+  const lower = typed.toLowerCase()
+  return [...new Set([typed, ...variants(typed), lower, ...variants(lower)])]
 }
 
 /**
@@ -253,6 +260,7 @@ export function searchSpellings(phrase: string) {
  * on one field and no `or`, so each spelling of the query is one filtered
  * read, and an empty query is one unfiltered page. Records come back once
  * each; a title that differs in case from every spelling is not found.
+ * Every spelling is one read, so a query makes at most six.
  */
 export async function searchRecords(
   objectTypeId: string,
