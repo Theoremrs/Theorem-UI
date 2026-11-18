@@ -75,7 +75,7 @@ Theorem (rustyredcore_THG/crates/theorem-apps)
 | Acceptance: wide digital values                                                                       | 64-bit round trip through JSON; 32-bit register value 42 kept                                                                                               |
 | `tsc --noEmit`                                                                                        | clean except the pre-existing terminal-wasm module                                                                                                          |
 | Full `bun test`                                                                                       | 3798 pass, 17 fail; the failures are in files this change does not touch (palettes, settings, App card previews) or need network (esm.sh through the proxy) |
-| theorem-apps unit tests                                                                               | see the Theorem PR                                                                                                                                          |
+| theorem-apps (Theorem `4728836b`)                                                                     | `cargo test -p theorem-apps --locked --lib`: 243 pass (12 new for artifact runs), `--test it` 3 pass; clippy `--no-deps` clean for the new files            |
 
 Not run: the browser fixtures (`scripts/e2e/timeline*.mjs`), the signed-in live
 journey, and any deployed environment. The arithmetic acceptance here checks the

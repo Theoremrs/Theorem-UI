@@ -175,7 +175,7 @@
       "package": "W4",
       "what": "Durable runs, ordered idempotent chunks, checkpoints, forks",
       "status": "partial",
-      "evidence": "theorem-apps store; no route or browser writer yet",
+      "evidence": "Theorem 4728836b, store::artifact_run_tests (12 pass); no route or browser writer yet",
       "oracle_class": "unit",
       "implementation_mode": "source",
       "evidence_class": "test-verified",
