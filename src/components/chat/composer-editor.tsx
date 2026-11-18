@@ -120,6 +120,22 @@ const link: Handle = (node: Link, parent, state, info) => {
 const CARET = ''
 
 /**
+ * Whether any trigger could match this text at all.
+ *
+ * assistant-ui resolves every matcher's answer against the composer's text:
+ * `resolveTriggerMatch` rejects a match unless the text itself starts with the
+ * trigger character at the reported offset. A character the text does not
+ * contain therefore cannot open a menu, whatever the matcher returns or where
+ * the caret is. Asking that question of the text we already serialized is
+ * exact for every matcher, unlike asking it of the document's own text
+ * content, which omits the Markdown a link URL or an image address carries.
+ */
+function triggerPossible(text: string, chars: Iterable<string>) {
+  for (const char of chars) if (text.includes(char)) return true
+  return false
+}
+
+/**
  * Where the caret is in the composer's text. The document is written out with
  * a stand-in typed at the caret, which lands where the next character would:
  * inside a mark the caret is at the end of, ahead of the marks that close it.
@@ -161,7 +177,12 @@ function Editor({
     const serialize = serializeRef.current
     const triggers = popover?.getTriggers()
     if (!serialize || !triggers?.size) return
-    const at = caretOffset(view, serialize, aui.composer.getState().text)
+    const text = aui.composer.getState().text
+    // Writing the document out a second time to place the caret is only worth
+    // it when a menu could open. Ordinary prose carries no trigger character,
+    // so typing it costs one serialization, not two.
+    if (!triggerPossible(text, triggers.keys())) return
+    const at = caretOffset(view, serialize, text)
     for (const { resource } of triggers.values()) resource.setCursorPosition(at)
   }
 

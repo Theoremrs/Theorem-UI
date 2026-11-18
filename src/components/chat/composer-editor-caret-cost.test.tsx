@@ -23,8 +23,8 @@ import type {
   TriggerAdapter,
   TriggerItem,
   TriggerMatcher,
+  ThreadMessageLike,
 } from '@assistant-ui/react'
-import type { ThreadMessageLike } from '@assistant-ui/react'
 import { SerializerState } from '@milkdown/transformer'
 import type { RemarkParser } from '@milkdown/transformer'
 import { TextSelection } from '@milkdown/kit/prose/state'
@@ -58,7 +58,8 @@ EditorView.prototype.updateState = function (state) {
   ;(globalThis as { __composerView?: EditorView }).__composerView = this
   return realUpdateState.call(this, state)
 }
-const view = () => (globalThis as { __composerView?: EditorView }).__composerView!
+const view = () =>
+  (globalThis as { __composerView?: EditorView }).__composerView!
 
 // happy-dom never reports an intersection; report every observed target as in
 // view so Crepe's code block mounts its CodeMirror (as plan-graph.test.tsx does).
@@ -164,7 +165,7 @@ async function mount(initial: string) {
       '.ProseMirror[aria-label="Message input"]',
     ),
   )
-  await waitFor(() => editor.textContent!.length > 0)
+  await waitFor(() => editor.textContent.length > 0)
   // Let Milkdown's debounced markdownUpdated listener settle so it does not
   // add a serialization to the window under test.
   await act(async () => {
@@ -217,13 +218,10 @@ const pickFirst = () =>
     await Bun.sleep(30)
   })
 
-// The safe subset this change lands: the authoritative Markdown is cached by
-// ProseMirror doc identity, and caret placement is skipped when neither the doc
-// nor the selection head changed. A genuine caret head move still serializes the
-// marked document once (the / menu's offset depends on it); a provably-safe cheap
-// plausibility check for arbitrary matchers does not exist, because a link's URL
-// can contain a trigger character that is absent from the document's text content
-// (e.g. `[docs](<https://x.com/a /b>)`), so skipping on local text would be unsafe.
+// The authoritative Markdown is cached by ProseMirror doc identity, and caret
+// placement is skipped when neither the doc nor the selection head changed.
+// The caret's offset is located inside that one serialized string, so an edit
+// costs one full-document write rather than two.
 
 test('a selection change with a fixed head does not serialize the document', async () => {
   await mount('Hello world')
@@ -270,18 +268,31 @@ test('a repeated read of an unchanged document reuses one serialization', async 
   // Each edit serializes the new doc once for the authoritative text and once
   // for the caret mark; the caret moves between them add only the marked one.
   expect(composer.getState().text).toBe('Hello worldab')
-  expect(afterFirst).toBe(2)
-  expect(serializations).toBe(6)
+  // Each edit writes the new document once; the caret moves between them read
+  // the cached string and add nothing.
+  expect(afterFirst).toBe(1)
+  expect(serializations).toBe(2)
 })
 
-test('a plain keystroke keeps the authoritative text and the caret mark', async () => {
+test('a plain keystroke serializes the document once', async () => {
   await mount('Hello world')
   await caret(endOf('Hello world'))
   serializations = 0
   await insert('x')
   expect(composer.getState().text).toBe('Hello worldx')
-  // One serialization for the authoritative text, one for the caret mark.
-  expect(serializations).toBe(2)
+  // The authoritative text is the only full-document write. The caret offset
+  // is derived from that same string, not from a second marked pass.
+  expect(serializations).toBe(1)
+})
+
+test('a keystroke in a long draft still serializes once', async () => {
+  const draft = 'lorem ipsum dolor sit amet '.repeat(40).trimEnd()
+  await mount(draft)
+  await caret(view().state.doc.content.size - 1)
+  serializations = 0
+  await insert('x')
+  expect(composer.getState().text).toBe(`${draft}x`)
+  expect(serializations).toBe(1)
 })
 
 test('the authoritative text is current synchronously after an edit', async () => {
@@ -373,8 +384,8 @@ test('a slash in a block quote opens the menu and picks', async () => {
 
 test('a slash in a code block opens the menu and picks', async () => {
   const editor = await mount('```ts\nconst x = 1\n```')
-  const code = await waitFor(
-    () => editor.querySelector('.cm-content') as HTMLElement | null,
+  const code = await waitFor(() =>
+    editor.querySelector<HTMLElement>('.cm-content'),
   )
   await act(async () => {
     code.focus()
@@ -383,9 +394,15 @@ test('a slash in a code block opens the menu and picks', async () => {
   const line = code.querySelector('.cm-line')!
   await act(async () => {
     line.textContent = 'const x = 1 /'
-    window.getSelection()!.collapse(line.firstChild ?? line, line.textContent!.length)
+    window
+      .getSelection()!
+      .collapse(line.firstChild ?? line, line.textContent.length)
     code.dispatchEvent(
-      new InputEvent('input', { bubbles: true, inputType: 'insertText', data: '/' }),
+      new InputEvent('input', {
+        bubbles: true,
+        inputType: 'insertText',
+        data: '/',
+      }),
     )
     await Bun.sleep(50)
   })
@@ -393,7 +410,9 @@ test('a slash in a code block opens the menu and picks', async () => {
   await waitFor(() => options().length > 0)
   expect(options().length).toBe(2)
   await pickFirst()
-  expect(composer.getState().text).toBe('```ts\nconst x = 1 :tool[recall] \n```')
+  expect(composer.getState().text).toBe(
+    '```ts\nconst x = 1 :tool[recall] \n```',
+  )
 })
 
 test('a caret move closes the menu and moving back reopens it', async () => {
@@ -446,6 +465,7 @@ test('backspacing the query keeps the menu and the text', async () => {
   await backspace()
   await backspace()
   expect(composer.getState().text).toBe('Hello /')
+  // A slash is present, so each of the three edits also places the caret.
   expect(serializations).toBe(6)
   await waitFor(() => options().length === 2)
 })
@@ -456,7 +476,8 @@ test('a paste-sized insert then a slash opens the menu at the right offset', asy
   serializations = 0
   await insert(' and a long pasted tail')
   expect(composer.getState().text).toBe('start and a long pasted tail')
-  expect(serializations).toBe(2)
+  // No trigger character in the pasted prose: one write, not two.
+  expect(serializations).toBe(1)
   await insert(' /')
   await waitFor(() => options().length > 0)
   expect(options().length).toBe(2)
@@ -468,8 +489,8 @@ test('a paste-sized insert then a slash opens the menu at the right offset', asy
 
 test('a fixed-head selection change in a code block does not serialize', async () => {
   const editor = await mount('```ts\nconst x = 1\n```')
-  const code = await waitFor(
-    () => editor.querySelector('.cm-content') as HTMLElement | null,
+  const code = await waitFor(() =>
+    editor.querySelector<HTMLElement>('.cm-content'),
   )
   await act(async () => {
     code.focus()
@@ -480,11 +501,57 @@ test('a fixed-head selection change in a code block does not serialize', async (
     const current = view()
     current.dispatch(
       current.state.tr.setSelection(
-        TextSelection.create(current.state.doc, 2, current.state.selection.head),
+        TextSelection.create(
+          current.state.doc,
+          2,
+          current.state.selection.head,
+        ),
       ),
     )
     await Bun.sleep(50)
   })
   expect(composer.getState().text).toBe('```ts\nconst x = 1\n```')
   expect(serializations).toBe(0)
+})
+
+test('a slash carried only by a link address still opens the menu', async () => {
+  // The document's own text content has no slash here; the serialized Markdown
+  // does. A guard reading text content would wrongly skip caret placement, so
+  // the guard reads the serialized text instead.
+  const editor = await mount('[docs](https://x.com/a/b)')
+  await waitFor(() => editor.querySelector('a'))
+  expect(editor.textContent).toBe('docs')
+  expect(editor.textContent.includes('/')).toBe(false)
+  expect(composer.getState().text.includes('/')).toBe(true)
+  // A second paragraph, so the caret is outside the link's mark.
+  await act(async () => {
+    const current = view()
+    current.dispatch(
+      current.state.tr.insert(
+        current.state.doc.content.size,
+        current.state.schema.nodes.paragraph!.create(),
+      ),
+    )
+    await Bun.sleep(20)
+  })
+  await caret(view().state.doc.content.size - 1)
+  serializations = 0
+  await insert('/')
+  await waitFor(() => options().length > 0)
+  expect(options().length).toBe(2)
+  await pickFirst()
+  expect(composer.getState().text).toBe(
+    '[docs](https://x.com/a/b)\n\n:tool[recall] ',
+  )
+})
+
+test('a caret move in prose without a trigger character serializes nothing', async () => {
+  await mount('Hello world')
+  await caret(endOf('Hello world'))
+  serializations = 0
+  await caret(3)
+  await caret(7)
+  await caret(endOf('Hello world'))
+  expect(serializations).toBe(0)
+  expect(composer.getState().text).toBe('Hello world')
 })
