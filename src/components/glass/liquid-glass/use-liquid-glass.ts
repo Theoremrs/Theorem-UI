@@ -355,12 +355,8 @@ class Glass {
     const renderer = this.renderer
     if (!renderer || renderer.lost || document.visibilityState === 'hidden')
       return
-    const field =
-      this.field &&
-      isVisible(this.field) &&
-      this.field.style.visibility !== 'hidden'
-        ? this.field
-        : null
+    // isVisible already covers the visibility property, computed or inline.
+    const field = this.field && isVisible(this.field) ? this.field : null
     const fieldRect = field?.getBoundingClientRect() ?? null
     const fresh = this.fieldFresh
     this.fieldFresh = false
