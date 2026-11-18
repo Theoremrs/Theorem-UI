@@ -1,7 +1,7 @@
 // SOURCING: three.js draws and picks everything: WebGLRenderer with a
 // PerspectiveCamera, OrbitControls (restrained, damped) for looking around,
 // Raycaster for picking, MeshSurfaceSampler for the cells that give a part its
-// substance, TubeGeometry along orthogonal routes (routeOf) for wires. Labels, notes,
+// substance, TubeGeometry along orthogonal routes (route.ts) for wires. Labels, notes,
 // controls and the breadcrumb are React (chrome.tsx, or an App's own chrome)
 // placed over the scene by @theorem/annotate from the screen boxes written
 // here each frame. What is ours is the handling: pull a
@@ -40,6 +40,7 @@ import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
 import type { ChromeActions, ChromeProps, ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
 import type { ObservationRef } from '@theorem/runtime'
+import { routeInPlane } from './route'
 import { CycleTrace, groundCapture } from './trace'
 import type { TraceFrame } from './trace'
 
@@ -806,22 +807,26 @@ export function mount(
   }
   let collection: { get: (key: string) => unknown; set: (key: string, value: unknown) => Promise<void> } | undefined
   let saveTimer = 0
+  /**
+   * The model's values at the latest cycle. Looking back puts an earlier
+   * cycle's values in the model, so what is kept is taken while the model is
+   * at the latest, never when a deferred write runs.
+   */
+  let latestModel = model.snapshot()
   const save = () => {
-    // Looking back shows an earlier state; what is kept is the latest.
-    if (!collection || viewing !== null) return
+    if (!collection) return
+    if (viewing === null) latestModel = model.snapshot()
+    const value: Remembered = {
+      model: latestModel,
+      open: openPath,
+      pulled: Object.fromEntries([...pulled].map((path) => [path, visuals.get(path)!.moved.toArray()])),
+      selected,
+      pinned: [...pinned],
+      placed: Object.fromEntries(placed),
+      known: [...allParts(network)].map((part) => part.path),
+    }
     clearTimeout(saveTimer)
-    saveTimer = window.setTimeout(() => {
-      const value: Remembered = {
-        model: model.snapshot(),
-        open: openPath,
-        pulled: Object.fromEntries([...pulled].map((path) => [path, visuals.get(path)!.moved.toArray()])),
-        selected,
-        pinned: [...pinned],
-        placed: Object.fromEntries(placed),
-        known: [...allParts(network)].map((part) => part.path),
-      }
-      void collection?.set('spatial', value).catch(() => {})
-    }, 250)
+    saveTimer = window.setTimeout(() => void collection?.set('spatial', value).catch(() => {}), 250)
   }
   const theorem = (window as unknown as { theorem?: { state: (name: string) => Promise<NonNullable<typeof collection>> } }).theorem
   if (options.remember && theorem) {
@@ -832,6 +837,7 @@ export function mount(
         const remembered = opened.get('spatial') as Remembered | undefined
         if (!remembered) return
         if (remembered.model) model.restore(remembered.model)
+        latestModel = model.snapshot()
         settled = model.settle()
         previous = settled
         trace.record({ kind: 'restored' }, settled)
@@ -897,6 +903,8 @@ export function mount(
       // the timeline.
       const from = viewing
       trace.rerun(from, path, key, value)
+      // The re-run leaves the model at its new latest cycle.
+      latestModel = model.snapshot()
       viewing = from + 1 < trace.cycle && trace.show(from + 1) ? from + 1 : null
       changed()
       traceChanged()
@@ -1421,53 +1429,15 @@ export function mount(
 
   const worldScale = (object: THREE.Object3D) => object.getWorldScale(new THREE.Vector3()).x
 
-  /**
-   * A signal's route in its level's own frame: a stub straight out of each
-   * port, then runs along the level's axes with as few bends as reach (a
-   * right angle here may look oblique once projected, which keeps the model's
-   * depth), each bend rounded a little so the tube stays whole.
-   */
+  /** A signal's route (routeInPlane), worked out in its level's own frame and drawn in the world. */
   function routeOf(a: THREE.Vector3, na: THREE.Vector3, b: THREE.Vector3, nb: THREE.Vector3, frame: THREE.Object3D): THREE.CurvePath<THREE.Vector3> {
     const toLocal = frame.matrixWorld.clone().invert()
-    const A = a.clone().applyMatrix4(toLocal)
-    const B = b.clone().applyMatrix4(toLocal)
-    const dA = na.clone().transformDirection(toLocal)
-    const dB = nb.clone().transformDirection(toLocal)
-    const stub = Math.max(0.14, A.distanceTo(B) * 0.12)
-    const P = A.clone().addScaledVector(dA, stub)
-    const Q = B.clone().addScaledVector(dB, stub)
-    // Ports face along x (west in, east out) unless their part turned them.
-    const along = Math.abs(dA.y) > Math.abs(dA.x) ? 'y' : 'x'
-    const across = along === 'x' ? 'y' : 'x'
-    const forward = Math.sign(dA[along]) * (Q[along] - P[along]) >= 0
-    const points = [A, P]
-    if (forward) {
-      // Out, across at the middle, in.
-      const middle = (P[along] + Q[along]) / 2
-      points.push(P.clone().setComponent(along === 'x' ? 0 : 1, middle), Q.clone().setComponent(along === 'x' ? 0 : 1, middle))
-    } else {
-      // Back past both ends, around the side between them.
-      const middle = (P[across] + Q[across]) / 2
-      points.push(P.clone().setComponent(across === 'x' ? 0 : 1, middle), Q.clone().setComponent(across === 'x' ? 0 : 1, middle))
-    }
-    points.push(Q, B)
-    const kept = points.filter((point, index) => index === 0 || point.distanceTo(points[index - 1]!) > 1e-4)
-    const path = new THREE.CurvePath<THREE.Vector3>()
-    let from = kept[0]!.clone()
-    for (let index = 1; index < kept.length; index++) {
-      const corner = kept[index]!
-      const next = kept[index + 1]
-      if (!next) {
-        path.add(new THREE.LineCurve3(from, corner.clone()))
-        break
-      }
-      const radius = Math.min(0.05, corner.distanceTo(from) / 2, corner.distanceTo(next) / 2)
-      const enter = corner.clone().addScaledVector(from.clone().sub(corner).normalize(), radius)
-      const leave = corner.clone().addScaledVector(next.clone().sub(corner).normalize(), radius)
-      if (enter.distanceTo(from) > 1e-5) path.add(new THREE.LineCurve3(from, enter))
-      path.add(new THREE.QuadraticBezierCurve3(enter, corner.clone(), leave))
-      from = leave
-    }
+    const path = routeInPlane(
+      a.clone().applyMatrix4(toLocal),
+      na.clone().transformDirection(toLocal),
+      b.clone().applyMatrix4(toLocal),
+      nb.clone().transformDirection(toLocal),
+    )
     // Back to the world, where the wire is drawn.
     const world = new THREE.CurvePath<THREE.Vector3>()
     for (const curve of path.curves) {

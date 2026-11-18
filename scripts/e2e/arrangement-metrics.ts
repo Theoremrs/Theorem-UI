@@ -1,8 +1,8 @@
 // Wire crossings and total wire length of the stage arrangement against ELK's,
 // for the processor fixture with no part given a place, at the model's top
-// level and inside the ALU. Wires are the curves the view draws between ports
-// (a cubic Bezier leaving each port along its side), flattened to the model's
-// plane. Run with: bun scripts/e2e/arrangement-metrics.ts
+// level and inside the ALU. Wires are the routes the view draws between ports
+// (route.ts: a stub out of each port, then right angles with rounded bends),
+// in the model's plane. Run with: bun scripts/e2e/arrangement-metrics.ts
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -13,6 +13,7 @@ import { buildNetwork, ModelState } from '../../src/lib/blocks/spatial/engine'
 import type { Builder, Network, Part } from '../../src/lib/blocks/spatial/engine'
 import * as parts from '../../src/lib/blocks/spatial/parts'
 import { buildForm } from '../../src/lib/blocks/spatial/form'
+import { routeInPlane } from '../../src/lib/blocks/spatial/route'
 import type { Form } from '../../src/lib/blocks/spatial/form'
 import { MOUNT, PARTS, unplaced } from './spatial-fixture.mjs'
 
@@ -55,16 +56,16 @@ const portPoint = (part: Part, at: Point, port: string): { point: Point; dir: nu
   return { point: [at[0] + local[0], at[1] + local[1]], dir: found.dir === 'in' ? -1 : 1 }
 }
 
-const bezier = (a: Point, na: number, b: Point, nb: number): Array<Point> => {
-  const reach = Math.max(0.25, Math.hypot(a[0] - b[0], a[1] - b[1]) * 0.4)
-  const p1: Point = [a[0] + na * reach, a[1]]
-  const p2: Point = [b[0] + nb * reach, b[1]]
-  return Array.from({ length: 41 }, (_, i) => {
-    const t = i / 40
-    const u = 1 - t
-    return [0, 1].map((k) => u ** 3 * a[k]! + 3 * u * u * t * p1[k]! + 3 * u * t * t * p2[k]! + t ** 3 * b[k]!) as Point
-  })
-}
+/** The route the view draws between two ports (route.ts), sampled in the model's plane. */
+const drawn = (a: Point, na: number, b: Point, nb: number): Array<Point> =>
+  routeInPlane(
+    new THREE.Vector3(a[0], a[1], 0),
+    new THREE.Vector3(na, 0, 0),
+    new THREE.Vector3(b[0], b[1], 0),
+    new THREE.Vector3(nb, 0, 0),
+  )
+    .getPoints(8)
+    .map((point): Point => [point.x, point.y])
 
 const cross = (a: Point, b: Point, c: Point, d: Point) => {
   const s = (p: Point, q: Point, r: Point) => (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
@@ -81,7 +82,7 @@ function measure(net: Network, arranged: Arranged) {
       const to = byPath.get(wire.to.part)!
       const a = portPoint(from, [at(from)[0], at(from)[1]], wire.from.port)
       const b = portPoint(to, [at(to)[0], at(to)[1]], wire.to.port)
-      return { wire, line: bezier(a.point, a.dir, b.point, b.dir) }
+      return { wire, line: drawn(a.point, a.dir, b.point, b.dir) }
     })
   let length = 0
   let crossings = 0

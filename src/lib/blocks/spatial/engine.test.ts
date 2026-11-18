@@ -61,6 +61,27 @@ describe('a spatial model', () => {
     expect(settled.readings.get('inc')?.outputs).toEqual({ sum: 2, cout: 0 })
   })
 
+  it('holds and adds 32-bit numbers, and refuses a width it cannot hold', () => {
+    const state = model((m) => {
+      m.part(register({ id: 'r', bits: 32, value: 42 }))
+      m.part(rippleAdder({ id: 'add', bits: 32 }))
+      m.wire('r.out', 'add.a')
+      m.wire('add.sum', 'r.in')
+    })
+    expect(state.states.get('r')).toEqual({ value: 42 })
+    state.set('add', 'b', 2 ** 31)
+    let settled = state.settle()
+    expect(settled.readings.get('add')?.outputs).toEqual({ sum: 2 ** 31 + 42, cout: 0 })
+    settled = state.step(settled)
+    expect(state.states.get('r')).toEqual({ value: 2 ** 31 + 42 })
+    // The next sum passes 32 bits: the register takes it wrapped.
+    settled = state.step(settled)
+    expect(state.states.get('r')).toEqual({ value: 42 })
+    expect(settled.readings.get('add')?.outputs).toEqual({ sum: 2 ** 31 + 42, cout: 0 })
+    expect(state.check()).toEqual([])
+    expect(() => register({ id: 'wide', bits: 64 })).toThrow('wide: bits must be a whole number from 1 to 53, not 64')
+  })
+
   it('settles a loop with no clock in it', () => {
     // A latch from two NOR gates holds what it was last set to.
     const state = model((m) => {
@@ -70,9 +91,39 @@ describe('a spatial model', () => {
       m.wire('n2.out', 'n1.b')
     })
     state.set('n1', 'a', 1)
-    const settled = state.settle()
+    let settled = state.settle()
     expect(settled.readings.get('n1')?.outputs).toEqual({ out: 0 })
     expect(settled.readings.get('n2')?.outputs).toEqual({ out: 1 })
+    // Released, it keeps what it was set to.
+    state.set('n1', 'a', 0)
+    settled = state.settle()
+    expect(settled.readings.get('n1')?.outputs).toEqual({ out: 0 })
+    expect(settled.readings.get('n2')?.outputs).toEqual({ out: 1 })
+    // Reset from the other side, and released again, it holds the other value.
+    state.set('n2', 'b', 1)
+    state.settle()
+    state.set('n2', 'b', 0)
+    settled = state.settle()
+    expect(settled.readings.get('n1')?.outputs).toEqual({ out: 1 })
+    expect(settled.readings.get('n2')?.outputs).toEqual({ out: 0 })
+  })
+
+  it('keeps what a latch holds across a reload of the model', () => {
+    const build = () =>
+      model((m) => {
+        m.part(gate({ id: 'n1', kind: 'nor' }))
+        m.part(gate({ id: 'n2', kind: 'nor' }))
+        m.wire('n1.out', 'n2.a')
+        m.wire('n2.out', 'n1.b')
+      })
+    const before = build()
+    before.set('n1', 'a', 1)
+    before.settle()
+    before.set('n1', 'a', 0)
+    before.settle()
+    const after = build()
+    after.restore(before.snapshot())
+    expect(after.settle().readings.get('n2')?.outputs).toEqual({ out: 1 })
   })
 
   it("runs every part's checks and says what failed", () => {

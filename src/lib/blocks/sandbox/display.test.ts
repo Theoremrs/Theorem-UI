@@ -135,6 +135,36 @@ test('a page exactly as tall as the frame it loaded in says it fills its frame',
   observeHeight((height, fills) => reports.push([height, fills]))
   await frames(3)
   expect(reports).toEqual([[150, undefined], [150, true]])
+  // The host gives it a height that follows the window; it says nothing more.
+  window.innerHeight = 504
+  window.dispatchEvent(new Event('resize'))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+})
+
+test('a page that only happened to be as tall as its first frame goes back to its content height, and follows it', async () => {
+  let resized = () => {}
+  globalThis.ResizeObserver = class {
+    constructor(callback: () => void) {
+      resized = callback
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver
+  layout(150, 150)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+  // The host gives it the fill height, which its content does not follow.
+  layout(150, 504)
+  window.dispatchEvent(new Event('resize'))
+  expect(reports.at(-1)).toEqual([150, undefined])
+  // Back at 150px, more content loads.
+  layout(400, 150)
+  resized()
+  expect(reports.at(-1)).toEqual([400, undefined])
 })
 
 test('a page sized by its content does not say it fills its frame', async () => {

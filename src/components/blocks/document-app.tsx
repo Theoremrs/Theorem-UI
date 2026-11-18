@@ -293,7 +293,16 @@ function AppPreview({
           onSelection(context)
         },
       },
-    [app, shownHtml, declarations, state, databases, onSelection, onError, dossier],
+    [
+      app,
+      shownHtml,
+      declarations,
+      state,
+      databases,
+      onSelection,
+      onError,
+      dossier,
+    ],
   )
   // What the frame threw belongs to the revision in it; it is listed with the
   // source's own problems only while that revision is the current one.

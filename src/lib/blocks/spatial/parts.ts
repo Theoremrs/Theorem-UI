@@ -2,6 +2,7 @@
 // PartSpec an agent writes. Nothing in the renderer knows these by name; an
 // agent may reuse, compose, ignore or replace every one of them.
 
+import { bitAt, widthOf, wrap } from './bits'
 import type { Builder, PartSpec, Vec3, Values } from './engine'
 import type { Form } from './form'
 
@@ -98,7 +99,8 @@ const bitNames = (prefix: string, bits: number) =>
 
 /** Fans an n-bit number out into its bits, least significant first. */
 export function split(place: Place & { bits: number }): Spec {
-  const outs = bitNames('b', place.bits)
+  const bits = widthOf(place.bits, place.id)
+  const outs = bitNames('b', bits)
   return {
     label: 'Split',
     about: `Separates a ${place.bits}-bit number into its bits, b0 the least significant.`,
@@ -107,13 +109,13 @@ export function split(place: Place & { bits: number }): Spec {
     ...place,
     ports: { in: 'in', ...Object.fromEntries(outs.map((name) => [name, 'out' as const])) },
     compute: ({ in: value }) =>
-      Object.fromEntries(outs.map((name, index) => [name, (Number(value) >> index) & 1])),
+      Object.fromEntries(outs.map((name, index) => [name, bitAt(wrap(value, bits), index)])),
   }
 }
 
 /** Joins bits back into an n-bit number. */
 export function join(place: Place & { bits: number }): Spec {
-  const ins = bitNames('b', place.bits)
+  const ins = bitNames('b', widthOf(place.bits, place.id))
   return {
     label: 'Join',
     about: `Gathers ${place.bits} bits into one number, b0 the least significant.`,
@@ -122,15 +124,15 @@ export function join(place: Place & { bits: number }): Spec {
     ...place,
     ports: { ...Object.fromEntries(ins.map((name) => [name, 'in' as const])), out: 'out' },
     compute: (inputs) => ({
-      out: ins.reduce((sum, name, index) => sum + (bit(inputs[name]) << index), 0),
+      out: ins.reduce((sum, name, index) => sum + bit(inputs[name]) * 2 ** index, 0),
     }),
   }
 }
 
 /** Adds two n-bit numbers through a chain of full adders the carry ripples along. */
 export function rippleAdder(place: Place & { bits: number }): Spec {
-  const { bits } = place
-  const mask = (1 << bits) - 1
+  const bits = widthOf(place.bits, place.id)
+  const mask = 2 ** bits - 1
   return {
     label: `${bits}-bit adder`,
     about: `Adds two ${bits}-bit numbers. Each full adder waits for the carry from the one below it, so the carry ripples upward one stage at a time.`,
@@ -164,7 +166,7 @@ export function rippleAdder(place: Place & { bits: number }): Spec {
       [mask, mask, 1],
     ].map(([a, b, cin]) => ({
       inputs: { a, b, cin },
-      expect: { sum: (a! + b! + cin!) & mask, cout: (a! + b! + cin!) > mask ? 1 : 0 },
+      expect: { sum: wrap(a! + b! + cin!, bits), cout: a! + b! + cin! > mask ? 1 : 0 },
     })),
   }
 }
@@ -188,7 +190,7 @@ export function mux(place: Place): Spec {
 
 /** Holds a number, taking its input on each clock step when load is 1. */
 export function register(place: Place & { bits?: number; value?: number }): Spec {
-  const mask = (1 << (place.bits ?? 8)) - 1
+  const bits = widthOf(place.bits ?? 8, place.id)
   return {
     label: 'Register',
     about: 'Holds a number. On each clock step it takes its input if load is 1, and otherwise keeps what it has.',
@@ -197,10 +199,10 @@ export function register(place: Place & { bits?: number; value?: number }): Spec
     ...place,
     ports: { in: 'in', load: 'in', out: 'out' },
     defaults: { load: 1 },
-    state: { value: (place.value ?? 0) & mask },
+    state: { value: wrap(place.value ?? 0, bits) },
     compute: (_inputs: Values, state: Values) => ({ out: state.value }),
     tick: ({ in: input, load }: Values, state: Values) =>
       // Nothing wired to its input: it keeps what the person set.
-      bit(load) && input !== undefined ? { value: Number(input) & mask } : state,
+      bit(load) && input !== undefined ? { value: wrap(input, bits) } : state,
   }
 }

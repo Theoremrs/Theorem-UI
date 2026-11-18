@@ -51,6 +51,8 @@ interface Kept {
   pins: Map<string, unknown>
   /** Parts still changing when the settle gave up; empty when it came to rest. */
   unsettled: Array<string>
+  /** What each part had settled to, which a loop with no clock in it holds. */
+  held: Map<string, Record<string, unknown>>
 }
 
 /**
@@ -292,6 +294,7 @@ export class CycleTrace {
       // Older callers hand a settle without the list: treat it as at rest.
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       unsettled: [...(settled.unsettled ?? [])],
+      held: new Map([...this.model.held].map(([path, outputs]) => [path, clone(outputs)])),
     })
     if (this.kept.length > MAX_CYCLES) this.kept.splice(0, this.kept.length - MAX_CYCLES)
     for (const listener of this.listeners) listener()
@@ -306,6 +309,8 @@ export class CycleTrace {
     for (const [path, state] of kept.states) this.model.states.set(path, clone(state))
     this.model.pins.clear()
     for (const [key, value] of kept.pins) this.model.pins.set(key, clone(value))
+    this.model.held.clear()
+    for (const [path, outputs] of kept.held) this.model.held.set(path, clone(outputs))
     return true
   }
 

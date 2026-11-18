@@ -8,6 +8,8 @@ import { InlineArtifact } from '@/components/artifacts/inline-artifact'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { checkInWorker } from '@/lib/blocks/app-checker'
 import { inspectApp } from '@/lib/blocks/app-inspect'
+import { openFrame } from '@/lib/blocks/executor'
+import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { serveAppRequests } from '@/lib/blocks/app-operations'
 import type { AppReceipt } from '@/lib/blocks/app-operations'
 import { appSourcesOf } from '@/lib/blocks/app-source'
@@ -77,12 +79,22 @@ function show(): void {
   )
 }
 
+/** `html` in a frame the person limited to `net`, as a sandboxed module runs. */
+async function limited(html: string, net: Array<string>): Promise<void> {
+  const page = await hostedAppDocument(html, undefined, { net })
+  const frame = document.createElement('iframe')
+  openFrame(frame, true)
+  frame.src = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
+  document.getElementById('view')!.append(frame)
+}
+
 Object.assign(window, {
   oracle: {
     revise,
     clear,
     references,
     show,
+    limited,
     check,
     inspect: inspectApp,
     ask,
