@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import {
   ARTIFACT_RUNTIME_SCHEMA,
-  RuntimeSession,
+  ContextSession,
   SessionObservations,
   bitsOf,
   bitsValue,
@@ -14,7 +14,7 @@ import {
   signalText,
   signalValue,
 } from './index'
-import type { ObservationRef, RuntimeBinding } from './index'
+import type { ContextBinding, ObservationRef } from './index'
 
 const U64_MAX = 18446744073709551615n
 
@@ -164,8 +164,8 @@ describe('session observations', () => {
   })
 
   test('a captured binding does not follow later changes', async () => {
-    const session = new RuntimeSession()
-    const binding: RuntimeBinding = {
+    const session = new ContextSession()
+    const binding: ContextBinding = {
       schema: ARTIFACT_RUNTIME_SCHEMA,
       presentation: {
         source: {
@@ -175,12 +175,20 @@ describe('session observations', () => {
           contentDigest: 'a',
         },
       },
-      observation: observation('1', await digestOf(1)),
+      subject: {
+        kind: 'moment',
+        observation: observation('1', await digestOf(1)),
+      },
     }
     session.set(binding)
     const asked = session.capture()
-    session.observe(observation('2', await digestOf(2)))
-    expect(asked?.observation?.index).toBe('1')
-    expect(session.current?.observation?.index).toBe('2')
+    session.focus({
+      kind: 'moment',
+      observation: observation('2', await digestOf(2)),
+    })
+    expect(asked?.subject).toMatchObject({ observation: { index: '1' } })
+    expect(session.current?.subject).toMatchObject({
+      observation: { index: '2' },
+    })
   })
 })

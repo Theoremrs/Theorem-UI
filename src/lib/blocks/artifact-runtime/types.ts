@@ -1,13 +1,18 @@
 // SOURCING: none: the references every surface of a durable artifact agrees
-// on (docs/plans/durable-artifacts/README.md). They name what is shown and
-// what was run; they are not a language for writing an artifact. An artifact
-// with no engine is still an artifact: it has a source and a presentation and
-// leaves the run fields out.
+// on (docs/plans/durable-artifacts/README.md). Source and build references
+// are for every artifact. Engine, run, observation, checkpoint and signal
+// references are a capability for artifacts that execute over time (the CPU,
+// a teaching circuit, a solver stepping a field); an artifact with no engine
+// leaves them out. What is on screen and what a question is about is the
+// general context layer in context.ts. None of this is a language for
+// writing an artifact.
 //
 // Every count, index and time is written as decimal integer text, never a
 // JavaScript number, so a 64-bit counter or a hardware cycle past 2^53
 // crosses JSON exactly. `sha256:<hex>` digests are of canonical JSON
 // (digest.ts) or of the bytes they name.
+
+import type { SelectionRef, SubjectRef } from './context'
 
 /** The version every reference below is written in. A reader refuses another. */
 export const ARTIFACT_RUNTIME_SCHEMA = 'theorem.artifact-runtime/1'
@@ -58,7 +63,11 @@ export interface BuildRef {
   receipt?: Digest
 }
 
-/** What an engine adapter can actually do. An unclaimed capability is unsupported. */
+/**
+ * What a run-based engine adapter can actually do. An unclaimed capability is
+ * unsupported. An artifact without a stepping engine advertises its own
+ * operations and their recovery instead (operations.ts).
+ */
 export type EngineCapability =
   | 'reset'
   | 'step'
@@ -107,8 +116,13 @@ export type Reproducibility = 'deterministic' | 'recorded' | 'nondeterministic'
 export interface RunRef {
   schema: typeof ARTIFACT_RUNTIME_SCHEMA
   id: string
-  /** The source the run executed: its execution provenance, which a later presentation does not change. */
-  source: ArtifactSourceRef
+  /**
+   * The source the run executed: its execution provenance, which a later
+   * presentation does not change. Left out only by an adapter that executes
+   * inside the presentation shown (the spatial teaching model); the host then
+   * names the presentation's source. A separate engine always gives its own.
+   */
+  source?: ArtifactSourceRef
   build?: BuildRef['id']
   engine: EngineRef
   /** The machine or model configuration, by digest of its canonical JSON. */
@@ -193,52 +207,22 @@ export type SignalValue =
   | { type: 'text'; text: string }
   | { type: 'bool'; value: boolean }
 
-/** Where the person is looking, kept apart from any engine state: changing it never changes a run. */
-export interface ViewState {
-  camera?: {
-    position: [number, number, number]
-    target: [number, number, number]
-    zoom?: number
-  }
-  selected?: string
-  /** The path of nested views opened, outermost first. */
-  opened?: Array<string>
-  pinned?: Array<string>
-  inspector?: 'open' | 'closed'
-  comparison?: Array<string>
-  cursor?: ObservationRef
-}
-
 /**
- * What is on screen, bound together: the presentation actually rendered (which
- * may be an older build than the latest source, when a newer one failed), the
- * run it shows (which may be older still, when a presentation-only revision
- * reuses it), how that run is read, and the moment shown.
+ * A choice made about an artifact, with what it was made from. The target is
+ * whatever the feedback was about: a source, a result, a run moment, and a
+ * place inside it the artifact itself interprets.
  */
-export interface RuntimeBinding {
-  schema: typeof ARTIFACT_RUNTIME_SCHEMA
-  presentation: { source: ArtifactSourceRef; build?: BuildRef['id'] }
-  /** Set when the artifact executes something. */
-  run?: RunRef
-  /** The observation schema and entity mapping the presentation reads the run through. */
-  mapping?: { schema: string; version: string }
-  observation?: ObservationRef
-  /** When the latest source is not the one on screen: why, and which it is. */
-  latest?: { source: ArtifactSourceRef; status: 'building' | 'failed' }
-}
-
-/** A choice made about an artifact, with what it was made from. */
 export interface DecisionRecord {
   id: string
-  /** What the feedback was about: an entity, a view, a run, a moment, a source. */
   target: {
-    entity?: string
-    view?: ViewState
-    observation?: ObservationRef
-    source?: ArtifactSourceRef
+    subject?: SubjectRef
+    selection?: SelectionRef
+    /** The presentation's own view state, as JSON it reads (a camera, a scroll position, a filter). */
+    view?: unknown
   }
   feedback?: string
-  reproduction?: ObservationRef
+  /** What reproduces the problem: usually the subject as it was when reported. */
+  reproduction?: SubjectRef
   rationale: string
   evidence: Array<Digest | string>
   candidate?: ArtifactSourceRef

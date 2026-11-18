@@ -191,7 +191,7 @@ describe('the referenced moment', () => {
           role: 'user' as const,
           text: 'why?',
           status: 'complete' as const,
-          observation: asked,
+          subject: { kind: 'moment' as const, observation: asked! },
         },
       ],
     }

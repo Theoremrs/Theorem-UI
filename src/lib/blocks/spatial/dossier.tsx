@@ -26,8 +26,8 @@ import {
 } from '@assistant-ui/react'
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { readObservationRef, signalText, signalValue } from '@theorem/runtime'
-import type { ObservationRef, ObservedFact } from '@theorem/runtime'
+import { readSubjectRef, signalText, signalValue } from '@theorem/runtime'
+import type { ObservationRef, ObservedFact, SubjectRef } from '@theorem/runtime'
 import type { ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
 import type { TraceFrame } from './trace'
 
@@ -37,8 +37,8 @@ export interface DossierMessage {
   role: 'user' | 'assistant'
   text: string
   status: 'running' | 'complete' | 'incomplete'
-  /** The exact moment the question (or the question a reply answers) was asked about. */
-  observation?: ObservationRef
+  /** What the question (or the question a reply answers) was asked about; here, a moment of the trace. */
+  subject?: SubjectRef
 }
 
 /** The questions asked from this App and their replies; not `available` outside a conversation. */
@@ -196,6 +196,9 @@ export async function groundedContext(
   const facts = observedFacts(part, frame, grounding.observation)
   return {
     ...context,
+    ...(grounding.observation && {
+      subject: { kind: 'moment', observation: grounding.observation, run: grounding.run } satisfies SubjectRef,
+    }),
     run: grounding.run,
     observation: grounding.observation ?? null,
     // Held by this open App's trace only, until runs are saved durably.
@@ -395,9 +398,10 @@ export function referencedMoment(
   state: DossierState,
   snapshot: Pick<ChromeSnapshot, 'trace'>,
 ): { cycle: number; runId: string; current: boolean } | undefined {
-  const asked = [...state.messages].reverse().find((message) => message.role === 'user' && message.observation)
-  const observation = readObservationRef(asked?.observation)
-  if (!observation) return undefined
+  const asked = [...state.messages].reverse().find((message) => message.role === 'user' && message.subject)
+  const subject = readSubjectRef(asked?.subject)
+  if (subject?.kind !== 'moment') return undefined
+  const { observation } = subject
   const cycle = Number(observation.index)
   const current = observation.runId === snapshot.trace.runId
   if (current && cycle === snapshot.trace.cycle) return undefined

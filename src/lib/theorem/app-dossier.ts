@@ -8,12 +8,21 @@ import type {
   DossierMessage,
   DossierState,
 } from '../blocks/sandbox/protocol'
-import { ARTIFACT_RUNTIME_SCHEMA, readObservationRef } from '../blocks/artifact-runtime'
+import {
+  ARTIFACT_RUNTIME_SCHEMA,
+  ENTITY_SELECTOR,
+  readObservationRef,
+  readSelectionRef,
+  readSourceRef,
+  readSubjectRef,
+} from '../blocks/artifact-runtime'
 import type {
   ArtifactSourceRef,
-  ObservationRef,
+  ContextBinding,
+  OperationDescriptor,
   RunRef,
-  RuntimeBinding,
+  SelectionRef,
+  SubjectRef,
 } from '../blocks/artifact-runtime'
 import { appContextReference } from './app-references'
 import type { AppSnapshot } from './apps'
@@ -51,26 +60,84 @@ export const appSourceRef = (snapshot: AppSnapshot): ArtifactSourceRef => ({
 })
 
 /**
+ * What the question is about, from the App's own account: the subject it
+ * names (a source, a result or a run moment), or, from an App that reports a
+ * run and a moment the older way, that moment. An App that names neither is
+ * asked about its running revision.
+ */
+export function subjectOf(context: DossierContext): SubjectRef | undefined {
+  const named = readSubjectRef(context.subject)
+  if (named) return named
+  const observation = readObservationRef(context.observation)
+  if (!observation) return undefined
+  const run = record(context.run)
+  return run?.id === observation.runId
+    ? { kind: 'moment', observation, run: run as unknown as RunRef }
+    : { kind: 'moment', observation }
+}
+
+/**
+ * Where inside the subject: the App's own selection, read under its schema
+ * and version and passed on unread, or the entity the App says is selected,
+ * under the host's entity selector.
+ */
+export function selectionOf(context: DossierContext): SelectionRef | undefined {
+  const named = readSelectionRef(context.selection)
+  if (named) return named
+  const entity = selectedOf(context)
+  return entity && {
+    ...ENTITY_SELECTOR,
+    value: entity.entityId,
+    ...(entity.entityLabel && { label: entity.entityLabel }),
+  }
+}
+
+/**
  * What is on screen when a question is asked: the revision whose page is
  * running (which is the last that built, when a newer one failed or is still
- * building), the run the App says it shows and the moment shown. The run's
- * execution source is the running revision, since the App computes it there.
+ * building), what the App says it shows and where in it. A run the App
+ * computes was executed by the running revision, so that is its source.
  */
 export function dossierBinding(
   displayed: AppSnapshot,
   context: DossierContext,
   latest?: { snapshot: AppSnapshot; status: 'building' | 'failed' },
-): RuntimeBinding {
+): ContextBinding {
   const source = appSourceRef(displayed)
-  const run = record(context.run)
-  const observation = readObservationRef(context.observation)
+  const named = subjectOf(context)
+  // A run that names its own source keeps it: a presentation may show a run
+  // another revision or engine executed. Only a run computed inside this
+  // presentation, which names none, is attributed to the revision running.
+  const subject: SubjectRef | undefined =
+    named?.kind === 'moment' && named.run && !readSourceRef(named.run.source)
+      ? { ...named, run: { ...named.run, source } }
+      : named
+  const selection = selectionOf(context)
   return {
     schema: ARTIFACT_RUNTIME_SCHEMA,
     presentation: { source },
-    ...(run && typeof run.id === 'string' ? { run: { ...(run as unknown as Omit<RunRef, 'source'>), source } } : {}),
-    ...(observation ? { observation } : {}),
+    ...(subject && { subject }),
+    ...(selection && { selection }),
     ...(latest ? { latest: { source: appSourceRef(latest.snapshot), status: latest.status } } : {}),
   }
+}
+
+/**
+ * The operations an App says it defines, each with where it is written in
+ * the App's files when that can be found, for the agent to read and call.
+ */
+export function discoveredOperations(
+  context: DossierContext,
+  files: Record<string, string> | undefined,
+): Array<OperationDescriptor> {
+  if (!Array.isArray(context.operations)) return []
+  return context.operations.flatMap((entry) => {
+    const operation = record(entry)
+    if (!operation || typeof operation.name !== 'string' || typeof operation.version !== 'string')
+      return []
+    const place = files && !operation.source ? sourceOf(files, operation.name) : undefined
+    return [{ ...(operation as unknown as OperationDescriptor), ...(place && { source: place }) }]
+  })
 }
 
 /**
@@ -80,6 +147,8 @@ export function dossierBinding(
  * is enough to read the rest again.
  */
 const KEPT = new Set([
+  'subject',
+  'selection',
   'selected',
   'observation',
   'observationLifetime',
@@ -100,7 +169,7 @@ const KEPT = new Set([
 export function dossierReference(
   snapshot: AppSnapshot,
   context: DossierContext,
-  binding?: RuntimeBinding,
+  binding?: ContextBinding,
 ): TheoremContextReference {
   const entity = selectedOf(context)
   const selection = entity && { text: '', ...entity }
@@ -139,10 +208,10 @@ export function dossierReference(
     } else {
       // Still marked as the dossier's, so the question is found again on
       // reload; the moment it was about is kept with it.
-      const kept = Object.fromEntries(['observation', 'run'].filter((key) => key in dossier).map((key) => [key, dossier[key]]))
+      const kept = Object.fromEntries(['subject', 'observation', 'run'].filter((key) => key in dossier).map((key) => [key, dossier[key]]))
       shaped = { ...reference, excerpt: JSON.stringify({ selection, dossier: { ...kept, omitted } }) }
       if (bytes(shaped) > MAX_REFERENCE_BYTES)
-        shaped = { ...reference, excerpt: JSON.stringify({ selection, dossier: { observation: dossier.observation, omitted } }) }
+        shaped = { ...reference, excerpt: JSON.stringify({ selection, dossier: { subject: binding?.subject ?? subjectOf(dossier), omitted } }) }
       break
     }
     shaped = fitted()
@@ -221,13 +290,13 @@ function fromDossier(reference: unknown, documentId: string) {
  * sent in this session, or, once the conversation is loaded again, sent with
  * a dossier's reference to the App.
  */
-/** The moment a question from this App was asked about, from its metadata or its stored reference. */
-function observationOf(message: ConversationMessage, documentId: string): ObservationRef | undefined {
+/** What a question from this App was asked about, from its metadata or its stored reference. */
+function askedAbout(message: ConversationMessage, documentId: string): SubjectRef | undefined {
   const custom = message.metadata?.custom
   const marked = record(custom?.[DOSSIER_METADATA])
   if (marked?.documentId === documentId) {
-    const observation = readObservationRef(marked.observation)
-    if (observation) return observation
+    const subject = readSubjectRef(marked.subject) ?? subjectOf(marked)
+    if (subject) return subject
   }
   const sent = custom?.[CONTEXT_REFERENCES_METADATA]
   if (!Array.isArray(sent)) return undefined
@@ -235,12 +304,12 @@ function observationOf(message: ConversationMessage, documentId: string): Observ
     if (!fromDossier(reference, documentId)) continue
     try {
       const excerpt = record(JSON.parse(String(record(reference)?.excerpt)))
-      const observation =
-        readObservationRef(record(excerpt?.binding)?.observation) ??
-        readObservationRef(record(excerpt?.dossier)?.observation)
-      if (observation) return observation
+      const subject =
+        readSubjectRef(record(excerpt?.binding)?.subject) ??
+        subjectOf(record(excerpt?.dossier) ?? {})
+      if (subject) return subject
     } catch {
-      // A reference that is not JSON names no moment.
+      // A reference that is not JSON names no subject.
     }
   }
   return undefined
@@ -275,20 +344,20 @@ export function dossierState(
 ): DossierState {
   const shown: Array<DossierMessage> = []
   let answering = false
-  let observation: ObservationRef | undefined
+  let subject: SubjectRef | undefined
   for (const message of messages) {
     if (message.role === 'user') {
       answering = askedFrom(message, documentId)
-      observation = answering ? observationOf(message, documentId) : undefined
+      subject = answering ? askedAbout(message, documentId) : undefined
       if (answering)
-        shown.push({ id: message.id, role: 'user', text: textOf(message), status: 'complete', ...(observation && { observation }) })
+        shown.push({ id: message.id, role: 'user', text: textOf(message), status: 'complete', ...(subject && { subject }) })
     } else if (answering && message.role === 'assistant') {
       shown.push({
         id: message.id,
         role: 'assistant',
         text: textOf(message),
         status: statusOf(message),
-        ...(observation && { observation }),
+        ...(subject && { subject }),
       })
     }
   }

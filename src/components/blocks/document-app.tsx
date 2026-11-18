@@ -40,10 +40,12 @@ import {
 import type { AppSelectionContext } from '@/lib/theorem/app-references'
 import {
   DOSSIER_METADATA,
+  discoveredOperations,
   dossierReference,
   questionBinding,
   dossierState,
   sourceOf,
+  subjectOf,
 } from '@/lib/theorem/app-dossier'
 import type { ConversationMessage, Displayed } from '@/lib/theorem/app-dossier'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
@@ -617,14 +619,14 @@ function useAppDossier(
           custom: {
             [DOSSIER_METADATA]: {
               documentId: app.documentId,
-              ...(binding.observation && { observation: binding.observation }),
+              ...(binding.subject && { subject: binding.subject }),
             },
           },
         },
         runConfig: {
           custom: {
             theoremContextReferences: [
-              dossierReference(revision, question.context, binding),
+              dossierReference(revision, withOperations(question.context, revision.html), binding),
             ],
           },
         },
@@ -694,7 +696,7 @@ function useAppDossier(
                 text: question.text,
                 status: 'complete' as const,
                 queued: true,
-                ...(isRecord(question.context.observation) && { observation: question.context.observation }),
+                subject: subjectOf(question.context),
               })),
             ],
           }
@@ -703,9 +705,6 @@ function useAppDossier(
   }, [dossier, messages, available, app.documentId, queued])
   return dossier
 }
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
 export function DocumentAppView({
   app,
@@ -827,4 +826,13 @@ function AppSaveError({
       )}
     </BlockMessage>
   )
+}
+
+/**
+ * The App's account with each operation it defines located in its files, so
+ * the agent can read an operation's source as well as call it.
+ */
+function withOperations(context: Record<string, unknown>, html: string) {
+  if (!Array.isArray(context.operations)) return context
+  return { ...context, operations: discoveredOperations(context, editableFiles(html)) }
 }

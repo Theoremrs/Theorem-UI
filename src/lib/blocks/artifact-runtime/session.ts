@@ -1,11 +1,11 @@
-// SOURCING: none: the mounted artifact's one selected context (the runtime
-// binding of types.ts), and the observations kept for this browser session
+// SOURCING: none: reading references from JSON, and the run observations
+// kept for this browser session
 // so a question can name an exact moment before the durable run store holds
 // it. A kept observation says it lives only as long as the session; when it is
 // gone, resolving it says so. It never resolves to the latest state instead.
 import { isDigest } from './digest'
 import { ARTIFACT_RUNTIME_SCHEMA } from './types'
-import type { ArtifactSourceRef, ObservationRef, RuntimeBinding } from './types'
+import type { ArtifactSourceRef, ObservationRef } from './types'
 import { isIntegerText } from './values'
 
 const record = (value: unknown): Record<string, unknown> | undefined =>
@@ -129,45 +129,5 @@ export class SessionObservations<T> {
 
   get size(): number {
     return this.kept.size
-  }
-}
-
-/**
- * The binding of what is on screen. A question or a piece of feedback takes
- * `capture()` when it is made and keeps that copy, so a later selection or a
- * newer build never changes what it was about.
- */
-export class RuntimeSession {
-  private binding: RuntimeBinding | undefined
-  private readonly listeners = new Set<() => void>()
-
-  get current(): RuntimeBinding | undefined {
-    return this.binding
-  }
-
-  set(binding: RuntimeBinding | undefined): void {
-    // A binding written by plain JavaScript, or by another version, is refused.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (binding && binding.schema !== ARTIFACT_RUNTIME_SCHEMA)
-      throw new Error(
-        `A runtime binding of ${String(binding.schema)} is not ${ARTIFACT_RUNTIME_SCHEMA}`,
-      )
-    this.binding = binding
-    for (const listener of this.listeners) listener()
-  }
-
-  /** Moves the shown moment, keeping the rest of the binding. */
-  observe(observation: ObservationRef | undefined): void {
-    if (!this.binding) return
-    this.set({ ...this.binding, observation })
-  }
-
-  capture(): RuntimeBinding | undefined {
-    return this.binding && structuredClone(this.binding)
-  }
-
-  subscribe(listener: () => void): () => void {
-    this.listeners.add(listener)
-    return () => void this.listeners.delete(listener)
   }
 }
