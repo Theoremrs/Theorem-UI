@@ -377,7 +377,7 @@ try {
 
   // Pin register A's note, then select register B: both notes, apart.
   await frame().click('.ts-card[data-entity-id="a"] button[aria-label="Pin"]')
-  await page.waitForTimeout(300)
+  await settle()
   const b = await part('b')
   await page.mouse.click(...(await onPage(b.screen)))
   await page.waitForTimeout(800)
@@ -456,8 +456,10 @@ try {
     created?.screen && created.outputs.over === 1 && created.outputs.lost === 5 && (await part('alu')).outputs.overflow === 1,
     created,
   )
-  // Use it at once: select it and move its limit from its own card.
-  const [nx, ny] = await onPage(created.screen)
+  // Use it at once: select it and move its limit from its own card. The
+  // camera reframes to take the new part in, so click where it is now.
+  await settle()
+  const [nx, ny] = await onPage((await part('alu/overflow')).screen)
   await page.mouse.click(nx, ny)
   await frame()
     .waitForSelector('.ts-card [role=slider]', { timeout: 3000 })

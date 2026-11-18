@@ -1,7 +1,7 @@
 // SOURCING: three.js draws and picks everything: WebGLRenderer with a
 // PerspectiveCamera, OrbitControls (restrained, damped) for looking around,
 // Raycaster for picking, MeshSurfaceSampler for the cells that give a part its
-// substance, TubeGeometry along CubicBezierCurve3 for wires. Labels, notes,
+// substance, TubeGeometry along orthogonal routes (routeOf) for wires. Labels, notes,
 // controls and the breadcrumb are React (chrome.tsx, or an App's own chrome)
 // placed over the scene by @theorem/annotate from the screen boxes written
 // here each frame. What is ours is the handling: pull a
@@ -226,8 +226,8 @@ interface WireVisual {
 const DEFAULT_ARRANGE: NonNullable<MountOptions['arrange']> = 'elk'
 
 const FRAMING = new THREE.Vector3(0.62, 0.42, 1).normalize()
-/** The band an open note takes at the stage's right: its 18rem and the gap to its part. */
-const NOTE_BAND = 18 * 16 + 18
+/** The band an open note takes at the stage's right: its 18rem and the gap to its part (the note gap in chrome.tsx). */
+const NOTE_BAND = 18 * 16 + 36
 const ease = (current: number, target: number, rate: number, dt: number) =>
   current + (target - current) * (1 - Math.exp(-rate * dt))
 
@@ -394,6 +394,18 @@ export function mount(
     return size
   }
 
+  /**
+   * All of a shell's geometry in the space of the body it sits in, the space
+   * its edges and cells are drawn in beside it: an App that turns or moves the
+   * root of its form has the edges and cells turned with it.
+   */
+  const bodyGeometry = (shell: THREE.Object3D) => {
+    const merged = shell instanceof THREE.Mesh ? (shell.geometry as THREE.BufferGeometry) : mergedGeometry(shell)
+    shell.updateMatrix()
+    return merged && !shell.matrix.equals(IDENTITY) ? merged.clone().applyMatrix4(shell.matrix) : merged
+  }
+  const IDENTITY = new THREE.Matrix4()
+
   /** The geometry a shell is drawn from, as a key, so a `show` that swaps it is noticed. */
   const surfaceOf = (shell: THREE.Object3D) => {
     const ids: Array<string> = []
@@ -462,7 +474,7 @@ export function mount(
       }
     })
     body.add(shell)
-    const merged = shell instanceof THREE.Mesh ? (shell.geometry as THREE.BufferGeometry) : mergedGeometry(shell)
+    const merged = bodyGeometry(shell)
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(merged ?? new THREE.BoxGeometry(1, 1, 1), 30),
       new THREE.LineBasicMaterial({ color: color(theme.faint), transparent: true, opacity: 0.55 }),
@@ -594,12 +606,12 @@ export function mount(
           visual.baseOpacity.push(base.get(material) ?? material.opacity)
         }
     })
-    const merged = shell instanceof THREE.Mesh ? (shell.geometry as THREE.BufferGeometry) : mergedGeometry(shell)
+    const merged = bodyGeometry(shell)
     if (!merged) return
     visual.edges.geometry.dispose()
     visual.edges.geometry = new THREE.EdgesGeometry(merged, 30)
     merged.computeBoundingBox()
-    const box = merged.boundingBox!.clone().applyMatrix4(shell.matrix)
+    const box = merged.boundingBox!.clone()
     const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
     visual.grip.geometry.dispose()
@@ -725,6 +737,8 @@ export function mount(
   let selected: string | null = null
   let hovered: string | null = null
   const pinned = new Set<string>()
+  /** Where the person dragged each pinned note: its top left from its part's centre, in pixels. */
+  const placed = new Map<string, [number, number]>()
   const pulled = new Set<string>()
   const focusNetwork = () => (openPath ? visuals.get(openPath)!.part.inside! : network)
   const ownerOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
@@ -736,6 +750,7 @@ export function mount(
     pulled?: Record<string, Vec3>
     selected?: string | null
     pinned?: Array<string>
+    placed?: Record<string, [number, number]>
     known?: Array<string>
   }
   let collection: { get: (key: string) => unknown; set: (key: string, value: unknown) => Promise<void> } | undefined
@@ -750,6 +765,7 @@ export function mount(
         pulled: Object.fromEntries([...pulled].map((path) => [path, visuals.get(path)!.moved.toArray()])),
         selected,
         pinned: [...pinned],
+        placed: Object.fromEntries(placed),
         known: [...allParts(network)].map((part) => part.path),
       }
       void collection?.set('spatial', value).catch(() => {})
@@ -785,6 +801,7 @@ export function mount(
           pulled.add(path)
         }
         for (const path of remembered.pinned ?? []) if (visuals.has(path)) pinned.add(path)
+        for (const [path, offset] of Object.entries(remembered.placed ?? {})) if (pinned.has(path)) placed.set(path, offset)
         if (remembered.selected && visuals.has(remembered.selected)) select(remembered.selected)
         frame(true)
         // A part the last revision did not have arrives lit, so it can be found.
@@ -852,9 +869,9 @@ export function mount(
   function frame(instant = false) {
     const box = new THREE.Box3()
     scene.updateMatrixWorld(true)
+    // The open level fills the view: the parts inside an opened part, not its shell.
     const level = openPath ? visuals.get(openPath)!.inside! : rootLevel
-    if (openPath) box.setFromObject(visuals.get(openPath)!.shell)
-    else for (const visual of level.visuals) box.expandByObject(visual.shell)
+    for (const visual of level.visuals) box.expandByObject(visual.shell)
     const sphere = box.getBoundingSphere(new THREE.Sphere())
     const width = stage.clientWidth || 1
     const height = stage.clientHeight || 1
@@ -1028,6 +1045,7 @@ export function mount(
       selected: shown,
       hovered,
       pinned: pinnedHere,
+      placed: Object.fromEntries(pinnedHere.flatMap((path) => (placed.has(path) ? [[path, placed.get(path)!]] : []))),
       parts: focusNetwork().parts.map(partSnapshot),
       boundary: openPath ? partSnapshot(visuals.get(openPath)!.part) : null,
       replay: {
@@ -1058,8 +1076,16 @@ export function mount(
     },
     pin: (path, on) => {
       if (on) pinned.add(path)
-      else pinned.delete(path)
+      else {
+        pinned.delete(path)
+        placed.delete(path)
+      }
       notify()
+      save()
+    },
+    place: (path, offset) => {
+      if (!pinned.has(path)) return
+      placed.set(path, offset)
       save()
     },
     putBack: (path) => {
@@ -1266,6 +1292,63 @@ export function mount(
 
   const worldScale = (object: THREE.Object3D) => object.getWorldScale(new THREE.Vector3()).x
 
+  /**
+   * A signal's route in its level's own frame: a stub straight out of each
+   * port, then runs along the level's axes with as few bends as reach (a
+   * right angle here may look oblique once projected, which keeps the model's
+   * depth), each bend rounded a little so the tube stays whole.
+   */
+  function routeOf(a: THREE.Vector3, na: THREE.Vector3, b: THREE.Vector3, nb: THREE.Vector3, frame: THREE.Object3D): THREE.CurvePath<THREE.Vector3> {
+    const toLocal = frame.matrixWorld.clone().invert()
+    const A = a.clone().applyMatrix4(toLocal)
+    const B = b.clone().applyMatrix4(toLocal)
+    const dA = na.clone().transformDirection(toLocal)
+    const dB = nb.clone().transformDirection(toLocal)
+    const stub = Math.max(0.14, A.distanceTo(B) * 0.12)
+    const P = A.clone().addScaledVector(dA, stub)
+    const Q = B.clone().addScaledVector(dB, stub)
+    // Ports face along x (west in, east out) unless their part turned them.
+    const along = Math.abs(dA.y) > Math.abs(dA.x) ? 'y' : 'x'
+    const across = along === 'x' ? 'y' : 'x'
+    const forward = Math.sign(dA[along]) * (Q[along] - P[along]) >= 0
+    const points = [A, P]
+    if (forward) {
+      // Out, across at the middle, in.
+      const middle = (P[along] + Q[along]) / 2
+      points.push(P.clone().setComponent(along === 'x' ? 0 : 1, middle), Q.clone().setComponent(along === 'x' ? 0 : 1, middle))
+    } else {
+      // Back past both ends, around the side between them.
+      const middle = (P[across] + Q[across]) / 2
+      points.push(P.clone().setComponent(across === 'x' ? 0 : 1, middle), Q.clone().setComponent(across === 'x' ? 0 : 1, middle))
+    }
+    points.push(Q, B)
+    const kept = points.filter((point, index) => index === 0 || point.distanceTo(points[index - 1]!) > 1e-4)
+    const path = new THREE.CurvePath<THREE.Vector3>()
+    let from = kept[0]!.clone()
+    for (let index = 1; index < kept.length; index++) {
+      const corner = kept[index]!
+      const next = kept[index + 1]
+      if (!next) {
+        path.add(new THREE.LineCurve3(from, corner.clone()))
+        break
+      }
+      const radius = Math.min(0.05, corner.distanceTo(from) / 2, corner.distanceTo(next) / 2)
+      const enter = corner.clone().addScaledVector(from.clone().sub(corner).normalize(), radius)
+      const leave = corner.clone().addScaledVector(next.clone().sub(corner).normalize(), radius)
+      if (enter.distanceTo(from) > 1e-5) path.add(new THREE.LineCurve3(from, enter))
+      path.add(new THREE.QuadraticBezierCurve3(enter, corner.clone(), leave))
+      from = leave
+    }
+    // Back to the world, where the wire is drawn.
+    const world = new THREE.CurvePath<THREE.Vector3>()
+    for (const curve of path.curves) {
+      const points = curve instanceof THREE.LineCurve3 ? [curve.v1, curve.v2] : [(curve as THREE.QuadraticBezierCurve3).v0, (curve as THREE.QuadraticBezierCurve3).v1, (curve as THREE.QuadraticBezierCurve3).v2]
+      const [p0, p1, p2] = points.map((point) => point.clone().applyMatrix4(frame.matrixWorld))
+      world.add(p2 ? new THREE.QuadraticBezierCurve3(p0!, p1!, p2) : new THREE.LineCurve3(p0!, p1!))
+    }
+    return world
+  }
+
   function drawWires(level: Level, visible: number, dt: number) {
     for (const wire of level.wires) {
       wire.fade = ease(wire.fade, visible, 8, dt)
@@ -1279,18 +1362,11 @@ export function mount(
       const scale = worldScale(level.group)
       const ends = [scratch.a, scratch.b].map((point) => point.toArray().map((n) => n.toFixed(4)).join()).join('|')
       const distance = scratch.a.distanceTo(scratch.b)
-      if (ends !== wire.ends) {
+      if (ends !== wire.ends && distance > 1e-5) {
         wire.ends = ends
-        const reach = Math.max(0.25 * scale, distance * 0.4)
-        const lift = new THREE.Vector3(0, 0, distance * 0.12)
-        const curve = new THREE.CubicBezierCurve3(
-          scratch.a.clone(),
-          scratch.a.clone().addScaledVector(scratch.na, reach).add(lift),
-          scratch.b.clone().addScaledVector(scratch.nb, reach).add(lift),
-          scratch.b.clone(),
-        )
+        const curve = routeOf(scratch.a, scratch.na, scratch.b, scratch.nb, level.group)
         wire.mesh.geometry.dispose()
-        wire.mesh.geometry = new THREE.TubeGeometry(curve, 40, 0.018 * scale, 6)
+        wire.mesh.geometry = new THREE.TubeGeometry(curve, 24 * curve.curves.length, 0.018 * scale, 6)
         wire.mesh.userData.curve = curve
       }
       const sourcePath = wire.wire.from.boundary ? null : wire.wire.from.part
@@ -1305,10 +1381,10 @@ export function mount(
         const start = sourcePath ? (fireTime.get(sourcePath) ?? 0) + 0.5 : (fireTime.get(wire.wire.to.part) ?? 0) - 0.5
         wire.travel = THREE.MathUtils.clamp(replay.time - start, -1, 1)
       } else wire.travel = -1
-      const curve = wire.mesh.userData.curve as THREE.CubicBezierCurve3 | undefined
+      const curve = wire.mesh.userData.curve as THREE.Curve<THREE.Vector3> | undefined
       wire.pulse.visible = Boolean(curve) && wire.travel >= 0 && wire.travel < 1
       if (wire.pulse.visible && curve) {
-        wire.pulse.position.copy(curve.getPoint(wire.travel))
+        wire.pulse.position.copy(curve.getPointAt(wire.travel))
         wire.pulse.scale.setScalar(0.06 * scale)
         wire.pulse.material.color.copy(color(on ? theme.lit : theme.faint))
         wire.pulse.material.opacity = wire.fade
@@ -1386,6 +1462,9 @@ export function mount(
       const target = isOpen ? 0.06 : inFocus ? 1 : inside ? 0 : parentVisible ? 0.12 : 0
       visual.fade = ease(visual.fade, parentVisible || inFocus ? target : 0, reduced ? 60 : 6, dt)
       visual.morph = ease(visual.morph, isOpen ? 1 : 0, reduced ? 60 : 3.2, dt)
+      // The ease only approaches its end; land on it, so a part that was
+      // opened and closed again is closed (refit waits for exactly 0).
+      if (Math.abs(visual.morph - (isOpen ? 1 : 0)) < 0.001) visual.morph = isOpen ? 1 : 0
       const isPulled = pulled.has(path)
       visual.pull = ease(visual.pull, isPulled ? 1 : 0, reduced ? 60 : 7, dt)
       visual.recede = ease(visual.recede, inFocus && anyPulled && !isPulled ? 1 : 0, reduced ? 60 : 5, dt)
@@ -1417,7 +1496,8 @@ export function mount(
           .lerp(color(theme.lit), visual.lit * 0.35 + Math.min(1, visual.activity) * 0.25)
       visual.materials.forEach((material, index) => {
         material.opacity = visual.baseOpacity[index]! * Math.max(opacity, isOpen ? 0.25 : 0) * (isOpen ? 0.3 : 1)
-        material.depthWrite = false
+        // A fully opaque surface hides what is behind it; anything less does not.
+        material.depthWrite = material.opacity >= 0.999
       })
       ;(visual.edges.material as THREE.LineBasicMaterial).opacity = 0.55 * opacity * (path === selected ? 1.6 : 1)
       ;(visual.edges.material as THREE.LineBasicMaterial).color.copy(color(path === selected ? theme.accent : theme.faint))
@@ -1553,8 +1633,11 @@ export function mount(
   resizer.observe(stage)
   resize()
   frame(true)
-  const watcher = new IntersectionObserver(([entry]) => {
-    visible = Boolean(entry?.isIntersecting)
+  // Entries arrive batched, oldest first: a root laid out in the frame it was
+  // observed reports not intersecting, then intersecting, in one call, so the
+  // last entry is the one that holds.
+  const watcher = new IntersectionObserver((entries) => {
+    visible = Boolean(entries.at(-1)?.isIntersecting)
     clock.getDelta()
   })
   watcher.observe(root)

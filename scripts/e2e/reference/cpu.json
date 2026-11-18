@@ -1,0 +1,242 @@
+{
+ "references": [
+  {
+   "url": "https://commons.wikimedia.org/wiki/File:Die_-_MOS_6502D_-_John_McMaster.jpg",
+   "source": "https://upload.wikimedia.org/wikipedia/commons/5/5a/Die_-_MOS_6502D_-_John_McMaster.jpg",
+   "credit": "MOS 6502D die, John McMaster",
+   "license": "CC BY 4.0",
+   "purpose": "structure: where the datapath, control logic and decode ROM sit, and the ring of bonding pads"
+  },
+  {
+   "url": "https://commons.wikimedia.org/wiki/File:Pack_top_-_MOS_6502D_-_John_McMaster.jpg",
+   "source": "https://upload.wikimedia.org/wikipedia/commons/f/f7/Pack_top_-_MOS_6502D_-_John_McMaster.jpg",
+   "credit": "MOS 6502 package, top, John McMaster",
+   "license": "CC BY 4.0",
+   "purpose": "proportion: the body's length to width and the pins along one side"
+  }
+ ],
+ "die": {
+  "aspect": 1.0936,
+  "pads": [
+   [
+    0.0351,
+    0.0708,
+    0.0097
+   ],
+   [
+    0.0392,
+    0.1916,
+    0.0106
+   ],
+   [
+    0.039,
+    0.2386,
+    0.0094
+   ],
+   [
+    0.0343,
+    0.3441,
+    0.0106
+   ],
+   [
+    0.0336,
+    0.3933,
+    0.01
+   ],
+   [
+    0.0378,
+    0.4658,
+    0.0086
+   ],
+   [
+    0.0367,
+    0.5451,
+    0.0099
+   ],
+   [
+    0.0397,
+    0.5941,
+    0.0105
+   ],
+   [
+    0.039,
+    0.7013,
+    0.0107
+   ],
+   [
+    0.0355,
+    0.7854,
+    0.0105
+   ],
+   [
+    0.0548,
+    0.9592,
+    0.0111
+   ],
+   [
+    0.1031,
+    0.9608,
+    0.01
+   ],
+   [
+    0.1552,
+    0.9621,
+    0.0104
+   ],
+   [
+    0.203,
+    0.9631,
+    0.0107
+   ],
+   [
+    0.3023,
+    0.9614,
+    0.0114
+   ],
+   [
+    0.3512,
+    0.9632,
+    0.0123
+   ],
+   [
+    0.391,
+    0.961,
+    0.0113
+   ],
+   [
+    0.9209,
+    0.9606,
+    0.0104
+   ],
+   [
+    0.9649,
+    0.962,
+    0.0111
+   ],
+   [
+    0.964,
+    0.7921,
+    0.0101
+   ],
+   [
+    0.9644,
+    0.5612,
+    0.0099
+   ],
+   [
+    0.9637,
+    0.455,
+    0.0101
+   ],
+   [
+    0.9618,
+    0.4039,
+    0.01
+   ],
+   [
+    0.9635,
+    0.3554,
+    0.0098
+   ],
+   [
+    0.9651,
+    0.3108,
+    0.01
+   ],
+   [
+    0.9648,
+    0.2046,
+    0.0096
+   ],
+   [
+    0.9664,
+    0.1612,
+    0.0106
+   ],
+   [
+    0.9633,
+    0.042,
+    0.0105
+   ],
+   [
+    0.638,
+    0.0711,
+    0.0099
+   ],
+   [
+    0.5586,
+    0.0669,
+    0.0102
+   ],
+   [
+    0.4895,
+    0.0373,
+    0.0106
+   ],
+   [
+    0.3539,
+    0.0368,
+    0.0095
+   ],
+   [
+    0.3085,
+    0.0387,
+    0.0097
+   ],
+   [
+    0.2548,
+    0.0377,
+    0.0095
+   ],
+   [
+    0.2079,
+    0.0384,
+    0.0091
+   ],
+   [
+    0.1615,
+    0.0396,
+    0.0096
+   ],
+   [
+    0.1078,
+    0.0396,
+    0.0093
+   ]
+  ],
+  "blocks": {
+   "datapath": [
+    0.0923,
+    0.1177,
+    0.4623,
+    0.802
+   ],
+   "control": [
+    0.4623,
+    0.0882,
+    0.7517,
+    0.9124
+   ],
+   "decode": [
+    0.7517,
+    0.0588,
+    0.9266,
+    0.8683
+   ]
+  }
+ },
+ "package": {
+  "pins_per_side": 20,
+  "pitch_mm": 2.54,
+  "body_mm": [
+   53.19,
+   12.19
+  ],
+  "measured_from": "the package photo: pins traced along one side, their pitch taken as 2.54 mm",
+  "colours": {
+   "body": "#613716",
+   "pins": "#f1fafa",
+   "die": "#7a7d7c"
+  }
+ }
+}

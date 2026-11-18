@@ -10,8 +10,8 @@ import type { Platform, Rect } from '@floating-ui/core'
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { HTMLAttributes, ReactNode } from 'react'
 import type { Anchors, Box } from './anchors'
-import { connectorEnds, connectorPath, subjectPath } from './paths'
-import type { Connector, Subject } from './paths'
+import { attachOffset, connectorEnds, connectorPath, LEADER_RUN, leaderEnds, subjectPath } from './paths'
+import type { Attach, Connector, Point, Subject } from './paths'
 import { choose, overlap } from './place'
 import type { Candidate, Placement } from './place'
 import { Theme } from './theme'
@@ -21,6 +21,8 @@ export interface Entry {
   anchor: string
   subject: Subject
   connector: Connector
+  /** Where a leader enters the note. */
+  attach: Attach
   placements: ReadonlyArray<Placement>
   gap: number
   padding: number
@@ -35,10 +37,19 @@ export interface Entry {
   previous?: Placement
   /** Where the note was put last, in the layer. */
   placed?: Box
+  /**
+   * Where the person put a pinned note: its top left from its subject's
+   * centre. The layer keeps it there and no longer chooses for it.
+   */
+  manual?: Point
+  /** Told where the person left a pinned note they dragged. */
+  onPlace?: (offset: Point) => void
 }
 
 interface LayerContext {
   register: (entry: Entry) => () => void
+  /** Moves a pinned note by (dx, dy) pixels; `done` at the end of the drag. */
+  drag: (entry: Entry, dx: number, dy: number, done: boolean) => void
   keepClear: (element: Element) => () => void
   schedule: () => void
   notes: HTMLDivElement | null
@@ -65,6 +76,14 @@ const platform: Platform = {
 
 export const PLACEMENTS: ReadonlyArray<Placement> = [
   'right', 'left', 'top', 'bottom', 'right-start', 'left-start', 'bottom-start', 'top-start',
+]
+
+/**
+ * A leader's sides: off a corner first, so it leaves at 45 degrees; level
+ * beside the subject next; above and below last.
+ */
+export const LEADER_PLACEMENTS: ReadonlyArray<Placement> = [
+  'right-start', 'left-start', 'right-end', 'left-end', 'right', 'left', 'top', 'bottom',
 ]
 
 const inset = (box: Box, by: number): Box => ({
@@ -166,12 +185,32 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
       const floating = entry.size
       const candidates: Candidate[] = []
       let referenceHidden = false
-      for (const placement of entry.placements) {
+      if (!entry.pinned) entry.manual = undefined
+      if (entry.manual && inView) {
+        const [mx, my] = entry.manual
+        const x = Math.min(Math.max(subject.x + subject.width / 2 + mx, boundary.x), boundary.x + boundary.width - floating.width)
+        const y = Math.min(Math.max(subject.y + subject.height / 2 + my, boundary.y), boundary.y + boundary.height - floating.height)
+        candidates.push({ placement: entry.previous ?? 'right', box: { x, y, width: floating.width, height: floating.height } })
+      }
+      // A leader's note sits off the corner, so the leader leaves at 45
+      // degrees and turns level into it: the note is raised (start) or
+      // lowered (end) until the line it is entered on clears the subject.
+      // The gap is measured from the subject, the leader from its padded
+      // bracket: what is left after the level run is the 45 degree rise.
+      const rise = Math.max(0, entry.gap - entry.padding - LEADER_RUN)
+      const across = (placement: Placement, height: number) => {
+        if (entry.connector !== 'leader' || placement.startsWith('top') || placement.startsWith('bottom')) return 0
+        const into = attachOffset(entry.attach, height)
+        if (placement.endsWith('-start')) return -entry.padding - rise - into
+        if (placement.endsWith('-end')) return height + entry.padding + rise - into
+        return 0
+      }
+      for (const placement of candidates.length ? [] : entry.placements) {
         const result = await computePosition(subject, floating, {
           placement,
           platform,
           middleware: [
-            offset(entry.gap),
+            offset(({ rects }) => ({ mainAxis: entry.gap, crossAxis: across(placement, rects.floating.height) })),
             // Both axes: a note never leaves the layer; covering its subject instead costs it in `choose`.
             shift({ boundary, padding: 0, crossAxis: true }),
             hide({ boundary, strategy: 'referenceHidden' }),
@@ -184,7 +223,8 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
       const chosen = choose(candidates, {
         subject,
         bounds: boundary,
-        obstacles: [...taken.map((each) => each.box), ...reserved, ...others],
+        obstacles: [...taken.map((each) => each.box), ...reserved],
+        others,
         previous: entry.previous,
       })
       if (
@@ -208,7 +248,9 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
       group?.toggleAttribute('data-occluded', Boolean(anchor.occluded))
       group?.toggleAttribute('data-hidden', false)
       entry.subjectPath?.setAttribute('d', inView ? subjectPath(entry.subject, subject, entry.padding) : '')
-      const { from, to } = connectorEnds(subject, chosen.box, inView ? entry.padding : 0)
+      const padding = inView ? entry.padding : 0
+      const { from, to } =
+        entry.connector === 'leader' ? leaderEnds(subject, chosen.box, padding, entry.attach) : connectorEnds(subject, chosen.box, padding)
       entry.connectorPath?.setAttribute('d', connectorPath(entry.connector, from, to))
     }
   }
@@ -244,6 +286,16 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
     notes,
     svg,
     schedule: () => void layout(),
+    drag: (entry, dx, dy, done) => {
+      const anchor = anchors.get(entry.anchor)
+      if (!anchor || !entry.placed) return
+      const cx = anchor.box.x + anchor.box.width / 2
+      const cy = anchor.box.y + anchor.box.height / 2
+      const [mx, my] = entry.manual ?? [entry.placed.x - cx, entry.placed.y - cy]
+      entry.manual = [mx + dx, my + dy]
+      if (done) entry.onPlace?.(entry.manual)
+      void layout()
+    },
     register: (entry) => {
       entries.current.add(entry)
       if (entry.slot) {

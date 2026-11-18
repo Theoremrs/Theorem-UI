@@ -19,6 +19,7 @@ import { Text } from '@astryxdesign/core/Text'
 import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton'
 import { Annotation, AnnotationLayer, KeepClear, Label, Note, Theme } from '@theorem/annotate'
 import type { Anchors } from '@theorem/annotate'
+import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { ControlSpec } from './engine'
@@ -68,6 +69,8 @@ export interface ChromeSnapshot {
   selected: string | null
   hovered: string | null
   pinned: Array<string>
+  /** Where the person dragged a pinned note: its top left from its part's centre, in pixels. */
+  placed: Record<string, [number, number]>
   /** The parts of the open network. */
   parts: Array<PartSnapshot>
   /** The open part itself, whose ports are the open network's boundary. */
@@ -87,6 +90,8 @@ export interface ChromeActions {
   select: (path: string | null) => void
   hover: (path: string | null) => void
   pin: (path: string, pinned: boolean) => void
+  /** Keeps a pinned note where the person dragged it. */
+  place: (path: string, offset: [number, number]) => void
   putBack: (path: string) => void
   run: (on: boolean) => void
   slow: (on: boolean) => void
@@ -101,6 +106,9 @@ export interface ChromeProps {
   /** The element the scene is drawn in; notes and the breadcrumb go over it. */
   stage: HTMLElement
 }
+
+/** Where a leader enters a part's note: level with its title. */
+const NOTE_ATTACH = 17
 
 /** The anchor id the view writes a part's screen box under. */
 export const partAnchor = (path: string) => `part:${path}`
@@ -120,6 +128,19 @@ export function Control({ path, name, value, spec, set }: {
   set: ChromeActions['set']
 }) {
   const label = `${spec?.label ?? name} of ${path}`
+  // A toggle that names what each setting does is two labelled choices, so it says it.
+  if (spec?.kind === 'toggle' && spec.off !== undefined && spec.on !== undefined)
+    return (
+      <SegmentedControl
+        label={label}
+        size="sm"
+        value={truthy(value) ? 'on' : 'off'}
+        onChange={(next: string) => set(path, name, typeof value === 'boolean' ? next === 'on' : next === 'on' ? 1 : 0)}
+      >
+        <SegmentedControlItem value="off" label={spec.off} />
+        <SegmentedControlItem value="on" label={spec.on} />
+      </SegmentedControl>
+    )
   if (spec?.kind === 'toggle' || (!spec && isBit(value)))
     return (
       <Switch
@@ -153,12 +174,19 @@ export function Control({ path, name, value, spec, set }: {
   if (spec?.kind === 'select')
     return spec.options.length <= 4 ? (
       <SegmentedControl label={label} size="sm" value={String(value)} onChange={(next: string) => set(path, name, next)}>
-        {spec.options.map((option) => (
-          <SegmentedControlItem key={option} value={option} label={option} />
+        {spec.options.map((option, index) => (
+          <SegmentedControlItem key={option} value={option} label={spec.labels?.[index] ?? option} />
         ))}
       </SegmentedControl>
     ) : (
-      <Selector label={label} isLabelHidden size="sm" options={spec.options} value={String(value)} onChange={(next: string | null) => next !== null && set(path, name, next)} />
+      <Selector
+        label={label}
+        isLabelHidden
+        size="sm"
+        options={spec.options.map((option, index) => ({ value: option, label: spec.labels?.[index] ?? option }))}
+        value={String(value)}
+        onChange={(next: string | null) => next !== null && set(path, name, next)}
+      />
     )
   if (spec?.kind === 'range')
     return (
@@ -197,9 +225,20 @@ function Row({ name, children, tone = 'normal' }: { name: ReactNode; children: R
   )
 }
 
+/** A control whose choices are named (Add / AND) says what it does: it needs no name beside it. */
+const speaksForItself = (spec?: ControlSpec) =>
+  (spec?.kind === 'toggle' && spec.off !== undefined && spec.on !== undefined) || (spec?.kind === 'select' && spec.labels !== undefined)
+
+/** A setting the person changes: its control on its own line when it names its choices, else in a row. */
+function Setting({ path, name, label, value, spec, set }: { path: string; name: string; label: string; value: unknown; spec?: ControlSpec; set: ChromeActions['set'] }) {
+  const control = <Control path={path} name={name} value={value} spec={spec} set={set} />
+  return speaksForItself(spec) ? <div className="ts-row-wide">{control}</div> : <Row name={label}>{control}</Row>
+}
+
 /**
  * What a clicked part offers: the inputs the person sets, with controls,
- * first; then what it shows; what reaches it by wire last and quietly.
+ * first; then what reaches it by wire and what it shows, in that order, so
+ * the rows read from cause to effect.
  */
 export function PartControls({ part, actions }: { part: PartSnapshot; actions: ChromeActions }) {
   const set = part.ports.filter((port) => port.dir === 'in' && port.editable)
@@ -213,19 +252,18 @@ export function PartControls({ part, actions }: { part: PartSnapshot; actions: C
       {(set.length > 0 || part.state.some((entry) => entry.control)) && (
         <div className="ts-rows">
           {set.map((port) => (
-            <Row key={port.name} name={port.label}>
-              <Control path={part.path} name={port.name} value={port.value} spec={port.control} set={actions.set} />
-            </Row>
+            <Setting key={port.name} path={part.path} name={port.name} label={port.label} value={port.value} spec={port.control} set={actions.set} />
           ))}
           {part.state.filter((entry) => entry.control).map((entry) => (
-            <Row key={entry.name} name={entry.name}>
-              <Control path={part.path} name={entry.name} value={entry.value} spec={entry.control} set={actions.set} />
-            </Row>
+            <Setting key={entry.name} path={part.path} name={entry.name} label={entry.name} value={entry.value} spec={entry.control} set={actions.set} />
           ))}
         </div>
       )}
-      {(shows.length > 0 || part.state.some((entry) => !entry.control)) && (
+      {(receives.length > 0 || shows.length > 0 || part.state.some((entry) => !entry.control)) && (
         <div className="ts-rows">
+          {receives.map((port) => (
+            <Row key={port.name} name={port.label}>{value(port)}</Row>
+          ))}
           {shows.map((port) => (
             <Row key={port.name} name={port.label} tone={port.changed ? 'on' : 'normal'}>{value(port)}</Row>
           ))}
@@ -236,16 +274,9 @@ export function PartControls({ part, actions }: { part: PartSnapshot; actions: C
           ))}
         </div>
       )}
-      {receives.length > 0 && (
-        <div className="ts-rows" data-tone="quiet">
-          {receives.map((port) => (
-            <Row key={port.name} name={port.label} tone="quiet">{value(port)}</Row>
-          ))}
-        </div>
-      )}
       {(part.openable || part.pulled) && (
         <div className="ts-actions">
-          {part.openable && <Button label="Open" size="sm" variant="secondary" onClick={() => actions.open(part.path)} />}
+          {part.openable && <Button label="Open" size="sm" variant="ghost" onClick={() => actions.open(part.path)} />}
           {part.pulled && <Button label="Put back" size="sm" variant="ghost" onClick={() => actions.putBack(part.path)} />}
         </div>
       )}
@@ -253,8 +284,13 @@ export function PartControls({ part, actions }: { part: PartSnapshot; actions: C
   )
 }
 
-/** The note a clicked or pinned part shows beside itself. */
-export function PartNote({ part, pinned, actions }: { part: PartSnapshot; pinned: boolean; actions: ChromeActions }) {
+/**
+ * The note a clicked or pinned part shows beside itself: its inputs, outputs
+ * and controls, and, expanded, the `dossier` (an explanation, a conversation,
+ * history: whatever the chrome puts there).
+ */
+export function PartNote({ part, pinned, actions, dossier }: { part: PartSnapshot; pinned: boolean; actions: ChromeActions; dossier?: ReactNode }) {
+  const [expanded, setExpanded] = useState(false)
   return (
     <Note
       title={part.label}
@@ -263,8 +299,11 @@ export function PartNote({ part, pinned, actions }: { part: PartSnapshot; pinned
       pinned={pinned}
       onPinnedChange={(next) => actions.pin(part.path, next)}
       onClose={() => (pinned ? actions.pin(part.path, false) : actions.select(null))}
+      expanded={expanded}
+      onExpandedChange={dossier === undefined ? undefined : setExpanded}
     >
       <PartControls part={part} actions={actions} />
+      {expanded && dossier !== undefined && <div className="ts-dossier">{dossier}</div>}
     </Note>
   )
 }
@@ -325,7 +364,13 @@ export function PlaybackStrip({ snapshot, actions }: Pick<ChromeProps, 'snapshot
 }
 
 /** One part over the scene, at the tier where the person has it. */
-export function PartAnnotation({ part, snapshot, actions }: { part: PartSnapshot; snapshot: ChromeSnapshot; actions: ChromeActions }) {
+export function PartAnnotation({ part, snapshot, actions, dossier }: {
+  part: PartSnapshot
+  snapshot: ChromeSnapshot
+  actions: ChromeActions
+  /** What the note shows expanded, for a part; without it the note does not expand. */
+  dossier?: (part: PartSnapshot) => ReactNode
+}) {
   const pinned = snapshot.pinned.includes(part.path)
   const selected = snapshot.selected === part.path
   const entity = { 'data-entity-id': part.path, 'data-entity-label': `${part.label} (${part.path})` }
@@ -339,36 +384,44 @@ export function PartAnnotation({ part, snapshot, actions }: { part: PartSnapshot
   if ((selected && !snapshot.narrow) || pinned)
     return (
       <Annotation
+        // A note is placed afresh, not where the label it grew from sat.
+        key="note"
         anchor={partAnchor(part.path)}
         className="ts-card"
         subject="bracket"
-        connector="elbow"
-        gap={18}
+        connector="leader"
+        attach={NOTE_ATTACH}
+        gap={36}
+        padding={8}
         priority={pinned ? 30 : 40}
         pinned={pinned}
+        offset={snapshot.placed[part.path]}
+        onPlace={(offset) => actions.place(part.path, offset)}
         {...entity}
       >
-        <PartNote part={part} pinned={pinned} actions={actions} />
+        <PartNote part={part} pinned={pinned} actions={actions} dossier={dossier?.(part)} />
       </Annotation>
     )
-  // At rest a label; hovered or focused the same label with its explanation,
-  // leader and mark, so keyboard focus stays on it and Enter selects it.
+  // At rest a name and its one value that matters, on a rule a leader runs
+  // into; hovered or focused the same label with its explanation and the
+  // part bracketed, so keyboard focus stays on it and Enter selects it.
   const near = snapshot.hovered === part.path && !selected
   const quiet = snapshot.selected !== null && !selected
   return (
     <Annotation
+      key="label"
       anchor={partAnchor(part.path)}
-      placements={near ? undefined : ['top', 'bottom', 'right', 'left']}
       subject={near ? 'bracket' : 'none'}
-      connector={near ? 'line' : 'none'}
-      gap={near ? 12 : 6}
+      connector="leader"
+      gap={near ? 28 : 24}
+      padding={near ? 8 : 2}
       priority={near ? 20 : selected ? 15 : part.changed ? 2 : 1}
       yields={!near}
       {...entity}
     >
       <Label
         name={part.label}
-        values={quiet ? [] : part.summary}
+        values={quiet ? [] : part.summary.slice(0, 1)}
         detail={near ? part.about : undefined}
         emphasis={selected ? 'strong' : quiet && !near ? 'quiet' : 'normal'}
         aria-pressed={selected}

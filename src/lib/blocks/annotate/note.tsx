@@ -18,13 +18,22 @@ const icon = (d: string) => (
 // Lucide's pin and x.
 const PIN = icon('M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z')
 const CLOSE = icon('M18 6 6 18M6 6l12 12')
+// Lucide's maximize-2 and minimize-2.
+const EXPAND = icon('M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7')
+const COLLAPSE = icon('M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7')
 
 export interface LabelProps extends Omit<HTMLAttributes<HTMLButtonElement>, 'children'> {
   name: ReactNode
   /** The values that matter now, each shown after the name. */
   values?: ReadonlyArray<ReactNode>
-  /** Quiet recedes; strong is outlined, for the thing in focus. */
+  /** Quiet recedes; strong is underlined in ink, for the thing in focus. */
   emphasis?: 'quiet' | 'normal' | 'strong'
+  /**
+   * `'bare'`: text over the scene with a short rule under it, which a leader
+   * runs into, kept legible by a halo. `'box'`: on a surface, for a busy
+   * scene where a halo is not enough.
+   */
+  surface?: 'bare' | 'box'
   /**
    * A short explanation under the name: the tier between a label and a note,
    * for hover and focus. The label stays the same button, so focus stays on it.
@@ -33,13 +42,14 @@ export interface LabelProps extends Omit<HTMLAttributes<HTMLButtonElement>, 'chi
 }
 
 /** The resting tier: a name and a few values, a button that opens more. */
-export function Label({ name, values = [], emphasis = 'normal', detail, className, ...rest }: LabelProps) {
+export function Label({ name, values = [], emphasis = 'normal', surface = 'bare', detail, className, ...rest }: LabelProps) {
   return (
     <button
       type="button"
       {...rest}
       className={['tn-label', className].filter(Boolean).join(' ')}
       data-emphasis={emphasis}
+      data-surface={surface}
       data-detail={detail === undefined ? undefined : ''}
     >
       <span className="tn-label-line">
@@ -67,11 +77,14 @@ export interface NoteProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'>
   onPinnedChange?: (pinned: boolean) => void
   /** Given, the note has a close button and closes on Escape. */
   onClose?: () => void
+  /** The tier past the note: given, the note has a button to open it. */
+  expanded?: boolean
+  onExpandedChange?: (expanded: boolean) => void
   children?: ReactNode
 }
 
 /** A note: Astryx's card with a title, a detail and any controls. */
-export function Note({ title, detail, showDetail = false, pinned = false, onPinnedChange, onClose, children, className, onKeyDown, ...rest }: NoteProps) {
+export function Note({ title, detail, showDetail = false, pinned = false, onPinnedChange, onClose, expanded = false, onExpandedChange, children, className, onKeyDown, ...rest }: NoteProps) {
   const [near, setNear] = useState(false)
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     onKeyDown?.(event)
@@ -94,10 +107,14 @@ export function Note({ title, detail, showDetail = false, pinned = false, onPinn
       }}
       onKeyDown={keyDown}
     >
-      <Card padding={1.5} elevation="med">
-        <div className="tn-note">
-          <div className="tn-note-head">
+      <Card padding={1} elevation="low">
+        <div className="tn-note" data-expanded={expanded || undefined}>
+          {/* A pinned note is moved by its head (see Annotation). */}
+          <div className="tn-note-head" data-drag-handle={pinned || undefined}>
             <Text size="sm" weight="semibold">{title}</Text>
+            {onExpandedChange && (
+              <ToggleButton label={expanded ? 'Show less' : 'Show more'} icon={expanded ? COLLAPSE : EXPAND} isIconOnly size="sm" isPressed={expanded} onPressedChange={(value) => onExpandedChange(value)} />
+            )}
             {onPinnedChange && (
               <ToggleButton label={pinned ? 'Unpin' : 'Pin'} icon={PIN} isIconOnly size="sm" isPressed={pinned} onPressedChange={(value) => onPinnedChange(value)} />
             )}

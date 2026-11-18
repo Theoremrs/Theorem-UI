@@ -81,18 +81,24 @@
 .tn-keep-clear {
   pointer-events: auto;
 }
+/* A technical drawing's marks: crisp open brackets in ink, quiet leaders. */
 .tn-subject,
 .tn-connector {
   fill: none;
-  stroke: var(--tn-mark, var(--color-text-secondary));
-  stroke-width: 1.25;
-  stroke-linecap: round;
-  stroke-linejoin: round;
+  stroke-linecap: square;
+  stroke-linejoin: miter;
   vector-effect: non-scaling-stroke;
+  shape-rendering: geometricPrecision;
+}
+.tn-subject {
+  stroke: var(--tn-bracket, var(--color-text-primary));
+  stroke-width: 1.25;
 }
 .tn-connector {
+  stroke: var(--tn-leader, var(--color-text-secondary));
   stroke-width: 1;
-  opacity: 0.8;
+  stroke-linecap: butt;
+  opacity: 0.75;
 }
 .tn-annotation[data-occluded] .tn-subject,
 .tn-annotation[data-occluded] .tn-connector {
@@ -101,13 +107,27 @@
 }
 
 /* A label at rest: a name and the values that matter, quiet over the scene. */
+.tn-label[data-surface='bare'] {
+  padding: 0 0.125rem 0.1875rem;
+  border: 0;
+  border-bottom: 1px solid var(--tn-leader, var(--color-text-secondary));
+  border-radius: 0;
+  background: none;
+  backdrop-filter: none;
+  text-shadow:
+    0 0 3px var(--color-background-surface),
+    0 0 6px var(--color-background-surface);
+}
+.tn-label[data-surface='bare'][data-emphasis='strong'] {
+  border-bottom-color: var(--tn-bracket, var(--color-text-primary));
+}
 .tn-label {
   display: inline-grid;
   justify-items: start;
   gap: 0.125rem;
   text-align: left;
   padding: 0.125rem 0.375rem;
-  border-radius: var(--radius-element);
+  border-radius: 2px;
   background: color-mix(in srgb, var(--color-background-surface) 82%, transparent);
   backdrop-filter: blur(6px);
   white-space: nowrap;
@@ -127,6 +147,8 @@
 }
 .tn-label[data-detail] {
   padding: 0.375rem 0.5rem;
+  border-radius: 2px;
+  text-shadow: none;
   background: var(--color-background-surface);
   border-color: var(--color-border);
   box-shadow: var(--shadow-low, 0 1px 3px rgb(0 0 0 / 0.12));
@@ -134,7 +156,7 @@
 .tn-label[data-emphasis='quiet'] {
   opacity: 0.62;
 }
-.tn-label[data-emphasis='strong'] {
+.tn-label[data-surface='box'][data-emphasis='strong'] {
   border-color: var(--color-border-emphasized);
 }
 .tn-label:focus-visible {
@@ -142,11 +164,30 @@
   outline-offset: 1px;
 }
 
-/* A note: a title, a short explanation on hover or focus, controls when open. */
+/* A note: a title, a short explanation on hover or focus, controls when open.
+   A compact rectangle: minimal radius, a thin border, a restrained shadow. */
+.tn-note-frame {
+  --radius-container: 2px;
+  --radius-element: 2px;
+}
+.tn-note-frame > * {
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
+}
 .tn-note {
   display: grid;
   gap: 0.5rem;
-  min-width: 12rem;
+  min-width: 11rem;
+}
+.tn-note[data-expanded] {
+  min-width: 18rem;
+}
+.tn-note-head[data-drag-handle] {
+  cursor: grab;
+  touch-action: none;
+}
+.tn-note-head[data-drag-handle]:active {
+  cursor: grabbing;
 }
 .tn-note-head {
   display: flex;

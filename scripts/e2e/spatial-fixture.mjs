@@ -33,11 +33,11 @@ const andBank: Part = {
 
 const alu: Part = {
   id: 'alu', label: 'ALU', at: [0, 0, 0],
-  about: 'Adds or ANDs two numbers, chosen by op.',
+  about: 'Adds or ANDs two 4-bit values.',
   form: { shape: 'box', size: [2.2, 2, 1.1], radius: 0.3 },
   ports: { a: 'in', b: 'in', op: 'in', result: 'out', carry: 'out' },
   defaults: { op: 0 },
-  controls: { op: { kind: 'toggle', label: 'op (0 add, 1 and)' } },
+  controls: { op: { kind: 'toggle', label: 'operation', off: 'Add', on: 'AND' } },
   inside(m) {
     m.part(parts.rippleAdder({ id: 'add', bits: 4, at: [0, 1.4, 0] }))
     m.part(andBank)

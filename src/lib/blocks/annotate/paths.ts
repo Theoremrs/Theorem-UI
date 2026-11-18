@@ -11,7 +11,16 @@ export type Point = [number, number]
 export type Subject = 'none' | 'point' | 'circle' | 'rect' | 'bracket' | ((box: Box) => string)
 
 /** How the note is joined to its subject: a built-in leader, or a function from its ends to path data. */
-export type Connector = 'none' | 'line' | 'elbow' | 'curve' | ((from: Point, to: Point) => string)
+export type Connector = 'none' | 'line' | 'elbow' | 'curve' | 'leader' | ((from: Point, to: Point) => string)
+
+/**
+ * Where a leader enters its note: that many pixels below the note's top (its
+ * first line), or `'bottom'`, along the rule under a label.
+ */
+export type Attach = number | 'bottom'
+
+/** The shortest horizontal run a leader keeps before it reaches its note. */
+export const LEADER_RUN = 12
 
 const grow = (box: Box, by: number): Box => ({
   x: box.x - by,
@@ -42,7 +51,8 @@ export function subjectPath(subject: Subject, box: Box, padding = 4): string {
       return `M${n(b.x + r)},${n(b.y)}h${n(b.width - 2 * r)}a${n(r)},${n(r)} 0 0,1 ${n(r)},${n(r)}v${n(b.height - 2 * r)}a${n(r)},${n(r)} 0 0,1 ${n(-r)},${n(r)}h${n(-(b.width - 2 * r))}a${n(r)},${n(r)} 0 0,1 ${n(-r)},${n(-r)}v${n(-(b.height - 2 * r))}a${n(r)},${n(r)} 0 0,1 ${n(r)},${n(-r)}z`
     }
     case 'bracket': {
-      const arm = Math.min(10, b.width / 3, b.height / 3)
+      // Open corners in proportion to what they frame, never closing into a box.
+      const arm = Math.max(4, Math.min(16, Math.min(b.width, b.height) * 0.2, b.width / 3, b.height / 3))
       const corners: Array<[number, number, number, number]> = [
         [b.x, b.y, 1, 1],
         [b.x + b.width, b.y, -1, 1],
@@ -75,6 +85,30 @@ export function connectorEnds(subject: Box, note: Box, padding = 4): { from: Poi
   return { from: [cx + dx * scale, cy + dy * scale], to }
 }
 
+/** How far below its top a note is entered, for a note `height` tall. */
+export const attachOffset = (attach: Attach, height: number) => (attach === 'bottom' ? height : Math.min(attach, height / 2))
+
+/**
+ * The ends of a technical-drawing leader: it leaves the subject's padded
+ * outline at the corner nearest the note (or straight across, when the note
+ * is level with the subject) and enters the note's near side where `attach`
+ * says. A note above or below the subject is reached straight down or up.
+ */
+export function leaderEnds(subject: Box, note: Box, padding = 4, attach: Attach = 'bottom'): { from: Point; to: Point } {
+  const b = grow(subject, padding)
+  const right = b.x + b.width
+  const bottom = b.y + b.height
+  const y = note.y + attachOffset(attach, note.height)
+  const side = note.x >= right - 0.5 ? 'right' : note.x + note.width <= b.x + 0.5 ? 'left' : null
+  if (!side) {
+    const x = Math.min(Math.max(note.x + note.width / 2, b.x), right)
+    return note.y >= bottom ? { from: [x, bottom], to: [x, note.y] } : { from: [x, b.y], to: [x, note.y + note.height] }
+  }
+  const fromX = side === 'right' ? right : b.x
+  const toX = side === 'right' ? note.x : note.x + note.width
+  return { from: [fromX, Math.min(Math.max(y, b.y), bottom)], to: [toX, y] }
+}
+
 /** The leader as path data. */
 export function connectorPath(connector: Connector, from: Point, to: Point): string {
   if (typeof connector === 'function') return connector(from, to)
@@ -92,6 +126,20 @@ export function connectorPath(connector: Connector, from: Point, to: Point): str
       return horizontal
         ? `M${n(x1)},${n(y1)}L${n(x1 + Math.sign(x2 - x1) * bend)},${n(y2)}L${n(x2)},${n(y2)}`
         : `M${n(x1)},${n(y1)}L${n(x2)},${n(y1 + Math.sign(y2 - y1) * bend)}L${n(x2)},${n(y2)}`
+    }
+    case 'leader': {
+      // One deliberate elbow: out at 45 degrees, then level into the note.
+      // When the rise is too steep for that and a run, straight up or down
+      // instead, so the elbow is a right angle.
+      const dx = x2 - x1
+      const dy = y2 - y1
+      if (Math.abs(dy) < 0.5 || Math.abs(dx) < 0.5) return `M${n(x1)},${n(y1)}L${n(x2)},${n(y2)}`
+      // Layout leaves LEADER_RUN of level run; a part moving under a note that
+      // keeps its side may eat into it, and the 45 degree elbow holds while
+      // a short run is left.
+      const diagonal = Math.abs(dy) <= Math.abs(dx) - LEADER_RUN / 3
+      const bendX = diagonal ? x1 + Math.sign(dx) * Math.abs(dy) : x1
+      return `M${n(x1)},${n(y1)}L${n(bendX)},${n(y2)}L${n(x2)},${n(y2)}`
     }
     case 'curve': {
       const mx = (x1 + x2) / 2

@@ -20,6 +20,7 @@
     "e2e:app-ts": "node scripts/e2e/app-ts.mjs",
     "e2e:spatial": "node scripts/e2e/spatial.mjs",
     "e2e:geometry": "node scripts/e2e/geometry.mjs",
+    "e2e:reference": "node scripts/e2e/reference.mjs",
     "e2e:skills": "node scripts/e2e/skills.mjs",
     "e2e:workbench": "node scripts/e2e/workbench.mjs",
     "e2e:admit": "node scripts/e2e/admit.mjs",

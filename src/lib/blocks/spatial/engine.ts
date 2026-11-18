@@ -23,9 +23,11 @@ export interface PortSpec {
 export type ControlSpec =
   | { kind: 'number'; min?: number; max?: number; step?: number; label?: string }
   | { kind: 'range'; min: number; max: number; step?: number; label?: string }
-  | { kind: 'toggle'; label?: string }
+  /** `off` and `on` name what each setting does (`Add`, `AND`), so the control says it. */
+  | { kind: 'toggle'; label?: string; off?: string; on?: string }
   | { kind: 'bits'; bits: number; label?: string }
-  | { kind: 'select'; options: Array<string>; label?: string }
+  /** `labels` are what the person reads for each option, in the same order. */
+  | { kind: 'select'; options: Array<string>; labels?: Array<string>; label?: string }
 
 /** A handle in the scene that sets a value by dragging it along an axis. */
 export interface HandleSpec {

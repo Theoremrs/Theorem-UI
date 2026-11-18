@@ -20,8 +20,14 @@ export interface Candidate {
 export interface PlaceOptions {
   /** What the note is about; covering it is costly. */
   subject: Box
-  /** Other notes, subjects and controls to keep clear of. */
+  /** Other notes and controls to keep clear of. */
   obstacles: ReadonlyArray<Box>
+  /**
+   * Other subjects. Covering one costs less than covering a note: parts that
+   * sit on one another leave no free side, and a note over a part is still
+   * read where a note over a note is not.
+   */
+  others?: ReadonlyArray<Box>
   /** The layer; a note out of it is costly. */
   bounds: Box
   /** The placement chosen last frame, kept unless another is clearly better. */
@@ -30,6 +36,8 @@ export interface PlaceOptions {
 
 /** The head start the previous placement has. */
 const STAY = 0.25
+/** What each later candidate gives up, so near-ties go to the one listed first. */
+const ORDER = 0.01
 
 const area = (box: Box) => Math.max(0, box.width) * Math.max(0, box.height)
 
@@ -59,17 +67,16 @@ export function cost(candidate: Candidate, options: PlaceOptions): number {
   const { box } = candidate
   const own = Math.max(1, area(box))
   // Each obstacle by the share of the smaller box hidden: a note over a whole small part costs as much as over a large one.
-  const covered = options.obstacles.reduce(
-    (sum, obstacle) => sum + overlap(box, obstacle) / Math.max(1, Math.min(own, area(obstacle))),
-    0,
-  )
+  const hidden = (list: ReadonlyArray<Box> = []) =>
+    list.reduce((sum, obstacle) => sum + overlap(box, obstacle) / Math.max(1, Math.min(own, area(obstacle))), 0)
   const outside = own - overlap(box, options.bounds)
   const cx = options.subject.x + options.subject.width / 2
   const cy = options.subject.y + options.subject.height / 2
   const [nx, ny] = nearest(box, cx, cy)
   const diagonal = Math.max(1, Math.hypot(options.bounds.width, options.bounds.height))
   return (
-    4 * covered +
+    4 * hidden(options.obstacles) +
+    hidden(options.others) +
     // Hiding what the note is about outweighs hiding anything else.
     (30 * overlap(box, options.subject)) / Math.max(1, area(options.subject)) +
     (8 * outside) / own +
@@ -81,12 +88,14 @@ export function cost(candidate: Candidate, options: PlaceOptions): number {
  * The candidate to use: the cheapest, the previous one given a small head start
  * so a note does not flicker between two near-equal sides. The head start is
  * added, not multiplied, so it never holds a note somewhere clearly worse.
+ * Among near-equal candidates the one listed first wins: the order is the
+ * caller's preference.
  */
 export function choose(candidates: ReadonlyArray<Candidate>, options: PlaceOptions): Candidate {
   let best: Candidate | undefined
   let bestCost = Infinity
-  for (const candidate of candidates) {
-    const each = cost(candidate, options) - (candidate.placement === options.previous ? STAY : 0)
+  for (const [index, candidate] of candidates.entries()) {
+    const each = cost(candidate, options) + ORDER * index - (candidate.placement === options.previous ? STAY : 0)
     if (each < bestCost - 1e-9) {
       best = candidate
       bestCost = each

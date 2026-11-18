@@ -2,19 +2,117 @@
   "plan": "docs/plans/PLAN-SPATIAL-ANNOTATIONS-AND-GEOMETRY-2026-11-17.md",
   "direction": "docs/plans/DIRECTION-SPATIAL-GENERATIVE-ARTIFACTS-2026-11-17.md",
   "items": [
-    { "id": "port-128", "what": "@theorem/spatial resolved through PR #128's App dependency resolver", "status": "done", "evidence": "521a1886; bun test app-dependencies/app-check/spatial 28 pass; e2e:spatial 17/17" },
-    { "id": "annotate-pieces", "what": "@theorem/annotate: projected anchor, subjects, connectors, note holding any children, placement routine", "status": "open" },
-    { "id": "annotate-astryx", "what": "Notes and controls composed from Astryx with prebuilt CSS, themed from the App's tokens", "status": "open" },
-    { "id": "annotate-floating", "what": "Floating UI virtual element positions a note at a projected point; one positioning and one focus owner per note", "status": "open" },
-    { "id": "annotate-occlusion", "what": "Off-screen, collision and hidden-behind-geometry handled", "status": "open" },
-    { "id": "chrome-replaced", "what": "Spatial card, breadcrumb, playback bar and hint rebuilt on the annotation layer; tiers rest/hover/click; pinnable note; narrow layout below the scene", "status": "open" },
-    { "id": "annotate-acceptance", "what": "Note stays attached while camera and part move; labels never cover controls; narrow and wide; keyboard and touch; agent writes a new annotation or control in TSX with no registry change", "status": "open" },
-    { "id": "framing", "what": "Camera fits the region left after controls and notes; port labels weighted by relevance", "status": "open" },
-    { "id": "elk", "what": "ELK layered arrangement compared with an authored one; computed once per structure", "status": "open" },
-    { "id": "manifold", "what": "Manifold initialised from bytes in an App, parameterised shape built off the main thread, regenerated on a parameter change, recipe in source", "status": "open" },
-    { "id": "wasm-assets", "what": "The resolver gives an App the bytes of a .wasm dependency", "status": "open" },
-    { "id": "tracing", "what": "Reference extraction shown on the CPU and an unrelated subject", "status": "open" },
-    { "id": "agent-contract", "what": "app_contract.md teaches the annotation layer, geometry and reference workflow as options", "status": "open" },
-    { "id": "live-journey", "what": "Signed-in real-agent run: new component in TSX, operated, follow-up revises the same App, Ask on a selection, expand/collapse keep the instance, a conventional UI artifact too", "status": "open" }
+    {
+      "id": "port-128",
+      "what": "@theorem/spatial resolved through PR #128's App dependency resolver",
+      "status": "done",
+      "evidence": "521a1886; bun test app-dependencies/app-check/spatial 28 pass; e2e:spatial 17/17"
+    },
+    {
+      "id": "annotate-pieces",
+      "what": "@theorem/annotate: projected anchor, subjects, connectors, note holding any children, placement routine",
+      "status": "done",
+      "evidence": "6bf8fad0; bun test annotate; e2e:spatial"
+    },
+    {
+      "id": "annotate-astryx",
+      "what": "Notes and controls composed from Astryx with prebuilt CSS, themed from the App's tokens",
+      "status": "done",
+      "evidence": "6bf8fad0; Astryx Card/Text/SegmentedControl/Slider in notes; e2e:spatial \"Astryx draws its own controls\""
+    },
+    {
+      "id": "annotate-floating",
+      "what": "Floating UI virtual element positions a note at a projected point; one positioning and one focus owner per note",
+      "status": "done",
+      "evidence": "6bf8fad0; layer.tsx computePosition per note; e2e:spatial note attached while pulled and orbiting"
+    },
+    {
+      "id": "annotate-occlusion",
+      "what": "Off-screen, collision and hidden-behind-geometry handled",
+      "status": "done",
+      "evidence": "6bf8fad0 + reference slice depthWrite fix; cpu-1-inline-wide.png"
+    },
+    {
+      "id": "chrome-replaced",
+      "what": "Spatial card, breadcrumb, playback bar and hint rebuilt on the annotation layer; tiers rest/hover/click; pinnable note; narrow layout below the scene",
+      "status": "done",
+      "evidence": "6bf8fad0; spatial screenshots 1-6 light and dark"
+    },
+    {
+      "id": "annotate-acceptance",
+      "what": "Note stays attached while camera and part move; labels never cover controls; narrow and wide; keyboard and touch; agent writes a new annotation or control in TSX with no registry change",
+      "status": "done locally",
+      "evidence": "e2e:spatial 36/36 (attached while camera and part move, no label over controls, narrow and wide, keyboard, a created part with its own control). The live agent writing one is the live-journey item."
+    },
+    {
+      "id": "framing",
+      "what": "Camera fits the region left after controls and notes; port labels weighted by relevance",
+      "status": "done",
+      "evidence": "6bf8fad0; NOTE_BAND framing; e2e:spatial \"whole assembly fits the stage\""
+    },
+    {
+      "id": "elk",
+      "what": "ELK layered arrangement compared with an authored one; computed once per structure",
+      "status": "done",
+      "evidence": "d9083510; e2e:arrangement 6/6; evidence/arrangement-2026-11-17"
+    },
+    {
+      "id": "manifold",
+      "what": "Manifold initialised from bytes in an App, parameterised shape built off the main thread, regenerated on a parameter change, recipe in source",
+      "status": "done",
+      "evidence": "b1ddde2d; e2e:geometry 15/15"
+    },
+    {
+      "id": "wasm-assets",
+      "what": "The resolver gives an App the bytes of a .wasm dependency",
+      "status": "done",
+      "evidence": "b1ddde2d; .wasm import gives bytes; e2e:geometry"
+    },
+    {
+      "id": "tracing",
+      "what": "Reference extraction shown on the CPU and an unrelated subject",
+      "status": "done",
+      "evidence": "evidence/reference-2026-11-17 README; e2e:reference 26/26 in 6 runs"
+    },
+    {
+      "id": "agent-contract",
+      "what": "app_contract.md teaches the annotation layer, geometry and reference workflow as options",
+      "status": "open",
+      "evidence": "backend bab68d74ae teaches annotate, geometry and references; leaders, tiers, dossier and Rerun still to add"
+    },
+    {
+      "id": "live-journey",
+      "what": "Signed-in real-agent run: new component in TSX, operated, follow-up revises the same App, Ask on a selection, expand/collapse keep the instance, a conventional UI artifact too",
+      "status": "open",
+      "evidence": "unrun: local stack stopped at 404 on /api/artifacts/v1/libraries/theorem-artifacts"
+    },
+    {
+      "id": "angular-annotation",
+      "what": "Owner study 2026-11-17: open-corner bracket, screen-space leader with one 45/90 degree elbow and a level run, compact note with full-width hairlines, expanded inspector, styling exposed, custom React content",
+      "status": "done",
+      "evidence": "paths.ts leader/leaderEnds, layer.tsx placements and drag, note.tsx expanded; place.test.ts leader, bracket and order tests"
+    },
+    {
+      "id": "pinned-placement",
+      "what": "A note keeps its side through small movements; a pinned note keeps the person's placement",
+      "status": "done",
+      "evidence": "STAY hysteresis plus ORDER tie-break in place.ts; layer drag on a pinned note's head; view.ts placed persisted in Remembered"
+    },
+    {
+      "id": "cpu-applied",
+      "what": "Treatment applied to the CPU example: tiers (name + one value at rest; inputs, outputs, controls selected; expanded), Add/AND labelled control, model-space orthogonal teal wires",
+      "status": "done",
+      "evidence": "spatial-fixture.mjs; view.ts routeOf; e2e:spatial 36/36; 2-alu-pulled-light.png against the owner study"
+    },
+    {
+      "id": "dossier",
+      "what": "assistant-ui conversation beneath readings and controls; one assistant follows the selection (pinnable); context: artifact, revision, part, step, editable vs computed, actions; Interactables behind an adapter",
+      "status": "open"
+    },
+    {
+      "id": "rerun",
+      "what": "Rerun timeline of register A, register B, op, result, carry, cycle; scrub shows observed state, changing an input re-runs; acceptance: 'Why did carry turn on here, and what happens if I change register B?'",
+      "status": "open"
+    }
   ]
 }
