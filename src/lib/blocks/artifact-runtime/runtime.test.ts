@@ -97,6 +97,21 @@ describe('digests', () => {
   })
 })
 
+describe('the digest the backend run store checks', () => {
+  test('matches the shared vector theorem-apps holds', async () => {
+    // The same value and digest are asserted by theorem-apps' artifact_run tests.
+    const value = {
+      values: { add: { a: 7, b: 5, sum: 12, cout: 0 }, 'add/state': {} },
+      pins: { 'add.cin': 0 },
+      label: 'Ünïcode "q"\n\u0001',
+      list: [1, 'two', null, true, 0.5],
+    }
+    expect(await digestOf(value)).toBe(
+      'sha256:63d4f3deff0b7c66cdabd4cc4b66de75e6ad993229e08706413d2ef116f1a3b2',
+    )
+  })
+})
+
 describe('references', () => {
   test('an observation reference of another schema is not read', async () => {
     const ref = observation('3', await digestOf({ s: 1 }))

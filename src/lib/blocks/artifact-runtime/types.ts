@@ -79,7 +79,7 @@ export interface EngineRef {
   build?: BuildRef['id']
   adapter: { schema: string; version: string }
   observation: { schema: string; version: string }
-  checkpoint?: { codec: string; version: string }
+  checkpoint?: { name: string; version: string }
   capabilities: Array<EngineCapability>
 }
 
