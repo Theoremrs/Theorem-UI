@@ -1,6 +1,7 @@
 // SOURCING: loro-crdt through StateReplica (state collections) and the existing sandbox bridge; no library models an App document's bridge host
 // Adapt the existing sandbox bridge to one revisioned Documents SDK owner.
 import type { AppDocument, AppSnapshot } from '../theorem/apps'
+import { appArtifacts } from '../theorem/app-artifacts'
 import { traceRecording } from '../theorem/app-traces'
 import { contentDigest } from '../theorem/note-canonical'
 import { BridgeDenied } from './bridge'
@@ -116,6 +117,7 @@ export function documentAppHost(
   db?: AppDatabases,
 ): BridgeHost {
   const source = new TextEncoder().encode(snapshot.html)
+  const artifacts = appArtifacts(snapshot)
   const onlySource = (path: string) => {
     if (path !== 'index.html')
       throw new Error(
@@ -126,6 +128,7 @@ export function documentAppHost(
     state,
     db,
     recording: traceRecording,
+    artifacts,
     client: {
       async read(path) {
         onlySource(path)

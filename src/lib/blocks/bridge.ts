@@ -15,6 +15,8 @@ import {
   serve,
 } from './sandbox/protocol'
 import type {
+  ArtifactObservation,
+  ArtifactResolution,
   DbFailure,
   DbMethod,
   DbOutcome,
@@ -91,7 +93,30 @@ export interface BridgeHost {
   dossier?: AppDossier
   /** Writes a model trace as a Rerun recording. Absent where no Theorem backend is reached. */
   recording?: (trace: ModelTrace) => Promise<Uint8Array>
+  /** Keeps the App's runs and results durably. Absent where no Theorem backend is reached. */
+  artifacts?: AppArtifacts
 }
+
+/**
+ * The durable store an App's runs and results reach (theorem/app-artifacts.ts):
+ * the host names the revision running as the source of a run that names none.
+ */
+export interface AppArtifacts {
+  record: (
+    run: Record<string, unknown>,
+    domain: string,
+    observations: Array<ArtifactObservation>,
+  ) => Promise<{ through: string | null; source: unknown }>
+  result: (result: Record<string, unknown>, bytes: Uint8Array) => Promise<{ id: string }>
+  resolve: (subject: Record<string, unknown>) => Promise<ArtifactResolution>
+  /** The revision running, as a result computed now names its source. */
+  source: () => unknown
+  /** A kept result and its bytes, checked against their digests. */
+  open: (id: string) => Promise<{ result: unknown; bytes: Uint8Array }>
+}
+
+/** The most bytes one App result carries across the bridge; the store's blob bound. */
+export const MAX_ARTIFACT_BYTES = 1024 * 1024
 
 /** The page's one conversation, as an App's questions and their replies reach it. */
 export interface AppDossier {
@@ -179,6 +204,29 @@ const params = {
     context: z.record(z.string(), z.json()),
   }),
   source: z.object({ name: z.string().min(1).max(200) }),
+  record: z.strictObject({
+    run: z.record(z.string(), z.json()),
+    domain: z.string().trim().min(1).max(200),
+    observations: z
+      .array(
+        z.strictObject({
+          index: z.string().regex(/^(0|[1-9][0-9]{0,19})$/),
+          time: z.string().regex(/^(0|[1-9][0-9]{0,19})$/),
+          stateDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+          state: z.string().max(MAX_ARTIFACT_BYTES).optional(),
+        }),
+      )
+      .min(1)
+      .max(4096),
+  }),
+  result: z.strictObject({
+    result: z.record(z.string(), z.json()),
+    bytes: z.instanceof(Uint8Array).refine((bytes) => bytes.length > 0 && bytes.length <= MAX_ARTIFACT_BYTES, {
+      message: `A result's bytes are 1 to ${MAX_ARTIFACT_BYTES} bytes.`,
+    }),
+  }),
+  resolve: z.strictObject({ subject: z.record(z.string(), z.json()) }),
+  openResult: z.strictObject({ id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }),
   trace: z.strictObject({
     recordingId: z.string().trim().min(1).max(200),
     frames: z.array(
@@ -426,6 +474,27 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   serve<PageMethods, 'dossier.source'>(rpc, 'dossier.source', (raw) => ({
     found: dossier().source(params.source.parse(raw).name),
   }))
+
+  const artifacts = () => {
+    if (!host.artifacts)
+      throw new BridgeDenied('This App is shown where no Theorem backend keeps runs or results.')
+    return host.artifacts
+  }
+  serve<PageMethods, 'artifacts.record'>(rpc, 'artifacts.record', async (raw) => {
+    const { run, domain, observations } = params.record.parse(raw)
+    return artifacts().record(run, domain, observations)
+  })
+  serve<PageMethods, 'artifacts.result'>(rpc, 'artifacts.result', async (raw) => {
+    const { result, bytes } = params.result.parse(raw)
+    return artifacts().result(result, bytes)
+  })
+  serve<PageMethods, 'artifacts.resolve'>(rpc, 'artifacts.resolve', async (raw) =>
+    artifacts().resolve(params.resolve.parse(raw).subject),
+  )
+  serve<PageMethods, 'artifacts.source'>(rpc, 'artifacts.source', () => artifacts().source())
+  serve<PageMethods, 'artifacts.open'>(rpc, 'artifacts.open', async (raw) =>
+    artifacts().open(params.openResult.parse(raw).id),
+  )
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
     if (!host.recording)

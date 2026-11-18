@@ -7,6 +7,7 @@
 import { resultRef } from './context'
 import type { ResultRef, Versioned } from './context'
 import { canonicalJson, digestOf } from './digest'
+import { sameSource } from './session'
 import type { ArtifactSourceRef, BuildRef, Digest, Reproducibility } from './types'
 
 /**
@@ -43,6 +44,14 @@ export interface OperationDescriptor {
   dependencies?: Array<string>
   /** Where it is written, `solver.ts:12`; the host fills it from the source when it can. */
   source?: { file: string; line: number }
+  /**
+   * The digest of what the operation's results actually depend on: its own
+   * code and the libraries, data and options it reads, as the artifact
+   * fingerprints them. Given, results are kept by it instead of by the whole
+   * source revision, so a presentation-only revision (a colormap, a layout)
+   * reuses them and a change to any of it does not.
+   */
+  implementation?: Digest
 }
 
 /** An operation: its descriptor and the code that runs it. */
@@ -62,10 +71,19 @@ export interface Invocation<TOutput = unknown> {
 
 const NAME = /^[A-Za-z][\w.-]{0,79}$/
 
+/** What differs between a kept result and an invocation now. */
+export type ReuseChange = 'operation' | 'version' | 'implementation' | 'input' | 'source' | 'build'
+
+/** Whether a kept result can stand for an invocation now, and if not, why. */
+export type ReuseVerdict =
+  | { reusable: true }
+  | { reusable: false; changed: Array<ReuseChange> }
+
 /**
  * The operations an artifact defines, and their results by exact key: the
- * source and build they run in, the operation's name and version, and the
- * digest of the input. Anything else (a colormap, a camera) is not in the
+ * operation's name and version, the digest of the input, and either the
+ * operation's implementation digest or, when it declares none, the source
+ * and build it runs in. Anything else (a colormap, a camera) is not in the
  * key, so changing it reuses the result; changing any of those is a miss.
  */
 export class Operations {
@@ -108,12 +126,65 @@ export class Operations {
   }
 
   private keyOf(operation: Operation, input: Digest): Promise<Digest> {
-    return digestOf({
-      source: this.runsIn.source,
-      build: this.runsIn.build ?? null,
-      operation: { name: operation.name, version: operation.version },
-      input,
+    const operationKey = { name: operation.name, version: operation.version }
+    return operation.implementation
+      ? digestOf({ implementation: operation.implementation, operation: operationKey, input })
+      : digestOf({
+          source: this.runsIn.source,
+          build: this.runsIn.build ?? null,
+          operation: operationKey,
+          input,
+        })
+  }
+
+  /**
+   * Whether `previous` (a result this or an earlier revision made, perhaps
+   * read back from the store) can stand for invoking `name` on `input` now,
+   * and if not, what changed. Read from the result's own provenance, so it
+   * holds after the App that made it is gone.
+   */
+  async explain(name: string, input: unknown, previous: ResultRef): Promise<ReuseVerdict> {
+    const operation = this.defined.get(name)
+    if (!operation) throw new Error(`No operation is named ${name}`)
+    const from = previous.provenance
+    if (from.kind !== 'computed' || !from.operation)
+      return { reusable: false, changed: ['operation'] }
+    const changed: Array<ReuseChange> = []
+    if (from.operation.name !== name) changed.push('operation')
+    if (from.operation.version !== operation.version) changed.push('version')
+    if (from.inputs?.input !== (await digestOf(input))) changed.push('input')
+    if (operation.implementation) {
+      if (from.inputs?.implementation !== operation.implementation)
+        changed.push('implementation')
+    } else {
+      if (!sameSource(from.source, this.runsIn.source)) changed.push('source')
+      if ((from.build ?? null) !== (this.runsIn.build ?? null)) changed.push('build')
+    }
+    return changed.length === 0 ? { reusable: true } : { reusable: false, changed }
+  }
+
+  /**
+   * Keeps a stored result for later invocations, once `explain` says it
+   * stands for `name` on `input` now and `output` is the content it names.
+   * Answers the verdict; nothing is kept unless it is reusable.
+   */
+  async adopt(
+    name: string,
+    input: unknown,
+    output: unknown,
+    previous: ResultRef,
+  ): Promise<ReuseVerdict> {
+    const verdict = await this.explain(name, input, previous)
+    if (!verdict.reusable) return verdict
+    if ((await digestOf(output)) !== previous.content)
+      throw new Error(`The output given is not the content ${previous.id} names`)
+    const operation = this.defined.get(name)!
+    this.results.set(await this.keyOf(operation, await digestOf(input)), {
+      output: structuredClone(output),
+      result: structuredClone(previous),
+      reused: false,
     })
+    return verdict
   }
 
   /**
@@ -150,7 +221,12 @@ export class Operations {
           version: operation.version,
           schema: 'theorem.operation',
         },
-        inputs: { input: inputDigest },
+        inputs: {
+          input: inputDigest,
+          ...(operation.implementation && {
+            implementation: operation.implementation,
+          }),
+        },
       },
       reproducibility: operation.reproducibility,
     })
