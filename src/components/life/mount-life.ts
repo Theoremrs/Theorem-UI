@@ -333,7 +333,10 @@ export function mountLife(
     const key = `${field.cols}x${field.rows}`
     if (quiet && quietFor === key) return quiet
     const grid = t.grid
-    if (!grid) return (quiet = new Float32Array(field.cols * field.rows))
+    // Nothing occludes the field until a client box is reported, so there is
+    // no geometry to read and no mask to build.
+    if (!grid || !boxes.length)
+      return (quiet = new Float32Array(field.cols * field.rows))
     const bounds = t.canvas.getBoundingClientRect()
     const scaleX = t.canvas.width / bounds.width
     const scaleY = t.canvas.height / bounds.height
