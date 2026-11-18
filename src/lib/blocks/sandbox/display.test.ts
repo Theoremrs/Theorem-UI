@@ -135,6 +135,11 @@ test('a page exactly as tall as the frame it loaded in says it fills its frame',
   observeHeight((height, fills) => reports.push([height, fills]))
   await frames(3)
   expect(reports).toEqual([[150, undefined], [150, true]])
+  // The host gives it a height that follows the window; it says nothing more.
+  window.innerHeight = 504
+  window.dispatchEvent(new Event('resize'))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
 })
 
 test('a page sized by its content does not say it fills its frame', async () => {

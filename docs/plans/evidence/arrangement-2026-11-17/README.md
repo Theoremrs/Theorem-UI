@@ -19,38 +19,40 @@ Reproduce: `node scripts/e2e/arrangement.mjs` (screenshots, 6 checks) and
 
 ## Numbers
 
-Wires are the curves the view draws between ports (a cubic Bezier leaving each port along its side),
-flattened to the model's plane. A crossing is a pair of wires, not sharing an endpoint, that cross.
+Wires are the routes the view draws between ports (`src/lib/blocks/spatial/route.ts`: a stub out
+of each port, then right angles with rounded bends), in the model's plane. The script calls the
+view's own routing; the numbers were measured again on 2026-11-18, after the view moved from Bezier
+curves to these routes. A crossing is a pair of wires, not sharing an endpoint, that cross.
 "Through parts" counts wire and part pairs where a wire passes through a part it does not join.
 "Backwards" counts wires that run right to left. Wires to the level's own ports are left out of
 both (the stage arrangement ignores them too). Lengths are in model units.
 
 | Level | Arrangement | Wires | Crossings | Through parts | Total length | Width x height | Backwards |
 | --- | --- | --: | --: | --: | --: | --- | --: |
-| top level | stages | 4 | 0 | 0 | 12.18 | 7.32 x 4.10 | 1 |
-| top level | elk | 4 | 0 | 0 | 6.73 | 7.70 x 2.65 | 0 |
-| inside the ALU | stages | 2 | 0 | 0 | 4.22 | 4.27 x 3.50 | 0 |
-| inside the ALU | elk | 2 | 0 | 0 | 4.58 | 4.27 x 3.50 | 0 |
-| inside a 4-bit adder (no places) | stages | 15 | 13 | 11 | 79.34 | 14.00 x 5.26 | 0 |
-| inside a 4-bit adder (no places) | elk | 15 | 15 | 3 | 84.83 | 14.00 x 5.44 | 0 |
-| inside a full adder (no places) | stages | 4 | 1 | 0 | 9.80 | 5.60 x 2.50 | 0 |
-| inside a full adder (no places) | elk | 4 | 0 | 0 | 9.42 | 5.60 x 4.20 | 0 |
+| top level | stages | 4 | 0 | 0 | 16.28 | 7.32 x 4.10 | 1 |
+| top level | elk | 4 | 0 | 0 | 7.51 | 7.70 x 2.65 | 0 |
+| inside the ALU | stages | 2 | 0 | 0 | 5.53 | 4.27 x 3.50 | 0 |
+| inside the ALU | elk | 2 | 0 | 0 | 5.36 | 4.27 x 3.50 | 0 |
+| inside a 4-bit adder (no places) | stages | 15 | 10 | 6 | 88.77 | 14.00 x 5.26 | 0 |
+| inside a 4-bit adder (no places) | elk | 15 | 14 | 3 | 99.83 | 14.00 x 5.44 | 0 |
+| inside a full adder (no places) | stages | 4 | 0 | 1 | 12.05 | 5.60 x 2.50 | 0 |
+| inside a full adder (no places) | elk | 4 | 0 | 0 | 10.78 | 5.60 x 4.20 | 0 |
 
 ## What the pictures show
 
 - Top level: by stage, the accumulator (a register, so stage 0) lands in the first column, left of
   the ALU that feeds it, and its wire runs back across the ALU. ELK treats that wire as feedback and
   puts the accumulator right of the ALU with the carry lamp, so every wire runs left to right and the
-  total length is 45 percent shorter. This is the one visible difference at both widths.
+  total length is 54 percent shorter. This is the one visible difference at both widths.
 - At 400 px both fit. ELK's top level is wider and flatter (aspect 2.9 against 1.8), so it is drawn
   slightly smaller at 400 px; nothing is clipped or crowded.
 - Inside the ALU: the two arrangements agree (adder and AND bank in a column, mux to the right);
   the ELK picture has no wire crossing a part, the stage one has the accumulator wire cutting through
   the open ALU. That wire belongs to the level above, so it is a consequence of the top-level result.
-- Wire crossings are a wash on the 4-bit adder (13 against 15, both counted on the drawn curves).
+- Wire crossings favour the stages on the 4-bit adder (10 against 14, both counted on the drawn routes).
   ELK is optimising orthogonal routes with ports it may not reorder (the view fixes the port
   order), so it has little room to untangle a splitter feeding four adders. It does stop wires from
-  running through parts (3 against 11).
+  running through parts (3 against 6, and 0 against 1 inside a full adder).
 
 ## Recommendation
 
@@ -69,7 +71,7 @@ stage arrangement first (158 frames, 2 hidden, 156 shown, all at the ELK positio
 
 ## Not done
 
-- ELK's orthogonal routes are returned by `arrangeElk` (`routes`) but the view still draws its
-  Bezier wires; using them would change the wire look the owner has not asked to retune.
+- ELK's orthogonal routes are returned by `arrangeElk` (`routes`) but the view draws its own
+  (`route.ts`), which ignore the other parts; ELK's would route around them.
 - A level opened (through `model.open`) before ELK resolves is built by stage and not rearranged.
   A person cannot open a part before the canvas is shown.

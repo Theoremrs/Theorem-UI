@@ -189,13 +189,14 @@ Object.assign(window, { model, gear: { generated, size: () => generated.at(-1)?.
 `
 
 // What the frame's policy allows, as the App sees it.
-const PROBE = `const probe: { violations: Array<{ directive: string; effective: string; blocked: string }>; worker?: string; wasm?: string; fetch?: string } = { violations: [] }
+const probe = (url) => `const probe: { violations: Array<{ directive: string; effective: string; blocked: string }>; worker?: string; wasm?: string; fetch?: string } = { violations: [] }
 document.addEventListener('securitypolicyviolation', (event) => {
   probe.violations.push({ directive: event.violatedDirective, effective: event.effectiveDirective, blocked: event.blockedURI })
 })
 try {
-  // The worker tries the network too: it keeps the frame's policy.
-  const source = "fetch('https://example.com/').then(() => postMessage('fetched'), () => postMessage('fetch refused'))"
+  // The worker tries the network too: it keeps the frame's policy. The address
+  // answers any origin (CORS), so only a policy can refuse it.
+  const source = "fetch('${url}').then((r) => r.text()).then((text) => postMessage('fetched ' + text), () => postMessage('fetch refused'))"
   const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'text/javascript' })))
   probe.worker = await new Promise<string>((resolve) => {
     worker.onmessage = ({ data }) => resolve('ran, ' + data)
@@ -222,4 +223,5 @@ ${Object.entries(files)
 
 export const GEAR_FILES = { 'main.ts': MAIN, 'gear.worker.ts': WORKER, 'recipe.ts': RECIPE, 'package.json': PACKAGE }
 export const GEAR_APP = page(GEAR_FILES)
-export const PROBE_APP = page({ 'main.ts': PROBE })
+/** The probe App: it reports whether a blob Worker reaches `url`, and whether WebAssembly compiles. */
+export const probeApp = (url) => page({ 'main.ts': probe(url) })

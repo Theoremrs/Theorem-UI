@@ -14,6 +14,7 @@ import annotatePlace from './annotate/place.ts?raw'
 import annotateThemeCss from './annotate/theme.css?raw'
 import annotateTheme from './annotate/theme.tsx?raw'
 import spatialArrange from './spatial/arrange.ts?raw'
+import spatialBits from './spatial/bits.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
 import spatialDossier from './spatial/dossier.tsx?raw'
@@ -21,6 +22,7 @@ import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
 import spatialParts from './spatial/parts.ts?raw'
+import spatialRoute from './spatial/route.ts?raw'
 import spatialTimeline from './spatial/timeline.ts?raw'
 import spatialTrace from './spatial/trace.ts?raw'
 import spatialView from './spatial/view.ts?raw'
@@ -42,6 +44,7 @@ export const librarySources: Record<string, Record<string, string>> = {
   },
   '@theorem/spatial': {
     'arrange.ts': spatialArrange,
+    'bits.ts': spatialBits,
     'chrome.css': spatialChromeCss,
     'chrome.tsx': spatialChrome,
     'dossier.tsx': spatialDossier,
@@ -49,6 +52,7 @@ export const librarySources: Record<string, Record<string, string>> = {
     'form.ts': spatialForm,
     'index.ts': spatialIndex,
     'parts.ts': spatialParts,
+    'route.ts': spatialRoute,
     'timeline.ts': spatialTimeline,
     'trace.ts': spatialTrace,
     'view.ts': spatialView,

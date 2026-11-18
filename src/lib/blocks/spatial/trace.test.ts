@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'bun:test'
 import { buildNetwork, ModelState } from './engine'
-import { register, rippleAdder } from './parts'
+import { gate, register, rippleAdder } from './parts'
 import { CycleTrace, flatten } from './trace'
 
 /** A 4-bit counter: a register fed by an adder that adds `b` to it each step. */
@@ -25,6 +25,31 @@ function counter() {
 }
 
 describe('a model trace', () => {
+  it('shows a latch as it held on the cycle looked back at', () => {
+    const model = new ModelState(
+      buildNetwork((m) => {
+        m.part(gate({ id: 'n1', kind: 'nor' }))
+        m.part(gate({ id: 'n2', kind: 'nor' }))
+        m.wire('n1.out', 'n2.a')
+        m.wire('n2.out', 'n1.b')
+      }),
+    )
+    const trace = new CycleTrace(model, 'latch')
+    const set = (path: string, key: string, value: number) => {
+      model.set(path, key, value)
+      trace.record({ kind: 'set', path, key, value }, model.settle())
+    }
+    trace.record({ kind: 'start' }, model.settle())
+    set('n1', 'a', 1)
+    set('n1', 'a', 0) // cycle 2: held after set
+    set('n2', 'b', 1)
+    set('n2', 'b', 0) // cycle 4: held after reset
+    expect(trace.frame(2)?.values.n2).toMatchObject({ out: 1 })
+    expect(trace.frame(4)?.values.n2).toMatchObject({ out: 0 })
+    trace.show(2)
+    expect(model.settle().readings.get('n2')?.outputs).toEqual({ out: 1 })
+  })
+
   it('records every port and state on each cycle, with its cause', () => {
     const { trace } = counter()
     expect(trace.cycle).toBe(4)

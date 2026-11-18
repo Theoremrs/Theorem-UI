@@ -290,6 +290,11 @@ export class ModelState {
   readonly states = new Map<string, Values>()
   /** Values the person set on unwired inputs, by `path.port`. */
   readonly pins = new Map<string, unknown>()
+  /**
+   * The outputs each part last settled to. A loop with no clock in it starts
+   * from them, so a latch keeps what it holds once its set input is released.
+   */
+  readonly held = new Map<string, Values>()
   private readonly byPath = new Map<string, Part>()
 
   constructor(readonly network: Network) {
@@ -351,6 +356,7 @@ export class ModelState {
   settle(): Settled {
     const readings = new Map<string, PartReading>()
     const stages = this.settleNetwork(this.network, {}, readings)
+    for (const [path, reading] of readings) this.held.set(path, reading.outputs)
     return { readings, stages }
   }
 
@@ -377,6 +383,10 @@ export class ModelState {
     readings: Map<string, PartReading>,
   ): Array<Array<string>> {
     const outputs = new Map<string, Values>()
+    for (const part of network.parts) {
+      const held = this.held.get(part.path)
+      if (held) outputs.set(part.path, held)
+    }
     const stageOf = new Map<string, number>()
     const sourceOf = (path: string, port: string): unknown => {
       const wire = network.wires.find(
@@ -522,15 +532,17 @@ export class ModelState {
   }
 
   /** What the person changed, to keep across revisions of the App. */
-  snapshot(): { pins: Values; states: Record<string, Values> } {
+  snapshot(): { pins: Values; states: Record<string, Values>; held: Record<string, Values> } {
     const states: Record<string, Values> = {}
     for (const [path, state] of this.states)
       if (!equal(state, this.byPath.get(path)?.spec.state ?? {})) states[path] = state
-    return { pins: Object.fromEntries(this.pins), states }
+    return { pins: Object.fromEntries(this.pins), states, held: Object.fromEntries(this.held) }
   }
 
   /** Puts back what the person changed, for the parts and keys that still exist. */
-  restore(snapshot: { pins?: Values; states?: Record<string, Values> }): void {
+  restore(snapshot: { pins?: Values; states?: Record<string, Values>; held?: Record<string, Values> }): void {
+    for (const [path, outputs] of Object.entries(snapshot.held ?? {}))
+      if (this.byPath.has(path)) this.held.set(path, outputs)
     for (const [key, value] of Object.entries(snapshot.pins ?? {})) {
       const dot = key.lastIndexOf('.')
       const path = key.slice(0, dot)

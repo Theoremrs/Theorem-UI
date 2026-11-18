@@ -12,17 +12,25 @@ import path from 'node:path'
 // in-memory App document (scripts/e2e/app-ts/) in headless Chromium with a
 // GPU-less WebGL. Screenshots go to docs/plans/evidence/geometry-2026-11-17/.
 //
-// The App frame's policy (hosted-app.ts) lets every App compile WebAssembly and
-// start a Worker from a blob; the probe records that, and that such a worker
-// still cannot reach the network.
+// Every App frame may compile WebAssembly and start a Worker from a blob, and
+// runs open: such a worker reaches the network. The probe fetches an address
+// served here that answers any origin, so a refusal can only be a policy's;
+// a frame the person limited with `net` is refused it.
+import { createServer } from 'node:http'
 import { chromium } from 'playwright-core'
-import { GEAR_APP, PROBE_APP } from './geometry-app.mjs'
+import { GEAR_APP, probeApp } from './geometry-app.mjs'
 import { servePage } from './harness.mjs'
 
 const EVIDENCE = path.resolve(import.meta.dirname, '../../docs/plans/evidence/geometry-2026-11-17')
 mkdirSync(EVIDENCE, { recursive: true })
 
 const served = await servePage('app-ts')
+const reach = createServer((_request, response) => {
+  response.writeHead(200, { 'access-control-allow-origin': '*', 'content-type': 'text/plain' })
+  response.end('reached')
+})
+await new Promise((resolve) => reach.listen(0, '127.0.0.1', resolve))
+const PROBE_APP = probeApp(`http://127.0.0.1:${reach.address().port}/probe`)
 const checks = []
 const check = (name, pass, detail) => {
   checks.push(pass)
@@ -74,7 +82,7 @@ try {
   await waitFor('the probe', () => 'probe' in window)
   const probe = await frame().evaluate(() => window.probe)
   note('shipped frame probe', probe)
-  check('a Worker from a blob runs in the frame, and cannot reach the network', probe.worker === 'ran, fetch refused', probe.worker)
+  check('a Worker from a blob runs in the frame and reaches the network', probe.worker === 'ran, fetched reached', probe.worker)
   check('WebAssembly compiles in the frame', probe.wasm === 'compiled', probe.wasm)
 
   // 3. The gear itself, drawn.
@@ -244,9 +252,20 @@ try {
   await shot('3-gear-48.png')
 
   check('no console errors in the page', errors.length === 0, errors.slice(0, 3))
+
+  // 8. A frame the person limited with `net` is refused the address the open
+  // frame reached: the refusal is the limit's, not the address's.
+  await startOracle()
+  await page.evaluate((html) => window.oracle.limited(html, []), PROBE_APP)
+  await page.waitForSelector('iframe', { timeout: 60_000 })
+  await waitFor('the limited probe', () => 'probe' in window && 'wasm' in window.probe)
+  const limited = await frame().evaluate(() => window.probe)
+  note('limited frame probe', limited)
+  check('a frame limited to no hosts runs the Worker, which is refused the network', limited.worker === 'ran, fetch refused', limited.worker)
 } finally {
   await browser.close()
   await served.close()
+  reach.close()
 }
 
 const passed = checks.filter(Boolean).length

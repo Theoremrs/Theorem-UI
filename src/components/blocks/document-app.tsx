@@ -25,6 +25,7 @@ import * as hosted from '@/lib/blocks/hosted-app'
 import type { AppDossier } from '@/lib/blocks/bridge'
 import type {
   AppSelection,
+  DossierContext,
   DossierState,
   FrameError,
 } from '@/lib/blocks/sandbox/protocol'
@@ -203,11 +204,27 @@ function AppPreview({
   app: AppDocument
   snapshot: AppSnapshot
   onSelection: (value: AppSelectionContext | undefined) => void
-  dossier: AppDossier
+  dossier: PageDossier
 }) {
   const { state, error: stateError } = useDocumentReplica(app)
   const preview = useHostedPreview(snapshot.html, state?.ready)
   const { shown } = preview
+  // The revision in the frame: one that fails to build leaves the revision
+  // before it running, and a question is about what the person sees.
+  const onScreen = useRef<AppSnapshot | undefined>(undefined)
+  useEffect(() => {
+    if (preview.current) onScreen.current = snapshot
+  })
+  const frameDossier = useMemo<AppDossier>(
+    () => ({
+      state: dossier.state,
+      subscribe: dossier.subscribe,
+      source: dossier.source,
+      ask: (text, context) =>
+        dossier.askFrom(onScreen.current, text, context),
+    }),
+    [dossier],
+  )
   const types = useTypeCheck(snapshot.html, preview.current)
   const [thrown, setThrown] = useState<{
     src: string
@@ -261,7 +278,7 @@ function AppPreview({
           databases,
         ),
         onError,
-        dossier,
+        dossier: frameDossier,
         onSelection: (selection: AppSelection) => {
           const context = captureAppSelection(
             shownHtml,
@@ -271,7 +288,16 @@ function AppPreview({
           onSelection(context)
         },
       },
-    [app, shownHtml, declarations, state, databases, onSelection, onError, dossier],
+    [
+      app,
+      shownHtml,
+      declarations,
+      state,
+      databases,
+      onSelection,
+      onError,
+      frameDossier,
+    ],
   )
   // What the frame threw belongs to the revision in it; it is listed with the
   // source's own problems only while that revision is the current one.
@@ -546,10 +572,22 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
  * thread on screen with the App's revision and the App's account of where the
  * person is; the App is told the questions it asked and their replies.
  */
+/**
+ * The page's side of an App's dossier. A question is asked from the revision
+ * the frame shows, which the frame's host supplies.
+ */
+interface PageDossier extends Omit<AppDossier, 'ask'> {
+  askFrom: (
+    shown: AppSnapshot | undefined,
+    text: string,
+    context: DossierContext,
+  ) => Promise<void>
+}
+
 function useAppDossier(
   app: AppDocument,
   openSource: (reveal: { file: string; line: number }) => void,
-): AppDossier {
+): PageDossier {
   const aui = useAui()
   const available = useAuiState((s) => s.optional.thread !== undefined)
   const messages = useAuiState(
@@ -576,9 +614,12 @@ function useAppDossier(
         listeners.add(listener)
         return () => void listeners.delete(listener)
       },
-      async ask(text: string, context: Record<string, unknown>) {
-        const current = app.getSnapshot()
-        if (!current) throw new Error('The App has not loaded yet.')
+      async askFrom(
+        shown: AppSnapshot | undefined,
+        text: string,
+        context: DossierContext,
+      ) {
+        if (!shown) throw new Error('The App has not loaded yet.')
         const { thread } = latest.current.aui
         if (!thread.source)
           throw new Error('This App is not shown in a conversation.')
@@ -590,7 +631,7 @@ function useAppDossier(
           },
           runConfig: {
             custom: {
-              theoremContextReferences: [dossierReference(current, context)],
+              theoremContextReferences: [dossierReference(shown, context)],
             },
           },
         })

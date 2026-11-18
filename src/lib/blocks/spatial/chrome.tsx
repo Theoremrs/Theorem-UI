@@ -22,6 +22,7 @@ import type { Anchors, GlassOptions } from '@theorem/annotate'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { bitAt, wrap } from './bits'
 import { Dossier } from './dossier'
 import type { ControlSpec } from './engine'
 import type { TraceFrame } from './trace'
@@ -161,7 +162,7 @@ export function Control({ path, name, value, spec, set }: {
     )
   if (spec?.kind === 'bits') {
     const bits = Array.from({ length: spec.bits }, (_, index) => spec.bits - 1 - index)
-    const on = bits.filter((bit) => (Number(value) >> bit) & 1).map(String)
+    const on = bits.filter((bit) => bitAt(wrap(value, spec.bits), bit)).map(String)
     return (
       <ToggleButtonGroup
         type="multiple"
@@ -169,7 +170,7 @@ export function Control({ path, name, value, spec, set }: {
         label={label}
         size="sm"
         value={on}
-        onChange={(next) => set(path, name, next.reduce((sum, bit) => sum | (1 << Number(bit)), 0))}
+        onChange={(next) => set(path, name, next.reduce((sum, bit) => sum + 2 ** Number(bit), 0))}
       >
         {bits.map((bit) => (
           <ToggleButton key={bit} value={String(bit)} className="ts-bit" label={`bit ${bit} of ${name}`}>

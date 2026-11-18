@@ -30,6 +30,8 @@ interface Kept {
   frame: TraceFrame
   states: Map<string, Record<string, unknown>>
   pins: Map<string, unknown>
+  /** What each part had settled to, which a loop with no clock in it holds. */
+  held: Map<string, Record<string, unknown>>
 }
 
 /** The most cycles kept; a model left running drops its oldest. */
@@ -157,6 +159,7 @@ export class CycleTrace {
       frame,
       states: new Map([...this.model.states].map(([path, state]) => [path, clone(state)])),
       pins: new Map([...this.model.pins].map(([key, value]) => [key, clone(value)])),
+      held: new Map([...this.model.held].map(([path, outputs]) => [path, clone(outputs)])),
     })
     if (this.kept.length > MAX_CYCLES) this.kept.splice(0, this.kept.length - MAX_CYCLES)
     for (const listener of this.listeners) listener()
@@ -171,6 +174,8 @@ export class CycleTrace {
     for (const [path, state] of kept.states) this.model.states.set(path, clone(state))
     this.model.pins.clear()
     for (const [key, value] of kept.pins) this.model.pins.set(key, clone(value))
+    this.model.held.clear()
+    for (const [path, outputs] of kept.held) this.model.held.set(path, clone(outputs))
     return true
   }
 

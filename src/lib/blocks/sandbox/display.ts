@@ -236,8 +236,11 @@ export function observeHeight(
     // Loaded and exactly as tall as the frame it started in: it fills it.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
-        if (following && window.innerHeight === initial && last === initial)
+        if (following && window.innerHeight === initial && last === initial) {
+          // The host's fill height follows the window, so this page does too.
+          following = false
           report(last, true)
+        }
       }),
     )
   }

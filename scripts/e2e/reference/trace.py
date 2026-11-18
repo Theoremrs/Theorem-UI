@@ -4,7 +4,7 @@ form needs from them, check each trace against the image it came from, and
 write the recipe data an App builds its geometry from.
 
     cargo install vtracer          # the CLI; VTRACER=<path> if not on PATH
-    python -m venv venv && venv/bin/pip install pillow numpy scipy
+    python -m venv venv && venv/bin/pip install pillow numpy scipy scikit-image
     venv/bin/python scripts/e2e/reference/trace.py <references dir>
 
 (VTracer's Python wheel crashes on import-time argument handling under
