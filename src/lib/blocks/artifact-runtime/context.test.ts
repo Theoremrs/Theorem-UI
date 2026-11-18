@@ -277,3 +277,16 @@ const _static: Omit<ResultRef, 'id' | 'schema'> = {
   reproducibility: 'unknown',
 }
 void _static
+
+describe('result ids agree with the backend', () => {
+  // The same records and ids are checked by theorem-apps' artifact_result tests.
+  const vectors: Array<string> = [
+    '{"content":"sha256:bea8f6999cd96735393bea651df44e9278fe9f34029905e1e2e7bc49dd1419c9","bytes":"33","mediaType":"text/csv","provenance":{"kind":"captured","capturedAt":"2026-11-18T19:21:00Z","producer":{"instrument":"thermocouple array"},"unknowns":["instrument-calibration","producer-build"]},"schema":"theorem.artifact-runtime/1","reproducibility":"unknown","id":"sha256:cfa7e5db3bcc1e4760a4ca77c89dcfaa52007304bce57d9ad86875c639d65ac4"}',
+    '{"content":"sha256:d9b500d4b745d280a587743703cdd3484fa11c40dd3b29e395f5e21238a93ed5","bytes":"44","mediaType":"application/json","representation":{"schema":"heat.field-1d","version":"1"},"provenance":{"kind":"computed","source":{"kind":"document","documentId":"heat","position":"7","contentDigest":"c7"},"operation":{"name":"solve","version":"2","schema":"theorem.operation"},"inputs":{"boundary":"sha256:cab56572037d1b686fe53ee4666547d769611a794f203fb683bcb76e623c1add"}},"reproducibility":"deterministic","schema":"theorem.artifact-runtime/1","id":"sha256:c7381695a7b5a2e83d25eb36eb491f26c9d78439308a4aa94ef91a52f627a5f5"}',
+  ]
+  test.each(vectors)('%#', async (text) => {
+    const result = readResultRef(JSON.parse(text))
+    expect(result).toBeDefined()
+    expect(await resultIdHolds(result as ResultRef)).toBe(true)
+  })
+})

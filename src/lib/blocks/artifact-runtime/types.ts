@@ -65,7 +65,7 @@ export interface BuildRef {
 
 /**
  * What a run-based engine adapter can actually do. An unclaimed capability is
- * unsupported. An artifact without a stepping engine advertises its own
+ * unsupported; `x-…` names one an adapter defines itself. An artifact without a stepping engine advertises its own
  * operations and their recovery instead (operations.ts).
  */
 export type EngineCapability =
@@ -77,6 +77,7 @@ export type EngineCapability =
   | 'checkpoint'
   | 'restore'
   | 'replay'
+  | `x-${string}`
 
 /** The executable that produced a run's observations, and how its state and observations are written. */
 export interface EngineRef {
@@ -105,6 +106,19 @@ export type TimeDomain =
   | 'instruction'
   | 'physical-time'
   | `x-${string}`
+
+/**
+ * How to read a `physical-time` domain: its unit, the exact rational seconds
+ * (or unit) one count is worth, and where zero is when it is not the run's start.
+ */
+export interface TimeAxis {
+  /** `s`, `ms`, `sample`, … */
+  unit: string
+  /** One count is `numerator / denominator` of the unit; decimal integer text, denominator not zero. */
+  scale: { numerator: string; denominator: string }
+  /** An ISO instant or a named epoch, when zero is not the run's start. */
+  origin?: string
+}
 
 /**
  * How far a run can be reproduced: `deterministic` from its inputs alone,
@@ -137,6 +151,8 @@ export interface RunRef {
     checkpoint?: CheckpointRef
   }
   domains: Array<TimeDomain>
+  /** Required for `physical-time`, keyed by domain; counted domains have none. */
+  axes?: Partial<Record<TimeDomain, TimeAxis>>
   reproducibility: Reproducibility
 }
 
