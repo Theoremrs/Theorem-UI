@@ -118,8 +118,15 @@ test('a record search reads a bounded page filtered on the title, never every pa
 })
 
 test('a search typed in capitals finds the record a lowercase one does', async () => {
+  const names = (records: { values: Record<string, unknown> }[]) =>
+    records.map((r) => r.values.name).sort()
   const lower = await searchRecords(FIXTURE_TYPE.person, 'name', 'noor')
-  expect(lower.length).toBeGreaterThan(0)
+  expect(names(lower)).toContain('Noor')
+  // The fixture filters by exact case, so every record found names Noor.
+  for (const name of names(lower)) expect(String(name)).toContain('Noor')
   const upper = await searchRecords(FIXTURE_TYPE.person, 'name', 'NOOR')
-  expect(upper.map((r) => r.id).sort()).toEqual(lower.map((r) => r.id).sort())
+  expect(names(upper)).toEqual(names(lower))
+  // Typed as it is stored, only that spelling and its lowercase are tried.
+  const exact = await searchRecords(FIXTURE_TYPE.person, 'name', 'Noor')
+  expect(names(exact)).toEqual(names(lower))
 })
