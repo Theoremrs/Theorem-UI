@@ -244,6 +244,9 @@ describe('the identity and value contract', () => {
     expect(canonicalJson(new Uint8Array([1, 255]))).toBe('{"$bytes":"01ff","type":"Uint8Array"}')
     expect(canonicalJson(new Date(0))).toBe('{"$date":"1970-01-01T00:00:00.000Z"}')
     expect(canonicalJson(new Map([['b', 1], ['a', 2]]))).toBe('{"a":2,"b":1}')
+    // Written from entries: a key named __proto__ is a key like any other.
+    expect(canonicalJson(new Map([['__proto__', { n: 1 }]]))).toBe('{"__proto__":{"n":1}}')
+    expect(canonicalJson(JSON.parse('{"__proto__":1}'))).toBe('{"__proto__":1}')
   })
 
   test('values with no canonical form are refused, not changed', () => {

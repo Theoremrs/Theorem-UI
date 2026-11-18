@@ -7,7 +7,7 @@
 // artifact's to say: the host carries it with its schema and version and
 // never branches on it.
 import { canonicalJson, digestOf, isDigest } from './digest'
-import { readObservationRef, readSourceRef } from './session'
+import { readObservationRef, readSourceRef, sameObservation } from './session'
 import { ARTIFACT_RUNTIME_SCHEMA } from './types'
 import type {
   ArtifactSourceRef,
@@ -259,11 +259,7 @@ export function sameSubject(
   if (a.kind === 'result' && b.kind === 'result')
     return a.result.id === b.result.id
   if (a.kind === 'moment' && b.kind === 'moment')
-    return (
-      a.observation.runId === b.observation.runId &&
-      a.observation.index === b.observation.index &&
-      a.observation.stateDigest === b.observation.stateDigest
-    )
+    return sameObservation(a.observation, b.observation)
   return false
 }
 

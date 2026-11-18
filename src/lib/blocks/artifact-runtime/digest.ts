@@ -77,11 +77,11 @@ function canonicalObject(value: object): string {
     return `{"$date":${JSON.stringify(value.toISOString())}}`
   }
   if (value instanceof Map) {
-    const entries: Record<string, unknown> = {}
-    for (const [key, item] of value) {
+    const entries: Array<[string, unknown]> = []
+    for (const [key, item] of value as Map<unknown, unknown>) {
       if (typeof key !== 'string')
         throw new TypeError(`A Map keyed by ${typeof key} has no canonical form`)
-      entries[key] = item
+      entries.push([key, item])
     }
     return writeEntries(entries)
   }
@@ -90,11 +90,12 @@ function canonicalObject(value: object): string {
     throw new TypeError(
       `A ${(value as { constructor?: { name?: string } }).constructor?.name ?? 'class'} instance has no canonical form`,
     )
-  return writeEntries(value as Record<string, unknown>)
+  return writeEntries(Object.entries(value))
 }
 
-function writeEntries(record: Record<string, unknown>): string {
-  const entries = Object.entries(record).filter(([, item]) => item !== undefined)
+/** Written from entries, never through an object, so a key such as `__proto__` is kept. */
+function writeEntries(all: Array<[string, unknown]>): string {
+  const entries = all.filter(([, item]) => item !== undefined)
   const reserved = entries.find(([key]) => RESERVED.has(key))
   if (reserved)
     throw new TypeError(`An object with the reserved key ${reserved[0]} has no canonical form`)

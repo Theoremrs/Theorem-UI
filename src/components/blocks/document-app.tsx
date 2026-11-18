@@ -580,6 +580,8 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
 /** A question held while the conversation's turn runs, so asking does not stop it. */
 interface Queued extends HeldQuestion {
   displayed: Displayed
+  /** The conversation it was asked in; it is sent there or not at all. */
+  conversation: string | undefined
 }
 
 /**
@@ -598,12 +600,13 @@ function useAppDossier(
   const aui = useAui()
   const available = useAuiState((s) => s.optional.thread !== undefined)
   const running = useAuiState((s) => s.optional.thread?.isRunning ?? false)
+  const conversation = useAuiState((s) => s.optional.threads?.mainThreadId)
   const messages = useAuiState(
     (s) => s.optional.thread?.messages ?? NO_MESSAGES,
   ) as ReadonlyArray<ConversationMessage>
-  const latest = useRef({ aui, openSource, running })
+  const latest = useRef({ aui, openSource, running, conversation })
   useEffect(() => {
-    latest.current = { aui, openSource, running }
+    latest.current = { aui, openSource, running, conversation }
   })
   const [queued, setQueued] = useState<Array<Queued>>([])
   const dossier = useMemo(() => {
@@ -614,6 +617,8 @@ function useAppDossier(
       const { thread } = latest.current.aui
       if (!thread.source)
         throw new Error('This App is not shown in a conversation.')
+      if (question.conversation !== latest.current.conversation)
+        throw new Error('The conversation it was asked in is no longer the one open.')
       const { running: revision, binding } = questionBinding(
         question.displayed,
         app.getSnapshot(),
@@ -655,7 +660,12 @@ function useAppDossier(
       send,
       async ask(text: string, context: Record<string, unknown>) {
         // Captured now: a later build or selection does not change what was asked about.
-        const question = { text, context, displayed: { ...displayedRef.current } }
+        const question = {
+          text,
+          context,
+          displayed: { ...displayedRef.current },
+          conversation: latest.current.conversation,
+        }
         questionBinding(question.displayed, app.getSnapshot(), context)
         if (!latest.current.aui.thread.source)
           throw new Error('This App is not shown in a conversation.')
@@ -675,11 +685,15 @@ function useAppDossier(
       },
     }
   }, [app, displayedRef])
-  // Held questions go, in order, once the turn that was running ends. One
-  // that cannot be sent stays, marked with why, rather than vanishing.
+  // Held questions go, in order, once the turn that was running ends, and
+  // only to the conversation each was asked in: one asked elsewhere waits for
+  // its conversation to be open again. One that cannot be sent stays, marked
+  // with why, rather than vanishing.
   useEffect(() => {
     if (running) return
-    const next = queued.find((question) => question.failed === undefined)
+    const next = queued.find(
+      (question) => question.failed === undefined && question.conversation === conversation,
+    )
     if (!next) return
     try {
       dossier.send(next)
@@ -690,7 +704,7 @@ function useAppDossier(
       const reason = error instanceof Error ? error.message : String(error)
       setQueued((previous) => markUndelivered(previous, next.id, reason))
     }
-  }, [running, queued, dossier])
+  }, [running, queued, dossier, conversation])
   useEffect(() => {
     dossier.set(withHeld(dossierState(messages, app.documentId, available), queued))
   }, [dossier, messages, available, app.documentId, queued])

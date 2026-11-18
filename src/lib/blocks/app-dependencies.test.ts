@@ -330,6 +330,15 @@ createRoot(document.body).render(<AnnotationLayer anchors={anchors}><Annotation 
     expect(bundle.code).toContain('theorem-app:main.tsx')
   }, 120_000)
 
+  test('bundles the runtime library with every module its entry exports', async () => {
+    const sources = { entry: 'main.ts', files: { 'main.ts': `import { integerText, Operations, resultRef } from '@theorem/runtime'
+document.body.textContent = [integerText(2n ** 64n), typeof Operations, typeof resultRef].join(' ')` } }
+    const remote = modules({})
+    const bundle = await bundleAppSources(sources, esbuild, new AppDependencies({}, remote.request))
+    expect(bundle.code).toContain('theorem.operation')
+    expect(remote.requested).toEqual([])
+  }, 120_000)
+
   test('is checked against its declarations and the three.js it is pinned to', async () => {
     const pins = { three: '0.187.0', '@rerun-io/web-viewer': '0.35.0' }
     const resolver = new AppDependencies(pins)

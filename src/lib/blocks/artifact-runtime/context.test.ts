@@ -19,7 +19,7 @@ import {
   sameSubject,
   subjectLabel,
 } from './index'
-import type { ArtifactSourceRef, ContextBinding, ResultRef, SelectionRef } from './index'
+import type { ArtifactSourceRef, ContextBinding, ObservationRef, ResultRef, SelectionRef } from './index'
 
 const source: ArtifactSourceRef = {
   kind: 'document',
@@ -266,6 +266,37 @@ describe('authored operations', () => {
     expect(await operations.key('slider.position', input)).not.toBe(
       await operations.key('slider.position', { ...input, theta: 0.6 }),
     )
+  })
+
+  test('keeps what it was asked and what it answered, whatever the caller does to its objects', async () => {
+    const { operations, runs } = slider()
+    const input = { r: 1, l: 3, theta: 0 }
+    const pending = operations.invoke<{ x: number }>('slider.position', input)
+    input.theta = Math.PI
+    const first = await pending
+    expect(first.output.x).toBeCloseTo(4, 12)
+    first.output.x = 99
+    const again = await operations.invoke<{ x: number }>('slider.position', { r: 1, l: 3, theta: 0 })
+    expect(again.reused).toBe(true)
+    expect(again.output.x).toBeCloseTo(4, 12)
+    expect(runs()).toBe(1)
+  })
+})
+
+describe('subjects compare by their whole identity', () => {
+  test('a moment at another time or domain is another moment', () => {
+    const observation: ObservationRef = {
+      schema: ARTIFACT_RUNTIME_SCHEMA,
+      runId: 'run-1',
+      index: '3',
+      domain: 'physical-time',
+      time: '30',
+      stateDigest: `sha256:${'a'.repeat(64)}`,
+    }
+    const moment = { kind: 'moment' as const, observation }
+    expect(sameSubject(moment, { kind: 'moment', observation: { ...observation } })).toBe(true)
+    expect(sameSubject(moment, { kind: 'moment', observation: { ...observation, time: '31' } })).toBe(false)
+    expect(sameSubject(moment, { kind: 'moment', observation: { ...observation, domain: 'event' } })).toBe(false)
   })
 })
 

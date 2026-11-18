@@ -104,11 +104,15 @@ export class Operations {
   async key(name: string, input: unknown): Promise<Digest> {
     const operation = this.defined.get(name)
     if (!operation) throw new Error(`No operation is named ${name}`)
+    return this.keyOf(operation, await digestOf(input))
+  }
+
+  private keyOf(operation: Operation, input: Digest): Promise<Digest> {
     return digestOf({
       source: this.runsIn.source,
       build: this.runsIn.build ?? null,
-      operation: { name, version: operation.version },
-      input: await digestOf(input),
+      operation: { name: operation.name, version: operation.version },
+      input,
     })
   }
 
@@ -116,16 +120,19 @@ export class Operations {
    * Runs an operation, or returns the result already made for the same exact
    * key when the operation is deterministic. The output must be JSON.
    */
-  async invoke<TOutput = unknown>(name: string, input: unknown): Promise<Invocation<TOutput>> {
+  async invoke<TOutput = unknown>(name: string, given: unknown): Promise<Invocation<TOutput>> {
     const operation = this.defined.get(name)
     if (!operation) throw new Error(`No operation is named ${name}`)
+    // Taken now: a caller changing its object while this waits changes nothing.
+    const input: unknown = structuredClone(given)
     if (operation.accepts && !operation.accepts(input))
       throw new Error(`${name} does not accept this input`)
-    const key = await this.key(name, input)
+    const inputDigest = await digestOf(input)
+    const key = await this.keyOf(operation, inputDigest)
     const kept = this.results.get(key)
     if (kept && operation.reproducibility === 'deterministic')
-      return { ...(kept as Invocation<TOutput>), reused: true }
-    const output = (await operation.run(input)) as TOutput
+      return { ...(structuredClone(kept) as Invocation<TOutput>), reused: true }
+    const output = structuredClone(await operation.run(structuredClone(input))) as TOutput
     const json = canonicalJson(output)
     const result = await resultRef({
       content: await digestOf(output),
@@ -143,12 +150,13 @@ export class Operations {
           version: operation.version,
           schema: 'theorem.operation',
         },
-        inputs: { input: await digestOf(input) },
+        inputs: { input: inputDigest },
       },
       reproducibility: operation.reproducibility,
     })
     const invocation = { output, result, reused: false }
-    this.results.set(key, invocation)
+    // The kept copy is private: what a caller does to its copy is not reused.
+    this.results.set(key, structuredClone(invocation))
     return invocation
   }
 }
