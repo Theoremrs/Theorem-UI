@@ -2,6 +2,8 @@
 
 Governing plan: [PLAN-DURABLE-ARTIFACTS-CPU-WORKSPACE-2026-11-18.md](PLAN-DURABLE-ARTIFACTS-CPU-WORKSPACE-2026-11-18.md).
 Item status: [checklist.json](checklist.json).
+Review followed: REVIEW-PR130-DURABLE-ARTIFACTS-2026-11-18 (follow-ups A to D
+replace the earlier G0/G1-first order). A, B and C are implemented below; D is not.
 
 The plan leans on a CPU, but nothing below is CPU-specific. The references are
 for any artifact that executes something (a teaching circuit, an emulator, a
@@ -20,23 +22,27 @@ them. The CPU is the first instance that will use every field.
 ```text
 Theorem-UI
   @theorem/runtime            src/lib/blocks/artifact-runtime/   optional App library, no dependencies
-    types.ts                  ArtifactSourceRef BuildRef EngineRef RunRef ObservationRef CheckpointRef
-                              SignalDescriptor SignalValue ViewState RuntimeBinding DecisionRecord ObservedFact
-    values.ts                 exact bits/integers (bigint, integer text); never Number for wide values
-    digest.ts                 canonical JSON + SHA-256 (shared vector with theorem-apps)
-    session.ts                RuntimeSession (capture() for a question), SessionObservations (evicted != latest)
+    types.ts                  ArtifactSourceRef BuildRef EngineRef RunRef(axes) ObservationRef CheckpointRef
+                              SignalDescriptor SignalValue DecisionRecord ObservedFact TimeAxis
+    context.ts                ResultRef SubjectRef SelectionRef ContextBinding ContextSession (any artifact)
+    operations.ts             Operations: authored, discoverable operations, recovery kinds, exact-key reuse
+    values.ts                 exact bits/integers (bigint, integer text); X/Z shown, never decoded as numbers
+    digest.ts                 theorem.canonical-json/1 + SHA-256 (shared vectors with theorem-apps)
+    session.ts                SessionObservations (owned copies; evicted != latest; identity-mismatch)
   @theorem/spatial
-    engine.ts                 Settled.unsettled: loop parts still changing when the settle gave up
-    trace.ts                  TRACE_DOMAIN = 'settlement'; observation(cycle); runRef(); rerun records parent
-    view.ts / chrome.tsx      snapshot.trace.{runId, ground()}; SpatialTrace.ground(cycle?)
-    dossier.tsx               groundedContext: run, exact moment, fact rows; Show referenced moment
+    engine.ts                 Settled.unsettled from each nested network's final evaluation; bigint-safe values
+    trace.ts                  TRACE_DOMAIN = 'settlement'; capture(cycle) atomic; holds(); reproducibility 'recorded'
+    view.ts / chrome.tsx      groundAt captures synchronously; reveal(observation) navigates exactly
+    dossier.tsx               groundedContext checks agreement; unavailable carries no values; referenced moment status
   host
-    document-app.tsx          Ask names the revision running (last good build), holds mid-turn questions
-    app-dossier.ts            dossierBinding / questionBinding; moment kept whole when trimmed
+    document-app.tsx          Ask names the running revision; queued questions keep failures (undelivered)
+    app-dossier.ts            ContextBinding (explicit run source kept); operations discovered; envelope never cut
 
 Theorem (rustyredcore_THG/crates/theorem-apps)
-  artifact_run.rs             the same records in Rust; canonical_json; IntegerText; Digest
+  artifact_run.rs             the run records in Rust; canonical_json (JS numbers); x- capabilities; TimeAxis
+  artifact_result.rs          ResultRef SubjectRef SelectionRef ContextBinding, ids checked against the browser
   store/artifact_runs.rs      immutable runs, ordered idempotent chunks, checkpoints, forks, exact resolve
+  store/artifact_results.rs   immutable results after their bytes; resolve_artifact_subject
 ```
 
 ### Decisions taken while implementing
@@ -61,7 +67,34 @@ Theorem (rustyredcore_THG/crates/theorem-apps)
   a question about one of its moments reports the moment as no longer held
   rather than reading the same index from the new run.
 
-## Evidence (this change)
+- (Review C) The question binding is general: `ContextBinding` (which replaced
+  `RuntimeBinding`) names a subject (a source, a result or a run moment) and
+  an optional selection the artifact interprets. `ViewState` was removed; a
+  view is the artifact's own business.
+- (Review B) A spatial run says `recorded`, not `deterministic`: its parts may
+  read time, data or randomness, so only its saved observations reproduce it.
+- (Review B) Canonical JSON is versioned (`theorem.canonical-json/1`); values
+  JSON has no form for are written explicitly (`$bigint`, `$bytes`, `$date`) or
+  refused, never silently changed. The backend writes numbers as JavaScript does.
+- (Review A) An unavailable moment sends no values, recent changes or settled
+  claims. Show referenced moment navigates to the exact observation or says it
+  was evicted or replaced; it never scrubs to the same index of another run.
+- (Review C) A capture never claims a producer build or reproducibility; what is
+  not known is listed in `unknowns`.
+
+## Evidence (review follow-ups A to C)
+
+| Check                                             | Result                                                                                                                                              |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun test src/lib`                                | 2424 pass, 3 fail; the failures need network (esm.sh through the proxy) or are the pre-existing palette case                                        |
+| `bun test` artifact-runtime, spatial, app-dossier | pass, including shared digest, float and result-id vectors, atomic capture, exact reveal, nested convergence (red on the old engine)                |
+| `tsc --noEmit`                                    | clean except the pre-existing terminal-wasm module                                                                                                  |
+| theorem-apps (Theorem `0f424048`)                 | `cargo test -p theorem-apps --locked --lib`: 256 pass, 1 ignored (pre-existing); clippy `--lib --tests --no-deps` clean for theorem-apps; fmt clean |
+
+Not run: a browser exercise of delayed Ask, rerun, eviction, failed build and
+queued-send failure (review A7). These are covered by unit tests only.
+
+## Evidence (first implementation)
 
 | Check                                                                                                 | Result                                                                                                                                                      |
 | ----------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -82,7 +115,19 @@ journey, and any deployed environment. The arithmetic acceptance here checks the
 facts handed to the model; it does not make the model's prose correct, only
 gives it the exact values to refer to.
 
-## Not done yet, in plan order
+## Not done yet
+
+Review follow-up C, last item, and D:
+
+- Expose `@theorem/runtime` and `@theorem/spatial` declarations and source to the
+  authoring agent through a native capability (also W0 below).
+- D: browser persistence and exact resolution through the backend stores (a
+  native route), a reservations app and a checked heat model built through the
+  normal authoring workflow, feedback with before/after evaluations, cosmetic
+  reuse and semantic invalidation, reopen in another thread, transfer.
+- Fidelity claims and evaluator records (G2) through the existing evidence owners.
+
+In plan order:
 
 - **W0** the authoring agent still cannot read `@theorem/spatial` or
   `@theorem/runtime` declarations; the App contract is a prompt include in the
