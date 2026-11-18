@@ -21,7 +21,8 @@
     "paths": {
       "#/*": ["./src/*"],
       "@/*": ["./src/*"],
-      "@theorem/annotate": ["./src/lib/blocks/annotate/index.ts"]
+      "@theorem/annotate": ["./src/lib/blocks/annotate/index.ts"],
+      "@theorem/runtime": ["./src/lib/blocks/artifact-runtime/index.ts"]
     },
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": ["vite/client", "bun"],

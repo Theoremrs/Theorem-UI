@@ -27,9 +27,13 @@ const annotate: AppLibrary = {
   types: ['react'],
 }
 
+/** The references a durable artifact's surfaces agree on; no dependencies. */
+const runtime: AppLibrary = { dependencies: {}, types: [] }
+
 /** Each library an App can import by name. */
 export const APP_LIBRARIES: Record<string, AppLibrary> = {
   '@theorem/annotate': annotate,
+  '@theorem/runtime': runtime,
   '@theorem/spatial': {
     dependencies: {
       ...annotate.dependencies,

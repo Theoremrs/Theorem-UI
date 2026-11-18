@@ -110,3 +110,33 @@ describe('a model trace', () => {
     })
   })
 })
+
+describe('a trace as a durable run reads it', () => {
+  it('names each settle as a settlement, not a clock cycle, with an exact state digest', async () => {
+    const { trace } = counter()
+    const at = await trace.observation(3)
+    expect(at).toMatchObject({ runId: 'counter:0', index: '3', domain: 'settlement', time: '3' })
+    expect(at?.stateDigest).toMatch(/^sha256:[0-9a-f]{64}$/)
+    // The same moment has the same digest; another moment does not.
+    expect((await trace.observation(3))?.stateDigest).toBe(at!.stateDigest)
+    expect((await trace.observation(2))?.stateDigest).not.toBe(at!.stateDigest)
+    expect(await trace.observation(99)).toBeUndefined()
+    expect((await trace.runRef()).domains).toEqual(['settlement'])
+  })
+
+  it('a run edited in the past names the run and moment it forked from', async () => {
+    const { trace } = counter()
+    const original = await trace.observation(1)
+    trace.rerun(1, 'inc', 'b', 3)
+    const run = await trace.runRef()
+    expect(run.id).toBe('counter:1')
+    expect(run.parent).toEqual({ runId: 'counter:0', at: original!, change: 'inc.b = 3' })
+  })
+
+  it('keeps values past 2^53 exact', () => {
+    const into: Record<string, number | string> = {}
+    flatten('wide', 2n ** 64n - 1n, into)
+    flatten('small', 12n, into)
+    expect(into).toEqual({ wide: '18446744073709551615', small: 12 })
+  })
+})

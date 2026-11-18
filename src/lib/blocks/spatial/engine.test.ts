@@ -2,6 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { buildNetwork, ModelState  } from './engine'
 import type {Builder} from './engine';
 import { fullAdder, gate, register, rippleAdder } from './parts'
+import { flatten } from './trace'
 
 const model = (describe: (m: Builder) => void) => new ModelState(buildNetwork(describe))
 
@@ -200,5 +201,84 @@ describe('a spatial model', () => {
     expect(text).toContain('Full adder (fa)')
     expect(text).toContain('outputs: sum=1 cout=0')
     expect(text).toContain('contains: XOR, XOR, AND, AND, OR')
+  })
+})
+
+describe('a settle that never comes to rest', () => {
+  it('names the parts still changing rather than presenting them as settled', () => {
+    // An inverter fed from its own output oscillates forever.
+    const state = new ModelState(
+      buildNetwork((m) => {
+        m.part({ id: 'not', ports: { a: 'in', out: 'out' }, compute: ({ a }) => ({ out: a ? 0 : 1 }) })
+        m.wire('not.out', 'not.a')
+      }),
+    )
+    expect(state.settle().unsettled).toEqual(['not'])
+  })
+
+  it('a nested loop that oscillated in an early pass but rests at the end is not reported', () => {
+    // The inner inverter oscillates only while enabled. In the first outer
+    // pass its enable is not yet driven (so it runs); the driver then turns
+    // it off and the final pass rests.
+    const state = new ModelState(
+      buildNetwork((m) => {
+        m.part({
+          id: 'c',
+          ports: { en: 'in', out: 'out' },
+          inside: (inner) => {
+            inner.part({
+              id: 'not',
+              ports: { a: 'in', en: 'in', out: 'out' },
+              compute: ({ a, en }) => ({ out: en === 0 ? 0 : a ? 0 : 1 }),
+            })
+            inner.wire('.en', 'not.en')
+            inner.wire('not.out', 'not.a')
+            inner.wire('not.out', '.out')
+          },
+        })
+        m.part({ id: 'driver', ports: { d: 'in', en: 'out' }, compute: () => ({ en: 0 }) })
+        m.wire('driver.en', 'c.en')
+        m.wire('c.out', 'driver.d')
+      }),
+    )
+    expect(state.settle().unsettled).toEqual([])
+  })
+
+  it('a nested loop still oscillating at the end is reported by its inner path', () => {
+    const state = new ModelState(
+      buildNetwork((m) => {
+        m.part({
+          id: 'c',
+          ports: { en: 'in', out: 'out' },
+          inside: (inner) => {
+            inner.part({ id: 'not', ports: { a: 'in', out: 'out' }, compute: ({ a }) => ({ out: a ? 0 : 1 }) })
+            inner.wire('not.out', 'not.a')
+            inner.wire('not.out', '.out')
+          },
+        })
+      }),
+    )
+    expect(state.settle().unsettled).toContain('c/not')
+  })
+
+  it('a network without a loop comes to rest', () => {
+    const state = new ModelState(buildNetwork((m) => m.part(rippleAdder({ id: 'add', bits: 4 }))))
+    expect(state.settle().unsettled).toEqual([])
+  })
+})
+
+describe('wide integers', () => {
+  it('a part returning a 64-bit bigint settles, compares and is traced exactly', () => {
+    const state = new ModelState(
+      buildNetwork((m) => {
+        m.part({ id: 'wide', ports: { a: 'in', out: 'out' }, compute: () => ({ out: 18446744073709551615n }) })
+      }),
+    )
+    const settled = state.settle()
+    expect(settled.readings.get('wide')!.outputs.out).toBe(18446744073709551615n)
+    expect(state.describe('wide', settled)).toContain('out=18446744073709551615')
+    const into: Record<string, string | number> = {}
+    flatten('out', 18446744073709551615n, into)
+    expect(into.out).toBe('18446744073709551615')
   })
 })

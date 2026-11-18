@@ -4,13 +4,32 @@
 // here besides the frames is the model's exact state after each one, so a
 // scrubbed cycle can be shown as it was and run again from.
 
+import { ARTIFACT_RUNTIME_SCHEMA, digestOf, integerText } from '@theorem/runtime'
+import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
+import { valueText } from './engine'
 import type { ModelState, Settled } from './engine'
 
 /** A primitive value a trace records: a number or text. */
 export type TraceValue = number | string
 
+/**
+ * What a trace's `cycle` counts: one settle of the teaching model (the start,
+ * a step, an edit or a restore). It is not a hardware clock cycle.
+ */
+export const TRACE_DOMAIN: TimeDomain = 'settlement'
+
+/** The engine a spatial model's run is produced by, as a run reference names it. */
+export const SPATIAL_ENGINE: EngineRef = {
+  kind: 'theorem.spatial-settle',
+  version: '1',
+  adapter: { schema: 'theorem.spatial-trace', version: '1' },
+  observation: { schema: 'theorem.spatial-frame', version: '1' },
+  capabilities: ['step', 'inspect', 'replay'],
+}
+
 /** What one settle of the model produced. */
 export interface TraceFrame {
+  /** The settle's place in the run, from 0: a `settlement`, not a clock cycle. */
   cycle: number
   /** What caused it, in words: `start`, `step`, `regb.value = 3`. */
   cause: string
@@ -30,8 +49,54 @@ interface Kept {
   frame: TraceFrame
   states: Map<string, Record<string, unknown>>
   pins: Map<string, unknown>
+  /** Parts still changing when the settle gave up; empty when it came to rest. */
+  unsettled: Array<string>
   /** What each part had settled to, which a loop with no clock in it holds. */
   held: Map<string, Record<string, unknown>>
+}
+
+/**
+ * A run of the model as a run reference names it. It leaves out its source:
+ * the model runs inside the presentation, so the host names the revision
+ * running.
+ */
+export type SpatialRun = Omit<RunRef, 'source'>
+
+/** A kept settle and its run's name and lineage, taken together (CycleTrace.capture). */
+export interface TraceCapture {
+  readonly runId: string
+  readonly parent: Promise<NonNullable<SpatialRun['parent']>> | undefined
+  readonly kept: Readonly<Kept>
+}
+
+/** A capture resolved: the run, the exact moment, its frame and whether it came to rest. All from one capture. */
+export async function groundCapture(capture: TraceCapture): Promise<{
+  run: SpatialRun
+  observation: ObservationRef
+  frame: TraceFrame
+  unsettled: Array<string>
+}> {
+  const parent = await capture.parent
+  return {
+    run: runOf(capture.runId, parent),
+    observation: await observationOf(capture.runId, capture.kept),
+    frame: capture.kept.frame,
+    unsettled: [...capture.kept.unsettled],
+  }
+}
+
+function runOf(id: string, parent: NonNullable<SpatialRun['parent']> | undefined): SpatialRun {
+  return {
+    schema: ARTIFACT_RUNTIME_SCHEMA,
+    id,
+    engine: SPATIAL_ENGINE,
+    ...(parent && { parent }),
+    domains: [TRACE_DOMAIN],
+    // A part's compute or tick may read time, randomness or outside data, so
+    // the model is not claimed reproducible from its inputs; what is claimed
+    // is what was recorded.
+    reproducibility: 'recorded',
+  }
 }
 
 /** The most cycles kept; a model left running drops its oldest. */
@@ -40,7 +105,7 @@ const MAX_TEXT = 4000
 
 export const causeText = (cause: TraceCause): string =>
   cause.kind === 'set'
-    ? `${cause.path}.${cause.key} = ${JSON.stringify(cause.value) ?? String(cause.value)}`
+    ? `${cause.path}.${cause.key} = ${typeof cause.value === 'bigint' ? cause.value.toString() : (valueText(cause.value) ?? String(cause.value))}`
     : cause.kind
 
 const clone = <T>(value: T): T => {
@@ -63,7 +128,9 @@ export function flatten(name: string, value: unknown, into: Record<string, Trace
     return
   }
   if (typeof value === 'bigint') {
-    into[name] = Number(value)
+    // Exact: a value past 2^53 is kept as its decimal text rather than rounded.
+    const small = Number(value)
+    into[name] = Number.isSafeInteger(small) ? small : value.toString()
     return
   }
   if (typeof value === 'string') {
@@ -81,7 +148,7 @@ export function flatten(name: string, value: unknown, into: Record<string, Trace
     return
   }
   try {
-    into[name] = (JSON.stringify(value) ?? String(value)).slice(0, MAX_TEXT)
+    into[name] = (valueText(value) ?? String(value)).slice(0, MAX_TEXT)
   } catch {
     into[name] = String(value).slice(0, MAX_TEXT)
   }
@@ -102,6 +169,18 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
   return values
 }
 
+/** The exact reference of a kept settle of `runId`. */
+async function observationOf(runId: string, kept: Kept): Promise<ObservationRef> {
+  return {
+    schema: ARTIFACT_RUNTIME_SCHEMA,
+    runId,
+    index: integerText(kept.frame.cycle),
+    domain: TRACE_DOMAIN,
+    time: integerText(kept.frame.cycle),
+    stateDigest: await digestOf({ values: kept.frame.values, states: kept.states, pins: kept.pins }),
+  }
+}
+
 /**
  * The model's settles, cycle by cycle. A cycle can be shown again as it was,
  * and run again from with one value changed: the cycles after it are replayed
@@ -111,6 +190,7 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
 export class CycleTrace {
   private kept: Array<Kept> = []
   private run = 0
+  private parent: Promise<NonNullable<SpatialRun['parent']>> | undefined
   private readonly listeners = new Set<() => void>()
 
   constructor(
@@ -142,6 +222,58 @@ export class CycleTrace {
     return this.kept[cycle - this.first]?.frame
   }
 
+  /**
+   * The parts that had not come to rest in `cycle`'s settle, or undefined
+   * when the cycle is not kept. A non-empty list means the cycle's values are
+   * not a settled state.
+   */
+  unsettled(cycle: number): Array<string> | undefined {
+    return this.kept[cycle - this.first]?.unsettled
+  }
+
+  /** The current run as a run reference names it. */
+  async runRef(): Promise<SpatialRun> {
+    const id = this.recordingId
+    return runOf(id, await this.parent)
+  }
+
+  /**
+   * The exact reference of a kept cycle: this run, the cycle's place, and the
+   * digest of what the model held then (every value read, every state, every
+   * input set). Undefined when the cycle is not kept, never the latest instead.
+   */
+  async observation(cycle: number): Promise<ObservationRef | undefined> {
+    const kept = this.kept[cycle - this.first]
+    return kept && observationOf(this.recordingId, kept)
+  }
+
+  /**
+   * Everything a question about `cycle` relies on, taken at once and before
+   * any waiting: the run's name and lineage as they are now, and the kept
+   * settle itself (its frame, states, pins and whether it came to rest). A
+   * kept settle is never changed after it is recorded, and a re-run gives the
+   * run a new name, so a later re-run or eviction cannot alter a capture.
+   * Undefined when the cycle is not kept.
+   */
+  capture(cycle: number): TraceCapture | undefined {
+    const kept = this.kept[cycle - this.first]
+    if (!kept) return undefined
+    return { runId: this.recordingId, parent: this.parent, kept }
+  }
+
+  /**
+   * Whether `observation` names a settle this trace holds now: the same run,
+   * a kept index, and the same state. A run's kept settles never change under
+   * one name, so the digest check guards only against a forged or mistyped
+   * reference.
+   */
+  async holds(observation: ObservationRef): Promise<boolean> {
+    const captured = this.capture(Number(observation.index))
+    if (!captured || captured.runId !== observation.runId) return false
+    const at = await observationOf(captured.runId, captured.kept)
+    return at.stateDigest === observation.stateDigest && at.domain === observation.domain && at.time === observation.time
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -159,6 +291,9 @@ export class CycleTrace {
       frame,
       states: new Map([...this.model.states].map(([path, state]) => [path, clone(state)])),
       pins: new Map([...this.model.pins].map(([key, value]) => [key, clone(value)])),
+      // Older callers hand a settle without the list: treat it as at rest.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      unsettled: [...(settled.unsettled ?? [])],
       held: new Map([...this.model.held].map(([path, outputs]) => [path, clone(outputs)])),
     })
     if (this.kept.length > MAX_CYCLES) this.kept.splice(0, this.kept.length - MAX_CYCLES)
@@ -186,7 +321,17 @@ export class CycleTrace {
    * model's last settle.
    */
   rerun(cycle: number, path: string, key: string, value: unknown): Settled {
-    if (!this.show(cycle)) throw new Error(`Cycle ${cycle} is not kept`)
+    const from = this.kept[cycle - this.first]
+    if (!from || !this.show(cycle)) throw new Error(`Cycle ${cycle} is not kept`)
+    // The new run names the run and cycle it forked from, so the original is
+    // kept as its parent rather than overwritten in name.
+    const runId = this.recordingId
+    const change = causeText({ kind: 'set', path, key, value })
+    this.parent = observationOf(runId, from).then((at) => ({ runId, at, change }))
+    return this.rerunFrom(cycle, path, key, value)
+  }
+
+  private rerunFrom(cycle: number, path: string, key: string, value: unknown): Settled {
     const later = this.kept
       .slice(cycle - this.first + 1)
       .map((kept) => kept.cause)

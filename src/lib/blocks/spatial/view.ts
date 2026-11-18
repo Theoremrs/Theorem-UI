@@ -14,7 +14,8 @@ import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.j
 import {
   allParts,
   buildNetwork,
-  ModelState
+  ModelState,
+  valueText,
   
   
   
@@ -37,9 +38,10 @@ import { createElement } from 'react'
 import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
-import type { ChromeActions, ChromeProps, ChromeSnapshot, PartSnapshot } from './chrome'
+import type { ChromeActions, ChromeProps, ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
+import type { ObservationRef } from '@theorem/runtime'
 import { routeInPlane } from './route'
-import { CycleTrace } from './trace'
+import { CycleTrace, groundCapture } from './trace'
 import type { TraceFrame } from './trace'
 
 export type SpatialBuilder = Builder<Form, THREE.Object3D>
@@ -126,6 +128,8 @@ export interface SpatialTrace {
   /** The cycle shown, when it is not the latest. */
   viewing: () => number | null
   frames: (from?: number) => Array<TraceFrame>
+  /** The exact run and moment of a kept cycle (default: the one shown). */
+  ground: (cycle?: number) => Promise<Grounding>
   /** Shows a cycle as it was (null or the latest: the model as it is now). */
   scrub: (cycle: number | null) => void
   /** Called after each new cycle and each scrub. */
@@ -269,7 +273,11 @@ const short = (value: unknown): string => {
   if (typeof value === 'boolean') return value ? '1' : '0'
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(3).replace(/0+$/, '')
   if (typeof value === 'string') return value.length > 18 ? `${value.slice(0, 17)}…` : value
-  const text = JSON.stringify(value)
+  if (typeof value === 'bigint') {
+    const digits = value.toString()
+    return digits.length > 18 ? `${digits.slice(0, 17)}…` : digits
+  }
+  const text = valueText(value) ?? String(value)
   return text.length > 18 ? `${text.slice(0, 17)}…` : text
 }
 
@@ -874,7 +882,7 @@ export function mount(
     const different = new Set<string>()
     for (const [path, now] of settled.readings) {
       const before = previous.readings.get(path)
-      if (!before || JSON.stringify(before.outputs) !== JSON.stringify(now.outputs) || JSON.stringify(before.inputs) !== JSON.stringify(now.inputs))
+      if (!before || valueText(before.outputs) !== valueText(now.outputs) || valueText(before.inputs) !== valueText(now.inputs))
         different.add(path)
     }
     const end = timeline()
@@ -917,6 +925,41 @@ export function mount(
     model.step(settled)
     changed()
     trace.record({ kind: 'step' }, settled)
+  }
+
+  /**
+   * The exact run and moment of `cycle` in the run current when the snapshot
+   * was made. Everything is captured together when a question asks, before
+   * any waiting, so a re-run during hashing cannot mix one run's name with
+   * another's values. Once that run is replaced, or the cycle is no longer
+   * kept, the moment is reported unavailable rather than read from what is
+   * there now.
+   */
+  function groundAt(cycle: number): () => Promise<Grounding> {
+    const runId = trace.recordingId
+    return async () => {
+      const captured = trace.recordingId === runId ? trace.capture(cycle) : undefined
+      if (!captured) {
+        const run = await trace.runRef()
+        // Only the replaced run's name is still known here, not its lineage.
+        const { parent: _replaced, ...rest } = run
+        return { run: run.id === runId ? run : { ...rest, id: runId }, observation: undefined, frame: undefined, unsettled: [] }
+      }
+      return groundCapture(captured)
+    }
+  }
+
+  /**
+   * Shows exactly the settle a reference names: the run current now, a kept
+   * cycle and the same state. False, and nothing moves, otherwise; it never
+   * shows the nearest kept cycle or the latest instead.
+   */
+  async function reveal(observation: ObservationRef): Promise<boolean> {
+    if (!(await trace.holds(observation))) return false
+    const cycle = Number(observation.index)
+    if (cycle === trace.cycle) scrub(null)
+    else scrub(cycle)
+    return true
   }
 
   function scrub(cycle: number | null) {
@@ -1078,7 +1121,7 @@ export function mount(
         text: format(value, port.name),
         editable: port.dir === 'in' && model.isPin(path, port.name),
         control: spec.controls?.[port.name],
-        changed: travelling && JSON.stringify(was) !== JSON.stringify(value),
+        changed: travelling && valueText(was) !== valueText(value),
         on: truthy(value),
       }
     })
@@ -1146,6 +1189,9 @@ export function mount(
         recent: trace.frames(Math.max(trace.first, (viewing ?? trace.cycle) - 7)).filter(
           (frame) => frame.cycle <= (viewing ?? trace.cycle),
         ),
+        first: trace.first,
+        runId: trace.recordingId,
+        ground: groundAt(viewing ?? trace.cycle),
       },
     }
   }
@@ -1196,6 +1242,7 @@ export function mount(
       notify()
     },
     scrub,
+    reveal,
   }
 
   // Renders once per task however many changes asked for it.
@@ -1719,6 +1766,7 @@ export function mount(
       first: () => trace.first,
       viewing: () => viewing,
       frames: (from) => trace.frames(from),
+      ground: (cycle) => groundAt(cycle ?? viewing ?? trace.cycle)(),
       scrub,
       subscribe: (listener) => {
         traceListeners.add(listener)

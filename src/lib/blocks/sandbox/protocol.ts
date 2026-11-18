@@ -196,6 +196,16 @@ export interface DossierMessage {
   role: 'user' | 'assistant'
   text: string
   status: 'running' | 'complete' | 'incomplete'
+  /**
+   * What the question was asked about (`@theorem/runtime`'s SubjectRef: a
+   * source, a result or a run moment); a reply carries its question's. JSON,
+   * read with readSubjectRef.
+   */
+  subject?: unknown
+  /** Held until the conversation's current turn ends, so asking does not stop it. */
+  queued?: boolean
+  /** Why a held question could not be sent; it stays shown, not dropped. */
+  undelivered?: string
 }
 
 /**

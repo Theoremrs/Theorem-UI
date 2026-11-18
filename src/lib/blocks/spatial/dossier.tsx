@@ -26,7 +26,10 @@ import {
 } from '@assistant-ui/react'
 import type { AppendMessage, ThreadMessageLike } from '@assistant-ui/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChromeSnapshot, PartSnapshot } from './chrome'
+import { readSubjectRef, signalText, signalValue } from '@theorem/runtime'
+import type { ObservationRef, ObservedFact, SubjectRef } from '@theorem/runtime'
+import type { ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
+import type { TraceFrame, TraceValue } from './trace'
 
 /** One message of the App's part of the page's conversation. */
 export interface DossierMessage {
@@ -34,6 +37,12 @@ export interface DossierMessage {
   role: 'user' | 'assistant'
   text: string
   status: 'running' | 'complete' | 'incomplete'
+  /** What the question (or the question a reply answers) was asked about; here, a moment of the trace. */
+  subject?: SubjectRef
+  /** Waiting for the conversation's current answer to end. */
+  queued?: boolean
+  /** Why a held question could not be sent. */
+  undelivered?: string
 }
 
 /** The questions asked from this App and their replies; not `available` outside a conversation. */
@@ -147,6 +156,116 @@ export function dossierContext(
   }
 }
 
+/** The most fact rows one question carries. */
+export const MAX_FACTS = 96
+
+/**
+ * The values a question about `part` may rely on, read from the recorded
+ * frame of the moment it is about: the part's own ports and state and those
+ * of the parts inside it, each with its exact value and that moment's
+ * reference. A reply refers to these rather than working values out again.
+ * None when the moment's frame is not kept.
+ */
+export function observedFacts(
+  part: Pick<PartSnapshot, 'path'>,
+  frame: TraceFrame | undefined,
+  observation: ObservationRef | undefined,
+): Array<ObservedFact> {
+  if (!frame || !observation || frame.cycle !== Number(observation.index)) return []
+  const facts: Array<ObservedFact> = []
+  const entities = Object.keys(frame.values)
+    .filter((path) => path === part.path || path.startsWith(`${part.path}/`))
+    .sort((a, b) => a.split('/').length - b.split('/').length || (a < b ? -1 : 1))
+  for (const entity of entities)
+    for (const [key, value] of Object.entries(frame.values[entity]!)) {
+      if (facts.length >= MAX_FACTS) return facts
+      facts.push({ entity, key, value: signalValue(value), observation })
+    }
+  return facts
+}
+
+/**
+ * The grounding of a question asked now: the run, the exact moment and the
+ * facts read there. A moment that is no longer kept, or a settle that never
+ * came to rest, is said to be so; it is never replaced by the latest state.
+ */
+export async function groundedContext(
+  part: PartSnapshot,
+  snapshot: ChromeSnapshot,
+  context: Record<string, unknown>,
+  ground: () => Promise<Grounding> = snapshot.trace.ground,
+): Promise<Record<string, unknown>> {
+  const grounding = await ground()
+  const { observation, frame } = grounding
+  // The run, the moment and the frame facts are read from come from one
+  // capture; a payload that mixed them would pair values with another state.
+  const agrees =
+    observation !== undefined &&
+    frame !== undefined &&
+    observation.runId === grounding.run.id &&
+    Number(observation.index) === frame.cycle
+  if (!agrees) return unavailableContext(context, grounding)
+  const facts = observedFacts(part, frame, observation)
+  // What the scene shows may be partway through a change; every value sent
+  // is the recorded moment's, so a port never carries two values.
+  const ports = frame.values[part.path] ?? {}
+  const state = frame.values[`${part.path}/state`] ?? {}
+  const recorded = (list: unknown, values: Record<string, TraceValue>) =>
+    Array.isArray(list)
+      ? list.map((item) => {
+          const { value: _value, text: _text, ...rest } = (item ?? {}) as Record<string, unknown>
+          const name = typeof rest.name === 'string' ? rest.name : undefined
+          if (name === undefined || !(name in values)) return rest
+          const value = signalValue(values[name])
+          return { ...rest, value, text: signalText(value) }
+        })
+      : list
+  return {
+    ...context,
+    ...(context.inputs !== undefined && { inputs: recorded(context.inputs, ports) }),
+    ...(context.outputs !== undefined && { outputs: recorded(context.outputs, ports) }),
+    ...(context.settings !== undefined && { settings: recorded(context.settings, state) }),
+    subject: { kind: 'moment', observation, run: grounding.run } satisfies SubjectRef,
+    run: grounding.run,
+    observation,
+    // Held by this open App's trace only, until runs are saved durably.
+    observationLifetime: 'session',
+    settled: grounding.unsettled.length === 0,
+    ...(grounding.unsettled.length ? { unsettled: grounding.unsettled } : {}),
+    facts: facts.map((fact) => ({ entity: fact.entity, key: fact.key, value: fact.value, text: signalText(fact.value) })),
+  }
+}
+
+/**
+ * The account of a question whose moment is not held: what the part is, what
+ * can be set and done there, and the run asked about, with no value, recent
+ * frame or settling claimed for that moment.
+ */
+function unavailableContext(context: Record<string, unknown>, grounding: Grounding): Record<string, unknown> {
+  const named = (list: unknown) =>
+    Array.isArray(list)
+      ? list.map((item) => {
+          const { value: _value, text: _text, ...rest } = (item ?? {}) as Record<string, unknown>
+          return rest
+        })
+      : undefined
+  const cycle = (context.cycle ?? {}) as Record<string, unknown>
+  const { interactables: _interactables, inputs, outputs, settings, cycle: _cycle, ...described } = context
+  return {
+    ...described,
+    ...(inputs !== undefined && { inputs: named(inputs) }),
+    ...(outputs !== undefined && { outputs: named(outputs) }),
+    ...(settings !== undefined && { settings: named(settings) }),
+    cycle: { shown: cycle.shown, latest: cycle.latest, lookingBack: cycle.lookingBack },
+    run: grounding.run,
+    observation: null,
+    observationLifetime: 'session',
+    unavailable: 'The moment shown is no longer kept; no values, recent frames or settling are claimed for it.',
+    settled: null,
+    facts: [],
+  }
+}
+
 /** Questions a person can start from, about any part. */
 const STARTERS = (part: PartSnapshot) => [
   `Why is ${part.label} showing ${part.summary[0] ?? 'this'}?`,
@@ -156,7 +275,16 @@ const STARTERS = (part: PartSnapshot) => [
 const convert = (message: DossierMessage): ThreadMessageLike => ({
   id: message.id,
   role: message.role,
-  content: [{ type: 'text', text: message.text }],
+  content: [
+    {
+      type: 'text',
+      text: message.undelivered
+        ? `${message.text}\n\n(Not sent: ${message.undelivered})`
+        : message.queued
+          ? `${message.text}\n\n(Waiting for the current answer to finish)`
+          : message.text,
+    },
+  ],
   status:
     message.role === 'user'
       ? undefined
@@ -261,9 +389,12 @@ function Thread({ part, state, ask }: { part: PartSnapshot; state: DossierState;
  * The conversation in a part's expanded note. `follows` says whether the one
  * assistant is on this part; a note it is not on offers to bring it over.
  */
-export function Dossier({ part, snapshot, follows, held, hold, bring }: {
+export function Dossier({ part, snapshot, follows, held, hold, bring, reveal }: {
   part: PartSnapshot
   snapshot: ChromeSnapshot
+  /** Shows a recorded cycle; the referenced-moment action is offered only with it. */
+  /** Shows exactly the settle a question was about; false when it is not held. */
+  reveal?: (observation: ObservationRef) => Promise<boolean>
   /** The assistant is on this part. */
   follows: boolean
   /** The assistant stays on the part it is on when the selection moves. */
@@ -292,7 +423,9 @@ export function Dossier({ part, snapshot, follows, held, hold, bring }: {
     setProblem(undefined)
     const text = message.content.flatMap((item) => (item.type === 'text' ? [item.text] : [])).join('\n')
     try {
-      await bridge()!.ask(text, dossierContext(now.current.part, now.current.snapshot, unstable_getInteractableSnapshots(message)))
+      const { part: asked, snapshot: shown } = now.current
+      const context = dossierContext(asked, shown, unstable_getInteractableSnapshots(message))
+      await bridge()!.ask(text, await groundedContext(asked, shown, context))
     } catch (error) {
       setProblem(error instanceof Error ? error.message : String(error))
     }
@@ -314,7 +447,67 @@ export function Dossier({ part, snapshot, follows, held, hold, bring }: {
       {found === false && <Text size="sm" color="secondary">{`${part.label} is not named in this App's own files.`}</Text>}
       {!state.available && <Text size="sm" color="secondary">Open this App in a conversation to ask about it.</Text>}
       <Thread part={part} state={state} ask={ask} />
+      <ReferencedMomentNote state={state} snapshot={snapshot} reveal={reveal} />
       {problem && <p className="ts-dossier-problem" role="alert">{problem}</p>}
     </section>
+  )
+}
+
+/** Where the latest question's moment is, when the person has since moved elsewhere. */
+export interface ReferencedMoment {
+  observation: ObservationRef
+  cycle: number
+  /** `held`: this trace holds it exactly; `evicted`: same run, no longer kept; `replaced`: an earlier run. */
+  status: 'held' | 'evicted' | 'replaced'
+}
+
+/**
+ * The moment the latest question was asked about, when the person has since
+ * moved elsewhere. It is offered, never applied: the answer keeps its own
+ * referent and the person's current place is left alone. A moment of a run
+ * since replaced, or of this run but no longer kept, is said to be so; it is
+ * never shown as the nearest kept cycle instead.
+ */
+export function referencedMoment(
+  state: DossierState,
+  snapshot: Pick<ChromeSnapshot, 'trace'>,
+): ReferencedMoment | undefined {
+  const asked = [...state.messages].reverse().find((message) => message.role === 'user' && message.subject)
+  const subject = readSubjectRef(asked?.subject)
+  if (subject?.kind !== 'moment') return undefined
+  const { observation } = subject
+  const cycle = Number(observation.index)
+  if (observation.runId !== snapshot.trace.runId) return { observation, cycle, status: 'replaced' }
+  if (cycle < snapshot.trace.first || cycle > snapshot.trace.latest) return { observation, cycle, status: 'evicted' }
+  if (cycle === snapshot.trace.cycle) return undefined
+  return { observation, cycle, status: 'held' }
+}
+
+function ReferencedMomentNote({ state, snapshot, reveal }: {
+  state: DossierState
+  snapshot: ChromeSnapshot
+  reveal?: (observation: ObservationRef) => Promise<boolean>
+}) {
+  const [missing, setMissing] = useState<string>()
+  const moment = referencedMoment(state, snapshot)
+  if (!moment || !reveal) return null
+  if (moment.status === 'replaced')
+    return <Text size="sm" color="secondary">{`The last question was about cycle ${moment.cycle} of an earlier run, which this model no longer holds.`}</Text>
+  if (moment.status === 'evicted' || missing === moment.observation.stateDigest)
+    return <Text size="sm" color="secondary">{`The last question was about cycle ${moment.cycle}, which is no longer kept.`}</Text>
+  return (
+    <div className="ts-dossier-elsewhere">
+      <Text size="sm" color="secondary">{`The last question was about cycle ${moment.cycle}.`}</Text>
+      <Button
+        label="Show referenced moment"
+        size="sm"
+        variant="ghost"
+        onClick={() => {
+          void reveal(moment.observation).then((shown) => {
+            if (!shown) setMissing(moment.observation.stateDigest)
+          })
+        }}
+      />
+    </div>
   )
 }
