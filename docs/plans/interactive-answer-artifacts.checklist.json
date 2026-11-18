@@ -189,8 +189,8 @@
     {
       "id": "LIM-03",
       "area": "no limits",
-      "claim": "An App can import any npm package, not just the seven in the import map",
-      "built": "done: export.ts resolves any other bare import from esm.sh at build time and bundles it in (react/react-dom shared), so the frame keeps no network; app_contract.md tells the agent; app-check types them as untyped. Test: app-source.test.ts",
+      "claim": "An App can import any npm package, not just the seven in the import map, and is type-checked against that package's real declarations",
+      "built": "done: npm.ts gives the build each package's esm.sh module (bundled in, react/react-dom shared, the frame keeps no network) and gives the check its esm.sh declarations (X-TypeScript-Types, walked and cached); a package with none is untyped; a package npm cannot serve is a build problem naming it. app_contract.md tells the agent. Tests: app-source.test.ts, app-check.test.ts; real browser against live esm.sh: e2e:app-ts (three + zustand build, run and type-check clean, dev and --built, 23/23)",
       "review": ""
     },
     {
@@ -218,6 +218,7 @@
   "contracts": {
     "scene-artifact-envelope": "A theorem-artifact part with artifactKind \"scene\" carries, as its payload, exactly the theorem-scene-v1 payload a theorem-scene part carries (contractVersion, sceneId, title, fallbackText, packageHash, scenePackage). The UI reads it as the same scene; a theorem-scene part with the same packageHash beside it is not listed twice.",
     "frame-contract-mount-options": "mountRenderers(table, { bare, fills }): a bare renderer draws the whole reply surface (no card); a renderer that fills takes the whole panel body.",
-    "app-npm-imports": "A bare import outside the App's import map resolves to https://esm.sh/<spec>?target=es2022&external=react,react-dom, fetched by the person's browser while it builds the App and bundled in; root-relative and relative paths inside fetched modules resolve against esm.sh. A fetch failure is a build problem: 'Could not fetch <url> from npm: ...'."
+    "app-npm-imports": "A bare import outside the App's import map resolves to https://esm.sh/<spec>?target=es2022&external=react,react-dom, fetched by the person's browser while it builds the App and bundled in; root-relative and relative paths inside fetched modules resolve against esm.sh. A fetch failure is a build problem: 'Could not fetch <url> from npm: ...'.",
+    "app-npm-types": "The check's first pass names the bare imports nothing declares (TS2307); each is looked up with a HEAD to its esm.sh module URL, and the X-TypeScript-Types entry and every declaration file it reaches are put under /npm/<host><path> with their specifiers rewritten to those paths, the specifier mapped by compilerOptions.paths; the second pass checks against them. No header, or esm.sh unreachable: declare module '<specifier>'."
   }
 }
