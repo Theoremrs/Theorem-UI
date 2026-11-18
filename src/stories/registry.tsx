@@ -738,13 +738,8 @@ function FaceListenStory() {
     const face = theFace()
     face.notice('person.listen')
     useMicLevel.setState({ level: 0.5 })
-    const hold = setInterval(() => {
-      face.feed({ 'mic.level': 0.5 })
-    }, 100)
     return () => {
-      clearInterval(hold)
       face.notice('person.listen.end')
-      face.feed({ 'mic.level': 0 })
       useMicLevel.setState({ level: 0 })
     }
   }, [])
@@ -1315,6 +1310,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'face-visit': FaceVisitStory,
   'face-point': FacePointStory,
   'face-sound': FaceSoundStory,
+  'face-listen': FaceListenStory,
   'theo-face-inverse': TheoFaceInverse,
   'organized-sidebar': OrganizedSidebarStory,
   'librarian-footer': LibrarianFooterStory,
