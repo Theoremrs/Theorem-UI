@@ -32,6 +32,9 @@ import {
   isDefaultView,
   isFullBleedProgram,
   isWideProgram,
+  RECORD_PAGE_PREFIX,
+  RECORDS_HOME_VIEW_ID,
+  RECORDS_PREFIX,
   resolveDefaultView,
   revisionOnScreen,
 } from './programs'
@@ -178,6 +181,16 @@ function useDwell(host: Pick<IndexHost, 'scope' | 'viewId'>) {
 }
 
 type Dialog = 'edit' | 'history' | undefined
+
+/** The built-in record views, which draw their own title in place of the header. */
+export function drawsOwnHeader(view: Pick<IndexView, 'origin' | 'viewId'>) {
+  return (
+    view.origin === 'default' &&
+    (view.viewId === RECORDS_HOME_VIEW_ID ||
+      view.viewId.startsWith(RECORDS_PREFIX) ||
+      view.viewId.startsWith(RECORD_PAGE_PREFIX))
+  )
+}
 
 function ViewHeader({
   view,
@@ -380,9 +393,10 @@ export function ViewColumn() {
       />
     )
 
-  // A built-in record view draws its own title; a saved one keeps the
-  // header's Edit, History, Pin and Archive.
-  const header = open.view.origin !== 'default' && (
+  // A built-in record view draws its own title. Every other view keeps the
+  // header: a saved one for Edit, History, Pin and Archive, a built-in one
+  // for Customize, the only way to make it a saved view of one's own.
+  const header = !drawsOwnHeader(open.view) && (
     // Keyed so an editor's draft never carries over to another view.
     <ViewHeader
       key={open.view.viewId}

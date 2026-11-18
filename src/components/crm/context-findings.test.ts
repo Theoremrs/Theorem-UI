@@ -74,7 +74,9 @@ test('the spellings a case-sensitive search tries', () => {
     'Noor Had',
     'Noor had',
   ])
-  expect(searchSpellings('Noor')).toEqual(['Noor'])
+  expect(searchSpellings('Noor')).toEqual(['Noor', 'noor'])
+  // Typed in capitals, the lowercase and capitalised spellings are tried too.
+  expect(searchSpellings('NOOR')).toEqual(['NOOR', 'noor', 'Noor'])
 })
 
 let server: FixtureServer
@@ -113,4 +115,11 @@ test('a record search reads a bounded page filtered on the title, never every pa
   server.state.verbs.length = 0
   await searchRecords(FIXTURE_TYPE.person, 'name', '', 5)
   expect(server.state.verbs.map((v) => v.input)).toEqual([{ limit: 5 }])
+})
+
+test('a search typed in capitals finds the record a lowercase one does', async () => {
+  const lower = await searchRecords(FIXTURE_TYPE.person, 'name', 'noor')
+  expect(lower.length).toBeGreaterThan(0)
+  const upper = await searchRecords(FIXTURE_TYPE.person, 'name', 'NOOR')
+  expect(upper.map((r) => r.id).sort()).toEqual(lower.map((r) => r.id).sort())
 })
