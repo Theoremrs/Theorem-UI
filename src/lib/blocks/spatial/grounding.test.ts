@@ -144,6 +144,7 @@ describe('a grounded question', () => {
       selected: { id: 'add' },
     })
     expect(context.observation).toEqual(await trace.observation(0))
+    expect(context.observationLifetime).toBe('session')
     expect(context.settled).toBe(true)
     const facts = context.facts as Array<{
       entity: string

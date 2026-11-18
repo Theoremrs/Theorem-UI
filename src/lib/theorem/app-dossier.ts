@@ -79,7 +79,16 @@ export function dossierBinding(
  * shortened, not dropped, and say how many were left out; the exact moment
  * is enough to read the rest again.
  */
-const KEPT = new Set(['selected', 'observation', 'run', 'facts', 'settled', 'unsettled', 'unavailable'])
+const KEPT = new Set([
+  'selected',
+  'observation',
+  'observationLifetime',
+  'run',
+  'facts',
+  'settled',
+  'unsettled',
+  'unavailable',
+])
 
 /**
  * The reference a question asked from an App goes with: the App's revision

@@ -198,6 +198,8 @@ export async function groundedContext(
     ...context,
     run: grounding.run,
     observation: grounding.observation ?? null,
+    // Held by this open App's trace only, until runs are saved durably.
+    observationLifetime: 'session',
     ...(grounding.observation ? {} : { unavailable: 'The moment shown is no longer kept; no values are claimed for it.' }),
     settled: grounding.unsettled.length === 0,
     ...(grounding.unsettled.length ? { unsettled: grounding.unsettled } : {}),
