@@ -24,6 +24,7 @@ import type {
   FileFormat,
   FrameError,
   ListedFile,
+  ModelTrace,
   PageMethods,
   Rpc,
   RunRequestResult,
@@ -44,7 +45,7 @@ export interface StateCollections {
 
 /**
  * The graph databases the page keeps for one App, by declared name. The page
- * holds them because a sandboxed frame has no storage of its own.
+ * holds them because a frame on an origin of its own has no storage.
  */
 export interface AppDatabases {
   call: (name: string, method: DbMethod, args: unknown) => Promise<unknown>
@@ -66,16 +67,21 @@ export function dbFailure(error: unknown): DbFailure {
   }
 }
 
-/** What the page lends one sandboxed block. */
+/** What the page lends one block. */
 export interface BridgeHost {
   client: Pick<WorkspaceClient, 'read' | 'tree' | 'write'>
-  capabilities: Capabilities
+  /**
+   * A limit the person set (a sandboxed module): only the files, state,
+   * databases and runs it names. Absent, the block may use them all.
+   */
+  capabilities?: Capabilities
   state: StateCollections
   /** Absent where a block has no databases: a declared `db` is then refused. */
   db?: AppDatabases
-  /** Starts an agent block; the bridge has already checked the declaration. */
+  /** Starts an agent block; the bridge has already checked any limit. */
   run: (target: string) => Promise<RunRequestResult>
-  onResize?: (height: number) => void
+  /** `fills`: the page is laid out by its viewport, so the page chooses its height. */
+  onResize?: (height: number, fills?: boolean) => void
   onSelection?: (selection: AppSelection) => void
   /** The frame's code threw and nothing caught it. */
   onError?: (error: FrameError) => void
@@ -83,6 +89,8 @@ export interface BridgeHost {
   onSnapshot?: (html: string, outline?: string) => void
   /** The page's conversation, where questions asked from inside the App go. */
   dossier?: AppDossier
+  /** Writes a model trace as a Rerun recording. Absent where no Theorem backend is reached. */
+  recording?: (trace: ModelTrace) => Promise<Uint8Array>
 }
 
 /** The page's one conversation, as an App's questions and their replies reach it. */
@@ -153,7 +161,10 @@ const params = {
     column: z.number().int().nonnegative().optional(),
     stack: z.string().max(8000).optional(),
   }),
-  resize: z.object({ height: z.number().finite().nonnegative() }),
+  resize: z.object({
+    height: z.number().finite().nonnegative(),
+    fills: z.boolean().optional(),
+  }),
   selection: z.object({
     text: z.string().max(4096),
     rowId: z.string().max(200).optional(),
@@ -168,6 +179,32 @@ const params = {
     context: z.record(z.string(), z.json()),
   }),
   source: z.object({ name: z.string().min(1).max(200) }),
+  trace: z.strictObject({
+    recordingId: z.string().trim().min(1).max(200),
+    frames: z.array(
+      z.strictObject({
+        cycle: z.number().int(),
+        cause: z.string().max(2000),
+        values: z.record(
+          z.string().max(400),
+          z.record(z.string().max(200), z.union([z.number().finite(), z.string().max(4000)])),
+        ),
+      }),
+    ),
+    layout: z
+      .strictObject({
+        plots: z
+          .array(
+            z.strictObject({
+              title: z.string().max(200),
+              ports: z.array(z.strictObject({ part: z.string().max(400), port: z.string().max(200) })).max(64),
+            }),
+          )
+          .max(24)
+          .optional(),
+      })
+      .optional(),
+  }),
   snapshot: z.object({
     html: z.string().max(MAX_SNAPSHOT),
     // What is on the page by role and name. Longer than the limit is dropped,
@@ -199,8 +236,9 @@ export function decodeFile(bytes: Uint8Array, as: FileFormat): unknown {
 }
 
 /**
- * Serves the page side of one block's bridge. Every call is parsed and
- * checked against the block's declarations before it touches the folder.
+ * Serves the page side of one block's bridge. Every call is parsed, and
+ * checked against the person's limit when they set one, before it touches
+ * the folder.
  * Returns a function that stops the state subscriptions it opened.
  */
 export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
@@ -209,14 +247,15 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     return null
   })
   const { capabilities } = host
-  const mayRead = matcher(capabilities.read)
-  const mayWrite = matcher(capabilities.write)
+  const any = () => true
+  const mayRead = capabilities ? matcher(capabilities.read) : any
+  const mayWrite = capabilities ? matcher(capabilities.write) : any
   const subscriptions = new Map<string, () => void>()
 
   const collection = (value: string) => {
-    if (!capabilities.state.includes(value))
+    if (capabilities && !capabilities.state.includes(value))
       throw new BridgeDenied(
-        `state("${value}") was not declared; add // uses: state("${value}")`,
+        `state("${value}") is not among the collections this module was allowed`,
       )
     return value
   }
@@ -225,7 +264,7 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     const { path, as } = params.read.parse(raw)
     if (!mayRead(checkPath(path)))
       throw new BridgeDenied(
-        `files.read("${path}") was not declared; add // uses: files.read("${path}")`,
+        `files.read("${path}") is not among the files this module was allowed`,
       )
     const { bytes } = await host.client.read(path)
     return decodeFile(bytes, as)
@@ -247,7 +286,7 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     const { path, text } = params.write.parse(raw)
     if (!mayWrite(checkPath(path)))
       throw new BridgeDenied(
-        `files.write("${path}") was not declared; add // uses: files.write("${path}")`,
+        `files.write("${path}") is not among the files this module was allowed`,
       )
     return host.client.write(path, text)
   })
@@ -281,9 +320,9 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
 
   const reads = new Map<number, () => void>()
   const database = (value: string): AppDatabases => {
-    if (!capabilities.db.includes(value))
+    if (capabilities && !capabilities.db.includes(value))
       throw new BridgeDenied(
-        `db("${value}") was not declared; add // uses: db("${value}")`,
+        `db("${value}") is not among the databases this module was allowed`,
       )
     if (!host.db)
       throw new BridgeDenied('Databases are not available to this block.')
@@ -336,9 +375,9 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
 
   serve<PageMethods, 'run.request'>(rpc, 'run.request', (raw) => {
     const { target } = params.run.parse(raw)
-    if (!capabilities.run.includes(target))
+    if (capabilities && !capabilities.run.includes(target))
       throw new BridgeDenied(
-        `run("${target}") was not declared; add // uses: run("${target}")`,
+        `run("${target}") is not among the runs this module was allowed`,
       )
     return host.run(target)
   })
@@ -349,7 +388,8 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   })
 
   serve<PageMethods, 'frame.resize'>(rpc, 'frame.resize', (raw) => {
-    host.onResize?.(Math.min(params.resize.parse(raw).height, MAX_HEIGHT))
+    const { height, fills } = params.resize.parse(raw)
+    host.onResize?.(Math.min(height, MAX_HEIGHT), fills)
     return null
   })
 
@@ -386,6 +426,12 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   serve<PageMethods, 'dossier.source'>(rpc, 'dossier.source', (raw) => ({
     found: dossier().source(params.source.parse(raw).name),
   }))
+
+  serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {
+    if (!host.recording)
+      throw new BridgeDenied('This App is shown where no Theorem backend writes recordings.')
+    return host.recording(params.trace.parse(raw))
+  })
 
   return () => {
     watching?.()

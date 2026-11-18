@@ -38,6 +38,8 @@ import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
 import type { ChromeActions, ChromeProps, ChromeSnapshot, PartSnapshot } from './chrome'
+import { CycleTrace } from './trace'
+import type { TraceFrame } from './trace'
 
 export type SpatialBuilder = Builder<Form, THREE.Object3D>
 
@@ -104,7 +106,29 @@ export interface SpatialModel {
   select: (path: string | null) => void
   /** The model in words and numbers, for tests and for the agent's checks. */
   inspect: () => { open: string; selected: string | null; stage: number; parts: Array<PartView>; failures: Array<string> }
+  /**
+   * Every settle, cycle by cycle, for Rerun's viewer (`timeline` in this
+   * library): `scrub` shows a cycle as it was, and a change made there runs
+   * the model again from it.
+   */
+  trace: SpatialTrace
   dispose: () => void
+}
+
+export interface SpatialTrace {
+  /** The recording the frames belong to; a new one after a change runs the model again. */
+  recordingId: () => string
+  /** The latest cycle. */
+  cycle: () => number
+  /** The earliest cycle kept. */
+  first: () => number
+  /** The cycle shown, when it is not the latest. */
+  viewing: () => number | null
+  frames: (from?: number) => Array<TraceFrame>
+  /** Shows a cycle as it was (null or the latest: the model as it is now). */
+  scrub: (cycle: number | null) => void
+  /** Called after each new cycle and each scrub. */
+  subscribe: (listener: () => void) => () => void
 }
 
 type Theme = Record<'ink' | 'muted' | 'faint' | 'accent' | 'lit' | 'warn' | 'surface' | 'border' | 'font' | 'mono', string>
@@ -320,6 +344,15 @@ export function mount(
   // The model's values: what was settled, and what is shown while a change travels.
   let settled = model.settle()
   let previous = settled
+  const trace = new CycleTrace(model, `spatial-${Math.random().toString(36).slice(2, 10)}`)
+  trace.record({ kind: 'start' }, settled)
+  /** The cycle shown while the person looks back; null at the latest. */
+  let viewing: number | null = null
+  const traceListeners = new Set<() => void>()
+  const traceChanged = () => {
+    for (const listener of traceListeners) listener()
+  }
+  trace.subscribe(traceChanged)
   let replay = { time: Infinity, end: 0, paused: false, changed: new Set<string>() }
   let slow = false
   let running = false
@@ -766,7 +799,8 @@ export function mount(
   let collection: { get: (key: string) => unknown; set: (key: string, value: unknown) => Promise<void> } | undefined
   let saveTimer = 0
   const save = () => {
-    if (!collection) return
+    // Looking back shows an earlier state; what is kept is the latest.
+    if (!collection || viewing !== null) return
     clearTimeout(saveTimer)
     saveTimer = window.setTimeout(() => {
       const value: Remembered = {
@@ -792,6 +826,7 @@ export function mount(
         if (remembered.model) model.restore(remembered.model)
         settled = model.settle()
         previous = settled
+        trace.record({ kind: 'restored' }, settled)
         if (remembered.open && visuals.has(remembered.open.split('/')[0]!)) {
           // Open each level down to where the person was.
           let path = ''
@@ -848,14 +883,42 @@ export function mount(
   }
 
   function set(path: string, key: string, value: unknown) {
+    if (viewing !== null) {
+      // A change made looking back runs the model again from there; the
+      // change itself is shown, and the replayed cycles after it follow on
+      // the timeline.
+      const from = viewing
+      trace.rerun(from, path, key, value)
+      viewing = from + 1 < trace.cycle && trace.show(from + 1) ? from + 1 : null
+      changed()
+      traceChanged()
+      return
+    }
     model.set(path, key, value)
     changed()
+    trace.record({ kind: 'set', path, key, value }, settled)
   }
 
   function step() {
+    if (viewing !== null) {
+      // Looking back, a step goes forward through what was recorded.
+      scrub(viewing + 1)
+      return
+    }
     previous = settled
     model.step(settled)
     changed()
+    trace.record({ kind: 'step' }, settled)
+  }
+
+  function scrub(cycle: number | null) {
+    const latest = cycle === null || cycle >= trace.cycle
+    const next = latest ? null : Math.max(cycle, trace.first)
+    if (next === viewing) return
+    trace.show(next ?? trace.cycle)
+    viewing = next
+    changed(true)
+    traceChanged()
   }
 
   // Camera.
@@ -1068,6 +1131,14 @@ export function mount(
       slow,
       ticking,
       narrow,
+      trace: {
+        cycle: viewing ?? trace.cycle,
+        latest: trace.cycle,
+        viewing: viewing !== null,
+        recent: trace.frames(Math.max(trace.first, (viewing ?? trace.cycle) - 7)).filter(
+          (frame) => frame.cycle <= (viewing ?? trace.cycle),
+        ),
+      },
     }
   }
 
@@ -1116,6 +1187,7 @@ export function mount(
       replay.paused = on
       notify()
     },
+    scrub,
   }
 
   // Renders once per task however many changes asked for it.
@@ -1671,6 +1743,18 @@ export function mount(
     open,
     pull,
     select,
+    trace: {
+      recordingId: () => trace.recordingId,
+      cycle: () => trace.cycle,
+      first: () => trace.first,
+      viewing: () => viewing,
+      frames: (from) => trace.frames(from),
+      scrub,
+      subscribe: (listener) => {
+        traceListeners.add(listener)
+        return () => traceListeners.delete(listener)
+      },
+    },
     inspect: () => {
       scene.updateMatrixWorld()
       return {

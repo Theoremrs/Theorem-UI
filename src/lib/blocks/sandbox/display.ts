@@ -179,19 +179,70 @@ export function observeSnapshots(
  * and the frame would scroll for the rest. scrollHeight never reads less than
  * the frame either, so a page that got shorter would keep its old height; it
  * counts only when the page overflows its box.
+ *
+ * A page laid out by its viewport (100vh, or height: 100% down from the root)
+ * has no height of its own, and `fills` says so: the page then gives it one.
+ * Such a page either exactly fills the frame it loaded in, or outgrows every
+ * frame it is given (62vh + 38vh under a caption is always the caption
+ * taller), so it is known by growing when nothing but its frame changed.
+ * Its root and body do not resize as its content arrives, so content changes
+ * are measured too.
  */
-export function observeHeight(report: (height: number) => void): void {
+export function observeHeight(
+  report: (height: number, fills?: boolean) => void,
+): void {
   let last = -1
-  const measure = () => {
+  let outgrew = 0
+  let following = true
+  const initial = window.innerHeight
+  const measure = (resized = false) => {
+    if (!following) return
     const root = document.documentElement
     const height = Math.ceil(
       root.scrollHeight > window.innerHeight
         ? root.scrollHeight
         : root.getBoundingClientRect().height,
     )
+    if (resized && window.innerHeight === last) {
+      // Twice taller than a frame just sized to it: it follows its frame.
+      outgrew = height > last ? outgrew + 1 : 0
+      if (outgrew >= 2) {
+        following = false
+        report(last, true)
+        return
+      }
+    }
     if (height !== last) report((last = height))
   }
-  new ResizeObserver(measure).observe(document.documentElement)
+  let queued = false
+  const changed = () => {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(() => {
+      queued = false
+      measure()
+    })
+  }
+  const observer = new ResizeObserver(() => measure())
+  observer.observe(document.documentElement)
+  new MutationObserver(changed).observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+  })
+  window.addEventListener('resize', () => measure(true))
+  const settled = () => {
+    if (document.body) observer.observe(document.body)
+    measure()
+    // Loaded and exactly as tall as the frame it started in: it fills it.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (following && window.innerHeight === initial && last === initial)
+          report(last, true)
+      }),
+    )
+  }
+  if (document.readyState === 'complete') settled()
+  else window.addEventListener('load', settled, { once: true })
   measure()
 }
 

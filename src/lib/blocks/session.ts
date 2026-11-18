@@ -9,8 +9,7 @@ import type { WorkspaceClient, WorkspaceEvent } from '@/lib/workspace/types'
 import { agentInputs, agentReads, parseAgent } from './agent'
 import type { AgentSpec } from './agent'
 import type { BridgeHost, StateCollections } from './bridge'
-import { isEffectful, noCapabilities } from './declarations'
-import type { Capabilities } from './declarations'
+import { isEffectful } from './declarations'
 import { parseEmbark } from './embark'
 import type { EmbarkDocument } from './embark'
 import type { CompiledCell } from './compile'
@@ -390,14 +389,10 @@ export class BlockSession {
       .finally(() => this.changed())
   }
 
-  /** What the page lends a block: its declared capabilities, and nothing else. */
-  hostFor(
-    key: string,
-    capabilities: Capabilities = noCapabilities(),
-  ): BridgeHost {
+  /** What the page lends a block: the folder, its state and its agent runs. */
+  hostFor(key: string): BridgeHost {
     return {
       client: this.options.client,
-      capabilities,
       state: this.options.state,
       run: (target) => this.runAgent(target, key),
     }
@@ -453,7 +448,7 @@ export class BlockSession {
         current = {
           cellKey: compiled.key,
           executor: Promise.resolve(
-            executor(compiled, this.hostFor(key, compiled.capabilities)),
+            executor(compiled, this.hostFor(key)),
           ),
         }
         this.executors.set(key, current)

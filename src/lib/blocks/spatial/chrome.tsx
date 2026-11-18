@@ -24,6 +24,7 @@ import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Dossier } from './dossier'
 import type { ControlSpec } from './engine'
+import type { TraceFrame } from './trace'
 import './chrome.css'
 
 export interface PortSnapshot {
@@ -82,6 +83,8 @@ export interface ChromeSnapshot {
   ticking: boolean
   /** Too narrow to hold a note beside a part: controls go below the scene. */
   narrow: boolean
+  /** Where the model is in its recorded run: the cycle shown, and the last few up to it. */
+  trace: { cycle: number; latest: number; viewing: boolean; recent: Array<TraceFrame> }
 }
 
 export interface ChromeActions {
@@ -97,6 +100,8 @@ export interface ChromeActions {
   run: (on: boolean) => void
   slow: (on: boolean) => void
   pause: (on: boolean) => void
+  /** Shows a recorded cycle as it was; null goes back to the latest. */
+  scrub: (cycle: number | null) => void
 }
 
 export interface ChromeProps {
@@ -360,6 +365,14 @@ export function PlaybackStrip({ snapshot, actions }: Pick<ChromeProps, 'snapshot
         <Text size="sm" color="secondary" hasTabularNumbers>
           {`stage ${replay.stage} of ${replay.end}`}
         </Text>
+      )}
+      {snapshot.trace.viewing && (
+        <>
+          <Text size="sm" color="secondary" hasTabularNumbers>
+            {`cycle ${snapshot.trace.cycle} of ${snapshot.trace.latest}`}
+          </Text>
+          <Button label="Back to now" size="sm" variant="ghost" onClick={() => actions.scrub(null)} />
+        </>
       )}
       <span className="ts-hint">
         <Text size="sm" color="disabled">{hintFor(snapshot)}</Text>

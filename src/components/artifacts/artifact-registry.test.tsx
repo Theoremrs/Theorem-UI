@@ -106,7 +106,7 @@ test('the pinned frame runs the pinned source in the App sandbox and is inert as
 
 const NETWORKED = `<!doctype html><title>Feed</title><meta name="theorem:uses" content='net("api.example.com")'><p>Feed</p>`
 
-async function connectSourcesOf(interactive: boolean) {
+async function frameOf(interactive: boolean) {
   const originalHosted = hosted.hostedAppDocument
   const documents: string[] = []
   const compile = spyOn(hosted, 'hostedAppDocument').mockImplementation(
@@ -126,10 +126,13 @@ async function connectSourcesOf(interactive: boolean) {
     const { container } = await render(
       <PinnedAppFrame artifact={app(NETWORKED)} interactive={interactive} />,
     )
-    await waitFor(() => container.querySelector('iframe'), 10_000)
+    const frame = await waitFor(() => container.querySelector('iframe'), 10_000)
     const page = new DOMParser().parseFromString(documents[0]!, 'text/html')
-    const policy = page.head.firstElementChild?.getAttribute('content') ?? ''
-    return /connect-src [^;]*/.exec(policy)?.[0]
+    return {
+      policy: page.querySelector('meta[http-equiv="Content-Security-Policy"]'),
+      sandbox: frame.getAttribute('sandbox')?.split(' ') ?? [],
+      allow: frame.getAttribute('allow') ?? '',
+    }
   } finally {
     await cleanup()
     fetch.mockRestore()
@@ -137,9 +140,14 @@ async function connectSourcesOf(interactive: boolean) {
   }
 }
 
-test('a passive preview reaches no network, while the live frame keeps the hosts the App declared', async () => {
-  expect(await connectSourcesOf(false)).toBe("connect-src 'none'")
-  expect(await connectSourcesOf(true)).toContain('api.example.com')
+test('a preview and the live frame both run the App open, on an origin of its own', async () => {
+  for (const interactive of [false, true]) {
+    const { policy, sandbox, allow } = await frameOf(interactive)
+    expect(policy).toBeNull()
+    expect(sandbox).toEqual(expect.arrayContaining(['allow-scripts', 'allow-forms', 'allow-popups']))
+    expect(sandbox).not.toContain('allow-same-origin')
+    expect(allow).toContain('camera')
+  }
 }, 30_000)
 
 function part(kind: string, language: string, title: string) {

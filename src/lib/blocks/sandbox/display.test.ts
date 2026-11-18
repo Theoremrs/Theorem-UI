@@ -93,6 +93,60 @@ test('content overflowing the page box still counts', () => {
   expect(measured(400, 186, 186)).toEqual([400])
 })
 
+/** A page laid out by its viewport: `extra` taller than whatever frame it is in. */
+function viewportPage(frame: number, extra: number) {
+  Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: frame })
+  Object.defineProperty(root, 'scrollHeight', {
+    configurable: true,
+    get: () => window.innerHeight + extra,
+  })
+  Object.defineProperty(root, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({ height: window.innerHeight }) as DOMRect,
+  })
+}
+
+const frames = (count: number) =>
+  new Promise<void>((resolve) => {
+    const next = (left: number) => (left ? requestAnimationFrame(() => next(left - 1)) : resolve())
+    next(count)
+  })
+
+test('a page laid out by its viewport, which outgrows every frame sized to it, says it fills its frame and stops growing', () => {
+  // 62vh and 38vh under a 45px caption.
+  viewportPage(150, 45)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  const resizeTo = (height: number) => {
+    window.innerHeight = height
+    window.dispatchEvent(new Event('resize'))
+  }
+  resizeTo(195)
+  resizeTo(240)
+  resizeTo(600)
+  resizeTo(645)
+  expect(reports.filter(([, fills]) => fills)).toEqual([[240, true]])
+  expect(reports.at(-1)).toEqual([240, true])
+})
+
+test('a page exactly as tall as the frame it loaded in says it fills its frame', async () => {
+  viewportPage(150, 0)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  await frames(3)
+  expect(reports).toEqual([[150, undefined], [150, true]])
+})
+
+test('a page sized by its content does not say it fills its frame', async () => {
+  layout(320, 150)
+  const reports: Array<[number, boolean | undefined]> = []
+  observeHeight((height, fills) => reports.push([height, fills]))
+  layout(320, 320)
+  window.dispatchEvent(new Event('resize'))
+  await frames(3)
+  expect(reports).toEqual([[320, undefined]])
+})
+
 /** A canvas whose picture is `size` characters of data URL. */
 function canvas(id: string, size: number): HTMLCanvasElement {
   const element = document.createElement('canvas')

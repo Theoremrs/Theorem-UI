@@ -177,7 +177,7 @@ const cellOutputsHtml = (outputs: Array<RetainedOutput>) =>
 
 /**
  * The hosted document that shows a notebook's recorded outputs, one section
- * per cell that produced any. It runs no Python and reaches no network.
+ * per cell that produced any. It runs no Python.
  */
 export function retainedOutputsDocument(
   notebook: MarimoNotebook,
@@ -194,7 +194,6 @@ export function retainedOutputsDocument(
   return hostedAppDocument(
     notebookPage({ title: notebook.title, form: 'marimo', theme, main }),
     esbuild,
-    { net: [] },
   )
 }
 
@@ -388,8 +387,8 @@ const ISLANDS_THEME = [
  * The hosted document for a browser run: marimo's islands runtime starts
  * Pyodide in a worker and runs the cells. Recorded outputs are already in
  * each island's markup, so they show at once and stay in view while the
- * runtime starts. Code is hidden; outputs show. The frame reaches
- * BROWSER_RUN_HOSTS and nothing else.
+ * runtime starts. Code is hidden; outputs show. It loads from
+ * BROWSER_RUN_HOSTS.
  */
 export function islandsDocument(
   notebook: MarimoNotebook,
@@ -448,6 +447,5 @@ export function islandsDocument(
       ].join('\n'),
     }),
     esbuild,
-    { net: BROWSER_RUN_HOSTS, loads: ['cdn.jsdelivr.net'] },
   )
 }

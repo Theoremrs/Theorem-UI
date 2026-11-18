@@ -257,7 +257,6 @@ function AppPreview({
         ...documentAppHost(
           app,
           app.getSnapshot()!,
-          declarations.capabilities,
           state.state,
           databases,
         ),

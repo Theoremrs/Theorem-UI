@@ -84,9 +84,9 @@ export function turns({ context, page }) {
     return { run: await lastRunOf(), acting: {} }
   }
 
-  /** Wait for the thread's latest run to end, and return it. */
-  async function ended() {
-    for (let look = 0; look < LOOKS; look++) {
+  /** Wait for the thread's latest run to end, and return it. `looks` of three seconds each; default five minutes. */
+  async function ended({ looks = LOOKS } = {}) {
+    for (let look = 0; look < looks; look++) {
       const current = await json(`/threads/${encodeURIComponent(threadId())}`).catch(() => undefined)
       if (current && !current.liveRun && current.thread?.lastRun?.outcome) return current.thread.lastRun
       await pause(LOOK_MS)

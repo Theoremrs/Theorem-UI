@@ -36,8 +36,10 @@ export const APP_LIBRARIES: Record<string, AppLibrary> = {
       '@assistant-ui/react': '0.15.30',
       three: '0.187.0',
       elkjs: '0.12.1',
+      // Coupled with theorem-proto-emit's Rerun SDK, which writes its recordings.
+      '@rerun-io/web-viewer': '0.35.0',
     },
-    types: ['react', 'three'],
+    types: ['react', 'three', '@rerun-io/web-viewer'],
   },
 }
 

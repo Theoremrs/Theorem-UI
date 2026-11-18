@@ -21,6 +21,8 @@ import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
 import spatialParts from './spatial/parts.ts?raw'
+import spatialTimeline from './spatial/timeline.ts?raw'
+import spatialTrace from './spatial/trace.ts?raw'
 import spatialView from './spatial/view.ts?raw'
 
 /** Each library's modules by file name. */
@@ -47,6 +49,8 @@ export const librarySources: Record<string, Record<string, string>> = {
     'form.ts': spatialForm,
     'index.ts': spatialIndex,
     'parts.ts': spatialParts,
+    'timeline.ts': spatialTimeline,
+    'trace.ts': spatialTrace,
     'view.ts': spatialView,
   },
 }

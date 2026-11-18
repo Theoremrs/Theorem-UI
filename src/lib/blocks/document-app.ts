@@ -1,10 +1,10 @@
 // SOURCING: loro-crdt through StateReplica (state collections) and the existing sandbox bridge; no library models an App document's bridge host
 // Adapt the existing sandbox bridge to one revisioned Documents SDK owner.
 import type { AppDocument, AppSnapshot } from '../theorem/apps'
+import { traceRecording } from '../theorem/app-traces'
 import { contentDigest } from '../theorem/note-canonical'
 import { BridgeDenied } from './bridge'
 import type { AppDatabases, BridgeHost, StateCollections } from './bridge'
-import type { Capabilities } from './declarations'
 import { StateReplica } from './state'
 
 /** An App's declared state collection lives in its document under this key. */
@@ -70,15 +70,14 @@ export function pinnedAppState(seed: Uint8Array | null) {
 export function pinnedAppHost(
   html: string,
   documentId: string,
-  capabilities: Capabilities,
   state: StateCollections,
   db?: AppDatabases,
 ): BridgeHost {
   const source = new TextEncoder().encode(html)
   return {
-    capabilities,
     state,
     db,
+    recording: traceRecording,
     client: {
       async read(path) {
         if (path !== 'index.html')
@@ -113,7 +112,6 @@ export function pinnedAppHost(
 export function documentAppHost(
   app: AppDocument,
   snapshot: AppSnapshot,
-  capabilities: Capabilities,
   state: StateCollections,
   db?: AppDatabases,
 ): BridgeHost {
@@ -125,9 +123,9 @@ export function documentAppHost(
       )
   }
   return {
-    capabilities,
     state,
     db,
+    recording: traceRecording,
     client: {
       async read(path) {
         onlySource(path)

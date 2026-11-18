@@ -31,7 +31,10 @@ export type {
 } from './chrome'
 export { Dossier, dossierContext, useDossier } from './dossier'
 export type { DossierMessage, DossierState } from './dossier'
-export type { MountOptions, PartView, SpatialBuilder, SpatialModel } from './view'
+export type { MountOptions, PartView, SpatialBuilder, SpatialModel, SpatialTrace } from './view'
+export { mountTimeline, RERUN_VIEWER_BASE } from './timeline'
+export type { Timeline, TimelineOptions } from './timeline'
+export type { TraceFrame, TraceValue } from './trace'
 export type {
   CheckSpec,
   ControlSpec,

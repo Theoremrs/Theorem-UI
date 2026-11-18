@@ -16,11 +16,7 @@ import { appDependencies } from './app-dependencies'
 import type { AppDependencies } from './app-dependencies'
 import { compileCell } from './compile'
 import type { CompiledCell } from './compile'
-import {
-  BLOCK_DOCUMENT_STYLE,
-  connectSources,
-  contentSecurityPolicy,
-} from './document'
+import { BLOCK_DOCUMENT_STYLE } from './document'
 import { runtimeSources } from './runtime-sources'
 import type { ExportedData } from './sandbox/standalone'
 import { encodeRows } from './sandbox/standalone'
@@ -139,14 +135,6 @@ function exportPlugin(entry: string, cell: string): Esbuild.Plugin {
  * or regular expression alike.
  */
 const inlineSafe = (code: string) => code.replaceAll('<!--', '<\\x21--')
-
-async function sha256Base64(text: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(text),
-  )
-  return toBase64(new Uint8Array(digest))
-}
 
 const escapeHtml = (text: string) =>
   text.replace(
@@ -567,27 +555,11 @@ async function bundleScript(
   return inlineSafe(output.text)
 }
 
-/** The page: one inline module, allowed by its hash and nothing else. */
-async function exportDocument(
-  name: string,
-  script: string,
-  net: Array<string>,
-): Promise<string> {
-  const policy = contentSecurityPolicy({
-    'default-src': "'none'",
-    'script-src': `'sha256-${await sha256Base64(script)}'`,
-    'style-src': "'unsafe-inline'",
-    'img-src': 'data: blob:',
-    'font-src': 'data:',
-    'media-src': 'data: blob:',
-    'connect-src': connectSources(net),
-    'form-action': "'none'",
-    'base-uri': "'none'",
-  })
+/** The page: one inline module, the whole tool. */
+function exportDocument(name: string, script: string): string {
   return `<!doctype html>
 <html><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="${escapeHtml(policy)}">
 <title>${escapeHtml(name)}</title>
 <style>${BLOCK_DOCUMENT_STYLE}</style>
 </head><body><div id="root"></div>
@@ -619,7 +591,7 @@ export async function exportTool(
     data,
     await (options.esbuild ?? browserEsbuild)(),
   )
-  const html = await exportDocument(name, script, cell.capabilities.net)
+  const html = exportDocument(name, script)
   const out = `Exports/${name}.html`
   await client.write(out, html)
   return { path: out, bytes: new TextEncoder().encode(html).length }

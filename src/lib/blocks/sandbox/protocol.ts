@@ -133,7 +133,8 @@ export interface PageMethods {
   'frame.selection': { params: AppSelection; result: null }
   /** The frame's code threw and nothing caught it. */
   'frame.error': { params: FrameError; result: null }
-  'frame.resize': { params: { height: number }; result: null }
+  /** `fills`: the page is laid out by its viewport and has no height of its own. */
+  'frame.resize': { params: { height: number; fills?: boolean }; result: null }
   /** A static copy of the frame, for where a live frame would cost too much. */
   'frame.snapshot': {
     params: { html: string; outline?: string }
@@ -155,6 +156,35 @@ export interface PageMethods {
   'dossier.watch': { params: Record<string, never>; result: DossierState }
   /** Opens the App's source where `name` is written, for a person to read or edit. */
   'dossier.source': { params: { name: string }; result: { found: boolean } }
+  /** A model trace written as a Rerun recording (`.rrd` bytes), for Rerun's viewer. */
+  'trace.recording': { params: ModelTrace; result: Uint8Array }
+}
+
+/** A primitive value a model trace records: a number or text. */
+export type TraceValue = number | string
+
+/** What one settle of an App's model produced. */
+export interface TraceFrame {
+  cycle: number
+  /** What caused it, such as `step` or `regb.value = 3`. */
+  cause: string
+  /** Port values by part path, then port name. */
+  values: Record<string, Record<string, TraceValue>>
+}
+
+/** An App's model run, cycle by cycle, as Rerun's SDK is asked to write it. */
+export interface ModelTrace {
+  /** The App's choice: a run it shows again under a new id is a new recording. */
+  recordingId: string
+  frames: Array<TraceFrame>
+  /** Sent when a recording opens: the viewer's layout. Without plots, one per top-level part. */
+  layout?: { plots?: Array<TracePlot> }
+}
+
+/** One time series in the viewer: ports of parts, or state keys under `<part>/state`. */
+export interface TracePlot {
+  title: string
+  ports: Array<{ part: string; port: string }>
 }
 
 /** What an App says about where the person is, for a question about it. JSON. */

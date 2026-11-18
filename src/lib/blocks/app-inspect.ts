@@ -13,7 +13,7 @@ import type { AppProblem } from './app-source'
 import { traceFrameError } from './app-trace'
 import { parseHtmlDeclarations } from './declarations'
 import { pinnedAppHost, pinnedAppState } from './document-app'
-import { BLOCK_SANDBOX, FrameConnection } from './executor'
+import { FrameConnection, openFrame } from './executor'
 import * as hosted from './hosted-app'
 import {
   MAX_OUTLINE,
@@ -149,8 +149,8 @@ function renderedOf(
 
 /**
  * Runs an App's page where nobody sees it and nothing it does lasts: off
- * screen, with no network, its state kept in the frame and its databases in
- * memory. Returns what it threw and what it showed.
+ * screen, as it runs on the page (network and all), with its state kept in
+ * the frame and its databases in memory. Returns what it threw and what it showed.
  */
 async function run(
   html: string,
@@ -180,8 +180,7 @@ async function run(
   })
   const url = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
   const frame = document.createElement('iframe')
-  frame.setAttribute('sandbox', BLOCK_SANDBOX)
-  frame.referrerPolicy = 'no-referrer'
+  openFrame(frame)
   frame.setAttribute('aria-hidden', 'true')
   frame.tabIndex = -1
   // Laid out at a real size, so the App measures what it would on screen.
@@ -190,7 +189,6 @@ async function run(
     ...pinnedAppHost(
       html,
       'check',
-      declarations.capabilities,
       state.state,
       databases,
     ),
@@ -308,8 +306,8 @@ export async function inspectApp(
       throw new AppBuildError(
         declarations.errors.map((message) => ({ kind: 'build', message })),
       )
-    // A check reaches no network, whatever the App declares.
-    page = await hosted.hostedAppDocument(html, undefined, { net: [] })
+    // A check runs the App as it runs on the page, network and all.
+    page = await hosted.hostedAppDocument(html)
   } catch (error) {
     if (!(error instanceof AppBuildError)) throw error
     found.push(...error.problems)

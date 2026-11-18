@@ -20,6 +20,7 @@ import type {
   DossierContext,
   DossierState,
   FrameError,
+  ModelTrace,
   ModuleValues,
   PageMethods,
   SandboxMethods,
@@ -88,8 +89,8 @@ const context = connectToPage().then((port) => {
   // A page that never stops changing never settles into a snapshot, so the
   // page can ask for one.
   serve<SandboxMethods, 'frame.look'>(rpc, 'frame.look', () => lookNow())
-  observeHeight((height) => {
-    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height })
+  observeHeight((height, fills) => {
+    void call<PageMethods, 'frame.resize'>(rpc, 'frame.resize', { height, fills })
   })
   observeSnapshots((html, outline) => {
     void call<PageMethods, 'frame.snapshot'>(rpc, 'frame.snapshot', {
@@ -235,6 +236,14 @@ const theorem = {
     /** Opens this App's source where `name` is written, for the person to read. */
     source: async (name: string) =>
       (await call<PageMethods, 'dossier.source'>((await context_()).rpc, 'dossier.source', { name })).found,
+  },
+  /**
+   * A model's run, cycle by cycle, written as a Rerun recording by Rerun's
+   * own SDK: `.rrd` bytes for `LogChannel.send_rrd` in Rerun's web viewer.
+   */
+  trace: {
+    recording: async (trace: ModelTrace) =>
+      call<PageMethods, 'trace.recording'>((await context_()).rpc, 'trace.recording', trace),
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

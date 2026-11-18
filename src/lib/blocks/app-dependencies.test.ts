@@ -331,9 +331,15 @@ createRoot(document.body).render(<AnnotationLayer anchors={anchors}><Annotation 
   }, 120_000)
 
   test('is checked against its declarations and the three.js it is pinned to', async () => {
-    const resolver = new AppDependencies({ three: '0.187.0' })
+    const pins = { three: '0.187.0', '@rerun-io/web-viewer': '0.35.0' }
+    const resolver = new AppDependencies(pins)
     const threeUrl = resolver.resolve('three').path
+    const rerunUrl = resolver.resolve('@rerun-io/web-viewer').path
+    const rerunTypes = 'https://esm.sh/@rerun-io/web-viewer@0.35.0/index.d.ts'
     const remote = modules({
+      // The timeline in the spatial library is checked against the viewer's own declarations.
+      [rerunUrl]: { source: 'export {}', types: rerunTypes },
+      [rerunTypes]: { source: readFileSync('node_modules/@rerun-io/web-viewer/index.d.ts', 'utf8') },
       [threeUrl]: { source: 'export {}', types: 'https://esm.sh/@types/three@0.187.0/index.d.ts' },
       'https://esm.sh/@types/three@0.187.0/index.d.ts': { source: `export declare class Object3D { name: string }
 export declare class BufferGeometry { name: string }
@@ -341,9 +347,10 @@ export declare class Mesh extends Object3D { constructor(geometry?: BufferGeomet
 export declare class TorusKnotGeometry extends BufferGeometry { constructor(radius?: number) }` },
     })
     const sources = { entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }
-    const dependencies = await dependencyDeclarations(sources, new AppDependencies({ three: '0.187.0' }, remote.request))
+    const dependencies = await dependencyDeclarations(sources, new AppDependencies(pins, remote.request))
     expect(dependencies.problems).toEqual([])
     expect(remote.requested).toContain(threeUrl)
+    expect(remote.requested).toContain(rerunUrl)
     const result = await checkAppSources(sources, tsc, library, {}, dependencies)
     expect(result.problems.map((p) => [p.file, p.line, p.code])).toEqual([['main.ts', 14, 'TS2322']])
   }, 120_000)

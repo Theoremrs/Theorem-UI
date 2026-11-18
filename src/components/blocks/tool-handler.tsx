@@ -1,7 +1,7 @@
 // SOURCING: sessions.ts (the tool file's shared block session: the same graph
 // in every view of it), the frame, status and editor components beside this
 // one, @tanstack/react-query's useMutation (exporting) and lucide-react. A
-// `.tsx` tool as plan D13 shows it: a live sandboxed frame in its panel and
+// `.tsx` tool as plan D13 shows it: a live frame of its own in its panel and
 // on a canvas up close, its snapshot far out, and a Run control in the code
 // editor with last-run values in the margin.
 import { useMutation } from '@tanstack/react-query'

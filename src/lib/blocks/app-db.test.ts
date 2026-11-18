@@ -49,12 +49,13 @@ afterEach(() => {
 /** One frame of an App: the page's bridge on one port, the frame's handle on the other. */
 function frame(
   databases: DocumentDatabases | undefined,
-  declared: Array<string>,
+  /** A person's limit: the databases it allows. Absent, the App reaches any. */
+  declared?: Array<string>,
 ) {
   const channel = new MessageChannel()
   const stop = serveBridge(rpcOver(channel.port1), {
     client: memoryWorkspace({}),
-    capabilities: { ...noCapabilities(), db: declared },
+    capabilities: declared && { ...noCapabilities(), db: declared },
     state: new StateReplica({
       load: async () => null,
       push: async () => {},
@@ -247,15 +248,25 @@ describe("an App's database over the bridge", () => {
     expect(result.rows).toEqual([['Birch']])
   })
 
-  test('a database that was not declared is not reached', async () => {
+  test('under a person\'s limit, a database it does not allow is not reached', async () => {
     const app1 = nextApp()
     const store = storage()
     const app = frame(documentAppDatabases(app1, { open: store.open }), [
       'records',
     ])
     const refused = await failure(app.db('other').queryNodes())
-    expect((refused as Error).message).toContain('db("other") was not declared')
+    expect((refused as Error).message).toContain(
+      'db("other") is not among the databases this module was allowed',
+    )
     expect(store.opens).toEqual([])
+  })
+
+  test('without a limit, an App reaches a database it never declared', async () => {
+    const app1 = nextApp()
+    const store = storage()
+    const app = frame(documentAppDatabases(app1, { open: store.open }))
+    await app.db('other').queryNodes()
+    expect(store.opens.length).toBeGreaterThan(0)
   })
 
   test('a block with no databases is told so', async () => {

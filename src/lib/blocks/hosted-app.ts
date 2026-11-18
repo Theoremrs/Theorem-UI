@@ -1,11 +1,10 @@
-// Hosted documents use the same sandbox and bridge as desktop HTML Apps. They
+// Hosted documents use the same frame and bridge as desktop HTML Apps. They
 // also take the page's look (sandbox/theme.ts): a host stylesheet ahead of the
 // App's own content, kept current over the bridge by followTheme. The
 // platform's MutationObserver watches the root's class, data-palette and style,
 // as the IDE frame's and the terminal's colours follow them.
 import type * as Esbuild from 'esbuild-wasm'
 import { readAppSources, removeAppSources } from './app-source'
-import { parseHtmlDeclarations } from './declarations'
 import { connectSources, contentSecurityPolicy } from './document'
 import type { FrameConnection } from './executor'
 import { bundleAppBridge, bundleAppSources } from './export'
@@ -17,23 +16,13 @@ import type { AppTheme } from './sandbox/theme'
 let bridgeScript: Promise<string> | undefined
 
 /**
- * `net` replaces the document's own `theorem:uses` declarations: a page
- * module reaches the hosts the person allowed it, whatever its page says.
+ * A hosted page reaches whatever a page can: the network, remote scripts,
+ * images and fonts. `net` is a limit the person set (a sandboxed module):
+ * given, the page runs only what it carries and reaches only those hosts.
  * `theme` is the look the frame starts with; the page's own by default.
- *
- * `loads` names hosts the page may run code from: their scripts, workers,
- * styles and fonts, and the WebAssembly they compile. Only a runtime the
- * person started asks for it (a marimo notebook's Pyodide); every other
- * hosted page runs only what it carries.
- *
- * `evaluates` lets the page's own code build functions from strings, as
- * d3-dsv builds its row readers. The frame's sandbox and network policy are
- * the boundary; code it carries could run the same function inline.
  */
 export interface HostedAppOptions {
   net?: Array<string>
-  loads?: Array<string>
-  evaluates?: boolean
   theme?: AppTheme
 }
 
@@ -85,8 +74,8 @@ export async function hostedAppDocument(
 }
 
 /**
- * The document an App's frame loads: the App's own page under this app's
- * policy, with the bridge first. A page that carries TypeScript source
+ * The document an App's frame loads: the App's own page, with the bridge
+ * first (and the person's limit, when they set one). A page that carries TypeScript source
  * (app-source.ts) is built here: its source scripts are replaced by one
  * module, after everything else in the body. A source that does not build is
  * an `AppBuildError`.
@@ -99,30 +88,23 @@ export async function hostedApp(
   const page = new DOMParser().parseFromString(html, 'text/html')
   const appSources = readAppSources(page)
   const bundle = appSources && (await bundleAppSources(appSources, esbuild))
-  const net = options.net ?? declaredNet(page)
-  const loads = (options.loads ?? []).map((host) => `https://${host}`)
-  const from = (...sources: Array<string>) => [...sources, ...loads].join(' ')
-  const policy = page.createElement('meta')
-  policy.httpEquiv = 'Content-Security-Policy'
-  policy.content = contentSecurityPolicy({
-    'default-src': "'none'",
-    // Every App may compile WebAssembly and start a Worker from a blob it
-    // made: both run in this frame's sandbox, and a blob Worker keeps this
-    // policy, so neither reaches anything connect-src does not grant.
-    'script-src': loads.length
-      ? from("'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", 'blob:')
-      : options.evaluates
-        ? "'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
-        : "'unsafe-inline' 'wasm-unsafe-eval'",
-    'worker-src': from('blob:'),
-    'style-src': from("'unsafe-inline'"),
-    'img-src': 'data: blob:',
-    'font-src': from('data:'),
-    'media-src': 'data: blob:',
-    'connect-src': connectSources(net),
-    'form-action': "'none'",
-    'base-uri': "'none'",
-  })
+  const limit = options.net && page.createElement('meta')
+  if (limit) {
+    limit.httpEquiv = 'Content-Security-Policy'
+    // A blob Worker keeps this policy, so it reaches only what connect-src grants.
+    limit.content = contentSecurityPolicy({
+      'default-src': "'none'",
+      'script-src': "'unsafe-inline' 'wasm-unsafe-eval'",
+      'worker-src': 'blob:',
+      'style-src': "'unsafe-inline'",
+      'img-src': 'data: blob:',
+      'font-src': 'data:',
+      'media-src': 'data: blob:',
+      'connect-src': connectSources(options.net!),
+      'form-action': "'none'",
+      'base-uri': "'none'",
+    })
+  }
   const theme = page.createElement('style')
   theme.setAttribute(THEME_STYLE, '')
   theme.textContent = themeCss(options.theme ?? readAppTheme())
@@ -134,10 +116,16 @@ export async function hostedApp(
         bridgeScript = undefined
         throw error
       }))
-  // Install the host policy before any author content. The host stylesheet
-  // comes first too, so every rule the App writes comes after it. The classic
+  // The person's limit goes before any author content, and the host
+  // stylesheet too, so every rule the App writes comes after it. The classic
   // IIFE exposes theorem.ready before the App's own scripts can execute.
-  page.head.prepend(policy, theme, bridge)
+  // A blob says no encoding, so the document says it first: without it the
+  // App's text is read as windows-1252 ("—" shows as "â€”"). It replaces
+  // any the App wrote: the page is a string, and the blob holds it as UTF-8.
+  for (const declared of page.querySelectorAll('meta[charset]')) declared.remove()
+  const charset = page.createElement('meta')
+  charset.setAttribute('charset', 'utf-8')
+  page.head.prepend(charset, ...(limit ? [limit] : []), theme, bridge)
   if (!appSources || !bundle)
     return { page: `<!doctype html>\n${page.documentElement.outerHTML}` }
   removeAppSources(page)
@@ -199,15 +187,4 @@ export function followTheme(connection: FrameConnection): () => void {
     active = false
     stop?.()
   }
-}
-
-function declaredNet(page: Document): Array<string> {
-  const declarations = parseHtmlDeclarations(
-    [...page.querySelectorAll('meta[name="theorem:uses"]')].map(
-      (meta) => meta.getAttribute('content') ?? '',
-    ),
-  )
-  if (declarations.errors.length)
-    throw new Error(declarations.errors.join('; '))
-  return declarations.capabilities.net
 }

@@ -112,6 +112,22 @@ export function dossierContext(
       text: setting.text,
       editable: Boolean(setting.control),
     })),
+    // The recorded run around the cycle shown: what caused each cycle and
+    // what this part (and the parts inside it) read then.
+    cycle: {
+      shown: snapshot.trace.cycle,
+      latest: snapshot.trace.latest,
+      lookingBack: snapshot.trace.viewing,
+      recent: snapshot.trace.recent.map((frame) => ({
+        cycle: frame.cycle,
+        cause: frame.cause,
+        values: Object.fromEntries(
+          Object.entries(frame.values).filter(
+            ([path]) => path === part.path || path.startsWith(`${part.path}/`),
+          ),
+        ),
+      })),
+    },
     step: {
       replaying: snapshot.replay.active,
       stage: snapshot.replay.stage,

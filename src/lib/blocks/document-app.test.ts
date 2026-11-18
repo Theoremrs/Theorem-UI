@@ -8,7 +8,6 @@ import {
   pinnedAppState,
 } from './document-app'
 import { serveBridge } from './bridge'
-import { noCapabilities } from './declarations'
 import { call, rpcOver } from './sandbox/protocol'
 import type { PageMethods } from './sandbox/protocol'
 
@@ -21,7 +20,6 @@ test('a sandbox state edit persists through the document owner and a fresh repli
   const host = documentAppHost(
     app,
     snapshot,
-    { ...noCapabilities(), state: ['rows'] },
     replica.state,
   )
   const channel = new MessageChannel()
@@ -76,7 +74,6 @@ test('a pinned revision reads its saved state, keeps edits in the frame and refu
   const host = pinnedAppHost(
     '<p>Pinned</p>',
     'app-document',
-    { ...noCapabilities(), state: ['rows'], write: ['index.html'] },
     pinned.state,
   )
   const channel = new MessageChannel()

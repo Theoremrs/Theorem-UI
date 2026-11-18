@@ -181,7 +181,8 @@ describe('a hosted TypeScript App', () => {
     expect(bundle?.getAttribute('type')).toBe('module')
     expect(bundle?.textContent).toContain('document.title = "built"')
     expect(page.body.lastElementChild).toBe(bundle)
-    // The policy, the host stylesheet and the bridge still come first.
+    // After the document's encoding, the host stylesheet and the bridge still come first.
+    expect(page.head.children[0]?.getAttribute('charset')).toBe('utf-8')
     expect(page.head.children[1]?.hasAttribute('data-theorem-theme')).toBe(true)
     expect(page.head.children[2]?.hasAttribute('data-theorem-app-bridge')).toBe(
       true,
