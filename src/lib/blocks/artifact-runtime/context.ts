@@ -159,11 +159,13 @@ export async function resultRef(
     result.provenance.kind === 'captured'
       ? 'unknown'
       : (result.reproducibility ?? 'recorded')
-  const body = {
+  // An owned copy, taken before the wait: what the caller changes later is
+  // neither hashed nor returned.
+  const body = structuredClone({
     ...result,
     schema: ARTIFACT_RUNTIME_SCHEMA,
     reproducibility,
-  } satisfies Omit<ResultRef, 'id'>
+  }) satisfies Omit<ResultRef, 'id'>
   return { ...body, id: await digestOf(body) }
 }
 

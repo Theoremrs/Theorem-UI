@@ -249,6 +249,22 @@ describe('a question grounds one capture, whatever happens while it is hashed', 
   })
 })
 
+describe('a grounded question carries one moment’s values', () => {
+  it('a scene partway through a change sends the recorded values, not the ones on screen', async () => {
+    const { trace } = adder(7, 5)
+    const snapshot = shown(trace, 0)
+    // The scene still shows the previous reading of the sum while the change moves through it.
+    const context = await groundedContext(part, snapshot, {
+      inputs: [{ name: 'a', label: 'A', value: 7, text: '7', editable: true }],
+      outputs: [{ name: 'sum', label: 'Sum', value: 3, text: '3' }],
+    })
+    const outputs = context.outputs as Array<{ name: string; text: string }>
+    const facts = context.facts as Array<{ entity: string; key: string; text: string }>
+    expect(outputs.find((port) => port.name === 'sum')?.text).toBe('12')
+    expect(facts.find((item) => item.entity === 'add' && item.key === 'sum')?.text).toBe('12')
+  })
+})
+
 describe('unavailable means no values anywhere in the question', () => {
   it('drops the live account’s numbers, recent frames, interactables and settling', async () => {
     const { trace } = adder(7, 5)

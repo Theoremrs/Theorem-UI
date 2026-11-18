@@ -579,7 +579,8 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
  */
 /** A question held while the conversation's turn runs, so asking does not stop it. */
 interface Queued extends HeldQuestion {
-  displayed: Displayed
+  /** The revision and binding resolved when it was asked; sent unchanged. */
+  asked: ReturnType<typeof questionBinding>
   /** The conversation it was asked in; it is sent there or not at all. */
   conversation: string | undefined
 }
@@ -619,11 +620,7 @@ function useAppDossier(
         throw new Error('This App is not shown in a conversation.')
       if (question.conversation !== latest.current.conversation)
         throw new Error('The conversation it was asked in is no longer the one open.')
-      const { running: revision, binding } = questionBinding(
-        question.displayed,
-        app.getSnapshot(),
-        question.context,
-      )
+      const { running: revision, binding } = question.asked
       thread.append({
         role: 'user',
         content: [{ type: 'text', text: question.text }],
@@ -660,13 +657,13 @@ function useAppDossier(
       send,
       async ask(text: string, context: Record<string, unknown>) {
         // Captured now: a later build or selection does not change what was asked about.
+        // A revision saved while it waits is not the one it was asked about.
         const question = {
           text,
           context,
-          displayed: { ...displayedRef.current },
+          asked: questionBinding({ ...displayedRef.current }, app.getSnapshot(), context),
           conversation: latest.current.conversation,
         }
-        questionBinding(question.displayed, app.getSnapshot(), context)
         if (!latest.current.aui.thread.source)
           throw new Error('This App is not shown in a conversation.')
         if (latest.current.running) {

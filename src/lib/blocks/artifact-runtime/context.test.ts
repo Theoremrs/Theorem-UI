@@ -283,6 +283,22 @@ describe('authored operations', () => {
   })
 })
 
+describe('a result reference owns what it names', () => {
+  test('changing the caller’s source while the id is computed changes neither', async () => {
+    const shared = { kind: 'document' as const, documentId: 'heat', position: '7', contentDigest: 'c7' }
+    const pending = resultRef({
+      content: `sha256:${'b'.repeat(64)}`,
+      mediaType: 'application/json',
+      provenance: { kind: 'computed', source: shared },
+      reproducibility: 'deterministic',
+    })
+    shared.position = '8'
+    const result = await pending
+    expect(result.provenance).toMatchObject({ source: { position: source.position } })
+    expect(await resultIdHolds(result)).toBe(true)
+  })
+})
+
 describe('subjects compare by their whole identity', () => {
   test('a moment at another time or domain is another moment', () => {
     const observation: ObservationRef = {

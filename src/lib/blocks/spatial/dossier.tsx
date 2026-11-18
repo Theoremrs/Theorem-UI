@@ -29,7 +29,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { readSubjectRef, signalText, signalValue } from '@theorem/runtime'
 import type { ObservationRef, ObservedFact, SubjectRef } from '@theorem/runtime'
 import type { ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
-import type { TraceFrame } from './trace'
+import type { TraceFrame, TraceValue } from './trace'
 
 /** One message of the App's part of the page's conversation. */
 export interface DossierMessage {
@@ -206,8 +206,25 @@ export async function groundedContext(
     Number(observation.index) === frame.cycle
   if (!agrees) return unavailableContext(context, grounding)
   const facts = observedFacts(part, frame, observation)
+  // What the scene shows may be partway through a change; every value sent
+  // is the recorded moment's, so a port never carries two values.
+  const ports = frame.values[part.path] ?? {}
+  const state = frame.values[`${part.path}/state`] ?? {}
+  const recorded = (list: unknown, values: Record<string, TraceValue>) =>
+    Array.isArray(list)
+      ? list.map((item) => {
+          const { value: _value, text: _text, ...rest } = (item ?? {}) as Record<string, unknown>
+          const name = typeof rest.name === 'string' ? rest.name : undefined
+          if (name === undefined || !(name in values)) return rest
+          const value = signalValue(values[name])
+          return { ...rest, value, text: signalText(value) }
+        })
+      : list
   return {
     ...context,
+    ...(context.inputs !== undefined && { inputs: recorded(context.inputs, ports) }),
+    ...(context.outputs !== undefined && { outputs: recorded(context.outputs, ports) }),
+    ...(context.settings !== undefined && { settings: recorded(context.settings, state) }),
     subject: { kind: 'moment', observation, run: grounding.run } satisfies SubjectRef,
     run: grounding.run,
     observation,
