@@ -44,3 +44,10 @@ export const DATA_DIR =
 
 /** The test account. Its first sign-in provisions a tenant of this name. */
 export const ACCOUNT = 'claude-e2e'
+
+/**
+ * A second person with a workspace of their own, for scenarios that prove one
+ * workspace's records never reach another's. Admitted only by a stack started
+ * with E2E_CONTEXT_STANDIN.
+ */
+export const OTHER_ACCOUNT = 'claude-e2e-other'

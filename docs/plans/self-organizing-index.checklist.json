@@ -146,6 +146,35 @@
         "src/components/index/index.test.ts (18 tests)",
         "Theorem: theorem_document_filing route test asserts correctionId/undo in filing history"
       ]
+    },
+    {
+      "id": "records-in-views",
+      "requirement": "Records are Index items: observations and used-together accept record ids, a binding lists records, and a prepared view can place records beside the documents they are used with",
+      "status": "partial",
+      "evidence": [
+        "UI: record pages and previews open through the Index navigator, which records item_opened with record:<name>/<id> (src/components/crm/navigation.ts)",
+        "UI: contract `records` binding and result, optional `records` on the used-together result (src/components/index/contract.ts, bindings.ts); IndexComparison's optional records argument and Records section (src/components/index/library.tsx); 'Often opened with' on a record's preview and page (src/components/crm/often-opened-with.tsx)",
+        "UI tests: src/components/index/index.test.ts ('the used-together template with records parses, with and without documents', 'records in the contract'), src/components/index/records-in-views.test.tsx ('IndexComparison with records'), src/components/crm/often-opened-with.test.tsx ('Often opened with')",
+        "Server side is in Theorem (tests in theorem_index_workspace); not yet observed against a deployed Theorem"
+      ]
+    },
+    {
+      "id": "file-to-records",
+      "requirement": "The filing engine files a document to the record it is about, with tier, confidence, correction and undo",
+      "status": "partial",
+      "evidence": [
+        "UI: the inspector's About section with Not about / Change… / Undo (src/components/index/record-links.tsx); Documents about this on a record's preview and page from the record_documents binding (src/components/crm/documents-about.tsx); contract, API and queries (src/components/index/contract.ts, api.ts, queries.ts, bindings.ts)",
+        "UI tests: src/components/index/record-links.test.tsx (8), src/components/crm/documents-about.test.tsx (4)",
+        "Server side is in Theorem (rustyred-thg-filing records module, /api/documents/v2 record-filings routes, record_documents binding); no manual link when Theorem linked none; not yet observed against a deployed Theorem"
+      ]
+    },
+    {
+      "id": "extract-to-proposals",
+      "requirement": "Material filed to a record can lead to a change to the record only as a proposal the person approves",
+      "status": "not-started",
+      "evidence": [
+        "Theorem's record change proposals (saved_records_propose_change, /api/chat/v1/record-proposals) are the approval path to reuse"
+      ]
     }
   ]
 }

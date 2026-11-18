@@ -13,7 +13,8 @@ test('Notes keeps its own folders, so its Trash closes the panel', () => {
 
 test('beside the threads the files fold into the panel instead', () => {
   const others = MODES.map((entry) => entry.mode).filter(
-    (mode) => !['index', 'pages', 'spaces', 'canvas', 'notes'].includes(mode),
+    (mode) =>
+      !['index', 'pages', 'spaces', 'canvas', 'notes'].includes(mode),
   )
   for (const mode of others) expect(filesUnderPanel(mode)).toBe(false)
 })

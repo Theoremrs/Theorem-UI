@@ -54,3 +54,60 @@ Index is a fourth mode on the rail, at `/index`.
 | Library publication | The UI publishes `library.prompt()`, component and callable names to `/api/index/v1/library` when its digest changes                         | Theorem composes candidates against exactly the components this build renders                                                             |
 | Atlas               | A library component over the `map` binding (`AtlasSnapshot` v2)                                                                              | The map is one optional way to see the material, never its identity                                                                       |
 | Tests               | `bun test` over the pure modules: bindings, observation batching, default programs parsed by the real parser                                 | No new test runner                                                                                                                        |
+
+## Records in the Index (2026-11-16)
+
+The CRM moved into the Index (see `record-table-data-model.md`): a type's
+table, a record page and the records home are built-in views, and an open
+record is the Index's item `record:<name>/<id>`. Opening a record page from
+anywhere goes through the Index navigator, which records an `item_opened`
+observation with the record's id, so record use reaches the same learning
+signal as documents.
+
+The owner set the order in which records join the self-organizing loop:
+
+1. **Records in views and used together.** The Index's observations and its
+   used-together relation accept record ids; a view binding can list records;
+   a prepared view can place records beside the documents they are used with.
+   UI side done in source: observations carry record ids; the contract has a
+   `records` binding (`{kind:'records', ids}`, 1..50 item ids) with its
+   `records` result and an optional `records` list on the used-together result
+   (absent from an older server, read as none); `IndexComparison` takes an
+   optional fourth argument (the `records` Query) and shows a "Records"
+   section of rows (type mark, title or record id) that open the record page,
+   and renders an all-record group with no document strip; a record's preview
+   and page show "Often opened with" (a used-together binding anchored on the
+   record's item id, up to 8 neighbours, hidden while loading, when empty or
+   when the read fails). Tests: `index.test.ts` ("the used-together template
+   with records parses", "records in the contract"),
+   `records-in-views.test.tsx` ("IndexComparison with records") and
+   `crm/often-opened-with.test.tsx` ("Often opened with"). The server side is
+   in Theorem (`theorem_index_workspace` tests). Nothing here is observed
+   against a deployed Theorem yet.
+2. **Filing documents to records.** When a document is filed, Theorem also
+   links it to up to three saved records it is about, with a receipt (tier,
+   confidence, why) for each, and the person corrects or undoes it; the owner
+   chose filing with Undo over an approval queue, because a link never changes
+   a field of the record. Precedent is an email or phone of exactly one record
+   appearing in the document; learned is the record's name as whole words in
+   the title or text. A dismissed pair is never linked again, and a record
+   dismissed twice by name stops being linked by name. UI side done in
+   source: the document inspector's "About" section (`index/record-links.tsx`)
+   lists each linked record with why it was linked, opens the record page, and
+   offers "Not about <name>", "Change…" (another record of the same type) and
+   Undo for the latest correction, read from Theorem so it survives a reload;
+   nothing shows when the document is about no record. A record's preview and
+   page list "Documents about this" (`crm/documents-about.tsx`) from the
+   `record_documents` binding (`{kind:'record_documents', recordItemId}`,
+   answered as items), hidden while loading, when empty, or when an older
+   Theorem refuses the kind. Tests: `index/record-links.test.tsx` and
+   `crm/documents-about.test.tsx`. There is no way yet to link a document to a
+   record by hand when Theorem linked it to none; "Change…" offers only
+   records of the linked record's type. Nothing here is observed against a
+   deployed Theorem yet.
+3. **Extraction from filed material.** A filed document can lead to a change
+   to a record, made only as a proposal the person approves (the agent's
+   record change proposals in Theorem are the model).
+
+Self-describing fields (a field linked to the places it belongs) were
+discussed and deferred.

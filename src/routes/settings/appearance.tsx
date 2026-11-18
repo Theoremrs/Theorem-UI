@@ -23,6 +23,10 @@ import {
   SegmentedControlItem,
 } from '@/components/coss/segmented-control'
 import {
+  setCalculationsShown,
+  useCalculationsShown,
+} from '@/components/crm/calculations-setting'
+import {
   SettingsBox,
   SettingsPage,
   SettingsRow,
@@ -85,6 +89,7 @@ export function AppearanceSettings() {
   const lifeShown = useLifeShown()
   const lifeOverride = useLifeControls((state) => state.shown)
   const lifePlaying = useLifeControls((state) => state.playing)
+  const calculations = useCalculationsShown()
   const reset = () => {
     resetOverrides()
     setTheme('system')
@@ -232,6 +237,16 @@ export function AppearanceSettings() {
                 onPress={() => setOverrides({ reading: 'wide' })}
               />
             </SegmentedControl>
+          </SettingsRow>
+          <SettingsRow
+            title="Calculations under record tables"
+            description="A Calculate row under each record table: counts, percentages, sums and dates over the records loaded. Off, the table shows only how many records it holds. Kept on this device."
+          >
+            <Switch
+              aria-label="Calculations under record tables"
+              checked={calculations}
+              onCheckedChange={setCalculationsShown}
+            />
           </SettingsRow>
         </SettingsBox>
       </SettingsSection>
