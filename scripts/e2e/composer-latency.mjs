@@ -47,14 +47,28 @@ try {
       .slice(0, size)
     await page.getByRole('button', { name: 'Load Plain', exact: true }).click()
     await input.click()
-    await page.keyboard.press('Meta+A')
+    // Meta+A selects all only on macOS. Chromium on Linux and Windows keeps
+    // the "First paragraph" fixture and inserts the draft after it; a length
+    // check then accepts the oversized text and reports it as this size.
+    await page.keyboard.press('ControlOrMeta+A')
     await page.keyboard.insertText(draft)
-    await page.waitForFunction(
-      (length) =>
-        (document.querySelector('[data-testid="draft"]')?.textContent?.length ??
-          0) >= length,
-      size,
-    )
+    try {
+      await page.waitForFunction(
+        (expected) =>
+          document.querySelector('[data-testid="draft"]')?.textContent ===
+          expected,
+        draft,
+      )
+    } catch (error) {
+      const shown = await page.locator('[data-testid="draft"]').textContent()
+      const fixture = shown?.includes('First paragraph')
+        ? ' and still contains the fixture'
+        : ''
+      throw new Error(
+        `chars=${size}: draft is ${shown?.length ?? 0} chars${fixture}, expected ${draft.length}`,
+        { cause: error },
+      )
+    }
     await page.keyboard.press('End')
     // Let the paste's own work and Milkdown's debounced listener settle, so
     // the window under test holds only single keystrokes.

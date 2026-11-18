@@ -16,7 +16,11 @@ import {
 } from '@/lib/life/life'
 import type { Field } from '@/lib/life/life'
 import { emit, fill } from '@/lib/life/emitter'
-import { TEXT_QUIET, occlusionMask } from '@/lib/life/occlusion'
+import {
+  TEXT_QUIET,
+  occlusionMask,
+  sameClientBoxes,
+} from '@/lib/life/occlusion'
 import type { ClientBox } from '@/lib/life/occlusion'
 import {
   RESTING,
@@ -586,8 +590,16 @@ export function mountLife(
       requestDraw()
     },
     occlude(next) {
+      // Scrolling and streaming remeasure on every frame. An identical box
+      // list is not a new picture, and drawing it would paint the idle field
+      // on every one of those frames.
+      if (sameClientBoxes(boxes, next)) return
       boxes = next
       quiet = undefined
+      // While the field plays, the animation loop paints the new mask on its
+      // next frame. A paused field has no loop, so the old clearing would
+      // stay until some other interaction. One paint; the loop stays stopped.
+      if (!useLifeControls.getState().playing) requestDraw()
     },
     destroy() {
       destroyed = true

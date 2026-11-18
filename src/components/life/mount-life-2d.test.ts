@@ -398,6 +398,32 @@ test('a paused field repaints when the companion setting changes', async () => {
   expect(ctx.clearRect.mock.calls.length).toBeGreaterThan(0)
 })
 
+test('a paused field repaints once when text moves and skips an unchanged measurement', () => {
+  const { game, ctx, drawn, scheduled } = setup()
+  const peak = () => Math.max(...drawn.map((glyph) => glyph.alpha))
+  expect(drawn.length).toBeGreaterThan(0)
+  const open = peak()
+
+  ctx.clearRect.mockClear()
+  drawn.length = 0
+  game.occlude([{ left: 0, top: 0, right: 240, bottom: 192 }])
+  expect(ctx.clearRect.mock.calls.length).toBe(1)
+  expect(scheduled.size).toBe(0)
+  expect(drawn.length).toBeGreaterThan(0)
+  // A full-cover mask quiets every glyph. The unoccluded peak staying put
+  // would mean the new boxes were stored and not drawn.
+  expect(peak()).toBeLessThan(open * 0.2)
+
+  ctx.clearRect.mockClear()
+  game.occlude([{ left: 0, top: 0, right: 240, bottom: 192 }])
+  expect(ctx.clearRect.mock.calls.length).toBe(0)
+  expect(scheduled.size).toBe(0)
+
+  game.occlude([{ left: 8, top: 40, right: 80, bottom: 56 }])
+  expect(ctx.clearRect.mock.calls.length).toBe(1)
+  expect(scheduled.size).toBe(0)
+})
+
 test('a paused field repaints when the brush preview setting changes', async () => {
   const { game, ctx, frame } = setup()
   game.hover(55, 56)

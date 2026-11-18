@@ -26,7 +26,24 @@ const fake = {
     }),
   },
   clear() {},
-  grid: { cols: 8, rows: 8 },
+  canvas: {
+    width: 80,
+    height: 80,
+    getBoundingClientRect: () => ({
+      left: 0,
+      top: 0,
+      width: 80,
+      height: 80,
+    }),
+  },
+  grid: {
+    cols: 8,
+    rows: 8,
+    offsetX: 0,
+    offsetY: 0,
+    cellWidth: 10,
+    cellHeight: 20,
+  },
   setup: (callback: () => void) => {
     setup = callback
   },
@@ -263,6 +280,35 @@ test('a paused textmode field repaints when the brush preview changes', async ()
   useLifeControls.setState({ brush: 'glider' })
   await new Promise((resolve) => setTimeout(resolve, 20))
   expect(redraws).toBeGreaterThan(0)
+  expect(looping).toBe(false)
+  game.destroy()
+})
+
+test('a paused field repaints once when text moves and skips an unchanged measurement', async () => {
+  const host = visibleHost()
+  const game = mountLife(host, { reducedMotion: true })
+  setup()
+  const canvas = host.querySelector('canvas')!
+  canvas.style.position = 'absolute'
+  drawField()
+  useLifeControls.setState({ playing: false })
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(looping).toBe(false)
+
+  const line = { left: 0, top: 0, right: 40, bottom: 16 }
+  redraws = 0
+  game.occlude([line])
+  expect(redraws).toBe(1)
+  expect(looping).toBe(false)
+
+  redraws = 0
+  game.occlude([{ ...line }])
+  expect(redraws).toBe(0)
+  expect(looping).toBe(false)
+
+  redraws = 0
+  game.occlude([{ ...line, top: 24, bottom: 40 }])
+  expect(redraws).toBe(1)
   expect(looping).toBe(false)
   game.destroy()
 })
