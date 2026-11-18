@@ -21,7 +21,7 @@
     "e2e:skills": "node scripts/e2e/skills.mjs",
     "e2e:workbench": "node scripts/e2e/workbench.mjs",
     "e2e:admit": "node scripts/e2e/admit.mjs",
-    "dev": "sh terminal/build.sh && bun --bun vite dev --port 3000",
+    "dev": "sh terminal/build.sh && node node_modules/vite/bin/vite.js dev --port 3000",
     "generate-routes": "tsr generate",
     "build": "sh scripts/build.sh",
     "build:cloudflare": "sh scripts/build-cloudflare.sh",
