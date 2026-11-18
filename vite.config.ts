@@ -138,6 +138,9 @@ const config = defineConfig({
     nitro({
       preset: cloudflare ? 'cloudflare_module' : 'bun',
       minify: cloudflare,
+      // The dictation WebSocket upgrades through the Bun preset's crossws
+      // adapter; the fetch proxy alone drops the upgrade header.
+      features: { websocket: true },
       // Keep dependencies of the lazy Neon Auth routes out of eagerly loaded
       // library chunks. The browser adapter generates a UUID on module load.
       ...(cloudflare && {
@@ -200,6 +203,12 @@ const config = defineConfig({
       ...(!cloudflare && {
         plugins: ['./src/server/desktop/plugin.ts'],
         routes: {
+          // Dictation upgrades to a WebSocket; the fetch proxy drops the
+          // upgrade header, so this nitro route hands it to crossws.
+          '/api/chat/v1/dictation': {
+            handler: './src/server/dictation-proxy.ts',
+            method: 'GET',
+          },
           '/desktop/session': {
             handler: './src/server/desktop/session.ts',
             method: 'GET',

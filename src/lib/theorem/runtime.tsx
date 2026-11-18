@@ -14,7 +14,6 @@ import {
   useAuiState,
   useLocalRuntime,
   useRemoteThreadListRuntime,
-  WebSpeechDictationAdapter,
 } from '@assistant-ui/react'
 import type {
   ChatModelAdapter,
@@ -76,6 +75,7 @@ import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
 import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { dictationAdapter } from '@/lib/speech/dictation'
 import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
 
@@ -678,15 +678,9 @@ function useTheoremThreadRuntime() {
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
-  // Dictation is the browser's own speech recognition, where it has one; the
-  // composer's mic appears only then.
-  const dictation = useMemo(
-    () =>
-      typeof window !== 'undefined' && WebSpeechDictationAdapter.isSupported()
-        ? new WebSpeechDictationAdapter()
-        : undefined,
-    [],
-  )
+  // Dictation is Parakeet where its model is here, the browser's own
+  // recognition otherwise; the composer's mic appears only where one can run.
+  const dictation = useMemo(() => dictationAdapter(), [])
   const runtime = useLocalRuntime(adapter, { adapters: { speech, dictation } })
   useEffect(() => bindRunInput(runtime, {
     threadKey: aui.threadListItem.getState().id,
