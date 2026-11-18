@@ -130,6 +130,36 @@ describe('an evaluation against a fixed criterion', () => {
   })
 })
 
+describe('an evaluation that cannot be fooled', () => {
+  test('a value the receipt cannot hold fails its own case, and the receipt is still made', async () => {
+    const against = await rodCriterion()
+    const receipt = await evaluate(against, candidate, evaluator, (input) =>
+      (input as { at: number }).at === 0.5 ? Number.NaN : at(solveRod)(input),
+    )
+    const middle = receipt.cases.find((item) => item.name === 'x=0.5')!
+    expect(middle.status).toBe('error')
+    expect(middle).not.toHaveProperty('actual')
+    expect(receipt.passed).toBe(3)
+  })
+
+  test('an expectation changed while a case runs is not the one checked', async () => {
+    const against = await rodCriterion()
+    const receipt = await evaluate(against, candidate, evaluator, (input) => {
+      against.cases[1]!.expected = 0
+      return at(solveRod)(input)
+    })
+    expect(receipt.failed).toBe(0)
+    expect(receipt.criterion).toBe(against.id)
+  })
+
+  test('different dates or maps are not equal', () => {
+    expect(matches(new Date('2026-11-19'), new Date('2026-11-20'))).toBe(false)
+    expect(matches(new Date('2026-11-19'), new Date('2026-11-19'))).toBe(true)
+    expect(matches(new Map([['a', 1]]), new Map([['a', 2]]))).toBe(false)
+    expect(matches({}, new Date('2026-11-19'))).toBe(false)
+  })
+})
+
 describe('feedback judged before and after', () => {
   test('a fix counts as an improvement only against the unchanged criterion', async () => {
     const against = await rodCriterion()
@@ -304,6 +334,22 @@ describe('reuse across revisions', () => {
       reusable: false,
       changed: ['source'],
     })
+  })
+
+  test('an input changed while a result is adopted is not the one it is kept under', async () => {
+    const implementation = await digestOf({ 'solver.ts': 'v1' })
+    const first = new Operations({ source: revision(1) })
+    first.define(solver(implementation))
+    const solved = await first.invoke('solve', ROD)
+    const second = new Operations({ source: revision(2) })
+    second.define(solver(implementation))
+    const input = { ...ROD }
+    const adopting = second.adopt('solve', input, solved.output, solved.result)
+    input.right = 50
+    expect(await adopting).toEqual({ reusable: true })
+    const changed = await second.invoke('solve', input)
+    expect(changed.reused).toBe(false)
+    expect((await second.invoke('solve', ROD)).reused).toBe(true)
   })
 
   test('a result is adopted only with the content it names', async () => {

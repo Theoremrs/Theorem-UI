@@ -171,7 +171,6 @@ function Field({ field }: { field: PlateField }) {
 
 function App() {
   const [plate, setPlate] = useState<PlateInput>(DEFAULT)
-  const [material, setMaterial] = useState<Material>('steel')
   const [field, setField] = useState<PlateField | null>(null)
   const [reused, setReused] = useState<string>('')
   const operations = useRef<Operations | null>(null)
@@ -248,6 +247,12 @@ function App() {
     }
   }, [plate])
 
+  // The material shown is the one the plate's conductivity is, so a restored plate shows its own.
+  const material =
+    (Object.keys(MATERIALS) as Array<Material>).find(
+      (name) => MATERIALS[name] === plate.conductivity,
+    ) ?? 'steel'
+
   const side = (name: 'left' | 'right' | 'bottom' | 'top', label: string) => (
     <BoundaryControl
       label={label}
@@ -269,7 +274,6 @@ function App() {
           value={material}
           onChange={(event) => {
             const next = event.target.value as Material
-            setMaterial(next)
             setPlate({ ...plate, conductivity: MATERIALS[next] })
           }}
         >

@@ -8,7 +8,12 @@ import { resultRef } from './context'
 import type { ResultRef, Versioned } from './context'
 import { canonicalJson, digestOf } from './digest'
 import { sameSource } from './session'
-import type { ArtifactSourceRef, BuildRef, Digest, Reproducibility } from './types'
+import type {
+  ArtifactSourceRef,
+  BuildRef,
+  Digest,
+  Reproducibility,
+} from './types'
 
 /**
  * How an operation's results can be had again. `rerun`: run it again on the
@@ -18,11 +23,7 @@ import type { ArtifactSourceRef, BuildRef, Digest, Reproducibility } from './typ
  * `x-…`: a recovery an adapter defines.
  */
 export type Recovery =
-  | 'rerun'
-  | 'input-replay'
-  | 'checkpoint-restore'
-  | 'reopen'
-  | `x-${string}`
+  'rerun' | 'input-replay' | 'checkpoint-restore' | 'reopen' | `x-${string}`
 
 /** What an operation says about itself: what the agent and the host discover. */
 export interface OperationDescriptor {
@@ -55,7 +56,10 @@ export interface OperationDescriptor {
 }
 
 /** An operation: its descriptor and the code that runs it. */
-export interface Operation<TInput = unknown, TOutput = unknown> extends OperationDescriptor {
+export interface Operation<
+  TInput = unknown,
+  TOutput = unknown,
+> extends OperationDescriptor {
   /** Refuses an input that is not this operation's, before it runs. */
   accepts?: (input: unknown) => input is TInput
   run: (input: TInput) => TOutput | Promise<TOutput>
@@ -72,12 +76,12 @@ export interface Invocation<TOutput = unknown> {
 const NAME = /^[A-Za-z][\w.-]{0,79}$/
 
 /** What differs between a kept result and an invocation now. */
-export type ReuseChange = 'operation' | 'version' | 'implementation' | 'input' | 'source' | 'build'
+export type ReuseChange =
+  'operation' | 'version' | 'implementation' | 'input' | 'source' | 'build'
 
 /** Whether a kept result can stand for an invocation now, and if not, why. */
 export type ReuseVerdict =
-  | { reusable: true }
-  | { reusable: false; changed: Array<ReuseChange> }
+  { reusable: true } | { reusable: false; changed: Array<ReuseChange> }
 
 /**
  * The operations an artifact defines, and their results by exact key: the
@@ -97,7 +101,9 @@ export class Operations {
     },
   ) {}
 
-  define<TInput, TOutput>(operation: Operation<TInput, TOutput>): Operation<TInput, TOutput> {
+  define<TInput, TOutput>(
+    operation: Operation<TInput, TOutput>,
+  ): Operation<TInput, TOutput> {
     if (!NAME.test(operation.name))
       throw new Error(`"${operation.name}" is not an operation name`)
     if (this.defined.has(operation.name))
@@ -128,7 +134,11 @@ export class Operations {
   private keyOf(operation: Operation, input: Digest): Promise<Digest> {
     const operationKey = { name: operation.name, version: operation.version }
     return operation.implementation
-      ? digestOf({ implementation: operation.implementation, operation: operationKey, input })
+      ? digestOf({
+          implementation: operation.implementation,
+          operation: operationKey,
+          input,
+        })
       : digestOf({
           source: this.runsIn.source,
           build: this.runsIn.build ?? null,
@@ -143,7 +153,13 @@ export class Operations {
    * and if not, what changed. Read from the result's own provenance, so it
    * holds after the App that made it is gone.
    */
-  async explain(name: string, input: unknown, previous: ResultRef): Promise<ReuseVerdict> {
+  async explain(
+    name: string,
+    given: unknown,
+    givenPrevious: ResultRef,
+  ): Promise<ReuseVerdict> {
+    const input: unknown = structuredClone(given)
+    const previous = structuredClone(givenPrevious)
     const operation = this.defined.get(name)
     if (!operation) throw new Error(`No operation is named ${name}`)
     const from = previous.provenance
@@ -158,9 +174,12 @@ export class Operations {
         changed.push('implementation')
     } else {
       if (!sameSource(from.source, this.runsIn.source)) changed.push('source')
-      if ((from.build ?? null) !== (this.runsIn.build ?? null)) changed.push('build')
+      if ((from.build ?? null) !== (this.runsIn.build ?? null))
+        changed.push('build')
     }
-    return changed.length === 0 ? { reusable: true } : { reusable: false, changed }
+    return changed.length === 0
+      ? { reusable: true }
+      : { reusable: false, changed }
   }
 
   /**
@@ -170,18 +189,24 @@ export class Operations {
    */
   async adopt(
     name: string,
-    input: unknown,
-    output: unknown,
-    previous: ResultRef,
+    given: unknown,
+    givenOutput: unknown,
+    givenPrevious: ResultRef,
   ): Promise<ReuseVerdict> {
+    // Owned copies, taken before the first wait, used for every check and kept.
+    const input: unknown = structuredClone(given)
+    const output: unknown = structuredClone(givenOutput)
+    const previous = structuredClone(givenPrevious)
     const verdict = await this.explain(name, input, previous)
     if (!verdict.reusable) return verdict
     if ((await digestOf(output)) !== previous.content)
-      throw new Error(`The output given is not the content ${previous.id} names`)
+      throw new Error(
+        `The output given is not the content ${previous.id} names`,
+      )
     const operation = this.defined.get(name)!
     this.results.set(await this.keyOf(operation, await digestOf(input)), {
-      output: structuredClone(output),
-      result: structuredClone(previous),
+      output,
+      result: previous,
       reused: false,
     })
     return verdict
@@ -191,7 +216,10 @@ export class Operations {
    * Runs an operation, or returns the result already made for the same exact
    * key when the operation is deterministic. The output must be JSON.
    */
-  async invoke<TOutput = unknown>(name: string, given: unknown): Promise<Invocation<TOutput>> {
+  async invoke<TOutput = unknown>(
+    name: string,
+    given: unknown,
+  ): Promise<Invocation<TOutput>> {
     const operation = this.defined.get(name)
     if (!operation) throw new Error(`No operation is named ${name}`)
     // Taken now: a caller changing its object while this waits changes nothing.
@@ -203,7 +231,9 @@ export class Operations {
     const kept = this.results.get(key)
     if (kept && operation.reproducibility === 'deterministic')
       return { ...(structuredClone(kept) as Invocation<TOutput>), reused: true }
-    const output = structuredClone(await operation.run(structuredClone(input))) as TOutput
+    const output = structuredClone(
+      await operation.run(structuredClone(input)),
+    ) as TOutput
     const json = canonicalJson(output)
     const result = await resultRef({
       content: await digestOf(output),

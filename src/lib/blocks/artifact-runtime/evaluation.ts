@@ -114,6 +114,13 @@ export async function criterionIdHolds(given: Criterion): Promise<boolean> {
   return (await digestOf(rest)) === id
 }
 
+/** A plain JSON object: compared key by key. Dates, Maps and the like are compared by canonical form. */
+const plain = (value: unknown): value is Record<string, unknown> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const prototype: unknown = Object.getPrototypeOf(value)
+  return prototype === Object.prototype || prototype === null
+}
+
 /**
  * Whether `actual` matches `expected`: numbers within the case's tolerance,
  * arrays and objects element by element with the same keys, anything else by
@@ -138,9 +145,8 @@ export function matches(
       actual.length === expected.length &&
       expected.every((item, index) => matches(actual[index], item, tolerance))
     )
-  if (expected && typeof expected === 'object') {
-    if (!actual || typeof actual !== 'object' || Array.isArray(actual))
-      return false
+  if (plain(expected)) {
+    if (!plain(actual)) return false
     const want = Object.keys(expected).sort()
     const have = Object.keys(actual).sort()
     return (
@@ -167,11 +173,16 @@ export function matches(
  * case's input only, so a candidate cannot supply its own expectation.
  */
 export async function evaluate(
-  against: Criterion,
-  candidate: SubjectRef,
-  evaluator: Evaluator,
+  givenCriterion: Criterion,
+  givenCandidate: SubjectRef,
+  givenEvaluator: Evaluator,
   run: (input: unknown, name: string) => unknown,
 ): Promise<EvaluationReceipt> {
+  // Owned copies, taken before the first wait: a caller changing its objects
+  // while a case runs changes neither what is checked nor what is named.
+  const against = structuredClone(givenCriterion)
+  const candidate = structuredClone(givenCandidate)
+  const evaluator = structuredClone(givenEvaluator)
   if (!(await criterionIdHolds(against)))
     throw new Error(`The criterion ${against.name} does not match its id`)
   const cases: Array<CaseOutcome> = []
@@ -180,6 +191,9 @@ export async function evaluate(
       const actual = structuredClone<unknown>(
         await run(structuredClone(item.input), item.name),
       )
+      // A value the receipt cannot hold (NaN, Infinity, a function) is an
+      // error of this case, not of the whole evaluation.
+      canonicalJson(actual)
       const pass = matches(actual, item.expected, item.tolerance)
       cases.push({ name: item.name, status: pass ? 'pass' : 'fail', actual })
     } catch (error) {
