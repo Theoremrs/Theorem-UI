@@ -8,6 +8,27 @@ import type { PartSpec } from './engine'
 import type { Form } from './form'
 
 export { mount } from './view'
+export {
+  Control,
+  hintFor,
+  PartAnnotation,
+  PartControls,
+  PartNote,
+  partAnchor,
+  PlaybackStrip,
+  portAnchor,
+  PortTag,
+  SpatialChrome,
+  Trail,
+} from './chrome'
+export type {
+  ChromeActions,
+  ChromeProps,
+  ChromeSnapshot,
+  PartSnapshot,
+  PortSnapshot,
+  StateSnapshot,
+} from './chrome'
 export type { MountOptions, PartView, SpatialBuilder, SpatialModel } from './view'
 export type {
   CheckSpec,

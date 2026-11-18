@@ -27,7 +27,7 @@ import { encodeRows } from './sandbox/standalone'
 import { toBase64 } from './state'
 import { importMap } from './vendor/manifest'
 import { vendorModules } from './vendor/modules'
-import { librarySources } from './app-library-sources'
+import { libraryModule } from './app-library-sources'
 
 type Bundler = Pick<typeof Esbuild, 'build'>
 
@@ -284,16 +284,18 @@ export const SOURCE_ATTRIBUTE = 'data-theorem-source'
 const JSX_SOURCE = 'theorem-app-jsx'
 
 /**
- * The JSX runtime an App is built with: React's, with each element that
- * becomes a DOM node stamped with where it was written. esbuild passes that
- * place to `jsxDEV`, so nothing is parsed and nothing is written into the
- * App's own source.
+ * The JSX runtime an App is built with: React's, with each element the App's
+ * own files write that becomes a DOM node stamped with where it was written.
+ * A library's elements are not stamped: the place to change is the App line
+ * that used the library. esbuild passes that place to `jsxDEV`, so nothing is
+ * parsed and nothing is written into the App's own source.
  */
 const JSX_RUNTIME = `import { Fragment, jsx, jsxs } from 'react/jsx-runtime'
 export { Fragment }
 export function jsxDEV(type, props, key, isStatic, source) {
   const stamped =
-    typeof type === 'string' && source && props['${SOURCE_ATTRIBUTE}'] === undefined
+    typeof type === 'string' && source && String(source.fileName).startsWith('${NAMESPACE.app}:') &&
+    props['${SOURCE_ATTRIBUTE}'] === undefined
       ? {
           ...props,
           '${SOURCE_ATTRIBUTE}':
@@ -342,7 +344,7 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
       )
       // A library's own modules, `./name` beside the one importing them.
       build.onResolve(
-        { filter: /^\.\/[\w-]+$/, namespace: NAMESPACE.library },
+        { filter: /^\.\/[\w-]+(?:\.\w+)?$/, namespace: NAMESPACE.library },
         ({ path, importer }) => ({
           path: `${importer.slice(0, importer.lastIndexOf('/'))}/${path.slice(2)}`,
           namespace: NAMESPACE.library,
@@ -378,10 +380,10 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
       )
       build.onLoad({ filter: /.*/, namespace: NAMESPACE.library }, ({ path }) => {
         const slash = path.lastIndexOf('/')
-        const source = librarySources[path.slice(0, slash)]?.[path.slice(slash + 1)]
-        return source === undefined
+        const module = libraryModule(path.slice(0, slash), path.slice(slash + 1))
+        return module === undefined
           ? { errors: [{ text: `No module "${path}"` }] }
-          : { contents: source, loader: 'ts' }
+          : { contents: module.source, loader: LOADERS[module.file.slice(module.file.lastIndexOf('.') + 1)] ?? 'ts' }
       })
       build.onLoad(
         { filter: /.*/, namespace: NAMESPACE.dependency },

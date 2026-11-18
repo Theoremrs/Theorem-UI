@@ -1,14 +1,15 @@
 // SOURCING: three.js draws and picks everything: WebGLRenderer with a
 // PerspectiveCamera, OrbitControls (restrained, damped) for looking around,
 // Raycaster for picking, MeshSurfaceSampler for the cells that give a part its
-// substance, TubeGeometry along CubicBezierCurve3 for wires, CSS2DRenderer for
-// labels that stay readable at any depth. What is ours is the handling: pull a
+// substance, TubeGeometry along CubicBezierCurve3 for wires. Labels, notes,
+// controls and the breadcrumb are React (chrome.tsx, or an App's own chrome)
+// placed over the scene by @theorem/annotate from the screen boxes written
+// here each frame. What is ours is the handling: pull a
 // part forward while the rest recedes, open a part into its inside with its
 // cells reorganising onto the inner parts, values replayed stage by stage.
 
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
-import { CSS2DObject, CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import { MeshSurfaceSampler } from 'three/examples/jsm/math/MeshSurfaceSampler.js'
 import {
   allParts,
@@ -25,9 +26,15 @@ import {
   
   
 } from './engine'
-import type {Builder, ControlSpec, HandleSpec, Network, Part, PartReading, Settled, Values, Vec3, Wire} from './engine';
+import type {Builder, HandleSpec, Network, Part, PartReading, Settled, Values, Vec3, Wire} from './engine';
 import { buildForm, mergedGeometry  } from './form'
 import type {Form} from './form';
+import { anchorStore } from '@theorem/annotate'
+import { createElement } from 'react'
+import type { ComponentType } from 'react'
+import { createRoot } from 'react-dom/client'
+import { partAnchor, portAnchor, SpatialChrome } from './chrome'
+import type { ChromeActions, ChromeProps, ChromeSnapshot, PartSnapshot } from './chrome'
 
 export type SpatialBuilder = Builder<Form, THREE.Object3D>
 
@@ -39,8 +46,13 @@ export interface MountOptions {
    * revisions of the App.
    */
   remember?: string
-  /** Height in CSS pixels. Default 520. */
+  /** Height in CSS pixels of the whole view: the scene and the strip below it. Default 520. */
   height?: number
+  /**
+   * The labels, notes and controls around the scene. Default: SpatialChrome.
+   * An App can write its own from the pieces chrome.tsx exports, or from nothing.
+   */
+  chrome?: ComponentType<ChromeProps>
   /** Stages a change travels per second. Default 5. */
   pace?: number
 }
@@ -55,6 +67,8 @@ export interface PartView {
   at: Vec3
   /** Where its centre is on screen, in CSS pixels from the model's top left; null when not drawn. */
   screen: [number, number] | null
+  /** The box it covers on screen, as its notes are placed against it; null when not drawn. */
+  box: { x: number; y: number; width: number; height: number } | null
   pulled: boolean
 }
 
@@ -144,7 +158,6 @@ interface PortVisual {
   /** Which way a wire leaves it, in the body frame. */
   normal: THREE.Vector3
   dot: THREE.Mesh
-  tag: CSS2DObject
 }
 
 interface Level {
@@ -173,7 +186,6 @@ interface Visual {
   /** Where the person moved it, in its level's frame. */
   moved: THREE.Vector3
   ports: Map<string, PortVisual>
-  label: CSS2DObject
   handles: Array<{ spec: HandleSpec; knob: THREE.Mesh; track: THREE.Line }>
   inside?: Level
   insideScale: number
@@ -198,6 +210,8 @@ interface WireVisual {
 }
 
 const FRAMING = new THREE.Vector3(0.62, 0.42, 1).normalize()
+/** The band an open note takes at the stage's right: its 18rem and the gap to its part. */
+const NOTE_BAND = 18 * 16 + 18
 const ease = (current: number, target: number, rate: number, dt: number) =>
   current + (target - current) * (1 - Math.exp(-rate * dt))
 
@@ -267,55 +281,23 @@ export function mount(
   const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches
   const pace = options.pace ?? 5
 
-  // The page around the canvas: no frame, only what is needed beside the model.
+  // The page around the canvas: the scene, and below it the strip and, on a
+  // narrow page, the controls of the part in hand.
   const root = document.createElement('div')
   root.className = 'theorem-spatial'
-  root.style.cssText = `position:relative;width:100%;height:${options.height ?? 520}px;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;font-family:${theme.font};`
+  root.style.cssText = `position:relative;width:100%;height:${options.height ?? 520}px;overflow:hidden;user-select:none;-webkit-user-select:none;font-family:${theme.font};`
   element.append(root)
-  const style = document.createElement('style')
-  root.append(style)
-  const paint = () => {
-    style.textContent = `
-.theorem-spatial .ts-label{font:500 11.5px/1.25 ${theme.font};color:${theme.ink};text-align:center;pointer-events:none;white-space:nowrap;text-shadow:0 0 6px ${theme.surface},0 0 2px ${theme.surface}}
-.theorem-spatial .ts-label small{display:block;font:400 10.5px/1.2 ${theme.mono};color:${theme.muted}}
-.theorem-spatial .ts-port{font:500 10px/1 ${theme.mono};color:${theme.muted};pointer-events:none;text-shadow:0 0 4px ${theme.surface},0 0 2px ${theme.surface}}
-.theorem-spatial .ts-port.on{color:${theme.lit}}
-.theorem-spatial .ts-card{position:absolute;min-width:190px;max-width:270px;padding:10px 12px;border-radius:10px;background:color-mix(in srgb, ${theme.surface} 88%, transparent);backdrop-filter:blur(10px);border:1px solid color-mix(in srgb, ${theme.border} 70%, transparent);box-shadow:0 8px 28px rgb(0 0 0 / .14);color:${theme.ink};font-size:12px;line-height:1.35;user-select:text;-webkit-user-select:text;z-index:3}
-.theorem-spatial .ts-card h3{margin:0 0 2px;font-size:13px;font-weight:600}
-.theorem-spatial .ts-card p{margin:0 0 8px;color:${theme.muted}}
-.theorem-spatial .ts-card table{width:100%;border-collapse:collapse;font-family:${theme.mono};font-size:11px}
-.theorem-spatial .ts-card td{padding:2px 0;vertical-align:middle}
-.theorem-spatial .ts-card td:first-child{color:${theme.muted};padding-right:8px}
-.theorem-spatial .ts-card td:last-child{text-align:right}
-.theorem-spatial .ts-card input[type=number]{width:72px;padding:2px 4px;font:inherit;text-align:right}
-.theorem-spatial .ts-card input{accent-color:${theme.lit}}
-.theorem-spatial .ts-card input[type=range]{width:110px}
-.theorem-spatial .ts-card .ts-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.theorem-spatial button.ts-chip{font:500 11.5px/1 ${theme.font};padding:5px 9px;border-radius:999px;border:1px solid color-mix(in srgb, ${theme.border} 80%, transparent);background:color-mix(in srgb, ${theme.surface} 80%, transparent);color:${theme.ink};cursor:pointer}
-.theorem-spatial button.ts-chip:hover{background:color-mix(in srgb, ${theme.ink} 8%, ${theme.surface})}
-.theorem-spatial button.ts-chip[aria-pressed=true]{border-color:${theme.lit};color:${theme.lit}}
-.theorem-spatial button.ts-bit{min-width:26px;padding:2px 6px;border-radius:6px;font:600 11px/1.2 ${theme.mono};cursor:pointer;border:1px solid ${theme.border};background:transparent;color:${theme.muted}}
-.theorem-spatial button.ts-bit[aria-pressed=true]{background:${theme.lit};border-color:${theme.lit};color:${theme.surface}}
-.theorem-spatial .ts-crumbs{position:absolute;left:10px;top:8px;display:flex;gap:4px;align-items:center;font-size:12px;color:${theme.muted};z-index:2}
-.theorem-spatial .ts-crumbs button{border:0;background:none;padding:2px 4px;color:${theme.muted};cursor:pointer;font:inherit}
-.theorem-spatial .ts-crumbs button:last-child{color:${theme.ink};font-weight:600;cursor:default}
-.theorem-spatial .ts-bar{position:absolute;left:10px;bottom:10px;display:flex;gap:6px;align-items:center;font:500 11px/1 ${theme.mono};color:${theme.muted};z-index:2}
-.theorem-spatial .ts-hint{position:absolute;right:12px;bottom:12px;font-size:11px;color:${theme.faint};pointer-events:none}
-.theorem-spatial .ts-outline{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:pre}
-`
-  }
-  paint()
+  const stage = document.createElement('div')
+  stage.className = 'ts-stage'
+  root.append(stage)
 
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
   renderer.setClearColor(0x000000, 0)
-  renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;outline:none'
+  renderer.domElement.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;display:block;outline:none;touch-action:none'
   renderer.domElement.tabIndex = 0
   renderer.domElement.setAttribute('aria-label', options.title ?? 'Spatial model')
-  root.append(renderer.domElement)
-  const labels = new CSS2DRenderer()
-  labels.domElement.style.cssText = 'position:absolute;inset:0;pointer-events:none'
-  root.append(labels.domElement)
+  stage.append(renderer.domElement)
 
   const scene = new THREE.Scene()
   const camera = new THREE.PerspectiveCamera(34, 1, 0.01, 400)
@@ -333,21 +315,14 @@ export function mount(
   controls.screenSpacePanning = true
   controls.rotateSpeed = 0.6
 
-  const crumbs = document.createElement('nav')
-  crumbs.className = 'ts-crumbs'
-  crumbs.setAttribute('aria-label', 'Where you are in the model')
-  const bar = document.createElement('div')
-  bar.className = 'ts-bar'
-  const hint = document.createElement('div')
-  hint.className = 'ts-hint'
-  hint.textContent = 'Drag a part to pull it out · double-click to open · Esc to go back'
-  const card = document.createElement('div')
-  card.className = 'ts-card'
-  card.hidden = true
   const outline = document.createElement('div')
   outline.className = 'ts-outline'
   outline.setAttribute('role', 'list')
-  root.append(crumbs, bar, hint, card, outline)
+  const chromeHost = document.createElement('div')
+  chromeHost.style.display = 'contents'
+  root.append(outline, chromeHost)
+  const chromeRoot = createRoot(chromeHost)
+  const anchors = anchorStore()
 
   // The model's values: what was settled, and what is shown while a change travels.
   let settled = model.settle()
@@ -541,22 +516,9 @@ export function mount(
         dot.userData.path = part.path
         dot.userData.port = port.name
         body.add(dot)
-        const tagElement = document.createElement('div')
-        tagElement.className = 'ts-port'
-        const tag = new CSS2DObject(tagElement)
-        tag.position.copy(local).add(normal.clone().multiplyScalar(0.16))
-        tag.center.set(dir === 'in' ? 1 : 0, 0.5)
-        body.add(tag)
-        ports.set(port.name, { name: port.name, dir, local, normal, dot, tag })
+        ports.set(port.name, { name: port.name, dir, local, normal, dot })
       })
     }
-
-    const labelElement = document.createElement('div')
-    labelElement.className = 'ts-label'
-    const label = new CSS2DObject(labelElement)
-    label.position.set(center.x, box.max.y + 0.16, center.z)
-    label.center.set(0.5, 1)
-    body.add(label)
 
     const handles = (spec.handles ?? []).map((handle) => {
       const axis = new THREE.Vector3(handle.axis === 'x' ? 1 : 0, handle.axis === 'y' ? 1 : 0, handle.axis === 'z' ? 1 : 0)
@@ -590,7 +552,6 @@ export function mount(
       home: at.clone(),
       moved: new THREE.Vector3(),
       ports,
-      label,
       handles,
       insideScale: 1,
       fade: 0,
@@ -701,6 +662,8 @@ export function mount(
   // Where the person is: what is open, pulled out and selected.
   let openPath = ''
   let selected: string | null = null
+  let hovered: string | null = null
+  const pinned = new Set<string>()
   const pulled = new Set<string>()
   const focusNetwork = () => (openPath ? visuals.get(openPath)!.part.inside! : network)
   const ownerOf = (path: string) => (path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '')
@@ -711,6 +674,7 @@ export function mount(
     open?: string
     pulled?: Record<string, Vec3>
     selected?: string | null
+    pinned?: Array<string>
     known?: Array<string>
   }
   let collection: { get: (key: string) => unknown; set: (key: string, value: unknown) => Promise<void> } | undefined
@@ -724,6 +688,7 @@ export function mount(
         open: openPath,
         pulled: Object.fromEntries([...pulled].map((path) => [path, visuals.get(path)!.moved.toArray()])),
         selected,
+        pinned: [...pinned],
         known: [...allParts(network)].map((part) => part.path),
       }
       void collection?.set('spatial', value).catch(() => {})
@@ -758,8 +723,8 @@ export function mount(
           visual.moved.set(...moved)
           pulled.add(path)
         }
+        for (const path of remembered.pinned ?? []) if (visuals.has(path)) pinned.add(path)
         if (remembered.selected && visuals.has(remembered.selected)) select(remembered.selected)
-        renderCrumbs()
         frame(true)
         // A part the last revision did not have arrives lit, so it can be found.
         const known = new Set(remembered.known ?? [])
@@ -789,8 +754,7 @@ export function mount(
       const visual = visuals.get(path)
       if (visual) visual.activity = Math.max(visual.activity, 0.001)
     }
-    renderBar()
-    renderCard()
+    notify()
     renderOutline()
     save()
   }
@@ -807,7 +771,23 @@ export function mount(
   }
 
   // Camera.
-  const fly = { from: new THREE.Vector3(), to: new THREE.Vector3(), lookFrom: new THREE.Vector3(), lookTo: new THREE.Vector3(), t: 1 }
+  const fly = {
+    from: new THREE.Vector3(), to: new THREE.Vector3(), lookFrom: new THREE.Vector3(), lookTo: new THREE.Vector3(),
+    offsetFrom: new THREE.Vector2(), offsetTo: new THREE.Vector2(), t: 1,
+  }
+  /** Where the image is shifted, in CSS pixels, so what is framed sits in the space left for it. */
+  const viewOffset = new THREE.Vector2()
+  const applyOffset = () => {
+    const width = stage.clientWidth
+    const height = stage.clientHeight
+    if (width && height) camera.setViewOffset(width, height, -viewOffset.x, -viewOffset.y, width, height)
+  }
+  /**
+   * Fits what is in view to the scene's free space: the box's projection, not
+   * its bounding sphere, so a wide model fills the width and a tall one the
+   * height, with the breadcrumb's band kept clear. Then the image is shifted
+   * so the box sits in the middle of that space.
+   */
   function frame(instant = false) {
     const box = new THREE.Box3()
     scene.updateMatrixWorld(true)
@@ -815,9 +795,41 @@ export function mount(
     if (openPath) box.setFromObject(visuals.get(openPath)!.shell)
     else for (const visual of level.visuals) box.expandByObject(visual.shell)
     const sphere = box.getBoundingSphere(new THREE.Sphere())
-    const aspect = camera.aspect || 1
-    const fit = Math.max(sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)), sphere.radius / Math.sin(Math.atan(Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * aspect)))
-    const distance = fit * (openPath ? 1.1 : 1.12)
+    const width = stage.clientWidth || 1
+    const height = stage.clientHeight || 1
+    const inset = { top: openPath ? 46 : 18, bottom: 18, left: 18, right: 18 + (noteBand ? NOTE_BAND : 0) }
+    const room = { width: Math.max(1, width - inset.left - inset.right), height: Math.max(1, height - inset.top - inset.bottom) }
+    const probe = camera.clone()
+    probe.clearViewOffset()
+    const corners = [0, 1].flatMap((i) => [0, 1].flatMap((j) => [0, 1].map((k) =>
+      new THREE.Vector3(i ? box.max.x : box.min.x, j ? box.max.y : box.min.y, k ? box.max.z : box.min.z))))
+    const extent = (distance: number) => {
+      probe.position.copy(sphere.center).addScaledVector(FRAMING, distance)
+      probe.lookAt(sphere.center)
+      probe.updateMatrixWorld()
+      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity
+      for (const corner of corners) {
+        const p = corner.clone().project(probe)
+        const x = ((p.x + 1) / 2) * width
+        const y = ((1 - p.y) / 2) * height
+        left = Math.min(left, x); right = Math.max(right, x); top = Math.min(top, y); bottom = Math.max(bottom, y)
+      }
+      return { left, right, top, bottom }
+    }
+    let distance = sphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2))
+    for (let round = 0; round < 5; round++) {
+      const seen = extent(distance)
+      const scale = Math.max((seen.right - seen.left) / room.width, (seen.bottom - seen.top) / room.height)
+      if (Math.abs(scale - 1) < 0.01) break
+      distance *= scale
+    }
+    distance *= openPath ? 1.06 : 1.04
+    const seen = extent(distance)
+    fly.offsetFrom.copy(viewOffset)
+    fly.offsetTo.set(
+      inset.left + room.width / 2 - (seen.left + seen.right) / 2,
+      inset.top + room.height / 2 - (seen.top + seen.bottom) / 2,
+    )
     fly.from.copy(camera.position)
     fly.lookFrom.copy(controls.target)
     fly.lookTo.copy(sphere.center)
@@ -826,12 +838,14 @@ export function mount(
     if (fly.t === 1) {
       camera.position.copy(fly.to)
       controls.target.copy(fly.lookTo)
+      viewOffset.copy(fly.offsetTo)
     }
     controls.minDistance = distance * 0.3
     controls.maxDistance = distance * 2.6
     camera.near = distance / 200
     camera.far = distance * 40
     camera.updateProjectionMatrix()
+    applyOffset()
   }
 
   function open(path: string) {
@@ -843,12 +857,11 @@ export function mount(
     }
     openPath = path
     if (selected && !(ownerOf(selected) === path)) selected = null
+    hovered = null
     timeline()
     frame()
-    renderCrumbs()
-    renderCard()
+    notify()
     renderOutline()
-    renderBar()
     save()
   }
 
@@ -857,156 +870,167 @@ export function mount(
       for (const each of pulled) visuals.get(each)?.moved.set(0, 0, 0)
       pulled.clear()
     } else if (visuals.get(path)?.part.spec.movable !== false) pulled.add(path)
-    renderCard()
+    notify()
     save()
   }
 
   function select(path: string | null) {
     selected = path && visuals.has(path) ? path : null
+    // The label that was hovered or focused is replaced by the note, and takes its hover with it.
+    hovered = null
     const label = selected ? (visuals.get(selected)!.part.spec.label ?? selected) : ''
-    for (const target of [renderer.domElement, card]) {
-      if (selected) {
-        target.setAttribute('data-entity-id', selected)
-        target.setAttribute('data-entity-label', `${label} (${selected})`)
-      } else {
-        target.removeAttribute('data-entity-id')
-        target.removeAttribute('data-entity-label')
-      }
+    if (selected) {
+      renderer.domElement.setAttribute('data-entity-id', selected)
+      renderer.domElement.setAttribute('data-entity-label', `${label} (${selected})`)
+    } else {
+      renderer.domElement.removeAttribute('data-entity-id')
+      renderer.domElement.removeAttribute('data-entity-label')
     }
-    renderCard()
+    notify()
     save()
   }
 
-  // Beside the model.
-  function renderCrumbs() {
-    crumbs.replaceChildren()
-    const ids = openPath ? openPath.split('/') : []
-    const steps = [{ path: '', label: options.title ?? 'Model' }, ...ids.map((_, index) => {
-      const path = ids.slice(0, index + 1).join('/')
-      return { path, label: visuals.get(path)!.part.spec.label ?? path }
-    })]
-    steps.forEach((step, index) => {
-      if (index) crumbs.append(Object.assign(document.createElement('span'), { textContent: '/' }))
-      const button = document.createElement('button')
-      button.textContent = step.label
-      if (index < steps.length - 1) button.onclick = () => open(step.path)
-      else button.setAttribute('aria-current', 'location')
-      crumbs.append(button)
-    })
-  }
-
-  function chip(text: string, onClick: () => void, pressed?: boolean) {
-    const button = document.createElement('button')
-    button.className = 'ts-chip'
-    button.textContent = text
-    if (pressed !== undefined) button.setAttribute('aria-pressed', String(pressed))
-    button.onclick = onClick
-    return button
-  }
-
-  function renderBar() {
-    bar.replaceChildren()
-    if (ticking) {
-      bar.append(chip('Step', step))
-      bar.append(chip(running ? 'Stop' : 'Run', () => ((running = !running), renderBar()), running))
-    }
-    bar.append(chip('Slow', () => ((slow = !slow), renderBar()), slow))
-    if (replay.time < replay.end) {
-      bar.append(chip(replay.paused ? 'Continue' : 'Pause', () => ((replay.paused = !replay.paused), renderBar())))
-      const status = document.createElement('span')
-      status.className = 'ts-stage'
-      status.textContent = `stage ${Math.min(replay.end, Math.floor(replay.time) + 1)} of ${replay.end}`
-      bar.append(status)
-    }
-  }
-
-  const controlFor = (path: string, key: string, value: unknown, spec?: ControlSpec): HTMLElement => {
-    if (spec?.kind === 'toggle' || (!spec && isBit(value))) {
-      const button = document.createElement('button')
-      button.className = 'ts-bit'
-      button.textContent = truthy(value) ? '1' : '0'
-      button.setAttribute('aria-pressed', String(truthy(value)))
-      button.setAttribute('aria-label', `${key} of ${path}`)
-      button.onclick = () => set(path, key, typeof value === 'boolean' ? !value : truthy(value) ? 0 : 1)
-      return button
-    }
-    if (spec?.kind === 'bits') {
-      const wrap = document.createElement('span')
-      for (let index = spec.bits - 1; index >= 0; index--) {
-        const on = (Number(value) >> index) & 1
-        const button = document.createElement('button')
-        button.className = 'ts-bit'
-        button.textContent = String(on)
-        button.setAttribute('aria-pressed', String(Boolean(on)))
-        button.setAttribute('aria-label', `bit ${index} of ${key}`)
-        button.onclick = () => set(path, key, Number(value) ^ (1 << index))
-        wrap.append(button)
-      }
-      return wrap
-    }
-    if (spec?.kind === 'select') {
-      const select = document.createElement('select')
-      for (const option of spec.options) select.append(new Option(option, option, false, option === value))
-      select.onchange = () => set(path, key, select.value)
-      return select
-    }
-    const input = document.createElement('input')
-    input.type = spec?.kind === 'range' ? 'range' : 'number'
-    if (spec && 'min' in spec && spec.min !== undefined) input.min = String(spec.min)
-    if (spec && 'max' in spec && spec.max !== undefined) input.max = String(spec.max)
-    if (spec && 'step' in spec && spec.step !== undefined) input.step = String(spec.step)
-    input.value = String(value ?? 0)
-    input.setAttribute('aria-label', `${key} of ${path}`)
-    input.oninput = () => set(path, key, Number(input.value))
-    return input
-  }
-
-  let cardKey = ''
-  /** When a clicked part's card may show: a moment later, so a double-click opens it instead. */
+  // Around the model: a snapshot of where the person is, for the chrome to draw.
+  /** When a clicked part's note may show: a moment later, so a double-click opens it instead. */
   let cardAt = 0
-  function renderCard() {
-    if (!selected || performance.now() < cardAt) {
-      card.hidden = true
-      cardKey = ''
-      return
-    }
-    const visual = visuals.get(selected)!
-    const spec = visual.part.spec
-    const { inputs, outputs } = valuesOf(selected)
-    const state = model.states.get(selected) ?? {}
-    const key = JSON.stringify([selected, inputs, outputs, state, pulled.has(selected), openPath])
-    if (key === cardKey) return
-    // Keep a field the person is typing in.
-    if (card.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement && document.activeElement.type === 'number') return
-    cardKey = key
-    card.replaceChildren()
-    card.hidden = false
-    const title = document.createElement('h3')
-    title.textContent = spec.label ?? spec.id
-    card.append(title)
-    if (spec.about) card.append(Object.assign(document.createElement('p'), { textContent: spec.about }))
-    const table = document.createElement('table')
-    const row = (name: string, value: unknown, control?: HTMLElement) => {
-      const tr = table.insertRow()
-      tr.insertCell().textContent = name
-      const cell = tr.insertCell()
-      if (control) cell.append(control)
-      else cell.textContent = spec.format?.(value, name) ?? short(value)
-    }
-    for (const port of visual.part.ports) {
+  let narrow = false
+  let noteShown = false
+  // While a note is open beside a part (not docked below on a narrow page), it
+  // has a band at the stage's right and the camera fits the rest. A change
+  // refits at once, mid-drag too: a dragged part follows the pointer through
+  // whatever the camera is doing, since each move casts from the camera as it is.
+  let noteBand = false
+
+  function partSnapshot(part: Part): PartSnapshot {
+    const path = part.path
+    const spec = part.spec
+    const { inputs, outputs } = valuesOf(path)
+    const before = previous.readings.get(path)
+    const travelling = replay.time < replay.end && replay.changed.has(path)
+    const format = (value: unknown, name: string) => spec.format?.(value, name) ?? short(value)
+    const ports = part.ports.map((port) => {
       const value = port.dir === 'in' ? inputs[port.name] : outputs[port.name]
-      const editable = port.dir === 'in' && model.isPin(selected, port.name)
-      row(`${port.dir === 'in' ? '→' : '←'} ${port.label ?? port.name}`, value, editable ? controlFor(selected, port.name, value, spec.controls?.[port.name]) : undefined)
+      const was = port.dir === 'in' ? before?.inputs[port.name] : before?.outputs[port.name]
+      return {
+        name: port.name,
+        label: port.label ?? port.name,
+        dir: port.dir,
+        value,
+        text: format(value, port.name),
+        editable: port.dir === 'in' && model.isPin(path, port.name),
+        control: spec.controls?.[port.name],
+        changed: travelling && JSON.stringify(was) !== JSON.stringify(value),
+        on: truthy(value),
+      }
+    })
+    const state = Object.entries(model.states.get(path) ?? {}).map(([name, value]) => ({
+      name, value, text: format(value, name), control: spec.controls?.[name],
+    }))
+    // At rest a label says what the part makes, the changed values first.
+    const outs = ports.filter((port) => port.dir === 'out')
+    const pool = outs.length ? outs : ports
+    const summary = [...pool.filter((port) => port.changed), ...pool.filter((port) => !port.changed)]
+      .slice(0, 2)
+      .map((port) => `${port.label} ${port.text}`)
+    return {
+      path,
+      label: spec.label ?? spec.id,
+      about: spec.about,
+      openable: Boolean(part.inside),
+      pulled: pulled.has(path),
+      ports,
+      state,
+      changed: travelling,
+      summary,
     }
-    for (const [name, value] of Object.entries(state))
-      row(name, value, spec.controls?.[name] ? controlFor(selected, name, value, spec.controls[name]) : undefined)
-    if (table.rows.length) card.append(table)
-    const actions = document.createElement('div')
-    actions.className = 'ts-actions'
-    const path = selected
-    if (visual.part.inside) actions.append(chip('Open', () => open(path)))
-    if (pulled.has(path)) actions.append(chip('Put back', () => ((visual.moved.set(0, 0, 0), pulled.delete(path)), renderCard(), save())))
-    if (actions.childElementCount) card.append(actions)
+  }
+
+  function snapshot(): ChromeSnapshot {
+    const ids = openPath ? openPath.split('/') : []
+    const pinnedHere = [...pinned].filter((path) => ownerOf(path) === openPath)
+    const band = !narrow && (selected !== null || pinnedHere.length > 0)
+    if (band !== noteBand) {
+      noteBand = band
+      queueMicrotask(() => frame())
+      // The note shows once the camera has most of the way made room for it.
+      if (band) cardAt = Math.max(cardAt, performance.now() + 300)
+    }
+    const shown = selected && performance.now() >= cardAt ? selected : null
+    noteShown = shown !== null || !selected
+    return {
+      title: options.title ?? 'Model',
+      trail: [{ path: '', label: options.title ?? 'Model' }, ...ids.map((_, index) => {
+        const path = ids.slice(0, index + 1).join('/')
+        return { path, label: visuals.get(path)!.part.spec.label ?? path }
+      })],
+      open: openPath,
+      selected: shown,
+      hovered,
+      pinned: pinnedHere,
+      parts: focusNetwork().parts.map(partSnapshot),
+      boundary: openPath ? partSnapshot(visuals.get(openPath)!.part) : null,
+      replay: {
+        active: replay.time < replay.end,
+        stage: Math.min(replay.end, Math.floor(replay.time) + 1),
+        end: replay.end,
+        paused: replay.paused,
+      },
+      running,
+      slow,
+      ticking,
+      narrow,
+    }
+  }
+
+  const actions: ChromeActions = {
+    set,
+    step,
+    open,
+    select: (path) => {
+      cardAt = 0
+      select(path)
+    },
+    hover: (path) => {
+      if (hovered === path) return
+      hovered = path
+      notify()
+    },
+    pin: (path, on) => {
+      if (on) pinned.add(path)
+      else pinned.delete(path)
+      notify()
+      save()
+    },
+    putBack: (path) => {
+      visuals.get(path)?.moved.set(0, 0, 0)
+      pulled.delete(path)
+      notify()
+      save()
+    },
+    run: (on) => {
+      running = on
+      notify()
+    },
+    slow: (on) => {
+      slow = on
+      notify()
+    },
+    pause: (on) => {
+      replay.paused = on
+      notify()
+    },
+  }
+
+  // Renders once per task however many changes asked for it.
+  let rendering = false
+  function notify() {
+    if (rendering || disposed) return
+    rendering = true
+    queueMicrotask(() => {
+      rendering = false
+      if (disposed) return
+      chromeRoot.render(createElement(options.chrome ?? SpatialChrome, { snapshot: snapshot(), actions, anchors, stage }))
+    })
   }
 
   function renderOutline() {
@@ -1049,9 +1073,12 @@ export function mount(
     | { kind: 'part'; path: string; plane: THREE.Plane; grab: THREE.Vector3; start: THREE.Vector3; moved: boolean; x: number; y: number }
     | { kind: 'handle'; path: string; handle: HandleSpec; x: number; y: number }
   let drag: Drag | null = null
+  // Where the press began, part or not: a press that travelled is an orbit or a drag, not a click.
+  let pressed: { x: number; y: number } | null = null
 
   const onDown = (event: PointerEvent) => {
     if (event.button !== 0) return
+    pressed = { x: event.clientX, y: event.clientY }
     const hit = pick(event)
     const path = hit?.object.userData.path as string | undefined
     if (!hit || !path) return
@@ -1072,6 +1099,7 @@ export function mount(
     if (!drag) {
       const hit = pick(event)
       renderer.domElement.style.cursor = hit?.object.userData.port && model.isPin(hit.object.userData.path, hit.object.userData.port) ? 'pointer' : hit ? 'grab' : ''
+      actions.hover((hit?.object.userData.path as string | undefined) ?? null)
       return
     }
     const rect = renderer.domElement.getBoundingClientRect()
@@ -1113,12 +1141,16 @@ export function mount(
     drag = null
     renderer.domElement.style.cursor = ''
     if (ended?.kind === 'part' && ended.moved) {
-      renderCard()
+      // Put down somewhere new: the level, the part where it is now included, is fitted again.
+      frame()
+      notify()
       save()
       return
     }
+    const start = pressed
+    pressed = null
     if (ended?.kind === 'handle') return
-    if (Math.abs(event.clientX - (ended?.x ?? event.clientX)) > 4) return
+    if (!start || Math.hypot(event.clientX - start.x, event.clientY - start.y) > 4) return
     const hit = pick(event)
     const path = hit?.object.userData.path as string | undefined
     const port = hit?.object.userData.port as string | undefined
@@ -1156,6 +1188,7 @@ export function mount(
   renderer.domElement.addEventListener('pointermove', onMove)
   renderer.domElement.addEventListener('pointerup', onUp)
   renderer.domElement.addEventListener('dblclick', onDouble)
+  renderer.domElement.addEventListener('pointerleave', () => actions.hover(null))
   element.ownerDocument.addEventListener('keydown', onKey)
 
   // Drawing.
@@ -1226,8 +1259,7 @@ export function mount(
   let visible = true
   let disposed = false
   frame(true)
-  renderCrumbs()
-  renderBar()
+  notify()
   renderOutline()
 
   function animate() {
@@ -1241,15 +1273,14 @@ export function mount(
       const t = 1 - Math.pow(1 - fly.t, 3)
       camera.position.lerpVectors(fly.from, fly.to, t)
       controls.target.lerpVectors(fly.lookFrom, fly.lookTo, t)
+      viewOffset.lerpVectors(fly.offsetFrom, fly.offsetTo, t)
+      applyOffset()
     }
     controls.update()
     if (replay.time < replay.end && !replay.paused) {
       const before = Math.floor(replay.time)
       replay.time = Math.min(replay.end, replay.time + dt * (slow ? 1 : pace))
-      if (Math.floor(replay.time) !== before || replay.time >= replay.end) {
-        renderBar()
-        renderCard()
-      }
+      if (Math.floor(replay.time) !== before || replay.time >= replay.end) notify()
     }
     if (running && time - lastStepAt > 0.6 && replay.time >= replay.end) {
       lastStepAt = time
@@ -1315,27 +1346,14 @@ export function mount(
         uniforms.uColor!.value.copy(color(visual.part.spec.color ?? theme.ink))
         uniforms.uLitColor!.value.copy(color(theme.lit))
       }
-      const labelVisible = inFocus && opacity > 0.3
-      visual.label.visible = labelVisible
-      const element = visual.label.element
-      // A part that has stepped back for the one in hand says less.
-      element.style.opacity = String(1 - visual.recede * 0.75)
-      const output = Object.entries(values.outputs).slice(0, 3).map(([name, value]) => `${name} ${visual.part.spec.format?.(value, name) ?? short(value)}`).join('  ')
-      const text = `${visual.part.spec.label ?? visual.part.spec.id}`
-      if (element.dataset.text !== text + output) {
-        element.dataset.text = text + output
-        element.replaceChildren(text)
-        if (output) element.append(Object.assign(document.createElement('small'), { textContent: output }))
-      }
       for (const port of visual.ports.values()) {
         const value = port.dir === 'in' ? values.inputs[port.name] : values.outputs[port.name]
-        // Port values are shown for the part in hand, and for the open part's boundary.
-        port.tag.visible = (labelVisible && (path === selected || pulled.has(path))) || (isOpen && path === openPath && visual.morph > 0.5)
-        const tag = `${port.name} ${visual.part.spec.format?.(value, port.name) ?? short(value)}`
-        if (port.tag.element.textContent !== tag) port.tag.element.textContent = tag
-        port.tag.element.classList.toggle('on', truthy(value))
-        ;(port.dot.material as THREE.MeshBasicMaterial).color.copy(color(truthy(value) ? theme.lit : model.isPin(path, port.name) && port.dir === 'in' ? theme.accent : theme.faint))
-        ;(port.dot.material as THREE.MeshBasicMaterial).opacity = Math.max(opacity, isOpen ? 1 : 0)
+        // An input the person sets stands out; one a wire feeds is small and quiet.
+        const editable = port.dir === 'in' && model.isPin(path, port.name)
+        const inHand = path === selected || pulled.has(path) || (isOpen && path === openPath)
+        ;(port.dot.material as THREE.MeshBasicMaterial).color.copy(color(truthy(value) ? theme.lit : editable ? theme.accent : theme.faint))
+        ;(port.dot.material as THREE.MeshBasicMaterial).opacity = Math.max(opacity, isOpen ? 1 : 0) * (editable || inHand ? 1 : 0.55)
+        port.dot.scale.setScalar(editable ? 1.25 : inHand ? 1 : 0.7)
         port.dot.visible = opacity > 0.05 || isOpen
       }
       for (const handle of visual.handles) {
@@ -1364,60 +1382,87 @@ export function mount(
     }
     drawLevel(rootLevel, '')
 
-    // The card stays beside the selected part.
-    if (selected && !card.hidden) {
-      const visual = visuals.get(selected)!
-      const box = new THREE.Box3().setFromObject(visual.shell)
-      const rect = root.getBoundingClientRect()
-      let right = -Infinity
-      let left = Infinity
-      let top = Infinity
-      let bottom = -Infinity
-      for (const x of [box.min.x, box.max.x])
-        for (const y of [box.min.y, box.max.y])
-          for (const z of [box.min.z, box.max.z]) {
-            const projected = new THREE.Vector3(x, y, z).project(camera)
-            const px = ((projected.x + 1) / 2) * rect.width
-            const py = ((1 - projected.y) / 2) * rect.height
-            right = Math.max(right, px)
-            left = Math.min(left, px)
-            top = Math.min(top, py)
-            bottom = Math.max(bottom, py)
-          }
-      const width = card.offsetWidth
-      const height = card.offsetHeight
-      let x: number
-      let y: number
-      if (right + 16 + width < rect.width) [x, y] = [right + 16, top]
-      else if (left - 16 - width > 0) [x, y] = [left - 16 - width, top]
-      else {
-        // No room beside it: below the part, or above it, or along the bottom edge.
-        x = (rect.width - width) / 2
-        y = bottom + 12 + height < rect.height - 44 ? bottom + 12 : top - 12 - height > 40 ? top - 12 - height : rect.height - height - 48
-      }
-      card.style.left = `${Math.round(THREE.MathUtils.clamp(x, 8, rect.width - width - 8))}px`
-      // The bar along the bottom stays in reach.
-      card.style.top = `${Math.round(THREE.MathUtils.clamp(y, 40, rect.height - height - 48))}px`
-    } else if (selected && card.hidden && performance.now() >= cardAt) renderCard()
+    writeAnchors()
+    if (selected && !noteShown && performance.now() >= cardAt) notify()
     renderer.render(scene, camera)
-    labels.render(scene, camera)
   }
 
+  // Where each part and port is on screen, for the labels and notes over the scene.
+  const anchorBox = new THREE.Box3()
+  const anchorPoint = new THREE.Vector3()
+  const toPart = new THREE.Vector3()
+  const occluder = new THREE.Raycaster()
+  function writeAnchors() {
+    const width = stage.clientWidth
+    const height = stage.clientHeight
+    const screen = (point: THREE.Vector3): [number, number, boolean] => {
+      anchorPoint.copy(point).project(camera)
+      return [((anchorPoint.x + 1) / 2) * width, ((1 - anchorPoint.y) / 2) * height, anchorPoint.z > -1 && anchorPoint.z < 1]
+    }
+    const level = openPath ? visuals.get(openPath)!.inside! : rootLevel
+    const grips = level.visuals.filter((visual) => visual.group.visible).map((visual) => visual.grip)
+    const shown = new Set<string>()
+    const portsOf = (visual: Visual, presence: number) => {
+      for (const port of visual.ports.values()) {
+        const [x, y, front] = screen(visual.body.localToWorld(anchorPoint.copy(port.local)))
+        const id = portAnchor(visual.part.path, port.name)
+        shown.add(id)
+        anchors.set(id, { box: { x, y, width: 0, height: 0 }, visible: front && presence > 0.3 })
+      }
+    }
+    for (const visual of level.visuals) {
+      const path = visual.part.path
+      const presence = visual.fade * (1 - visual.recede * 0.55)
+      anchorBox.setFromObject(visual.shell)
+      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity
+      let front = true
+      for (const x of [anchorBox.min.x, anchorBox.max.x])
+        for (const y of [anchorBox.min.y, anchorBox.max.y])
+          for (const z of [anchorBox.min.z, anchorBox.max.z]) {
+            const [px, py, inFront] = screen(anchorPoint.set(x, y, z))
+            front &&= inFront
+            left = Math.min(left, px); right = Math.max(right, px); top = Math.min(top, py); bottom = Math.max(bottom, py)
+          }
+      // Hidden behind another part: the first part a ray from the eye meets is not this one.
+      const centre = anchorBox.getCenter(new THREE.Vector3())
+      toPart.copy(centre).sub(camera.position)
+      const reach = toPart.length()
+      occluder.set(camera.position, toPart.normalize())
+      occluder.far = reach
+      const first = occluder.intersectObjects(grips, false)[0]
+      const occluded = Boolean(first && first.object.userData.path !== path && first.distance < reach - anchorBox.getSize(anchorPoint).length() * 0.25)
+      const id = partAnchor(path)
+      shown.add(id)
+      anchors.set(id, { box: { x: left, y: top, width: right - left, height: bottom - top }, visible: front && presence > 0.3, occluded })
+      if (path === selected || pulled.has(path)) portsOf(visual, presence)
+    }
+    if (openPath) portsOf(visuals.get(openPath)!, visuals.get(openPath)!.morph)
+    for (const id of anchored) if (!shown.has(id)) anchors.set(id, undefined)
+    anchored = shown
+    anchors.commit()
+  }
+  let anchored = new Set<string>()
+
   const resize = () => {
-    const width = root.clientWidth
-    const height = root.clientHeight
+    const width = stage.clientWidth
+    const height = stage.clientHeight
     if (!width || !height) return
     renderer.setSize(width, height, false)
-    hint.hidden = width < 640
-    labels.setSize(width, height)
     camera.aspect = width / height
     camera.updateProjectionMatrix()
+    applyOffset()
+    if (narrow !== width < 560) {
+      narrow = width < 560
+      notify()
+    }
   }
+  // A new size refits the camera: at once when it is still, and by turning the
+  // flight under way toward the new fit when it is moving.
   const resizer = new ResizeObserver(() => {
     resize()
-    if (fly.t >= 1 && !drag) frame(true)
+    if (!drag) frame(fly.t >= 1)
   })
-  resizer.observe(root)
+  resizer.observe(stage)
   resize()
   frame(true)
   const watcher = new IntersectionObserver(([entry]) => {
@@ -1428,16 +1473,12 @@ export function mount(
   // The page's theme can change under the App: draw with what it is now.
   const themer = new MutationObserver(() => {
     theme = readTheme()
-    paint()
-    cardKey = ''
-    renderCard()
   })
   themer.observe(document.documentElement, { attributes: true })
   themer.observe(document.head, { childList: true, subtree: true, characterData: true })
   const scheme = matchMedia('(prefers-color-scheme: dark)')
   const onScheme = () => {
     theme = readTheme()
-    paint()
   }
   scheme.addEventListener('change', onScheme)
   requestAnimationFrame(animate)
@@ -1466,7 +1507,7 @@ export function mount(
             const projected = world.clone().project(camera)
             const screen: [number, number] | null =
               visual?.group.visible && Math.abs(projected.z) <= 1
-                ? [Math.round(((projected.x + 1) / 2) * root.clientWidth), Math.round(((1 - projected.y) / 2) * root.clientHeight)]
+                ? [Math.round(((projected.x + 1) / 2) * stage.clientWidth), Math.round(((1 - projected.y) / 2) * stage.clientHeight)]
                 : null
             return {
               path: part.path,
@@ -1476,6 +1517,7 @@ export function mount(
               state: model.states.get(part.path) ?? {},
               at: at.map((n) => Math.round(n * 1000) / 1000) as Vec3,
               screen,
+              box: anchors.get(partAnchor(part.path))?.box ?? null,
               pulled: pulled.has(part.path),
             }
           }),
@@ -1489,6 +1531,7 @@ export function mount(
       scheme.removeEventListener('change', onScheme)
       element.ownerDocument.removeEventListener('keydown', onKey)
       controls.dispose()
+      chromeRoot.unmount()
       renderer.dispose()
       scene.traverse((object) => {
         if (object instanceof THREE.Mesh || object instanceof THREE.Points || object instanceof THREE.LineSegments) {

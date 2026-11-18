@@ -560,6 +560,43 @@ try {
       (await settled(0)).length === 0,
   )
 
+  // The host's quiet defaults in a real cascade: a plain control takes them,
+  // and any rule the App brings wins, whether unlayered or in a component
+  // library's own layer. This page loads no palette, so the defaults read
+  // here are the ones that use no token: padding, background and cursor.
+  await revise(`<!doctype html>
+<style>button.own { background-color: rgb(250, 250, 249); padding: 0 }</style>
+<style>@layer lib-base { button.lib { background-color: rgb(1, 2, 3); padding: 2px } }</style>
+<button class="plain">Plain</button><button class="own">Own</button><button class="lib">Lib</button><input>`)
+  let cascade
+  for (const deadline = Date.now() + 30_000; Date.now() < deadline; ) {
+    cascade = await frame()
+      ?.evaluate(() => {
+        if (!document.querySelector('button.lib')) return undefined
+        const of = (selector) => {
+          const style = getComputedStyle(document.querySelector(selector))
+          return `${style.backgroundColor} ${style.paddingLeft} ${style.cursor}`
+        }
+        return {
+          plain: of('.plain'),
+          input: of('input'),
+          own: of('.own'),
+          lib: of('.lib'),
+        }
+      })
+      .catch(() => undefined)
+    if (cascade) break
+    await page.waitForTimeout(100)
+  }
+  check(
+    'plain controls take the host look, and the App’s rules win over it, layered or not',
+    cascade?.plain === 'rgba(0, 0, 0, 0) 10px pointer' &&
+      cascade.input.startsWith('rgba(0, 0, 0, 0) 8px') &&
+      cascade.own === 'rgb(250, 250, 249) 0px pointer' &&
+      cascade.lib === 'rgb(1, 2, 3) 2px pointer',
+    cascade,
+  )
+
   await revise(GOOD)
   check(
     'a repaired revision clears the problems and finds the same records',

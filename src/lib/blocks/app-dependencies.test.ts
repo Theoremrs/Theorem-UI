@@ -2,7 +2,10 @@ import { describe, expect, test } from 'bun:test'
 import * as esbuild from 'esbuild-wasm'
 import { tsc } from '@tsrs/wasm'
 import { checkLibraryFromDisk } from '../../../test/blocks/check-library'
+import { readFileSync } from 'node:fs'
 import { appDependencies, AppDependencies } from './app-dependencies'
+import { APP_LIBRARIES } from './app-libraries'
+import { libraryDeclarations } from './check/theorem-app.generated'
 import type { AppDependencyFetch } from './app-dependencies'
 import { dependencyDeclarations } from './app-dependency-types'
 import { checkAppSources } from './app-check'
@@ -231,14 +234,54 @@ model.open('lamp')`
 
   test('pins the packages it is built on unless the App names a version', () => {
     expect(appDependencies({ entry: 'main.ts', files: { 'main.ts': SPATIAL_APP } }).versions)
-      .toEqual({ three: '0.187.0' })
+      .toEqual(APP_LIBRARIES['@theorem/spatial']!.dependencies)
     expect(appDependencies({ entry: 'main.ts', files: {
       'main.ts': SPATIAL_APP,
       'package.json': '{"dependencies":{"three":"0.188.0"}}',
-    } }).versions).toEqual({ three: '0.188.0' })
+    } }).versions).toMatchObject({ three: '0.188.0', '@floating-ui/core': '1.8.0' })
     expect(new AppDependencies().resolve('@theorem/spatial'))
       .toEqual({ kind: 'library', path: '@theorem/spatial' })
+    expect(new AppDependencies().resolve('@theorem/annotate'))
+      .toEqual({ kind: 'library', path: '@theorem/annotate' })
   })
+
+  test('pins the versions Theorem builds and checks it with', () => {
+    const own = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
+      dependencies: Record<string, string>
+      devDependencies: Record<string, string>
+    }
+    for (const library of Object.values(APP_LIBRARIES))
+      for (const [name, version] of Object.entries(library.dependencies))
+        expect([name, own.devDependencies[name] ?? own.dependencies[name]]).toEqual([name, version])
+  })
+
+  test('names the packages its declarations import', () => {
+    for (const [name, library] of Object.entries(APP_LIBRARIES)) {
+      const imported = new Set<string>()
+      for (const text of Object.values(libraryDeclarations[name] ?? {}))
+        for (const [, specifier] of text.matchAll(/(?:from|import\()\s*['"]([^'"]+)['"]/g))
+          if (!specifier!.startsWith('.') && !Object.hasOwn(APP_LIBRARIES, specifier!)) imported.add(specifier!)
+      expect([name, [...imported].sort()]).toEqual([name, [...library.types].sort()])
+    }
+  })
+
+  test('bundles a library written in TSX with its stylesheets', async () => {
+    const sources = { entry: 'main.tsx', files: { 'main.tsx': `import { anchorStore, AnnotationLayer, Annotation, Note } from '@theorem/annotate'
+import { createRoot } from 'react-dom/client'
+const anchors = anchorStore()
+createRoot(document.body).render(<AnnotationLayer anchors={anchors}><Annotation anchor="a"><Note title="A" /></Annotation></AnnotationLayer>)` } }
+    const remote = modules({})
+    const resolver = new AppDependencies(appDependencies(sources).versions, async (input) => {
+      const url = String(input)
+      if (url.startsWith('https://esm.sh/')) return fetch(url)
+      return remote.request(input)
+    })
+    const bundle = await bundleAppSources(sources, esbuild, resolver)
+    expect(bundle.css).toContain('.tn-layer')
+    expect(bundle.css).toContain('data-astryx-theme')
+    // Which of these elements are stamped is seen at run time (scripts/e2e/spatial.mjs).
+    expect(bundle.code).toContain('theorem-app:main.tsx')
+  }, 120_000)
 
   test('is checked against its declarations and the three.js it is pinned to', async () => {
     const resolver = new AppDependencies({ three: '0.187.0' })

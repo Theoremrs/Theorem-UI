@@ -162,7 +162,7 @@ export async function dependencyDeclarations(
       // A library's declarations are in the check library; the packages they
       // import are fetched as if the App imported them itself.
       const library = appLibrary(ref.fileName)
-      for (const specifier of library ? Object.keys(library.dependencies) : [ref.fileName]) {
+      for (const specifier of library ? library.types : [ref.fileName]) {
         const uses = roots.get(specifier) ?? []
         uses.push({ file, source, ref })
         roots.set(specifier, uses)

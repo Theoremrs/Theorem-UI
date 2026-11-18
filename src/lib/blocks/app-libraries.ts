@@ -6,9 +6,33 @@
 // itself, so the App and the library share one copy: `@theorem/spatial` hands
 // the App three.js objects, which must come from the App's own three.
 
-/** Each library an App can import by name, with the npm packages its source imports. */
-export const APP_LIBRARIES: Record<string, { dependencies: Record<string, string> }> = {
-  '@theorem/spatial': { dependencies: { three: '0.187.0' } },
+export interface AppLibrary {
+  /** The npm packages its source imports, at the versions it is built against. */
+  dependencies: Record<string, string>
+  /**
+   * The packages its declarations import, which an App that imports it is
+   * checked against. A test holds this to the generated declarations.
+   */
+  types: ReadonlyArray<string>
+}
+
+const annotate: AppLibrary = {
+  dependencies: {
+    '@astryxdesign/core': '0.7.16',
+    '@astryxdesign/theme-neutral': '0.7.16',
+    '@floating-ui/core': '1.8.0',
+    '@stylexjs/stylex': '0.19.2',
+  },
+  types: ['react'],
+}
+
+/** Each library an App can import by name. */
+export const APP_LIBRARIES: Record<string, AppLibrary> = {
+  '@theorem/annotate': annotate,
+  '@theorem/spatial': {
+    dependencies: { ...annotate.dependencies, three: '0.187.0' },
+    types: ['react', 'three'],
+  },
 }
 
 /** The library a bare specifier names, if it names one. */

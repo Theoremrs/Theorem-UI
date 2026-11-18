@@ -117,24 +117,21 @@ describe('in a live document', () => {
     else document.head.append(element)
   }
 
-  test('plain elements take the theme and the App’s own rules win over it, wherever they stand', () => {
-    style('button.own { background-color: #fafaf9; border-radius: 0 }')
+  // happy-dom does not apply cascade layers, so how the defaults resolve
+  // against an App's own rules, layered or not, is checked in Chromium by
+  // scripts/e2e/app-ts.mjs. Here: where the defaults stand.
+  test('the defaults sit in the first cascade layer, ahead of everything the App wrote', () => {
+    style('button.own { background-color: #fafaf9 }')
+    style('@layer astryx-base { button { background-color: red } }')
     applyAppTheme(STONE)
-    style('body { color: #292524 }')
-    document.body.innerHTML =
-      '<button class="plain">Plain</button><button class="own">Own</button><input>'
-    const plain = getComputedStyle(document.querySelector('.plain')!)
-    expect(plain.backgroundColor).toBe('transparent')
-    expect(plain.borderTopColor).toBe('#9d9995')
-    expect(plain.borderTopLeftRadius).toBe('6px')
-    expect(
-      getComputedStyle(document.querySelector('input')!).borderTopColor,
-    ).toBe('#514e4b')
-    // An earlier rule wins too: every host default has zero specificity.
-    const own = getComputedStyle(document.querySelector('.own')!)
-    expect(own.backgroundColor).toBe('#fafaf9')
-    expect(own.borderTopLeftRadius).toBe('0px')
-    expect(getComputedStyle(document.body).color).toBe('#292524')
+    const host = document.head.firstElementChild!
+    expect(host.hasAttribute('data-theorem-theme')).toBe(true)
+    const css = host.textContent ?? ''
+    // Variables outside the layer, every element default inside it.
+    const layer = css.indexOf('@layer theorem-defaults {')
+    expect(layer).toBeGreaterThan(css.indexOf('--theorem-'))
+    for (const rule of [':where(body)', ':where(a)', ':where(button'])
+      expect(css.indexOf(rule)).toBeGreaterThan(layer)
   })
 
   test('the frame’s variables follow the page’s palette and mode', async () => {

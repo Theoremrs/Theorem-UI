@@ -1,20 +1,55 @@
 // SOURCING: Vite's `?raw` imports: each library of app-libraries.ts as its
-// TypeScript text, for the App build (export.ts) to bundle into an App that
-// imports it. A library's modules import each other as `./name`; `index` is
-// its entry.
+// source text, for the App build (export.ts) to bundle into an App that
+// imports it. A library's modules import each other as `./name`, with or
+// without the extension; `index` is its entry.
+import annotateAnchors from './annotate/anchors.ts?raw'
+import annotateAnnotation from './annotate/annotation.tsx?raw'
+import annotateHooks from './annotate/hooks.ts?raw'
+import annotateIndex from './annotate/index.ts?raw'
+import annotateLayer from './annotate/layer.tsx?raw'
+import annotateNote from './annotate/note.tsx?raw'
+import annotatePaths from './annotate/paths.ts?raw'
+import annotatePlace from './annotate/place.ts?raw'
+import annotateThemeCss from './annotate/theme.css?raw'
+import annotateTheme from './annotate/theme.tsx?raw'
+import spatialChromeCss from './spatial/chrome.css?raw'
+import spatialChrome from './spatial/chrome.tsx?raw'
 import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
 import spatialParts from './spatial/parts.ts?raw'
 import spatialView from './spatial/view.ts?raw'
 
-/** Each library's modules by name. */
+/** Each library's modules by file name. */
 export const librarySources: Record<string, Record<string, string>> = {
-  '@theorem/spatial': {
-    engine: spatialEngine,
-    form: spatialForm,
-    index: spatialIndex,
-    parts: spatialParts,
-    view: spatialView,
+  '@theorem/annotate': {
+    'anchors.ts': annotateAnchors,
+    'annotation.tsx': annotateAnnotation,
+    'hooks.ts': annotateHooks,
+    'index.ts': annotateIndex,
+    'layer.tsx': annotateLayer,
+    'note.tsx': annotateNote,
+    'paths.ts': annotatePaths,
+    'place.ts': annotatePlace,
+    'theme.css': annotateThemeCss,
+    'theme.tsx': annotateTheme,
   },
+  '@theorem/spatial': {
+    'chrome.css': spatialChromeCss,
+    'chrome.tsx': spatialChrome,
+    'engine.ts': spatialEngine,
+    'form.ts': spatialForm,
+    'index.ts': spatialIndex,
+    'parts.ts': spatialParts,
+    'view.ts': spatialView,
+  },
+}
+
+/** A library module by the path an import names, with its extension found. */
+export function libraryModule(library: string, name: string): { file: string; source: string } | undefined {
+  const modules = librarySources[library]
+  if (!modules) return undefined
+  for (const file of [name, `${name}.ts`, `${name}.tsx`])
+    if (Object.hasOwn(modules, file)) return { file, source: modules[file]! }
+  return undefined
 }
