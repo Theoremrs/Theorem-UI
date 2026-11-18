@@ -177,3 +177,22 @@ Side chat from selection is a follow-up: the workbench already has
 `conversationSideChat` (port.ts), but wiring a selection into a new side
 chat needs the workbench's conversation port and is a larger surface; it is
 named, not silently shipped.
+
+### Side chat research (subagent, 2026-11-17)
+
+Side chats are UI-owned, not SDK: `Conversation.sideChat`
+(`src/lib/workbench/conversation/conversation.ts:326`, impl `:1633`) opens a
+second `useLocalRuntime` over the same `runTurn`. Scope is
+`fresh | continued | forked`; continued/forked need a durable main thread.
+Mounting requires the workbench's `<sideChats.Hosts/>`
+(`side-chats.tsx:73` throws without it), and the only user-facing opener is
+the wasm workbench's "New side chat" picker — no React-visible handle.
+`send.references` is workspace-file-only (`SourceReference`), not
+message-kind; the composer's message refs live in the global
+`useComposerReferences`, shared across chats.
+
+**Blockers for selection → side chat:** (1) no shell-level side-chat opener
+(workbench-only, lazily mounted); (2) references are not scoped per chat;
+(3) no initial-message param — seeding needs a follow-up send. This is a
+workbench-architecture task, not a toolbar button; it is named here as the
+next increment, not shipped.
