@@ -153,8 +153,7 @@ afterEach(async () => {
   window.fetch = realFetch
 })
 
-const mount = () =>
-  mountAt('/index', () => <RecordLinks documentId={DOC} />)
+const mount = () => mountAt('/index', () => <RecordLinks documentId={DOC} />)
 const about = (container: HTMLElement) =>
   container.querySelector('section[aria-label="About"]')
 const buttonNamed = (root: ParentNode, name: string) =>
@@ -181,6 +180,16 @@ describe('linkReason', () => {
       ),
     ).toBe('Named in the title.')
     expect(linkReason(NOOR)).toBe('Named in the text.')
+    expect(
+      linkReason(
+        receipt({
+          receiptId: 'x',
+          tier: 'precedent',
+          attribution: { kind: 'made', proposalId: 'proposal:draft' },
+          confidence: 1,
+        }),
+      ),
+    ).toBe('Theorem drafted it for this record when you approved it.')
   })
 })
 
@@ -203,7 +212,9 @@ describe('undoableCorrection', () => {
     expect(undoableCorrection(base)).toBeUndefined()
     const a = correction({ correctionId: 'a', generation: 1 })
     const b = correction({ correctionId: 'b', generation: 2 })
-    expect(undoableCorrection({ ...base, corrections: [b, a] })?.correctionId).toBe('b')
+    expect(
+      undoableCorrection({ ...base, corrections: [b, a] })?.correctionId,
+    ).toBe('b')
     expect(
       undoableCorrection({ ...base, corrections: [a, { ...b, undone: true }] }),
     ).toBeUndefined()
@@ -255,11 +266,10 @@ describe('About', () => {
     const { container } = await mount()
     const section = await waitFor(() => about(container))
     await click(buttonNamed(section, 'Change…')!)
-    const input = await waitFor(
-      () =>
-        document.querySelector<HTMLInputElement>(
-          'input[aria-label="Find a person"]',
-        ),
+    const input = await waitFor(() =>
+      document.querySelector<HTMLInputElement>(
+        'input[aria-label="Find a person"]',
+      ),
     )
     expect(input).toBeDefined()
     const option = await waitFor(() =>

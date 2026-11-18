@@ -28,8 +28,7 @@ import {
   useUndoRecordFiling,
 } from './queries'
 
-const heading =
-  'text-xs font-medium tracking-wide text-ink-faint uppercase'
+const heading = 'text-xs font-medium tracking-wide text-ink-faint uppercase'
 
 /** Why Theorem linked the document to the record, in one sentence. */
 export function linkReason(receipt: RecordFilingReceipt) {
@@ -45,6 +44,8 @@ export function linkReason(receipt: RecordFilingReceipt) {
       return attribution.actor.kind === 'human'
         ? 'Linked here by a person.'
         : `Linked here by ${attribution.actor.kind === 'agent' ? 'an agent' : 'Theorem'}.`
+    case 'made':
+      return 'Theorem drafted it for this record when you approved it.'
   }
 }
 

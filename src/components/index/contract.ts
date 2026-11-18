@@ -129,6 +129,8 @@ export type RecordFilingAttribution =
   | { kind: 'identifier'; field: string }
   | { kind: 'name_mention'; where: 'title' | 'text'; tokens: string[] }
   | { kind: 'correction'; actor: Actor }
+  /** Theorem made the document (a message draft) for this record when the person approved `proposalId`. */
+  | { kind: 'made'; proposalId: string }
 
 /** A document's link to a record it is about, and why. Filing to records never changes the record. */
 export type RecordFilingReceipt = {
