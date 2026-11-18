@@ -4,13 +4,31 @@
 // here besides the frames is the model's exact state after each one, so a
 // scrubbed cycle can be shown as it was and run again from.
 
+import { ARTIFACT_RUNTIME_SCHEMA, digestOf, integerText } from '@theorem/runtime'
+import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
 import type { ModelState, Settled } from './engine'
 
 /** A primitive value a trace records: a number or text. */
 export type TraceValue = number | string
 
+/**
+ * What a trace's `cycle` counts: one settle of the teaching model (the start,
+ * a step, an edit or a restore). It is not a hardware clock cycle.
+ */
+export const TRACE_DOMAIN: TimeDomain = 'settlement'
+
+/** The engine a spatial model's run is produced by, as a run reference names it. */
+export const SPATIAL_ENGINE: EngineRef = {
+  kind: 'theorem.spatial-settle',
+  version: '1',
+  adapter: { schema: 'theorem.spatial-trace', version: '1' },
+  observation: { schema: 'theorem.spatial-frame', version: '1' },
+  capabilities: ['step', 'inspect', 'replay'],
+}
+
 /** What one settle of the model produced. */
 export interface TraceFrame {
+  /** The settle's place in the run, from 0: a `settlement`, not a clock cycle. */
   cycle: number
   /** What caused it, in words: `start`, `step`, `regb.value = 3`. */
   cause: string
@@ -30,7 +48,12 @@ interface Kept {
   frame: TraceFrame
   states: Map<string, Record<string, unknown>>
   pins: Map<string, unknown>
+  /** Parts still changing when the settle gave up; empty when it came to rest. */
+  unsettled: Array<string>
 }
+
+/** A run of the model as a run reference names it, without the source, which only the host knows. */
+export type SpatialRun = Omit<RunRef, 'source'>
 
 /** The most cycles kept; a model left running drops its oldest. */
 export const MAX_CYCLES = 5000
@@ -61,7 +84,9 @@ export function flatten(name: string, value: unknown, into: Record<string, Trace
     return
   }
   if (typeof value === 'bigint') {
-    into[name] = Number(value)
+    // Exact: a value past 2^53 is kept as its decimal text rather than rounded.
+    const small = Number(value)
+    into[name] = Number.isSafeInteger(small) ? small : value.toString()
     return
   }
   if (typeof value === 'string') {
@@ -100,6 +125,18 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
   return values
 }
 
+/** The exact reference of a kept settle of `runId`. */
+async function observationOf(runId: string, kept: Kept): Promise<ObservationRef> {
+  return {
+    schema: ARTIFACT_RUNTIME_SCHEMA,
+    runId,
+    index: integerText(kept.frame.cycle),
+    domain: TRACE_DOMAIN,
+    time: integerText(kept.frame.cycle),
+    stateDigest: await digestOf({ values: kept.frame.values, states: kept.states, pins: kept.pins }),
+  }
+}
+
 /**
  * The model's settles, cycle by cycle. A cycle can be shown again as it was,
  * and run again from with one value changed: the cycles after it are replayed
@@ -109,6 +146,7 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
 export class CycleTrace {
   private kept: Array<Kept> = []
   private run = 0
+  private parent: Promise<NonNullable<SpatialRun['parent']>> | undefined
   private readonly listeners = new Set<() => void>()
 
   constructor(
@@ -140,6 +178,39 @@ export class CycleTrace {
     return this.kept[cycle - this.first]?.frame
   }
 
+  /**
+   * The parts that had not come to rest in `cycle`'s settle, or undefined
+   * when the cycle is not kept. A non-empty list means the cycle's values are
+   * not a settled state.
+   */
+  unsettled(cycle: number): Array<string> | undefined {
+    return this.kept[cycle - this.first]?.unsettled
+  }
+
+  /** The current run as a run reference names it. */
+  async runRef(): Promise<SpatialRun> {
+    const id = this.recordingId
+    const parent = await this.parent
+    return {
+      schema: ARTIFACT_RUNTIME_SCHEMA,
+      id,
+      engine: SPATIAL_ENGINE,
+      ...(parent && { parent }),
+      domains: [TRACE_DOMAIN],
+      reproducibility: 'deterministic',
+    }
+  }
+
+  /**
+   * The exact reference of a kept cycle: this run, the cycle's place, and the
+   * digest of what the model held then (every value read, every state, every
+   * input set). Undefined when the cycle is not kept, never the latest instead.
+   */
+  async observation(cycle: number): Promise<ObservationRef | undefined> {
+    const kept = this.kept[cycle - this.first]
+    return kept && observationOf(this.recordingId, kept)
+  }
+
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => this.listeners.delete(listener)
@@ -157,6 +228,9 @@ export class CycleTrace {
       frame,
       states: new Map([...this.model.states].map(([path, state]) => [path, clone(state)])),
       pins: new Map([...this.model.pins].map(([key, value]) => [key, clone(value)])),
+      // Older callers hand a settle without the list: treat it as at rest.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      unsettled: [...(settled.unsettled ?? [])],
     })
     if (this.kept.length > MAX_CYCLES) this.kept.splice(0, this.kept.length - MAX_CYCLES)
     for (const listener of this.listeners) listener()
@@ -181,7 +255,17 @@ export class CycleTrace {
    * model's last settle.
    */
   rerun(cycle: number, path: string, key: string, value: unknown): Settled {
-    if (!this.show(cycle)) throw new Error(`Cycle ${cycle} is not kept`)
+    const from = this.kept[cycle - this.first]
+    if (!from || !this.show(cycle)) throw new Error(`Cycle ${cycle} is not kept`)
+    // The new run names the run and cycle it forked from, so the original is
+    // kept as its parent rather than overwritten in name.
+    const runId = this.recordingId
+    const change = causeText({ kind: 'set', path, key, value })
+    this.parent = observationOf(runId, from).then((at) => ({ runId, at, change }))
+    return this.rerunFrom(cycle, path, key, value)
+  }
+
+  private rerunFrom(cycle: number, path: string, key: string, value: unknown): Settled {
     const later = this.kept
       .slice(cycle - this.first + 1)
       .map((kept) => kept.cause)

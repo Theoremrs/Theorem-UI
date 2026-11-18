@@ -7,8 +7,11 @@ import {
   MAX_REFERENCE_BYTES,
   dossierReference,
   dossierState,
+  questionBinding,
   sourceOf,
 } from './app-dossier'
+import { ARTIFACT_RUNTIME_SCHEMA, digestOf } from '../blocks/artifact-runtime'
+import type { ObservationRef } from '../blocks/artifact-runtime'
 import type { ConversationMessage } from './app-dossier'
 import { CONTEXT_REFERENCES_METADATA } from './message-history'
 
@@ -105,4 +108,87 @@ test('a dossier reference cut down to its selection is still marked as the dossi
   const snapshot = await loaded()
   const reference = dossierReference(snapshot, { selected: { id: 'alu', label: 'x'.repeat(9_000) }, huge: 'y'.repeat(9_000) })
   expect(JSON.parse(reference.excerpt!).dossier).toBeDefined()
+})
+
+const moment = async (index: string): Promise<ObservationRef> => ({
+  schema: ARTIFACT_RUNTIME_SCHEMA,
+  runId: 'spatial-x:0',
+  index,
+  domain: 'settlement',
+  time: index,
+  stateDigest: await digestOf({ index }),
+})
+
+test('a question about a revision that failed to build names the revision running, and says a newer one failed', async () => {
+  const running = await loaded()
+  const failed = {
+    ...running,
+    html: `${running.html}<!-- broken -->`,
+    revision: { ...running.revision, position: Number(running.revision.position) + 1, contentDigest: 'newer' },
+  }
+  const observation = await moment('3')
+  const { running: named, binding } = questionBinding(
+    { snapshot: running, status: 'failed' },
+    failed,
+    { observation, run: { id: 'spatial-x:0', engine: { kind: 'theorem.spatial-settle' } } },
+  )
+  expect(named).toBe(running)
+  expect(binding.presentation.source).toEqual({
+    kind: 'document',
+    documentId: running.documentId,
+    position: String(running.revision.position),
+    contentDigest: running.revision.contentDigest,
+  })
+  // The run was computed by the revision running, whatever was saved since.
+  expect(binding.run?.source).toEqual(binding.presentation.source)
+  expect(binding.latest).toEqual({
+    source: { kind: 'document', documentId: running.documentId, position: String(failed.revision.position), contentDigest: 'newer' },
+    status: 'failed',
+  })
+  expect(binding.observation).toEqual(observation)
+  // A reference built from it names the running revision too.
+  expect(dossierReference(named, {}, binding).location.revision).toBe(String(running.revision.position))
+})
+
+test('a state-only save names the newest revision, since its page is the one running', async () => {
+  const running = await loaded()
+  const saved = { ...running, revision: { ...running.revision, position: Number(running.revision.position) + 1 } }
+  const { running: named, binding } = questionBinding({ snapshot: running }, saved, {})
+  expect(named).toBe(saved)
+  expect(binding.latest).toBeUndefined()
+})
+
+test('a question cannot be asked before any revision has built', async () => {
+  expect(() => questionBinding({}, null, {})).toThrow('has not built')
+})
+
+test('the moment and run a question names are kept whole when its account is cut down to fit', async () => {
+  const snapshot = await loaded()
+  const observation = await moment('7')
+  const facts = Array.from({ length: 96 }, (_, index) => ({ entity: `add/fa${index}`, key: 'cout', value: { type: 'integer', text: '1' }, text: '1' }))
+  const context = { selected: { id: 'add' }, observation, run: { id: 'spatial-x:0' }, facts, history: 'h'.repeat(6_000) }
+  const binding = questionBinding({ snapshot }, snapshot, context).binding
+  const reference = dossierReference(snapshot, context, binding)
+  expect(new TextEncoder().encode(JSON.stringify(reference)).length).toBeLessThanOrEqual(MAX_REFERENCE_BYTES)
+  const excerpt = JSON.parse(reference.excerpt!)
+  expect(excerpt.binding.observation).toEqual(observation)
+  expect(excerpt.dossier.observation).toEqual(observation)
+  expect(excerpt.dossier.omitted).toEqual(['history'])
+  // Facts are shortened from the end, never all dropped, and say how many went.
+  expect(excerpt.dossier.facts.length).toBeGreaterThan(0)
+  expect(excerpt.dossier.facts.length + excerpt.dossier.factsOmitted).toBe(96)
+  expect(excerpt.dossier.facts[0].entity).toBe('add/fa0')
+})
+
+test('loaded again, a question and its reply keep the moment it was asked about', async () => {
+  const snapshot = await loaded()
+  const observation = await moment('2')
+  const context = { selected: { id: 'add' }, observation }
+  const reference = dossierReference(snapshot, context, questionBinding({ snapshot }, snapshot, context).binding)
+  const asked: ConversationMessage = {
+    id: '1', role: 'user', content: [{ type: 'text', text: 'Why?' }],
+    metadata: { custom: { [CONTEXT_REFERENCES_METADATA]: [reference] } },
+  }
+  const state = dossierState([asked, reply('2', 'Because')], snapshot.documentId)
+  expect(state.messages.map((message) => message.observation)).toEqual([observation, observation])
 })

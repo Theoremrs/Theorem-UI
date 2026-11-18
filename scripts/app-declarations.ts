@@ -1,6 +1,6 @@
 // Writes the declarations a TypeScript App is checked against for
 // `window.theorem` and for the libraries of app-libraries.ts
-// (`@theorem/annotate`, `@theorem/spatial`), from the code that implements
+// (`@theorem/annotate`, `@theorem/runtime`, `@theorem/spatial`), from the code that implements
 // them.
 //
 //   bun scripts/app-declarations.ts
@@ -17,7 +17,7 @@
 // Run it after changing what `window.theorem` or a library offers. A test
 // (src/lib/blocks/app-check.test.ts) fails while the written file differs
 // from what this would write.
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import ts from 'typescript'
@@ -116,14 +116,23 @@ export function libraryFiles(
 /** Each library of app-libraries.ts, by name, as its declaration files. */
 export function libraryDeclarations(): Record<string, Record<string, string>> {
   const annotate = libraryFiles('@theorem/annotate', 'annotate')
-  // spatial imports annotate by name: give TypeScript annotate's declarations there.
-  const folder = mkdtempSync(path.join(tmpdir(), 'theorem-annotate-'))
+  const runtime = libraryFiles('@theorem/runtime', 'artifact-runtime')
+  // spatial imports annotate and runtime by name: give TypeScript their declarations there.
+  const folder = mkdtempSync(path.join(tmpdir(), 'theorem-libraries-'))
   try {
-    for (const [name, text] of Object.entries(annotate)) writeFileSync(path.join(folder, name), text)
+    const written: Record<string, Array<string>> = {}
+    for (const [name, files] of Object.entries({ annotate, runtime })) {
+      const into = path.join(folder, name)
+      mkdirSync(into)
+      for (const [file, text] of Object.entries(files)) writeFileSync(path.join(into, file), text)
+      written[name] = [path.join(into, 'index.d.ts')]
+    }
     return {
       '@theorem/annotate': annotate,
+      '@theorem/runtime': runtime,
       '@theorem/spatial': libraryFiles('@theorem/spatial', 'spatial', {
-        '@theorem/annotate': [path.join(folder, 'index.d.ts')],
+        '@theorem/annotate': written.annotate!,
+        '@theorem/runtime': written.runtime!,
       }),
     }
   } finally {

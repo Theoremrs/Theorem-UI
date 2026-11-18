@@ -196,6 +196,14 @@ export interface DossierMessage {
   role: 'user' | 'assistant'
   text: string
   status: 'running' | 'complete' | 'incomplete'
+  /**
+   * The exact moment the question was asked about, as the App sent it
+   * (`@theorem/runtime`'s ObservationRef); a reply carries its question's.
+   * JSON, read with readObservationRef.
+   */
+  observation?: unknown
+  /** Held until the conversation's current turn ends, so asking does not stop it. */
+  queued?: boolean
 }
 
 /**

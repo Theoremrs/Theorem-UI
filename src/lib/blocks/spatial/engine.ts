@@ -276,6 +276,12 @@ export interface Settled {
   readings: Map<string, PartReading>
   /** The model's parts in the order they fire, stage by stage. */
   stages: Array<Array<string>>
+  /**
+   * The parts of a loop that were still changing when the settle gave up
+   * after its passes. Empty when every network came to rest; otherwise the
+   * values read are not a settled state and must not be presented as one.
+   */
+  unsettled: Array<string>
 }
 
 const CYCLE_PASSES = 32
@@ -350,8 +356,9 @@ export class ModelState {
 
   settle(): Settled {
     const readings = new Map<string, PartReading>()
-    const stages = this.settleNetwork(this.network, {}, readings)
-    return { readings, stages }
+    const unsettled: Array<string> = []
+    const stages = this.settleNetwork(this.network, {}, readings, unsettled)
+    return { readings, stages, unsettled }
   }
 
   /** Advances every clocked part one step from what the last settle saw, and settles again. */
@@ -375,6 +382,7 @@ export class ModelState {
     network: Network,
     boundary: Values,
     readings: Map<string, PartReading>,
+    unsettled: Array<string> = [],
   ): Array<Array<string>> {
     const outputs = new Map<string, Values>()
     const stageOf = new Map<string, number>()
@@ -400,7 +408,7 @@ export class ModelState {
       const state = this.states.get(part.path) ?? {}
       let result: Values
       if (part.inside) {
-        this.settleNetwork(part.inside, inputs, readings)
+        this.settleNetwork(part.inside, inputs, readings, unsettled)
         result = this.boundaryOutputs(part.inside, readings, inputs)
       } else if (part.spec.compute) {
         // A compute written in plain JavaScript may return nothing.
@@ -449,15 +457,17 @@ export class ModelState {
     const ordered = [...network.parts].sort(
       (a, b) => stageOf.get(a.path)! - stageOf.get(b.path)!,
     )
+    let changing: Array<string> = []
     for (let pass = 0; pass < CYCLE_PASSES; pass++) {
-      let changed = false
+      changing = []
       for (const part of ordered) {
         const result = evaluate(part)
-        if (!equal(result, outputs.get(part.path))) changed = true
+        if (!equal(result, outputs.get(part.path))) changing.push(part.path)
         outputs.set(part.path, result)
       }
-      if (!changed) break
+      if (!changing.length) break
     }
+    for (const path of changing) if (!unsettled.includes(path)) unsettled.push(path)
     const stages: Array<Array<string>> = []
     for (const part of ordered) {
       const stage = stageOf.get(part.path)!

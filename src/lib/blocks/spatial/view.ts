@@ -37,7 +37,7 @@ import { createElement } from 'react'
 import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
-import type { ChromeActions, ChromeProps, ChromeSnapshot, PartSnapshot } from './chrome'
+import type { ChromeActions, ChromeProps, ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
 import { CycleTrace } from './trace'
 import type { TraceFrame } from './trace'
 
@@ -125,6 +125,8 @@ export interface SpatialTrace {
   /** The cycle shown, when it is not the latest. */
   viewing: () => number | null
   frames: (from?: number) => Array<TraceFrame>
+  /** The exact run and moment of a kept cycle (default: the one shown). */
+  ground: (cycle?: number) => Promise<Grounding>
   /** Shows a cycle as it was (null or the latest: the model as it is now). */
   scrub: (cycle: number | null) => void
   /** Called after each new cycle and each scrub. */
@@ -911,6 +913,30 @@ export function mount(
     trace.record({ kind: 'step' }, settled)
   }
 
+  /**
+   * The exact run and moment of `cycle` in the run current now, resolved when
+   * called (a snapshot is made often; a digest is made only for a question).
+   * Once that run is replaced by a re-run, the moment is reported missing
+   * rather than read from the new run.
+   */
+  function groundAt(cycle: number): () => Promise<Grounding> {
+    const runId = trace.recordingId
+    return async () => {
+      const run = await trace.runRef()
+      const current = run.id === runId
+      if (!current) {
+        // Only the replaced run's name is still known here, not its lineage.
+        const { parent: _replaced, ...rest } = run
+        return { run: { ...rest, id: runId }, observation: undefined, unsettled: [] }
+      }
+      return {
+        run,
+        observation: await trace.observation(cycle),
+        unsettled: trace.unsettled(cycle) ?? [],
+      }
+    }
+  }
+
   function scrub(cycle: number | null) {
     const latest = cycle === null || cycle >= trace.cycle
     const next = latest ? null : Math.max(cycle, trace.first)
@@ -1138,6 +1164,8 @@ export function mount(
         recent: trace.frames(Math.max(trace.first, (viewing ?? trace.cycle) - 7)).filter(
           (frame) => frame.cycle <= (viewing ?? trace.cycle),
         ),
+        runId: trace.recordingId,
+        ground: groundAt(viewing ?? trace.cycle),
       },
     }
   }
@@ -1749,6 +1777,7 @@ export function mount(
       first: () => trace.first,
       viewing: () => viewing,
       frames: (from) => trace.frames(from),
+      ground: (cycle) => groundAt(cycle ?? viewing ?? trace.cycle)(),
       scrub,
       subscribe: (listener) => {
         traceListeners.add(listener)

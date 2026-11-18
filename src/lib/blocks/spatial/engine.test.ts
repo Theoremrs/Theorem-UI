@@ -151,3 +151,21 @@ describe('a spatial model', () => {
     expect(text).toContain('contains: XOR, XOR, AND, AND, OR')
   })
 })
+
+describe('a settle that never comes to rest', () => {
+  it('names the parts still changing rather than presenting them as settled', () => {
+    // An inverter fed from its own output oscillates forever.
+    const state = new ModelState(
+      buildNetwork((m) => {
+        m.part({ id: 'not', ports: { a: 'in', out: 'out' }, compute: ({ a }) => ({ out: a ? 0 : 1 }) })
+        m.wire('not.out', 'not.a')
+      }),
+    )
+    expect(state.settle().unsettled).toEqual(['not'])
+  })
+
+  it('a network without a loop comes to rest', () => {
+    const state = new ModelState(buildNetwork((m) => m.part(rippleAdder({ id: 'add', bits: 4 }))))
+    expect(state.settle().unsettled).toEqual([])
+  })
+})

@@ -13,6 +13,11 @@ import annotatePaths from './annotate/paths.ts?raw'
 import annotatePlace from './annotate/place.ts?raw'
 import annotateThemeCss from './annotate/theme.css?raw'
 import annotateTheme from './annotate/theme.tsx?raw'
+import runtimeDigest from './artifact-runtime/digest.ts?raw'
+import runtimeIndex from './artifact-runtime/index.ts?raw'
+import runtimeSession from './artifact-runtime/session.ts?raw'
+import runtimeTypes from './artifact-runtime/types.ts?raw'
+import runtimeValues from './artifact-runtime/values.ts?raw'
 import spatialArrange from './spatial/arrange.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
@@ -39,6 +44,13 @@ export const librarySources: Record<string, Record<string, string>> = {
     'place.ts': annotatePlace,
     'theme.css': annotateThemeCss,
     'theme.tsx': annotateTheme,
+  },
+  '@theorem/runtime': {
+    'digest.ts': runtimeDigest,
+    'index.ts': runtimeIndex,
+    'session.ts': runtimeSession,
+    'types.ts': runtimeTypes,
+    'values.ts': runtimeValues,
   },
   '@theorem/spatial': {
     'arrange.ts': spatialArrange,

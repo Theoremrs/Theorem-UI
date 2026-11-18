@@ -41,10 +41,11 @@ import type { AppSelectionContext } from '@/lib/theorem/app-references'
 import {
   DOSSIER_METADATA,
   dossierReference,
+  questionBinding,
   dossierState,
   sourceOf,
 } from '@/lib/theorem/app-dossier'
-import type { ConversationMessage } from '@/lib/theorem/app-dossier'
+import type { ConversationMessage, Displayed } from '@/lib/theorem/app-dossier'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
 import { AppElement } from './app-element'
 import { AppProblems } from './app-problems'
@@ -85,7 +86,10 @@ interface Shown {
   src: string
   /** The hosted page itself: a built App's page says how it was built. */
   page: string
+  /** The revision the page was built from: what is running, whatever is newer. */
+  snapshot: AppSnapshot
 }
+
 
 /** Whether an App's HTML carries TypeScript source, which is built before it runs. */
 const carriesSource = (html: string) => html.includes(SOURCE_TYPE)
@@ -96,7 +100,13 @@ const carriesSource = (html: string) => html.includes(SOURCE_TYPE)
  * revision that built while the next is built, and after it fails to: then
  * `problems` says why and `shown` is still the earlier revision.
  */
-function useHostedPreview(html: string, ready: Promise<void> | undefined) {
+function useHostedPreview(snapshot: AppSnapshot, ready: Promise<void> | undefined) {
+  const { html } = snapshot
+  // The revision whose page is built: read when the build finishes, for that html.
+  const building = useRef(snapshot)
+  useEffect(() => {
+    building.current = snapshot
+  })
   const [state, setState] = useState<{
     shown?: Shown
     failed?: { html: string; problems: Array<AppProblem>; error?: string }
@@ -111,7 +121,7 @@ function useHostedPreview(html: string, ready: Promise<void> | undefined) {
         const src = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
         for (const url of urls.current) URL.revokeObjectURL(url)
         urls.current = new Set([src])
-        setState({ shown: { html, src, page } })
+        setState({ shown: { html, src, page, snapshot: building.current } })
       },
       (failure: unknown) => {
         if (!active) return
@@ -199,15 +209,24 @@ function AppPreview({
   snapshot,
   onSelection,
   dossier,
+  displayedRef,
 }: {
   app: AppDocument
   snapshot: AppSnapshot
   onSelection: (value: AppSelectionContext | undefined) => void
   dossier: AppDossier
+  displayedRef: { current: Displayed }
 }) {
   const { state, error: stateError } = useDocumentReplica(app)
-  const preview = useHostedPreview(snapshot.html, state?.ready)
+  const preview = useHostedPreview(snapshot, state?.ready)
   const { shown } = preview
+  // What a question names: the revision running, not merely the latest saved.
+  useEffect(() => {
+    displayedRef.current = {
+      snapshot: shown?.snapshot,
+      status: preview.current ? undefined : preview.problems.length || preview.error ? 'failed' : 'building',
+    }
+  })
   const types = useTypeCheck(snapshot.html, preview.current)
   const [thrown, setThrown] = useState<{
     src: string
@@ -546,23 +565,71 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
  * thread on screen with the App's revision and the App's account of where the
  * person is; the App is told the questions it asked and their replies.
  */
+/** A question held while the conversation's turn runs, so asking does not stop it. */
+interface Queued {
+  id: string
+  text: string
+  context: Record<string, unknown>
+  displayed: Displayed
+}
+
+/**
+ * The page's conversation as an App's dossier reaches it: one conversation,
+ * whichever part of the App a question is asked from. A question goes to the
+ * thread on screen with the revision that is running, the moment the App
+ * says it shows and the App's account of where the person is; the App is told
+ * the questions it asked and their replies. A question asked while the
+ * conversation is answering is held and sent when the turn ends.
+ */
 function useAppDossier(
   app: AppDocument,
   openSource: (reveal: { file: string; line: number }) => void,
+  displayedRef: { current: Displayed },
 ): AppDossier {
   const aui = useAui()
   const available = useAuiState((s) => s.optional.thread !== undefined)
+  const running = useAuiState((s) => s.optional.thread?.isRunning ?? false)
   const messages = useAuiState(
     (s) => s.optional.thread?.messages ?? NO_MESSAGES,
   ) as ReadonlyArray<ConversationMessage>
-  const latest = useRef({ aui, openSource })
+  const latest = useRef({ aui, openSource, running })
   useEffect(() => {
-    latest.current = { aui, openSource }
+    latest.current = { aui, openSource, running }
   })
+  const [queued, setQueued] = useState<Array<Queued>>([])
   const dossier = useMemo(() => {
     let state = CLOSED
     let said = JSON.stringify(state)
     const listeners = new Set<(next: DossierState) => void>()
+    const send = (question: Omit<Queued, 'id'>) => {
+      const { thread } = latest.current.aui
+      if (!thread.source)
+        throw new Error('This App is not shown in a conversation.')
+      const { running: revision, binding } = questionBinding(
+        question.displayed,
+        app.getSnapshot(),
+        question.context,
+      )
+      thread.append({
+        role: 'user',
+        content: [{ type: 'text', text: question.text }],
+        metadata: {
+          custom: {
+            [DOSSIER_METADATA]: {
+              documentId: app.documentId,
+              ...(binding.observation && { observation: binding.observation }),
+            },
+          },
+        },
+        runConfig: {
+          custom: {
+            theoremContextReferences: [
+              dossierReference(revision, question.context, binding),
+            ],
+          },
+        },
+      })
+    }
     return {
       set(next: DossierState) {
         const saying = JSON.stringify(next)
@@ -576,24 +643,19 @@ function useAppDossier(
         listeners.add(listener)
         return () => void listeners.delete(listener)
       },
+      send,
       async ask(text: string, context: Record<string, unknown>) {
-        const current = app.getSnapshot()
-        if (!current) throw new Error('The App has not loaded yet.')
-        const { thread } = latest.current.aui
-        if (!thread.source)
+        // Captured now: a later build or selection does not change what was asked about.
+        const question = { text, context, displayed: { ...displayedRef.current } }
+        questionBinding(question.displayed, app.getSnapshot(), context)
+        if (!latest.current.aui.thread.source)
           throw new Error('This App is not shown in a conversation.')
-        thread.append({
-          role: 'user',
-          content: [{ type: 'text', text }],
-          metadata: {
-            custom: { [DOSSIER_METADATA]: { documentId: app.documentId } },
-          },
-          runConfig: {
-            custom: {
-              theoremContextReferences: [dossierReference(current, context)],
-            },
-          },
-        })
+        if (latest.current.running) {
+          const id = `queued:${crypto.randomUUID()}`
+          setQueued((previous) => [...previous, { id, ...question }])
+          return
+        }
+        send(question)
       },
       source(name: string) {
         const current = app.getSnapshot()
@@ -603,12 +665,47 @@ function useAppDossier(
         return Boolean(place)
       },
     }
-  }, [app])
+  }, [app, displayedRef])
+  // Held questions go, in order, once the turn that was running ends.
   useEffect(() => {
-    dossier.set(dossierState(messages, app.documentId, available))
-  }, [dossier, messages, available, app.documentId])
+    if (running || !queued.length) return
+    const [next, ...rest] = queued
+    // The turn that held it has ended: the next held question goes now.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setQueued(rest)
+    try {
+      dossier.send(next!)
+    } catch {
+      // The conversation went away; the question is dropped visibly with the queue.
+    }
+  }, [running, queued, dossier])
+  useEffect(() => {
+    const base = dossierState(messages, app.documentId, available)
+    dossier.set(
+      queued.length
+        ? {
+            ...base,
+            running: true,
+            messages: [
+              ...base.messages,
+              ...queued.map((question) => ({
+                id: question.id,
+                role: 'user' as const,
+                text: question.text,
+                status: 'complete' as const,
+                queued: true,
+                ...(isRecord(question.context.observation) && { observation: question.context.observation }),
+              })),
+            ],
+          }
+        : base,
+    )
+  }, [dossier, messages, available, app.documentId, queued])
   return dossier
 }
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
 export function DocumentAppView({
   app,
@@ -623,10 +720,15 @@ export function DocumentAppView({
   const [edit, setEdit] = useState<Edit>()
   const [running, setRunning] = useState(initiallyRunning)
   const [selection, setSelection] = useAppSelection(app)
-  const dossier = useAppDossier(app, (reveal) => {
-    const current = app.getSnapshot()
-    if (current) setEdit({ html: current.html, base: current, reveal })
-  })
+  const displayedRef = useRef<Displayed>({})
+  const dossier = useAppDossier(
+    app,
+    (reveal) => {
+      const current = app.getSnapshot()
+      if (current) setEdit({ html: current.html, base: current, reveal })
+    },
+    displayedRef,
+  )
   // What was pointed at, while it is still this revision that is on screen.
   const pointed = snapshot && selectionForSource(snapshot, selection)
   if (!snapshot)
@@ -693,6 +795,7 @@ export function DocumentAppView({
           snapshot={snapshot}
           onSelection={setSelection}
           dossier={dossier}
+          displayedRef={displayedRef}
         />
       ) : (
         <p className="text-sm text-ink-muted">
