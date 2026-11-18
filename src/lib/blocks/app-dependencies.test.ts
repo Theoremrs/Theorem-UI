@@ -5,6 +5,7 @@ import { checkLibraryFromDisk } from '../../../test/blocks/check-library'
 import { readFileSync } from 'node:fs'
 import { appDependencies, AppDependencies } from './app-dependencies'
 import { APP_LIBRARIES } from './app-libraries'
+import { librarySources } from './app-library-sources'
 import { libraryDeclarations } from './check/theorem-app.generated'
 import type { AppDependencyFetch } from './app-dependencies'
 import { dependencyDeclarations } from './app-dependency-types'
@@ -329,6 +330,18 @@ createRoot(document.body).render(<AnnotationLayer anchors={anchors}><Annotation 
     // Which of these elements are stamped is seen at run time (scripts/e2e/spatial.mjs).
     expect(bundle.code).toContain('theorem-app:main.tsx')
   }, 120_000)
+
+  test('registers every module a library\'s own files import', () => {
+    const missing: Array<string> = []
+    for (const [library, files] of Object.entries(librarySources))
+      for (const [file, source] of Object.entries(files))
+        for (const [, name] of source.matchAll(/(?:from|import)\s+'\.\/([^']+)'/g)) {
+          const stem = name!.replace(/\?raw$/, '')
+          const found = [stem, `${stem}.ts`, `${stem}.tsx`].some((candidate) => candidate in files)
+          if (!found) missing.push(`${library}/${file} imports ./${name}`)
+        }
+    expect(missing).toEqual([])
+  })
 
   test('bundles the runtime library with every module its entry exports', async () => {
     const sources = { entry: 'main.ts', files: { 'main.ts': `import { integerText, Operations, resultRef } from '@theorem/runtime'

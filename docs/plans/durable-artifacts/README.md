@@ -34,7 +34,11 @@ Theorem-UI
     trace.ts                  TRACE_DOMAIN = 'settlement'; capture(cycle) atomic; holds(); reproducibility 'recorded'
     view.ts / chrome.tsx      groundAt captures synchronously; reveal(observation) navigates exactly
     dossier.tsx               groundedContext checks agreement; unavailable carries no values; referenced moment status
+    durable.ts                DurableTrace: writes a run from index 0 through an asked moment (parent first for a fork)
   host
+    artifact-store.ts         typed client for /api/apps/v1/artifacts (bytes first, CSRF retry), RunWriter
+    app-artifacts.ts          window.theorem.artifacts for an App: record / result / resolve; names the running revision
+    bridge.ts / app-bridge.ts artifacts.record, artifacts.result, artifacts.resolve (zod-checked)
     document-app.tsx          Ask names the running revision; queued questions keep failures (undelivered)
     app-dossier.ts            ContextBinding (explicit run source kept); operations discovered; envelope never cut
 
@@ -43,6 +47,10 @@ Theorem (rustyredcore_THG/crates/theorem-apps)
   artifact_result.rs          ResultRef SubjectRef SelectionRef ContextBinding, ids checked against the browser
   store/artifact_runs.rs      immutable runs, ordered idempotent chunks, checkpoints, forks, exact resolve
   store/artifact_results.rs   immutable results after their bytes; resolve_artifact_subject
+  store/artifact_blobs.rs     artifact bytes as immutable graph records by digest (1 MiB), stored_* writers
+  service/artifacts.rs        AppService methods for the routes
+Theorem (rustyredcore_THG/crates/rustyred-thg-server)
+  theorem_apps_artifacts_api.rs  /api/apps/v1/artifacts/{blobs,runs,chunks,checkpoints,results,resolve}
 ```
 
 ### Decisions taken while implementing
@@ -81,6 +89,26 @@ Theorem (rustyredcore_THG/crates/theorem-apps)
   was evicted or replaced; it never scrubs to the same index of another run.
 - (Review C) A capture never claims a producer build or reproducibility; what is
   not known is listed in `unknowns`.
+
+## Evidence (review follow-up D, persistence)
+
+A question about a spatial moment now writes the run through that moment
+before it is sent: the App's `DurableTrace` hands its observations to the page
+(`artifacts.record`), the page's `RunWriter` stores each chunk's bytes and then
+the chunk, and the question says `observationLifetime: 'durable'` only when
+that succeeded. A re-run is written after its parent, through the cycle it
+forked from, because the store refuses a fork whose parent never recorded that
+moment; the trace keeps up to 16 replaced runs for this. A run whose early
+cycles were dropped (more than 5000 settles before the first question) is not
+written and stays `session`: the store takes runs only from index 0, and this
+does not invent a partial run.
+
+| Check | Result |
+| --- | --- |
+| `bun test` artifact-store, app-artifacts, spatial (durable), bridge, app-check, app-dependencies, theorem, artifact-runtime | pass except one test that needs esm.sh through the proxy |
+| new guard: every module a library's files import is registered | red with `durable.ts` unregistered, green with it |
+| `tsc --noEmit` | clean except the pre-existing terminal-wasm module |
+| theorem-apps | blob store and `stored_*` writers: reopen, tenant isolation, size bounds |
 
 ## Evidence (review follow-ups A to C)
 
@@ -121,8 +149,7 @@ Review follow-up C, last item, and D:
 
 - Expose `@theorem/runtime` and `@theorem/spatial` declarations and source to the
   authoring agent through a native capability (also W0 below).
-- D: browser persistence and exact resolution through the backend stores (a
-  native route), a reservations app and a checked heat model built through the
+- D: a reservations app and a checked heat model built through the
   normal authoring workflow, feedback with before/after evaluations, cosmetic
   reuse and semantic invalidation, reopen in another thread, transfer.
 - Fidelity claims and evaluator records (G2) through the existing evidence owners.

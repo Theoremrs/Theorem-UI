@@ -158,7 +158,33 @@ export interface PageMethods {
   'dossier.source': { params: { name: string }; result: { found: boolean } }
   /** A model trace written as a Rerun recording (`.rrd` bytes), for Rerun's viewer. */
   'trace.recording': { params: ModelTrace; result: Uint8Array }
+  /**
+   * A run's next observations, kept durably for this person: the run (a
+   * `@theorem/runtime` RunRef) is recorded with its first observations, and
+   * each call continues exactly where the last ended. `through` is the last
+   * index stored.
+   */
+  'artifacts.record': {
+    params: { run: unknown; domain: string; observations: Array<ArtifactObservation> }
+    result: { through: string | null }
+  }
+  /** A result the App produced (a ResultRef), kept durably with its bytes. */
+  'artifacts.result': { params: { result: unknown; bytes: Uint8Array }; result: { id: string } }
+  /** Whether a subject (a SubjectRef) is held durably, exactly; never the latest instead. */
+  'artifacts.resolve': { params: { subject: unknown }; result: ArtifactResolution }
 }
+
+/** One observation of a run as it is kept: its place, its time and its state's digest. */
+export interface ArtifactObservation {
+  index: string
+  time: string
+  stateDigest: string
+}
+
+/** Whether a subject is held durably, and if not, why. */
+export type ArtifactResolution =
+  | { status: 'available' }
+  | { status: 'unavailable'; reason: string }
 
 /** A primitive value a model trace records: a number or text. */
 export type TraceValue = number | string

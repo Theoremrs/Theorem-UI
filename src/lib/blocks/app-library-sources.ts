@@ -25,6 +25,7 @@ import spatialBits from './spatial/bits.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
 import spatialDossier from './spatial/dossier.tsx?raw'
+import spatialDurable from './spatial/durable.ts?raw'
 import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
@@ -64,6 +65,7 @@ export const librarySources: Record<string, Record<string, string>> = {
     'chrome.css': spatialChromeCss,
     'chrome.tsx': spatialChrome,
     'dossier.tsx': spatialDossier,
+    'durable.ts': spatialDurable,
     'engine.ts': spatialEngine,
     'form.ts': spatialForm,
     'index.ts': spatialIndex,

@@ -228,8 +228,9 @@ export async function groundedContext(
     subject: { kind: 'moment', observation, run: grounding.run } satisfies SubjectRef,
     run: grounding.run,
     observation,
-    // Held by this open App's trace only, until runs are saved durably.
-    observationLifetime: 'session',
+    // Durable once the run is stored through this moment; otherwise held by
+    // this open App's trace only.
+    observationLifetime: grounding.lifetime ?? 'session',
     settled: grounding.unsettled.length === 0,
     ...(grounding.unsettled.length ? { unsettled: grounding.unsettled } : {}),
     facts: facts.map((fact) => ({ entity: fact.entity, key: fact.key, value: fact.value, text: signalText(fact.value) })),

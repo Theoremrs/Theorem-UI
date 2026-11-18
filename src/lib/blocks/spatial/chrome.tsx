@@ -112,6 +112,12 @@ export interface Grounding {
   frame: TraceFrame | undefined
   /** Parts still changing when that cycle's settle gave up; empty when it came to rest. */
   unsettled: Array<string>
+  /**
+   * `durable` once the run is stored through that moment, so another thread
+   * or App can resolve it exactly; `session` (the default) while only this
+   * open App's trace holds it.
+   */
+  lifetime?: 'session' | 'durable'
 }
 
 export interface ChromeActions {

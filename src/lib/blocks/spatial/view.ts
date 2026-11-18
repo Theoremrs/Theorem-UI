@@ -39,6 +39,7 @@ import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
 import { partAnchor, portAnchor, SpatialChrome } from './chrome'
 import type { ChromeActions, ChromeProps, ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
+import { DurableTrace } from './durable'
 import type { ObservationRef } from '@theorem/runtime'
 import { routeInPlane } from './route'
 import { CycleTrace, groundCapture } from './trace'
@@ -355,6 +356,7 @@ export function mount(
   let previous = settled
   const trace = new CycleTrace(model, `spatial-${Math.random().toString(36).slice(2, 10)}`)
   trace.record({ kind: 'start' }, settled)
+  const durable = new DurableTrace(trace)
   /** The cycle shown while the person looks back; null at the latest. */
   let viewing: number | null = null
   const traceListeners = new Set<() => void>()
@@ -945,7 +947,10 @@ export function mount(
         const { parent: _replaced, ...rest } = run
         return { run: run.id === runId ? run : { ...rest, id: runId }, observation: undefined, frame: undefined, unsettled: [] }
       }
-      return groundCapture(captured)
+      const grounding = await groundCapture(captured)
+      // Written when a question asks, so the moment it is about outlives this App.
+      const kept = durable.available && (await durable.through(grounding.observation))
+      return { ...grounding, lifetime: kept ? 'durable' : 'session' }
     }
   }
 
