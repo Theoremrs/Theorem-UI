@@ -12,6 +12,7 @@ import annotatePaths from './annotate/paths.ts?raw'
 import annotatePlace from './annotate/place.ts?raw'
 import annotateThemeCss from './annotate/theme.css?raw'
 import annotateTheme from './annotate/theme.tsx?raw'
+import spatialArrange from './spatial/arrange.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
 import spatialEngine from './spatial/engine.ts?raw'
@@ -35,6 +36,7 @@ export const librarySources: Record<string, Record<string, string>> = {
     'theme.tsx': annotateTheme,
   },
   '@theorem/spatial': {
+    'arrange.ts': spatialArrange,
     'chrome.css': spatialChromeCss,
     'chrome.tsx': spatialChrome,
     'engine.ts': spatialEngine,

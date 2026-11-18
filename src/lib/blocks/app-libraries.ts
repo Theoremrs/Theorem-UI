@@ -30,7 +30,7 @@ const annotate: AppLibrary = {
 export const APP_LIBRARIES: Record<string, AppLibrary> = {
   '@theorem/annotate': annotate,
   '@theorem/spatial': {
-    dependencies: { ...annotate.dependencies, three: '0.187.0' },
+    dependencies: { ...annotate.dependencies, three: '0.187.0', elkjs: '0.12.1' },
     types: ['react', 'three'],
   },
 }

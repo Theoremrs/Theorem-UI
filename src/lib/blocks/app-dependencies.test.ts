@@ -238,7 +238,7 @@ model.open('lamp')`
     expect(appDependencies({ entry: 'main.ts', files: {
       'main.ts': SPATIAL_APP,
       'package.json': '{"dependencies":{"three":"0.188.0"}}',
-    } }).versions).toMatchObject({ three: '0.188.0', '@floating-ui/core': '1.8.0' })
+    } }).versions).toMatchObject({ three: '0.188.0', elkjs: '0.12.1', '@floating-ui/core': '1.8.0' })
     expect(new AppDependencies().resolve('@theorem/spatial'))
       .toEqual({ kind: 'library', path: '@theorem/spatial' })
     expect(new AppDependencies().resolve('@theorem/annotate'))
@@ -246,13 +246,11 @@ model.open('lamp')`
   })
 
   test('pins the versions Theorem builds and checks it with', () => {
-    const own = JSON.parse(readFileSync(new URL('../../../package.json', import.meta.url), 'utf8')) as {
-      dependencies: Record<string, string>
-      devDependencies: Record<string, string>
-    }
+    const installed = (name: string) =>
+      (JSON.parse(readFileSync(new URL(`../../../node_modules/${name}/package.json`, import.meta.url), 'utf8')) as { version: string }).version
     for (const library of Object.values(APP_LIBRARIES))
       for (const [name, version] of Object.entries(library.dependencies))
-        expect([name, own.devDependencies[name] ?? own.dependencies[name]]).toEqual([name, version])
+        expect([name, installed(name)]).toEqual([name, version])
   })
 
   test('names the packages its declarations import', () => {

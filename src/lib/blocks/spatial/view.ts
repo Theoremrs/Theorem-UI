@@ -26,7 +26,9 @@ import {
   
   
 } from './engine'
-import type {Builder, HandleSpec, Network, Part, PartReading, Settled, Values, Vec3, Wire} from './engine';
+import type {Builder, HandleSpec, Network, Part, PartReading, Values, Vec3, Wire} from './engine';
+import { arrangeElk, arrangeStages } from './arrange'
+import type { Arranged } from './arrange'
 import { buildForm, mergedGeometry  } from './form'
 import type {Form} from './form';
 import { anchorStore } from '@theorem/annotate'
@@ -55,6 +57,13 @@ export interface MountOptions {
   chrome?: ComponentType<ChromeProps>
   /** Stages a change travels per second. Default 5. */
   pace?: number
+  /**
+   * How parts that give no `at` are first arranged: `'elk'` in layers along the
+   * wires (ELK, ports west and east), `'stages'` in columns by settle stage.
+   * A part's own `at` always wins and the person's moves are never undone.
+   * Default `'elk'`.
+   */
+  arrange?: 'elk' | 'stages'
 }
 
 export interface PartView {
@@ -209,6 +218,9 @@ interface WireVisual {
   fade: number
 }
 
+/** How a level's parts that give no `at` are first arranged when the App does not say. */
+const DEFAULT_ARRANGE: NonNullable<MountOptions['arrange']> = 'elk'
+
 const FRAMING = new THREE.Vector3(0.62, 0.42, 1).normalize()
 /** The band an open note takes at the stage's right: its 18rem and the gap to its part. */
 const NOTE_BAND = 18 * 16 + 18
@@ -228,39 +240,6 @@ const truthy = (value: unknown) =>
   typeof value === 'number' ? value !== 0 : typeof value === 'boolean' ? value : value != null && value !== ''
 
 const isBit = (value: unknown) => value === 0 || value === 1 || typeof value === 'boolean'
-
-/** Places a network's parts that give no `at`, by stage, left to right. */
-function layout(network: Network, settled: Settled, sizes: Map<string, THREE.Vector3>) {
-  const placed = new Map<string, THREE.Vector3>()
-  const columns = new Map<number, Array<Part>>()
-  for (const part of network.parts) {
-    if (part.spec.at) placed.set(part.path, new THREE.Vector3(...part.spec.at))
-    else {
-      const stage = settled.readings.get(part.path)?.stage ?? 0
-      columns.set(stage, [...(columns.get(stage) ?? []), part])
-    }
-  }
-  const stages = [...columns.keys()].sort((a, b) => a - b)
-  let x = 0
-  const widths = stages.map((stage) =>
-    Math.max(...columns.get(stage)!.map((part) => sizes.get(part.path)!.x)),
-  )
-  const total = widths.reduce((sum, width) => sum + width, 0) + Math.max(0, stages.length - 1) * 1.6
-  x = -total / 2
-  stages.forEach((stage, index) => {
-    const column = columns.get(stage)!
-    const heights = column.map((part) => sizes.get(part.path)!.y)
-    const height = heights.reduce((sum, h) => sum + h, 0) + (column.length - 1) * 0.9
-    let y = height / 2
-    column.forEach((part, row) => {
-      y -= heights[row]! / 2
-      placed.set(part.path, new THREE.Vector3(x + widths[index]! / 2, y, (row % 2) * -0.35))
-      y -= heights[row]! / 2 + 0.9
-    })
-    x += widths[index]! + 1.6
-  })
-  return placed
-}
 
 /**
  * Draws a model into `element` and lets the person handle it. `build`
@@ -566,11 +545,18 @@ export function mount(
     return visual
   }
 
+  // Arrangement: a level is first placed by stage; with ELK its layered
+  // arrangement replaces that once, before anything is shown (the canvas waits
+  // for it), and a part's `at` and the person's moves are never overwritten.
+  const arranged = new Map<string, Arranged>()
+  const stageArrangement = (net: Network) =>
+    arrangeStages(net, (part) => sizeOf(part), (part) => settled.readings.get(part.path)?.stage ?? 0)
+
   function buildLevel(net: Network, group: THREE.Group): Level {
     for (const part of net.parts) sizeOf(part)
-    const places = layout(net, settled, sizes)
+    const places = arranged.get(net.owner) ?? stageArrangement(net)
     const level: Level = { network: net, group, visuals: [], wires: [] }
-    for (const part of net.parts) level.visuals.push(buildVisual(part, group, places.get(part.path)!))
+    for (const part of net.parts) level.visuals.push(buildVisual(part, group, new THREE.Vector3(...places.positions.get(part.path)!)))
     for (const wire of net.wires) {
       const mesh = new THREE.Mesh(
         new THREE.TubeGeometry(new THREE.LineCurve3(new THREE.Vector3(), new THREE.Vector3(0, 0.01, 0)), 2, 0.02, 6),
@@ -646,7 +632,7 @@ export function mount(
         'uniform vec3 uColor; uniform float uOpacity; varying vec2 vUv; void main() { float d = length(vUv - 0.5) * 2.0; gl_FragColor = vec4(uColor, uOpacity * smoothstep(1.0, 0.0, d)); }',
     }),
   )
-  {
+  const placeGround = () => {
     scene.updateMatrixWorld(true)
     const box = new THREE.Box3()
     for (const visual of rootLevel.visuals) box.expandByObject(visual.shell)
@@ -656,8 +642,9 @@ export function mount(
     ground.position.set(center.x, box.min.y - 0.45, center.z)
     ground.scale.set(size.x * 1.5 + 2, size.z * 2 + size.y + 2, 1)
     ground.renderOrder = -1
-    scene.add(ground)
   }
+  placeGround()
+  scene.add(ground)
 
   // Where the person is: what is open, pulled out and selected.
   let openPath = ''
@@ -1259,6 +1246,32 @@ export function mount(
   let visible = true
   let disposed = false
   frame(true)
+  if ((options.arrange ?? DEFAULT_ARRANGE) === 'elk') {
+    const levels = [network, ...[...allParts(network)].flatMap((part) => (part.inside ? [part.inside] : []))]
+    const waits = rootLevel.network.parts.some((part) => !part.spec.at)
+    // The scene and everything over it wait together, so no name is seen at a stage place.
+    if (waits) root.style.opacity = '0'
+    for (const part of allParts(network)) sizeOf(part)
+    void Promise.all(levels.filter((net) => net.parts.some((part) => !part.spec.at)).map((net) => arrangeElk(net, sizeOf).then((result) => [net.owner, result] as const)))
+      .then((results) => {
+        if (disposed) return
+        for (const [owner, result] of results) arranged.set(owner, result)
+        // The root level was built by stage: move it to its arrangement, once, and only parts that gave no `at`.
+        const top = arranged.get('')
+        if (top)
+          for (const visual of rootLevel.visuals)
+            if (!visual.part.spec.at) {
+              visual.home.set(...top.positions.get(visual.part.path)!)
+              visual.group.position.copy(visual.home).add(visual.moved)
+            }
+        placeGround()
+        frame(true)
+      })
+      .catch((error: unknown) => reportError(error))
+      .finally(() => {
+        root.style.opacity = ''
+      })
+  }
   notify()
   renderOutline()
 
