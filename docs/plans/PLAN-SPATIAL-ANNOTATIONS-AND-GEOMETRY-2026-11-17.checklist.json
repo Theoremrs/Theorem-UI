@@ -83,8 +83,8 @@
     {
       "id": "live-journey",
       "what": "Signed-in real-agent run: new component in TSX, operated, follow-up revises the same App, Ask on a selection, expand/collapse keep the instance, a conventional UI artifact too",
-      "status": "open",
-      "evidence": "unrun: local stack stopped at 404 on /api/artifacts/v1/libraries/theorem-artifacts"
+      "status": "partly done",
+      "evidence": "dossier journey done (dossier-live.mjs, evidence/dossier-2026-11-18). spatial-live.mjs 10/13 on 2026-11-18: the agent renamed parts on revision, the heart turn outlasted the wait, the heart App's own type errors. Expand/collapse instance and the conventional UI artifact: not rerun this session"
     },
     {
       "id": "angular-annotation",
@@ -107,7 +107,14 @@
     {
       "id": "dossier",
       "what": "assistant-ui conversation beneath readings and controls; one assistant follows the selection (pinnable); context: artifact, revision, part, step, editable vs computed, actions; Interactables behind an adapter",
-      "status": "open"
+      "status": "done",
+      "evidence": "evidence/dossier-2026-11-18 README; dossier-live.mjs 10/10 three runs with the real agent (question stored with the App reference, part and account; reply in the dossier; note fits the frame; kept after reload); backend ChatMessage.contextReferences + runtime test; app-dossier/message-history tests"
+    },
+    {
+      "id": "glass",
+      "what": "The dossier and the other chrome (notes, breadcrumb, playback strip) are liquidGL glass, with a fair amount of transparency by default (veil 42%)",
+      "status": "done",
+      "evidence": "glass.tsx GlassScope/Glass; e2e:glass 4/4; dossier-live 'chrome is liquidGL glass in the conversation'"
     },
     {
       "id": "rerun",

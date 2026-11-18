@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { boxAround } from './anchors'
 import { connectorEnds, connectorPath, LEADER_RUN, leaderEnds, subjectPath } from './paths'
-import { choose, overlap } from './place'
+import { choose, cleared, overlap } from './place'
 import type { Candidate } from './place'
 
 const bounds = { x: 0, y: 0, width: 600, height: 400 }
@@ -51,6 +51,30 @@ describe('placing a note', () => {
     const strip = { x: 0, y: 360, width: 600, height: 40 }
     const low = at('bottom', 220, 330)
     expect(choose([low, left], { subject, bounds, obstacles: [strip] }).placement).toBe('left')
+  })
+
+  test('where every side lands on a taller note, slides past it instead of covering it', () => {
+    // A tall expanded note over the right of this subject, and the layer's
+    // edge just left of it: no side Floating UI offers is free.
+    const tall = { x: 330, y: 20, width: 200, height: 360 }
+    const layer = { x: 200, y: 0, width: 600, height: 400 }
+    const sides = [right, left]
+    const tried = [...sides, ...sides.flatMap((each) => cleared(each, [tall], 8))]
+    const chosen = choose(tried, { subject, bounds: layer, obstacles: [tall] })
+    expect(overlap(chosen.box, tall)).toBe(0)
+    expect(chosen.placement).toBe('right')
+    expect(chosen.box.x).toBe(tall.x + tall.width + 8)
+  })
+
+  test('slides along its side, or away from the subject, past every note it would land on', () => {
+    const first = { x: 330, y: 150, width: 100, height: 40 }
+    const second = { x: 438, y: 150, width: 100, height: 40 }
+    const slid = cleared(right, [first, second], 8)
+    for (const each of slid) expect(overlap(each.box, first) + overlap(each.box, second)).toBe(0)
+    expect(slid.map((each) => each.box)).toContainEqual({ ...right.box, x: second.x + second.width + 8 })
+    expect(slid.map((each) => each.box)).toContainEqual({ ...right.box, y: first.y + first.height + 8 })
+    expect(slid.map((each) => each.box)).toContainEqual({ ...right.box, y: first.y - right.box.height - 8 })
+    expect(cleared(right, [], 8)).toEqual([])
   })
 })
 

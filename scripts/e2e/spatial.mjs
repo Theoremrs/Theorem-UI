@@ -202,7 +202,7 @@ try {
   check(
     'a spatial App builds, type-checks clean and runs, its parts in the outline',
     checked.built && checked.typesChecked && checked.problems.length === 0 && /ALU \(alu\)/.test(checked.rendered?.text ?? ''),
-    { problems: checked.problems, text: checked.rendered?.text?.slice(0, 300) },
+    { built: checked.built, typesChecked: checked.typesChecked, problems: checked.problems, text: checked.rendered?.text?.slice(0, 300) },
   )
   const wrong = await page.evaluate(
     (html) => window.oracle.inspect(html, { runMs: 0 }),
@@ -322,6 +322,36 @@ try {
     ports,
   )
   check('with the note open, no label covers it or the strip', (await covered()).length === 0, await covered())
+  // The chrome is liquidGL glass: a lens behind the note and the strip, over a
+  // live mirror of the scene, under a veil that leaves most of it in sight.
+  const glass = await frame().evaluate(() => {
+    const note = document.querySelector('.ts-card .tn-note-frame, .tn-note-frame')
+    const veil = note && getComputedStyle(note.querySelector(':scope > :not(.tn-glass)')).backgroundColor
+    const mirror = document.querySelector('video.tn-glass-mirror')
+    const view = document.querySelector('.theorem-spatial')
+    return {
+      note: note?.getAttribute('data-glass'),
+      bar: document.querySelector('.ts-bar')?.getAttribute('data-glass'),
+      lenses: document.querySelectorAll('.tn-glass[data-glass-pane]').length,
+      canvas: [...view.querySelectorAll(':scope > canvas')].map((each) => getComputedStyle(each).zIndex),
+      veil,
+      // `color(srgb r g b / a)` from color-mix, or `rgba(r, g, b, a)`.
+      alpha: Number((/\/\s*([\d.]+)\)/.exec(veil ?? '') ?? /rgba\([^)]*,\s*([\d.]+)\)/.exec(veil ?? ''))?.[1] ?? 1),
+      mirror: mirror && { ready: mirror.readyState, width: mirror.videoWidth, playing: !mirror.paused },
+      sceneLeftOut: document.querySelector('.ts-stage > canvas')?.hasAttribute('data-liquid-ignore'),
+    }
+  })
+  check(
+    'the note and the strip are liquidGL glass, its canvas under the chrome and over the scene',
+    glass.note === 'gl' && glass.bar === 'gl' && glass.lenses >= 2 && glass.canvas.includes('1'),
+    glass,
+  )
+  check(
+    'the glass refracts the scene as it redraws: the WebGL canvas plays in a mirror video, left out of the snapshot',
+    glass.mirror?.ready >= 2 && glass.mirror.width > 0 && glass.mirror.playing && glass.sceneLeftOut,
+    glass.mirror,
+  )
+  check('the glass is mostly transparent: under half of the surface colour lies over it', glass.alpha > 0.2 && glass.alpha < 0.5, glass.veil)
   await shot('2-alu-pulled-light')
 
   // Orbit the camera: the note follows its part.
@@ -396,6 +426,63 @@ try {
     { cards, a: await attachment('a'), b: await attachment('b') },
   )
   await shot('2b-pinned-light')
+
+  // Expanded, both notes hold the dossier, but there is one assistant: on the
+  // selected part, handed over from the other note, kept where it is put.
+  for (const entity of ['a', 'b'])
+    await frame().click(`.ts-card[data-entity-id="${entity}"] button[aria-label="Show more"]`)
+  await settle()
+  const dossiers = () =>
+    frame().evaluate(() => ({
+      threads: [...document.querySelectorAll('.ts-card .ts-dossier-thread')].map((el) => el.closest('.ts-card')?.dataset.entityId),
+      elsewhere: [...document.querySelectorAll('.ts-card .ts-dossier-elsewhere')].map((el) => el.closest('.ts-card')?.dataset.entityId),
+      composer: document.querySelector('.ts-dossier-input')?.getAttribute('aria-label'),
+      starters: [...document.querySelectorAll('.ts-dossier-starter')].map((el) => el.textContent),
+      text: document.querySelector('.ts-dossier-body')?.textContent ?? '',
+    }))
+  const grown = await frame().$$eval('.tn-slot.ts-card:not([data-hidden])', (els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect()
+      return { entity: el.dataset.entityId, x: r.left, y: r.top, width: r.width, height: r.height }
+    }),
+  )
+  const clear = (p, q) => p.x + p.width <= q.x + 1 || q.x + q.width <= p.x + 1 || p.y + p.height <= q.y + 1 || q.y + q.height <= p.y + 1
+  check(
+    'expanded, the two notes grow apart: the one placed second slides clear instead of covering the first',
+    grown.length === 2 && clear(grown[0], grown[1]),
+    grown,
+  )
+  const two = await dossiers()
+  check(
+    'two expanded notes are one conversation: the assistant is on the selected part, the other note hands it over',
+    two.threads.join() === 'b' && two.elsewhere.join() === 'a' && /Ask about Register B/.test(two.composer ?? '') && two.starters.length > 0,
+    two,
+  )
+  check(
+    'outside a conversation the dossier says where to ask instead of sending nowhere',
+    /Open this App in a conversation/.test(two.text),
+    two.text,
+  )
+  await shot('2c-dossier-light')
+  await frame().click('.ts-card[data-entity-id="a"] .ts-dossier-elsewhere button')
+  await settle()
+  const moved = await dossiers()
+  check(
+    '"Ask here" brings the one assistant to the other part',
+    moved.threads.join() === 'a' && (await inspect()).selected === 'a' && /Ask about Register A/.test(moved.composer ?? ''),
+    { moved, selected: (await inspect()).selected },
+  )
+  await frame().click('.ts-card[data-entity-id="a"] .ts-dossier-head button[aria-pressed]')
+  await page.mouse.click(...(await onPage((await part('b')).screen)))
+  await settle()
+  const kept = await dossiers()
+  check(
+    'kept on a part, the assistant stays there when another part is selected',
+    (await inspect()).selected === 'b' && kept.threads.join() === 'a',
+    { kept, selected: (await inspect()).selected },
+  )
+  await frame().click('.ts-card[data-entity-id="a"] .ts-dossier-head button[aria-pressed]')
+  await frame().click('.ts-card[data-entity-id="a"] button[aria-label="Show less"]')
   await frame().click('.ts-card[data-entity-id="a"] button[aria-label="Unpin"]')
   await page.waitForTimeout(300)
 
@@ -441,9 +528,15 @@ try {
 
   // The follow-up revision adds a part nobody wrote before, inside the ALU.
   await page.evaluate((html) => window.oracle.revise(html), app(REVISED))
-  await page.waitForTimeout(1500)
+  // The frame being replaced still has its model; wait for the revision's.
+  const revisedBy = Date.now() + 90_000
+  while (Date.now() < revisedBy) {
+    const has = await frame()?.evaluate(() => Boolean(window.model?.inspect?.().parts?.some((p) => p.path === 'alu/overflow'))).catch(() => false)
+    if (has) break
+    await page.waitForTimeout(250)
+  }
   await waitModel()
-  await page.waitForTimeout(2500)
+  await page.waitForTimeout(1500)
   model = await inspect()
   const created = model.parts.find((p) => p.path === 'alu/overflow')
   check(

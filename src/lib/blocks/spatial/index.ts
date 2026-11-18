@@ -29,6 +29,8 @@ export type {
   PortSnapshot,
   StateSnapshot,
 } from './chrome'
+export { Dossier, dossierContext, useDossier } from './dossier'
+export type { DossierMessage, DossierState } from './dossier'
 export type { MountOptions, PartView, SpatialBuilder, SpatialModel } from './view'
 export type {
   CheckSpec,

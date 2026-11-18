@@ -17,11 +17,12 @@ import { Slider } from '@astryxdesign/core/Slider'
 import { Switch } from '@astryxdesign/core/Switch'
 import { Text } from '@astryxdesign/core/Text'
 import { ToggleButton, ToggleButtonGroup } from '@astryxdesign/core/ToggleButton'
-import { Annotation, AnnotationLayer, KeepClear, Label, Note, Theme } from '@theorem/annotate'
-import type { Anchors } from '@theorem/annotate'
+import { Annotation, AnnotationLayer, Glass, GlassScope, KeepClear, Label, Note, Theme } from '@theorem/annotate'
+import type { Anchors, GlassOptions } from '@theorem/annotate'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { Dossier } from './dossier'
 import type { ControlSpec } from './engine'
 import './chrome.css'
 
@@ -105,6 +106,8 @@ export interface ChromeProps {
   anchors: Anchors
   /** The element the scene is drawn in; notes and the breadcrumb go over it. */
   stage: HTMLElement
+  /** The chrome's glass over the default (GLASS); `false` leaves it a CSS blur. */
+  glass?: Partial<GlassOptions> | false
 }
 
 /** Where a leader enters a part's note: level with its title. */
@@ -313,6 +316,7 @@ export function Trail({ snapshot, actions }: Pick<ChromeProps, 'snapshot' | 'act
   if (!snapshot.open) return null
   return (
     <div className="ts-crumbs">
+      <Glass />
       <Breadcrumbs label="Where you are in the model">
         {snapshot.trail.map((step, index) => {
           const last = index === snapshot.trail.length - 1
@@ -345,6 +349,7 @@ export function PlaybackStrip({ snapshot, actions }: Pick<ChromeProps, 'snapshot
   const { replay } = snapshot
   return (
     <div className="ts-bar" role="toolbar" aria-label="Playback">
+      <Glass />
       {snapshot.ticking && <Button label="Step" size="sm" variant="secondary" onClick={actions.step} />}
       {snapshot.ticking && <ToggleButton label="Run" size="sm" isPressed={snapshot.running} onPressedChange={(on) => actions.run(on)} />}
       <ToggleButton label="Slow" size="sm" isPressed={snapshot.slow} onPressedChange={(on) => actions.slow(on)} />
@@ -450,18 +455,33 @@ export function PortTag({ part, port }: { part: PartSnapshot; port: PortSnapshot
 }
 
 /** The view's own chrome. */
-export function SpatialChrome({ snapshot, actions, anchors, stage }: ChromeProps) {
+export function SpatialChrome({ snapshot, actions, anchors, stage, glass }: ChromeProps) {
   const inHand = snapshot.parts.filter((part) => part.path === snapshot.selected || part.pulled)
   const docked = snapshot.narrow ? snapshot.parts.find((part) => part.path === snapshot.selected) : undefined
+  // One assistant: on the selected part, or on the part the person kept it on.
+  const [heldOn, setHeldOn] = useState<string | null>(null)
+  const follows = heldOn ?? snapshot.selected
+  const dossier = (part: PartSnapshot) => (
+    <Dossier
+      part={part}
+      snapshot={snapshot}
+      follows={follows === part.path}
+      held={heldOn === part.path}
+      hold={(held) => setHeldOn(held ? part.path : null)}
+      bring={() => (heldOn ? setHeldOn(part.path) : actions.select(part.path))}
+    />
+  )
+  // The glass refracts the whole view; its own chrome is left out of what it sees.
   return (
-    <Theme className="ts-chrome">
+    <GlassScope snapshot={stage.parentElement} options={glass}>
+    <Theme className="ts-chrome" data-liquid-ignore="">
       {createPortal(
         <AnnotationLayer anchors={anchors}>
           <KeepClear className="ts-crumbs-slot">
             <Trail snapshot={snapshot} actions={actions} />
           </KeepClear>
           {snapshot.parts.map((part) => (
-            <PartAnnotation key={part.path} part={part} snapshot={snapshot} actions={actions} />
+            <PartAnnotation key={part.path} part={part} snapshot={snapshot} actions={actions} dossier={dossier} />
           ))}
           {inHand.flatMap((part) => part.ports.map((port) => <PortTag key={`${part.path}:${port.name}`} part={part} port={port} />))}
           {snapshot.boundary?.ports.map((port) => (
@@ -473,9 +493,10 @@ export function SpatialChrome({ snapshot, actions, anchors, stage }: ChromeProps
       <PlaybackStrip snapshot={snapshot} actions={actions} />
       {docked && (
         <div className="ts-dock ts-card" data-entity-id={docked.path} data-entity-label={`${docked.label} (${docked.path})`}>
-          <PartNote part={docked} pinned={false} actions={actions} />
+          <PartNote part={docked} pinned={false} actions={actions} dossier={dossier(docked)} />
         </div>
       )}
     </Theme>
+    </GlassScope>
   )
 }

@@ -1,5 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
-import { markSelectedCell, observeHeight } from './display'
+import { lookNow, markSelectedCell, observeHeight, snapshotHtml } from './display'
+import { MAX_SNAPSHOT } from './protocol'
 
 const root = document.documentElement
 const original = globalThis.ResizeObserver
@@ -90,4 +91,46 @@ test('a page with a fractional height gets the whole pixel above it', () => {
 
 test('content overflowing the page box still counts', () => {
   expect(measured(400, 186, 186)).toEqual([400])
+})
+
+/** A canvas whose picture is `size` characters of data URL. */
+function canvas(id: string, size: number): HTMLCanvasElement {
+  const element = document.createElement('canvas')
+  element.id = id
+  element.width = 40
+  element.height = 20
+  element.toDataURL = () => `data:image/png;base64,${'A'.repeat(size)}`
+  return element
+}
+
+test('a copy too large for a snapshot leaves out its largest canvas pictures, blank at their size, and keeps the page', () => {
+  const words = document.createElement('p')
+  words.textContent = 'ALU result 12'
+  document.body.replaceChildren(words, canvas('scene', MAX_SNAPSHOT * 0.6), canvas('chart', MAX_SNAPSHOT * 0.7), canvas('small', 100))
+  try {
+    const html = snapshotHtml()
+    expect(html.length).toBeLessThanOrEqual(MAX_SNAPSHOT)
+    const copy = document.createElement('div')
+    copy.innerHTML = html
+    const images = [...copy.querySelectorAll('img')]
+    expect(images.map((image) => [image.getAttribute('width'), image.getAttribute('height')])).toEqual([['40', '20'], ['40', '20'], ['40', '20']])
+    expect(images.map((image) => (image.getAttribute('src') ?? '').length > 0)).toEqual([true, false, true])
+    expect(copy.textContent).toContain('ALU result 12')
+    expect(lookNow()?.html).toBe(html)
+  } finally {
+    document.body.replaceChildren()
+  }
+})
+
+test('decoration hidden from assistive technology is left out of a copy before a larger canvas that is content', () => {
+  const glass = canvas('glass', MAX_SNAPSHOT * 0.5)
+  glass.setAttribute('aria-hidden', 'true')
+  document.body.replaceChildren(canvas('scene', MAX_SNAPSHOT * 0.6), glass)
+  try {
+    const copy = document.createElement('div')
+    copy.innerHTML = snapshotHtml()
+    expect([...copy.querySelectorAll('img')].map((image) => (image.getAttribute('src') ?? '').length > 0)).toEqual([true, false])
+  } finally {
+    document.body.replaceChildren()
+  }
 })

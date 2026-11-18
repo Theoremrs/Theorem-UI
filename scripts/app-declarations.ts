@@ -30,6 +30,10 @@ export const GENERATED = path.join(
   'src/lib/blocks/check/theorem-app.generated.ts',
 )
 
+// Declarations Theorem writes for a library's dependencies that ship none.
+// They type the library's own code; nothing a library exports names them.
+const UNTYPED = [path.join(ROOT, 'src/types/liquid-gl.d.ts')]
+
 const INDEX = `import type { TheoremApp } from './app-bridge'
 
 declare global {
@@ -46,7 +50,7 @@ export {}
 /** The declarations TypeScript emits for `entry` and the files it imports, by file name. */
 function declarations(entry: string, paths: Record<string, Array<string>> = {}): Record<string, string> {
   const files: Record<string, string> = {}
-  const program = ts.createProgram([entry], {
+  const program = ts.createProgram([entry, ...UNTYPED], {
     paths,
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.ESNext,

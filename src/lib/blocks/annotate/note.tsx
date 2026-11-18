@@ -1,6 +1,6 @@
 // SOURCING: Astryx (`@astryxdesign/core`) for every surface and control: Card
 // for the note, Text for its words, ToggleButton to pin it, IconButton to
-// close it. A note holds any children, so the controls in it are whatever the
+// close it. The note and a label on a surface are glass (glass.tsx, liquidGL). A note holds any children, so the controls in it are whatever the
 // App writes. It is nonmodal: focus moves into it only when the person moves
 // it there, and Escape closes it.
 import { Card } from '@astryxdesign/core/Card'
@@ -8,6 +8,7 @@ import { IconButton } from '@astryxdesign/core/IconButton'
 import { Text } from '@astryxdesign/core/Text'
 import { ToggleButton } from '@astryxdesign/core/ToggleButton'
 import { useState } from 'react'
+import { Glass } from './glass'
 import type { HTMLAttributes, KeyboardEvent, ReactNode } from 'react'
 
 const icon = (d: string) => (
@@ -52,6 +53,7 @@ export function Label({ name, values = [], emphasis = 'normal', surface = 'bare'
       data-surface={surface}
       data-detail={detail === undefined ? undefined : ''}
     >
+      {(detail !== undefined || surface === 'box') && <Glass />}
       <span className="tn-label-line">
         <Text size="xsm" weight="medium">{name}</Text>
         {values.map((value, index) => (
@@ -107,6 +109,7 @@ export function Note({ title, detail, showDetail = false, pinned = false, onPinn
       }}
       onKeyDown={keyDown}
     >
+      <Glass />
       <Card padding={1} elevation="low">
         <div className="tn-note" data-expanded={expanded || undefined}>
           {/* A pinned note is moved by its head (see Annotation). */}

@@ -145,6 +145,37 @@ export interface PageMethods {
   'module.used': { params: Record<string, never>; result: null }
   /** A page module sending one of its declared events. */
   'module.emit': { params: { name: string; payload: unknown }; result: null }
+  /**
+   * A question about the App, put to the page's conversation with the App's
+   * revision and `context`: what the App says is selected, its inputs and
+   * outputs, the step it is on, what can be done there.
+   */
+  'dossier.ask': { params: { text: string; context: DossierContext }; result: null }
+  /** The App's part of the conversation now; `dossier.changed` follows it. */
+  'dossier.watch': { params: Record<string, never>; result: DossierState }
+  /** Opens the App's source where `name` is written, for a person to read or edit. */
+  'dossier.source': { params: { name: string }; result: { found: boolean } }
+}
+
+/** What an App says about where the person is, for a question about it. JSON. */
+export type DossierContext = Record<string, unknown>
+
+/** One message of the App's part of the page's conversation. */
+export interface DossierMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  status: 'running' | 'complete' | 'incomplete'
+}
+
+/**
+ * The questions asked from an App and the replies to them, in the page's one
+ * conversation. Not `available` where the App is shown outside a conversation.
+ */
+export interface DossierState {
+  available: boolean
+  running: boolean
+  messages: Array<DossierMessage>
 }
 
 /** What a page module is handed: its settings and its inputs' values. */
@@ -175,6 +206,8 @@ export interface SandboxMethods {
   'module.inputs': { params: ModuleValues; result: null }
   /** A route reached one of a page module's declared actions. */
   'module.action': { params: { name: string; payload: unknown }; result: null }
+  /** The App's part of the conversation changed, after `dossier.watch`. */
+  'dossier.changed': { params: DossierState; result: null }
   /**
    * The page's theme changed. A notebook's frame is handed its tokens,
    * resolved, and its mode, for its root; a hosted App's is handed its look

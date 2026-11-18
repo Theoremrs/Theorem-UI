@@ -4,6 +4,7 @@
 // without the extension; `index` is its entry.
 import annotateAnchors from './annotate/anchors.ts?raw'
 import annotateAnnotation from './annotate/annotation.tsx?raw'
+import annotateGlass from './annotate/glass.tsx?raw'
 import annotateHooks from './annotate/hooks.ts?raw'
 import annotateIndex from './annotate/index.ts?raw'
 import annotateLayer from './annotate/layer.tsx?raw'
@@ -15,6 +16,7 @@ import annotateTheme from './annotate/theme.tsx?raw'
 import spatialArrange from './spatial/arrange.ts?raw'
 import spatialChromeCss from './spatial/chrome.css?raw'
 import spatialChrome from './spatial/chrome.tsx?raw'
+import spatialDossier from './spatial/dossier.tsx?raw'
 import spatialEngine from './spatial/engine.ts?raw'
 import spatialForm from './spatial/form.ts?raw'
 import spatialIndex from './spatial/index.ts?raw'
@@ -26,6 +28,7 @@ export const librarySources: Record<string, Record<string, string>> = {
   '@theorem/annotate': {
     'anchors.ts': annotateAnchors,
     'annotation.tsx': annotateAnnotation,
+    'glass.tsx': annotateGlass,
     'hooks.ts': annotateHooks,
     'index.ts': annotateIndex,
     'layer.tsx': annotateLayer,
@@ -39,6 +42,7 @@ export const librarySources: Record<string, Record<string, string>> = {
     'arrange.ts': spatialArrange,
     'chrome.css': spatialChromeCss,
     'chrome.tsx': spatialChrome,
+    'dossier.tsx': spatialDossier,
     'engine.ts': spatialEngine,
     'form.ts': spatialForm,
     'index.ts': spatialIndex,

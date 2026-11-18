@@ -32,6 +32,7 @@ import type { Arranged } from './arrange'
 import { buildForm, mergedGeometry  } from './form'
 import type {Form} from './form';
 import { anchorStore } from '@theorem/annotate'
+import type { GlassOptions } from '@theorem/annotate'
 import { createElement } from 'react'
 import type { ComponentType } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -55,6 +56,13 @@ export interface MountOptions {
    * An App can write its own from the pieces chrome.tsx exports, or from nothing.
    */
   chrome?: ComponentType<ChromeProps>
+  /**
+   * The chrome's glass (liquidGL, refracting the scene behind each note, the
+   * breadcrumb and the strip), over the default GLASS from @theorem/annotate:
+   * `{ veil: 0.7 }` for more of the surface colour, `{ frost: 8 }` for more blur.
+   * `false` leaves the chrome a CSS blur.
+   */
+  glass?: Partial<GlassOptions> | false
   /** Stages a change travels per second. Default 5. */
   pace?: number
   /**
@@ -268,7 +276,9 @@ export function mount(
   // narrow page, the controls of the part in hand.
   const root = document.createElement('div')
   root.className = 'theorem-spatial'
-  root.style.cssText = `position:relative;width:100%;height:${options.height ?? 520}px;overflow:hidden;user-select:none;-webkit-user-select:none;font-family:${theme.font};`
+  // Sticky without an offset sits where relative would; it makes the view the
+  // element liquidGL draws its glass in, so the glass stacks inside the view.
+  root.style.cssText = `position:sticky;width:100%;height:${options.height ?? 520}px;overflow:hidden;user-select:none;-webkit-user-select:none;font-family:${theme.font};`
   element.append(root)
   const stage = document.createElement('div')
   stage.className = 'ts-stage'
@@ -1116,7 +1126,7 @@ export function mount(
     queueMicrotask(() => {
       rendering = false
       if (disposed) return
-      chromeRoot.render(createElement(options.chrome ?? SpatialChrome, { snapshot: snapshot(), actions, anchors, stage }))
+      chromeRoot.render(createElement(options.chrome ?? SpatialChrome, { snapshot: snapshot(), actions, anchors, stage, glass: options.glass }))
     })
   }
 

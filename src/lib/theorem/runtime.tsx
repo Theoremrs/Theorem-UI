@@ -28,6 +28,7 @@ import {
   toAssistantMessages,
 } from '@theoremharness/sdk/assistant-ui'
 import type { TheoremChatAdapterOptions } from '@theoremharness/sdk/assistant-ui'
+import type { TheoremContextReference } from '@theoremharness/sdk'
 import { createAssistantStream } from 'assistant-stream'
 import pMap from 'p-map'
 import { useCallback, useEffect, useMemo, useRef } from 'react'
@@ -637,8 +638,11 @@ function useTheoremThreadRuntime() {
     () => ({
       async *run(options) {
         try {
-          const references = options.runConfig.custom?.theoremRunInput === true
-            ? [] : useComposerReferences.getState().references
+          // A send that names its own context (a question asked from inside an App) goes with that;
+          // otherwise the composer's references go, unless the turn is a run's own input.
+          const given = options.runConfig.custom?.theoremContextReferences as TheoremContextReference[] | undefined
+          const references = given ?? (options.runConfig.custom?.theoremRunInput === true
+            ? [] : useComposerReferences.getState().references)
           const { id: localId, remoteId: existingId } = aui.threadListItem.getState()
           const isNew = !existingId
           const { remoteId } = await aui.threadListItem.initialize()
@@ -657,7 +661,7 @@ function useTheoremThreadRuntime() {
           } : options
           const turn = runTurn(remoteId,composed,modelTurnOptions,()=>{
             // Recovery replays its saved request; only a newly accepted send consumes these references.
-            useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
+            if (!given) useComposerReferences.setState(state=>({references:state.references.filter(reference=>!references.includes(reference))}))
           })
           for await (const step of timed(turn)) {
             // Plan stays on until a plan is written; the turn that writes one turns it off for this conversation.

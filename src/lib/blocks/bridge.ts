@@ -19,6 +19,8 @@ import type {
   DbMethod,
   DbOutcome,
   DbRead,
+  DossierContext,
+  DossierState,
   FileFormat,
   FrameError,
   ListedFile,
@@ -79,7 +81,22 @@ export interface BridgeHost {
   onError?: (error: FrameError) => void
   /** A static copy of the frame, unsanitized: snapshots.ts cleans it before showing it. */
   onSnapshot?: (html: string, outline?: string) => void
+  /** The page's conversation, where questions asked from inside the App go. */
+  dossier?: AppDossier
 }
+
+/** The page's one conversation, as an App's questions and their replies reach it. */
+export interface AppDossier {
+  ask: (text: string, context: DossierContext) => Promise<void>
+  /** The App's part of the conversation now. */
+  state: () => DossierState
+  subscribe: (listener: (state: DossierState) => void) => () => void
+  /** Opens the App's source where `name` is written; false when it is not. */
+  source: (name: string) => boolean
+}
+
+/** The longest question an App may put to the conversation, in characters. */
+export const MAX_DOSSIER_QUESTION = 4000
 
 /** A call a block made that its declarations do not allow. */
 export class BridgeDenied extends Error {
@@ -146,6 +163,11 @@ const params = {
     cellId: z.string().max(200).optional(),
     source: z.string().max(300).optional(),
   }),
+  ask: z.object({
+    text: z.string().trim().min(1).max(MAX_DOSSIER_QUESTION),
+    context: z.record(z.string(), z.json()),
+  }),
+  source: z.object({ name: z.string().min(1).max(200) }),
   snapshot: z.object({
     html: z.string().max(MAX_SNAPSHOT),
     // What is on the page by role and name. Longer than the limit is dropped,
@@ -342,7 +364,31 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
     return null
   })
 
+  const dossier = () => {
+    if (!host.dossier)
+      throw new BridgeDenied('This App is not shown in a conversation.')
+    return host.dossier
+  }
+  let watching: (() => void) | undefined
+  serve<PageMethods, 'dossier.ask'>(rpc, 'dossier.ask', async (raw) => {
+    const { text, context } = params.ask.parse(raw)
+    await dossier().ask(text, context)
+    return null
+  })
+  serve<PageMethods, 'dossier.watch'>(rpc, 'dossier.watch', () => {
+    if (!host.dossier)
+      return { available: false, running: false, messages: [] } satisfies DossierState
+    watching ??= host.dossier.subscribe((state) => {
+      void call<SandboxMethods, 'dossier.changed'>(rpc, 'dossier.changed', state).catch(() => {})
+    })
+    return host.dossier.state()
+  })
+  serve<PageMethods, 'dossier.source'>(rpc, 'dossier.source', (raw) => ({
+    found: dossier().source(params.source.parse(raw).name),
+  }))
+
   return () => {
+    watching?.()
     for (const unsubscribe of subscriptions.values()) unsubscribe()
     subscriptions.clear()
     for (const stop of reads.values()) stop()

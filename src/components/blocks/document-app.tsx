@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
+import { useAui, useAuiState } from '@assistant-ui/react'
 import { askAbout } from '@/components/chat/composer-references'
 import { Button } from '@/components/ui/button'
 import { documentAppDatabases } from '@/lib/blocks/app-db'
@@ -21,7 +22,12 @@ import type { AppProblem } from '@/lib/blocks/app-source'
 import { traceFrameError } from '@/lib/blocks/app-trace'
 import { documentAppHost, documentAppState } from '@/lib/blocks/document-app'
 import * as hosted from '@/lib/blocks/hosted-app'
-import type { AppSelection, FrameError } from '@/lib/blocks/sandbox/protocol'
+import type { AppDossier } from '@/lib/blocks/bridge'
+import type {
+  AppSelection,
+  DossierState,
+  FrameError,
+} from '@/lib/blocks/sandbox/protocol'
 import { describeError } from '@/lib/theorem/client'
 import { appDocumentFor } from '@/lib/theorem/apps'
 import {
@@ -32,6 +38,13 @@ import {
   selectionForSource,
 } from '@/lib/theorem/app-references'
 import type { AppSelectionContext } from '@/lib/theorem/app-references'
+import {
+  DOSSIER_METADATA,
+  dossierReference,
+  dossierState,
+  sourceOf,
+} from '@/lib/theorem/app-dossier'
+import type { ConversationMessage } from '@/lib/theorem/app-dossier'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
 import { AppElement } from './app-element'
 import { AppProblems } from './app-problems'
@@ -185,10 +198,12 @@ function AppPreview({
   app,
   snapshot,
   onSelection,
+  dossier,
 }: {
   app: AppDocument
   snapshot: AppSnapshot
   onSelection: (value: AppSelectionContext | undefined) => void
+  dossier: AppDossier
 }) {
   const { state, error: stateError } = useDocumentReplica(app)
   const preview = useHostedPreview(snapshot.html, state?.ready)
@@ -247,6 +262,7 @@ function AppPreview({
           databases,
         ),
         onError,
+        dossier,
         onSelection: (selection: AppSelection) => {
           const context = captureAppSelection(
             shownHtml,
@@ -256,7 +272,7 @@ function AppPreview({
           onSelection(context)
         },
       },
-    [app, shownHtml, declarations, state, databases, onSelection, onError],
+    [app, shownHtml, declarations, state, databases, onSelection, onError, dossier],
   )
   // What the frame threw belongs to the revision in it; it is listed with the
   // source's own problems only while that revision is the current one.
@@ -331,7 +347,12 @@ function useAppSnapshot(app: AppDocument, pinnedPosition?: number | string) {
   return { snapshot, error, attempt }
 }
 
-type Edit = { html: string; base: AppSnapshot }
+type Edit = {
+  html: string
+  base: AppSnapshot
+  /** Where the editor opens: a file of the App and a line in it. */
+  reveal?: { file: string; line: number }
+}
 
 /** The whole page, among an App's files. */
 const PAGE = 'Page'
@@ -360,7 +381,7 @@ function AppSourceEditor({
 }) {
   const files = editableFiles(edit.html)
   const paths = Object.keys(files)
-  const [chosen, setChosen] = useState<string>()
+  const [chosen, setChosen] = useState(edit.reveal?.file)
   const [problem, setProblem] = useState<string>()
   // An App built from source opens on its first file; the page is the last tab.
   const file =
@@ -405,6 +426,7 @@ function AppSourceEditor({
           value={files[file] ?? ''}
           lang={file.slice(file.lastIndexOf('.') + 1)}
           label={file}
+          revealLine={edit.reveal?.file === file ? edit.reveal.line : undefined}
           onChange={(text) => {
             try {
               setEdit({ ...edit, html: writeAppSource(edit.html, file, text) })
@@ -516,6 +538,79 @@ function useAppSelection(app: AppDocument) {
   return [selection, setSelection] as const
 }
 
+const NO_MESSAGES: ReadonlyArray<ConversationMessage> = []
+const CLOSED: DossierState = { available: false, running: false, messages: [] }
+
+/**
+ * The page's conversation as an App's dossier reaches it: one conversation,
+ * whichever part of the App a question is asked from. A question goes to the
+ * thread on screen with the App's revision and the App's account of where the
+ * person is; the App is told the questions it asked and their replies.
+ */
+function useAppDossier(
+  app: AppDocument,
+  openSource: (reveal: { file: string; line: number }) => void,
+): AppDossier {
+  const aui = useAui()
+  const available = useAuiState((s) => s.optional.thread !== undefined)
+  const messages = useAuiState(
+    (s) => s.optional.thread?.messages ?? NO_MESSAGES,
+  ) as ReadonlyArray<ConversationMessage>
+  const latest = useRef({ aui, openSource })
+  useEffect(() => {
+    latest.current = { aui, openSource }
+  })
+  const dossier = useMemo(() => {
+    let state = CLOSED
+    let said = JSON.stringify(state)
+    const listeners = new Set<(next: DossierState) => void>()
+    return {
+      set(next: DossierState) {
+        const saying = JSON.stringify(next)
+        if (saying === said) return
+        state = next
+        said = saying
+        for (const listener of listeners) listener(next)
+      },
+      state: () => state,
+      subscribe(listener: (next: DossierState) => void) {
+        listeners.add(listener)
+        return () => void listeners.delete(listener)
+      },
+      async ask(text: string, context: Record<string, unknown>) {
+        const current = app.getSnapshot()
+        if (!current) throw new Error('The App has not loaded yet.')
+        const { thread } = latest.current.aui
+        if (!thread.source)
+          throw new Error('This App is not shown in a conversation.')
+        thread.append({
+          role: 'user',
+          content: [{ type: 'text', text }],
+          metadata: {
+            custom: { [DOSSIER_METADATA]: { documentId: app.documentId } },
+          },
+          runConfig: {
+            custom: {
+              theoremContextReferences: [dossierReference(current, context)],
+            },
+          },
+        })
+      },
+      source(name: string) {
+        const current = app.getSnapshot()
+        const files = current && editableFiles(current.html)
+        const place = files ? sourceOf(files, name) : undefined
+        if (place) latest.current.openSource(place)
+        return Boolean(place)
+      },
+    }
+  }, [app])
+  useEffect(() => {
+    dossier.set(dossierState(messages, app.documentId, available))
+  }, [dossier, messages, available, app.documentId])
+  return dossier
+}
+
 export function DocumentAppView({
   app,
   pinnedPosition,
@@ -529,6 +624,10 @@ export function DocumentAppView({
   const [edit, setEdit] = useState<Edit>()
   const [running, setRunning] = useState(initiallyRunning)
   const [selection, setSelection] = useAppSelection(app)
+  const dossier = useAppDossier(app, (reveal) => {
+    const current = app.getSnapshot()
+    if (current) setEdit({ html: current.html, base: current, reveal })
+  })
   // What was pointed at, while it is still this revision that is on screen.
   const pointed = snapshot && selectionForSource(snapshot, selection)
   if (!snapshot)
@@ -590,7 +689,12 @@ export function DocumentAppView({
         />
       )}
       {running ? (
-        <AppPreview app={app} snapshot={snapshot} onSelection={setSelection} />
+        <AppPreview
+          app={app}
+          snapshot={snapshot}
+          onSelection={setSelection}
+          dossier={dossier}
+        />
       ) : (
         <p className="text-sm text-ink-muted">
           Run this App to use its controls. Changes to its declared state are

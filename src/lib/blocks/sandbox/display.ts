@@ -51,9 +51,14 @@ const SNAPSHOT_DELAY_MS = 400
  * The page as static HTML: its style elements and a copy of its body, with
  * form state written into attributes (it lives in properties), canvases as
  * images, and no scripts. The page sanitizes it again before showing it.
+ * Pictures of canvases are most of a large copy: past MAX_SNAPSHOT they are
+ * left out, blank at their size, until the rest fits: first a canvas hidden
+ * from assistive technology (decoration, such as glass over a scene), then
+ * the largest.
  */
 export function snapshotHtml(): string {
   const copy = document.body.cloneNode(true) as HTMLElement
+  const pictures: Array<{ image: HTMLImageElement; decoration: boolean }> = []
   const live = document.body.querySelectorAll('input, textarea, select, canvas')
   const copies = copy.querySelectorAll('input, textarea, select, canvas')
   live.forEach((element, index) => {
@@ -78,6 +83,7 @@ export function snapshotHtml(): string {
       } catch {
         // A canvas that drew something it may not read back stays blank.
       }
+      pictures.push({ image, decoration: element.closest('[aria-hidden="true"]') !== null })
       target.replaceWith(image)
     }
   })
@@ -85,7 +91,14 @@ export function snapshotHtml(): string {
   const styles = [...document.querySelectorAll('style')]
     .map((style) => style.outerHTML)
     .join('')
-  return styles + copy.innerHTML
+  let html = styles + copy.innerHTML
+  pictures.sort((a, b) => Number(b.decoration) - Number(a.decoration) || b.image.src.length - a.image.src.length)
+  for (const { image } of pictures) {
+    if (html.length <= MAX_SNAPSHOT) break
+    image.removeAttribute('src')
+    html = styles + copy.innerHTML
+  }
+  return html
 }
 
 /**

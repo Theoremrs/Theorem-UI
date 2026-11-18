@@ -10,8 +10,8 @@ import { noCapabilities } from './declarations'
 import { inProcessExecutor } from './executor'
 import type { CellExecutor } from './executor'
 import { recordedAgentRuns, requestAgentRun } from './runs'
-import { MAX_SNAPSHOT, call, rpcOver } from './sandbox/protocol'
-import type { PageMethods } from './sandbox/protocol'
+import { MAX_SNAPSHOT, call, rpcOver, serve } from './sandbox/protocol'
+import type { DossierState, PageMethods, SandboxMethods } from './sandbox/protocol'
 import { StateReplica } from './state'
 
 const executors: Array<CellExecutor> = []
@@ -250,4 +250,51 @@ test('a rejected App state save reaches the sandbox as a failure',async()=>{
     const result=await call<PageMethods,'state.set'>(frame,'state.set',{name:'rows',key:'one',value:'edit'}).then(()=> 'saved',error=>error.message)
     expect(result).toContain('Document store unavailable')
   } finally {stop();channel.port1.close();channel.port2.close()}
+})
+
+test('an App asks the page conversation through its dossier, and is told the replies', async () => {
+  const channel = new MessageChannel()
+  const asked: Array<{ text: string; context: unknown }> = []
+  let listener: ((state: DossierState) => void) | undefined
+  const now: DossierState = { available: true, running: false, messages: [] }
+  const opened: Array<string> = []
+  const host = {
+    client, capabilities: noCapabilities(), state: memoryState(),
+    run: () => Promise.reject(new Error('must not execute')),
+    dossier: {
+      ask: async (text: string, context: Record<string, unknown>) => void asked.push({ text, context }),
+      state: () => now,
+      subscribe: (next: (state: DossierState) => void) => { listener = next; return () => { listener = undefined } },
+      source: (name: string) => { opened.push(name); return name === 'alu' },
+    },
+  }
+  const stop = serveBridge(rpcOver(channel.port1), host)
+  const frame = rpcOver(channel.port2)
+  const told: Array<DossierState> = []
+  serve<SandboxMethods, 'dossier.changed'>(frame, 'dossier.changed', (state) => { told.push(state); return null })
+  try {
+    expect(await call<PageMethods, 'dossier.watch'>(frame, 'dossier.watch', {})).toEqual(now)
+    await call<PageMethods, 'dossier.ask'>(frame, 'dossier.ask', { text: 'Why is the result 12?', context: { selected: { id: 'alu' } } })
+    expect(asked).toEqual([{ text: 'Why is the result 12?', context: { selected: { id: 'alu' } } }])
+    const empty = await call<PageMethods, 'dossier.ask'>(frame, 'dossier.ask', { text: '   ', context: {} }).then(() => false, () => true)
+    expect(empty).toBe(true)
+    const replied: DossierState = { available: true, running: true, messages: [{ id: 'a', role: 'assistant', text: 'Because', status: 'running' }] }
+    listener!(replied)
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    expect(told).toEqual([replied])
+    expect(await call<PageMethods, 'dossier.source'>(frame, 'dossier.source', { name: 'alu' })).toEqual({ found: true })
+    expect(opened).toEqual(['alu'])
+  } finally { stop(); channel.port1.close(); channel.port2.close() }
+  expect(listener).toBeUndefined()
+})
+
+test('outside a conversation an App is told there is none, and its questions are refused', async () => {
+  const channel = new MessageChannel()
+  const stop = serveBridge(rpcOver(channel.port1), { client, capabilities: noCapabilities(), state: memoryState(), run: () => Promise.reject(new Error('unused')) })
+  const frame = rpcOver(channel.port2)
+  try {
+    expect(await call<PageMethods, 'dossier.watch'>(frame, 'dossier.watch', {})).toEqual({ available: false, running: false, messages: [] })
+    const refused = await call<PageMethods, 'dossier.ask'>(frame, 'dossier.ask', { text: 'hello', context: {} }).then(() => '', (error: Error) => error.message)
+    expect(refused).toContain('not shown in a conversation')
+  } finally { stop(); channel.port1.close(); channel.port2.close() }
 })

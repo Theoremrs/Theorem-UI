@@ -62,10 +62,19 @@
 }
 .tn-slot {
   position: absolute;
+  /* Over the glass canvas (GLASS_Z in glass.tsx), which liquidGL draws one
+     below; the brackets and leaders stay under it, so a note's glass covers
+     a mark behind it rather than letting it through sharp. */
+  z-index: 2;
   left: 0;
   top: 0;
   width: max-content;
   max-width: min(20rem, calc(100% - 16px));
+  /* A note never outgrows the layer: past its height the body scrolls, and
+     the head (title, controls, the handle a pinned note is moved by) stays. */
+  max-height: calc(100% - 16px);
+  display: flex;
+  flex-direction: column;
   pointer-events: auto;
   will-change: transform;
   transition: opacity 140ms ease-out;
@@ -174,12 +183,47 @@
   border: 1px solid var(--color-border);
   box-shadow: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.05);
 }
+
+/* Glass (glass.tsx): a surface's pane is the liquidGL lens, and a veil of the
+   surface colour, --tn-glass-veil of it, lies over the glass so words stay legible. */
+[data-glass] {
+  position: relative;
+  isolation: isolate;
+  --tn-glass-surface: color-mix(in srgb, var(--color-background-surface) var(--tn-glass-veil, 42%), transparent);
+}
+.tn-note-frame[data-glass] {
+  border-radius: var(--radius-container);
+}
+.tn-note-frame[data-glass] > :not(.tn-glass),
+.tn-label[data-glass] {
+  background: var(--tn-glass-surface);
+  backdrop-filter: none;
+}
+/* Outside a GlassScope, or before liquidGL runs: a blur in CSS. */
+.tn-note-frame[data-glass='css'] > :not(.tn-glass),
+.tn-label[data-glass='css'] {
+  backdrop-filter: blur(6px);
+}
+.tn-slot > .tn-note-frame,
+.tn-slot .tn-note-frame > :not(.tn-glass) {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .tn-note {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.5rem;
   min-width: 11rem;
+  min-height: 0;
 }
-.tn-note[data-expanded] {
+.tn-note > * {
+  flex: none;
+}
+/* An open note's floor is on its frame, so the card's padding lies inside it:
+   on the note itself, a floor as wide as the slot pushes the card's content
+   past its own edge, where the card clips it. */
+.tn-note-frame:has(.tn-note[data-expanded]) {
   min-width: 18rem;
 }
 .tn-note-head[data-drag-handle] {
@@ -201,4 +245,10 @@
 .tn-note-body {
   display: grid;
   gap: 0.5rem;
+}
+.tn-note > .tn-note-body {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }

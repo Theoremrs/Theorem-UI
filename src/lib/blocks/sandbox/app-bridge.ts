@@ -17,6 +17,8 @@ import {
 } from './display'
 import { MAX_FRAME_ERRORS, call, rpcOver, serve } from './protocol'
 import type {
+  DossierContext,
+  DossierState,
   FrameError,
   ModuleValues,
   PageMethods,
@@ -29,6 +31,14 @@ let moduleValues: ModuleValues | undefined
 const moduleListeners = new Set<ModuleListener>()
 type ActionListener = (payload: unknown) => void
 const actionListeners = new Map<string, Set<ActionListener>>()
+type DossierListener = (state: DossierState) => void
+let dossierState: DossierState | undefined
+const dossierListeners = new Set<DossierListener>()
+let dossierWatch: Promise<void> | undefined
+const tellDossier = (state: DossierState) => {
+  dossierState = state
+  for (const listener of dossierListeners) listener(state)
+}
 
 const context = connectToPage().then((port) => {
   const rpc = rpcOver(port)
@@ -60,6 +70,10 @@ const context = connectToPage().then((port) => {
       return null
     },
   )
+  serve<SandboxMethods, 'dossier.changed'>(rpc, 'dossier.changed', (state) => {
+    tellDossier(state)
+    return null
+  })
   serve<SandboxMethods, 'theme.changed'>(rpc, 'theme.changed', (theme) => {
     if ('scheme' in theme) {
       // A hosted App's look follows into the host stylesheet, under the App's own.
@@ -188,6 +202,8 @@ window.addEventListener('unhandledrejection', (event) => {
   report(thrown(event.reason))
 })
 
+const context_ = async () => (await context).cells
+
 type Files = ReturnType<CellContext['files']>
 /** One of the `files` calls, made once the page has connected: its own arguments, its own result. */
 const files = <TName extends keyof Files>(name: TName): Files[TName] =>
@@ -197,6 +213,29 @@ const files = <TName extends keyof Files>(name: TName): Files[TName] =>
     )) as unknown as Files[TName]
 
 const theorem = {
+  /**
+   * The page's one conversation. A question asked here goes to the page's
+   * agent with this App's revision and the `context` given, and its reply is
+   * in the conversation like any other; `watch` follows the questions asked
+   * from this App and their replies.
+   */
+  dossier: {
+    ask: async (text: string, context: DossierContext = {}) => {
+      await call<PageMethods, 'dossier.ask'>((await context_()).rpc, 'dossier.ask', { text, context })
+    },
+    /** Calls `listener` with the App's part of the conversation, and again when it changes. */
+    watch(listener: DossierListener): () => void {
+      dossierListeners.add(listener)
+      if (dossierState) listener(dossierState)
+      dossierWatch ??= context_()
+        .then(({ rpc }) => call<PageMethods, 'dossier.watch'>(rpc, 'dossier.watch', {}))
+        .then(tellDossier, () => tellDossier({ available: false, running: false, messages: [] }))
+      return () => dossierListeners.delete(listener)
+    },
+    /** Opens this App's source where `name` is written, for the person to read. */
+    source: async (name: string) =>
+      (await call<PageMethods, 'dossier.source'>((await context_()).rpc, 'dossier.source', { name })).found,
+  },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),
   files: {

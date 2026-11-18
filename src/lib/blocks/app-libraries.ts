@@ -22,6 +22,7 @@ const annotate: AppLibrary = {
     '@astryxdesign/theme-neutral': '0.7.16',
     '@floating-ui/core': '1.8.0',
     '@stylexjs/stylex': '0.19.2',
+    'liquid-gl': '3.0.0',
   },
   types: ['react'],
 }
@@ -30,7 +31,12 @@ const annotate: AppLibrary = {
 export const APP_LIBRARIES: Record<string, AppLibrary> = {
   '@theorem/annotate': annotate,
   '@theorem/spatial': {
-    dependencies: { ...annotate.dependencies, three: '0.187.0', elkjs: '0.12.1' },
+    dependencies: {
+      ...annotate.dependencies,
+      '@assistant-ui/react': '0.15.30',
+      three: '0.187.0',
+      elkjs: '0.12.1',
+    },
     types: ['react', 'three'],
   },
 }

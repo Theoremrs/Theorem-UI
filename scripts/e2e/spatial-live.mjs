@@ -43,7 +43,7 @@ async function listedProblems() {
 
 async function ask(text, name) {
   log('asking:', text)
-  await thread.send(text)
+  await thread.send(text, { keys: 'Control+Enter' })
   const run = await thread.ended()
   check(`${name}: the turn ended`, Boolean(run?.outcome), run?.outcome)
   await page.waitForTimeout(4_000)

@@ -12,7 +12,7 @@ import type { HTMLAttributes, ReactNode } from 'react'
 import type { Anchors, Box } from './anchors'
 import { attachOffset, connectorEnds, connectorPath, LEADER_RUN, leaderEnds, subjectPath } from './paths'
 import type { Attach, Connector, Point, Subject } from './paths'
-import { choose, overlap } from './place'
+import { choose, cleared, overlap } from './place'
 import type { Candidate, Placement } from './place'
 import { Theme } from './theme'
 
@@ -186,8 +186,9 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
       const candidates: Candidate[] = []
       let referenceHidden = false
       if (!entry.pinned) entry.manual = undefined
-      if (entry.manual && inView) {
-        const [mx, my] = entry.manual
+      const kept = inView ? entry.manual : undefined
+      if (kept) {
+        const [mx, my] = kept
         const x = Math.min(Math.max(subject.x + subject.width / 2 + mx, boundary.x), boundary.x + boundary.width - floating.width)
         const y = Math.min(Math.max(subject.y + subject.height / 2 + my, boundary.y), boundary.y + boundary.height - floating.height)
         candidates.push({ placement: entry.previous ?? 'right', box: { x, y, width: floating.width, height: floating.height } })
@@ -220,10 +221,13 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
         candidates.push({ placement, box: { x: result.x, y: result.y, width: floating.width, height: floating.height } })
       }
       const others = subjects.filter((box) => box !== anchor.box)
+      const obstacles = [...taken.map((each) => each.box), ...reserved]
+      // A note the person put somewhere stays there; a chosen one may slide clear of what is in the way.
+      if (!kept) candidates.push(...candidates.flatMap((each) => cleared(each, obstacles, margin)))
       const chosen = choose(candidates, {
         subject,
         bounds: boundary,
-        obstacles: [...taken.map((each) => each.box), ...reserved],
+        obstacles,
         others,
         previous: entry.previous,
       })
@@ -322,7 +326,7 @@ export function AnnotationLayer({ anchors, margin = 8, children, className, styl
 
   return (
     <Context.Provider value={context}>
-      <Theme ref={root} className={['tn-layer', className].filter(Boolean).join(' ')} style={style} {...rest}>
+      <Theme ref={root} className={['tn-layer', className].filter(Boolean).join(' ')} style={style} data-liquid-ignore="" {...rest}>
         <svg ref={setSvg} className="tn-marks" aria-hidden="true" />
         <div ref={setNotes} className="tn-notes" />
         {children}
