@@ -173,6 +173,10 @@ export interface PageMethods {
   'artifacts.result': { params: { result: unknown; bytes: Uint8Array }; result: { id: string } }
   /** Whether a subject (a SubjectRef) is held durably, exactly; never the latest instead. */
   'artifacts.resolve': { params: { subject: unknown }; result: ArtifactResolution }
+  /** The revision running (an ArtifactSourceRef), for a result computed now to name. */
+  'artifacts.source': { params: Record<string, never>; result: unknown }
+  /** A kept result (a ResultRef) by id, with its bytes, both checked against their digests. */
+  'artifacts.open': { params: { id: string }; result: { result: unknown; bytes: Uint8Array } }
 }
 
 /** One observation of a run as it is kept: its place, its time and its state's digest. */

@@ -269,6 +269,14 @@ const theorem = {
     /** Whether a subject is held exactly; never answered with the latest instead. */
     resolve: async (subject: object) =>
       call<PageMethods, 'artifacts.resolve'>((await context_()).rpc, 'artifacts.resolve', { subject }),
+    /** The revision running (an ArtifactSourceRef), for a result computed now to name as its source. */
+    source: async () => call<PageMethods, 'artifacts.source'>((await context_()).rpc, 'artifacts.source', {}),
+    /**
+     * A kept result and its bytes, by the result's id, from this or any other
+     * conversation or App; both are checked against their digests.
+     */
+    open: async (id: string) =>
+      call<PageMethods, 'artifacts.open'>((await context_()).rpc, 'artifacts.open', { id }),
   },
   /** Resolves once the page has connected this app. */
   ready: context.then(() => undefined),

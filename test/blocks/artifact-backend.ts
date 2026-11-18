@@ -78,6 +78,12 @@ export function backend(options: { staleToken?: boolean } = {}) {
         results.set(body.id as string, JSON.stringify(body))
         return ok(body)
       }
+      case 'GET results': {
+        const held = results.get(url.searchParams.get('result_id')!)
+        return held
+          ? ok(JSON.parse(held))
+          : refuse(404, 'artifact_result_not_found')
+      }
       case 'POST resolve': {
         const subject = body.subject as Record<string, any> | undefined
         if (subject?.kind === 'result')

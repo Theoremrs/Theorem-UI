@@ -109,6 +109,10 @@ export interface AppArtifacts {
   ) => Promise<{ through: string | null; source: unknown }>
   result: (result: Record<string, unknown>, bytes: Uint8Array) => Promise<{ id: string }>
   resolve: (subject: Record<string, unknown>) => Promise<ArtifactResolution>
+  /** The revision running, as a result computed now names its source. */
+  source: () => unknown
+  /** A kept result and its bytes, checked against their digests. */
+  open: (id: string) => Promise<{ result: unknown; bytes: Uint8Array }>
 }
 
 /** The most bytes one App result carries across the bridge; the store's blob bound. */
@@ -222,6 +226,7 @@ const params = {
     }),
   }),
   resolve: z.strictObject({ subject: z.record(z.string(), z.json()) }),
+  openResult: z.strictObject({ id: z.string().regex(/^sha256:[0-9a-f]{64}$/) }),
   trace: z.strictObject({
     recordingId: z.string().trim().min(1).max(200),
     frames: z.array(
@@ -485,6 +490,10 @@ export function serveBridge(rpc: Rpc, host: BridgeHost): () => void {
   })
   serve<PageMethods, 'artifacts.resolve'>(rpc, 'artifacts.resolve', async (raw) =>
     artifacts().resolve(params.resolve.parse(raw).subject),
+  )
+  serve<PageMethods, 'artifacts.source'>(rpc, 'artifacts.source', () => artifacts().source())
+  serve<PageMethods, 'artifacts.open'>(rpc, 'artifacts.open', async (raw) =>
+    artifacts().open(params.openResult.parse(raw).id),
   )
 
   serve<PageMethods, 'trace.recording'>(rpc, 'trace.recording', async (raw) => {

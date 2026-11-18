@@ -7,6 +7,7 @@ import {
   readResultRef,
   readSourceRef,
   readSubjectRef,
+  resultIdHolds,
 } from '../blocks/artifact-runtime'
 import type { RunRef } from '../blocks/artifact-runtime'
 import { BridgeDenied } from '../blocks/bridge'
@@ -78,6 +79,18 @@ export function appArtifacts(
         throw new BridgeDenied('A result is a @theorem/runtime ResultRef.')
       try {
         return { id: (await store.putResult(result, bytes)).id }
+      } catch (error) {
+        throw refusal(error)
+      }
+    },
+    source: () => source,
+    async open(id) {
+      try {
+        const result = await store.result(id as `sha256:${string}`)
+        if (result.id !== id || !(await resultIdHolds(result)))
+          throw new BridgeDenied(`The result read is not ${id}.`)
+        // blob() checks the bytes against their digest.
+        return { result, bytes: await store.blob(result.content) }
       } catch (error) {
         throw refusal(error)
       }

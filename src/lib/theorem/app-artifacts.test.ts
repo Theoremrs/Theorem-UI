@@ -137,7 +137,7 @@ test("an App's run is kept as run by the revision running, and continues where i
 })
 
 test("an App's result is kept with its bytes and resolves as itself", async () => {
-  const { frame, close } = await connected()
+  const { snapshot, frame, close } = await connected()
   try {
     const bytes = new TextEncoder().encode('slot,guest\n18:00,Ada\n')
     const result = await resultRef({
@@ -170,6 +170,37 @@ test("an App's result is kept with its bytes and resolves as itself", async () =
       (error: Error) => error.message,
     )
     expect(other).toContain('artifact_result_invalid')
+    // Read back, from any App, with its bytes checked.
+    const opened = await call<PageMethods, 'artifacts.open'>(
+      frame,
+      'artifacts.open',
+      {
+        id: result.id,
+      },
+    )
+    expect(opened.result).toEqual(result)
+    expect(new TextDecoder().decode(opened.bytes)).toBe(
+      'slot,guest\n18:00,Ada\n',
+    )
+    const missing = await call<PageMethods, 'artifacts.open'>(
+      frame,
+      'artifacts.open',
+      {
+        id: `sha256:${'0'.repeat(64)}`,
+      },
+    ).then(
+      () => '',
+      (error: Error) => error.message,
+    )
+    expect(missing).toContain('artifact_result_not_found')
+    // The revision running is the source a result computed now names.
+    expect(
+      await call<PageMethods, 'artifacts.source'>(
+        frame,
+        'artifacts.source',
+        {},
+      ),
+    ).toEqual(appSourceRef(snapshot))
   } finally {
     close()
   }
