@@ -1,7 +1,8 @@
 // SOURCING: none: @theorem/runtime, the references a durable artifact's
 // surfaces agree on: what is shown and what a question is about (a source, a
 // result or a run moment, with a selection the artifact interprets), the
-// artifact's discoverable operations, and, for artifacts that execute over
+// artifact's discoverable operations, criteria and the evaluations judged
+// against them, and, for artifacts that execute over
 // time, runs, observations and exact signal values. An App may import it,
 // copy it or ignore it.
 export * from './types'
@@ -51,4 +52,25 @@ export type {
   Operation,
   OperationDescriptor,
   Recovery,
+  ReuseChange,
+  ReuseVerdict,
 } from './operations'
+export {
+  EVALUATION_REPRESENTATION,
+  compareEvaluations,
+  criterion,
+  criterionIdHolds,
+  evaluate,
+  evaluationResult,
+  matches,
+} from './evaluation'
+export type {
+  CaseOutcome,
+  CaseStatus,
+  Comparison,
+  Criterion,
+  CriterionCase,
+  EvaluationReceipt,
+  Evaluator,
+  Tolerance,
+} from './evaluation'

@@ -15,6 +15,7 @@ import annotateThemeCss from './annotate/theme.css?raw'
 import annotateTheme from './annotate/theme.tsx?raw'
 import runtimeContext from './artifact-runtime/context.ts?raw'
 import runtimeDigest from './artifact-runtime/digest.ts?raw'
+import runtimeEvaluation from './artifact-runtime/evaluation.ts?raw'
 import runtimeIndex from './artifact-runtime/index.ts?raw'
 import runtimeOperations from './artifact-runtime/operations.ts?raw'
 import runtimeSession from './artifact-runtime/session.ts?raw'
@@ -53,6 +54,7 @@ export const librarySources: Record<string, Record<string, string>> = {
   '@theorem/runtime': {
     'context.ts': runtimeContext,
     'digest.ts': runtimeDigest,
+    'evaluation.ts': runtimeEvaluation,
     'index.ts': runtimeIndex,
     'operations.ts': runtimeOperations,
     'session.ts': runtimeSession,
