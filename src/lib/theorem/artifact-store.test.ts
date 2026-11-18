@@ -2,7 +2,11 @@
 // artifact routes that keeps their rules: bytes before records, chunks in
 // order from index 0, immutable records, CSRF on writes.
 import { expect, test } from 'bun:test'
-import { ARTIFACT_RUNTIME_SCHEMA, digestBytes, resultRef } from '../blocks/artifact-runtime'
+import {
+  ARTIFACT_RUNTIME_SCHEMA,
+  digestBytes,
+  resultRef,
+} from '../blocks/artifact-runtime'
 import type { RunRef } from '../blocks/artifact-runtime'
 import {
   ArtifactRefused,
@@ -17,7 +21,12 @@ import { backend } from '../../../test/blocks/artifact-backend'
 const run: RunRef = {
   schema: ARTIFACT_RUNTIME_SCHEMA,
   id: 'spatial-heat:1',
-  source: { kind: 'document', documentId: 'heat', position: '3', contentDigest: 'c3' },
+  source: {
+    kind: 'document',
+    documentId: 'heat',
+    position: '3',
+    contentDigest: 'c3',
+  },
   engine: {
     kind: 'theorem.spatial-settle',
     version: '1',
@@ -42,7 +51,13 @@ test('a run is written first, then each chunk after its bytes, in order from ind
   void writer.append('settlement', observations(0, 3))
   void writer.append('settlement', observations(3, 2))
   await writer.settled()
-  expect(fake.log).toEqual(['POST runs', 'POST blobs', 'POST chunks', 'POST blobs', 'POST chunks'])
+  expect(fake.log).toEqual([
+    'POST runs',
+    'POST blobs',
+    'POST chunks',
+    'POST blobs',
+    'POST chunks',
+  ])
   expect(fake.chunks.map((chunk) => chunk.sequence)).toEqual(['0', '1'])
   expect(writer.through).toBe(4n)
   // The chunk's bytes are its observations' canonical JSON, under their digest.
@@ -55,7 +70,9 @@ test('a run larger than one chunk is split, never truncated', async () => {
   const fake = backend()
   const writer = new RunWriter(fake.store, run)
   await writer.append('settlement', observations(0, 4096 + 10))
-  expect(fake.chunks.map((chunk) => chunk.observations.length)).toEqual([4096, 10])
+  expect(fake.chunks.map((chunk) => chunk.observations.length)).toEqual([
+    4096, 10,
+  ])
   expect(writer.through).toBe(4105n)
 })
 
@@ -64,8 +81,12 @@ test('observations that skip ahead stop the writer instead of leaving a gap', as
   const writer = new RunWriter(fake.store, run)
   await writer.append('settlement', observations(0, 2))
   const skipped = writer.append('settlement', observations(5, 1))
-  await expect(skipped).rejects.toMatchObject({ code: 'artifact_chunk_out_of_order' })
-  await expect(writer.append('settlement', observations(2, 1))).rejects.toBeInstanceOf(ArtifactRefused)
+  await expect(skipped).rejects.toMatchObject({
+    code: 'artifact_chunk_out_of_order',
+  })
+  await expect(
+    writer.append('settlement', observations(2, 1)),
+  ).rejects.toBeInstanceOf(ArtifactRefused)
   expect(fake.chunks).toHaveLength(1)
   expect(writer.through).toBe(1n)
 })
@@ -74,7 +95,9 @@ test('a stale CSRF token is replaced once and the write keeps its idempotency ke
   const fake = backend({ staleToken: true })
   const stored = await fake.store.putBlob(new TextEncoder().encode('hello'))
   expect(stored.bytes).toBe('5')
-  expect(await fake.store.blob(stored.digest)).toEqual(new TextEncoder().encode('hello'))
+  expect(await fake.store.blob(stored.digest)).toEqual(
+    new TextEncoder().encode('hello'),
+  )
 })
 
 test('a result is recorded only after its bytes, and must name them', async () => {
@@ -84,12 +107,18 @@ test('a result is recorded only after its bytes, and must name them', async () =
     content: await digestBytes(bytes),
     bytes: String(bytes.length),
     mediaType: 'text/csv',
-    provenance: { kind: 'captured', capturedAt: '2026-11-18T20:00:00Z', unknowns: ['producer-build'] },
+    provenance: {
+      kind: 'captured',
+      capturedAt: '2026-11-18T20:00:00Z',
+      unknowns: ['producer-build'],
+    },
   })
   expect(await fake.store.putResult(result, bytes)).toEqual(result)
   expect(fake.log).toEqual(['POST blobs', 'POST results'])
   const other = new TextEncoder().encode('something else')
-  await expect(fake.store.putResult(result, other)).rejects.toMatchObject({ code: 'artifact_result_invalid' })
+  await expect(fake.store.putResult(result, other)).rejects.toMatchObject({
+    code: 'artifact_result_invalid',
+  })
 })
 
 test('bytes round-trip through base64 at the size bound', () => {

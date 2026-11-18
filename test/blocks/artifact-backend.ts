@@ -3,7 +3,11 @@
 // bytes before records, chunks in order from index 0, immutable runs, CSRF and
 // an Idempotency-Key on writes, exact resolution. For bun:test only.
 import { digestBytes } from '../../src/lib/blocks/artifact-runtime'
-import { artifactStore, base64Of, bytesOf } from '../../src/lib/theorem/artifact-store'
+import {
+  artifactStore,
+  base64Of,
+  bytesOf,
+} from '../../src/lib/theorem/artifact-store'
 import type { TraceChunk } from '../../src/lib/theorem/artifact-store'
 
 export function backend(options: { staleToken?: boolean } = {}) {
@@ -15,16 +19,21 @@ export function backend(options: { staleToken?: boolean } = {}) {
   let token = options.staleToken ? 'old' : 'current'
   const refuse = (status: number, code: string) =>
     new Response(JSON.stringify({ code, message: code }), { status })
-  const ok = (body: unknown) => new Response(JSON.stringify(body), { status: 200 })
+  const ok = (body: unknown) =>
+    new Response(JSON.stringify(body), { status: 200 })
   const request = async (input: string, init: RequestInit) => {
     const url = new URL(input, 'https://theorem.test')
     const route = url.pathname.split('/').at(-1)!
     if (init.method === 'POST' && route !== 'resolve') {
       const headers = init.headers as Record<string, string>
-      if (headers['X-CSRF-Token'] !== 'current') return refuse(403, 'csrf_refused')
-      if (!headers['Idempotency-Key']) return refuse(400, 'idempotency_key_missing')
+      if (headers['X-CSRF-Token'] !== 'current')
+        return refuse(403, 'csrf_refused')
+      if (!headers['Idempotency-Key'])
+        return refuse(400, 'idempotency_key_missing')
     }
-    const body = init.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {}
+    const body = init.body
+      ? (JSON.parse(init.body as string) as Record<string, unknown>)
+      : {}
     log.push(`${init.method} ${route}`)
     switch (`${init.method} ${route}`) {
       case 'POST blobs': {
@@ -35,7 +44,9 @@ export function backend(options: { staleToken?: boolean } = {}) {
       }
       case 'GET blobs': {
         const bytes = blobs.get(url.searchParams.get('digest')!)
-        return bytes ? ok({ base64: base64Of(bytes) }) : refuse(404, 'artifact_blob_not_found')
+        return bytes
+          ? ok({ base64: base64Of(bytes) })
+          : refuse(404, 'artifact_blob_not_found')
       }
       case 'POST runs': {
         const text = JSON.stringify(body)
@@ -48,29 +59,42 @@ export function backend(options: { staleToken?: boolean } = {}) {
         const chunk = body as unknown as TraceChunk
         if (!runs.has(chunk.runId)) return refuse(400, 'artifact_chunk_invalid')
         if (!blobs.has(chunk.blob)) return refuse(400, 'artifact_blob_missing')
-        const expected = chunks.length === 0 ? 0 : Number(chunks.at(-1)!.observations.at(-1)!.index) + 1
-        if (Number(chunk.sequence) !== chunks.length || Number(chunk.observations[0]!.index) !== expected)
+        const expected =
+          chunks.length === 0
+            ? 0
+            : Number(chunks.at(-1)!.observations.at(-1)!.index) + 1
+        if (
+          Number(chunk.sequence) !== chunks.length ||
+          Number(chunk.observations[0]!.index) !== expected
+        )
           return refuse(400, 'artifact_chunk_out_of_order')
         chunks.push(chunk)
         return ok({ appended: 'appended' })
       }
       case 'POST results': {
-        if (!blobs.has(body.content as string)) return refuse(400, 'artifact_blob_missing')
+        if (!blobs.has(body.content as string))
+          return refuse(400, 'artifact_blob_missing')
         results.set(body.id as string, JSON.stringify(body))
         return ok(body)
       }
       case 'POST resolve': {
         const subject = body.subject as Record<string, any> | undefined
         if (subject?.kind === 'result')
-          return ok(results.get(subject.result.id) === JSON.stringify(subject.result)
-            ? { status: 'available', subject }
-            : { status: 'unavailable', subject, reason: 'not-stored' })
+          return ok(
+            results.get(subject.result.id) === JSON.stringify(subject.result)
+              ? { status: 'available', subject }
+              : { status: 'unavailable', subject, reason: 'not-stored' },
+          )
         if (subject?.kind === 'moment') {
           const at = subject.observation
-          const held = chunks.flatMap((chunk) => (chunk.runId === at.runId ? chunk.observations : []))[Number(at.index)]
-          return ok(held?.stateDigest === at.stateDigest
-            ? { status: 'available', subject }
-            : { status: 'unavailable', subject, reason: 'moment-not-held' })
+          const held = chunks.flatMap((chunk) =>
+            chunk.runId === at.runId ? chunk.observations : [],
+          )[Number(at.index)]
+          return ok(
+            held?.stateDigest === at.stateDigest
+              ? { status: 'available', subject }
+              : { status: 'unavailable', subject, reason: 'moment-not-held' },
+          )
         }
         return refuse(400, 'artifact_subject_invalid')
       }
@@ -92,4 +116,3 @@ export function backend(options: { staleToken?: boolean } = {}) {
     }),
   }
 }
-

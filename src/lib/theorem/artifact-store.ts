@@ -92,7 +92,8 @@ export function base64Of(bytes: Uint8Array): string {
 export function bytesOf(base64: string): Uint8Array {
   const text = atob(base64)
   const bytes = new Uint8Array(text.length)
-  for (let index = 0; index < text.length; index++) bytes[index] = text.charCodeAt(index)
+  for (let index = 0; index < text.length; index++)
+    bytes[index] = text.charCodeAt(index)
   return bytes
 }
 
@@ -108,8 +109,7 @@ export function artifactStore(options: ArtifactStoreOptions = {}) {
 
   async function answer<T>(response: Response): Promise<T> {
     const body = (await response.json().catch(() => null)) as
-      | (T & { code?: string; message?: string; error?: string })
-      | null
+      (T & { code?: string; message?: string; error?: string }) | null
     if (!response.ok) {
       const code = body?.code ?? body?.error ?? `http_${response.status}`
       throw new ArtifactRefused(response.status, code, body?.message ?? code)
@@ -152,34 +152,54 @@ export function artifactStore(options: ArtifactStoreOptions = {}) {
     )
 
   const store = {
-    async putBlob(bytes: Uint8Array): Promise<{ digest: Digest; bytes: IntegerText }> {
+    async putBlob(
+      bytes: Uint8Array,
+    ): Promise<{ digest: Digest; bytes: IntegerText }> {
       if (bytes.length === 0 || bytes.length > MAX_BLOB_BYTES)
-        throw new ArtifactRefused(400, 'artifact_blob_invalid', `A blob holds 1 to ${MAX_BLOB_BYTES} bytes.`)
+        throw new ArtifactRefused(
+          400,
+          'artifact_blob_invalid',
+          `A blob holds 1 to ${MAX_BLOB_BYTES} bytes.`,
+        )
       return write('blobs', { base64: base64Of(bytes) })
     },
     async blob(digest: Digest): Promise<Uint8Array> {
       const found = await read<{ base64: string }>('blobs', { digest })
       const bytes = bytesOf(found.base64)
       if ((await digestBytes(bytes)) !== digest)
-        throw new ArtifactRefused(502, 'artifact_blob_mismatch', 'The bytes read do not match their digest.')
+        throw new ArtifactRefused(
+          502,
+          'artifact_blob_mismatch',
+          'The bytes read do not match their digest.',
+        )
       return bytes
     },
     putRun: (run: RunRef): Promise<RunRef> => write('runs', run),
-    openRun: (runId: string): Promise<RunRecords> => read('runs', { run_id: runId }),
+    openRun: (runId: string): Promise<RunRecords> =>
+      read('runs', { run_id: runId }),
     /** Appends a chunk whose bytes are stored; `appended` is `already-present` for a retry. */
-    appendChunk: (chunk: TraceChunk): Promise<{ appended: 'appended' | 'already-present' }> =>
+    appendChunk: (
+      chunk: TraceChunk,
+    ): Promise<{ appended: 'appended' | 'already-present' }> =>
       write('chunks', chunk),
     /** Records a result after storing the bytes it names. */
     async putResult(result: ResultRef, bytes: Uint8Array): Promise<ResultRef> {
       const stored = await store.putBlob(bytes)
       if (stored.digest !== result.content || stored.bytes !== result.bytes)
-        throw new ArtifactRefused(400, 'artifact_result_invalid', 'The result does not name these bytes.')
+        throw new ArtifactRefused(
+          400,
+          'artifact_result_invalid',
+          'The result does not name these bytes.',
+        )
       return write('results', result)
     },
-    result: (id: Digest): Promise<ResultRef> => read('results', { result_id: id }),
-    resolve: (subject: SubjectRef): Promise<DurableResolution> => query('resolve', { subject }),
-    resolveObservation: (observation: ObservationRef): Promise<DurableResolution> =>
-      query('resolve', { observation }),
+    result: (id: Digest): Promise<ResultRef> =>
+      read('results', { result_id: id }),
+    resolve: (subject: SubjectRef): Promise<DurableResolution> =>
+      query('resolve', { subject }),
+    resolveObservation: (
+      observation: ObservationRef,
+    ): Promise<DurableResolution> => query('resolve', { observation }),
   }
   return store
 }
@@ -231,7 +251,11 @@ export class RunWriter {
     for (const observation of observations) {
       if (BigInt(observation.index) !== expected) {
         this.stop(
-          new ArtifactRefused(400, 'artifact_chunk_out_of_order', `The run continues at observation ${expected}, not ${observation.index}.`),
+          new ArtifactRefused(
+            400,
+            'artifact_chunk_out_of_order',
+            `The run continues at observation ${expected}, not ${observation.index}.`,
+          ),
         )
         return Promise.reject(this.failure!)
       }
@@ -239,7 +263,11 @@ export class RunWriter {
     }
     this.next = expected
     const chunks: Array<Array<ChunkObservation>> = []
-    for (let start = 0; start < observations.length; start += MAX_CHUNK_OBSERVATIONS)
+    for (
+      let start = 0;
+      start < observations.length;
+      start += MAX_CHUNK_OBSERVATIONS
+    )
       chunks.push(observations.slice(start, start + MAX_CHUNK_OBSERVATIONS))
     this.queue = this.queue.then(async () => {
       if (this.failure) throw this.failure
@@ -255,7 +283,10 @@ export class RunWriter {
     if (this.failure) throw this.failure
   }
 
-  private async writeChunk(domain: string, observations: Array<ChunkObservation>) {
+  private async writeChunk(
+    domain: string,
+    observations: Array<ChunkObservation>,
+  ) {
     const bytes = chunkBytes(observations)
     if (bytes.length > MAX_BLOB_BYTES) {
       // Halve until it fits; a single observation is far below the bound.

@@ -3,7 +3,11 @@
 import { expect, test } from 'bun:test'
 import { appDocumentFixture } from '../../../test/blocks/app-documents'
 import { backend } from '../../../test/blocks/artifact-backend'
-import { ARTIFACT_RUNTIME_SCHEMA, digestBytes, resultRef } from '../blocks/artifact-runtime'
+import {
+  ARTIFACT_RUNTIME_SCHEMA,
+  digestBytes,
+  resultRef,
+} from '../blocks/artifact-runtime'
 import { serveBridge } from '../blocks/bridge'
 import type { BridgeHost } from '../blocks/bridge'
 import { noCapabilities } from '../blocks/declarations'
@@ -34,7 +38,11 @@ const at = (index: number) => ({
 
 async function connected() {
   const fixture = await appDocumentFixture()
-  const snapshot = await new AppDocument('app-document', fixture.api, fixture.change).load()
+  const snapshot = await new AppDocument(
+    'app-document',
+    fixture.api,
+    fixture.change,
+  ).load()
   const fake = backend()
   const host = {
     state: {} as BridgeHost['state'],
@@ -60,23 +68,66 @@ async function connected() {
 test("an App's run is kept as run by the revision running, and continues where it ended", async () => {
   const { snapshot, fake, frame, close } = await connected()
   try {
-    const first = await call<PageMethods, 'artifacts.record'>(frame, 'artifacts.record', { run, domain: 'settlement', observations: [at(0), at(1)] })
+    const first = await call<PageMethods, 'artifacts.record'>(
+      frame,
+      'artifacts.record',
+      { run, domain: 'settlement', observations: [at(0), at(1)] },
+    )
     expect(first.through).toBe('1')
-    const next = await call<PageMethods, 'artifacts.record'>(frame, 'artifacts.record', { run, domain: 'settlement', observations: [at(2)] })
+    const next = await call<PageMethods, 'artifacts.record'>(
+      frame,
+      'artifacts.record',
+      { run, domain: 'settlement', observations: [at(2)] },
+    )
     expect(next.through).toBe('2')
-    expect(JSON.parse(fake.runs.get('spatial-a:0')!).source).toEqual(appSourceRef(snapshot))
+    expect(JSON.parse(fake.runs.get('spatial-a:0')!).source).toEqual(
+      appSourceRef(snapshot),
+    )
     // A gap is refused, not stored.
-    const gap = await call<PageMethods, 'artifacts.record'>(frame, 'artifacts.record', { run, domain: 'settlement', observations: [at(9)] }).then(() => '', (error: Error) => error.message)
+    const gap = await call<PageMethods, 'artifacts.record'>(
+      frame,
+      'artifacts.record',
+      { run, domain: 'settlement', observations: [at(9)] },
+    ).then(
+      () => '',
+      (error: Error) => error.message,
+    )
     expect(gap).toContain('artifact_chunk_out_of_order')
     // The moment is then held exactly, and another state at it is not.
     const moment = (index: number, digest = at(index).stateDigest) => ({
       kind: 'moment',
-      observation: { schema: ARTIFACT_RUNTIME_SCHEMA, runId: run.id, index: String(index), domain: 'settlement', time: String(index), stateDigest: digest },
+      observation: {
+        schema: ARTIFACT_RUNTIME_SCHEMA,
+        runId: run.id,
+        index: String(index),
+        domain: 'settlement',
+        time: String(index),
+        stateDigest: digest,
+      },
     })
-    expect(await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', { subject: moment(2) })).toEqual({ status: 'available' })
-    expect(await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', { subject: moment(2, at(1).stateDigest) })).toEqual({ status: 'unavailable', reason: 'moment-not-held' })
+    expect(
+      await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', {
+        subject: moment(2),
+      }),
+    ).toEqual({ status: 'available' })
+    expect(
+      await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', {
+        subject: moment(2, at(1).stateDigest),
+      }),
+    ).toEqual({ status: 'unavailable', reason: 'moment-not-held' })
     // A malformed observation never reaches the store.
-    const malformed = await call<PageMethods, 'artifacts.record'>(frame, 'artifacts.record', { run, domain: 'settlement', observations: [{ ...at(3), stateDigest: 'nope' }] }).then(() => false, () => true)
+    const malformed = await call<PageMethods, 'artifacts.record'>(
+      frame,
+      'artifacts.record',
+      {
+        run,
+        domain: 'settlement',
+        observations: [{ ...at(3), stateDigest: 'nope' }],
+      },
+    ).then(
+      () => false,
+      () => true,
+    )
     expect(malformed).toBe(true)
   } finally {
     close()
@@ -91,11 +142,31 @@ test("an App's result is kept with its bytes and resolves as itself", async () =
       content: await digestBytes(bytes),
       bytes: String(bytes.length),
       mediaType: 'text/csv',
-      provenance: { kind: 'captured', capturedAt: '2026-11-18T20:00:00Z', unknowns: ['producer-build'] },
+      provenance: {
+        kind: 'captured',
+        capturedAt: '2026-11-18T20:00:00Z',
+        unknowns: ['producer-build'],
+      },
     })
-    expect(await call<PageMethods, 'artifacts.result'>(frame, 'artifacts.result', { result, bytes })).toEqual({ id: result.id })
-    expect(await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', { subject: { kind: 'result', result } })).toEqual({ status: 'available' })
-    const other = await call<PageMethods, 'artifacts.result'>(frame, 'artifacts.result', { result, bytes: new TextEncoder().encode('else') }).then(() => '', (error: Error) => error.message)
+    expect(
+      await call<PageMethods, 'artifacts.result'>(frame, 'artifacts.result', {
+        result,
+        bytes,
+      }),
+    ).toEqual({ id: result.id })
+    expect(
+      await call<PageMethods, 'artifacts.resolve'>(frame, 'artifacts.resolve', {
+        subject: { kind: 'result', result },
+      }),
+    ).toEqual({ status: 'available' })
+    const other = await call<PageMethods, 'artifacts.result'>(
+      frame,
+      'artifacts.result',
+      { result, bytes: new TextEncoder().encode('else') },
+    ).then(
+      () => '',
+      (error: Error) => error.message,
+    )
     expect(other).toContain('artifact_result_invalid')
   } finally {
     close()

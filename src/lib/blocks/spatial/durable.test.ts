@@ -30,19 +30,26 @@ function counter(steps: number) {
 }
 
 function store(options: { fail?: boolean } = {}) {
-  const runs = new Map<string, { run: SpatialRun; observations: Array<DurableObservation> }>()
+  const runs = new Map<
+    string,
+    { run: SpatialRun; observations: Array<DurableObservation> }
+  >()
   const calls: Array<string> = []
   const bridge: ArtifactsBridge = {
     async record(run, _domain, observations) {
       if (options.fail) throw new Error('store unavailable')
-      calls.push(`${run.id} ${observations[0]!.index}-${observations.at(-1)!.index}`)
+      calls.push(
+        `${run.id} ${observations[0]!.index}-${observations.at(-1)!.index}`,
+      )
       const held = runs.get(run.id) ?? { run, observations: [] }
       if (held.observations.length === 0 && run.parent) {
         const parent = runs.get(run.parent.runId)
         const at = parent?.observations[Number(run.parent.at.index)]
-        if (at?.stateDigest !== run.parent.at.stateDigest) throw new Error('artifact_fork_invalid')
+        if (at?.stateDigest !== run.parent.at.stateDigest)
+          throw new Error('artifact_fork_invalid')
       }
-      if (Number(observations[0]!.index) !== held.observations.length) throw new Error('artifact_chunk_out_of_order')
+      if (Number(observations[0]!.index) !== held.observations.length)
+        throw new Error('artifact_chunk_out_of_order')
       held.observations.push(...observations)
       runs.set(run.id, held)
       return { through: observations.at(-1)!.index }
@@ -60,7 +67,9 @@ describe('a model run kept durably', () => {
     expect(await durable.through((await trace.observation(1))!)).toBe(true)
     expect(await durable.through((await trace.observation(4))!)).toBe(true)
     expect(fake.calls).toEqual(['counter:0 0-2', 'counter:0 3-4'])
-    expect(fake.runs.get('counter:0')!.observations[2]!.stateDigest).toBe((await trace.observation(2))!.stateDigest)
+    expect(fake.runs.get('counter:0')!.observations[2]!.stateDigest).toBe(
+      (await trace.observation(2))!.stateDigest,
+    )
   })
 
   it('writes a re-run after its parent, through the moment it forked from', async () => {
@@ -88,7 +97,9 @@ describe('a model run kept durably', () => {
     const fake = store()
     const durable = new DurableTrace(trace, () => fake.bridge)
     expect(trace.first).toBeGreaterThan(0)
-    expect(await durable.through((await trace.observation(trace.cycle))!)).toBe(false)
+    expect(await durable.through((await trace.observation(trace.cycle))!)).toBe(
+      false,
+    )
     expect(fake.calls).toEqual([])
   })
 })

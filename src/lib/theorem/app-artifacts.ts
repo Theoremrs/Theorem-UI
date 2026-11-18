@@ -3,7 +3,11 @@
 // a run that names none, the same way a question's binding does
 // (app-dossier.ts dossierBinding), so a stored moment and a question about it
 // name the same run.
-import { readResultRef, readSourceRef, readSubjectRef } from '../blocks/artifact-runtime'
+import {
+  readResultRef,
+  readSourceRef,
+  readSubjectRef,
+} from '../blocks/artifact-runtime'
 import type { RunRef } from '../blocks/artifact-runtime'
 import { BridgeDenied } from '../blocks/bridge'
 import type { AppArtifacts } from '../blocks/bridge'
@@ -16,7 +20,9 @@ import type { ArtifactStore, ChunkObservation } from './artifact-store'
 const MAX_WRITERS = 32
 
 const refusal = (error: unknown) =>
-  error instanceof ArtifactRefused ? new BridgeDenied(`${error.message} (${error.code})`) : error
+  error instanceof ArtifactRefused
+    ? new BridgeDenied(`${error.message} (${error.code})`)
+    : error
 
 /** The durable store as one running App revision reaches it. */
 export function appArtifacts(
@@ -29,17 +35,24 @@ export function appArtifacts(
   function writerFor(given: Record<string, unknown>) {
     if (typeof given.id !== 'string' || !given.id)
       throw new BridgeDenied('A run is recorded under its id.')
-    const run = (readSourceRef(given.source) ? given : { ...given, source }) as unknown as RunRef
+    const run = (readSourceRef(given.source)
+      ? given
+      : { ...given, source }) as unknown as RunRef
     const text = JSON.stringify(run)
     const open = writers.get(run.id)
     if (open) {
       if (open.text !== text)
-        throw new BridgeDenied(`Run ${run.id} is already recorded as a different run.`)
+        throw new BridgeDenied(
+          `Run ${run.id} is already recorded as a different run.`,
+        )
       return open.writer
     }
     const writer = new RunWriter(store, run)
     writers.set(run.id, { text, writer })
-    for (const old of [...writers.keys()].slice(0, Math.max(0, writers.size - MAX_WRITERS)))
+    for (const old of [...writers.keys()].slice(
+      0,
+      Math.max(0, writers.size - MAX_WRITERS),
+    ))
       writers.delete(old)
     return writer
   }
@@ -54,11 +67,14 @@ export function appArtifacts(
       } catch (error) {
         throw refusal(error)
       }
-      return { through: writer.through === undefined ? null : String(writer.through) }
+      return {
+        through: writer.through === undefined ? null : String(writer.through),
+      }
     },
     async result(given, bytes) {
       const result = readResultRef(given)
-      if (!result) throw new BridgeDenied('A result is a @theorem/runtime ResultRef.')
+      if (!result)
+        throw new BridgeDenied('A result is a @theorem/runtime ResultRef.')
       try {
         return { id: (await store.putResult(result, bytes)).id }
       } catch (error) {
@@ -67,7 +83,8 @@ export function appArtifacts(
     },
     async resolve(given) {
       const subject = readSubjectRef(given)
-      if (!subject) throw new BridgeDenied('A subject is a @theorem/runtime SubjectRef.')
+      if (!subject)
+        throw new BridgeDenied('A subject is a @theorem/runtime SubjectRef.')
       try {
         const found = await store.resolve(subject)
         return found.status === 'available'

@@ -25,12 +25,17 @@ export interface ArtifactsBridge {
 }
 
 const bridge = (): ArtifactsBridge | undefined =>
-  (globalThis as { theorem?: { artifacts?: ArtifactsBridge } }).theorem?.artifacts
+  (globalThis as { theorem?: { artifacts?: ArtifactsBridge } }).theorem
+    ?.artifacts
 
 /** What a trace hands this: the run's captures, and the runs it forked from. */
 export interface DurableSource {
   /** Captures of `runId`'s cycles from `from` through `to`, or undefined when one is no longer held. */
-  captures: (runId: string, from: number, to: number) => Array<TraceCapture> | undefined
+  captures: (
+    runId: string,
+    from: number,
+    to: number,
+  ) => Array<TraceCapture> | undefined
 }
 
 /** The most observations sent in one call. */
@@ -61,7 +66,9 @@ export class DurableTrace {
 
   /** Writes the run through `observation`; true when that exact moment is then held. */
   through(observation: ObservationRef): Promise<boolean> {
-    const done = this.queue.then(() => this.write(observation.runId, Number(observation.index)))
+    const done = this.queue.then(() =>
+      this.write(observation.runId, Number(observation.index)),
+    )
     this.queue = done.catch(() => false)
     return done.catch(() => false)
   }
@@ -76,20 +83,28 @@ export class DurableTrace {
       this.failed.add(runId)
       return false
     }
-    const grounded = await Promise.all(captures.map((capture) => groundCapture(capture)))
+    const grounded = await Promise.all(
+      captures.map((capture) => groundCapture(capture)),
+    )
     const run = grounded[0]!.run
     // A fork is stored only once its parent recorded the moment it forks at.
-    if (from === 0 && run.parent && !(await this.write(run.parent.runId, Number(run.parent.at.index)))) {
+    if (
+      from === 0 &&
+      run.parent &&
+      !(await this.write(run.parent.runId, Number(run.parent.at.index)))
+    ) {
       this.failed.add(runId)
       return false
     }
     try {
       for (let start = 0; start < grounded.length; start += BATCH) {
-        const batch = grounded.slice(start, start + BATCH).map(({ observation }) => ({
-          index: observation.index,
-          time: observation.time,
-          stateDigest: observation.stateDigest,
-        }))
+        const batch = grounded
+          .slice(start, start + BATCH)
+          .map(({ observation }) => ({
+            index: observation.index,
+            time: observation.time,
+            stateDigest: observation.stateDigest,
+          }))
         await artifacts.record(run, TRACE_DOMAIN, batch)
         this.next.set(runId, Number(batch.at(-1)!.index) + 1)
       }
