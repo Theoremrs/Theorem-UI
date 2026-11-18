@@ -199,7 +199,10 @@ export function artifactStore(options: ArtifactStoreOptions = {}) {
     /** Records a result after storing the bytes it names. */
     async putResult(result: ResultRef, bytes: Uint8Array): Promise<ResultRef> {
       const stored = await store.putBlob(bytes)
-      if (stored.digest !== result.content || stored.bytes !== result.bytes)
+      if (
+        stored.digest !== result.content ||
+        (result.bytes !== undefined && stored.bytes !== result.bytes)
+      )
         throw new ArtifactRefused(
           400,
           'artifact_result_invalid',

@@ -151,13 +151,7 @@ export function matches(
     const have = Object.keys(actual).sort()
     return (
       canonicalJson(want) === canonicalJson(have) &&
-      want.every((key) =>
-        matches(
-          (actual as Record<string, unknown>)[key],
-          (expected as Record<string, unknown>)[key],
-          tolerance,
-        ),
-      )
+      want.every((key) => matches(actual[key], expected[key], tolerance))
     )
   }
   try {
@@ -278,8 +272,11 @@ export function compareEvaluations(
  * criterion and the candidate it was computed from.
  */
 export async function evaluationResult(
-  receipt: EvaluationReceipt,
+  givenReceipt: EvaluationReceipt,
 ): Promise<{ result: ResultRef; bytes: Uint8Array }> {
+  // One owned copy: a caller editing its receipt while this waits cannot make
+  // the saved bytes and the provenance describe different receipts.
+  const receipt = structuredClone(givenReceipt)
   const bytes = new TextEncoder().encode(canonicalJson(receipt))
   const result = await resultRef({
     content: await digestOf(receipt),

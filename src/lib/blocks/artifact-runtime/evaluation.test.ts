@@ -247,6 +247,25 @@ describe('feedback judged before and after', () => {
       },
     })
   })
+
+  test('a receipt edited while it is kept does not split content from provenance', async () => {
+    const receipt = await evaluate(
+      await rodCriterion(),
+      candidate,
+      evaluator,
+      at(solveRod),
+    )
+    const pending = evaluationResult(receipt)
+    receipt.evaluator = { ...receipt.evaluator, name: 'someone-else' }
+    const { result, bytes } = await pending
+    const saved = JSON.parse(new TextDecoder().decode(bytes)) as {
+      evaluator: Evaluator
+    }
+    expect(saved.evaluator.name).toBe('rod-analytic')
+    expect(result.provenance).toMatchObject({
+      operation: { name: 'rod-analytic' },
+    })
+  })
 })
 
 describe('matching values', () => {

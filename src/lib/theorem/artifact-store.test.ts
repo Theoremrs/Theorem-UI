@@ -140,6 +140,24 @@ test('a result is recorded only after its bytes, and must name them', async () =
   })
 })
 
+test('a result that does not state its size is still recorded', async () => {
+  const fake = backend()
+  const bytes = new TextEncoder().encode('no size given')
+  const result = await resultRef({
+    content: await digestBytes(bytes),
+    mediaType: 'text/plain',
+    provenance: {
+      kind: 'captured',
+      capturedAt: '2026-11-18T20:00:00Z',
+      unknowns: ['producer-build'],
+    },
+  })
+  expect(await fake.store.putResult(result, bytes)).toEqual(result)
+  await expect(
+    fake.store.putResult(result, new TextEncoder().encode('other')),
+  ).rejects.toMatchObject({ code: 'artifact_result_invalid' })
+})
+
 test('bytes round-trip through base64 at the size bound', () => {
   const bytes = new Uint8Array(1024 * 1024).map((_, index) => index % 251)
   expect(bytesOf(base64Of(bytes))).toEqual(bytes)
