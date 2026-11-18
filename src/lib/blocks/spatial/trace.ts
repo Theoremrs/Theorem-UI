@@ -4,7 +4,7 @@
 // here besides the frames is the model's exact state after each one, so a
 // scrubbed cycle can be shown as it was and run again from.
 
-import { ARTIFACT_RUNTIME_SCHEMA, digestOf, integerText } from '@theorem/runtime'
+import { ARTIFACT_RUNTIME_SCHEMA, canonicalJson, digestOf, integerText } from '@theorem/runtime'
 import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
 import { valueText } from './engine'
 import type { ModelState, Settled } from './engine'
@@ -170,6 +170,14 @@ export function frameValues(model: ModelState, settled: Settled): TraceFrame['va
 }
 
 /** The exact reference of a kept settle of `runId`. */
+/**
+ * What a kept settle's digest is of: its values, every part's state and every
+ * input set, as canonical JSON. Written with a durable run, so the moment can
+ * be read back exactly once the App is closed.
+ */
+export const capturedState = (capture: TraceCapture): string =>
+  canonicalJson({ values: capture.kept.frame.values, states: capture.kept.states, pins: capture.kept.pins })
+
 async function observationOf(runId: string, kept: Kept): Promise<ObservationRef> {
   return {
     schema: ARTIFACT_RUNTIME_SCHEMA,

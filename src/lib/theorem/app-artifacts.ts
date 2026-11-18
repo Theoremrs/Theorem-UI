@@ -14,7 +14,7 @@ import type { AppArtifacts } from '../blocks/bridge'
 import { appSourceRef } from './app-dossier'
 import type { AppSnapshot } from './apps'
 import { ArtifactRefused, RunWriter, artifactStore } from './artifact-store'
-import type { ArtifactStore, ChunkObservation } from './artifact-store'
+import type { ArtifactStore, RecordedObservation } from './artifact-store'
 
 /** The most runs one App keeps writing at once; the oldest is let go first. */
 const MAX_WRITERS = 32
@@ -62,13 +62,14 @@ export function appArtifacts(
       const writer = writerFor(run)
       try {
         // The bridge checked each digest's form.
-        await writer.append(domain, observations as Array<ChunkObservation>)
+        await writer.append(domain, observations as Array<RecordedObservation>)
         await writer.settled()
       } catch (error) {
         throw refusal(error)
       }
       return {
         through: writer.through === undefined ? null : String(writer.through),
+        source: writer.run.source,
       }
     },
     async result(given, bytes) {

@@ -949,8 +949,12 @@ export function mount(
       }
       const grounding = await groundCapture(captured)
       // Written when a question asks, so the moment it is about outlives this App.
-      const kept = durable.available && (await durable.through(grounding.observation))
-      return { ...grounding, lifetime: kept ? 'durable' : 'session' }
+      // The question then names the revision the stored run names, not one
+      // worked out separately, so the two cannot disagree.
+      const source = durable.available ? await durable.through(grounding.observation) : undefined
+      return source
+        ? { ...grounding, run: { ...grounding.run, source }, lifetime: 'durable' }
+        : { ...grounding, lifetime: 'session' }
     }
   }
 

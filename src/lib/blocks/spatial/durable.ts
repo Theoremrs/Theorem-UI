@@ -4,8 +4,9 @@
 // in order from index 0, and a fork only after its parent recorded the moment
 // it forks at; this writes them that way, from captures taken when each settle
 // was kept, so a re-run or eviction cannot change what is written.
-import type { ObservationRef } from '@theorem/runtime'
-import { groundCapture, TRACE_DOMAIN } from './trace'
+import { readSourceRef } from '@theorem/runtime'
+import type { ArtifactSourceRef, ObservationRef } from '@theorem/runtime'
+import { capturedState, groundCapture, TRACE_DOMAIN } from './trace'
 import type { SpatialRun, TraceCapture } from './trace'
 
 /** One observation as the store records it. */
@@ -13,6 +14,8 @@ export interface DurableObservation {
   index: string
   time: string
   stateDigest: string
+  /** The canonical JSON text `stateDigest` is the SHA-256 of. */
+  state: string
 }
 
 /** `window.theorem.artifacts`, as the App frame gives it (the part this uses). */
@@ -21,7 +24,7 @@ export interface ArtifactsBridge {
     run: SpatialRun,
     domain: string,
     observations: Array<DurableObservation>,
-  ) => Promise<{ through: string | null }>
+  ) => Promise<{ through: string | null; source: unknown }>
 }
 
 const bridge = (): ArtifactsBridge | undefined =>
@@ -44,7 +47,8 @@ const BATCH = 512
 /**
  * Writes a model's runs durably on demand. `through(observation)` writes the
  * run up to that moment (and first, for a re-run, its parent up to where it
- * forked) and says whether the moment is now held durably. Writes are queued
+ * forked), with the state of every moment written, and answers the revision
+ * the stored run names once that moment is held durably. Writes are queued
  * one after another; a run whose write fails, or whose early cycles were
  * dropped before they were written, is never claimed durable.
  */
@@ -64,13 +68,24 @@ export class DurableTrace {
     return this.artifacts() !== undefined
   }
 
-  /** Writes the run through `observation`; true when that exact moment is then held. */
-  through(observation: ObservationRef): Promise<boolean> {
+  /** The revision each stored run names, as the store answered it. */
+  private readonly sources = new Map<string, ArtifactSourceRef>()
+
+  /**
+   * Writes the run through `observation`. Answers the revision the stored run
+   * names once that exact moment is held, so a question about it names the
+   * same run; undefined when it is not held.
+   */
+  async through(
+    observation: ObservationRef,
+  ): Promise<ArtifactSourceRef | undefined> {
     const done = this.queue.then(() =>
       this.write(observation.runId, Number(observation.index)),
     )
     this.queue = done.catch(() => false)
-    return done.catch(() => false)
+    return (await done.catch(() => false))
+      ? this.sources.get(observation.runId)
+      : undefined
   }
 
   private async write(runId: string, cycle: number): Promise<boolean> {
@@ -84,7 +99,10 @@ export class DurableTrace {
       return false
     }
     const grounded = await Promise.all(
-      captures.map((capture) => groundCapture(capture)),
+      captures.map(async (capture) => ({
+        ...(await groundCapture(capture)),
+        state: capturedState(capture),
+      })),
     )
     const run = grounded[0]!.run
     // A fork is stored only once its parent recorded the moment it forks at.
@@ -100,12 +118,17 @@ export class DurableTrace {
       for (let start = 0; start < grounded.length; start += BATCH) {
         const batch = grounded
           .slice(start, start + BATCH)
-          .map(({ observation }) => ({
+          .map(({ observation, state }) => ({
             index: observation.index,
             time: observation.time,
             stateDigest: observation.stateDigest,
+            state,
           }))
-        await artifacts.record(run, TRACE_DOMAIN, batch)
+        const stored = await artifacts.record(run, TRACE_DOMAIN, batch)
+        const source = readSourceRef(stored.source)
+        if (!source)
+          throw new Error('The store did not say which revision the run names.')
+        this.sources.set(runId, source)
         this.next.set(runId, Number(batch.at(-1)!.index) + 1)
       }
       return true

@@ -206,9 +206,38 @@ export function artifactStore(options: ArtifactStoreOptions = {}) {
 
 export type ArtifactStore = ReturnType<typeof artifactStore>
 
-/** A chunk's observations as its bytes: their canonical JSON. */
-export const chunkBytes = (observations: Array<ChunkObservation>) =>
-  new TextEncoder().encode(canonicalJson(observations))
+/**
+ * An observation as it is written: its reference, and the state it is the
+ * digest of, as that state's canonical JSON text (`theorem.canonical-json/1`).
+ * With the state, the moment can be read back after the App that made it is
+ * gone; the reference alone only recognizes it.
+ */
+export type RecordedObservation = ChunkObservation & { state?: string }
+
+/**
+ * A chunk's bytes: the canonical JSON of its observations, each with its
+ * state embedded as the exact text whose SHA-256 is `stateDigest`. Keys are in
+ * canonical order (`index`, `state`, `stateDigest`, `time`).
+ */
+export function chunkBytes(
+  observations: Array<RecordedObservation>,
+): Uint8Array {
+  const entries = observations.map(
+    ({ index, time, stateDigest, state }) =>
+      `{"index":${canonicalJson(index)}${state === undefined ? '' : `,"state":${state}`},"stateDigest":${canonicalJson(stateDigest)},"time":${canonicalJson(time)}}`,
+  )
+  return new TextEncoder().encode(`[${entries.join(',')}]`)
+}
+
+const referenceOf = ({
+  index,
+  time,
+  stateDigest,
+}: RecordedObservation): ChunkObservation => ({
+  index,
+  time,
+  stateDigest,
+})
 
 /**
  * Writes one run's observations in order: the run first, then chunks from
@@ -244,7 +273,10 @@ export class RunWriter {
   }
 
   /** Queues observations that continue the run exactly where it was left. */
-  append(domain: string, observations: Array<ChunkObservation>): Promise<void> {
+  append(
+    domain: string,
+    observations: Array<RecordedObservation>,
+  ): Promise<void> {
     if (this.failure) return Promise.reject(this.failure)
     if (observations.length === 0) return this.queue
     let expected = this.next
@@ -262,7 +294,7 @@ export class RunWriter {
       expected += 1n
     }
     this.next = expected
-    const chunks: Array<Array<ChunkObservation>> = []
+    const chunks: Array<Array<RecordedObservation>> = []
     for (
       let start = 0;
       start < observations.length;
@@ -271,6 +303,17 @@ export class RunWriter {
       chunks.push(observations.slice(start, start + MAX_CHUNK_OBSERVATIONS))
     this.queue = this.queue.then(async () => {
       if (this.failure) throw this.failure
+      // A state is written only as what its digest names.
+      for (const { index, state, stateDigest } of observations)
+        if (
+          state !== undefined &&
+          (await digestBytes(new TextEncoder().encode(state))) !== stateDigest
+        )
+          throw new ArtifactRefused(
+            400,
+            'artifact_state_mismatch',
+            `The state given for observation ${index} is not the state its digest names.`,
+          )
       for (const part of chunks) await this.writeChunk(domain, part)
     })
     this.queue.catch((error: unknown) => this.stop(error))
@@ -285,10 +328,16 @@ export class RunWriter {
 
   private async writeChunk(
     domain: string,
-    observations: Array<ChunkObservation>,
+    observations: Array<RecordedObservation>,
   ) {
     const bytes = chunkBytes(observations)
     if (bytes.length > MAX_BLOB_BYTES) {
+      if (observations.length === 1)
+        throw new ArtifactRefused(
+          400,
+          'artifact_blob_invalid',
+          `Observation ${observations[0]!.index}'s state is larger than one blob (${MAX_BLOB_BYTES} bytes).`,
+        )
       // Halve until it fits; a single observation is far below the bound.
       const half = Math.ceil(observations.length / 2)
       await this.writeChunk(domain, observations.slice(0, half))
@@ -301,7 +350,7 @@ export class RunWriter {
       runId: this.run.id,
       sequence: String(this.sequence),
       domain,
-      observations,
+      observations: observations.map(referenceOf),
       blob: blob.digest,
       bytes: blob.bytes,
     })

@@ -106,7 +106,7 @@ export interface AppArtifacts {
     run: Record<string, unknown>,
     domain: string,
     observations: Array<ArtifactObservation>,
-  ) => Promise<{ through: string | null }>
+  ) => Promise<{ through: string | null; source: unknown }>
   result: (result: Record<string, unknown>, bytes: Uint8Array) => Promise<{ id: string }>
   resolve: (subject: Record<string, unknown>) => Promise<ArtifactResolution>
 }
@@ -209,6 +209,7 @@ const params = {
           index: z.string().regex(/^(0|[1-9][0-9]{0,19})$/),
           time: z.string().regex(/^(0|[1-9][0-9]{0,19})$/),
           stateDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+          state: z.string().max(MAX_ARTIFACT_BYTES).optional(),
         }),
       )
       .min(1)

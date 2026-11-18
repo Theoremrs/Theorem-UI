@@ -4,6 +4,7 @@
 import { expect, test } from 'bun:test'
 import {
   ARTIFACT_RUNTIME_SCHEMA,
+  canonicalJson,
   digestBytes,
   resultRef,
 } from '../blocks/artifact-runtime'
@@ -124,4 +125,52 @@ test('a result is recorded only after its bytes, and must name them', async () =
 test('bytes round-trip through base64 at the size bound', () => {
   const bytes = new Uint8Array(1024 * 1024).map((_, index) => index % 251)
   expect(bytesOf(base64Of(bytes))).toEqual(bytes)
+})
+
+test('a moment is written with its state, and a state its digest does not name is refused', async () => {
+  const fake = backend()
+  const writer = new RunWriter(fake.store, run)
+  const state = canonicalJson({
+    values: { pc: { out: 3 } },
+    states: {},
+    pins: {},
+  })
+  const stateDigest = await digestBytes(new TextEncoder().encode(state))
+  await writer.append('settlement', [
+    { index: '0', time: '0', stateDigest, state },
+  ])
+  const chunk = fake.chunks[0]!
+  // The record holds the reference; the bytes hold the state as written.
+  expect(chunk.observations).toEqual([{ index: '0', time: '0', stateDigest }])
+  const read = JSON.parse(
+    new TextDecoder().decode(fake.blobs.get(chunk.blob)),
+  ) as Array<{ state: unknown }>
+  expect(read[0]!.state).toEqual({
+    values: { pc: { out: 3 } },
+    states: {},
+    pins: {},
+  })
+  await expect(
+    writer.append('settlement', [
+      {
+        index: '1',
+        time: '1',
+        stateDigest,
+        state: canonicalJson({ other: 1 }),
+      },
+    ]),
+  ).rejects.toMatchObject({ code: 'artifact_state_mismatch' })
+  expect(fake.chunks).toHaveLength(1)
+})
+
+test('two runs are written side by side, each from its own index 0', async () => {
+  const fake = backend()
+  const first = new RunWriter(fake.store, run)
+  const second = new RunWriter(fake.store, { ...run, id: 'spatial-heat:2' })
+  await first.append('settlement', observations(0, 2))
+  await second.append('settlement', observations(0, 3))
+  await first.append('settlement', observations(2, 1))
+  expect(
+    fake.chunks.map((chunk) => `${chunk.runId} ${chunk.sequence}`),
+  ).toEqual(['spatial-heat:1 0', 'spatial-heat:2 0', 'spatial-heat:1 1'])
 })

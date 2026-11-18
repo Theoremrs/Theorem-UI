@@ -74,6 +74,8 @@ test("an App's run is kept as run by the revision running, and continues where i
       { run, domain: 'settlement', observations: [at(0), at(1)] },
     )
     expect(first.through).toBe('1')
+    // The revision the stored run names, for a question about it to name too.
+    expect(first.source).toEqual(appSourceRef(snapshot))
     const next = await call<PageMethods, 'artifacts.record'>(
       frame,
       'artifacts.record',

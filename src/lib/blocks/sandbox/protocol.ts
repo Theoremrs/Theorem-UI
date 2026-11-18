@@ -162,11 +162,12 @@ export interface PageMethods {
    * A run's next observations, kept durably for this person: the run (a
    * `@theorem/runtime` RunRef) is recorded with its first observations, and
    * each call continues exactly where the last ended. `through` is the last
-   * index stored.
+   * index stored; `source` is the revision the stored run names, which a
+   * question about one of its moments names too.
    */
   'artifacts.record': {
     params: { run: unknown; domain: string; observations: Array<ArtifactObservation> }
-    result: { through: string | null }
+    result: { through: string | null; source: unknown }
   }
   /** A result the App produced (a ResultRef), kept durably with its bytes. */
   'artifacts.result': { params: { result: unknown; bytes: Uint8Array }; result: { id: string } }
@@ -179,6 +180,13 @@ export interface ArtifactObservation {
   index: string
   time: string
   stateDigest: string
+  /**
+   * The state `stateDigest` is the SHA-256 of, as its canonical JSON text
+   * (`@theorem/runtime` canonicalJson). Kept with the observation, so the
+   * moment can be read back once the App is closed; refused when it is not
+   * the state the digest names.
+   */
+  state?: string
 }
 
 /** Whether a subject is held durably, and if not, why. */

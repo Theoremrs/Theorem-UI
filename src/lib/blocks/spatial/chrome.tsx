@@ -25,7 +25,7 @@ import { createPortal } from 'react-dom'
 import { bitAt, wrap } from './bits'
 import { Dossier } from './dossier'
 import type { ControlSpec } from './engine'
-import type { ObservationRef } from '@theorem/runtime'
+import type { ArtifactSourceRef, ObservationRef } from '@theorem/runtime'
 import type { SpatialRun, TraceFrame } from './trace'
 import './chrome.css'
 
@@ -105,7 +105,8 @@ export interface ChromeSnapshot {
 
 /** The exact run and moment a question about the model is about. */
 export interface Grounding {
-  run: SpatialRun
+  /** With `source` once the run is stored: the revision the stored run names. */
+  run: SpatialRun & { source?: ArtifactSourceRef }
   /** Undefined when the cycle is no longer kept or its run was replaced; never the latest instead. */
   observation: ObservationRef | undefined
   /** The recorded frame of that same moment, from the same capture; undefined with the observation. */

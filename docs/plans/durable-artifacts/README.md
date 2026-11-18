@@ -96,7 +96,11 @@ A question about a spatial moment now writes the run through that moment
 before it is sent: the App's `DurableTrace` hands its observations to the page
 (`artifacts.record`), the page's `RunWriter` stores each chunk's bytes and then
 the chunk, and the question says `observationLifetime: 'durable'` only when
-that succeeded. A re-run is written after its parent, through the cycle it
+that succeeded. Each moment is written with its state (the canonical JSON its
+digest is of: values, part states, inputs set), checked against the digest
+before it is stored, so the moment can be read back after the App closes. The
+store answers the revision the stored run names, and the question names that
+same revision instead of working one out separately. A re-run is written after its parent, through the cycle it
 forked from, because the store refuses a fork whose parent never recorded that
 moment; the trace keeps up to 16 replaced runs for this. A run whose early
 cycles were dropped (more than 5000 settles before the first question) is not

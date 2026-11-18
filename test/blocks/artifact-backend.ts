@@ -59,12 +59,13 @@ export function backend(options: { staleToken?: boolean } = {}) {
         const chunk = body as unknown as TraceChunk
         if (!runs.has(chunk.runId)) return refuse(400, 'artifact_chunk_invalid')
         if (!blobs.has(chunk.blob)) return refuse(400, 'artifact_blob_missing')
+        const own = chunks.filter((stored) => stored.runId === chunk.runId)
         const expected =
-          chunks.length === 0
+          own.length === 0
             ? 0
-            : Number(chunks.at(-1)!.observations.at(-1)!.index) + 1
+            : Number(own.at(-1)!.observations.at(-1)!.index) + 1
         if (
-          Number(chunk.sequence) !== chunks.length ||
+          Number(chunk.sequence) !== own.length ||
           Number(chunk.observations[0]!.index) !== expected
         )
           return refuse(400, 'artifact_chunk_out_of_order')
