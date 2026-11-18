@@ -578,3 +578,82 @@ test('typing in a sibling does not redraw the glass every keystroke', async () =
     rafCalls: 0,
   })
 })
+
+test('a message expanding in an ancestor container moves the pane', async () => {
+  instrument()
+  // The product's shape: the glass pane is nested inside its own wrappers,
+  // and the message that grows is a sibling of an ANCESTOR, not of the pane.
+  // aui_edit-composer-wrapper > div.relative > form(pane)
+  function Nested() {
+    const ref = useRef<HTMLDivElement>(null)
+    useLiquidGlass(ref, true)
+    return (
+      <div data-testid="list">
+        <div data-testid="wrapper">
+          <div>
+            <div ref={ref} className="sheet" data-testid="nested-pane" />
+          </div>
+        </div>
+      </div>
+    )
+  }
+  const field = document.createElement('canvas')
+  document.body.append(field)
+  measure(field, rect(0, 0, 800, 600))
+  const view = await render(<Nested />)
+  const pane = view.container.querySelector<HTMLElement>(
+    '[data-testid="nested-pane"]',
+  )!
+  const box = rect(10, 20, 300, 120)
+  measure(pane, box)
+  publishLifeFrame(field)
+  flush(0)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+  renders.length = 0
+  layoutReads = 0
+
+  // A message grows above the wrapper: the pane keeps its size, stays fully
+  // visible, nothing scrolls, and the pane's own parent is untouched.
+  const list = view.container.querySelector<HTMLElement>(
+    '[data-testid="list"]',
+  )!
+  const wrapper = view.container.querySelector<HTMLElement>(
+    '[data-testid="wrapper"]',
+  )!
+  const message = document.createElement('div')
+  list.insertBefore(message, wrapper)
+  measure(pane, rect(box.left, box.top + 120, box.width, box.height))
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+
+  expect(renders.at(-1)?.pane.rect.top).toBe(box.top + 120)
+})
+
+test('typing inside the pane does not redraw the glass', async () => {
+  instrument()
+  const { pane } = await mount()
+  const text = document.createElement('div')
+  text.textContent = 'a draft'
+  pane.append(text)
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+  await new Promise((resolve) => setTimeout(resolve, 30))
+  flush()
+
+  renders.length = 0
+  layoutReads = 0
+  rafCalls = 0
+  for (let index = 0; index < 20; index++) {
+    // Typing replaces the text node, which is a childList change inside the
+    // pane. It moves nothing, so it must cost no redraw.
+    text.firstChild!.textContent = `a draft ${index}`
+    await new Promise((resolve) => setTimeout(resolve, 1))
+    flush()
+  }
+  expect({ renders: renders.length, layoutReads, rafCalls }).toEqual({
+    renders: 0,
+    layoutReads: 0,
+    rafCalls: 0,
+  })
+})

@@ -271,22 +271,25 @@ class Glass {
     const mutation = new MutationObserver(changed)
     // A pane also moves when the layout around it changes without resizing
     // it: a message expanding above the edit composer pushes the form down
-    // while it stays fully visible and nothing scrolls. Its parent's
-    // structure carries that change, so watch it rather than polling geometry
-    // every frame. Character data is excluded: typing changes no layout here
-    // and must not cost a redraw per keystroke.
-    const layout = element.parentElement ?? element
+    // while it stays fully visible and nothing scrolls. The pane is nested
+    // inside its own wrappers, so that message is a sibling of an ancestor,
+    // not of the pane; every ancestor's own child list carries the change.
+    // Watch each ancestor's direct children rather than one subtree, so the
+    // cost stays proportional to the containers and not to the whole thread.
+    // Character data is excluded: typing changes no layout here and must not
+    // cost a redraw per keystroke.
     const targets = new Set<Element>()
     for (let node: Element | null = element; node; node = node.parentElement)
       targets.add(node)
     // One registration per target: observing a target again replaces its
     // options rather than adding to them, so each target's whole interest is
-    // stated at once.
+    // stated at once. The pane's own subtree is not watched for structure;
+    // its content is the composer's text, which does not move the pane.
     for (const target of targets)
       mutation.observe(target, {
         attributes: true,
         attributeFilter: ['class', 'style', 'hidden'],
-        ...(target === layout ? { childList: true, subtree: true } : {}),
+        ...(target === element ? {} : { childList: true }),
       })
     entry.stopGeometry = () => {
       resize.disconnect()

@@ -5,9 +5,14 @@
 //   node scripts/e2e/composer-latency.mjs
 //   node scripts/e2e/composer-latency.mjs --built
 //
-// Keys are pressed by the browser, not synthesized in the page. `handler` is
-// the synchronous main-thread work between the keydown and the editor's input
-// event; `toPaint` is that keydown to the next presented animation frame.
+// Keys are pressed by the browser, not synthesized in the page.
+//   handler      synchronous main-thread work from keydown to the editor's
+//                input event.
+//   toNextFrame  keydown to the next animation-frame callback. That callback
+//                runs BEFORE the frame paints, so this is not a paint time.
+//   afterPaint   keydown to the callback on the FOLLOWING frame. The first
+//                frame has been laid out, drawn and presented by then, so
+//                this bounds the key's visible effect from above.
 // Long tasks are collected separately so a stall is a number, not an impression.
 import { chromium } from 'playwright-core'
 import { servePage } from './harness.mjs'
@@ -56,28 +61,40 @@ try {
     await page.waitForTimeout(400)
 
     // Measure the synchronous work each key blocks the main thread for, and
-    // the delay from that key to the next presented frame. Event Timing
-    // coalesces entries, so the handler cost is read directly around the
-    // browser's own dispatch: a keydown listener records the start, and a
-    // capture-phase listener that runs after the editor's own handlers records
-    // the end. The paint is the next requestAnimationFrame timestamp.
+    // how long until its effect has been painted. Event Timing coalesces
+    // entries, so the cost is read directly around the browser's own
+    // dispatch: a window keydown listener records the start, and an input
+    // listener that runs after the editor's own handlers records the end.
     await page.evaluate(() => {
+      // One set of listeners for the whole run, installed once. Installing
+      // them per draft size left every earlier size's listeners attached and
+      // writing to the same array, so later sizes recorded several samples
+      // per key and the last-KEYS window covered only the final few keys.
       window.__samples = []
       window.__longTasks = []
-      const target = document.querySelector('.ProseMirror')
+      if (window.__installed) return
+      window.__installed = true
       let started = 0
       // Bubble phase on the window runs after ProseMirror's own handler.
       window.addEventListener('keydown', (event) => {
         if (event.key.length !== 1) return
         started = performance.now()
-        requestAnimationFrame((timestamp) => {
-          window.__samples.push({
-            handler: window.__handler ?? 0,
-            toPaint: Math.max(timestamp, performance.now()) - started,
+        // The frame callback runs before this frame paints. A second
+        // callback, requested from inside the first, runs on the following
+        // frame, so by then the first frame's paint has been presented.
+        requestAnimationFrame(() => {
+          const afterCallback = performance.now()
+          requestAnimationFrame(() => {
+            window.__samples.push({
+              handler: window.__handler ?? 0,
+              toNextFrame: afterCallback - started,
+              afterPaint: performance.now() - started,
+            })
           })
         })
       })
-      target.addEventListener('input', () => {
+      document.addEventListener('input', (event) => {
+        if (!event.target?.closest?.('.ProseMirror')) return
         window.__handler = performance.now() - started
       })
       window.__tasks_observer = new PerformanceObserver((list) => {
@@ -94,10 +111,17 @@ try {
     await page.waitForTimeout(200)
 
     const measured = await page.evaluate(() => {
-      window.__tasks_observer.disconnect()
-      return { samples: window.__samples, longTasks: window.__longTasks }
+      const samples = window.__samples
+      const longTasks = window.__longTasks
+      window.__samples = []
+      window.__longTasks = []
+      return { samples, longTasks }
     })
-    const samples = measured.samples.slice(-KEYS)
+    if (measured.samples.length !== KEYS)
+      throw new Error(
+        `chars=${size}: expected ${KEYS} samples, collected ${measured.samples.length}`,
+      )
+    const samples = measured.samples
     rows.push({
       chars: size,
       keys: samples.length,
@@ -113,15 +137,27 @@ try {
           0.95,
         ),
       ),
-      toPaintP50: round(
+      toNextFrameP50: round(
         percentile(
-          samples.map((e) => e.toPaint),
+          samples.map((e) => e.toNextFrame),
           0.5,
         ),
       ),
-      toPaintP95: round(
+      afterPaintP50: round(
         percentile(
-          samples.map((e) => e.toPaint),
+          samples.map((e) => e.afterPaint),
+          0.5,
+        ),
+      ),
+      toNextFrameP95: round(
+        percentile(
+          samples.map((e) => e.toNextFrame),
+          0.95,
+        ),
+      ),
+      afterPaintP95: round(
+        percentile(
+          samples.map((e) => e.afterPaint),
           0.95,
         ),
       ),
@@ -135,9 +171,9 @@ try {
 
 console.log('real Chromium, idle machine')
 console.log(
-  'handler = synchronous main-thread work per input; toPaint = keydown to presented frame',
+  'handler = sync work per input; toNextFrame = to the frame callback (pre-paint); afterPaint = to the next frame, after that paint',
 )
 for (const row of rows)
   console.log(
-    `chars=${row.chars} keys=${row.keys} handlerP50=${row.handlerP50} handlerP95=${row.handlerP95} toPaintP50=${row.toPaintP50} toPaintP95=${row.toPaintP95} longTasks=${row.longTasks}`,
+    `chars=${row.chars} keys=${row.keys} handlerP50=${row.handlerP50} handlerP95=${row.handlerP95} toNextFrameP50=${row.toNextFrameP50} afterPaintP50=${row.afterPaintP50} afterPaintP95=${row.afterPaintP95} longTasks=${row.longTasks}`,
   )
