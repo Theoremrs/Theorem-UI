@@ -308,6 +308,12 @@ export const STORIES: readonly StoryMeta[] = [
     viewport: { width: 1920, height: 1080 },
   },
   {
+    id: 'settings-responses',
+    title: 'Response defaults: style, detail, effort and budgets',
+    lane: 'original',
+    viewport: { width: 1440, height: 900 },
+  },
+  {
     id: 'cpu-gpu-tradeoff',
     title: 'CPU or GPU: the tradeoff notebook',
     lane: 'original',
