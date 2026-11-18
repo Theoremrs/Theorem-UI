@@ -196,14 +196,15 @@ export async function dependencyDeclarations(
       }
       const module = await dependencies.load(resolved.path)
       if (localDeclarations.has(specifier)) return
-      if (module.loader === 'css' || module.loader === 'dataurl' || module.loader === 'json') {
+      if (module.loader === 'css' || module.loader === 'dataurl' || module.loader === 'binary' || module.loader === 'json') {
         const path = module.loader === 'json'
           ? `/app/dependencies/${encodeURIComponent(module.url)}.json`
           : virtualPath(module.url)
         result.paths[specifier] = [path]
         result.files[path] = module.loader === 'json' ? module.source
           : module.loader === 'css' ? 'export {};'
-            : 'declare const url: string; export default url;'
+            : module.loader === 'binary' ? 'declare const bytes: Uint8Array; export default bytes;'
+              : 'declare const url: string; export default url;'
         return
       }
       if (!module.types) {

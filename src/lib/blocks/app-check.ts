@@ -61,6 +61,8 @@ const untypedModules = (paths: DependencyDeclarations['paths'] = {}) => [
     .filter((specifier) => !TYPED.has(specifier) && !Object.hasOwn(paths, specifier))
     .map((specifier) => `declare module '${specifier}'`),
   `declare module '*.css' {}`,
+  // A worker file imported with ?worker is a URL to start it from (export.ts).
+  `declare module '*?worker' { const url: string; export default url }`,
   '',
 ].join('\n')
 

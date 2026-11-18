@@ -92,7 +92,11 @@ export interface PartSpec<TForm = unknown, TObject = unknown> {
   checks?: Array<CheckSpec>
   /** How a value is written beside a port. */
   format?: (value: unknown, port: string) => string
-  /** The part's own drawing reacting to its values (index.ts types the object). */
+  /**
+   * The part's own drawing reacting to its values (index.ts types the object).
+   * It may give a mesh new geometry, as a form regenerated from its recipe
+   * does; the view refits the part's edges, cells and ports to it.
+   */
   show?: (object: TObject, context: ShowContext) => void
   /** Whether the person can pull it out of the assembly. Default true. */
   movable?: boolean

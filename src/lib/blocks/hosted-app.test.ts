@@ -17,6 +17,9 @@ test('a hosted App carries the real bridge under a restrictive policy without a 
     ?.getAttribute('content')
   expect(policy).toContain("default-src 'none'")
   expect(policy).toContain("connect-src 'none'")
+  // WebAssembly and a Worker from a blob run inside the frame, under this policy.
+  expect(policy).toContain("script-src 'unsafe-inline' 'wasm-unsafe-eval'")
+  expect(policy).toContain('worker-src blob:')
   expect(policy).toContain("form-action 'none'")
   expect(policy).toContain("base-uri 'none'")
   expect(policy).not.toContain("'unsafe-eval'")

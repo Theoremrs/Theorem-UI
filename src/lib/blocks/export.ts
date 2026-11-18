@@ -70,6 +70,7 @@ const NAMESPACE = {
   app: 'theorem-app',
   dependency: 'theorem-app-dependency',
   library: 'theorem-library',
+  worker: 'theorem-app-worker',
 }
 
 /** A bare import, through the import map, to the vendored file that serves it. */
@@ -327,21 +328,55 @@ function appPlugin({ files, entry }: AppSources, dependencies: AppDependencies):
         contents: JSX_RUNTIME,
         loader: 'js',
       }))
+      const appFile = (importer: string, path: string, namespace: string) => {
+        const base = joinSource(importer, path)
+        const found =
+          base === null
+            ? undefined
+            : RESOLVED.map((suffix) => base + suffix).find((candidate) =>
+                Object.hasOwn(files, candidate),
+              )
+        return found
+          ? { path: found, namespace }
+          : { errors: [{ text: `No file "${path}" in this App` }] }
+      }
+      // `import url from './work.ts?worker'`, as in Vite: that file is bundled
+      // on its own and handed over as a blob URL for `new Worker(url)`. A
+      // module worker from a blob does not start in the App's sandboxed frame
+      // (its origin is opaque), so it is a classic script: the bundle runs in
+      // an async function, which keeps top-level await, and a failure in it is
+      // thrown again so it reaches the worker's `onerror`.
+      build.onResolve(
+        { filter: /^\.\.?\/.*\?worker$/, namespace: NAMESPACE.app },
+        ({ path, importer }) => appFile(importer, path.slice(0, -'?worker'.length), NAMESPACE.worker),
+      )
       build.onResolve(
         { filter: /^\.\.?\//, namespace: NAMESPACE.app },
-        ({ path, importer }) => {
-          const base = joinSource(importer, path)
-          const found =
-            base === null
-              ? undefined
-              : RESOLVED.map((suffix) => base + suffix).find((candidate) =>
-                  Object.hasOwn(files, candidate),
-                )
-          return found
-            ? { path: found, namespace: NAMESPACE.app }
-            : { errors: [{ text: `No file "${path}" in this App` }] }
-        },
+        ({ path, importer }) => appFile(importer, path, NAMESPACE.app),
       )
+      build.onLoad({ filter: /.*/, namespace: NAMESPACE.worker }, async ({ path }) => {
+        try {
+          const result = await build.esbuild.build({
+            ...build.initialOptions,
+            outfile: 'worker.js',
+            sourcemap: false,
+            define: { 'import.meta.url': 'self.location.href' },
+            plugins: [appPlugin({ files, entry: path }, dependencies)],
+          })
+          const code = (result.outputFiles?.find((file) => file.path.endsWith('worker.js'))?.text ?? '')
+            // What the worker file exports has no one to go to.
+            .replace(/\nexport \{[^}]*\};\s*$/, '\n')
+          const script = `(async () => {\n${code}\n})().catch((error) => setTimeout(() => { throw error }))\n`
+          return {
+            contents: `export default URL.createObjectURL(new Blob([${JSON.stringify(script)}], { type: 'text/javascript' }))`,
+            loader: 'js',
+          }
+        } catch (error) {
+          const errors = (error as Partial<Esbuild.BuildFailure>).errors
+          if (!errors?.length) throw error
+          return { errors }
+        }
+      })
       // A library's own modules, `./name` beside the one importing them.
       build.onResolve(
         { filter: /^\.\/[\w-]+(?:\.\w+)?$/, namespace: NAMESPACE.library },

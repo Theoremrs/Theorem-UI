@@ -106,12 +106,15 @@ export async function hostedApp(
   policy.httpEquiv = 'Content-Security-Policy'
   policy.content = contentSecurityPolicy({
     'default-src': "'none'",
+    // Every App may compile WebAssembly and start a Worker from a blob it
+    // made: both run in this frame's sandbox, and a blob Worker keeps this
+    // policy, so neither reaches anything connect-src does not grant.
     'script-src': loads.length
       ? from("'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'", 'blob:')
       : options.evaluates
-        ? "'unsafe-inline' 'unsafe-eval'"
-        : "'unsafe-inline'",
-    ...(loads.length && { 'worker-src': from('blob:') }),
+        ? "'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'"
+        : "'unsafe-inline' 'wasm-unsafe-eval'",
+    'worker-src': from('blob:'),
     'style-src': from("'unsafe-inline'"),
     'img-src': 'data: blob:',
     'font-src': from('data:'),

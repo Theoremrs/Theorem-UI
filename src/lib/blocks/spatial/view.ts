@@ -74,6 +74,8 @@ export interface PartView {
   state: Values
   /** Where the part is drawn, in world units. */
   at: Vec3
+  /** Its size in world units, measured from its form as it is now (a regenerated form included). */
+  size: Vec3
   /** Where its centre is on screen, in CSS pixels from the model's top left; null when not drawn. */
   screen: [number, number] | null
   /** The box it covers on screen, as its notes are placed against it; null when not drawn. */
@@ -190,6 +192,8 @@ interface Visual {
   baseOpacity: Array<number>
   edges: THREE.LineSegments
   cells?: THREE.Points<THREE.BufferGeometry, THREE.ShaderMaterial>
+  /** The geometry the shell was drawn from when its surface was last fitted (see refit). */
+  surface: string
   size: THREE.Vector3
   home: THREE.Vector3
   /** Where the person moved it, in its level's frame. */
@@ -390,6 +394,38 @@ export function mount(
     return size
   }
 
+  /** The geometry a shell is drawn from, as a key, so a `show` that swaps it is noticed. */
+  const surfaceOf = (shell: THREE.Object3D) => {
+    const ids: Array<string> = []
+    shell.traverse((child) => {
+      if (child instanceof THREE.Mesh) ids.push((child.geometry as THREE.BufferGeometry).uuid)
+    })
+    return ids.join()
+  }
+
+  /** `count` points over a surface, and the way each faces. */
+  function sampleSurface(surface: THREE.BufferGeometry, count: number) {
+    const sampler = new MeshSurfaceSampler(new THREE.Mesh(surface)).build()
+    const position = new Float32Array(count * 3)
+    const normal = new Float32Array(count * 3)
+    const point = new THREE.Vector3()
+    const facing = new THREE.Vector3()
+    for (let index = 0; index < count; index++) {
+      sampler.sample(point, facing)
+      point.toArray(position, index * 3)
+      facing.toArray(normal, index * 3)
+    }
+    return { position, normal }
+  }
+
+  /** Where a port that gives no `at` sits on its part's bounds: inputs on the left face, outputs on the right. */
+  const portPlace = (dir: 'in' | 'out', index: number, count: number, center: THREE.Vector3, size: THREE.Vector3) =>
+    new THREE.Vector3(
+      center.x + (dir === 'in' ? -size.x / 2 : size.x / 2),
+      center.y + (count === 1 ? 0 : size.y * 0.8 * (0.5 - index / (count - 1))),
+      center.z,
+    )
+
   function buildVisual(part: Part, level: THREE.Group, at: THREE.Vector3): Visual {
     const spec = part.spec
     const group = new THREE.Group()
@@ -448,18 +484,8 @@ export function mount(
     const area = 2 * (size.x * size.y + size.y * size.z + size.x * size.z)
     const count = spec.cells ?? Math.round(Math.min(1400, Math.max(120, area * 110)))
     if (count > 0 && merged) {
-      const sampler = new MeshSurfaceSampler(new THREE.Mesh(merged)).build()
-      const position = new Float32Array(count * 3)
-      const normal = new Float32Array(count * 3)
-      const seed = new Float32Array(count)
-      const point = new THREE.Vector3()
-      const facing = new THREE.Vector3()
-      for (let index = 0; index < count; index++) {
-        sampler.sample(point, facing)
-        point.toArray(position, index * 3)
-        facing.toArray(normal, index * 3)
-        seed[index] = Math.random()
-      }
+      const { position, normal } = sampleSurface(merged, count)
+      const seed = Float32Array.from({ length: count }, () => Math.random())
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.BufferAttribute(position, 3))
       geometry.setAttribute('normal', new THREE.BufferAttribute(normal, 3))
@@ -476,13 +502,7 @@ export function mount(
     for (const dir of ['in', 'out'] as const) {
       sides[dir].forEach((port, index) => {
         const count = sides[dir].length
-        const local = port.at
-          ? new THREE.Vector3(...port.at)
-          : new THREE.Vector3(
-              center.x + (dir === 'in' ? -size.x / 2 : size.x / 2),
-              center.y + (count === 1 ? 0 : size.y * 0.8 * (0.5 - index / (count - 1))),
-              center.z,
-            )
+        const local = port.at ? new THREE.Vector3(...port.at) : portPlace(dir, index, count, center, size)
         const normal = port.at
           ? local.clone().sub(center).setZ(0).normalize()
           : new THREE.Vector3(dir === 'in' ? -1 : 1, 0, 0)
@@ -527,6 +547,7 @@ export function mount(
       baseOpacity: materials.map((material) => material.opacity),
       edges,
       cells,
+      surface: surfaceOf(shell),
       size: size.multiplyScalar(spec.scale ?? 1),
       home: at.clone(),
       moved: new THREE.Vector3(),
@@ -551,6 +572,59 @@ export function mount(
   const arranged = new Map<string, Arranged>()
   const stageArrangement = (net: Network) =>
     arrangeStages(net, (part) => sizeOf(part), (part) => settled.readings.get(part.path)?.stage ?? 0)
+
+  // A `show` that swapped the shell's geometry, as a form regenerated from its
+  // recipe does: what is drawn from the surface (edges, grip, cells, the ports
+  // that give no `at`) follows it, new pieces can be picked, and the part stays
+  // where it is.
+  function refit(visual: Visual) {
+    // Its cells are on their way to the inner parts; fit once they are back.
+    if (visual.morph > 0) return
+    const { part, shell } = visual
+    visual.surface = surfaceOf(shell)
+    const base = new Map(visual.materials.map((material, index) => [material, visual.baseOpacity[index]!]))
+    visual.materials.length = 0
+    visual.baseOpacity.length = 0
+    shell.traverse((child) => {
+      child.userData.path = part.path
+      if (child instanceof THREE.Mesh)
+        for (const material of [child.material].flat() as Visual['materials']) {
+          material.transparent = true
+          visual.materials.push(material)
+          visual.baseOpacity.push(base.get(material) ?? material.opacity)
+        }
+    })
+    const merged = shell instanceof THREE.Mesh ? (shell.geometry as THREE.BufferGeometry) : mergedGeometry(shell)
+    if (!merged) return
+    visual.edges.geometry.dispose()
+    visual.edges.geometry = new THREE.EdgesGeometry(merged, 30)
+    merged.computeBoundingBox()
+    const box = merged.boundingBox!.clone().applyMatrix4(shell.matrix)
+    const size = box.getSize(new THREE.Vector3())
+    const center = box.getCenter(new THREE.Vector3())
+    visual.grip.geometry.dispose()
+    visual.grip.geometry = new THREE.BoxGeometry(Math.max(size.x, 0.2), Math.max(size.y, 0.2), Math.max(size.z, 0.2))
+    visual.grip.position.copy(center)
+    visual.size.copy(size).multiplyScalar(part.spec.scale ?? 1)
+    if (visual.cells) {
+      const attributes = visual.cells.geometry.attributes
+      const { position, normal } = sampleSurface(merged, attributes.position!.count)
+      for (const [name, values] of [['position', position], ['normal', normal], ['aTarget', position]] as const) {
+        ;(attributes[name] as THREE.BufferAttribute).set(values)
+        attributes[name]!.needsUpdate = true
+      }
+      visual.cells.geometry.computeBoundingSphere()
+    }
+    for (const dir of ['in', 'out'] as const) {
+      const side = part.ports.filter((port) => port.dir === dir)
+      side.forEach((port, index) => {
+        const seen = visual.ports.get(port.name)
+        if (port.at || !seen) return
+        seen.local.copy(portPlace(dir, index, side.length, center, size))
+        seen.dot.position.copy(seen.local)
+      })
+    }
+  }
 
   function buildLevel(net: Network, group: THREE.Group): Level {
     for (const part of net.parts) sizeOf(part)
@@ -1381,6 +1455,7 @@ export function mount(
         state: model.states.get(path) ?? {},
         activity: Math.min(1, visual.activity),
       })
+      if (visual.part.spec.show && surfaceOf(visual.shell) !== visual.surface) refit(visual)
     }
     ground.material.uniforms.uOpacity!.value = ease(ground.material.uniforms.uOpacity!.value as number, openPath ? 0.03 : 0.08, 4, dt)
     ground.material.uniforms.uColor!.value.copy(color(theme.ink))
@@ -1529,6 +1604,7 @@ export function mount(
               outputs: reading?.outputs ?? {},
               state: model.states.get(part.path) ?? {},
               at: at.map((n) => Math.round(n * 1000) / 1000) as Vec3,
+              size: (visual?.size.toArray() ?? [0, 0, 0]).map((n) => Math.round(n * 1000) / 1000) as Vec3,
               screen,
               box: anchors.get(partAnchor(part.path))?.box ?? null,
               pulled: pulled.has(part.path),

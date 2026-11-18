@@ -68,7 +68,7 @@ export interface AppModule {
   url: string
   source: string
   loader: Loader
-  /** Fonts/images imported by CSS are embedded in the compiled stylesheet. */
+  /** Fonts/images imported by CSS are embedded in the compiled stylesheet; a .wasm import is these bytes. */
   bytes?: Uint8Array
   /** The declarations advertised by the very response used for the build. */
   types?: string
@@ -85,6 +85,9 @@ const loaderFor = (url: string, contentType: string | null): Loader => {
     /^(?:woff2?|ttf|otf|eot|svg|png|jpe?g|gif|webp|avif|ico)$/.test(extension ?? '') ||
     /^(?:image|font)\//.test(contentType ?? '')
   ) return 'dataurl'
+  // WebAssembly is handed to the App as bytes (a Uint8Array), for a module
+  // that cannot find its own .wasm once bundled: `Module({ wasmBinary })`.
+  if (extension === 'wasm' || contentType?.includes('application/wasm')) return 'binary'
   return 'js'
 }
 
@@ -179,11 +182,12 @@ export class AppDependencies {
       throw new Error(`App dependency ${finalUrl} returned HTML instead of a module`)
     const types = response.headers.get('x-typescript-types')
     const loader = loaderFor(finalUrl, contentType)
+    const binary = loader === 'dataurl' || loader === 'binary'
     const module: AppModule = {
       url: finalUrl,
-      source: loader === 'dataurl' ? '' : await response.text(),
+      source: binary ? '' : await response.text(),
       loader,
-      ...(loader === 'dataurl' ? { bytes: new Uint8Array(await response.arrayBuffer()) } : {}),
+      ...(binary ? { bytes: new Uint8Array(await response.arrayBuffer()) } : {}),
       ...(types ? { types: new URL(types, finalUrl).href } : {}),
     }
     this.modules.set(finalUrl, Promise.resolve(module))
