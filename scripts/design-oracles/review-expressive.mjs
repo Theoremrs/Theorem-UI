@@ -225,12 +225,6 @@ try {
           (node) => node.closest('section').getBoundingClientRect().width,
         )
       assert(width > 1000, `AI content width: ${width}`)
-      const effort = page.getByRole('combobox', {
-        name: 'Default reasoning effort',
-      })
-      assert.equal(await effort.getAttribute('data-slot'), 'select-trigger')
-      await chooseOption(page, page, 'Default reasoning effort', 'High')
-      assert((await effort.textContent()).includes('High'))
       await page
         .getByRole('textbox', { name: 'Search models' })
         .fill('Research')
@@ -239,6 +233,20 @@ try {
       await page.getByText('8 of 8 models', { exact: true }).waitFor()
       await page.screenshot({ path: `${out}/ai-settings-wide.png` })
       return { contentWidth: width }
+    },
+  )
+  // Response defaults (detail, effort, budgets) moved from the AI page to
+  // their own Responses page in the design overhaul.
+  await page.goto(`${base}/story/settings-responses`)
+  await check(
+    'Response defaults retain working coss controls',
+    async () => {
+      const effort = page.getByRole('combobox', {
+        name: 'Default reasoning effort',
+      })
+      assert.equal(await effort.getAttribute('data-slot'), 'select-trigger')
+      await chooseOption(page, page, 'Default reasoning effort', 'High')
+      assert((await effort.textContent()).includes('High'))
     },
   )
   for (const width of [390, 320]) {

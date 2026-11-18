@@ -427,7 +427,7 @@ function PanelsMenu({ api }: { api: DockviewApi }) {
           render={
             <TooltipIconButton
               tooltip="Layout and panels"
-              className="size-7 p-1.5"
+              className="min-h-(--appearance-control-min) min-w-(--appearance-control-min) p-1.5"
             />
           }
         >

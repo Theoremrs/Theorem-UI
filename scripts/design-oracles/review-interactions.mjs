@@ -327,9 +327,10 @@ try {
         box && box.x >= 0 && box.width <= width + 0.5,
         { box },
       )
-      await nav
-        .getByRole('button', { name: 'Close navigation', exact: true })
-        .click()
+      // The sheet has no close button by design (checklist SHELL-02):
+      // Escape, a press outside and a swipe close it.
+      await page.keyboard.press('Escape')
+      await nav.waitFor({ state: 'hidden' })
       await settle()
       await page.screenshot({
         path: resolve(out, `${engine}-calm-dark-${width}.png`),
