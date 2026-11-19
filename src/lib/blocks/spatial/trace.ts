@@ -1,8 +1,11 @@
 // SOURCING: none: the record of a ModelState's settles that Rerun's viewer is
 // fed from (timeline.tsx). Rerun has no browser SDK; the frames are written as
 // a recording by its Rust SDK behind `theorem.trace.recording`. What is kept
-// here besides the frames is the model's exact state after each one, so a
-// scrubbed cycle can be shown as it was and run again from.
+// here besides the frames is each settle as it came about — every part's
+// readings, and the model's exact state after it — so a scrubbed cycle can be
+// shown as it was read and run again from. A part's compute may read changing
+// data outside the model, so the readings a cycle saw exist only in the
+// recording: showing that cycle again cannot recompute them.
 
 import { ARTIFACT_RUNTIME_SCHEMA, canonicalJson, digestOf, integerText } from '@theorem/runtime'
 import type { EngineRef, ObservationRef, RunRef, TimeDomain } from '@theorem/runtime'
@@ -49,8 +52,12 @@ interface Kept {
   frame: TraceFrame
   states: Map<string, Record<string, unknown>>
   pins: Map<string, unknown>
-  /** Parts still changing when the settle gave up; empty when it came to rest. */
-  unsettled: Array<string>
+  /**
+   * The settle as it came about: what every part read and produced then, the
+   * order they fired in, and the parts still changing. Looked-back cycles are
+   * shown from here, because the readings cannot be had again by computing.
+   */
+  settled: Settled
   /** What each part had settled to, which a loop with no clock in it holds. */
   held: Map<string, Record<string, unknown>>
 }
@@ -81,7 +88,7 @@ export async function groundCapture(capture: TraceCapture): Promise<{
     run: runOf(capture.runId, parent),
     observation: await observationOf(capture.runId, capture.kept),
     frame: capture.kept.frame,
-    unsettled: [...capture.kept.unsettled],
+    unsettled: [...capture.kept.settled.unsettled],
   }
 }
 
@@ -113,6 +120,23 @@ const clone = <T>(value: T): T => {
     return structuredClone(value)
   } catch {
     return value
+  }
+}
+
+/** A settle as a kept cycle holds it: every reading copied, so nothing done to
+ * the model afterwards, or to the settle itself, can change what was recorded. */
+function recorded(settled: Settled): Settled {
+  return {
+    readings: new Map([
+      ...settled.readings,
+    ].map(([path, reading]) => [
+      path,
+      { inputs: clone(reading.inputs), outputs: clone(reading.outputs), stage: reading.stage },
+    ])),
+    stages: settled.stages.map((stage) => [...stage]),
+    // Older callers hand a settle without the list: treat it as at rest.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    unsettled: [...(settled.unsettled ?? [])],
   }
 }
 
@@ -244,7 +268,7 @@ export class CycleTrace {
    * not a settled state.
    */
   unsettled(cycle: number): Array<string> | undefined {
-    return this.kept[cycle - this.first]?.unsettled
+    return this.kept[cycle - this.first]?.settled.unsettled
   }
 
   /** The current run as a run reference names it. */
@@ -261,6 +285,22 @@ export class CycleTrace {
   async observation(cycle: number): Promise<ObservationRef | undefined> {
     const kept = this.kept[cycle - this.first]
     return kept && observationOf(this.recordingId, kept)
+  }
+
+  /**
+   * The settle `cycle` came to, as it was then: what every part read and
+   * produced, the stages they fired in, and which parts were still changing.
+   * Undefined when the cycle is not kept, never the latest instead.
+   *
+   * These are the only readings a looked-back cycle can be shown with. A part's
+   * compute may read changing data outside the model, so settling the model
+   * again says what its parts read now, not what they saw at that cycle; only
+   * creating a new run (a set, a step, a re-run) computes. The readings are
+   * handed as a copy, so what was recorded cannot be changed through them.
+   */
+  settled(cycle: number): Settled | undefined {
+    const kept = this.kept[cycle - this.first]?.settled
+    return kept && recorded(kept)
   }
 
   /**
@@ -323,9 +363,7 @@ export class CycleTrace {
       frame,
       states: new Map([...this.model.states].map(([path, state]) => [path, clone(state)])),
       pins: new Map([...this.model.pins].map(([key, value]) => [key, clone(value)])),
-      // Older callers hand a settle without the list: treat it as at rest.
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      unsettled: [...(settled.unsettled ?? [])],
+      settled: recorded(settled),
       held: new Map([...this.model.held].map(([path, outputs]) => [path, clone(outputs)])),
     })
     if (this.kept.length > MAX_CYCLES) this.kept.splice(0, this.kept.length - MAX_CYCLES)

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test'
 import { buildNetwork, ModelState } from './engine'
 import { gate, register, rippleAdder } from './parts'
-import { CycleTrace, flatten } from './trace'
+import { capturedState, CycleTrace, flatten } from './trace'
 
 /** A 4-bit counter: a register fed by an adder that adds `b` to it each step. */
 function counter() {
@@ -23,6 +23,82 @@ function counter() {
   }
   return { model, trace }
 }
+
+/**
+ * A model whose part reads changing data outside itself, as a part's compute
+ * may (a clock, a random draw, a value fetched since the last cycle). What each
+ * cycle saw then exists only in the recording: settling the model again reads
+ * what is outside now, and says nothing about the past.
+ */
+function impure() {
+  const outside = { value: 10 }
+  const model = new ModelState(
+    buildNetwork((m) => {
+      m.part({ id: 'read', ports: { out: 'out' }, compute: () => ({ out: outside.value }) })
+      m.part({ id: 'echo', ports: { in: 'in', out: 'out' }, compute: ({ in: heard }) => ({ out: heard }) })
+      m.wire('read.out', 'echo.in')
+    }),
+  )
+  const trace = new CycleTrace(model, 'impure')
+  return { model, trace, outside }
+}
+
+describe('what a cycle recorded', () => {
+  it('is read back for a kept cycle after the data its parts read has changed', () => {
+    const { model, trace, outside } = impure()
+    trace.record({ kind: 'start' }, model.settle()) // cycle 0: read 10
+    outside.value = 20
+    trace.record({ kind: 'step' }, model.settle()) // cycle 1: read 20
+
+    expect(trace.settled(0)?.readings.get('read')?.outputs).toEqual({ out: 10 })
+    expect(trace.settled(0)?.readings.get('echo')?.inputs).toEqual({ in: 10 })
+    expect(trace.settled(1)?.readings.get('read')?.outputs).toEqual({ out: 20 })
+    expect(trace.settled(2)).toBeUndefined()
+    expect(trace.settled(-1)).toBeUndefined()
+
+    // Computing it again cannot recover cycle 0: putting the model back as it
+    // was then does not put back what was outside it.
+    expect(model.settle().readings.get('read')?.outputs).toEqual({ out: 20 })
+    expect(trace.show(0)).toBe(true)
+    expect(model.settle().readings.get('read')?.outputs).toEqual({ out: 20 })
+    expect(trace.settled(0)?.readings.get('read')?.outputs).toEqual({ out: 10 })
+  })
+
+  it('cannot be changed by whoever reads it, nor by the model after it', () => {
+    const { model, trace, outside } = impure()
+    trace.record({ kind: 'start' }, model.settle())
+
+    const shown = trace.settled(0)!
+    shown.readings.get('read')!.outputs.out = 999
+    shown.readings.delete('echo')
+    shown.stages.length = 0
+    expect(trace.settled(0)?.readings.get('read')?.outputs).toEqual({ out: 10 })
+    expect(trace.settled(0)?.readings.has('echo')).toBe(true)
+
+    // Nor does a later settle of the model reach into what was recorded.
+    outside.value = 20
+    model.settle()
+    expect(trace.settled(0)?.readings.get('read')?.outputs).toEqual({ out: 10 })
+  })
+
+  it('carries the stages of the settle and whether it came to rest', () => {
+    const { model, trace } = impure()
+    trace.record({ kind: 'start' }, model.settle())
+    expect(trace.settled(0)?.stages).toEqual([['read'], ['echo']])
+    expect(trace.settled(0)?.unsettled).toEqual([])
+    expect(trace.unsettled(0)).toEqual([])
+  })
+
+  it('is kept for browsing alone: what is digested and stored durably is unchanged', () => {
+    const { model, trace } = impure()
+    trace.record({ kind: 'start' }, model.settle())
+    const capture = trace.capture(0)!
+    // The durable state of a moment is its frame's values, every part's state
+    // and every input set. The recorded readings are not added to it.
+    expect(Object.keys(JSON.parse(capturedState(capture))).sort()).toEqual(['pins', 'states', 'values'])
+    expect(capture.kept.frame.values.read).toEqual({ out: 10 })
+  })
+})
 
 describe('a model trace', () => {
   it('shows a latch as it held on the cycle looked back at', () => {
