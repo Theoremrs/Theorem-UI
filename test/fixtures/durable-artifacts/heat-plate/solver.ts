@@ -7,7 +7,10 @@
 // Boundaries: `fixed` holds a temperature; `insulated` passes no heat;
 // `convective` loses heat to an ambient temperature at h (Newton cooling,
 // -k ∂T/∂n = h (T - ambient)), discretized with a ghost node so the condition
-// is second-order and exact for a linear profile.
+// is second-order and exact for a linear profile. That ghost holds a piece of
+// its own node's temperature, so a convective face contributes its cooling
+// slope (2 Bi per face) to the diagonal of the node it bounds, not only to the
+// terms summed beside it; the relaxed sweep then contracts for any h.
 
 export const SOLVER = { name: 'steady-conduction', version: '2' } as const
 
@@ -163,19 +166,22 @@ export function solvePlate(input: PlateInput): PlateField {
   const t = Array.from({ length: ny }, (_, j) =>
     Array.from({ length: nx }, (_unused, i) => fixedAt(i, j) ?? 0),
   )
-  // One neighbour across an edge: its ghost value, from the boundary condition.
+  // One neighbour across an edge, as `constant + slope * here`: what it owes
+  // the node's own equation, split from what it owes to the node it faces.
+  // Insulated is the case h = 0, where the ghost mirrors the inner neighbour.
   const ghost = (
     side: Boundary,
     inner: number,
-    here: number,
     spacing: number,
-  ): number => {
-    if (side.kind === 'convective')
-      return (
-        inner -
-        2 * cellBiot(side.h, spacing, conductivity) * (here - side.ambient)
-      )
-    return inner
+  ): { constant: number; slope: number } => {
+    if (side.kind === 'convective') {
+      // T_ghost = T_inner - 2 Bi (T_here - T_ambient). The `-2 Bi T_here` half
+      // is Newton cooling seen from this node, not another neighbour, so it
+      // returns as a slope and lands on the diagonal below.
+      const bi = cellBiot(side.h, spacing, conductivity)
+      return { constant: inner + 2 * bi * side.ambient, slope: -2 * bi }
+    }
+    return { constant: inner, slope: 0 }
   }
   const wx = 1 / (dx * dx)
   const wy = 1 / (dy * dy)
@@ -190,18 +196,31 @@ export function solvePlate(input: PlateInput): PlateField {
         if (fixedAt(i, j) !== undefined) continue
         const row = t[j]!
         const here = row[i]!
-        const west = i > 0 ? row[i - 1]! : ghost(input.left, row[1]!, here, dx)
+        const west =
+          i > 0
+            ? { constant: row[i - 1]!, slope: 0 }
+            : ghost(input.left, row[1]!, dx)
         const east =
-          i < nx - 1 ? row[i + 1]! : ghost(input.right, row[nx - 2]!, here, dx)
+          i < nx - 1
+            ? { constant: row[i + 1]!, slope: 0 }
+            : ghost(input.right, row[nx - 2]!, dx)
         const south =
-          j > 0 ? t[j - 1]![i]! : ghost(input.bottom, t[1]![i]!, here, dy)
+          j > 0
+            ? { constant: t[j - 1]![i]!, slope: 0 }
+            : ghost(input.bottom, t[1]![i]!, dy)
         const north =
           j < ny - 1
-            ? t[j + 1]![i]!
-            : ghost(input.top, t[ny - 2]![i]!, here, dy)
+            ? { constant: t[j + 1]![i]!, slope: 0 }
+            : ghost(input.top, t[ny - 2]![i]!, dy)
+        // Summing wx (west + east - 2 here) + wy (south + north - 2 here) = 0
+        // for here, with the convective slopes gathered onto the diagonal:
+        // the same fixed point as before, and a contraction for any Bi.
+        const slope =
+          wx * (west.slope + east.slope) + wy * (south.slope + north.slope)
         const gauss =
-          (wx * (west + east) + wy * (south + north)) / (2 * wx + 2 * wy)
-        // A convective ghost depends on `here`; a few relaxed sweeps settle it.
+          (wx * (west.constant + east.constant) +
+            wy * (south.constant + north.constant)) /
+          (2 * wx + 2 * wy - slope)
         const next = here + omega * (gauss - here)
         change = Math.max(change, Math.abs(next - here))
         row[i] = next

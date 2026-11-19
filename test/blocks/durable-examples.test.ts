@@ -575,6 +575,102 @@ describe('the heat plate App', () => {
     expect(order).toBeLessThan(2.3)
   }, 60_000)
 
+  /**
+   * T(x) of a body held at `held` at one end and cooled to `ambient` at the
+   * other: linear, because steady one-dimensional conduction with no source
+   * has no curvature for the ghost-node boundary to disagree with.
+   */
+  const linearCooling =
+    (
+      length: number,
+      conductivity: number,
+      h: number,
+      ambient: number,
+      held: number,
+    ) =>
+    (x: number) => {
+      const bi = (h * length) / conductivity
+      return held - ((held - ambient) * (bi * x)) / (length * (1 + bi))
+    }
+
+  /** The App's default plate size and grid: 0.005 m spacing, sides insulated. */
+  const cooledPlate = (conductivity: number, h: number): solverNow.PlateInput =>
+    plate(41, {
+      width: 0.2,
+      height: 0.1,
+      ny: 21,
+      conductivity,
+      left: { kind: 'fixed', temperature: 100 },
+      right: { kind: 'convective', h, ambient: 20 },
+      bottom: { kind: 'insulated' },
+      top: { kind: 'insulated' },
+    })
+
+  test('a mildly cooled edge keeps the fixed point the old sweep already had', () => {
+    // The App's default: steel (k = 50) cooled by air at h = 25, so Bi =
+    // 0.0025. The old sweep converged here, so this is the answer it reached;
+    // correcting the boundary may change how the iteration arrives, not where.
+    const input = cooledPlate(50, 25)
+    const field = solverNow.solvePlate(input)
+    expect(field.converged).toBe(true)
+    const profile = linearCooling(0.2, 50, 25, 20, 100)
+    for (const row of field.t)
+      row.forEach((t, i) =>
+        expect(Math.abs(t - profile(i * field.dx))).toBeLessThan(1e-8),
+      )
+  })
+
+  test('"glass cooled hard on one edge": the convective sweep stays finite', () => {
+    // The App's h input has a minimum of 0 and no maximum (main.tsx), and
+    // glass is offered at k = 1 W/(m·K). At the default 0.005 m spacing,
+    // h = 200 W/(m²·K) is Bi = 1: the cooling slope at that face is as large
+    // as the node's own conductance. The old sweep carried that slope in the
+    // numerator alone, so every pass multiplied the error by
+    // 1 - omega (1 + Bi / 2) ~ -1.8 and the edge ran off to NaN.
+    const input = cooledPlate(1, 200)
+    expect(
+      solverNow.cellBiot(200, input.width / (input.nx - 1), input.conductivity),
+    ).toBe(1)
+    const field = solverNow.solvePlate(input)
+    expect(field.converged).toBe(true)
+    const values = field.t.flat()
+    expect(values.filter((t) => !Number.isFinite(t)).length).toBe(0)
+    // With the sides insulated, every node is on the cooled rod's line, and
+    // the plate's boundary equation must agree with the rod's endRow.
+    const profile = linearCooling(0.2, 1, 200, 20, 100)
+    for (const row of field.t)
+      row.forEach((t, i) =>
+        expect(Math.abs(t - profile(i * field.dx))).toBeLessThan(1e-6),
+      )
+    // No node runs hotter than the held edge or colder than the air.
+    expect(Math.max(...values)).toBeLessThanOrEqual(100)
+    expect(Math.min(...values)).toBeGreaterThanOrEqual(20)
+  })
+
+  test('Operations keeps the field of a strongly cooled glass plate', async () => {
+    // The symptom seen through the operation: a diverged field has numbers
+    // JSON cannot hold, so invoking `solve` refused the result outright.
+    const operations = new Operations({ source: revision('heat-plate', 2) })
+    operations.define({
+      name: 'solve',
+      version: solverNow.SOLVER.version,
+      summary: 'Steady field of a plate',
+      input: {},
+      output: {},
+      reproducibility: 'deterministic',
+      recovery: ['rerun', 'reopen'],
+      implementation: await digestOf(solverNow.SOLVER),
+      run: (given: solverNow.PlateInput) => solverNow.solvePlate(given),
+    })
+    const done = await operations.invoke<solverNow.PlateField>(
+      'solve',
+      cooledPlate(1, 200),
+    )
+    expect(done.output.converged).toBe(true)
+    expect(done.output.t.flat().every(Number.isFinite)).toBe(true)
+    expect(done.reused).toBe(false)
+  })
+
   test('a colormap revision reuses the solved field; a boundary or solver change does not', async () => {
     const define = async (operations: Operations, solver: typeof solverNow) =>
       operations.define({
