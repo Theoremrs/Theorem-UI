@@ -164,14 +164,6 @@ const config = defineConfig({
           previews: { vars: theoremVars },
         },
       },
-      ...(cloudflare && {
-        routes: {
-          '/api/files/v1/**': { handler: './src/server/files-proxy.ts' },
-          '/api/project-files/v1/**': {
-            handler: './src/server/files-proxy.ts',
-          },
-        },
-      }),
       publicAssets: [
         // The page a webview (the markdown preview) runs in, which Theia's
         // build puts beside the frontend for a backend to serve at /webview.
@@ -201,6 +193,12 @@ const config = defineConfig({
       // route answer only when the desktop host started the server, so the Bun
       // build for the web carries them inert.
       routes: {
+        ...(cloudflare && {
+          '/api/files/v1/**': { handler: './src/server/files-proxy.ts' },
+          '/api/project-files/v1/**': {
+            handler: './src/server/files-proxy.ts',
+          },
+        }),
         // Dictation upgrades to a WebSocket on both hosts: the fetch proxy
         // drops the upgrade header, so this nitro route hands it to crossws
         // (the Bun adapter locally, the cloudflare_module adapter on the
