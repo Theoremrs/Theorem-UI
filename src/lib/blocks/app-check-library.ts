@@ -1,10 +1,10 @@
 // SOURCING: Vite's `import.meta.glob` with `?raw` (a package's declaration
 // files as text, in a chunk loaded only when an App is checked). The packages
 // are this app's own dependencies, so an App is checked against the React it
-// is built with; `@theorem/app` is written from the bridge's source by
-// scripts/app-declarations.ts.
+// is built with; `@theorem/app` and the libraries of app-libraries.ts are
+// written from their source by scripts/app-declarations.ts.
 import type { CheckLibrary } from './app-check'
-import { theoremAppDeclarations } from './check/theorem-app.generated'
+import { libraryDeclarations, theoremAppDeclarations } from './check/theorem-app.generated'
 
 const packages = import.meta.glob<string>(
   [
@@ -31,6 +31,9 @@ export function checkLibrary(): Promise<CheckLibrary> {
     )
     for (const [name, text] of Object.entries(theoremAppDeclarations))
       files[`/node_modules/@theorem/app/${name}`] = text
+    for (const [pkg, declarations] of Object.entries(libraryDeclarations))
+      for (const [name, text] of Object.entries(declarations))
+        files[`/node_modules/${pkg}/${name}`] = text
     return files
   })()
   library.catch(() => {

@@ -56,6 +56,7 @@ import { Route as DesktopBlocksIndexRouteImport } from './routes/desktop/blocks/
 import { Route as DesktopBlocksAppTokenRouteImport } from './routes/desktop/blocks/app-token'
 import { Route as DesktopWorkspaceIndexRouteImport } from './routes/desktop/workspace/index'
 import { Route as SettingsObserveIndexRouteImport } from './routes/settings/observe/index'
+import { Route as ApiAppsV1SplatRouteImport } from './routes/api/apps/v1/$'
 import { Route as ApiArtifactsV1SplatRouteImport } from './routes/api/artifacts/v1/$'
 import { Route as ApiCapabilitiesV1SplatRouteImport } from './routes/api/capabilities/v1/$'
 import { Route as ApiChatV1SplatRouteImport } from './routes/api/chat/v1/$'
@@ -324,6 +325,11 @@ const SettingsObserveIndexRoute = SettingsObserveIndexRouteImport.update({
   path: '/observe/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const ApiAppsV1SplatRoute = ApiAppsV1SplatRouteImport.update({
+  id: '/api/apps/v1/$',
+  path: '/api/apps/v1/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiArtifactsV1SplatRoute = ApiArtifactsV1SplatRouteImport.update({
   id: '/api/artifacts/v1/$',
   path: '/api/artifacts/v1/$',
@@ -553,6 +559,7 @@ export interface FileRoutesByFullPath {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -632,6 +639,7 @@ export interface FileRoutesByTo {
   '/desktop/blocks': typeof DesktopBlocksIndexRoute
   '/desktop/workspace': typeof DesktopWorkspaceIndexRoute
   '/settings/observe': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -714,6 +722,7 @@ export interface FileRoutesById {
   '/desktop/blocks/': typeof DesktopBlocksIndexRoute
   '/desktop/workspace/': typeof DesktopWorkspaceIndexRoute
   '/settings/observe/': typeof SettingsObserveIndexRoute
+  '/api/apps/v1/$': typeof ApiAppsV1SplatRoute
   '/api/artifacts/v1/$': typeof ApiArtifactsV1SplatRoute
   '/api/capabilities/v1/$': typeof ApiCapabilitiesV1SplatRoute
   '/api/chat/v1/$': typeof ApiChatV1SplatRoute
@@ -796,6 +805,7 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -875,6 +885,7 @@ export interface FileRouteTypes {
     | '/desktop/blocks'
     | '/desktop/workspace'
     | '/settings/observe'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -956,6 +967,7 @@ export interface FileRouteTypes {
     | '/desktop/blocks/'
     | '/desktop/workspace/'
     | '/settings/observe/'
+    | '/api/apps/v1/$'
     | '/api/artifacts/v1/$'
     | '/api/capabilities/v1/$'
     | '/api/chat/v1/$'
@@ -1014,6 +1026,7 @@ export interface RootRouteChildren {
   DesktopBlocksAppTokenRoute: typeof DesktopBlocksAppTokenRoute
   DesktopBlocksIndexRoute: typeof DesktopBlocksIndexRoute
   DesktopWorkspaceIndexRoute: typeof DesktopWorkspaceIndexRoute
+  ApiAppsV1SplatRoute: typeof ApiAppsV1SplatRoute
   ApiArtifactsV1SplatRoute: typeof ApiArtifactsV1SplatRoute
   ApiCapabilitiesV1SplatRoute: typeof ApiCapabilitiesV1SplatRoute
   ApiChatV1SplatRoute: typeof ApiChatV1SplatRoute
@@ -1378,6 +1391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsObserveIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/api/apps/v1/$': {
+      id: '/api/apps/v1/$'
+      path: '/api/apps/v1/$'
+      fullPath: '/api/apps/v1/$'
+      preLoaderRoute: typeof ApiAppsV1SplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/artifacts/v1/$': {
       id: '/api/artifacts/v1/$'
       path: '/api/artifacts/v1/$'
@@ -1718,6 +1738,7 @@ const rootRouteChildren: RootRouteChildren = {
   DesktopBlocksAppTokenRoute: DesktopBlocksAppTokenRoute,
   DesktopBlocksIndexRoute: DesktopBlocksIndexRoute,
   DesktopWorkspaceIndexRoute: DesktopWorkspaceIndexRoute,
+  ApiAppsV1SplatRoute: ApiAppsV1SplatRoute,
   ApiArtifactsV1SplatRoute: ApiArtifactsV1SplatRoute,
   ApiCapabilitiesV1SplatRoute: ApiCapabilitiesV1SplatRoute,
   ApiChatV1SplatRoute: ApiChatV1SplatRoute,

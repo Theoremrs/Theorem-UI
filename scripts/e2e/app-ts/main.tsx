@@ -4,9 +4,12 @@
 // server is needed.
 import { createRoot } from 'react-dom/client'
 import { DocumentAppView } from '@/components/blocks/document-app'
+import { InlineArtifact } from '@/components/artifacts/inline-artifact'
 import { useComposerReferences } from '@/components/chat/composer-references'
 import { checkInWorker } from '@/lib/blocks/app-checker'
 import { inspectApp } from '@/lib/blocks/app-inspect'
+import { openFrame } from '@/lib/blocks/executor'
+import { hostedAppDocument } from '@/lib/blocks/hosted-app'
 import { serveAppRequests } from '@/lib/blocks/app-operations'
 import type { AppReceipt } from '@/lib/blocks/app-operations'
 import { appSourcesOf } from '@/lib/blocks/app-source'
@@ -70,8 +73,19 @@ const references = () => useComposerReferences.getState().take()
 
 function show(): void {
   createRoot(document.getElementById('view')!).render(
-    <DocumentAppView app={app} initiallyRunning />,
+    <InlineArtifact title="Authored TypeScript App">
+      <DocumentAppView app={app} initiallyRunning />
+    </InlineArtifact>,
   )
+}
+
+/** `html` in a frame the person limited to `net`, as a sandboxed module runs. */
+async function limited(html: string, net: Array<string>): Promise<void> {
+  const page = await hostedAppDocument(html, undefined, { net })
+  const frame = document.createElement('iframe')
+  openFrame(frame, true)
+  frame.src = URL.createObjectURL(new Blob([page], { type: 'text/html' }))
+  document.getElementById('view')!.append(frame)
 }
 
 Object.assign(window, {
@@ -80,6 +94,7 @@ Object.assign(window, {
     clear,
     references,
     show,
+    limited,
     check,
     inspect: inspectApp,
     ask,

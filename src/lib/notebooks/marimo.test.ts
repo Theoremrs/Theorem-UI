@@ -153,7 +153,7 @@ test('recorded outputs render by media type', () => {
   )
 })
 
-test('recorded outputs render without a runtime: no Python, no network', async () => {
+test('recorded outputs render without a runtime: no Python', async () => {
   const html = await retainedOutputsDocument(
     recorded({
       ...RUN,
@@ -167,7 +167,7 @@ test('recorded outputs render without a runtime: no Python, no network', async (
     THEME,
     esbuild,
   )
-  expect(html).toContain("connect-src 'none'")
+  expect(html).not.toContain('Content-Security-Policy')
   expect(html).not.toContain('marimo-team/islands')
   expect(html).not.toContain('<marimo-island')
   expect(html).toContain('<section class="cell" data-cell-id="MJUe">')
@@ -178,19 +178,16 @@ test('recorded outputs render without a runtime: no Python, no network', async (
   expect(html).toContain('--redwood:rgb(160, 40, 30)')
 })
 
-test('a browser run carries the recorded outputs into its islands and names what it reaches', async () => {
+test('a browser run carries the recorded outputs into its islands and loads its runtime', async () => {
   const cells = marimoCells(SOURCE).map((_, index) => ({
     id: `c${index}`,
     outputs: index === 2 ? [{ mime: 'text/html', data: '<h1>Recorded</h1>' }] : [],
   }))
   const html = await islandsDocument(recorded({ ...RUN, cells }), THEME, esbuild)
-  const policy = /Content-Security-Policy" content="([^"]+)"/.exec(html)![1]!
-  for (const host of BROWSER_RUN_HOSTS)
-    expect(policy).toContain(`https://${host}`)
-  // islands 0.23.16 reads Pyodide's lock file from wasm.marimo.app before anything runs.
-  expect(policy).toMatch(/connect-src[^;]*https:\/\/wasm\.marimo\.app/)
-  expect(policy).toContain("'wasm-unsafe-eval'")
-  expect(policy).toContain('worker-src blob: https://cdn.jsdelivr.net')
+  // Pyodide, marimo and the notebook's packages load from these hosts, which no policy limits.
+  expect(html).not.toContain('Content-Security-Policy')
+  expect(html).toContain(`https://${BROWSER_RUN_HOSTS[0]}/`)
+  expect(html).toContain('marimo-team/islands@0.23.16/dist/main.js')
   // islands copies its stylesheet's rules into each control's shadow root; a
   // cross-origin sheet's rules are readable only when it was fetched with CORS.
   expect(html).toMatch(/<link rel="stylesheet" href="[^"]+\/style\.css" crossorigin="anonymous">/)

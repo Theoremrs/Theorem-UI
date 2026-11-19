@@ -3,6 +3,7 @@
 // source is first checked, and a check never holds up the page.
 import type { CheckResult, CheckWorkerMethods } from './app-check'
 import type { AppSources } from './app-source'
+import { dependencyDeclarations } from './app-dependency-types'
 import { call, rpcOver } from './sandbox/protocol'
 import type { Rpc } from './sandbox/protocol'
 
@@ -27,6 +28,7 @@ export const checkInWorker: AppChecker = (sources) => {
   const check = running.then(async () => {
     const outcome = await call<CheckWorkerMethods, 'check'>(rpc, 'check', {
       sources,
+      dependencies: await dependencyDeclarations(sources),
     })
     if (!outcome.ok) throw new Error(outcome.message)
     return outcome.result

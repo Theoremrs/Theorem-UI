@@ -113,28 +113,25 @@ test('cells read the theme as a reactive value that follows a change', async () 
   await waitFor(() => cell.textContent.includes('dark rgb(200, 100, 50)'))
 })
 
-test('the document loads nothing: no network, its theme baked in for the first paint', async () => {
+test('the document carries what it runs, its theme baked in for the first paint', async () => {
   const html = await observableDocument(
     { form: 'observable', title: 'Doc', cells: [{ id: 'a', kind: 'js', source: '1' }] },
     LIGHT,
     esbuild,
   )
-  expect(html).toContain("connect-src 'none'")
+  expect(html).not.toContain('Content-Security-Policy')
   expect(html).toContain('--redwood:rgb(10, 20, 30)')
   expect(html).toContain('__theoremNotebook.start')
   expect(html).not.toMatch(/cdn\.jsdelivr\.net\/npm\/d3/)
 })
 
-test("the frame lets d3 build its row readers, which d3.csvParse does from a string, and still reaches nothing", async () => {
+test('the frame puts no policy over the notebook, so d3 builds its row readers from strings', async () => {
   const html = await observableDocument(
     { form: 'observable', title: 'Rows', cells: [] },
     LIGHT,
     esbuild,
   )
-  const policy = /Content-Security-Policy" content="([^"]+)"/.exec(html)![1]!
-  expect(policy).toMatch(/script-src [^;]*'unsafe-eval'/)
-  expect(policy).toContain("connect-src 'none'")
-  expect(policy).not.toMatch(/script-src [^;]*https:/)
+  expect(html).not.toMatch(/http-equiv="Content-Security-Policy"/)
 })
 
 test('a downloaded notebook carries its data and the theme it was drawn in, so it runs on its own', () => {

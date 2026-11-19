@@ -1,13 +1,16 @@
 // SOURCING: acorn (the declaration list is parsed as JavaScript call
 // expressions, so it reads like the calls the block makes). Which calls exist
-// is this app's own capability model (plan D9), hand-rolled.
+// is this app's own vocabulary (plan D9), hand-rolled.
 import { parseExpressionAt } from 'acorn'
 import type { Expression, SpreadElement } from 'acorn'
 import { APP_HISTORY_DAYS } from './app-db'
 
 /**
- * What a block declared it may reach. A block gets exactly these and nothing
- * else: no declaration, no capability.
+ * What a block says it reaches: the folder's files and state, its databases,
+ * the hosts it fetches from and the agent blocks it starts. It tells the page
+ * what the block depends on (which files re-run it, which databases to open,
+ * whether it acts when it runs); it limits nothing. A limit is the person's
+ * (a sandboxed module), set with the same shape.
  */
 export interface Capabilities {
   /** Workspace paths or globs it may read, `files.read("Data/*.csv")`. */
@@ -16,7 +19,7 @@ export interface Capabilities {
   write: Array<string>
   /** Shared state collections, `state("habits")`. */
   state: Array<string>
-  /** Hosts it may fetch from over HTTPS, `net("api.example.com")`. */
+  /** Hosts it fetches from, `net("api.example.com")`. */
   net: Array<string>
   /** Agent blocks it may start, `run("agent:#nightly")`. */
   run: Array<string>

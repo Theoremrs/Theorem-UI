@@ -4,6 +4,7 @@
 // without checking them; this checks them without building.
 import type { Diagnostic, TscOptions, TscResult } from '@tsrs/wasm'
 import type { AppProblem, AppSources } from './app-source'
+import type { DependencyDeclarations } from './app-dependency-types'
 import { importMap } from './vendor/manifest'
 
 /** tsrs's `tsc`, the Node build in tests and the browser build in the worker. */
@@ -49,17 +50,19 @@ const CONFIG = {
 }
 
 /** Modules of the import map that have declarations in the library. */
-const TYPED = new Set(['react', 'react/jsx-runtime', 'react-dom/client'])
+const TYPED = new Set(['react', 'react/jsx-runtime', 'react-dom', 'react-dom/client'])
 
 /**
  * The import map's other modules, importable and untyped: an App may use d3
  * or Plot, and what it does with them is not checked. Styles import as nothing.
  */
-const UNTYPED_MODULES = [
+const untypedModules = (paths: DependencyDeclarations['paths'] = {}) => [
   ...Object.keys(importMap.imports)
-    .filter((specifier) => !TYPED.has(specifier))
+    .filter((specifier) => !TYPED.has(specifier) && !Object.hasOwn(paths, specifier))
     .map((specifier) => `declare module '${specifier}'`),
   `declare module '*.css' {}`,
+  // A worker file imported with ?worker is a URL to start it from (export.ts).
+  `declare module '*?worker' { const url: string; export default url }`,
   '',
 ].join('\n')
 
@@ -96,12 +99,17 @@ export async function checkAppSources(
   tsc: Tsc,
   library: CheckLibrary,
   options: Pick<TscOptions, 'url' | 'module'> = {},
+  dependencies: DependencyDeclarations = { files: {}, paths: {}, problems: [] },
 ): Promise<CheckResult> {
   const started = performance.now()
   const files: Record<string, string> = {
     ...library,
-    '/app/tsconfig.json': JSON.stringify(CONFIG),
-    '/app/modules.d.ts': UNTYPED_MODULES,
+    ...dependencies.files,
+    '/app/tsconfig.json': JSON.stringify({
+      ...CONFIG,
+      compilerOptions: { ...CONFIG.compilerOptions, paths: dependencies.paths },
+    }),
+    '/app/modules.d.ts': untypedModules(dependencies.paths),
   }
   for (const [path, source] of Object.entries(sources.files))
     files[SOURCE_ROOT + path] = source
@@ -120,7 +128,7 @@ export async function checkAppSources(
       `The type checker stopped with code ${result.exitCode}${result.stderr ? `: ${result.stderr.slice(0, 500)}` : ''}`,
     )
   return {
-    problems: errors.map(problem),
+    problems: [...dependencies.problems, ...errors.map(problem)],
     durationMs: performance.now() - started,
     memoryBytes: result.memoryBytes,
   }
@@ -131,5 +139,5 @@ export type CheckOutcome =
   { ok: true; result: CheckResult } | { ok: false; message: string }
 
 export interface CheckWorkerMethods {
-  check: { params: { sources: AppSources }; result: CheckOutcome }
+  check: { params: { sources: AppSources; dependencies: DependencyDeclarations }; result: CheckOutcome }
 }

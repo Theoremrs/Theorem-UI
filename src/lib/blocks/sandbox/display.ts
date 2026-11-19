@@ -51,9 +51,14 @@ const SNAPSHOT_DELAY_MS = 400
  * The page as static HTML: its style elements and a copy of its body, with
  * form state written into attributes (it lives in properties), canvases as
  * images, and no scripts. The page sanitizes it again before showing it.
+ * Pictures of canvases are most of a large copy: past MAX_SNAPSHOT they are
+ * left out, blank at their size, until the rest fits: first a canvas hidden
+ * from assistive technology (decoration, such as glass over a scene), then
+ * the largest.
  */
 export function snapshotHtml(): string {
   const copy = document.body.cloneNode(true) as HTMLElement
+  const pictures: Array<{ image: HTMLImageElement; decoration: boolean }> = []
   const live = document.body.querySelectorAll('input, textarea, select, canvas')
   const copies = copy.querySelectorAll('input, textarea, select, canvas')
   live.forEach((element, index) => {
@@ -78,6 +83,7 @@ export function snapshotHtml(): string {
       } catch {
         // A canvas that drew something it may not read back stays blank.
       }
+      pictures.push({ image, decoration: element.closest('[aria-hidden="true"]') !== null })
       target.replaceWith(image)
     }
   })
@@ -85,7 +91,14 @@ export function snapshotHtml(): string {
   const styles = [...document.querySelectorAll('style')]
     .map((style) => style.outerHTML)
     .join('')
-  return styles + copy.innerHTML
+  let html = styles + copy.innerHTML
+  pictures.sort((a, b) => Number(b.decoration) - Number(a.decoration) || b.image.src.length - a.image.src.length)
+  for (const { image } of pictures) {
+    if (html.length <= MAX_SNAPSHOT) break
+    image.removeAttribute('src')
+    html = styles + copy.innerHTML
+  }
+  return html
 }
 
 /**
@@ -166,19 +179,84 @@ export function observeSnapshots(
  * and the frame would scroll for the rest. scrollHeight never reads less than
  * the frame either, so a page that got shorter would keep its old height; it
  * counts only when the page overflows its box.
+ *
+ * A page laid out by its viewport (100vh, or height: 100% down from the root)
+ * has no height of its own, and `fills` says so: the page then gives it one.
+ * Such a page either exactly fills the frame it loaded in, or outgrows every
+ * frame it is given (62vh + 38vh under a caption is always the caption
+ * taller), so it is known by growing when nothing but its frame changed.
+ * Its root and body do not resize as its content arrives, so content changes
+ * are measured too.
+ *
+ * A page that exactly fills its frame goes on being measured: laid out by its
+ * viewport, it is as tall as any frame the host gives it, so resizing the
+ * frame changes nothing it reports. A page that measures any other height
+ * only happened to fit its first frame, and goes back to its content height.
  */
-export function observeHeight(report: (height: number) => void): void {
+export function observeHeight(
+  report: (height: number, fills?: boolean) => void,
+): void {
   let last = -1
-  const measure = () => {
+  let outgrew = 0
+  let following = true
+  let filling = false
+  const initial = window.innerHeight
+  const measure = (resized = false) => {
+    if (!following) return
     const root = document.documentElement
     const height = Math.ceil(
       root.scrollHeight > window.innerHeight
         ? root.scrollHeight
         : root.getBoundingClientRect().height,
     )
+    if (filling) {
+      if (height === window.innerHeight) return
+      filling = false
+      report((last = height))
+      return
+    }
+    if (resized && window.innerHeight === last) {
+      // Twice taller than a frame just sized to it: it follows its frame.
+      outgrew = height > last ? outgrew + 1 : 0
+      if (outgrew >= 2) {
+        following = false
+        report(last, true)
+        return
+      }
+    }
     if (height !== last) report((last = height))
   }
-  new ResizeObserver(measure).observe(document.documentElement)
+  let queued = false
+  const changed = () => {
+    if (queued) return
+    queued = true
+    requestAnimationFrame(() => {
+      queued = false
+      measure()
+    })
+  }
+  const observer = new ResizeObserver(() => measure())
+  observer.observe(document.documentElement)
+  new MutationObserver(changed).observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+  })
+  window.addEventListener('resize', () => measure(true))
+  const settled = () => {
+    if (document.body) observer.observe(document.body)
+    measure()
+    // Loaded and exactly as tall as the frame it started in: it fills it.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (following && !filling && window.innerHeight === initial && last === initial) {
+          filling = true
+          report(last, true)
+        }
+      }),
+    )
+  }
+  if (document.readyState === 'complete') settled()
+  else window.addEventListener('load', settled, { once: true })
   measure()
 }
 

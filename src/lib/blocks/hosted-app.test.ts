@@ -7,19 +7,13 @@ import type { SandboxMethods } from './sandbox/protocol'
 import { applyAppTheme } from './sandbox/theme'
 import type { AppTheme } from './sandbox/theme'
 
-test('a hosted App carries the real bridge under a restrictive policy without a desktop listener', async () => {
+test('a hosted App carries the real bridge and no policy of the host\'s, without a desktop listener', async () => {
   const input =
     '<!doctype html><html><head><title>Comparison</title></head><body><table><tr><td contenteditable>Category</td></tr></table><script>window.appLoaded = true</script></body></html>'
   const html = await hostedAppDocument(input, esbuild)
   const page = new DOMParser().parseFromString(html, 'text/html')
-  const policy = page
-    .querySelector('meta[http-equiv="Content-Security-Policy"]')
-    ?.getAttribute('content')
-  expect(policy).toContain("default-src 'none'")
-  expect(policy).toContain("connect-src 'none'")
-  expect(policy).toContain("form-action 'none'")
-  expect(policy).toContain("base-uri 'none'")
-  expect(policy).not.toContain("'unsafe-eval'")
+  // It may reach the network, load remote scripts and submit forms like any page.
+  expect(page.querySelector('meta[http-equiv="Content-Security-Policy"]')).toBeNull()
   expect(page.querySelector('td')?.textContent).toBe('Category')
   expect(page.querySelector('td')?.hasAttribute('contenteditable')).toBe(true)
   const bridge = page.querySelector(
@@ -31,7 +25,15 @@ test('a hosted App carries the real bridge under a restrictive policy without a 
   expect(html).not.toContain('127.0.0.1')
 }, 30_000)
 
-test('only declared network hosts are allowed and a source policy cannot relax the host policy', async () => {
+test('a hosted App says its encoding before anything else, so its text is read as UTF-8', async () => {
+  const html = await hostedAppDocument('<p>7 + 15 — carry</p>', esbuild)
+  const page = new DOMParser().parseFromString(html, 'text/html')
+  expect(page.head.firstElementChild?.outerHTML).toBe('<meta charset="utf-8">')
+  expect(html.indexOf('<meta charset="utf-8">')).toBeLessThan(1024)
+  expect(page.querySelector('p')?.textContent).toBe('7 + 15 — carry')
+}, 30_000)
+
+test('a declared host is no limit: the page keeps only the policy it wrote itself', async () => {
   const html = await hostedAppDocument(
     `<html><head>
     <meta http-equiv="Content-Security-Policy" content="default-src *">
@@ -40,26 +42,29 @@ test('only declared network hosts are allowed and a source policy cannot relax t
     esbuild,
   )
   const page = new DOMParser().parseFromString(html, 'text/html')
-  const policy = page.head.firstElementChild
-  expect(policy?.getAttribute('http-equiv')).toBe('Content-Security-Policy')
-  expect(policy?.getAttribute('content')).toContain(
-    'connect-src https://example.com',
-  )
-  expect(policy?.getAttribute('content')).toContain("default-src 'none'")
+  const policies = [
+    ...page.querySelectorAll('meta[http-equiv="Content-Security-Policy"]'),
+  ].map((meta) => meta.getAttribute('content'))
+  expect(policies).toEqual(['default-src *'])
 })
 
-test('a page module reaches only the hosts it was allowed, whatever its page declares', async () => {
+test('a page module reaches only the hosts the person allowed it, whatever its page declares', async () => {
   const html = await hostedAppDocument(
     `<html><head>
     <meta name="theorem:uses" content='net("example.com")'>
     </head><body>Module</body></html>`,
     esbuild,
-    { net: [] },
+    { net: ['api.allowed.example'] },
   )
   const page = new DOMParser().parseFromString(html, 'text/html')
-  expect(page.head.firstElementChild?.getAttribute('content')).toContain(
-    "connect-src 'none'",
-  )
+  // The person's limit comes right after the document's encoding, ahead of anything the App wrote.
+  const policy = page.head.children[1]
+  expect(policy?.getAttribute('http-equiv')).toBe('Content-Security-Policy')
+  const content = policy?.getAttribute('content') ?? ''
+  expect(content).toContain("default-src 'none'")
+  expect(content).toContain('connect-src https://api.allowed.example')
+  expect(content).not.toContain('example.com;')
+  expect(content).toContain("form-action 'none'")
 })
 
 const STONE: AppTheme = {
@@ -83,15 +88,16 @@ test('the host stylesheet comes before every piece of the App’s own content', 
   )
   const page = new DOMParser().parseFromString(html, 'text/html')
   const host = page.querySelector('style[data-theorem-theme]')!
-  expect(host.previousElementSibling?.getAttribute('http-equiv')).toBe(
-    'Content-Security-Policy',
-  )
+  // The document's encoding comes first (in place of the App's own), then the host stylesheet.
+  expect(page.head.firstElementChild?.getAttribute('charset')).toBe('utf-8')
+  expect(page.querySelectorAll('meta[charset]')).toHaveLength(1)
+  expect(host).toBe(page.head.children[1]!)
   expect(host.textContent).toContain('--theorem-ink: #32302e;')
   expect(host.textContent).toContain('color-scheme: light;')
   const authored = page.querySelectorAll(
-    'meta[charset], style:not([data-theorem-theme]), button',
+    'style:not([data-theorem-theme]), button',
   )
-  expect(authored).toHaveLength(4)
+  expect(authored).toHaveLength(3)
   for (const node of authored)
     expect(
       host.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -117,24 +123,21 @@ describe('in a live document', () => {
     else document.head.append(element)
   }
 
-  test('plain elements take the theme and the App’s own rules win over it, wherever they stand', () => {
-    style('button.own { background-color: #fafaf9; border-radius: 0 }')
+  // happy-dom does not apply cascade layers, so how the defaults resolve
+  // against an App's own rules, layered or not, is checked in Chromium by
+  // scripts/e2e/app-ts.mjs. Here: where the defaults stand.
+  test('the defaults sit in the first cascade layer, ahead of everything the App wrote', () => {
+    style('button.own { background-color: #fafaf9 }')
+    style('@layer astryx-base { button { background-color: red } }')
     applyAppTheme(STONE)
-    style('body { color: #292524 }')
-    document.body.innerHTML =
-      '<button class="plain">Plain</button><button class="own">Own</button><input>'
-    const plain = getComputedStyle(document.querySelector('.plain')!)
-    expect(plain.backgroundColor).toBe('transparent')
-    expect(plain.borderTopColor).toBe('#9d9995')
-    expect(plain.borderTopLeftRadius).toBe('6px')
-    expect(
-      getComputedStyle(document.querySelector('input')!).borderTopColor,
-    ).toBe('#514e4b')
-    // An earlier rule wins too: every host default has zero specificity.
-    const own = getComputedStyle(document.querySelector('.own')!)
-    expect(own.backgroundColor).toBe('#fafaf9')
-    expect(own.borderTopLeftRadius).toBe('0px')
-    expect(getComputedStyle(document.body).color).toBe('#292524')
+    const host = document.head.firstElementChild!
+    expect(host.hasAttribute('data-theorem-theme')).toBe(true)
+    const css = host.textContent ?? ''
+    // Variables outside the layer, every element default inside it.
+    const layer = css.indexOf('@layer theorem-defaults {')
+    expect(layer).toBeGreaterThan(css.indexOf('--theorem-'))
+    for (const rule of [':where(body)', ':where(a)', ':where(button'])
+      expect(css.indexOf(rule)).toBeGreaterThan(layer)
   })
 
   test('the frame’s variables follow the page’s palette and mode', async () => {

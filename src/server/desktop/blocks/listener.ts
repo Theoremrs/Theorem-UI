@@ -2,11 +2,10 @@
 // HTMLRewriter (an HTML app's `theorem:uses` declarations are read, and the
 // bridge script added, while the page streams), Bun.file().type (content
 // types). The routes and checks are this app's own.
-import { parseHtmlDeclarations } from '#/lib/blocks/declarations'
 import { BLOCK_DOCUMENT_STYLE } from '#/lib/blocks/document'
 import type { WorkspaceId } from '#/lib/workspace/types'
 import { importMapScript, runtimeModules, vendorModule } from './assets'
-import { appPolicy, cellPolicy } from './csp'
+import { framePolicy } from './csp'
 import type { BlockStore } from './store'
 import { readAppToken } from './tokens'
 
@@ -86,7 +85,6 @@ function cellDocument(cellPath: string): string {
  * listener mounts it today and a per-workspace subdomain route can later.
  */
 export function createBlockHandler(config: BlockListenerConfig) {
-  const origin = `http://${config.host}`
 
   async function trustedWorkspace(id: string) {
     if (!ID.test(id)) return null
@@ -111,13 +109,7 @@ export function createBlockHandler(config: BlockListenerConfig) {
       headers: {
         ...SECURITY_HEADERS,
         'content-type': 'text/html; charset=utf-8',
-        'content-security-policy': cellPolicy({
-          origin,
-          appOrigin: config.appOrigin,
-          net: compiled.capabilities.net,
-          cellPath,
-          importMap: importMapScript,
-        }),
+        'content-security-policy': framePolicy(config.appOrigin),
       },
     })
   }
@@ -145,17 +137,7 @@ export function createBlockHandler(config: BlockListenerConfig) {
           'access-control-allow-origin': 'null',
         },
       })
-    // Read the declarations first: they decide the policy header.
-    const uses: Array<string> = []
     const html = new TextDecoder().decode(bytes)
-    new HTMLRewriter()
-      .on('meta[name="theorem:uses"]', {
-        element: (element) => {
-          uses.push(element.getAttribute('content') ?? '')
-        },
-      })
-      .transform(html)
-    const { capabilities } = parseHtmlDeclarations(uses)
     const page = new HTMLRewriter()
       .on('head', {
         element: (element) => {
@@ -170,12 +152,7 @@ export function createBlockHandler(config: BlockListenerConfig) {
       headers: {
         ...SECURITY_HEADERS,
         'content-type': 'text/html; charset=utf-8',
-        'content-security-policy': appPolicy({
-          origin,
-          appOrigin: config.appOrigin,
-          net: capabilities.net,
-          appPath: `/app/${token}/`,
-        }),
+        'content-security-policy': framePolicy(config.appOrigin),
       },
     })
   }

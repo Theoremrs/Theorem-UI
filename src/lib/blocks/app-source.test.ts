@@ -143,7 +143,7 @@ createRoot(document.getElementById('root')!).render(
     expect(problemText(problems[0]!)).toStartWith('value.ts:2:')
   }, 60_000)
 
-  test('an import of a file the App lacks, or a module outside the import map, is refused', async () => {
+  test('missing local files and Node-only imports are actionable build errors', async () => {
     const missing = await problemsOf(() =>
       bundleAppSources(
         appSourcesOf(typescriptApp({ 'main.ts': "import './absent'" }))!,
@@ -153,11 +153,11 @@ createRoot(document.getElementById('root')!).render(
     expect(missing[0]?.message).toContain('No file "./absent" in this App')
     const outside = await problemsOf(() =>
       bundleAppSources(
-        appSourcesOf(typescriptApp({ 'main.ts': "import 'lodash'" }))!,
+        appSourcesOf(typescriptApp({ 'main.ts': "import 'node:fs'" }))!,
         esbuild,
       ),
     )
-    expect(outside[0]?.message).toContain("not in the blocks' import map")
+    expect(outside[0]?.message).toContain('Node-only modules cannot run in an App')
     const above = await problemsOf(() =>
       bundleAppSources(
         appSourcesOf(typescriptApp({ 'main.ts': "import '../../etc'" }))!,
@@ -181,7 +181,8 @@ describe('a hosted TypeScript App', () => {
     expect(bundle?.getAttribute('type')).toBe('module')
     expect(bundle?.textContent).toContain('document.title = "built"')
     expect(page.body.lastElementChild).toBe(bundle)
-    // The policy, the host stylesheet and the bridge still come first.
+    // After the document's encoding, the host stylesheet and the bridge still come first.
+    expect(page.head.children[0]?.getAttribute('charset')).toBe('utf-8')
     expect(page.head.children[1]?.hasAttribute('data-theorem-theme')).toBe(true)
     expect(page.head.children[2]?.hasAttribute('data-theorem-app-bridge')).toBe(
       true,

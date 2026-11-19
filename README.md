@@ -101,9 +101,57 @@ The pages show what the node reports and label what it does not record. A value 
 The agent creates artifacts with `create_artifact` and revises them with `update_artifact`. Each revision arrives as a `theorem-artifact-v1` part with the same `artifactId`, a new `artifactRevision` and a higher `patchSequence`.
 
 - The panel is derived from the thread's messages. Reloads, branches and history therefore show the same artifacts the agent produced.
-- Renderers are chosen by `rendererId`: `theorem-document` renders Markdown, `theorem-code` renders highlighted source and `theorem-diagram` renders Mermaid.
-- Any other renderer shows a named fallback that explains what is missing and displays the part's `fallbackText`.
-- Artifact content is declarative text. Nothing in this app executes it.
+- The artifact's representation selects its renderer, including Markdown,
+  highlighted source, Mermaid and saved Apps. An unrecognized renderer shows
+  a named fallback and the part's `fallbackText`.
+- Documents, code and diagrams render their saved content. A `theorem.app`
+  artifact runs authored JavaScript or TypeScript/TSX in the existing App
+  sandbox, with its source revisions and declared state saved in the App document.
+
+### TypeScript and component Apps
+
+An App may define its own React components, event handlers, CSS, canvas/WebGL
+renderers and ordinary TypeScript modules. Component names and layouts do not
+need registration in a UI catalog. Each file is an inert
+`<script type="text/theorem-source" data-path="main.tsx">` (or another relative
+`.ts`, `.tsx`, `.js`, `.jsx`, `.css` or `.json` path) in the saved HTML. The existing
+App compiler bundles those files before mounting the frame. See
+[TypeScript Apps](docs/blocks/live-blocks.md#typescript-apps) for the full form.
+
+Imports may name another local source file, a browser-compatible npm package,
+or an HTTPS ES module. Vendored React and the existing drawing libraries remain
+available offline; their import map no longer limits App dependencies. For
+example, an App can import `@luma.gl/core` and include this source file:
+
+```html
+<script type="text/theorem-source" data-path="package.json">
+  {"dependencies":{"@luma.gl/core":"9.2.3"}}
+</script>
+```
+
+Exact versions in `package.json`, versioned imports such as
+`npm:@luma.gl/core@9.2.3`, or immutable HTTPS URLs pin direct dependency choices
+when a source revision is opened again. Transitive version ranges still resolve
+through the CDN. Bare names without a version also resolve,
+but can select a newer release on a later page load. npm imports are resolved via
+esm.sh; direct HTTPS modules must permit browser cross-origin fetches. Resolution
+responses are shared by build and check during the page session. This cache is
+not a saved dependency lockfile.
+
+Dependency source, imported CSS and its font/image assets are fetched while
+building and bundled into the frame; this
+does not grant the running App additional network access. Packages requiring
+Node APIs or runtime assets/workers still need a browser build and the relevant
+App capabilities. Published declaration metadata is loaded for the same resolved
+dependencies. tsrs checks those declarations with the App's local code, React
+and `window.theorem`; missing or unavailable external types remain visible
+diagnostics. A successful JavaScript build can run while type problems are shown.
+
+Run the focused tests with `bun test src/lib/blocks/app-dependencies.test.ts
+src/lib/blocks/app-source.test.ts src/lib/blocks/app-check.test.ts`. The optional
+real CDN/Luma compile and type-check integration is
+`THEOREM_TEST_REMOTE_DEPS=1 bun test src/lib/blocks/app-dependencies.live.test.ts`.
+That test proves compilation and checking, not browser GPU rendering.
 
 ## Scenes
 

@@ -2,9 +2,11 @@
 // the page and written in a frame. The platform's getComputedStyle resolves
 // each token (palettes.css, any palette or mode) to the colour it is now; a
 // custom property's computed value already has its var()s substituted. For a
-// hosted App, plain CSS: :where() gives every default zero specificity, so any
-// rule an App writes wins over it. No library maps one design system's tokens
-// onto another document's stylesheet.
+// hosted App, plain CSS in a cascade layer the host stylesheet declares first:
+// any rule an App writes wins over the defaults, unlayered or in a layer of
+// its own (a component library's, such as Astryx's, or Tailwind's), and
+// :where() keeps them at zero specificity within their layer. No library maps
+// one design system's tokens onto another document's stylesheet.
 //
 // The page reads its tokens and hands them to a frame. A notebook's frame sets
 // them on its root, so its CSS and its cells draw with the page's colours, and
@@ -227,8 +229,10 @@ const where = (selectors: Array<string>, state = '') =>
   `:where(${selectors.map((selector) => selector + state).join(', ')})`
 
 // The look of the UI's own quiet controls: ink on a clear ground, a hairline
-// at the radius of a control, the hover and pressed surfaces of a row.
+// at the radius of a control, the hover and pressed surfaces of a row. In the
+// first layer declared, so every stylesheet an App brings, layered or not, wins.
 const DEFAULTS = `
+@layer theorem-defaults {
 :where(body) {
   background-color: transparent;
   color: var(--theorem-ink);
@@ -263,6 +267,7 @@ ${where(CONTROLS, ':disabled')} {
   cursor: not-allowed;
 }
 :where(input, textarea)::placeholder { color: var(--theorem-ink-faint); }
+}
 `
 
 /** The host stylesheet for a look: its variables, then the defaults. */
