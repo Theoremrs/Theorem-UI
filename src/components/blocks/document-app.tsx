@@ -44,11 +44,12 @@ import {
   dossierReference,
   questionBinding,
   dossierState,
-  markUndelivered,
   sourceOf,
   withHeld,
 } from '@/lib/theorem/app-dossier'
-import type { ConversationMessage, Displayed, HeldQuestion } from '@/lib/theorem/app-dossier'
+import type { ConversationMessage, Displayed } from '@/lib/theorem/app-dossier'
+import { hold, queued, sent, undelivered, useQueued } from '@/lib/theorem/dossier-queue'
+import type { Queued } from '@/lib/theorem/dossier-queue'
 import type { AppDocument, AppSnapshot } from '@/lib/theorem/apps'
 import { AppElement } from './app-element'
 import { AppProblems } from './app-problems'
@@ -574,24 +575,12 @@ const CLOSED: DossierState = { available: false, running: false, messages: [] }
 /**
  * The page's conversation as an App's dossier reaches it: one conversation,
  * whichever part of the App a question is asked from. A question goes to the
- * thread on screen with the App's revision and the App's account of where the
- * person is; the App is told the questions it asked and their replies.
- */
-/** A question held while the conversation's turn runs, so asking does not stop it. */
-interface Queued extends HeldQuestion {
-  /** The revision and binding resolved when it was asked; sent unchanged. */
-  asked: ReturnType<typeof questionBinding>
-  /** The conversation it was asked in; it is sent there or not at all. */
-  conversation: string | undefined
-}
-
-/**
- * The page's conversation as an App's dossier reaches it: one conversation,
- * whichever part of the App a question is asked from. A question goes to the
  * thread on screen with the revision that is running, the moment the App
  * says it shows and the App's account of where the person is; the App is told
  * the questions it asked and their replies. A question asked while the
- * conversation is answering is held and sent when the turn ends.
+ * conversation is answering is held in the dossier queue and sent when the turn
+ * ends, so it belongs to the conversation and this App rather than to whichever
+ * view of the App happened to ask it.
  */
 function useAppDossier(
   app: AppDocument,
@@ -609,7 +598,10 @@ function useAppDossier(
   useEffect(() => {
     latest.current = { aui, openSource, running, conversation }
   })
-  const [queued, setQueued] = useState<Array<Queued>>([])
+  // What this App is holding in this conversation, from the queue's store: a
+  // revision flip unmounts this view and mounts the next, and the questions
+  // still waiting come with it.
+  const held = useQueued(conversation, app.documentId)
   const dossier = useMemo(() => {
     let state = CLOSED
     let said = JSON.stringify(state)
@@ -627,7 +619,7 @@ function useAppDossier(
         metadata: {
           custom: {
             [DOSSIER_METADATA]: {
-              documentId: app.documentId,
+              documentId: question.documentId,
               ...(binding.subject && { subject: binding.subject }),
             },
           },
@@ -658,17 +650,17 @@ function useAppDossier(
       async ask(text: string, context: Record<string, unknown>) {
         // Captured now: a later build or selection does not change what was asked about.
         // A revision saved while it waits is not the one it was asked about.
-        const question = {
+        const question: Omit<Queued, 'id' | 'failed'> = {
           text,
           context,
           asked: questionBinding({ ...displayedRef.current }, app.getSnapshot(), context),
           conversation: latest.current.conversation,
+          documentId: app.documentId,
         }
         if (!latest.current.aui.thread.source)
           throw new Error('This App is not shown in a conversation.')
         if (latest.current.running) {
-          const id = `queued:${crypto.randomUUID()}`
-          setQueued((previous) => [...previous, { id, ...question }])
+          hold({ id: `queued:${crypto.randomUUID()}`, ...question })
           return
         }
         send(question)
@@ -685,26 +677,27 @@ function useAppDossier(
   // Held questions go, in order, once the turn that was running ends, and
   // only to the conversation each was asked in: one asked elsewhere waits for
   // its conversation to be open again. One that cannot be sent stays, marked
-  // with why, rather than vanishing.
+  // with why, rather than vanishing. The queue is read again at the moment of
+  // sending, so two views of one App in one conversation each see what the
+  // other has already sent.
   useEffect(() => {
     if (running) return
-    const next = queued.find(
+    const next = queued(conversation, app.documentId).find(
       (question) => question.failed === undefined && question.conversation === conversation,
     )
     if (!next) return
     try {
       dossier.send(next)
       // The turn that held it has ended and it has gone: it leaves the queue.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setQueued((previous) => previous.filter((question) => question.id !== next.id))
+      sent(next)
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error)
-      setQueued((previous) => markUndelivered(previous, next.id, reason))
+      undelivered(next, reason)
     }
-  }, [running, queued, dossier, conversation])
+  }, [running, held, dossier, conversation, app.documentId])
   useEffect(() => {
-    dossier.set(withHeld(dossierState(messages, app.documentId, available), queued))
-  }, [dossier, messages, available, app.documentId, queued])
+    dossier.set(withHeld(dossierState(messages, app.documentId, available), held))
+  }, [dossier, messages, available, app.documentId, held])
   return dossier
 }
 
