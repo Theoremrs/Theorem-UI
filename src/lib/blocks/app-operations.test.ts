@@ -4,6 +4,7 @@ import { describe, expect, test } from 'bun:test'
 import type { ThreadMessage } from '@assistant-ui/react'
 import { onlineManager } from '@tanstack/react-query'
 import { KIT_OPERATIONS } from '@/lib/kit/operations'
+import { GENERATIVE_OPERATIONS } from '@/lib/generative/operations'
 import { useKitStage } from '@/lib/kit/stage'
 import { WORKBENCH_OPERATIONS } from '@/lib/workbench/agent/operations'
 import { clientSurfaceTurnOptions } from '@/lib/theorem/client-surface'
@@ -81,7 +82,11 @@ describe('the operations a turn declares', () => {
   test('a send declares checking Apps and the workbench, and Kit beside them while Kit is on screen', () => {
     useKitStage.setState({ mounted: false })
     expect(clientSurfaceTurnOptions()).toEqual({
-      clientOperations: [...APP_OPERATIONS, ...WORKBENCH_OPERATIONS],
+      clientOperations: [
+        ...APP_OPERATIONS,
+        ...WORKBENCH_OPERATIONS,
+        ...GENERATIVE_OPERATIONS,
+      ],
       clientSurface: { revision: 0 },
     })
     useKitStage.setState({ mounted: true, revision: 12 })
@@ -92,6 +97,7 @@ describe('the operations a turn declares', () => {
         ...KIT_OPERATIONS,
         ...APP_OPERATIONS,
         ...WORKBENCH_OPERATIONS,
+        ...GENERATIVE_OPERATIONS,
       ])
       // Theorem admits at most 16 operations for a run.
       expect(options.clientOperations.length).toBeLessThanOrEqual(16)

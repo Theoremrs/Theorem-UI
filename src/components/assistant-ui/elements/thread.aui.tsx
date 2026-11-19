@@ -7,6 +7,10 @@ import { File, getFileHref } from '@/components/assistant-ui/elements/file'
 import { Image } from '@/components/assistant-ui/elements/image'
 import { MarkdownText } from '@/components/assistant-ui/elements/markdown-text'
 import {
+  QuoteBlock,
+  SelectionToolbar,
+} from '@/components/assistant-ui/elements/quote.aui'
+import {
   Reasoning,
   ReasoningContent,
   ReasoningRoot,
@@ -335,6 +339,8 @@ const ThreadRoot: FC<{
           </ThreadPrimitive.ViewportFooter>
         </div>
       </ThreadPrimitive.Viewport>
+      {/* Selecting reply text offers to quote it into the composer. */}
+      <SelectionToolbar />
     </ThreadPrimitive.Root>
   )
 }
@@ -995,6 +1001,7 @@ const UserMessage: FC = () => {
               File: UserFilePart,
               Image: UserImagePart,
               Text: UserTextPart,
+              Quote: QuoteBlock,
             }}
           />
         </div>

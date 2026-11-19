@@ -215,6 +215,12 @@ export const DEFAULT_RULES: ReadonlyArray<Rule> = [
     note: 'What plays aloud is shown as a loudspeaker.',
   }),
   rule('sound-thump', 'sound.loud', 'thump', { cooldown: 3_000 }),
+  // Listening: the inverse of the boombox. Held from the press that asks to
+  // listen until the press lets go (or the session ends).
+  rule('listen-mic', 'person.listen', 'listen', {
+    until: 'person.listen.end',
+    note: 'While the person speaks to it, the face is a microphone.',
+  }),
   // The environment.
   rule('resize-startle', 'env.resize', 'startle', {
     when: { streak: [1, 1] },

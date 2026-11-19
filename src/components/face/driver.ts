@@ -15,6 +15,7 @@ import { kitDriver } from '@/lib/kit/driver'
 import { KIT_SIZE, useKitStage } from '@/lib/kit/stage'
 import { prefersReducedMotion } from '@/lib/motion'
 import { theSound } from '@/lib/sound/graph'
+import { useMicLevel } from '@/lib/speech/dictation'
 import { enterWorld, leaveWorld, loadRapier, theWorld } from '@/lib/world'
 import { createPainter } from './painter'
 import type { Painter } from './painter'
@@ -38,6 +39,8 @@ const MARGIN = 8
 const NEAR = 280
 /** Past this much movement a press is a carry, not a tap. */
 const CARRY_AFTER = 4
+/** A press held this long without moving is a listen, not a tap or a carry. */
+const LISTEN_AFTER = 380
 /** How long after a performance away from home before it goes back. */
 const LINGER_MS = 3_500
 /** Pointing at something, it stays longer: the person has to find it and read it. */
@@ -78,6 +81,7 @@ const SILENT = {
   'sound.mid': 0,
   'sound.high': 0,
   'sound.beat': 0,
+  'mic.level': 0,
 } as const
 
 /**
@@ -88,6 +92,14 @@ const SILENT = {
 export class FaceDriver {
   /** Whether the face has its plate, and whether matter with none under it is ink. The stage sets it. */
   look: FaceLook = { visor: true, ink: false, paper: false }
+  /**
+   * Starts and stops the composer's dictation, set by the stage (which has the
+   * runtime). Undefined where nothing can dictate; a held press then does
+   * nothing but poke.
+   */
+  dictate:
+    | { start: () => void; stop: () => void; active: () => boolean }
+    | undefined
   /** The plate, which draws in to a ball behind an orb. */
   private readonly plateMotion = new PlateMotion(THEO.width, THEO.height)
   private painter: Painter | undefined
@@ -105,6 +117,9 @@ export class FaceDriver {
   private pointer: Point = { x: -1e4, y: -1e4 }
   private press:
     { id: number; from: Point; grab: Point; carried: boolean } | undefined
+  /** The timer that turns a still press into a listen, and whether it fired. */
+  private listenTimer = 0
+  private listening = false
   private strokes: Array<number> = []
   private strokeDirection = 0
   private lastDraw = 0
@@ -198,6 +213,8 @@ export class FaceDriver {
   destroy() {
     this.destroyed = true
     cancelAnimationFrame(this.frameId)
+    this.cancelListenTimer()
+    this.endListen()
     for (const cleanup of this.cleanups) cleanup()
     this.face.attach(undefined)
     this.face.heading(undefined)
@@ -543,6 +560,30 @@ export class FaceDriver {
 
   // Sound ---------------------------------------------------------------------
 
+  /** The press has held still long enough: the face listens. */
+  private beginListen() {
+    if (!this.dictate || this.listening || this.destroyed) return
+    this.listening = true
+    this.face.notice('person.listen')
+    this.dictate.start()
+  }
+
+  /** The press let go (or was cancelled): the face stops listening. */
+  private endListen() {
+    if (!this.listening) return
+    this.listening = false
+    this.dictate?.stop()
+    this.face.notice('person.listen.end')
+    this.face.feed({ 'mic.level': 0 })
+  }
+
+  private cancelListenTimer() {
+    if (this.listenTimer) {
+      clearTimeout(this.listenTimer)
+      this.listenTimer = 0
+    }
+  }
+
   /** Hands the face what the page's sound measures as now, and what happened in it. */
   private hear(now: number) {
     const { signals, events } = theSound().measure(now)
@@ -556,6 +597,14 @@ export class FaceDriver {
     for (const event of events) this.face.notice(event)
     // What the run is doing: how busy it is with tools and how hard it was asked to think.
     this.face.feed(theWork().measure(now, this.face.working))
+    // While it has the listening form, the person's voice moves it; otherwise
+    // the mic is silent. The form is held from the press that asks to listen
+    // until it lets go, so the level follows the form, not the press alone.
+    this.face.feed({
+      'mic.level': this.face.player.holding('form')
+        ? useMicLevel.getState().level
+        : 0,
+    })
   }
 
   /** Draws the arcs leaving each side: more of them, and further, the more the face emits. Still, they stand where they are. */
@@ -925,6 +974,10 @@ export class FaceDriver {
         )
         if (!press.carried && moved > CARRY_AFTER) {
           press.carried = true
+          this.cancelListenTimer()
+          // A listen that becomes a carry lets go of the microphone: what was
+          // heard so far is committed, and the figure is carried, not held to.
+          this.endListen()
           face.grab()
         }
         if (press.carried) {
@@ -974,14 +1027,29 @@ export class FaceDriver {
         grab: { x: event.clientX - this.at.x, y: event.clientY - this.at.y },
         carried: false,
       }
+      // A press held still becomes a listen: the face turns into a microphone
+      // and the composer hears the person until the press lets go.
+      this.cancelListenTimer()
+      if (this.dictate && !this.dictate.active()) {
+        this.listenTimer = window.setTimeout(() => {
+          if (!this.press || this.press.carried || this.destroyed) return
+          this.beginListen()
+        }, LISTEN_AFTER)
+      }
       event.preventDefault()
     })
     const release = (event: PointerEvent) => {
       const press = this.press
       if (!press || event.pointerId !== press.id) return
       this.press = undefined
+      this.cancelListenTimer()
       if (holder.hasPointerCapture(event.pointerId))
         holder.releasePointerCapture(event.pointerId)
+      // A listen ends when the press lets go: what was heard is committed.
+      if (this.listening) {
+        this.endListen()
+        return
+      }
       if (press.carried) {
         const body = this.physical()
         const velocity = body

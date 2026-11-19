@@ -71,11 +71,13 @@ import { isUntitledTitle, threadTitle } from './thread-title'
 
 import { Figures } from '@/components/face/figures'
 import { useKitRequests } from '@/lib/kit/operations'
+import { usePresentRequests } from '@/lib/generative/operations'
 import { useAppRequests } from '@/lib/blocks/app-operations'
 import { useFaceRequests } from '@/lib/face/operations'
 import { useWorkbenchRequests } from '@/lib/workbench/agent/operations'
 import { useSessionNoticeDelivery } from '@/lib/workbench/agent/deliver'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { dictationAdapter } from '@/lib/speech/dictation'
 import { useNarrateReplies } from '@/lib/speech/narrate'
 import { clientSurfaceTurnOptions } from './client-surface'
 
@@ -196,11 +198,21 @@ async function alignWithDurableBranch(
       : user.id
   // The SDK's adapter takes text turns; what they carry goes as upload ids.
   const content = user.content.filter((part) => part.type === 'text')
-  const text = content.map((part) => part.text).join('\n')
+  // A quote carried in from a reply rides the message's metadata; the text
+  // turn must still carry the passage, or the question loses its subject.
+  // Older saved turns and test fixtures may carry no metadata at all.
+  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
+  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
+    ?.text
+  const quoted =
+    quoteText && !content.some((part) => part.text.includes(quoteText))
+      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
+      : []
+  const text = [...quoted, ...content].map((part) => part.text).join('\n')
   return {
     messages: [
       ...messages.slice(0, -1),
-      { ...user, id, content, attachments: [] },
+      { ...user, id, content: [...quoted, ...content], attachments: [] },
     ],
     uploadIds: turnUploads(
       text,
@@ -683,7 +695,10 @@ function useTheoremThreadRuntime() {
   )
   // Replies are read aloud by the page's own voice, when the person asks.
   const speech = useMemo(() => speechAdapter(), [])
-  const runtime = useLocalRuntime(adapter, { adapters: { speech } })
+  // Dictation is Parakeet where its model is here, the browser's own
+  // recognition otherwise; the composer's mic appears only where one can run.
+  const dictation = useMemo(() => dictationAdapter(), [])
+  const runtime = useLocalRuntime(adapter, { adapters: { speech, dictation } })
   useEffect(() => bindRunInput(runtime, {
     threadKey: aui.threadListItem.getState().id,
     threadId: () => aui.threadListItem.getState().remoteId,
@@ -716,6 +731,8 @@ function useTheoremThreadRuntime() {
   useFaceRequests(runtime, faceEffort)
   // The agent reads and acts on the workbench; this answers it.
   useWorkbenchRequests(runtime)
+  // The agent paints an interface into its reply; this answers it.
+  usePresentRequests(runtime)
   // A coding session the agent started that stops working wakes the agent; this tells it.
   useSessionNoticeDelivery(runtime)
   useEffect(() => {

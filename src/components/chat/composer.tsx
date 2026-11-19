@@ -16,6 +16,8 @@ import {
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
+import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
+import { ComposerContextUsage } from '@/components/chat/context-usage'
 import { ComposerEditor } from '@/components/chat/composer-editor'
 import { ComposerMentionTrigger } from '@/components/chat/composer-mentions'
 import {
@@ -142,6 +144,8 @@ export const Composer: FC<{
         data-appearance-role="composer-form"
       >
         <ComposerToolTrigger />
+        {/* A quote carried in from a reply sits above the draft until sent. */}
+        <ComposerQuotePreview />
         <ComposerMentionTrigger />
         {/* The composer lifts off the sheet as the sheet lifts off the rail.
             Glass casts its own shadow, and the glow would show through it. */}
@@ -199,6 +203,7 @@ export const Composer: FC<{
               <Settings />
             </div>
             <div className="appearance-composer-actions appearance-reading-plane">
+              <ComposerContextUsage />
               <Actions review={review} />
             </div>
           </div>

@@ -39,6 +39,8 @@ import { FaceBench, FaceBook } from '@/components/face/face-bench'
 import { FaceStage } from '@/components/face/face-stage'
 import { TheoFaceInverse } from '@/components/face/terminal-face-story'
 import { speechAdapter } from '@/lib/speech/adapter'
+import { theFace } from '@/lib/face/store'
+import { useMicLevel } from '@/lib/speech/dictation'
 import { NoteNodeView } from '@/components/program/program-annotations'
 import { NoteEditor } from '@/components/notes/note-editor'
 import { NoteExcerpt } from '@/components/notes/note-excerpt'
@@ -720,6 +722,39 @@ function FaceSoundStory() {
 }
 
 /**
+ * Theo as a microphone: the form it takes while the person holds it to speak.
+ * The face is told to listen and the mic level is held steady, so the grille
+ * throbs at a fixed loudness and the arcs stand where they are: a deterministic
+ * render of the listening form, with no microphone opened.
+ */
+function FaceListenStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: SOUND_MESSAGES,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  useEffect(() => {
+    const face = theFace()
+    face.notice('person.listen')
+    useMicLevel.setState({ level: 0.5 })
+    return () => {
+      face.notice('person.listen.end')
+      useMicLevel.setState({ level: 0 })
+    }
+  }, [])
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+      <FaceStage />
+    </AssistantRuntimeProvider>
+  )
+}
+
+/**
  * The harness plan as the thread draws its draft_plan call, at the thread's
  * own reading width. The result names no plan id, so the card shows the plan
  * as drafted and reads no live copy.
@@ -997,6 +1032,165 @@ const ORACLE_RTL_CONTENT = [
   ...LATIN_PROSE_V1_PARAGRAPHS.slice(0, 2),
 ].join('\n\n')
 
+/** Math the model emits: dollar and bracket delimiters, display and inline,
+ *  beside a price that must stay prose. */
+const MATH_CONTENT = [
+  'The quadratic formula solves $ax^2 + bx + c = 0$:',
+  '',
+  '$$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$$',
+  '',
+  'Models often write brackets instead: \\(e^{i\\pi} + 1 = 0\\) inline, and',
+  '',
+  '\\[\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}\\]',
+  '',
+  'A price is not math: the plan costs $5 and the add-on $10, billed monthly.',
+].join('\n')
+
+/** A reply that paints an interface: a fact card, a comparison table and steps,
+ *  composed from the generative vocabulary through a ui.present operation. */
+const PRESENT_TREE = {
+  _type: 'Col',
+  gap: 'md',
+  children: [
+    { _type: 'Header', text: 'Release readiness', size: 'lg' },
+    {
+      _type: 'Row',
+      gap: 'md',
+      children: [
+        { _type: 'Fact', label: 'Checks passed', value: '128', delta: '+6', trend: 'up', upIsGood: true },
+        { _type: 'Fact', label: 'Open issues', value: '3', delta: '-2', trend: 'down', upIsGood: false },
+      ],
+    },
+    {
+      _type: 'Table',
+      columns: [{ label: 'Surface' }, { label: 'State' }, { label: 'Owner' }],
+      rows: [
+        ['Composer', 'Ready', 'UI'],
+        ['Runtime', 'Streaming', 'Core'],
+        ['Connections', 'Review', 'Platform'],
+      ],
+    },
+    {
+      _type: 'Steps',
+      steps: [
+        { title: 'Build', detail: 'Compile the workspace' },
+        { title: 'Verify', detail: 'Run the oracles' },
+        { title: 'Ship', detail: 'Promote the release' },
+      ],
+    },
+  ],
+}
+
+function MathStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-math',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [{ type: 'text', text: MATH_CONTENT }],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+    adapters: {
+      threadList: {
+        threadId: 'story-math',
+        threads: [{ status: 'regular', id: 'story-math', remoteId: 'thread_story_math' }],
+      },
+    },
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+function PresentStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-present',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        metadata: { custom: { theoremRunId: 'run-present-story' } },
+        content: [
+          { type: 'text', text: 'Here is where the release stands.' },
+          {
+            type: 'data',
+            name: 'theorem-client_operation',
+            data: {
+              requestRef: 'req-present-story',
+              operation: 'ui.present',
+              state: 'answered',
+              args: PRESENT_TREE,
+              expectedRevision: 0,
+              receipt: { outcome: 'applied', result: { painted: 'Col' } },
+            },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+/** A conversation whose last run reported its context occupancy, so the
+ *  composer's context ring has real Theorem usage to draw. */
+function ContextUsageStory() {
+  const runtime = useExternalStoreRuntime({
+    messages: [
+      {
+        id: 'message-usage-user',
+        role: 'user',
+        content: [{ type: 'text', text: 'How full is this conversation?' }],
+      },
+      {
+        id: 'message-usage',
+        role: 'assistant',
+        status: { type: 'complete', reason: 'stop' },
+        content: [
+          {
+            type: 'text',
+            text: 'The conversation has room left. The ring beside the composer shows how much of the model\'s context the last request used.',
+          },
+          {
+            type: 'data',
+            name: 'theorem-usage',
+            data: { contextTokens: 84_000, contextWindow: 200_000 },
+          },
+        ],
+      },
+    ],
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (message: ThreadMessageLike) => message,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <div className="h-dvh">
+        <Thread autoFocus={false} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
 export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   ...PALETTE_MATRIX_REGISTRY,
   'workbench-default': WorkbenchDefaultStory,
@@ -1052,6 +1246,9 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'workbench-markdown-split': WorkbenchMarkdownSplitStory,
   'workbench-markdown-preview': WorkbenchMarkdownPreviewStory,
   'design-oracle-empty': () => <DesignOracleThreadStory empty />,
+  'assistant-math': MathStory,
+  'assistant-present': PresentStory,
+  'assistant-context-usage': ContextUsageStory,
   'design-oracle-long': DesignOracleThreadStory,
   'design-oracle-reflow': () => <DesignOracleThreadStory fixtureId="F09" />,
   'design-oracle-draft': threadStory(undefined, [], COMPOSER_DRAFT, 'F05'),
@@ -1113,6 +1310,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'face-visit': FaceVisitStory,
   'face-point': FacePointStory,
   'face-sound': FaceSoundStory,
+  'face-listen': FaceListenStory,
   'theo-face-inverse': TheoFaceInverse,
   'organized-sidebar': OrganizedSidebarStory,
   'librarian-footer': LibrarianFooterStory,
