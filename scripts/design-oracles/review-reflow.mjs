@@ -87,6 +87,9 @@ try {
   await page.locator('[contenteditable=true]').waitFor()
   await settle()
   const initial = await snapshot()
+  // The prose recipe sets its own size (17px since the design overhaul), so
+  // enlargement and spacing are measured against the rendered base size.
+  const proseBase = parseFloat(initial.prose?.size)
   const zoom = await worker.evaluate(async () => {
     const tab = (await chrome.tabs.query({})).find((tab) =>
       tab.url?.includes('/story/design-oracle-long'),
@@ -132,16 +135,16 @@ try {
   // Zoom restoration and text layout need not finish in the same frame.
   // Observe the required size instead of sampling once after two frames;
   // a persistent failure to enlarge still fails this check.
-  await page.waitForFunction(() => {
+  await page.waitForFunction((size) => {
     const prose = document.querySelector('.aui-md-p')
     return getComputedStyle(document.documentElement).fontSize === '32px' &&
-      prose && getComputedStyle(prose).fontSize === '32px'
-  }, undefined, { timeout: 5000 })
+      prose && getComputedStyle(prose).fontSize === size
+  }, `${proseBase * 2}px`, { timeout: 5000 })
   await settle()
   const text200 = await snapshot()
   check(
     'independent 200% root text enlargement preserves prose and draft',
-    text200.prose.size === '32px' &&
+    text200.prose.size === `${proseBase * 2}px` &&
       text200.pageWidth <= text200.width &&
       text200.text === initial.text &&
       text200.draft === initial.draft,
@@ -162,9 +165,9 @@ try {
     spaced.pageWidth <= 320 &&
       spaced.text === initial.text &&
       spaced.draft === initial.draft &&
-      Math.abs(parseFloat(spaced.prose.tracking) - 1.92) < 0.05 &&
-      Math.abs(parseFloat(spaced.prose.word) - 2.56) < 0.05 &&
-      parseFloat(spaced.prose.margin) === 32,
+      Math.abs(parseFloat(spaced.prose.tracking) - 0.12 * proseBase) < 0.05 &&
+      Math.abs(parseFloat(spaced.prose.word) - 0.16 * proseBase) < 0.05 &&
+      parseFloat(spaced.prose.margin) === 2 * proseBase,
     spaced,
   )
   const controls = await page

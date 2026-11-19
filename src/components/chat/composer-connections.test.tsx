@@ -28,8 +28,9 @@ import { cleanup, click, render, waitFor } from '../../../test/blocks/render'
 import { COMPOSER_INSERT } from './composer-editor'
 import { ComposerPlus } from './composer-plus'
 
-const page = (window as unknown as { happyDOM: { setURL: (url: string) => void } })
-  .happyDOM
+const page = (
+  window as unknown as { happyDOM: { setURL: (url: string) => void } }
+).happyDOM
 beforeAll(() => page.setURL('http://localhost:3000/'))
 afterAll(() => page.setURL('about:blank'))
 
@@ -100,7 +101,7 @@ const projectRoutes: FakeRoutes = {
   'GET /api/chat/v1/projects/:projectId/threads': () => ({ items: [] }),
 }
 
-const projectContext = (connections: string[] | null): FakeRoutes => ({
+const projectContext = (connections: readonly string[] | null): FakeRoutes => ({
   'GET /api/chat/v1/projects/:projectId/context': ({ projectId }) => ({
     schema: 'theorem-chat-project-context/1',
     projectId,
@@ -145,14 +146,18 @@ afterEach(async () => {
 })
 
 const chip = (container: HTMLElement) =>
-  container.querySelector<HTMLButtonElement>('button[aria-label^="Connections"]')
+  container.querySelector<HTMLButtonElement>(
+    'button[aria-label^="Connections"]',
+  )
 
 const named = (label: string) =>
   document.querySelector<HTMLElement>(`[aria-label="${label}"]`)
 
 /** Opens the + menu and its Connectors submenu, where the MCP servers are. */
 async function openMenu(container: HTMLElement) {
-  await click(container.querySelector<HTMLElement>('[aria-label="More options"]')!)
+  await click(
+    container.querySelector<HTMLElement>('[aria-label="More options"]')!,
+  )
   const plugins = await waitFor(() =>
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
       (item) => item.textContent.trim() === 'Connectors',
@@ -178,7 +183,9 @@ const menuSwitch = (label: string) =>
 async function open(container: HTMLElement) {
   await click((await menuItem(container))!)
   await waitFor(() =>
-    /Manage connections|Set up connections|Try again/.test(document.body.textContent),
+    /Manage connections|Set up connections|Try again/.test(
+      document.body.textContent,
+    ),
   )
 }
 
@@ -235,7 +242,11 @@ test('it lists each connection with its own switch, on by default, and shows no 
   await open(container)
   const github = named('GitHub available in this conversation')!
   expect(github.getAttribute('aria-checked')).toBe('true')
-  expect(named('Docs server available in this conversation')!.getAttribute('aria-checked')).toBe('true')
+  expect(
+    named('Docs server available in this conversation')!.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
   // Off in Settings: it cannot be turned on for one conversation.
   const off = named('Switched off available in this conversation')!
   expect(off.getAttribute('aria-checked')).toBe('false')
@@ -290,7 +301,10 @@ test('typing narrows the list to matching connections and tools', async () => {
   })
   await open(container)
   const search = named('Search connections and tools') as HTMLInputElement
-  const { set } = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!
+  const { set } = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    'value',
+  )!
   await act(async () => {
     set!.call(search, 'create')
     search.dispatchEvent(new Event('input', { bubbles: true }))
@@ -305,7 +319,9 @@ test('typing narrows the list to matching connections and tools', async () => {
     set!.call(search, 'zzzzqq')
     search.dispatchEvent(new Event('input', { bubbles: true }))
   })
-  await waitFor(() => document.body.textContent.includes('Nothing matches that.'))
+  await waitFor(() =>
+    document.body.textContent.includes('Nothing matches that.'),
+  )
 })
 
 test('a stored choice that names a removed connection is rewritten against the roster', async () => {
@@ -318,7 +334,9 @@ test('a stored choice that names a removed connection is rewritten against the r
   await click(named('GitHub available in this conversation')!)
   const [key] = Object.keys(useToolSelections.getState().byThread)
   await act(async () => {
-    useToolSelections.getState().set(key!, { connections: ['mcp:abc', 'mcp:gone'] })
+    useToolSelections
+      .getState()
+      .set(key!, { connections: ['mcp:abc', 'mcp:gone'] })
   })
   await waitFor(() => chosen()[0]?.connections.length === 1)
   expect(chosen()).toEqual([{ connections: ['mcp:abc'] }])
@@ -330,15 +348,23 @@ test('a roster that fails to load says why and can be tried again', async () => 
     'GET /api/connections/v1/tools': () => {
       calls += 1
       return calls === 1
-        ? new Response(JSON.stringify({ title: 'Down', detail: 'The connections service is down.' }), {
-            status: 503,
-            headers: { 'content-type': 'application/json' },
-          })
+        ? new Response(
+            JSON.stringify({
+              title: 'Down',
+              detail: 'The connections service is down.',
+            }),
+            {
+              status: 503,
+              headers: { 'content-type': 'application/json' },
+            },
+          )
         : { groups: roster }
     },
   })
   await open(container)
-  await waitFor(() => document.body.textContent.includes('The connections service is down.'))
+  await waitFor(() =>
+    document.body.textContent.includes('The connections service is down.'),
+  )
   const retry = [...document.querySelectorAll('button')].find(
     (button) => button.textContent.trim() === 'Try again',
   )!
@@ -348,7 +374,9 @@ test('a roster that fails to load says why and can be tried again', async () => 
 
 /** Opens the + menu's Skills submenu. */
 async function openSkills(container: HTMLElement) {
-  await click(container.querySelector<HTMLElement>('[aria-label="More options"]')!)
+  await click(
+    container.querySelector<HTMLElement>('[aria-label="More options"]')!,
+  )
   const skills = await waitFor(() =>
     [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
       (item) => item.textContent.trim() === 'Skills',
@@ -363,7 +391,12 @@ test('Skills lists Plan and then the skills Theorem serves, and a pick names the
     'GET /api/chat/v1/skills': () => ({
       plugins: [{ id: 'writing', name: 'writing', skillCount: 1 }],
       skills: [
-        { id: 'pack-7', name: 'Document review', description: 'Reads a draft', plugin: 'writing' },
+        {
+          id: 'pack-7',
+          name: 'Document review',
+          description: 'Reads a draft',
+          plugin: 'writing',
+        },
         { id: 'tidy', name: 'tidy', plugin: null },
       ],
     }),
@@ -376,10 +409,10 @@ test('Skills lists Plan and then the skills Theorem serves, and a pick names the
     )
   await openSkills(container)
   expect(menuSwitch('Plan')).toBeDefined()
-  expect(document.body.textContent).toContain('From Theorem')
-  const review = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-    (item) => item.textContent.includes('Document review'),
-  )!
+  expect(document.body.textContent).toContain('Available skills')
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('Document review'))!
   expect(review.textContent).toContain('writing')
   await click(review)
   await waitFor(() => written.length > 0)
@@ -390,7 +423,7 @@ test('with no skills served, Skills still offers Plan and the way to browse them
   const { container } = await mount({})
   await openSkills(container)
   expect(menuSwitch('Plan')).toBeDefined()
-  expect(document.body.textContent).not.toContain('From Theorem')
+  expect(document.body.textContent).not.toContain('Available skills')
   const link = [...document.querySelectorAll('a')].find((anchor) =>
     anchor.textContent.includes('Browse skills'),
   )
@@ -408,8 +441,8 @@ test("a new conversation starts from its project's connections and sends nothing
   expect(menuSwitch('GitHub')!.getAttribute('aria-checked')).toBe('true')
   expect(menuSwitch('Docs server')!.getAttribute('aria-checked')).toBe('false')
   await click(
-    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) =>
-      /Choose tools/.test(item.textContent),
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => /Choose tools/.test(item.textContent),
     )!,
   )
   await waitFor(() => named('GitHub available in this conversation'))
@@ -462,7 +495,10 @@ test("a choice made before the project's connections arrive is kept when they do
   const { container } = await mount(
     {
       'GET /api/connections/v1/tools': () => ({ groups: roster }),
-      'GET /api/chat/v1/projects/:projectId/context': async (params, request) => {
+      'GET /api/chat/v1/projects/:projectId/context': async (
+        params,
+        request,
+      ) => {
         await held
         return answer(params, request)
       },
@@ -511,4 +547,234 @@ test('a project that names none leaves every enabled connection on', async () =>
     ),
   ).toBe('true')
   expect(document.body.textContent).not.toContain("This project's connections.")
+})
+
+test('an MCP skill names its source and cannot be picked while the project excludes its connection', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: roster }),
+    ...projectContext(['github']),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'mcp:abc/skill://review/SKILL.md',
+          name: 'Review from docs',
+          source: {
+            kind: 'mcp',
+            connection: 'mcp:abc',
+            connectionLabel: 'Docs server',
+            uri: 'skill://review/SKILL.md',
+            dynamic: false,
+          },
+        },
+      ],
+    }),
+  })
+  const written: string[] = []
+  container
+    .querySelector('.theorem-composer')!
+    .addEventListener(COMPOSER_INSERT, (event) =>
+      written.push((event as CustomEvent<string>).detail),
+    )
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('Review from docs'))!
+  expect(review.getAttribute('aria-disabled')).toBe('true')
+  expect(review.textContent).toContain('Docs server · off')
+  expect(review.title).toContain('Turn on Docs server')
+  await click(review)
+  expect(written).toEqual([])
+})
+
+test('an enabled skill-only MCP connection stays selectable even with no tools', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({
+      groups: [
+        {
+          connectionId: 'mcp:skills',
+          label: 'Team skills',
+          kind: 'mcp',
+          enabled: true,
+          tools: [],
+        },
+      ],
+    }),
+    ...projectContext(['mcp:skills']),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'mcp:skills/skill://review/SKILL.md',
+          name: 'Review from team',
+          source: {
+            kind: 'mcp',
+            connection: 'mcp:skills',
+            connectionLabel: 'Team skills',
+            uri: 'skill://review/SKILL.md',
+            dynamic: false,
+          },
+        },
+      ],
+    }),
+  })
+  const written: string[] = []
+  container
+    .querySelector('.theorem-composer')!
+    .addEventListener(COMPOSER_INSERT, (event) =>
+      written.push((event as CustomEvent<string>).detail),
+    )
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('Review from team'))!
+  expect(review.getAttribute('aria-disabled')).not.toBe('true')
+  expect(review.textContent).toContain('Team skills')
+  await click(review)
+  await waitFor(() => written.length)
+  expect(written).toEqual([
+    ':skill[Review from team]{name=mcp:skills/skill://review/SKILL.md} ',
+  ])
+})
+
+test.each([
+  {
+    state: 'off for the project',
+    project: ['github'],
+    readiness: 'ready',
+    disabled: true,
+    label: 'off',
+  },
+  {
+    state: 'on for the project',
+    project: ['mcp:abc'],
+    readiness: 'ready',
+    disabled: false,
+    label: '',
+  },
+  {
+    state: 'still awaiting connection setup',
+    project: ['mcp:abc'],
+    readiness: 'needs_setup',
+    disabled: true,
+    label: 'needs setup',
+  },
+])(
+  'an imported skill is $state according to its installation bindings',
+  async ({ project, readiness, disabled, label }) => {
+    const { container } = await mount({
+      'GET /api/connections/v1/tools': () => ({ groups: roster }),
+      ...projectContext(project),
+      'GET /api/chat/v1/skills': () => ({
+        skills: [
+          {
+            id: 'skill:imported',
+            name: 'Package review',
+            plugin: 'Review package',
+            source: {
+              kind: 'import',
+              installationId: 'install:review',
+              source: 'file:review',
+              version: '1.0',
+            },
+          },
+        ],
+      }),
+      'GET /api/chat/v1/skill-installations': () => ({
+        installations: [
+          {
+            installationId: 'install:review',
+            name: 'Review package',
+            source: 'file:review',
+            kind: 'plugin',
+            revision: 1,
+            status: readiness,
+            skills: [{ id: 'skill:imported', name: 'Package review' }],
+            connections: { docs: 'mcp:abc' },
+            requirements: [
+              { name: 'docs', connectionId: 'mcp:abc', status: readiness },
+            ],
+            unsupported: [],
+          },
+        ],
+      }),
+    })
+    await openSkills(container)
+    const review = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find((item) => item.textContent.includes('Package review'))!
+    expect(review.getAttribute('aria-disabled') === 'true').toBe(disabled)
+    expect(review.textContent).toContain('Review package')
+    if (disabled) expect(review.textContent).toContain(' · ' + label)
+    if (label === 'off') expect(review.title).toContain('Turn on Docs server')
+  },
+)
+
+test('an imported skill can use an admitted resource-only connection without a tools row', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: [] }),
+    ...projectContext(null),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'skill:resource',
+          name: 'Read shared guidance',
+          plugin: 'Guidance',
+          source: {
+            kind: 'import',
+            installationId: 'install:guidance',
+            source: 'file:guidance',
+            version: '1.0',
+          },
+        },
+      ],
+    }),
+    'GET /api/chat/v1/skill-installations': () => ({
+      installations: [
+        {
+          installationId: 'install:guidance',
+          name: 'Guidance',
+          source: 'file:guidance',
+          kind: 'plugin',
+          revision: 1,
+          status: 'ready',
+          skills: [{ id: 'skill:resource', name: 'Read shared guidance' }],
+          connections: { docs: 'mcp:resources' },
+          requirements: [
+            { name: 'docs', connectionId: 'mcp:resources', status: 'ready' },
+          ],
+          unsupported: [],
+        },
+      ],
+    }),
+  })
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('Read shared guidance'))!
+  expect(review.getAttribute('aria-disabled')).not.toBe('true')
+})
+
+test('a locally edited skill detached from its package keeps no package connection dependency', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: [] }),
+    ...projectContext([]),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'skill:local',
+          name: 'My review',
+          source: {
+            kind: 'import',
+            installationId: null,
+            source: 'file:review',
+            version: '1.0',
+          },
+        },
+      ],
+    }),
+  })
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('My review'))!
+  expect(review.getAttribute('aria-disabled')).not.toBe('true')
 })

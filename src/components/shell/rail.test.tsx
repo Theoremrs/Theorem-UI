@@ -111,6 +111,20 @@ test('the rail keeps the order destinations were dragged into', () => {
     'vault',
     'spaces',
   ])
+  // Records moved into the Index; an order saved while the CRM had its own
+  // place on the rail still lists only the destinations there are.
+  expect(
+    modes(['crm' as Parameters<typeof orderModes>[0][number], 'ide']),
+  ).toEqual([
+    'ide',
+    'chat',
+    'index',
+    'notes',
+    'pages',
+    'vault',
+    'spaces',
+    'canvas',
+  ])
 })
 
 test('Alt and an arrow move a destination without opening it', async () => {

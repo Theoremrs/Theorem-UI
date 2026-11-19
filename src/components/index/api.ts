@@ -20,6 +20,8 @@ import type {
   ProposalStatus,
   PublishedLibrary,
   QueryResult,
+  RecordFilingCorrection,
+  RecordFilingHistory,
   Scope,
   ViewRevision,
 } from './contract'
@@ -314,6 +316,40 @@ export const correctFiling = (
       idempotencyKey: headers['Idempotency-Key'],
       receiptId,
       destinationCollectionId,
+    }),
+  )
+
+/** The records a document is about: the links now, every receipt, every correction. */
+export const recordFilingHistory = (documentId: string) =>
+  get<RecordFilingHistory>(
+    `${DOCUMENTS}/documents/${encodeURIComponent(documentId)}/record-filings`,
+    { schema: DOCUMENT_SCHEMA },
+  )
+
+/** Move a record link to another record, or with `null` say the document is not about it. */
+export const correctRecordFiling = (
+  receiptId: string,
+  recordItemId: string | null,
+) =>
+  send<RecordFilingCorrection>(
+    'POST',
+    `${DOCUMENTS}/record-filings/${encodeURIComponent(receiptId)}/corrections`,
+    (headers) => ({
+      schema: DOCUMENT_SCHEMA,
+      idempotencyKey: headers['Idempotency-Key'],
+      receiptId,
+      recordItemId,
+    }),
+  )
+
+export const undoRecordFiling = (correctionId: string) =>
+  send<RecordFilingCorrection>(
+    'POST',
+    `${DOCUMENTS}/record-filing-corrections/${encodeURIComponent(correctionId)}/undo`,
+    (headers) => ({
+      schema: DOCUMENT_SCHEMA,
+      idempotencyKey: headers['Idempotency-Key'],
+      correctionId,
     }),
   )
 

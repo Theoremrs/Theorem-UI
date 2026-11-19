@@ -31,9 +31,13 @@ import { cellLook } from '@/lib/life/look'
 import { PATTERNS } from '@/lib/life/patterns'
 import { advance, companion, createPresence, figure } from '@/lib/life/presence'
 import { useLifeControls, useLifeCounts } from '@/lib/life/store'
-import { publishLifeFrame } from './frames'
+import { isVisible, observeVisibility, publishLifeFrame } from './frames'
 import type { LifeGame } from './mount-life'
-import { TEXT_QUIET, occlusionMask } from '@/lib/life/occlusion'
+import {
+  TEXT_QUIET,
+  occlusionMask,
+  sameClientBoxes,
+} from '@/lib/life/occlusion'
 import type { ClientBox } from '@/lib/life/occlusion'
 
 const CELL_W = 10
@@ -79,8 +83,9 @@ export function mountLife2d(
   let phase = 0
   let seconds = 0
   let last = 0
-  let painted = 0
+  let painted = -Infinity
   let stopped = false
+  let wasVisible = false
   let handle = 0
   let ink = '#a2a5a8'
   let muted = '#85888b'
@@ -216,7 +221,11 @@ export function mountLife2d(
   }
 
   const tick = (now: number) => {
-    if (stopped) return
+    handle = 0
+    if (!running()) {
+      last = 0
+      return
+    }
     handle = requestAnimationFrame(tick)
     if (now - painted < FRAME_MS) return
     const dt = last ? Math.min((now - last) / 1000, 0.1) : 0
@@ -256,6 +265,38 @@ export function mountLife2d(
     publish()
   }
 
+  const running = () =>
+    !stopped && useLifeControls.getState().playing && isVisible(host)
+
+  const stopFrames = () => {
+    if (handle) cancelAnimationFrame(handle)
+    handle = 0
+    last = 0
+  }
+
+  const schedule = () => {
+    const visible = !stopped && isVisible(host)
+    const becameVisible = visible && !wasVisible
+    wasVisible = visible
+    // Becoming visible repaints whether or not the field is playing: a field
+    // mounted hidden, or resized while hidden, has no pixels until it draws.
+    if (becameVisible) draw()
+    if (!running()) {
+      stopFrames()
+      return
+    }
+    if (!handle) {
+      last = 0
+      handle = requestAnimationFrame(tick)
+    }
+  }
+
+  const redraw = () => {
+    if (isVisible(host)) draw()
+    publish()
+    schedule()
+  }
+
   const at = (clientX: number, clientY: number) => {
     const box = canvas.getBoundingClientRect()
     return {
@@ -266,8 +307,22 @@ export function mountLife2d(
 
   repaint()
   fit(host.clientWidth, host.clientHeight)
-  draw()
-  handle = requestAnimationFrame(tick)
+  if (isVisible(host)) draw()
+  schedule()
+  const stopVisibility = observeVisibility(host, schedule)
+  const stopControls = useLifeControls.subscribe((state, previous) => {
+    if (state.playing !== previous.playing) {
+      schedule()
+      return
+    }
+    // A paused field still shows what these settings change, so changing one
+    // repaints once instead of waiting for the next play.
+    if (
+      state.companion !== previous.companion ||
+      state.brush !== previous.brush
+    )
+      redraw()
+  })
 
   return {
     press(x, y) {
@@ -286,14 +341,14 @@ export function mountLife2d(
         stroke = { ...cell, on }
         field = paint(field, cell.x, cell.y, on)
       }
-      draw()
+      redraw()
     },
     drag(x, y) {
       hovered = at(x, y)
       if (stroke) {
         field = paintLine(field, stroke, hovered, stroke.on)
         stroke = { ...hovered, on: stroke.on }
-        draw()
+        redraw()
       }
     },
     release() {
@@ -301,49 +356,57 @@ export function mountLife2d(
     },
     hover(x, y) {
       hovered = at(x, y)
-      draw()
+      redraw()
     },
     leave() {
       stroke = undefined
       hovered = undefined
-      draw()
+      redraw()
     },
     step() {
       field = step(emit(field, energy.level, Math.random))
-      draw()
-      publish()
+      redraw()
     },
     clear() {
       field = clear(field)
-      draw()
-      publish()
+      redraw()
     },
     randomize() {
       field = fill(clear(field), Math.random)
-      draw()
-      publish()
+      redraw()
     },
     pulse(kind) {
       energy = pulse(energy, kind)
     },
-    sustain(running) {
-      energy = sustain(energy, running)
+    sustain(active) {
+      energy = sustain(energy, active)
     },
     resize(w, h) {
       fit(w, h)
-      draw()
+      redraw()
     },
     repaint() {
       repaint()
-      draw()
+      redraw()
     },
     occlude(next) {
+      // Scrolling and streaming remeasure on every frame. An identical box
+      // list is not a new picture, and drawing it would paint the idle field
+      // on every one of those frames.
+      if (sameClientBoxes(boxes, next)) return
       boxes = next
       quiet = undefined
+      // While the field plays, the animation loop paints the new mask on its
+      // next frame. A paused field has no loop, so the old clearing would
+      // stay until some other interaction. One paint; schedule() leaves the
+      // loop stopped.
+      if (!useLifeControls.getState().playing) redraw()
     },
     destroy() {
       stopped = true
-      cancelAnimationFrame(handle)
+      stopControls()
+      stopVisibility()
+      stopFrames()
       canvas.remove()
     },
   }

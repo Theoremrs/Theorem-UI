@@ -144,11 +144,25 @@ function useHighlighter() {
   return highlighter;
 }
 
+/** A colour variable as the browser resolves it on the root. */
+function resolvedColor(root: HTMLElement, variable: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${variable})`;
+  probe.style.display = "none";
+  root.appendChild(probe);
+  const color = getComputedStyle(probe).color;
+  probe.remove();
+  return color;
+}
+
 /**
- * The palette's code theme with every token made readable on the opaque code
- * surface the pre is painted with, read once the palette's variables apply.
+ * The palette's code theme with every token made readable on the code
+ * surface the pre is painted on, read once the palette's variables apply.
+ * The panel paints an opaque popover; the glass block is a translucent tint
+ * of the sheet's bottom colour over the sheet, so its tokens must also read
+ * on that colour (light stone's sheet is far darker than its popover).
  */
-function useCodeTheme() {
+function useCodeTheme(surface: "panel" | "glass") {
   const palette = useAppearance((state) => state.appearance.palette);
   const preset = useAppearance((state) => state.appearance.preset);
   const customPalette = useAppearance(
@@ -163,6 +177,7 @@ function useCodeTheme() {
   const [paint, setPaint] = useState<{
     source: typeof source;
     background: string;
+    glass: string;
     dark: boolean;
   }>();
   useEffect(() => {
@@ -171,6 +186,7 @@ function useCodeTheme() {
       setPaint({
         source,
         background: getComputedStyle(root).getPropertyValue("--popover").trim(),
+        glass: resolvedColor(root, "--sheet-to"),
         dark: root.classList.contains("dark"),
       });
     });
@@ -181,8 +197,12 @@ function useCodeTheme() {
     const named = paint.dark ? codeThemes.dark : codeThemes.light;
     const base =
       THEMES[named] ?? (paint.dark ? githubDarkTheme : githubLightTheme);
+    const surfaces =
+      surface === "glass" && paint.glass
+        ? [paint.glass, paint.background]
+        : [paint.background];
     const readable = (color: string) =>
-      readableCodeColor(color, paint.background);
+      surfaces.reduce(readableCodeColor, color);
     const theme: HighlightTheme = {
       ...base,
       foreground: readable(base.foreground),
@@ -193,12 +213,12 @@ function useCodeTheme() {
         ]),
       ) as HighlightTheme["tokens"],
     };
-    const key = `${base.name} ${paint.background}`;
+    const key = `${base.name} ${surfaces.join(" ")}`;
     return {
       key,
       css: createThemeRule(`.aui-code-block[data-code-theme="${key}"]`, theme),
     };
-  }, [paint, source, codeThemes]);
+  }, [paint, source, codeThemes, surface]);
 }
 
 const RenderNode: FC<{ node: HighlightRenderNode }> = ({ node }) => {
@@ -243,7 +263,7 @@ export const SyntaxHighlighter: FC<SyntaxHighlighterProps> = ({
   surface = "panel",
 }) => {
   const highlighter = useHighlighter();
-  const theme = useCodeTheme();
+  const theme = useCodeTheme(surface);
   const trimmed = code.trim();
   const tokenize = !streaming && highlighter !== undefined;
   const lang = highlighter?.normalizeLanguage(language) ?? "plaintext";

@@ -1324,6 +1324,7 @@ export const REGISTRY: Readonly<Record<string, ComponentType>> = {
   'shell-navigation': ShellNavigationStory,
   'notes-workspace': NotesWorkspaceStory,
   'settings-ai': SettingsAiStory,
+  'settings-responses': () => <SettingsAiStory path="/settings/responses" />,
   'glass-compare': () => (
     <WithRuntime>
       <GlassCompareStory />

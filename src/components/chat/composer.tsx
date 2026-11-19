@@ -1,5 +1,6 @@
 // SOURCING: assistant-ui form, dropzone, dictation and action primitives;
-// the same Milkdown editor, runtime commands and composer parts in each layout.
+// the same Milkdown editor, runtime commands and composer parts in each layout;
+// the / tools list and the @ list of records and documents to cite.
 import {
   AuiIf,
   ComposerPrimitive,
@@ -18,6 +19,7 @@ import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-ic
 import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
 import { ComposerContextUsage } from '@/components/chat/context-usage'
 import { ComposerEditor } from '@/components/chat/composer-editor'
+import { ComposerMentionTrigger } from '@/components/chat/composer-mentions'
 import {
   ComposerReferences,
   useComposerReferences,
@@ -144,6 +146,7 @@ export const Composer: FC<{
         <ComposerToolTrigger />
         {/* A quote carried in from a reply sits above the draft until sent. */}
         <ComposerQuotePreview />
+        <ComposerMentionTrigger />
         {/* The composer lifts off the sheet as the sheet lifts off the rail.
             Glass casts its own shadow, and the glow would show through it. */}
         {surface === 'paper' && (

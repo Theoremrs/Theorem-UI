@@ -24,12 +24,12 @@ import { sameScope } from './contract'
 import { useDebounced } from './library'
 import { useIndexNavigate, useIndexSearch } from './navigation'
 import { observer } from './observe'
-import { activeObjectTypes, useDataModel } from '@/components/records/queries'
+import { RecordsSection } from '@/components/crm/crm-panel'
 import { useWorkEvents } from '@/components/work/events'
 import { useInboxUnread, useWorkViews } from '@/components/work/queries'
 import { parseWorkView, workViewId } from '@/components/work/route'
 import { useWorkAvailable } from '@/components/work/settings'
-import { ATLAS_VIEW_ID, DATA_MODEL_VIEW_ID, recordsViewId } from './programs'
+import { ATLAS_VIEW_ID, DATA_MODEL_VIEW_ID } from './programs'
 import {
   useBinding,
   useCollections,
@@ -369,42 +369,6 @@ function ViewList({
   )
 }
 
-/** Each declared object, opening its records as a table. */
-function RecordsList({ activeViewId }: { activeViewId: string | undefined }) {
-  const model = useDataModel()
-  const navigate = useIndexNavigate()
-  const types = activeObjectTypes(model.data).filter((type) => !type.system)
-  if (model.isError)
-    return (
-      <>
-        <Heading>Records</Heading>
-        <p className="px-2 py-1 text-sm text-ink-faint-sheet">
-          {describeError(model.error)}
-        </p>
-      </>
-    )
-  if (!types.length) return null
-  return (
-    <>
-      <Heading>Records</Heading>
-      {types.map((type) => (
-        <Row
-          key={type.object_type_id}
-          active={activeViewId === recordsViewId(type.name_singular)}
-          onClick={() =>
-            navigate.openView(recordsViewId(type.name_singular), {
-              kind: 'home',
-            })
-          }
-          trailing={type.record_count}
-        >
-          {type.label_plural}
-        </Row>
-      ))}
-    </>
-  )
-}
-
 /** The work tracker's screens; the rows exist only while the tracker is on, and nothing is asked of it otherwise. */
 function WorkRows({ activeViewId }: { activeViewId: string | undefined }) {
   useWorkEvents()
@@ -499,7 +463,7 @@ export function IndexPanel() {
         >
           Data model
         </Row>
-        <RecordsList activeViewId={view} />
+        <RecordsSection />
         <WorkSection activeViewId={view} />
         <Heading
           action={

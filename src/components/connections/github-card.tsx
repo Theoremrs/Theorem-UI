@@ -32,6 +32,7 @@ import { isNotServed } from '@/lib/theorem/passthrough'
 import { GithubConsequences } from './github-consequences'
 import { GithubDeliveries } from './github-deliveries'
 import { GithubRepositories } from './github-repositories'
+import { GithubMcp } from './github-mcp-section'
 import { DeliveryBadge, StatusBadge, ago } from './parts'
 
 export function GithubSection() {
@@ -42,7 +43,17 @@ export function GithubSection() {
   const linked = Boolean(entry && entry.status !== 'disconnected')
 
   return (
-    <SettingsSection title={linked ? 'GitHub' : 'Connect git provider'}>
+    <SettingsSection
+      title="GitHub"
+      description="Repository access, following, and tools in one place."
+    >
+      <div className="flex flex-col gap-1">
+        <h3 className="text-sm font-medium">Repository connection</h3>
+        <p className="text-sm text-ink-muted">
+          Use your GitHub account for repository access, following, and work
+          items.
+        </p>
+      </div>
       {list.error ? (
         <Empty className="rounded-lg border border-separator">
           <EmptyTitle>
@@ -51,7 +62,11 @@ export function GithubSection() {
               : 'Theorem did not list its connections'}
           </EmptyTitle>
           <EmptyDescription>{describeError(list.error)}</EmptyDescription>
-          <Button variant="outline" size="sm" onClick={() => void list.refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void list.refetch()}
+          >
             Try again
           </Button>
         </Empty>
@@ -70,6 +85,7 @@ export function GithubSection() {
       ) : (
         <GithubConnect />
       )}
+      <GithubMcp />
     </SettingsSection>
   )
 }
@@ -92,7 +108,10 @@ function GithubConnect() {
         {connect.isPending ? 'Opening GitHub...' : 'GitHub'}
       </Button>
       {connect.error && (
-        <p role="alert" className="max-w-full wrap-anywhere text-sm text-error-ink">
+        <p
+          role="alert"
+          className="max-w-full wrap-anywhere text-sm text-error-ink"
+        >
           {describeError(connect.error)}
         </p>
       )}
@@ -107,7 +126,11 @@ function GithubConnected() {
       <Empty className="rounded-lg border border-separator">
         <EmptyTitle>Theorem did not read your GitHub connection</EmptyTitle>
         <EmptyDescription>{describeError(github.error)}</EmptyDescription>
-        <Button variant="outline" size="sm" onClick={() => void github.refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => void github.refetch()}
+        >
           Try again
         </Button>
       </Empty>
@@ -145,7 +168,8 @@ function GithubDetails({ github }: { github: GithubConnection }) {
   const [confirming, setConfirming] = useState(false)
   const { webhook, health, lastEvent } = github
   const { counts } = webhook
-  const needsSignIn = github.status === 'needs_auth' || github.status === 'error'
+  const needsSignIn =
+    github.status === 'needs_auth' || github.status === 'error'
 
   return (
     <div className="flex flex-col gap-6">
@@ -169,16 +193,20 @@ function GithubDetails({ github }: { github: GithubConnection }) {
                 {ago(health.checkedAt) && `Checked ${ago(health.checkedAt)}`}
               </span>
             </div>
-            <Button variant="outline" size="sm" onClick={() => setConfirming(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setConfirming(true)}
+            >
               Disconnect
             </Button>
           </div>
           <SettingsRow
-            title="Agent can use GitHub"
-            description="Off keeps GitHub connected and followed, but your agent cannot reach it."
+            title="Agent can use the repository connection"
+            description="Allow repository and work item actions through this account. GitHub MCP tools use their own switch below."
           >
             <Switch
-              aria-label="Agent can use GitHub"
+              aria-label="Agent can use the repository connection"
               checked={github.enabled}
               onCheckedChange={(enabled) => setEnabled.mutate(enabled)}
             />
@@ -198,11 +226,19 @@ function GithubDetails({ github }: { github: GithubConnection }) {
               {health.detail ? ` ${health.detail}` : ''}
             </p>
             <div className="flex min-w-0 flex-col items-start gap-2">
-              <Button variant="outline" size="sm" disabled={connect.isPending} onClick={start}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={connect.isPending}
+                onClick={start}
+              >
                 {connect.isPending ? 'Opening GitHub...' : 'Sign in again'}
               </Button>
               {connect.error && (
-                <p role="alert" className="max-w-full wrap-anywhere text-sm text-error-ink">
+                <p
+                  role="alert"
+                  className="max-w-full wrap-anywhere text-sm text-error-ink"
+                >
                   {describeError(connect.error)}
                 </p>
               )}
@@ -219,7 +255,7 @@ function GithubDetails({ github }: { github: GithubConnection }) {
       </Block>
 
       <Block
-        title="What your agent can do"
+        title="Work item actions"
         description="Reading never changes anything. Writing changes GitHub, and your agent asks you first."
       >
         {github.availableActions.length === 0 ? (
@@ -229,9 +265,16 @@ function GithubDetails({ github }: { github: GithubConnection }) {
         ) : (
           <SettingsBox>
             {github.availableActions.map((action) => (
-              <div key={action.name} className="flex items-center gap-3 px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm">{action.title}</span>
-                <Badge variant={action.effect === 'write' ? 'warning' : 'secondary'}>
+              <div
+                key={action.name}
+                className="flex items-center gap-3 px-3 py-2"
+              >
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  {action.title}
+                </span>
+                <Badge
+                  variant={action.effect === 'write' ? 'warning' : 'secondary'}
+                >
                   {action.effect === 'write' ? 'Write' : 'Read'}
                 </Badge>
                 <Badge variant={action.granted ? 'success' : 'outline'}>
@@ -261,21 +304,19 @@ function GithubDetails({ github }: { github: GithubConnection }) {
         <SettingsBox>
           <SettingsRow
             title="Connection health"
-            description={
-              [
-                health.state === 'ok'
-                  ? 'Working'
-                  : health.state === 'unknown'
-                    ? 'Not checked yet'
-                    : health.state === 'degraded'
-                      ? 'Working, with problems'
-                      : 'Not working',
-                ago(health.checkedAt) && `checked ${ago(health.checkedAt)}`,
-                health.detail,
-              ]
-                .filter(Boolean)
-                .join(', ')
-            }
+            description={[
+              health.state === 'ok'
+                ? 'Working'
+                : health.state === 'unknown'
+                  ? 'Not checked yet'
+                  : health.state === 'degraded'
+                    ? 'Working, with problems'
+                    : 'Not working',
+              ago(health.checkedAt) && `checked ${ago(health.checkedAt)}`,
+              health.detail,
+            ]
+              .filter(Boolean)
+              .join(', ')}
           />
           <SettingsRow
             title="Webhook"
@@ -323,10 +364,13 @@ function GithubDetails({ github }: { github: GithubConnection }) {
       <AlertDialog open={confirming} onOpenChange={setConfirming}>
         <AlertDialogPopup>
           <AlertDialogHeader>
-            <AlertDialogTitle>Disconnect GitHub?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Disconnect the repository connection?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Theorem stops following your repositories and your agent loses
-              access to GitHub. You can connect again later.
+              Theorem stops following repositories for this account and removes
+              its repository and work item access. GitHub MCP tools keep their
+              separate connection.
             </AlertDialogDescription>
             {disconnect.error && (
               <p role="alert" className="text-sm text-error-ink">

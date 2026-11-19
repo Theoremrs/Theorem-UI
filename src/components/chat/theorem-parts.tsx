@@ -1,4 +1,4 @@
-// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part
+// SOURCING: @assistant-ui/react data renderers (useAssistantDataUI + dataRenderers.setFallbackDataUI), @tanstack/react-router CatchBoundary per part, coss ui Collapsible (base-ui) for the activity line's details, shadcn Trace (ReUI, Base UI build) for the reply's tool calls folded into one summary row, and the installed ToolFallback / ApprovalCard / ThinkingIndicator / Reasoning elements, ui/button for the artifact card actions, the terminal's openOf/pathOf and Follow's useRevealFile for the file a tool card opens in the IDE, scene-part.tsx for the theorem-scene part, the CRM's context-manifest-part.tsx for the theorem-context_manifest part (the saved records a reply was given) and record-change-proposal-part.tsx for proposed record changes and their outcomes
 //
 // Theorem message parts that are not text or tool calls arrive as data parts
 // named `theorem-<type>` (see @theoremharness/sdk/assistant-ui). This file
@@ -41,6 +41,12 @@ import {
 } from '@/components/artifacts/artifact-model'
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
+import { ContextManifestPart } from '@/components/crm/context-manifest-part'
+import { SkillLoadPart } from '@/components/chat/skill-load-part'
+import {
+  RecordChangeOutcomePart,
+  RecordChangeProposalPart,
+} from '@/components/crm/record-change-proposal-part'
 import { ProgramPart } from '@/components/chat/program-part'
 import { CompletionFooter } from '@/components/chat/run-footer'
 import { UserMarkdown } from '@/components/chat/user-markdown'
@@ -1126,6 +1132,12 @@ const RENDERERS = (
     ['theorem-user_input', UserInputPart],
     // A run's completion: why it stopped, and the way back up when a limit stopped it.
     ['theorem-completion', CompletionFooter],
+    // The saved records a reply was given, each at its saved revision, and what was held back.
+    ['theorem-context_manifest', ContextManifestPart],
+    ['theorem-skill_load', SkillLoadPart],
+    // A change the assistant proposes to a saved record: nothing is saved until the person approves.
+    ['theorem-record_change_proposal', RecordChangeProposalPart],
+    ['theorem-record_change_outcome', RecordChangeOutcomePart],
     ...DELEGATION_RENDERERS,
   ] satisfies Array<[string, DataMessagePartComponent]>
 )

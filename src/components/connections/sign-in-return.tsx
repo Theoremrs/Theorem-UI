@@ -12,6 +12,8 @@ import type {
   PendingSignIn,
 } from '@/components/connections/connection-return'
 import { connectionKeys } from '@/lib/theorem/connections'
+import { catalogKey } from '@/lib/theorem/catalog'
+import { installationKeys } from '@/lib/theorem/skill-installations'
 
 /** The Connections page reports a sign-in in its own place. */
 const REPORTS_ITS_OWN = '/settings/connections'
@@ -69,6 +71,8 @@ export function SignInNotice({
           onDone={(ended) => {
             setSignIn({ pending, outcome: ended })
             void client.invalidateQueries({ queryKey: connectionKeys.all })
+            void client.invalidateQueries({ queryKey: catalogKey })
+            void client.invalidateQueries({ queryKey: installationKeys })
             void client.invalidateQueries({ queryKey: LIFE_CONNECTORS })
           }}
         />

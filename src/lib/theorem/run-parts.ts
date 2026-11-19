@@ -41,6 +41,7 @@ const SHOWN_STEP_DATA = new Set([
   'theorem-delegation',
   'theorem-review',
   'theorem-intent',
+  'theorem-skill_load',
 ])
 
 export const isStepDataPart = (part: { type: string; name?: string }) =>

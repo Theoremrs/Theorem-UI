@@ -1,12 +1,13 @@
 // SOURCING: coss ui Checkbox, Input, Badge over the settings frame, fuzzysort (via ./search) for many repositories; lib/theorem/connections' saveRepositories (PUT /github/repositories)
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/coss/badge'
 import { Checkbox } from '@/components/coss/checkbox'
 import { Input } from '@/components/coss/input'
 import { SettingsBox } from '@/components/settings/settings-frame'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { describeError } from '@/lib/theorem/client'
-import { useGithubMutations } from '@/lib/theorem/connections'
+import { connectionKeys, useGithubMutations } from '@/lib/theorem/connections'
 import type {
   GithubConnection,
   GithubRepository,
@@ -27,6 +28,16 @@ const trackedOf = (github: GithubConnection) =>
 /** Which repositories Theorem follows. Nothing is saved until Save. */
 export function GithubRepositories({ github }: { github: GithubConnection }) {
   const { saveRepositories } = useGithubMutations()
+  const client = useQueryClient()
+  const [checking, setChecking] = useState(false)
+  const checkAgain = async () => {
+    setChecking(true)
+    try {
+      await client.invalidateQueries({ queryKey: connectionKeys.github })
+    } finally {
+      setChecking(false)
+    }
+  }
   const saved = trackedOf(github).toSorted()
   const signature = saved.join('\n')
   const total = github.installations.reduce(
@@ -53,10 +64,33 @@ export function GithubRepositories({ github }: { github: GithubConnection }) {
 
   if (github.installations.length === 0)
     return (
-      <p className="text-sm text-ink-muted">
-        GitHub shows Theorem no repositories yet. Install the Theorem app on an
-        account or organization in GitHub, then come back.
-      </p>
+      <div className="flex flex-col items-start gap-2">
+        <p className="text-sm text-ink-muted">
+          GitHub shows Theorem no repositories yet. Install the Theorem GitHub
+          App on an account or organization, choose the repositories it can
+          reach, then check again here.
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          {github.installUrl && (
+            <a
+              href={github.installUrl}
+              target="_blank"
+              rel="noreferrer"
+              className={buttonVariants({ size: 'sm' })}
+            >
+              Install the Theorem GitHub App
+            </a>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={checking}
+            onClick={() => void checkAgain()}
+          >
+            {checking ? 'Checking...' : 'Check again'}
+          </Button>
+        </div>
+      </div>
     )
 
   return (
@@ -102,7 +136,9 @@ export function GithubRepositories({ github }: { github: GithubConnection }) {
                     checked={draft.has(repo.fullName)}
                     onCheckedChange={(on) => toggle(repo.fullName, on)}
                   />
-                  <span className="min-w-0 flex-1 truncate">{repo.fullName}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {repo.fullName}
+                  </span>
                   {repo.private && <Badge variant="outline">Private</Badge>}
                 </label>
               ))}
@@ -131,7 +167,11 @@ export function GithubRepositories({ github }: { github: GithubConnection }) {
           {saveRepositories.isPending ? 'Saving...' : 'Save repositories'}
         </Button>
         {changed && !saveRepositories.isPending && (
-          <Button variant="ghost" size="sm" onClick={() => setDraft(new Set(saved))}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setDraft(new Set(saved))}
+          >
             Discard changes
           </Button>
         )}

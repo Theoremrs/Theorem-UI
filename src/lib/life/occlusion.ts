@@ -15,6 +15,26 @@ export interface ClientBox {
   bottom: number
 }
 
+/** True when a fresh measurement describes the same lines as the one already drawn. */
+export function sameClientBoxes(
+  current: readonly ClientBox[],
+  next: readonly ClientBox[],
+): boolean {
+  if (current.length !== next.length) return false
+  for (let index = 0; index < current.length; index++) {
+    const left = current[index]!
+    const right = next[index]!
+    if (
+      left.left !== right.left ||
+      left.top !== right.top ||
+      left.right !== right.right ||
+      left.bottom !== right.bottom
+    )
+      return false
+  }
+  return true
+}
+
 /** How far a glyph under a line of text fades: all but out, so the words read clean. */
 export const TEXT_QUIET = 0.97
 
