@@ -14,6 +14,8 @@ import { McpServers } from '@/components/connections/mcp-servers'
 import { OtherConnections } from '@/components/connections/other-connections'
 import { SettingsPage } from '@/components/settings/settings-frame'
 import { connectionKeys } from '@/lib/theorem/connections'
+import { catalogKey } from '@/lib/theorem/catalog'
+import { installationKeys } from '@/lib/theorem/skill-installations'
 
 const text = (value: unknown) => (typeof value === 'string' ? value : undefined)
 
@@ -49,6 +51,8 @@ function ConnectionsSettings() {
     // What was cached before the sign-in is out of date now, and the address
     // must not keep the one-time token.
     void client.invalidateQueries({ queryKey: connectionKeys.all })
+    void client.invalidateQueries({ queryKey: catalogKey })
+    void client.invalidateQueries({ queryKey: installationKeys })
     void navigate({ search: {}, replace: true })
   }, [arrived, client, navigate])
   const finished = useCallback(
@@ -56,6 +60,8 @@ function ConnectionsSettings() {
       setPending(undefined)
       setOutcome(ended)
       void client.invalidateQueries({ queryKey: connectionKeys.all })
+      void client.invalidateQueries({ queryKey: catalogKey })
+      void client.invalidateQueries({ queryKey: installationKeys })
     },
     [client],
   )
@@ -70,7 +76,7 @@ function ConnectionsSettings() {
         />
       )}
       <GithubSection />
-      <McpServers />
+      <McpServers excludeGithub />
       <OtherConnections />
     </SettingsPage>
   )

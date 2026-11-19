@@ -70,26 +70,15 @@ fn tag_color(theme: &Theme, tag: ThreadTag) -> Color {
 }
 
 /// What a row's state adds to its text: a thread waiting on the person is in the warning
-/// colour. Running and unread are said by the stripe, the words at the right and a bold title.
+/// colour, a tagged one in its tag's colour. Nothing is drawn at the row's edge: running,
+/// waiting and unread are said by a bold title and the words at the right.
 fn tint(theme: &Theme, t: &ThreadItem) -> Style {
     if t.needs_you.is_some() {
         theme.warning
+    } else if let Some(tag) = t.tag {
+        Style::default().fg(tag_color(theme, tag))
     } else {
         Style::default()
-    }
-}
-
-/// The edge stripe: the tag's color, else the state's.
-fn stripe(theme: &Theme, line: Style, t: &ThreadItem) -> Option<Style> {
-    if let Some(tag) = t.tag {
-        return Some(line.fg(tag_color(theme, tag)));
-    }
-    if t.needs_you.is_some() {
-        Some(line.patch(theme.warning))
-    } else if t.running {
-        Some(line.patch(theme.success))
-    } else {
-        None
     }
 }
 
@@ -250,7 +239,7 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
         };
         let lines = row.height().min(usize::from(bottom - y)) as u16;
         buf.set_style(Rect::new(area.x, y, area.width, lines), line);
-        // Column 0 is the stripe; the rest is indented by depth.
+        // Column 0 is a margin; the rest is indented by depth.
         let x0 = area.x + 1 + (row.depth() * 2) as u16;
         match row {
             Row::Label { text, .. } => {
@@ -305,9 +294,6 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 } else {
                     line
                 };
-                if let Some(s) = stripe(theme, base, t) {
-                    put(buf, area.x, y, right, "\u{258e}", s);
-                }
                 // A thread with rows under it is a drop-down; one with nothing under it is a
                 // file, empty until something has been said in it.
                 let mark = match open {
@@ -341,6 +327,8 @@ pub(super) fn view(p: &ThreadsPanel, area: Rect, buf: &mut Buffer, cx: &ViewCtx)
                 }
                 let room = usize::from(lx.saturating_sub(tx)).saturating_sub(1);
                 let title_style = if t.unread
+                    || t.running
+                    || t.needs_you.is_some()
                     || p.listing
                         .as_ref()
                         .is_some_and(|l| l.open.as_ref().is_some_and(|o| o.thread_id == t.id))

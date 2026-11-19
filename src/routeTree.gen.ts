@@ -38,6 +38,7 @@ import { Route as SettingsConnectionsRouteImport } from './routes/settings/conne
 import { Route as SettingsImportRouteImport } from './routes/settings/import'
 import { Route as SettingsKeysRouteImport } from './routes/settings/keys'
 import { Route as SettingsPluginsRouteImport } from './routes/settings/plugins'
+import { Route as SettingsProfileRouteImport } from './routes/settings/profile'
 import { Route as SettingsResponsesRouteImport } from './routes/settings/responses'
 import { Route as SettingsWorkRouteImport } from './routes/settings/work'
 import { Route as StoryIdRouteImport } from './routes/story.$id'
@@ -232,6 +233,11 @@ const SettingsKeysRoute = SettingsKeysRouteImport.update({
 const SettingsPluginsRoute = SettingsPluginsRouteImport.update({
   id: '/plugins',
   path: '/plugins',
+  getParentRoute: () => SettingsRoute,
+} as any)
+const SettingsProfileRoute = SettingsProfileRouteImport.update({
+  id: '/profile',
+  path: '/profile',
   getParentRoute: () => SettingsRoute,
 } as any)
 const SettingsResponsesRoute = SettingsResponsesRouteImport.update({
@@ -534,6 +540,7 @@ export interface FileRoutesByFullPath {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
@@ -612,6 +619,7 @@ export interface FileRoutesByTo {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
@@ -694,6 +702,7 @@ export interface FileRoutesById {
   '/settings/import': typeof SettingsImportRoute
   '/settings/keys': typeof SettingsKeysRoute
   '/settings/plugins': typeof SettingsPluginsRoute
+  '/settings/profile': typeof SettingsProfileRoute
   '/settings/responses': typeof SettingsResponsesRoute
   '/settings/work': typeof SettingsWorkRoute
   '/story/$id': typeof StoryIdRoute
@@ -777,6 +786,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
@@ -855,6 +865,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
@@ -936,6 +947,7 @@ export interface FileRouteTypes {
     | '/settings/import'
     | '/settings/keys'
     | '/settings/plugins'
+    | '/settings/profile'
     | '/settings/responses'
     | '/settings/work'
     | '/story/$id'
@@ -1251,6 +1263,13 @@ declare module '@tanstack/react-router' {
       path: '/plugins'
       fullPath: '/settings/plugins'
       preLoaderRoute: typeof SettingsPluginsRouteImport
+      parentRoute: typeof SettingsRoute
+    }
+    '/settings/profile': {
+      id: '/settings/profile'
+      path: '/profile'
+      fullPath: '/settings/profile'
+      preLoaderRoute: typeof SettingsProfileRouteImport
       parentRoute: typeof SettingsRoute
     }
     '/settings/responses': {
@@ -1666,6 +1685,7 @@ interface SettingsRouteChildren {
   SettingsImportRoute: typeof SettingsImportRoute
   SettingsKeysRoute: typeof SettingsKeysRoute
   SettingsPluginsRoute: typeof SettingsPluginsRoute
+  SettingsProfileRoute: typeof SettingsProfileRoute
   SettingsResponsesRoute: typeof SettingsResponsesRoute
   SettingsWorkRoute: typeof SettingsWorkRoute
   SettingsIndexRoute: typeof SettingsIndexRoute
@@ -1681,6 +1701,7 @@ const SettingsRouteChildren: SettingsRouteChildren = {
   SettingsImportRoute: SettingsImportRoute,
   SettingsKeysRoute: SettingsKeysRoute,
   SettingsPluginsRoute: SettingsPluginsRoute,
+  SettingsProfileRoute: SettingsProfileRoute,
   SettingsResponsesRoute: SettingsResponsesRoute,
   SettingsWorkRoute: SettingsWorkRoute,
   SettingsIndexRoute: SettingsIndexRoute,

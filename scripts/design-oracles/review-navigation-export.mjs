@@ -64,9 +64,9 @@ try {
           )
           await open.click()
           const drawer = page.locator(drawerSelector)
-          await drawer
-            .getByRole('button', { name: 'Close navigation', exact: true })
-            .click()
+          // The sheet has no close button by design (checklist SHELL-02);
+          // Escape, a press outside and a swipe close it.
+          await page.keyboard.press('Escape')
           await drawer.waitFor({ state: 'hidden' })
           // Keyboard activation must also work after the drawer has been closed.
           await open.focus()

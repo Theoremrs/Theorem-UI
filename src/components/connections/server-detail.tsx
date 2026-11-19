@@ -1,5 +1,6 @@
 // SOURCING: ui/dialog over Base UI Dialog, coss ui Switch, Input and Badge, lib/theorem/connections' queries and mutations; the tool list is the server's own, as Theorem discovered it
 import { useState } from 'react'
+import { Badge } from '@/components/coss/badge'
 import { Input } from '@/components/coss/input'
 import { Switch } from '@/components/coss/switch'
 import { Button } from '@/components/ui/button'
@@ -202,6 +203,34 @@ function Body({ server }: { server: McpServer }) {
           </p>
         )}
       </section>
+
+      {server.skills && server.skills.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">
+            Skills ({server.skills.length})
+          </h3>
+          <ul className="flex max-h-72 flex-col divide-y divide-separator overflow-y-auto rounded-lg border border-separator">
+            {server.skills.map((skill) => (
+              <li key={skill.uri} className="flex items-center gap-3 px-3 py-2">
+                <div className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-sm">{skill.name}</span>
+                  {skill.description && (
+                    <span className="line-clamp-2 text-xs text-ink-muted">
+                      {skill.description}
+                    </span>
+                  )}
+                </div>
+                {skill.dynamic && <Badge variant="outline">Dynamic</Badge>}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-ink-faint">
+            This server serves these workflow skills beside its tools. They
+            appear in the composer's Skills menu; picking one loads its
+            instructions from this server.
+          </p>
+        </section>
+      )}
     </div>
   )
 }

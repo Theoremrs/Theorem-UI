@@ -1,12 +1,14 @@
-// SOURCING: none — the settings route table, pure data
+// SOURCING: none — the settings route table, pure data; lucide-react for the one mark the owner's icon set does not hold
+import { UserRound } from 'lucide-react'
 import { Icon } from '@/components/icons'
 
 /** Settings' sections, grouped as the nav shows them. Each path is a file route. */
 export const SETTINGS_GROUPS = [
   {
-    // How Theorem looks, who keeps you company and how it answers: yours alone.
+    // Who you are to your Theorem, how it looks, who keeps you company and how it answers: yours alone.
     label: 'You',
     sections: [
+      { path: '/settings/profile', label: 'Profile', Mark: UserRound },
       { path: '/settings/appearance', label: 'Appearance', Mark: Icon.Sun },
       { path: '/settings/companions', label: 'Theo and Kit', Mark: Icon.Sparkle },
       { path: '/settings/responses', label: 'Responses', Mark: Icon.ReadAloud },

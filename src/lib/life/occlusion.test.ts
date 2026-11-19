@@ -1,5 +1,12 @@
 import { expect, test } from 'bun:test'
-import { occlusionMask } from './occlusion'
+import { occlusionMask, sameClientBoxes } from './occlusion'
+
+test('an unchanged line measurement compares equal and a moved line does not', () => {
+  const line = { left: 1, top: 2, right: 3, bottom: 4 }
+  expect(sameClientBoxes([line], [{ ...line }])).toBe(true)
+  expect(sameClientBoxes([line], [{ ...line, top: 8 }])).toBe(false)
+  expect(sameClientBoxes([], [line])).toBe(false)
+})
 
 test('a covered cell is fully quiet and an uncovered one untouched', () => {
   const mask = occlusionMask([{ x0: 1, y0: 1, x1: 3, y1: 2 }], 6, 4, 0)

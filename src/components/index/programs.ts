@@ -39,18 +39,37 @@ export const DEFAULT_PREFIX = 'default:'
 export const ATLAS_VIEW_ID = 'default:atlas'
 export const RECORDS_PREFIX = 'default:records:'
 export const DATA_MODEL_VIEW_ID = 'default:data-model'
+/** Where records begin: the record types to add, before there are any. */
+export const RECORDS_HOME_VIEW_ID = 'default:records'
+/** One record's page: `default:record:<name_singular>/<id>`. */
+export const RECORD_PAGE_PREFIX = 'default:record:'
 
 export const recordsViewId = (nameSingular: string) =>
   `${RECORDS_PREFIX}${nameSingular}`
+export const recordPageViewId = (nameSingular: string, recordId: string) =>
+  `${RECORD_PAGE_PREFIX}${nameSingular}/${recordId}`
+export function parseRecordPageViewId(viewId: string | undefined) {
+  if (!viewId?.startsWith(RECORD_PAGE_PREFIX)) return undefined
+  const rest = viewId.slice(RECORD_PAGE_PREFIX.length)
+  const slash = rest.indexOf('/')
+  if (slash <= 0 || slash === rest.length - 1) return undefined
+  return { nameSingular: rest.slice(0, slash), recordId: rest.slice(slash + 1) }
+}
 /** The data model, or one object in it. */
 export const dataModelViewId = (focus?: string) =>
   focus ? `${DATA_MODEL_VIEW_ID}:${focus}` : DATA_MODEL_VIEW_ID
 
 /** Programs that draw tables, diagrams or the work tracker's screens take the view's full width. */
 export const isWideProgram = (program: string) =>
-  /\b(RecordTable|DataModel|Work(View|List|Board|ViewBar|Inbox|Item|Projects|Project))\(/.test(
+  /\b(RecordTable|RecordPage|RecordsHome|DataModel|Work(View|List|Board|ViewBar|Inbox|Item|Projects|Project))\(/.test(
     program,
   )
+/**
+ * A program that is one record table, one record page or the records home
+ * is the whole view: it draws its own header and scrolls inside itself.
+ */
+export const isFullBleedProgram = (program: string) =>
+  /^\s*root = (RecordTable|RecordPage|RecordsHome)\([^\n]*\)\s*$/.test(program)
 export const isDefaultView = (viewId: string) =>
   viewId.startsWith(DEFAULT_PREFIX)
 
@@ -147,6 +166,37 @@ export const recordsView = (nameSingular: string, labelPlural?: string) =>
     }),
   )
 
+/** One record in full: its properties, what changed, and what it is tied to. */
+export const recordPageView = (
+  nameSingular: string,
+  recordId: string,
+  labelSingular?: string,
+) =>
+  defaultView(
+    recordPageViewId(nameSingular, recordId),
+    { kind: 'home' },
+    revision({
+      title: labelSingular ?? nameSingular,
+      purpose: `One ${(labelSingular ?? nameSingular).toLowerCase()} record in full.`,
+      program: `root = RecordPage(${JSON.stringify(nameSingular)}, ${JSON.stringify(recordId)})`,
+      bindings: {},
+    }),
+  )
+
+/** The record types Theorem can hold, and adding them. */
+export const recordsHomeView = () =>
+  defaultView(
+    RECORDS_HOME_VIEW_ID,
+    { kind: 'home' },
+    revision({
+      title: 'Records',
+      purpose:
+        'The people, organizations and promises Theorem keeps as records, and adding them.',
+      program: 'root = RecordsHome()',
+      bindings: {},
+    }),
+  )
+
 /** The schema: what objects there are, how they relate, and what is not declared yet. */
 export const dataModelView = (focus?: string, labelPlural?: string) =>
   defaultView(
@@ -200,8 +250,17 @@ export function resolveDefaultView(
   viewId: string,
   collectionName?: (collectionId: string) => string | undefined,
   objectLabel?: (nameSingular: string) => string | undefined,
+  objectLabelSingular?: (nameSingular: string) => string | undefined,
 ): IndexView | undefined {
   if (viewId === ATLAS_VIEW_ID) return atlasView()
+  if (viewId === RECORDS_HOME_VIEW_ID) return recordsHomeView()
+  const page = parseRecordPageViewId(viewId)
+  if (page)
+    return recordPageView(
+      page.nameSingular,
+      page.recordId,
+      objectLabelSingular?.(page.nameSingular),
+    )
   if (viewId.startsWith(RECORDS_PREFIX)) {
     const name = viewId.slice(RECORDS_PREFIX.length)
     return name ? recordsView(name, objectLabel?.(name)) : undefined

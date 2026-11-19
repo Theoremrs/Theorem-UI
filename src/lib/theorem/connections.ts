@@ -18,6 +18,8 @@ import {
 import type { QueryClient, QueryKey } from '@tanstack/react-query'
 import { mutate } from './client'
 import { theoremJson } from './passthrough'
+import { catalogKey } from './catalog'
+import { installationKeys } from './skill-installations'
 
 export type ConnectionStatus =
   'connected' | 'disconnected' | 'needs_auth' | 'error'
@@ -60,6 +62,8 @@ export type GithubInstallation = {
 
 export type GithubConnection = Connection & {
   installations: GithubInstallation[]
+  /** The Theorem GitHub App's installation page, when the deployment names it. */
+  installUrl?: string
   availableActions: {
     name: string
     title: string
@@ -124,6 +128,14 @@ export type McpServer = Connection & {
   tools: McpTool[]
   /** The server declared more tools than Theorem keeps; absent before the first discovery. */
   toolsTruncated?: boolean
+  /** The skills the server serves through Skills over MCP (SEP-2640);
+   * absent before the first discovery, empty when it declares none. */
+  skills?: {
+    uri: string
+    name: string
+    description: string
+    dynamic: boolean
+  }[]
   discoveredAt?: string
 }
 
@@ -328,7 +340,11 @@ const withServer = (servers: McpServer[], next: McpServer) =>
 export function useGithubMutations() {
   const client = useQueryClient()
   const settle = () =>
-    client.invalidateQueries({ queryKey: connectionKeys.all })
+    Promise.all([
+      client.invalidateQueries({ queryKey: connectionKeys.all }),
+      client.invalidateQueries({ queryKey: catalogKey }),
+      client.invalidateQueries({ queryKey: installationKeys }),
+    ])
   const remember = (next: GithubConnection) =>
     client.setQueryData(connectionKeys.github, next)
 
@@ -370,7 +386,11 @@ export function useGithubMutations() {
 export function useMcpMutations() {
   const client = useQueryClient()
   const settle = () =>
-    client.invalidateQueries({ queryKey: connectionKeys.all })
+    Promise.all([
+      client.invalidateQueries({ queryKey: connectionKeys.all }),
+      client.invalidateQueries({ queryKey: catalogKey }),
+      client.invalidateQueries({ queryKey: installationKeys }),
+    ])
   const remember = (next: McpServer) => {
     client.setQueryData<McpServer[]>(connectionKeys.mcp, (servers) =>
       servers?.some((server) => server.id === next.id)

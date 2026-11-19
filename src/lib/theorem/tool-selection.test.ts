@@ -104,6 +104,39 @@ test('every connection off is a choice, not the default', () => {
   expect(connectionsOn(roster, none).size).toBe(0)
 })
 
+// The boundary contract (Theorem docs/plans/connections/CONTRACT.md section
+// C): a present `tools` list is the complete allowlist. Unchecking the last
+// tool of a selected connection must reach Theorem as a list that admits
+// none of that connection's tools, never as "no reference, keep them all".
+test('unchecking the last tool of a connection sends a list that keeps none of it', () => {
+  const selection = changeSelection(roster, undefined, {
+    tool: 'mcp:abc/search',
+    on: false,
+  })
+  expect(selection).toEqual({
+    connections: ['github', 'mcp:abc'],
+    tools: ['github/search_issues', 'github/create_issue'],
+  })
+  expect([...toolsOn(roster, selection)]).toEqual([
+    'github/search_issues',
+    'github/create_issue',
+  ])
+})
+
+test('unchecking every tool sends an empty list, which is zero tools', () => {
+  let selection = changeSelection(roster, undefined, {
+    connection: 'github',
+    on: false,
+  })
+  selection = changeSelection(roster, selection, {
+    tool: 'mcp:abc/search',
+    on: false,
+  })
+  expect(selection).toEqual({ connections: ['mcp:abc'], tools: [] })
+  expect(connectionsOn(roster, selection)).toEqual(new Set(['mcp:abc']))
+  expect(toolsOn(roster, selection).size).toBe(0)
+})
+
 test('a connection or tool that no longer exists drops out of a stored choice', () => {
   expect(
     reconcile(roster, {

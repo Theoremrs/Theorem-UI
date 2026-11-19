@@ -1,4 +1,4 @@
-// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the turn's model reads which skill was asked for and loads it with skill_get, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
+// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the runtime sends its id in the turn's structured skill selection and Theorem loads it before execution, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
 import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
 import { Toggle } from '@base-ui/react/toggle'
 import { useRef, useState } from 'react'
@@ -39,8 +39,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useCatalogEntries } from '@/lib/theorem/catalog'
+import { skillOrigin, useCatalogEntries } from '@/lib/theorem/catalog'
+import type { SkillEntry } from '@/lib/theorem/catalog'
 import { useConnectionTools } from '@/lib/theorem/connections'
+import { useSkillInstallations } from '@/lib/theorem/skill-installations'
 import {
   changeSelection,
   connectionsOn,
@@ -84,6 +86,62 @@ export function ComposerPlus() {
   const selection = reconcile(roster, stored, base, baseKnown)
   const on = connectionsOn(roster, selection ?? base)
   const { skills } = useCatalogEntries()
+  const installations = useSkillInstallations(
+    skills.some(
+      (skill) =>
+        skill.source?.kind === 'import' && Boolean(skill.source.installationId),
+    ),
+  )
+  const unavailableSkill = (
+    skill: SkillEntry,
+  ): { label: string; detail: string } | undefined => {
+    const checking = {
+      label: 'checking',
+      detail: 'Checking the connections this skill can use.',
+    }
+    if (skill.source?.kind === 'mcp') {
+      if (!baseKnown || tools.isPending) return checking
+      if (on.has(skill.source.connection)) return undefined
+      return {
+        label: 'off',
+        detail: `Turn on ${skillOrigin(skill)} in Connectors to use this skill.`,
+      }
+    }
+    if (skill.source?.kind !== 'import' || !skill.source.installationId)
+      return undefined
+    if (installations.isPending) return checking
+    const installationId = skill.source.installationId
+    const installation = installations.data?.find(
+      (item) => item.installationId === installationId,
+    )
+    if (installations.error || !installation)
+      return {
+        label: 'unavailable',
+        detail: 'Open Plugins and skills to check this installation.',
+      }
+    if (installation.requirements.some((item) => item.status !== 'ready'))
+      return {
+        label: 'needs setup',
+        detail:
+          'Finish the package connection setup in Plugins and skills to use this skill.',
+      }
+    const required = Object.values(installation.connections)
+    if (required.length && !baseKnown) return checking
+    // Match the actual send: a stored choice, then the project default, then
+    // all usable connections. A resource-only server may have no tools row.
+    const effective = stored ?? base
+    const off = required.filter(
+      (id) => effective && !effective.connections.includes(id),
+    )
+    if (!off.length) return undefined
+    const names = off.map(
+      (id) => roster.find((group) => group.connectionId === id)?.label ?? id,
+    )
+    return {
+      label: 'off',
+      detail: `Turn on ${names.join(', ')} in Connectors to use this skill.`,
+    }
+  }
 
   const setCode = (checked: boolean) => {
     setCodeMode(threadKey, checked)
@@ -91,7 +149,10 @@ export function ComposerPlus() {
     // (beside or under the conversation, so the composer stays in view); one
     // already open stays put, and turning the mode off leaves it open.
     const shell = useShell.getState()
-    if (checked && (shell.workbench === undefined || shell.workbench === 'closed'))
+    if (
+      checked &&
+      (shell.workbench === undefined || shell.workbench === 'closed')
+    )
       shell.setWorkbench(shell.lastCompanion)
   }
 
@@ -218,35 +279,40 @@ export function ComposerPlus() {
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>From Theorem</MenuGroupLabel>
-                      {skills.map((skill) => (
-                        <MenuItem
-                          key={skill.id}
-                          title={skill.description}
-                          // Written once the menu has closed, so the caret lands in the draft.
-                          onClick={() =>
-                            (next.current = () =>
-                              insertInComposer(
-                                anchor.current,
-                                `${defaultDirectiveFormatter.serialize({
-                                  id: skill.id,
-                                  type: 'skill',
-                                  label: skill.name,
-                                })} `,
-                              ))
-                          }
-                        >
-                          <Icon.SkillControl />
-                          <span className="min-w-0 flex-1 truncate">
-                            {skill.name}
-                          </span>
-                          {skill.plugin && (
-                            <span className="ms-2 shrink-0 truncate text-xs text-ink-muted">
-                              {skill.plugin}
+                      <MenuGroupLabel>Available skills</MenuGroupLabel>
+                      {skills.map((skill) => {
+                        const blocked = unavailableSkill(skill)
+                        return (
+                          <MenuItem
+                            key={skill.id}
+                            disabled={Boolean(blocked)}
+                            title={blocked?.detail ?? skill.description}
+                            // Written once the menu has closed, so the caret lands in the draft.
+                            onClick={() =>
+                              (next.current = () =>
+                                insertInComposer(
+                                  anchor.current,
+                                  `${defaultDirectiveFormatter.serialize({
+                                    id: skill.id,
+                                    type: 'skill',
+                                    label: skill.name,
+                                  })} `,
+                                ))
+                            }
+                          >
+                            <Icon.SkillControl />
+                            <span className="min-w-0 flex-1 truncate">
+                              {skill.name}
                             </span>
-                          )}
-                        </MenuItem>
-                      ))}
+                            {skillOrigin(skill) && (
+                              <span className="ms-2 shrink-0 truncate text-xs text-ink-muted">
+                                {skillOrigin(skill)}
+                                {blocked ? ` · ${blocked.label}` : ''}
+                              </span>
+                            )}
+                          </MenuItem>
+                        )
+                      })}
                     </MenuGroup>
                   </>
                 )}
