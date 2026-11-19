@@ -60,6 +60,8 @@ export type GithubInstallation = {
 
 export type GithubConnection = Connection & {
   installations: GithubInstallation[]
+  /** The Theorem GitHub App's installation page, when the deployment names it. */
+  installUrl?: string
   availableActions: {
     name: string
     title: string
