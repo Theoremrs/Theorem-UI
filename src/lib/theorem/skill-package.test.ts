@@ -216,3 +216,21 @@ test('MCP bundles are reported as unsupported without fetching or executing them
   ])
   expect(result.request.unsupported).toEqual(result.notices)
 })
+
+test('a nested plugin skill must match its directory and sends its exact entrypoint path', async () => {
+  await expect(
+    readSkillPackage([
+      file('plugin.json', '{"name":"review-pack"}'),
+      file('skills/wrong-directory/SKILL.md', markdown('review')),
+    ]),
+  ).rejects.toThrow('must match its directory')
+  const root = await readSkillPackage([
+    file('plugin.json', '{"name":"root-pack","skills":"."}'),
+    file('SKILL.md', markdown('review')),
+    file('skills/triage/SKILL.md', markdown('triage')),
+  ])
+  expect(root.request.skills?.map((skill) => skill.path)).toEqual([
+    'SKILL.md',
+    'skills/triage/SKILL.md',
+  ])
+})

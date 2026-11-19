@@ -104,6 +104,7 @@ beforeEach(() => {
           ? [{ name: 'docs', status: 'needs_setup' }]
           : [],
         unsupported: body.unsupported ?? [],
+        preserved,
       })
       installed = [receipt]
       return receipt
@@ -306,10 +307,12 @@ test('removal waits for confirmation and reports shared skills preserved by the 
   await press(await waitFor(() => button('Remove')))
   expect(seen).toHaveLength(0)
   expect(text()).toContain(
-    'Shared skills and existing connections stay available.',
+    'Locally edited or shared skills and existing connections stay available.',
   )
   await press(button('Remove installation')!)
-  await waitFor(() => text().includes('Shared skills were kept.'))
+  await waitFor(() =>
+    text().includes('Locally edited or shared skills were kept.'),
+  )
   expect(seen).toHaveLength(1)
   expect(seen[0]).toMatchObject({
     method: 'DELETE',
@@ -329,3 +332,53 @@ test('a refused import stays open with its review and a retry action', async () 
   expect(text()).toContain('One skill')
   expect(button('Done')).toBeUndefined()
 })
+
+test('an update reports locally edited skills retained outside the installation', async () => {
+  installed = [fixture()]
+  preserved = ['skill:local-edits']
+  await mount()
+  await press(await waitFor(() => button('Update')))
+  await choose([file('SKILL.md', markdown)])
+  await press(button('Update installation')!)
+  await waitFor(() => text().includes('Updated review'))
+  const details = document.querySelector('[role="dialog"] details[open]')
+  expect(details?.textContent).toContain(
+    'Kept 1 locally edited or shared skill.',
+  )
+  expect(details?.textContent).toContain('skill:local-edits')
+  expect(details?.textContent).toContain(
+    'These remain available separately from this installation.',
+  )
+})
+
+test.each(['__proto__', 'constructor'])(
+  'a declared server named %s is mapped as an ordinary own key',
+  async (name) => {
+    installed = [
+      fixture({
+        kind: 'plugin',
+        status: 'needs_setup',
+        requirements: [{ name, status: 'needs_setup' }],
+      }),
+    ]
+    await mount()
+    await press(await waitFor(() => button('Set up')))
+    await press(
+      await waitFor(() =>
+        document.querySelector('[aria-label="Connection for ' + name + '"]'),
+      ),
+    )
+    await press(
+      await waitFor(() =>
+        [...document.querySelectorAll('[role="option"]')].find((item) =>
+          item.textContent.includes('Docs server'),
+        ),
+      ),
+    )
+    await press(button('Save connections')!)
+    await waitFor(() => seen.length)
+    const body = seen[0]!.body as { connections: Record<string, string> }
+    expect(Object.keys(body.connections)).toEqual([name])
+    expect(body.connections[name]).toBe('mcp:docs')
+  },
+)

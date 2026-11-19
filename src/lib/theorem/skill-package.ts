@@ -129,6 +129,14 @@ export async function readSkillPackage(
       throw new Error(`${path} is larger than 256 KiB.`)
     const markdown = await file.text()
     const name = skillName(markdown, path)
+    const segments = path.split('/')
+    if (segments.at(-1) !== 'SKILL.md')
+      throw new Error(`${path} must be named SKILL.md.`)
+    const parent = segments.at(-2)
+    if (parent && parent !== name)
+      throw new Error(
+        `${path}: the skill name "${name}" must match its directory "${parent}".`,
+      )
     used.add(path)
     const prefix = path.includes('/')
       ? path.slice(0, path.lastIndexOf('/') + 1)
@@ -152,7 +160,12 @@ export async function readSkillPackage(
       children.push(await supportingFile(child.slice(prefix.length), source))
       used.add(child)
     }
-    return { name, markdown, ...(children.length ? { files: children } : {}) }
+    return {
+      name,
+      markdown,
+      path,
+      ...(children.length ? { files: children } : {}),
+    }
   }
   const manifestPath = ['.claude-plugin/plugin.json', 'plugin.json'].find(
     (path) => files.has(path),

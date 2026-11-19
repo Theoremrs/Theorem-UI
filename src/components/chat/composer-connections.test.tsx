@@ -101,7 +101,7 @@ const projectRoutes: FakeRoutes = {
   'GET /api/chat/v1/projects/:projectId/threads': () => ({ items: [] }),
 }
 
-const projectContext = (connections: string[] | null): FakeRoutes => ({
+const projectContext = (connections: readonly string[] | null): FakeRoutes => ({
   'GET /api/chat/v1/projects/:projectId/context': ({ projectId }) => ({
     schema: 'theorem-chat-project-context/1',
     projectId,
@@ -633,4 +633,148 @@ test('an enabled skill-only MCP connection stays selectable even with no tools',
   expect(written).toEqual([
     ':skill[Review from team]{name=mcp:skills/skill://review/SKILL.md} ',
   ])
+})
+
+test.each([
+  {
+    state: 'off for the project',
+    project: ['github'],
+    readiness: 'ready',
+    disabled: true,
+    label: 'off',
+  },
+  {
+    state: 'on for the project',
+    project: ['mcp:abc'],
+    readiness: 'ready',
+    disabled: false,
+    label: '',
+  },
+  {
+    state: 'still awaiting connection setup',
+    project: ['mcp:abc'],
+    readiness: 'needs_setup',
+    disabled: true,
+    label: 'needs setup',
+  },
+])(
+  'an imported skill is $state according to its installation bindings',
+  async ({ project, readiness, disabled, label }) => {
+    const { container } = await mount({
+      'GET /api/connections/v1/tools': () => ({ groups: roster }),
+      ...projectContext(project),
+      'GET /api/chat/v1/skills': () => ({
+        skills: [
+          {
+            id: 'skill:imported',
+            name: 'Package review',
+            plugin: 'Review package',
+            source: {
+              kind: 'import',
+              installationId: 'install:review',
+              source: 'file:review',
+              version: '1.0',
+            },
+          },
+        ],
+      }),
+      'GET /api/chat/v1/skill-installations': () => ({
+        installations: [
+          {
+            installationId: 'install:review',
+            name: 'Review package',
+            source: 'file:review',
+            kind: 'plugin',
+            revision: 1,
+            status: readiness,
+            skills: [{ id: 'skill:imported', name: 'Package review' }],
+            connections: { docs: 'mcp:abc' },
+            requirements: [
+              { name: 'docs', connectionId: 'mcp:abc', status: readiness },
+            ],
+            unsupported: [],
+          },
+        ],
+      }),
+    })
+    await openSkills(container)
+    const review = [
+      ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+    ].find((item) => item.textContent.includes('Package review'))!
+    expect(review.getAttribute('aria-disabled') === 'true').toBe(disabled)
+    expect(review.textContent).toContain('Review package')
+    if (disabled) expect(review.textContent).toContain(' · ' + label)
+    if (label === 'off') expect(review.title).toContain('Turn on Docs server')
+  },
+)
+
+test('an imported skill can use an admitted resource-only connection without a tools row', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: [] }),
+    ...projectContext(null),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'skill:resource',
+          name: 'Read shared guidance',
+          plugin: 'Guidance',
+          source: {
+            kind: 'import',
+            installationId: 'install:guidance',
+            source: 'file:guidance',
+            version: '1.0',
+          },
+        },
+      ],
+    }),
+    'GET /api/chat/v1/skill-installations': () => ({
+      installations: [
+        {
+          installationId: 'install:guidance',
+          name: 'Guidance',
+          source: 'file:guidance',
+          kind: 'plugin',
+          revision: 1,
+          status: 'ready',
+          skills: [{ id: 'skill:resource', name: 'Read shared guidance' }],
+          connections: { docs: 'mcp:resources' },
+          requirements: [
+            { name: 'docs', connectionId: 'mcp:resources', status: 'ready' },
+          ],
+          unsupported: [],
+        },
+      ],
+    }),
+  })
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('Read shared guidance'))!
+  expect(review.getAttribute('aria-disabled')).not.toBe('true')
+})
+
+test('a locally edited skill detached from its package keeps no package connection dependency', async () => {
+  const { container } = await mount({
+    'GET /api/connections/v1/tools': () => ({ groups: [] }),
+    ...projectContext([]),
+    'GET /api/chat/v1/skills': () => ({
+      skills: [
+        {
+          id: 'skill:local',
+          name: 'My review',
+          source: {
+            kind: 'import',
+            installationId: null,
+            source: 'file:review',
+            version: '1.0',
+          },
+        },
+      ],
+    }),
+  })
+  await openSkills(container)
+  const review = [
+    ...document.querySelectorAll<HTMLElement>('[role="menuitem"]'),
+  ].find((item) => item.textContent.includes('My review'))!
+  expect(review.getAttribute('aria-disabled')).not.toBe('true')
 })

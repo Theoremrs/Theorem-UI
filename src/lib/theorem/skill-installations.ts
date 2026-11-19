@@ -18,6 +18,7 @@ export type SkillFile = {
 export type ImportedSkill = {
   name: string
   markdown: string
+  path?: string
   files?: SkillFile[]
 }
 export type SkillImport = {
@@ -45,6 +46,7 @@ export type SkillInstallation = {
     status: 'ready' | 'needs_setup'
   }[]
   unsupported: string[]
+  preserved?: string[]
 }
 
 const path = '/api/chat/v1/skill-installations'
@@ -75,7 +77,8 @@ export const installationsQuery = queryOptions({
   queryKey: installationKeys,
   queryFn: async () => (await installationsApi.list()).installations,
 })
-export const useSkillInstallations = () => useQuery(installationsQuery)
+export const useSkillInstallations = (enabled = true) =>
+  useQuery({ ...installationsQuery, enabled })
 
 export function useSkillInstallationMutations() {
   const client = useQueryClient()

@@ -187,8 +187,8 @@ export function SkillInstallations() {
           <AlertDialogHeader>
             <AlertDialogTitle>Remove {removing?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove this installation and its own skills. Shared skills and
-              existing connections stay available.
+              Remove this installation and its unchanged skills. Locally edited
+              or shared skills and existing connections stay available.
             </AlertDialogDescription>
             {remove.error && (
               <p role="alert" className="text-sm text-error-ink">
@@ -208,7 +208,7 @@ export function SkillInstallations() {
                 remove.mutate(removing.installationId, {
                   onSuccess: (result) => {
                     setNotice(
-                      `Removed ${removing.name}.${result.preserved.length ? ' Shared skills were kept.' : ''}`,
+                      `Removed ${removing.name}.${result.preserved.length ? ' Locally edited or shared skills were kept.' : ''}`,
                     )
                     setRemoving(undefined)
                   },
@@ -226,12 +226,14 @@ export function SkillInstallations() {
 
 export function InstallationDetails({
   installation,
+  open,
 }: {
   installation: SkillInstallation
+  open?: boolean
 }) {
-  const { requirements = [], unsupported = [] } = installation
+  const { requirements = [], unsupported = [], preserved = [] } = installation
   return (
-    <details className="px-3 pb-3 text-xs text-ink-muted">
+    <details open={open} className="px-3 pb-3 text-xs text-ink-muted">
       <summary className="cursor-pointer py-1">
         Included skills and setup
       </summary>
@@ -246,6 +248,22 @@ export function InstallationDetails({
           </li>
         ))}
       </ul>
+      {preserved.length > 0 && (
+        <div role="status" className="mt-3">
+          <p className="font-medium text-ink">
+            Kept {preserved.length} locally edited or shared{' '}
+            {preserved.length === 1 ? 'skill' : 'skills'}.
+          </p>
+          <p>These remain available separately from this installation.</p>
+          <ul className="mt-1 max-h-40 list-inside list-disc overflow-auto">
+            {preserved.map((id) => (
+              <li key={id} className="wrap-anywhere">
+                {id}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {unsupported.length > 0 && (
         <div className="mt-3">
           <p className="font-medium text-ink">Not installed</p>
@@ -318,11 +336,13 @@ function ImportForm({
       setSource(updating?.source ?? next.request.source)
       setBindings(
         Object.fromEntries(
-          next.requirements.flatMap((name) =>
-            updating?.connections[name]
-              ? [[name, updating.connections[name]]]
-              : [],
-          ),
+          next.requirements.flatMap((name) => {
+            const connection =
+              updating && Object.hasOwn(updating.connections, name)
+                ? updating.connections[name]
+                : undefined
+            return connection ? [[name, connection]] : []
+          }),
         ),
       )
     } catch (failure) {
@@ -349,7 +369,7 @@ function ImportForm({
             are registered with Theorem.
           </DialogDescription>
         </DialogHeader>
-        <InstallationDetails installation={install.data} />
+        <InstallationDetails installation={install.data} open />
         <DialogFooter>
           <Button onClick={onDone}>Done</Button>
         </DialogFooter>
@@ -527,12 +547,16 @@ function ConnectionBindings({
         <div key={name} className="flex flex-col gap-1 text-sm">
           <span>{name}</span>
           <Select
-            value={bindings[name] ?? ''}
+            value={Object.hasOwn(bindings, name) ? (bindings[name] ?? '') : ''}
             onValueChange={(value) => {
-              const next = { ...bindings }
-              if (value) next[name] = value
-              else delete next[name]
-              onChange(next)
+              // Declared server names are data, including names such as
+              // "__proto__"; construct own entries instead of setting a prototype.
+              onChange(
+                Object.fromEntries([
+                  ...Object.entries(bindings).filter(([key]) => key !== name),
+                  ...(value ? [[name, value]] : []),
+                ]),
+              )
             }}
             disabled={disabled}
           >

@@ -42,6 +42,7 @@ import {
 import { skillOrigin, useCatalogEntries } from '@/lib/theorem/catalog'
 import type { SkillEntry } from '@/lib/theorem/catalog'
 import { useConnectionTools } from '@/lib/theorem/connections'
+import { useSkillInstallations } from '@/lib/theorem/skill-installations'
 import {
   changeSelection,
   connectionsOn,
@@ -85,9 +86,62 @@ export function ComposerPlus() {
   const selection = reconcile(roster, stored, base, baseKnown)
   const on = connectionsOn(roster, selection ?? base)
   const { skills } = useCatalogEntries()
-  const connectionOff = (skill: SkillEntry) =>
-    skill.source?.kind === 'mcp' &&
-    (!baseKnown || !on.has(skill.source.connection))
+  const installations = useSkillInstallations(
+    skills.some(
+      (skill) =>
+        skill.source?.kind === 'import' && Boolean(skill.source.installationId),
+    ),
+  )
+  const unavailableSkill = (
+    skill: SkillEntry,
+  ): { label: string; detail: string } | undefined => {
+    const checking = {
+      label: 'checking',
+      detail: 'Checking the connections this skill can use.',
+    }
+    if (skill.source?.kind === 'mcp') {
+      if (!baseKnown || tools.isPending) return checking
+      if (on.has(skill.source.connection)) return undefined
+      return {
+        label: 'off',
+        detail: `Turn on ${skillOrigin(skill)} in Connectors to use this skill.`,
+      }
+    }
+    if (skill.source?.kind !== 'import' || !skill.source.installationId)
+      return undefined
+    if (installations.isPending) return checking
+    const installationId = skill.source.installationId
+    const installation = installations.data?.find(
+      (item) => item.installationId === installationId,
+    )
+    if (installations.error || !installation)
+      return {
+        label: 'unavailable',
+        detail: 'Open Plugins and skills to check this installation.',
+      }
+    if (installation.requirements.some((item) => item.status !== 'ready'))
+      return {
+        label: 'needs setup',
+        detail:
+          'Finish the package connection setup in Plugins and skills to use this skill.',
+      }
+    const required = Object.values(installation.connections)
+    if (required.length && !baseKnown) return checking
+    // Match the actual send: a stored choice, then the project default, then
+    // all usable connections. A resource-only server may have no tools row.
+    const effective = stored ?? base
+    const off = required.filter(
+      (id) => effective && !effective.connections.includes(id),
+    )
+    if (!off.length) return undefined
+    const names = off.map(
+      (id) => roster.find((group) => group.connectionId === id)?.label ?? id,
+    )
+    return {
+      label: 'off',
+      detail: `Turn on ${names.join(', ')} in Connectors to use this skill.`,
+    }
+  }
 
   const setCode = (checked: boolean) => {
     setCodeMode(threadKey, checked)
@@ -226,40 +280,39 @@ export function ComposerPlus() {
                     <MenuSeparator />
                     <MenuGroup>
                       <MenuGroupLabel>Available skills</MenuGroupLabel>
-                      {skills.map((skill) => (
-                        <MenuItem
-                          key={skill.id}
-                          disabled={connectionOff(skill)}
-                          title={
-                            connectionOff(skill)
-                              ? `Turn on ${skillOrigin(skill)} in Connectors to use this skill.`
-                              : skill.description
-                          }
-                          // Written once the menu has closed, so the caret lands in the draft.
-                          onClick={() =>
-                            (next.current = () =>
-                              insertInComposer(
-                                anchor.current,
-                                `${defaultDirectiveFormatter.serialize({
-                                  id: skill.id,
-                                  type: 'skill',
-                                  label: skill.name,
-                                })} `,
-                              ))
-                          }
-                        >
-                          <Icon.SkillControl />
-                          <span className="min-w-0 flex-1 truncate">
-                            {skill.name}
-                          </span>
-                          {skillOrigin(skill) && (
-                            <span className="ms-2 shrink-0 truncate text-xs text-ink-muted">
-                              {skillOrigin(skill)}
-                              {connectionOff(skill) ? ' · off' : ''}
+                      {skills.map((skill) => {
+                        const blocked = unavailableSkill(skill)
+                        return (
+                          <MenuItem
+                            key={skill.id}
+                            disabled={Boolean(blocked)}
+                            title={blocked?.detail ?? skill.description}
+                            // Written once the menu has closed, so the caret lands in the draft.
+                            onClick={() =>
+                              (next.current = () =>
+                                insertInComposer(
+                                  anchor.current,
+                                  `${defaultDirectiveFormatter.serialize({
+                                    id: skill.id,
+                                    type: 'skill',
+                                    label: skill.name,
+                                  })} `,
+                                ))
+                            }
+                          >
+                            <Icon.SkillControl />
+                            <span className="min-w-0 flex-1 truncate">
+                              {skill.name}
                             </span>
-                          )}
-                        </MenuItem>
-                      ))}
+                            {skillOrigin(skill) && (
+                              <span className="ms-2 shrink-0 truncate text-xs text-ink-muted">
+                                {skillOrigin(skill)}
+                                {blocked ? ` · ${blocked.label}` : ''}
+                              </span>
+                            )}
+                          </MenuItem>
+                        )
+                      })}
                     </MenuGroup>
                   </>
                 )}
