@@ -98,8 +98,16 @@ export function GlassScope({ snapshot, options, children }: {
  * pixels (a shadow, a glow) come out of a capture banded and bright, so the
  * video is of an opaque copy: each frame drawn over the page's colour, the
  * theme's `--color-background-body`, read again as the mode changes.
+ *
+ * A canvas is copied only while it is in sight, gated by an IntersectionObserver
+ * as the scene's own loop is. A conversation mirrors every canvas in its
+ * snapshot, and the ones scrolled past would else copy a full canvas every frame
+ * nobody has a chance of seeing (PR 139 P2).
+ *
+ * Exported for `glass.test.ts`, which drives its frames by hand; `GlassScope`
+ * is its only other caller.
  */
-function mirror(canvas: HTMLCanvasElement): () => void {
+export function mirror(canvas: HTMLCanvasElement): () => void {
   const page = document.createElement('span')
   page.className = 'tn-theme'
   page.hidden = true
@@ -107,13 +115,29 @@ function mirror(canvas: HTMLCanvasElement): () => void {
   canvas.before(page)
   const flat = document.createElement('canvas')
   const context = flat.getContext('2d', { alpha: false })!
-  let frame = requestAnimationFrame(function draw() {
+  // One frame in flight, and only while the canvas is in sight.
+  let frame: number | null = null
+  const draw = () => {
     if (flat.width !== canvas.width || flat.height !== canvas.height) Object.assign(flat, { width: canvas.width, height: canvas.height })
     context.fillStyle = getComputedStyle(page).backgroundColor
     context.fillRect(0, 0, flat.width, flat.height)
     context.drawImage(canvas, 0, 0)
+    // With no copy, the capture sends no frame: the video idles by itself.
     frame = requestAnimationFrame(draw)
-  })
+  }
+  // Whether the canvas is in sight, said by whether a frame is owed. `start` is
+  // called for every report that finds it in sight, however many of them there
+  // are; it cannot stack a second frame on the one already owed.
+  const start = () => {
+    if (frame === null) frame = requestAnimationFrame(draw)
+  }
+  const stop = () => {
+    if (frame !== null) cancelAnimationFrame(frame)
+    frame = null
+  }
+  // A frame is owed from the first chance to draw, as the scene's is, before the
+  // observer's own first report says whether that chance is anywhere in sight.
+  start()
   const video = document.createElement('video')
   video.muted = true
   video.playsInline = true
@@ -132,9 +156,17 @@ function mirror(canvas: HTMLCanvasElement): () => void {
   void video.play().catch(() => {})
   const fit = new ResizeObserver(place)
   fit.observe(canvas)
+  // The scene's own gate, and the same rule about its reports: entries arrive
+  // batched, oldest first, so the last one holds.
+  const watcher = new IntersectionObserver((entries) => {
+    if (entries.at(-1)?.isIntersecting) start()
+    else stop()
+  })
+  watcher.observe(canvas)
   canvas.setAttribute('data-liquid-ignore', '')
   return () => {
-    cancelAnimationFrame(frame)
+    stop()
+    watcher.disconnect()
     fit.disconnect()
     for (const track of stream.getTracks()) track.stop()
     video.remove()
