@@ -57,6 +57,122 @@ function declaredDependencies(sources: AppSources): Record<string, string> {
   return dependencies as Record<string, string>
 }
 
+/** Only a script's quotes are an import. A CSS or JSON module that happens to
+ * hold `"npm:react@..."` text is not the App asking for that version. */
+const SCRIPT_FILE = /\.(?:[cm]?[jt]sx?)$/
+
+/** A quoted specifier in `from`, `import` or dynamic `import()` position. A
+ * template literal holds no durable pin, so it is deliberately not read. */
+const IMPORTED = /(?:^|[^\w$.])(?:from|import)\s*\(?\s*['"]([^'"\n]+)['"]/g
+
+const REACT_PACKAGES = ['react', 'react-dom'] as const
+
+/** One version of one React package, with every place the App asked for it. */
+interface ReactChoice {
+  name: string
+  version: string
+  /** Source files that imported it; `package.json` for a declared dependency. */
+  files: Array<string>
+}
+
+/** The React versions the App's own import specifiers name. Only a specifier
+ * carrying an explicit version is a choice; a bare `react` leaves the App's
+ * React to package.json and Theorem's vendor. */
+function importedReact(files: Record<string, string>): Array<ReactChoice> {
+  const choices: Array<ReactChoice> = []
+  for (const [file, source] of Object.entries(files)) {
+    if (!SCRIPT_FILE.test(file)) continue
+    for (const [, specifier] of source.matchAll(IMPORTED)) {
+      let parsed: PackageImport
+      try {
+        parsed = packageImport(specifier!)
+      } catch {
+        // Not a package specifier: the bundler reports it at the import itself.
+        // This scan only wants a React version.
+        continue
+      }
+      if (!parsed.version || (parsed.name !== 'react' && parsed.name !== 'react-dom'))
+        continue
+      const found = choices.find(
+        (choice) => choice.name === parsed.name && choice.version === parsed.version,
+      )
+      if (found) found.files.push(file)
+      else choices.push({ name: parsed.name, version: parsed.version, files: [file] })
+    }
+  }
+  return choices
+}
+
+/** The exact React version a package.json dependency names, or undefined when
+ * it names none Theorem can pin a build to: a dist-tag or bare range (`*`,
+ * `latest`), or an alias to another package (`npm:preact-compat@19`). */
+function namedReactVersion(value: string): string | undefined {
+  const trimmed = value.trim()
+  const range = /^(?:\^|~|>=|=|v)?(\d[\w.+-]*)$/.exec(trimmed)
+  if (range) return range[1]
+  if (!trimmed.startsWith('npm:')) return undefined
+  try {
+    const aliased = packageImport(trimmed)
+    const namesReact = aliased.name === 'react' || aliased.name === 'react-dom'
+    return aliased.path || !namesReact ? undefined : aliased.version
+  } catch {
+    return undefined
+  }
+}
+
+/** One App asks for one React version: the same text, or a range whose exact
+ * version is the one the App imported. */
+function sameReactVersion(a: string, b: string): boolean {
+  if (a === b) return true
+  const exact = namedReactVersion(a)
+  return exact !== undefined && exact === namedReactVersion(b)
+}
+
+/** Where an App asked for a version, so a refusal can point at the file. */
+const asking = (choice: ReactChoice) => {
+  const files = [...new Set(choice.files)]
+  const shown = files.length > 3
+    ? `${files.slice(0, 3).join(', ')}, +${files.length - 3} more`
+    : files.join(', ')
+  return `${choice.name}@${choice.version} (${shown})`
+}
+
+/**
+ * The App's one React version, for every React package it names. An explicit
+ * version in an import specifier is a choice like a package.json one, and must
+ * reach react-dom and the JSX runtime too: two copies of React cannot render
+ * one tree, so a pin that only decided `react` would leave the App with the
+ * vendored renderer beside its own hooks. A conflict is refused rather than
+ * settled by whichever file happened to be scanned first.
+ *
+ * An App that names no version in an import gets nothing here, so package.json
+ * and Theorem's vendored React keep behaving exactly as they did.
+ */
+function reactVersions(
+  files: Record<string, string>,
+  declared: Record<string, string>,
+): Record<string, string> {
+  const imported = importedReact(files)
+  if (!imported.length) return {}
+  // The version the App wrote in its own import wins over a package.json range,
+  // and is what every React package in the bundle is built from.
+  const version = imported[0]!.version
+  const choices = [...imported]
+  for (const name of REACT_PACKAGES) {
+    const value = declared[name]
+    if (value !== undefined) choices.push({ name, version: value, files: ['package.json'] })
+  }
+  if (!choices.every((choice) => sameReactVersion(choice.version, version)))
+    throw new Error(
+      `One App must use one React version. This App asks for ${choices.map(asking).join(', ')}. Use one version of react and react-dom, in package.json or in every import specifier.`,
+    )
+  const shared: Record<string, string> = {}
+  for (const name of REACT_PACKAGES)
+    if (imported.some((choice) => choice.name === name) || Object.hasOwn(declared, name))
+      shared[name] = version
+  return shared
+}
+
 export type AppDependency =
   | { kind: 'vendor'; path: string; specifier?: string }
   | { kind: 'url'; path: string }
@@ -199,7 +315,12 @@ const sessions = new Map<string, AppDependencies>()
 
 /** Build and check obtain the same responses, even when they run concurrently. */
 export function appDependencies(sources: AppSources): AppDependencies {
-  const versions = { ...libraryDependencies(sources.files), ...declaredDependencies(sources) }
+  const declared = declaredDependencies(sources)
+  const versions = {
+    ...libraryDependencies(sources.files),
+    ...declared,
+    ...reactVersions(sources.files, declared),
+  }
   const key = JSON.stringify(Object.entries(versions).sort(([a], [b]) => a.localeCompare(b)))
   let resolver = sessions.get(key)
   if (!resolver) {

@@ -78,6 +78,120 @@ describe('App dependency resolution', () => {
   })
 })
 
+describe('an App that pins a React version in its own imports', () => {
+  // A versioned import specifier is a React choice for the whole App, exactly as
+  // a package.json one is: react-dom and the JSX runtime follow it, or the
+  // bundle carries two Reacts and the App cannot render its own hooks.
+  const app = (files: Record<string, string>) => ({ entry: 'main.tsx', files })
+
+  /** The build error an App raises, or '' when it builds. */
+  const refusal = (files: Record<string, string>) => {
+    try {
+      appDependencies(app(files))
+      return ''
+    } catch (error) {
+      return (error as Error).message
+    }
+  }
+
+  test('one pin is the App React for react-dom and the JSX runtime too', () => {
+    const resolver = appDependencies(app({
+      'main.tsx': `import { useState } from 'npm:react@18.3.1'
+import { createRoot } from 'react-dom/client'
+createRoot(document.body).render(<b>{useState(0)[0]}</b>)`,
+    }))
+    // Two copies of React cannot render one tree, so every one of these must
+    // name the 18.3.1 build the App asked for; none may stay on the vendor path.
+    const client = resolver.resolve('react-dom/client')
+    expect(client.kind).toBe('url')
+    expect(client.path).toContain('/react-dom@18.3.1/client?')
+    expect(client.path).not.toContain('19.3.1')
+    expect(resolver.resolve('react/jsx-runtime').path).toContain('/react@18.3.1/jsx-runtime?')
+    expect(resolver.resolve('react').path).toContain('/react@18.3.1?')
+    expect(resolver.resolve('npm:react@18.3.1').path).toContain('/react@18.3.1?')
+    expect(resolver.resolve('react-dom').path).toContain('/react-dom@18.3.1?')
+    expect(resolver.versions).toMatchObject({ react: '18.3.1' })
+  })
+
+  test('a react-dom pin decides react, and any import form can carry it', () => {
+    const resolver = appDependencies(app({
+      'lazy.tsx': `const load = () => import('npm:react-dom@18.3.1/client')`,
+      'bare.ts': `import { useState } from 'react@18.3.1'`,
+      'rest.ts': `import 'npm:react@18.3.1'
+export const untouched = { from: 'npm:react@17.0.2' }`,
+      'note.ts': `// the guide suggests 'npm:react@16.8.0' outside an import
+export const hint = 'npm:react@16.8.0'`,
+    }))
+    expect(resolver.versions).toMatchObject({ react: '18.3.1', 'react-dom': '18.3.1' })
+    expect(resolver.resolve('react').path).toContain('/react@18.3.1?')
+    expect(resolver.resolve('react-dom/client').path).toContain('/react-dom@18.3.1/client?')
+  })
+
+  test('pinning the React Theorem vendors keeps the offline fast path', () => {
+    const resolver = appDependencies(app({
+      'main.tsx': `import { useState } from 'npm:react@19.3.1'
+import { createRoot } from 'react-dom/client'`,
+    }))
+    expect(resolver.resolve('react').kind).toBe('vendor')
+    expect(resolver.resolve('react/jsx-runtime').kind).toBe('vendor')
+    expect(resolver.resolve('react-dom/client').kind).toBe('vendor')
+  })
+
+  test('an App that names no React version keeps the vendored React', () => {
+    const resolver = appDependencies(app({
+      'main.tsx': `import { useState } from 'react'
+import { createRoot } from 'react-dom/client'`,
+      'data.json': '{"from": "npm:react@17.0.2"}',
+      'style.css': `@import 'npm:react@16.8.0'`,
+    }))
+    expect(resolver.versions).toEqual({})
+    expect(resolver.resolve('react').kind).toBe('vendor')
+    expect(resolver.resolve('react-dom/client').kind).toBe('vendor')
+  })
+
+  test('two explicit React versions are refused and both are named', () => {
+    const text = refusal({
+      'a.tsx': `import { useState } from 'npm:react@18.3.1'`,
+      'b.tsx': `import { useId } from 'npm:react@19.0.0'`,
+    })
+    expect(text).toContain('One App must use one React version')
+    expect(text).toContain('react@18.3.1 (a.tsx)')
+    expect(text).toContain('react@19.0.0 (b.tsx)')
+  })
+
+  test('react and react-dom pinned apart are refused', () => {
+    const text = refusal({
+      'main.tsx': `import { useState } from 'npm:react@18.3.1'
+import { createRoot } from 'npm:react-dom@19.0.0/client'`,
+    })
+    expect(text).toContain('One App must use one React version')
+    expect(text).toContain('react@18.3.1')
+    expect(text).toContain('react-dom@19.0.0')
+  })
+
+  test('an explicit pin that disagrees with package.json is refused', () => {
+    const text = refusal({
+      'main.tsx': `import { useState } from 'npm:react@18.3.1'`,
+      'package.json': '{"dependencies":{"react":"19.3.1","react-dom":"19.3.1"}}',
+    })
+    expect(text).toContain('One App must use one React version')
+    expect(text).toContain('react@18.3.1 (main.tsx)')
+    expect(text).toContain('react@19.3.1 (package.json)')
+  })
+
+  test('a package.json range the pin matches leaves one exact React', () => {
+    const files = {
+      'main.tsx': `import { useState } from 'npm:react@18.3.1'`,
+      'package.json': '{"dependencies":{"react":"^18.3.1","react-dom":"~18.3.1"}}',
+    }
+    expect(refusal(files)).toBe('')
+    const resolver = appDependencies(app(files))
+    // Both keys carry the pin, so every React URL in the bundle is the same build.
+    expect(resolver.versions).toMatchObject({ react: '18.3.1', 'react-dom': '18.3.1' })
+    expect(resolver.resolve('react-dom/client').path).toContain('/react-dom@18.3.1/client?')
+  })
+})
+
 test('arbitrary TSX components, relative files and nonvendored dependencies use the real App compiler', async () => {
   const remote = modules({
     'https://modules.example/particles.js': {
