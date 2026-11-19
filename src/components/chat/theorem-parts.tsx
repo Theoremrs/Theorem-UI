@@ -1152,7 +1152,8 @@ const RENDERERS = (
     ['theorem-expression', Inert],
     ['theorem-expression_refused', Inert],
     // The page's client operations: a check of an App shows as a chip.
-    ['theorem-client_operation', ClientOperationPart],
+    // A ui.present tree is model-supplied; a render failure stays in its slot.
+    ['theorem-client_operation', guarded('theorem-client_operation', ClientOperationPart)],
     // A TypeScript program the agent wrote is shown as one, closed, with its
     // source inside. What it did shows up as its calls and their artifacts.
     ['theorem-program', ProgramPart],

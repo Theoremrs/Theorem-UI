@@ -83,6 +83,21 @@ export function FaceStage() {
   useEffect(() => {
     if (driving.current) driving.current.look = look
   }, [look])
+  // The composer's mic dictates through the same session as a held press, so
+  // the face takes the listening form for it too: person.listen while a
+  // dictation session is live, person.listen.end when it closes.
+  useEffect(() => {
+    let listening = false
+    const follow = () => {
+      const active = aui.composer.getState().dictation != null
+      if (active === listening) return
+      listening = active
+      theFace().notice(active ? 'person.listen' : 'person.listen.end')
+      if (!active) theFace().feed({ 'mic.level': 0 })
+    }
+    follow()
+    return aui.subscribe(follow)
+  }, [aui])
   useEffect(() => {
     theFace().setLiveness(liveness)
   }, [liveness])

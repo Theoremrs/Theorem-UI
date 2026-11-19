@@ -15,10 +15,12 @@ import { WebSpeechDictationAdapter } from '@assistant-ui/react'
 import type { DictationAdapter } from '@assistant-ui/react'
 import { create } from 'zustand'
 
-/** What the microphone worklet posts: a chunk of 16 kHz mono audio, and how loud it was. */
+/** What the microphone worklet posts: a chunk of 16 kHz mono audio, and how
+ *  loud it was. `final` marks the flushed tail sent when a session stops. */
 interface MicChunk {
   pcm: Float32Array
   level: number
+  final?: boolean
 }
 
 /** How loud the microphone hears, 0..1, while a session listens; 0 otherwise. */
@@ -42,15 +44,28 @@ function listeners<T>() {
   }
 }
 
-/** Whether the server serves dictation, checked once and cached. */
+/** Whether the server serves dictation. A yes is cached for the page; a no
+ *  expires quickly, so a server that comes up later is picked up on the next
+ *  press without a reload. */
 let served: Promise<boolean> | undefined
+let servedAt = 0
+let servedCache = false
+const SERVED_RETRY_MS = 5_000
 function dictationServed(): Promise<boolean> {
-  served ??= fetch('/api/chat/v1/dictation/status', {
-    headers: { Accept: 'application/json' },
-  })
-    .then((response) => (response.ok ? response.json() : { served: false }))
-    .then((body: { served?: boolean }) => body.served === true)
-    .catch(() => false)
+  const stale =
+    served !== undefined && !servedCache && Date.now() - servedAt > SERVED_RETRY_MS
+  if (served === undefined || stale) {
+    servedAt = Date.now()
+    served = fetch('/api/chat/v1/dictation/status', {
+      headers: { Accept: 'application/json' },
+    })
+      .then((response) => (response.ok ? response.json() : { served: false }))
+      .then((body: { served?: boolean }) => body.served === true)
+      .catch(() => false)
+    void served.then((value) => {
+      servedCache = value
+    })
+  }
   return served
 }
 
@@ -124,6 +139,10 @@ function theoremSession(): Session {
   session.stop = async () => {
     if (over() || halting()) return
     stopping = true
+    // The worklet holds up to a fifth of a second not yet sent; flush it
+    // before the stop so the person's last word is heard, not discarded.
+    worklet?.port.postMessage({ command: 'flush' })
+    await new Promise((resolve) => setTimeout(resolve, 40))
     // Ask the server to flush the decoder; the done event carries the final.
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ command: 'stop' }))
@@ -149,6 +168,15 @@ function theoremSession(): Session {
       if (!ready) {
         finish('error')
         return
+      }
+      // A drop after startup (a server restart, a network change) must end
+      // the session: the microphone and audio graph do not stay live with
+      // nowhere for the audio to go.
+      socket.onclose = () => {
+        if (!over()) finish(stopping ? 'stopped' : 'error')
+      }
+      socket.onerror = () => {
+        if (!over()) finish(stopping ? 'stopped' : 'error')
       }
       socket.onmessage = (event: MessageEvent) => {
         if (over() || typeof event.data !== 'string') return
@@ -188,9 +216,11 @@ function theoremSession(): Session {
       const source = context.createMediaStreamSource(stream)
       worklet = new AudioWorkletNode(context, 'theorem-mic')
       worklet.port.onmessage = (event: MessageEvent<MicChunk>) => {
-        if (over() || halting()) return
+        if (over()) return
         const { pcm, level } = event.data
         useMicLevel.setState({ level: Math.min(1, level * 6) })
+        // While stopping, only the worklet's flushed tail is still sent.
+        if (halting() && !event.data.final) return
         if (socket?.readyState === WebSocket.OPEN) {
           socket.send(pcm.buffer as ArrayBuffer)
         }
@@ -233,10 +263,7 @@ export function theoremDictation(): DictationAdapter {
   }
 }
 
-let servedCache = false
-void dictationServed().then((value) => {
-  servedCache = value
-})
+void dictationServed()
 function servedNow(): boolean {
   return servedCache
 }

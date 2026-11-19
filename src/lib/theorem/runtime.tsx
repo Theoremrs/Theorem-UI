@@ -197,11 +197,19 @@ async function alignWithDurableBranch(
       : user.id
   // The SDK's adapter takes text turns; what they carry goes as upload ids.
   const content = user.content.filter((part) => part.type === 'text')
-  const text = content.map((part) => part.text).join('\n')
+  // A quote carried in from a reply rides the message's metadata; the text
+  // turn must still carry the passage, or the question loses its subject.
+  const quoteText = (user.metadata.custom as { quote?: { text?: string } })
+    .quote?.text
+  const quoted =
+    quoteText && !content.some((part) => part.text.includes(quoteText))
+      ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
+      : []
+  const text = [...quoted, ...content].map((part) => part.text).join('\n')
   return {
     messages: [
       ...messages.slice(0, -1),
-      { ...user, id, content, attachments: [] },
+      { ...user, id, content: [...quoted, ...content], attachments: [] },
     ],
     uploadIds: turnUploads(
       text,

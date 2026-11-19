@@ -22,8 +22,15 @@ class MicProcessor extends AudioWorkletProcessor {
     // Where the next output sample sits among the input samples, carried
     // across blocks.
     this.position = 0
+    // The last input sample of the previous block: the first output sample
+    // of this block may fall between it and this block's first sample.
+    this.previous = 0
+    this.primed = false
     this.energy = 0
     this.counted = 0
+    this.port.onmessage = (event) => {
+      if (event.data && event.data.command === 'flush') this.flush(true)
+    }
   }
 
   process(inputs) {
@@ -35,23 +42,30 @@ class MicProcessor extends AudioWorkletProcessor {
       this.counted++
     }
     // Each output sample is drawn between the two input samples it falls
-    // between; the position carries its fraction into the next block.
+    // between. `position` is measured from this block's first sample and
+    // carries its fraction across blocks (it can be negative at the seam).
+    // The sample just before index 0 is the previous block's last sample,
+    // so the seam interpolates real audio instead of a false zero.
     while (this.position < input.length - 1) {
       const whole = Math.floor(this.position)
       const fraction = this.position - whole
-      const from = input[whole] ?? 0
-      const to = input[whole + 1] ?? from
+      const from = whole < 0 ? this.previous : input[whole]
+      const to = input[whole + 1]
       this.pending[this.held++] = from + (to - from) * fraction
       if (this.held === CHUNK) this.flush()
       this.position += ratio
     }
     this.position -= input.length
+    this.previous = input[input.length - 1]
+    this.primed = true
     return true
   }
 
-  flush() {
+  flush(final = false) {
+    if (final && this.held === 0) return
     const level = this.counted ? Math.sqrt(this.energy / this.counted) : 0
-    this.port.postMessage({ pcm: this.pending, level }, [this.pending.buffer])
+    const pcm = final ? this.pending.slice(0, this.held) : this.pending
+    this.port.postMessage({ pcm, level, final }, [pcm.buffer])
     this.pending = new Float32Array(CHUNK)
     this.held = 0
     this.energy = 0

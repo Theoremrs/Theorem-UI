@@ -6,6 +6,7 @@
 // pass through untouched in both directions.
 import { createWebSocketProxy } from 'crossws'
 import { defineWebSocketHandler } from 'nitro/h3'
+import type { CookieSerializeOptions } from 'cookie-es'
 import { oauthConfigured, personBearer } from './theorem-auth'
 
 /** The Theorem authority's dictation WebSocket, from the same base the fetch
@@ -20,9 +21,11 @@ function upstreamTarget(): string | undefined {
   return url.toString()
 }
 
-/** Read a cookie from the upgrade request's header. iron-session only needs
- *  a name→value reader; the sealed session cookie rides the same origin. */
-function cookieReader(request: Request) {
+/** Read a cookie from the upgrade request's header, and keep any replacement
+ *  iron-session writes (a refresh rotates the sealed cookie). The writes are
+ *  collected so the upgrade response can carry them back to the browser; a
+ *  reader that discards them would lose the rotated refresh token. */
+function cookieJar(request: Request) {
   const header = request.headers.get('cookie') ?? ''
   const jar = new Map<string, string>()
   for (const part of header.split(';')) {
@@ -30,28 +33,49 @@ function cookieReader(request: Request) {
     if (eq < 0) continue
     jar.set(part.slice(0, eq).trim(), decodeURIComponent(part.slice(eq + 1).trim()))
   }
+  const writes: Array<{ name: string; value: string; options?: CookieSerializeOptions }> = []
   return {
-    read: (name: string) => jar.get(name),
-    write: () => {},
+    jar: {
+      read: (name: string) => jar.get(name),
+      write: (name: string, value: string, options?: CookieSerializeOptions) => {
+        writes.push({ name, value, options })
+      },
+    },
+    writes,
   }
 }
 
+/** Serialize a collected cookie write as a Set-Cookie header value. */
+function setCookieValue(write: { name: string; value: string; options?: CookieSerializeOptions }): string {
+  const opts = write.options ?? {}
+  const parts = [`${write.name}=${encodeURIComponent(write.value)}`]
+  if (opts.maxAge !== undefined) parts.push(`Max-Age=${Math.floor(Number(opts.maxAge))}`)
+  if (opts.expires instanceof Date) parts.push(`Expires=${opts.expires.toUTCString()}`)
+  parts.push(`Path=${typeof opts.path === 'string' ? opts.path : '/'}`)
+  if (opts.httpOnly) parts.push('HttpOnly')
+  if (opts.secure) parts.push('Secure')
+  if (opts.sameSite) parts.push(`SameSite=${String(opts.sameSite)}`)
+  return parts.join('; ')
+}
+
 /** The bearer for this connection, read from the sealed session cookie the
- *  upgrade request carries. Undefined when nobody is signed in. */
-async function connectionBearer(request: Request): Promise<string | undefined> {
-  if (!oauthConfigured()) return process.env.THEOREM_API_TOKEN || undefined
-  return personBearer(cookieReader(request))
+ *  upgrade request carries, plus any rotated cookie to send back. Undefined
+ *  when nobody is signed in. */
+async function connectionBearer(request: Request): Promise<{
+  token: string | undefined
+  setCookie: string[]
+}> {
+  if (!oauthConfigured())
+    return { token: process.env.THEOREM_API_TOKEN || undefined, setCookie: [] }
+  const { jar, writes } = cookieJar(request)
+  const token = await personBearer(jar)
+  return { token, setCookie: writes.map(setCookieValue) }
 }
 
 const proxy = createWebSocketProxy({
-  // The target resolver may be async: resolve the bearer here (it can refresh
-  // the session) and stash it for the sync headers resolver below.
-  target: async (peer) => {
+  target: () => {
     const target = upstreamTarget()
     if (!target) throw new Error('Theorem backend is not configured')
-    const token = await connectionBearer(peer.request)
-    if (!token) throw new Error('Sign in to Theorem to dictate')
-    peer.context.bearer = token
     return target
   },
   headers: (peer) => ({
@@ -61,4 +85,26 @@ const proxy = createWebSocketProxy({
   clientIdleTimeout: 0,
 })
 
-export default defineWebSocketHandler(proxy)
+// Resolve the bearer during the upgrade so a refreshed session's rotated
+// cookie rides the 101 response back to the browser; the proxy's headers
+// resolver reads the bearer from the peer context this sets.
+export default defineWebSocketHandler({
+  ...proxy,
+  upgrade: async (request) => {
+    const { token, setCookie } = await connectionBearer(request)
+    const headers = new Headers()
+    for (const value of setCookie) headers.append('set-cookie', value)
+    if (!token) {
+      return new Response('Sign in to Theorem to dictate', { status: 401, headers })
+    }
+    const proxied = await proxy.upgrade?.(request)
+    if (proxied instanceof Response) return proxied
+    const merged = new Headers(proxied?.headers)
+    for (const [name, value] of headers) merged.append(name, value)
+    return {
+      ...proxied,
+      headers: merged,
+      context: { ...proxied?.context, bearer: token },
+    }
+  },
+})

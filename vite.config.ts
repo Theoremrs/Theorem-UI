@@ -200,15 +200,16 @@ const config = defineConfig({
       // only: it loads native addons a Worker cannot run. The plugin and every
       // route answer only when the desktop host started the server, so the Bun
       // build for the web carries them inert.
-      ...(!cloudflare && {
-        plugins: ['./src/server/desktop/plugin.ts'],
-        routes: {
-          // Dictation upgrades to a WebSocket; the fetch proxy drops the
-          // upgrade header, so this nitro route hands it to crossws.
-          '/api/chat/v1/dictation': {
-            handler: './src/server/dictation-proxy.ts',
-            method: 'GET',
-          },
+      routes: {
+        // Dictation upgrades to a WebSocket on both hosts: the fetch proxy
+        // drops the upgrade header, so this nitro route hands it to crossws
+        // (the Bun adapter locally, the cloudflare_module adapter on the
+        // Worker).
+        '/api/chat/v1/dictation': {
+          handler: './src/server/dictation-proxy.ts',
+          method: 'GET',
+        },
+        ...(!cloudflare && {
           '/desktop/session': {
             handler: './src/server/desktop/session.ts',
             method: 'GET',
@@ -221,7 +222,10 @@ const config = defineConfig({
             handler: './src/server/desktop/events.ts',
             method: 'GET',
           },
-        },
+        }),
+      },
+      ...(!cloudflare && {
+        plugins: ['./src/server/desktop/plugin.ts'],
         // Copied whole so each binary ships beside its module instead of
         // being lost to bundling.
         traceDeps: serverOnlyPackages.map((name) => `${name}*`),
