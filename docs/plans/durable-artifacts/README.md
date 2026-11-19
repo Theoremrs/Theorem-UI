@@ -4,6 +4,9 @@ Governing plan: [PLAN-DURABLE-ARTIFACTS-CPU-WORKSPACE-2026-11-18.md](PLAN-DURABL
 Item status: [checklist.json](checklist.json).
 Review followed: REVIEW-PR130-DURABLE-ARTIFACTS-2026-11-18 (follow-ups A to D
 replace the earlier G0/G1-first order). A, B and C are implemented below; D is not.
+Updated by the 2026-11-19 artifact review (Travis-Gilbert, provided in thread):
+PRs #128/#129/#139 are merged to Theorem-UI `main`; the review's Section 4
+runtime/state corrections are fixed; the remaining work is re-ordered below.
 
 The plan leans on a CPU, but nothing below is CPU-specific. The references are
 for any artifact that executes something (a teaching circuit, an emulator, a
@@ -12,10 +15,10 @@ them. The CPU is the first instance that will use every field.
 
 ## Base
 
-| Repository | Branch                         | Based on                                                   |
-| ---------- | ------------------------------ | ---------------------------------------------------------- |
-| Theorem-UI | `claude/project-thread-y6882q` | PR 129 head `3a279320` (stacked on PR 128 `4b2680b9`)      |
-| Theorem    | `claude/project-thread-y6882q` | `main` `dda471e5` (PR 1099 is not needed by these records) |
+| Repository | Branch | Based on |
+| ---------- | ------ | -------- |
+| Theorem-UI | `main` `211a745c` | PRs #128 (`4b2680b9`), #129 (`8d84c688`) and #139 (`351ce552`) merged; synced with #137 and #140. #129 was the content superset; #139's history was tied in so all three marked merged. |
+| Theorem    | `main` `8526921` | Backend companions #1096 (authoring), #1099 (Rerun/construction handoff), #1102 (durable runs/results) are **still open** — the UI is fixture-validated, not product-live, until they reconcile. |
 
 ## What exists now
 
@@ -147,28 +150,105 @@ journey, and any deployed environment. The arithmetic acceptance here checks the
 facts handed to the model; it does not make the model's prose correct, only
 gives it the exact values to refer to.
 
-## Not done yet
+## 2026-11-19 review: what the merge closed
 
-Review follow-up C, last item, and D:
+The review's Section 4 ("corrections before treating the integration as ready")
+was the immediate delivery gate. These are fixed on `main` (evidence class:
+source-implemented + unit/component-tested + fixture-browser-tested; **not**
+signed-in product acceptance, which the review keeps separate throughout):
 
-- Expose `@theorem/runtime` and `@theorem/spatial` declarations and source to the
-  authoring agent through a native capability (also W0 below).
-- D: a reservations app and a checked heat model built through the
-  normal authoring workflow, feedback with before/after evaluations, cosmetic
-  reuse and semantic invalidation, reopen in another thread, transfer.
-- Fidelity claims and evaluator records (G2) through the existing evidence owners.
+- **§4.3 React family** — one React/ReactDOM/JSX choice per App from explicit
+  import pins; conflicting pins refused at build (`app-dependencies.ts`).
+- **§4.2 one live owner (dock)** — the panel renders `ArtifactReferrer`
+  ("Open in answer", focus-first then navigate) instead of a second iframe;
+  older/non-live bodies unchanged (`artifact-panel.tsx`, `artifact-referrer.tsx`).
+- **§4.4 writer retry (core)** — identical observation repeats are a no-op;
+  conflicting repeats refused as `artifact_chunk_conflict` without stopping;
+  only a true gap stops (`artifact-store.ts`).
+- **§4.5 reveal race** — `reveal` rechecks `recordingId` after the async
+  `holds`, before moving (`view.ts`).
+- **§4.6 stale values** — `groundedContext` drops the displayed `interactables`
+  stamp; all values come from the recorded observation (`dossier.tsx`).
+- **§4.7 heat solver (core)** — convective cooling slope on the diagonal; fixed
+  point preserved (<1e-11); glass h=200 converges (`heat-plate/solver.ts`).
+- **Held questions** — conversation+document-scoped `dossier-queue.ts` survives
+  the revision flip; send-time read prevents double-send (`document-app.tsx`).
+- **Replay readings** — kept cycles store their settle; `scrubTarget` shows
+  recorded readings, recomputing only on a new run (`trace.ts`, `view.ts`).
 
-In plan order:
+Validation on the merged tree: `bun run typecheck` 0; artifact-CI set 57/57;
+`test:composer` 905/905; `src/lib/blocks src/lib/theorem src/components/artifacts
+src/components/blocks` 1093 pass / 1 skip / 0 fail; live-CDN Luma 1/1; browser
+`e2e:app-ts --built` 25/25, `e2e:spatial` 44/44, `e2e:glass` 4/4 (Chromium; Node
+22 for rolldown). Six stale `inline-app`/`app-revision` tests (removed
+"Interact" card flow) were re-grounded without weakening protected properties.
 
-- **W0** the authoring agent still cannot read `@theorem/spatial` or
-  `@theorem/runtime` declarations; the App contract is a prompt include in the
-  backend (PR 1099). Needs a native capability that serves the generated
-  declarations.
-- **W3** responsive preview/workspace modes, Signals drawer, Rerun out of the
-  default inline view.
-- **W4** browser writer that appends trace chunks and checkpoints to the backend
-  records, a native route for them, retention policy, legacy state migration.
-- **W5** chips m6502 compiled to WASM in a worker with a checkpoint codec; the
-  run store already checks codec and engine compatibility for it.
-- **W6–W12** CPU presentation, focused Signals, feedback-to-candidate evaluation,
-  computation reuse, portability, Cloudflare adapter, learning.
+## Not done yet (dependency-ordered, per the 2026-11-19 review)
+
+The review's packages 1–12 map onto W0–W12; this is the delivery order, not a
+second tracker. Status lives in [checklist.json](checklist.json).
+
+**Tier A — finish the baseline gate (packages 1–3 leftovers):**
+
+- **Backend reconciliation (W0, package 1).** Theorem #1096/#1099/#1102 are open;
+  resolve their overlap by source+tests, record compatible frontend/backend
+  revisions. The true gate to product-live: the merged UI runs against a fixture
+  backend until these land.
+- **Cabinet runtime ownership (package 2 gap).** The dock is a referrer, but the
+  cabinet's "Open latest" still renders a live App interactively — a second
+  runtime path §4.2 names. Extend the single-owner rule there; acceptance =
+  startup/external subscription fires once across chat/note/panel/cabinet/expand.
+- **Writer transport recovery (package 3 gap, §4.4).** Recover an acknowledged
+  writer after a retryable transport failure and reconcile lost acknowledgements
+  against stored progress; distinguish malformed input from temporary storage
+  failure. (Identical/conflicting repeats are done; a failed write still stops.)
+- **Evidence hygiene (package 1).** Rewrite #139's template body with actual
+  behavior/verification/gaps; classify the broader Composer mobile-nav timeout
+  from evidence (do not assume unrelated).
+
+**Tier B — general usable artifact workflow (packages 4–6; 8 in parallel):**
+
+- **W0 / package 4 — inspectable libraries + callable operations.** Serve
+  versioned declarations/source/examples through existing discovery (on-demand,
+  not a growing prompt); connect authored operations to the client-operation /
+  installed-App invocation path (UI registers only `app.check` today). Return
+  operation version + input/result/source identity + receipt; honest
+  browser-local lifecycle.
+- **W4 / package 5 — saved-run reopen/recovery.** Wire `openRun` to surfaces;
+  recording lifecycle flushing before eviction; recover acknowledged writers;
+  engine checkpoints vs observation replay; cross-thread reopen with fork
+  lineage; large-asset path beyond the 1 MiB blob bound.
+- **Package 6 — prove the improvement workflow.** Two signed-in real-agent
+  journeys (reservation + heat): create → interact → negative feedback →
+  candidate → evaluate against preserved independent criteria → adopt with
+  expected-revision check → reopen. Fixtures stay criteria, not substitutes.
+- **W3/W7 / package 8 — preview/workspace (parallel).** Deliberate expanded
+  inspection, one selection/run cursor, keyboard-accessible entity index,
+  Rerun's 640px min not dictating narrow layout; Firefox + WebKit lanes.
+
+**Tier C — compounding computation (W9 / package 7, into 5–6):**
+source/dependency-derived fingerprints (the heat fixture still hashes a manual
+`SOLVER` name/version), persisted transitive lock, operation-key→result lookup
+via existing result owners, conservative invalidation, cold/reused measurement.
+
+**Tier D — deeper fidelity (W5/W6 / packages 9–10, parallel once contracts
+stable):** NMOS 6502 engine adapter (versioned checkpoint codec, conformance,
+restore-vs-uninterrupted); procedural reconstruction→artifact (real produced
+bytes not empty-hash manifests, glTF/GLB by reference, two different geometry
+domains through the existing `ReconstructionDomain`).
+
+**Tier E — portability + scale (W10–W12 / packages 11–12):** export/import
+manifest with locked deps + lineage; Platinum/SceneOS native consumption of the
+same protocol; bridge operations to `theorem-apps` definitions/releases/
+discovery; feed verified improvements into the harness/evolution (generalize the
+counter-specific evaluator first), on-demand hosting.
+
+Minimum useful product milestone (review §8): a signed-in conversation creates a
+useful App beyond a fixed catalog; it runs once, interacts, expands without
+losing the session; a question/answer keeps exact source/result/run context
+through a failed build or delayed reply; close and reopen the same state in
+another thread; negative feedback yields a candidate checked against preserved
+independent expectations; a presentation change reuses unaffected computation
+and an execution change invalidates it — for both a conventional App and a
+numerical model. The CPU then demonstrates deeper fidelity without defining the
+platform.
