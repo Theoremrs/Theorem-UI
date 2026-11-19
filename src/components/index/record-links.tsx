@@ -1,22 +1,12 @@
-// SOURCING: Theorem's record filing (GET /api/documents/v2/documents/:id/record-filings, POST record-filings/:receipt/corrections, POST record-filing-corrections/:id/undo through ./queries), the inspector's Filing section for the row anatomy and its "read the undo from the record" rule, coss Combobox (input inside the popup, as the composer's model picker) over the CRM's records of the linked type, the CRM's type marks and navigation
-import { useMemo, useState } from 'react'
-import {
-  Combobox,
-  ComboboxEmpty,
-  ComboboxInput,
-  ComboboxItem,
-  ComboboxList,
-  ComboboxPopup,
-  ComboboxTrigger,
-} from '@/components/coss/combobox'
+// SOURCING: Theorem's record filing (GET /api/documents/v2/documents/:id/record-filings, POST record-filings/:receipt/corrections, POST record-filing-corrections/:id/undo through ./queries), the inspector's Filing section for the row anatomy and its "read the undo from the record" rule, the bounded schema-driven record picker (./record-link-picker), the CRM's type marks and navigation
+import { useMemo } from 'react'
+import { crmTypes } from '@/components/crm/model'
 import { useCrmNavigate } from '@/components/crm/navigation'
-import { useCrmRecords } from '@/components/crm/queries'
 import { NamedTypeIcon } from '@/components/crm/type-icons'
 import { Button } from '@/components/ui/button'
-import type { ObjectType } from '@/components/records/contract'
-import { recordItemId, recordTitle } from '@/components/records/model'
 import { useDataModel } from '@/components/records/queries'
 import { describeError } from '@/lib/theorem/client'
+import { RecordLinkPicker } from './record-link-picker'
 import type {
   RecordFilingCorrection,
   RecordFilingHistory,
@@ -91,83 +81,6 @@ export function undoableCorrection(history: RecordFilingHistory) {
   return latest && !latest.undo && !latest.undone ? latest : undefined
 }
 
-type Choice = { itemId: string; title: string }
-
-/** Pick another record of the same type to link the document to instead. */
-function ChangeRecord({
-  type,
-  exclude,
-  disabled,
-  onPick,
-}: {
-  type: ObjectType
-  exclude: ReadonlySet<string>
-  disabled: boolean
-  onPick: (itemId: string) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const records = useCrmRecords(type, { enabled: open })
-  const choices = useMemo<Choice[]>(
-    () =>
-      (records.data?.records ?? [])
-        .map((record) => ({
-          itemId: recordItemId(type, record.id),
-          title: recordTitle(type, record) || record.id,
-        }))
-        .filter((choice) => !exclude.has(choice.itemId)),
-    [records.data, type, exclude],
-  )
-  return (
-    <Combobox<Choice>
-      items={choices}
-      value={null}
-      open={open}
-      onOpenChange={setOpen}
-      onValueChange={(choice) => {
-        if (choice) onPick(choice.itemId)
-      }}
-      itemToStringLabel={(choice) => choice.title}
-      itemToStringValue={(choice) => `${choice.title} ${choice.itemId}`}
-      isItemEqualToValue={(a, b) => a.itemId === b.itemId}
-    >
-      <ComboboxTrigger
-        render={<Button variant="ghost" size="xs" />}
-        disabled={disabled}
-      >
-        Change…
-      </ComboboxTrigger>
-      <ComboboxPopup side="bottom" align="start" className="w-72">
-        <div className="border-b border-separator p-1.5">
-          <ComboboxInput
-            size="sm"
-            showTrigger={false}
-            placeholder={`Find a ${type.label_singular.toLowerCase()}`}
-            aria-label={`Find a ${type.label_singular.toLowerCase()}`}
-          />
-        </div>
-        {records.error ? (
-          <p role="alert" className="px-3 py-2 text-sm text-error-ink">
-            {describeError(records.error)}
-          </p>
-        ) : records.isPending ? (
-          <p className="px-3 py-2 text-sm text-ink-muted">Loading…</p>
-        ) : (
-          <ComboboxEmpty className="hidden px-3 py-4 text-sm text-ink-muted not-empty:block">
-            No {type.label_singular.toLowerCase()} matches.
-          </ComboboxEmpty>
-        )}
-        <ComboboxList className="max-h-64 overflow-y-auto p-1">
-          {(choice: Choice) => (
-            <ComboboxItem key={choice.itemId} value={choice} className="py-1.5">
-              <span className="min-w-0 flex-1 truncate">{choice.title}</span>
-            </ComboboxItem>
-          )}
-        </ComboboxList>
-      </ComboboxPopup>
-    </Combobox>
-  )
-}
-
 /**
  * The saved records a document is about. Theorem links them when the document
  * is filed and keeps a receipt for each; nothing about the record changes. The
@@ -177,6 +90,7 @@ function ChangeRecord({
 export function RecordLinks({ documentId }: { documentId: string }) {
   const history = useRecordFilings(documentId)
   const model = useDataModel()
+  const types = useMemo(() => crmTypes(model.data), [model.data])
   const correct = useCorrectRecordFiling()
   const undo = useUndoRecordFiling()
   const { openRecordNamed } = useCrmNavigate()
@@ -259,8 +173,9 @@ export function RecordLinks({ documentId }: { documentId: string }) {
                     Not about {link.title || link.recordId}
                   </Button>
                   {type && (
-                    <ChangeRecord
-                      type={type}
+                    <RecordLinkPicker
+                      initialType={type}
+                      types={types}
                       exclude={linked}
                       disabled={busy}
                       onPick={(itemId) =>
