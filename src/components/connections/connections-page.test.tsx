@@ -335,13 +335,16 @@ async function type(
 
 // ---- GitHub, not connected
 
-test('before GitHub is connected the section shows a heading and one provider button', async () => {
+test('GitHub setup shows its repository connection and optional hosted tools together', async () => {
   github = undefined
   await mount(<GithubSection />)
   await waitFor(() => buttonNamed('GitHub'))
-  expect(document.querySelector('h2')?.textContent).toBe('Connect git provider')
-  expect(document.querySelectorAll('button')).toHaveLength(1)
-  expect(text()).toBe('Connect git providerGitHub')
+  expect(document.querySelector('h2')?.textContent).toBe('GitHub')
+  expect(buttonNamed('Add GitHub tools')).toBeDefined()
+  await waitFor(() => text().includes('GitHub MCP tools are not connected.'))
+  expect(text()).toContain(
+    'Repository access, following, and tools in one place.',
+  )
 })
 
 test('the GitHub button starts sign-in and says where to come back to', async () => {
@@ -388,7 +391,7 @@ test('a connections list that cannot be read says why and offers another try', a
 
 test('a connected GitHub shows the account, repositories, actions, events and webhook health', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   expect(text()).toContain('travis')
   expect(text()).toContain('2 of 3 followed')
   expect(text()).toContain('Search code')
@@ -400,7 +403,9 @@ test('a connected GitHub shows the account, repositories, actions, events and we
 
 test('the agent switch turns at once and is sent as a patch', async () => {
   await mount(<GithubSection />)
-  const toggle = await waitFor(() => named('Agent can use GitHub'))
+  const toggle = await waitFor(() =>
+    named('Agent can use the repository connection'),
+  )
   expect(toggle.getAttribute('aria-checked')).toBe('true')
   await press(toggle)
   await waitFor(() => seen.some((request) => request.method === 'PATCH'))
@@ -410,7 +415,9 @@ test('the agent switch turns at once and is sent as a patch', async () => {
   })
   await waitFor(
     () =>
-      named('Agent can use GitHub')?.getAttribute('aria-checked') === 'false',
+      named('Agent can use the repository connection')?.getAttribute(
+        'aria-checked',
+      ) === 'false',
   )
 })
 
@@ -420,16 +427,20 @@ test('a refused agent switch goes back and shows the refusal', async () => {
     detail: 'GitHub is being reconnected.',
   }
   await mount(<GithubSection />)
-  await press(await waitFor(() => named('Agent can use GitHub')))
-  await waitFor(() => text().includes('GitHub is being reconnected.'))
-  expect(named('Agent can use GitHub')?.getAttribute('aria-checked')).toBe(
-    'true',
+  await press(
+    await waitFor(() => named('Agent can use the repository connection')),
   )
+  await waitFor(() => text().includes('GitHub is being reconnected.'))
+  expect(
+    named('Agent can use the repository connection')?.getAttribute(
+      'aria-checked',
+    ),
+  ).toBe('true')
 })
 
 test('followed repositories are saved only on Save, as one sorted list', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   const save = buttonNamed('Save repositories')!
   expect(save.hasAttribute('disabled')).toBe(true)
 
@@ -451,7 +462,7 @@ test('followed repositories are saved only on Save, as one sorted list', async (
 
 test('discarding changes puts the checkboxes back without a request', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   const docs = [...document.querySelectorAll('label')].find((row) =>
     row.textContent.includes('travis/docs'),
   )!
@@ -518,7 +529,7 @@ test('a Theorem that has no work settings says so instead of showing dead switch
 
 test('recent deliveries load only when opened, and a failed one can be run again', async () => {
   await mount(<GithubSection />)
-  await waitFor(() => named('Agent can use GitHub'))
+  await waitFor(() => named('Agent can use the repository connection'))
   expect(text()).not.toContain('The inbox was unavailable.')
   await press(buttonNamed('Recent deliveries')!)
   await waitFor(() => text().includes('The inbox was unavailable.'))
@@ -584,14 +595,14 @@ test('without a known installation address the empty state still explains the st
 test('Disconnect asks first and does nothing until it is confirmed', async () => {
   await mount(<GithubSection />)
   await press(await waitFor(() => buttonNamed('Disconnect')))
-  await waitFor(() => text().includes('Disconnect GitHub?'))
+  await waitFor(() => text().includes('Disconnect the repository connection?'))
   expect(seen).toEqual([])
   await press(buttonNamed('Stay connected')!)
   await settled()
   expect(seen).toEqual([])
 
   await press(buttonNamed('Disconnect')!)
-  await waitFor(() => text().includes('Disconnect GitHub?'))
+  await waitFor(() => text().includes('Disconnect the repository connection?'))
   const confirm = [...document.querySelectorAll('button')]
     .filter((button) => button.textContent.trim() === 'Disconnect')
     .at(-1)!
@@ -841,4 +852,50 @@ test('with no other connections the section is not drawn', async () => {
   const { container } = await mount(<OtherConnections />)
   await settled()
   expect(container.textContent).toBe('')
+})
+
+test('GitHub hosted connections appear once in the coordinated GitHub entry', async () => {
+  servers = [
+    serverFixture({
+      id: 'mcp:github',
+      label: 'Repository tools',
+      url: 'https://api.githubcopilot.com/mcp/',
+    }),
+    serverFixture(),
+  ]
+  await mount(
+    <>
+      <GithubSection />
+      <McpServers excludeGithub />
+    </>,
+  )
+  await waitFor(() => named('Repository tools: agent can use it'))
+  expect(
+    document.querySelectorAll(
+      '[aria-label="Repository tools: agent can use it"]',
+    ),
+  ).toHaveLength(1)
+  const section = document.querySelector('h2')!.closest('section')!
+  expect(section.textContent).toContain('Repository tools')
+  expect(section.textContent).toContain(
+    'Agent can use the repository connection',
+  )
+  expect(section.textContent).not.toContain('Docs search')
+})
+
+test('the GitHub entry opens its ready-to-complete MCP setup', async () => {
+  servers = []
+  await mount(<GithubSection />)
+  await press(await waitFor(() => buttonNamed('Add GitHub tools')))
+  const token = await waitFor(() =>
+    document.querySelector<HTMLInputElement>('input[type="password"]'),
+  )
+  await type(token, 'fixture-token')
+  await press(token.closest('form')!.querySelector('button[type="submit"]')!)
+  await waitFor(() => seen.some((entry) => entry.method === 'POST'))
+  expect(seen.find((entry) => entry.method === 'POST')?.body).toMatchObject({
+    label: 'GitHub MCP',
+    url: 'https://api.githubcopilot.com/mcp/',
+    auth: { type: 'bearer' },
+  })
 })

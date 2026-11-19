@@ -34,15 +34,13 @@ import {
   validateServerEdit,
 } from './server-form'
 import type { DraftErrors, ServerDraft } from './server-form'
+import { GITHUB_MCP_URL } from './github-mcp'
 
 const AUTH_CHOICES: { value: McpAuthType; label: string }[] = [
   { value: 'none', label: 'None' },
   { value: 'bearer', label: 'Bearer token' },
   { value: 'oauth', label: 'Sign in' },
 ]
-
-// GitHub's hosted server accepts a PAT as a bearer credential for MCP clients.
-const GITHUB_MCP_URL = 'https://api.githubcopilot.com/mcp/'
 
 /** Adds a server, or with `server` edits its name and how it signs in. */
 export function ServerDialog({
@@ -51,7 +49,9 @@ export function ServerDialog({
   server,
   stdioAvailable,
   onReviewTools,
+  preset,
 }: {
+  preset?: 'github'
   open: boolean
   onOpenChange: (open: boolean) => void
   server?: McpServer
@@ -62,6 +62,7 @@ export function ServerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <ServerEditor
+          preset={preset}
           server={server}
           stdioAvailable={stdioAvailable}
           close={() => onOpenChange(false)}
@@ -78,7 +79,9 @@ function ServerEditor({
   stdioAvailable,
   close,
   onReviewTools,
+  preset,
 }: {
+  preset?: 'github'
   server?: McpServer
   stdioAvailable: boolean
   close: () => void
@@ -86,7 +89,16 @@ function ServerEditor({
 }) {
   const { add, update } = useMcpMutations()
   const [draft, setDraft] = useState<ServerDraft>(
-    server ? draftFromServer(server) : emptyDraft,
+    server
+      ? draftFromServer(server)
+      : preset === 'github'
+        ? {
+            ...emptyDraft,
+            label: 'GitHub MCP',
+            url: GITHUB_MCP_URL,
+            auth: 'bearer',
+          }
+        : emptyDraft,
   )
   const [errors, setErrors] = useState<DraftErrors>({})
   const [savedId, setSavedId] = useState<string>()

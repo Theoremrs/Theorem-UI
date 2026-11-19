@@ -15,15 +15,21 @@ export type SkillEntry = {
   description?: string
   /** The owning plugin's name, absent for a standalone skill. */
   plugin?: string
-  /** Where the skill comes from, when an MCP server serves it (SEP-2640).
-   * The id then carries the connection, so two servers' identically named
-   * skills stay distinct. Absent for native packs and documents. */
-  source?: {
-    kind: 'mcp'
-    connection: string
-    uri: string
-    dynamic: boolean
-  }
+  /** Provenance stays attached to imported and MCP-served skills. */
+  source?:
+    | {
+        kind: 'mcp'
+        connection: string
+        connectionLabel?: string
+        uri: string
+        dynamic: boolean
+      }
+    | {
+        kind: 'import'
+        installationId: string | null
+        source: string | null
+        version: string | null
+      }
 }
 
 type SkillsBody = {
@@ -34,8 +40,10 @@ type SkillsBody = {
   })[]
 }
 
+export const catalogKey = ['theorem', 'skills'] as const
+
 export const catalogQuery = queryOptions({
-  queryKey: ['theorem', 'skills'],
+  queryKey: catalogKey,
   queryFn: async () => {
     const body = await theoremJson<SkillsBody>('/api/chat/v1/skills')
     return {
@@ -53,6 +61,15 @@ export const catalogQuery = queryOptions({
   staleTime: 5 * 60_000,
   retry: (count, error) => !isNotServed(error) && count < 2,
 })
+
+/** The source shown beside a name, so identically named skills remain distinguishable. */
+export const skillOrigin = (
+  skill: Pick<SkillEntry, 'plugin' | 'source'>,
+): string | undefined =>
+  skill.plugin ??
+  (skill.source?.kind === 'mcp'
+    ? (skill.source.connectionLabel ?? skill.source.connection)
+    : (skill.source?.source ?? undefined))
 
 const NONE = { plugins: [] as PluginEntry[], skills: [] as SkillEntry[] }
 

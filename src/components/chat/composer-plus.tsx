@@ -1,4 +1,4 @@
-// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the turn's model reads which skill was asked for and loads it with skill_get, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
+// SOURCING: coss ui Menu over Base UI Menu (the WAI-ARIA menu-button pattern: arrow keys, typeahead, Escape back to the button; MenuCheckboxItem for the modes, so opening the menu changes nothing until an item is chosen; MenuSub, MenuSubTrigger and MenuSubPopup over Base UI's SubmenuRoot for Connectors and Skills, which open on hover or the right arrow; Manage tools is a link to the connections settings); Skills lists Plan and then the skills Theorem serves (lib/theorem/catalog, Theorem's native skill registry), and a pick writes assistant-ui's defaultDirectiveFormatter `:skill[title]{name=id}` into the draft through the editor's insertInComposer, as a / tool pick writes `:tool[name]`, so the runtime sends its id in the turn's structured skill selection and Theorem loads it before execution, ui/tooltip over Base UI Tooltip; the Web, Plan and Code mode state from ./composer-tools and the connections roster from ./composer-connections, which opens anchored to this button; Connectors lists the roster's MCP servers as switches over lib/theorem/tool-selection; Code mode opens the workbench docked beside or under the conversation through the shell store (components/workbench); MenuCheckboxItem's switch variant keeps every row on one start edge; Base UI Toggle for the marks that say a mode is on
 import { defaultDirectiveFormatter, useAuiState } from '@assistant-ui/react'
 import { Toggle } from '@base-ui/react/toggle'
 import { useRef, useState } from 'react'
@@ -39,7 +39,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useCatalogEntries } from '@/lib/theorem/catalog'
+import { skillOrigin, useCatalogEntries } from '@/lib/theorem/catalog'
+import type { SkillEntry } from '@/lib/theorem/catalog'
 import { useConnectionTools } from '@/lib/theorem/connections'
 import {
   changeSelection,
@@ -84,6 +85,9 @@ export function ComposerPlus() {
   const selection = reconcile(roster, stored, base, baseKnown)
   const on = connectionsOn(roster, selection ?? base)
   const { skills } = useCatalogEntries()
+  const connectionOff = (skill: SkillEntry) =>
+    skill.source?.kind === 'mcp' &&
+    (!baseKnown || !on.has(skill.source.connection))
 
   const setCode = (checked: boolean) => {
     setCodeMode(threadKey, checked)
@@ -91,7 +95,10 @@ export function ComposerPlus() {
     // (beside or under the conversation, so the composer stays in view); one
     // already open stays put, and turning the mode off leaves it open.
     const shell = useShell.getState()
-    if (checked && (shell.workbench === undefined || shell.workbench === 'closed'))
+    if (
+      checked &&
+      (shell.workbench === undefined || shell.workbench === 'closed')
+    )
       shell.setWorkbench(shell.lastCompanion)
   }
 
@@ -218,11 +225,16 @@ export function ComposerPlus() {
                   <>
                     <MenuSeparator />
                     <MenuGroup>
-                      <MenuGroupLabel>From Theorem</MenuGroupLabel>
+                      <MenuGroupLabel>Available skills</MenuGroupLabel>
                       {skills.map((skill) => (
                         <MenuItem
                           key={skill.id}
-                          title={skill.description}
+                          disabled={connectionOff(skill)}
+                          title={
+                            connectionOff(skill)
+                              ? `Turn on ${skillOrigin(skill)} in Connectors to use this skill.`
+                              : skill.description
+                          }
                           // Written once the menu has closed, so the caret lands in the draft.
                           onClick={() =>
                             (next.current = () =>
@@ -240,9 +252,10 @@ export function ComposerPlus() {
                           <span className="min-w-0 flex-1 truncate">
                             {skill.name}
                           </span>
-                          {skill.plugin && (
+                          {skillOrigin(skill) && (
                             <span className="ms-2 shrink-0 truncate text-xs text-ink-muted">
-                              {skill.plugin}
+                              {skillOrigin(skill)}
+                              {connectionOff(skill) ? ' · off' : ''}
                             </span>
                           )}
                         </MenuItem>

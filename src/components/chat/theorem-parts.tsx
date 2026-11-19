@@ -39,6 +39,7 @@ import {
 import { ArtifactMessage } from '@/components/artifacts/artifact-message'
 import { DELEGATION_RENDERERS } from '@/components/chat/delegation-parts'
 import { ContextManifestPart } from '@/components/crm/context-manifest-part'
+import { SkillLoadPart } from '@/components/chat/skill-load-part'
 import {
   RecordChangeOutcomePart,
   RecordChangeProposalPart,
@@ -1116,6 +1117,7 @@ const RENDERERS = (
     ['theorem-completion', CompletionFooter],
     // The saved records a reply was given, each at its saved revision, and what was held back.
     ['theorem-context_manifest', ContextManifestPart],
+    ['theorem-skill_load', SkillLoadPart],
     // A change the assistant proposes to a saved record: nothing is saved until the person approves.
     ['theorem-record_change_proposal', RecordChangeProposalPart],
     ['theorem-record_change_outcome', RecordChangeOutcomePart],

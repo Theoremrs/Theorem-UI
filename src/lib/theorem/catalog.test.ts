@@ -2,7 +2,7 @@
 // answered by a stub fetch; no Theorem is running.
 import { afterEach, expect, test } from 'bun:test'
 import { QueryClient } from '@tanstack/react-query'
-import { catalogQuery } from './catalog'
+import { catalogQuery, skillOrigin } from './catalog'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -63,4 +63,57 @@ test('an MCP server skill keeps its origin, so its id says which connection serv
   expect(
     catalog.skills.find((skill) => skill.id === 'native-pack')!.source,
   ).toBeUndefined()
+})
+
+test('imported skill provenance and friendly MCP labels survive catalog refresh', async () => {
+  serve({
+    plugins: [{ id: 'install:team', name: 'team', skillCount: 1 }],
+    skills: [
+      {
+        id: 'skill:imported',
+        name: 'review',
+        plugin: 'team',
+        source: {
+          kind: 'import',
+          installationId: 'install:team',
+          source: 'https://example.test/team',
+          version: '1.2.0',
+        },
+      },
+      {
+        id: 'skill:detached',
+        name: 'review',
+        source: {
+          kind: 'import',
+          installationId: null,
+          source: 'file:local-review',
+          version: null,
+        },
+      },
+      {
+        id: 'mcp:docs/skill://review/SKILL.md',
+        name: 'review',
+        source: {
+          kind: 'mcp',
+          connection: 'mcp:docs',
+          connectionLabel: 'Docs team',
+          uri: 'skill://review/SKILL.md',
+          dynamic: false,
+        },
+      },
+    ],
+  })
+  const client = new QueryClient()
+  const catalog = await client.fetchQuery(catalogQuery)
+  expect(catalog.skills.map(skillOrigin)).toEqual([
+    'team',
+    'file:local-review',
+    'Docs team',
+  ])
+  expect(catalog.skills[0]?.source).toEqual({
+    kind: 'import',
+    installationId: 'install:team',
+    source: 'https://example.test/team',
+    version: '1.2.0',
+  })
 })
