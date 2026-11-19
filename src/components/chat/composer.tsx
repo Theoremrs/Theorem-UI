@@ -249,6 +249,7 @@ export const ComposerTools: FC = () => (
 
 export const ComposerSettings: FC = () => (
   <>
+    <ModelPicker />
     <AuiIf condition={(s) => s.thread.capabilities.dictation}>
       <AuiIf condition={(s) => s.composer.dictation == null}>
         <ComposerPrimitive.Dictate
@@ -283,11 +284,10 @@ export const ComposerSettings: FC = () => (
             />
           }
         >
-          <Icon.MicOff className="aui-composer-stop-dictation-icon size-4 animate-pulse" />
+          <Icon.Stop className="aui-composer-stop-dictation-icon size-5 animate-pulse" />
         </ComposerPrimitive.StopDictation>
       </AuiIf>
     </AuiIf>
-    <ModelPicker />
   </>
 )
 

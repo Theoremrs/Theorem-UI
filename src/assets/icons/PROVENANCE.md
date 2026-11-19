@@ -758,9 +758,9 @@ others until a 48px copy replaces it.
 | Link           | Links, link fields, embeds                                             | `streamline/control/source/streamline-hyperlink-3.png`     | Hyperlink 3                    | colored | `3d89e3fa07d1da241d7e21f410b358dd45df0cece031616d3c6caff5886eb3f4` |
 | Eye            | Show, preview, Visualize                                               | `streamline/control/source/streamline-glasses-retro-1.png` | Glasses Retro 1                | colored | `7cc69d3d78de847922de049c67168765f59ef224f2e32672cd3adaf4be60504a` |
 | Hide           | Hide; replaces Lucide `EyeOff`                                         | `streamline/control/source/streamline-glasses-sun.png`     | Glasses Sun                    | colored | `3ff9ebff266f053e2e407ae260676fcf1d58a46251936839dd40c8a4f5503e4f` |
-| Stop           | Stop generating, stop reading aloud, a closed tool call                | `streamline/control/source/streamline-button-stop-1.png`   | Button Stop 1                  | colored | `f961c9311e27902c7353b4ef897cd343593a9ca5cb46698726d974e73f1292a6` |
+| Stop           | Stop generating, stop dictation, stop reading aloud, a closed tool call | `streamline/control/source/streamline-button-stop-1.png`   | Button Stop 1                  | colored | `f961c9311e27902c7353b4ef897cd343593a9ca5cb46698726d974e73f1292a6` |
 | Detach         | Open in its own window; replaces Lucide `SquareArrowOutUpRight`        | `streamline/control/source/streamline-expand-6.png`        | Expand 6                       | colored | `fd8a26b9e0dd4aa8464eb80e893454eae3bfd9dc2b6050574ca1662856440996` |
-| MicOff         | Stop dictation, while recording                                        | `streamline/control/source/streamline-microphone-off.png`  | Microphone Off (24px download) | colored | `a32b50578a081e6cff7e7c2cb1f48d607e522aa1bfcf10c7cee3b53973831524` |
+| MicOff         | Unused since the stop mark took over stop dictation (2026-11-19); kept as a licensed asset | `streamline/control/source/streamline-microphone-off.png`  | Microphone Off (24px download) | colored | `a32b50578a081e6cff7e7c2cb1f48d607e522aa1bfcf10c7cee3b53973831524` |
 
 Retired with this change, and removed from the tree:
 
