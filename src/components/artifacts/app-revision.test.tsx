@@ -9,6 +9,14 @@ import {
   useExternalStoreRuntime,
 } from '@assistant-ui/react'
 import type { ThreadMessageLike } from '@assistant-ui/react'
+import {
+  Outlet,
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from '@tanstack/react-router'
 import { TheoremPartRenderers } from '@/components/chat/theorem-parts'
 import { BLOCK_SANDBOX } from '@/lib/blocks/executor'
 import * as hosted from '@/lib/blocks/hosted-app'
@@ -24,8 +32,15 @@ import { ArtifactPanel, download } from './artifact-panel'
 import { ArtifactActions } from './artifact-actions'
 import { readArtifact } from './artifact-model'
 import { useArtifactView } from './artifact-view'
+import { useShell } from '@/components/shell/shell-state'
 
-function Harness({ messages }: { messages: ThreadMessageLike[] }) {
+function Harness({
+  messages,
+  artifactId = 'app-draft-result',
+}: {
+  messages: ThreadMessageLike[]
+  artifactId?: string
+}) {
   const runtime = useExternalStoreRuntime({
     messages,
     isRunning: false,
@@ -34,12 +49,49 @@ function Harness({ messages }: { messages: ThreadMessageLike[] }) {
   })
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <ArtifactPanel artifactId="app-draft-result" onClose={() => {}} />
+      <div data-testid="dock">
+        <ArtifactPanel artifactId={artifactId} onClose={() => {}} />
+      </div>
     </AssistantRuntimeProvider>
   )
 }
 
-function message(revision: number, content?: string): ThreadMessageLike {
+/** The conversation and its dock panel together, as the desktop shell has them. */
+function Workspace({ messages }: { messages: ThreadMessageLike[] }) {
+  const runtime = useExternalStoreRuntime({
+    messages,
+    isRunning: false,
+    onNew: async () => {},
+    convertMessage: (item: ThreadMessageLike) => item,
+  })
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <TheoremPartRenderers />
+      <ThreadPrimitive.Messages
+        components={{ Message: () => <MessagePrimitive.Parts /> }}
+      />
+      <div data-testid="dock">
+        <ArtifactPanel artifactId="app-draft-result" onClose={() => {}} />
+      </div>
+    </AssistantRuntimeProvider>
+  )
+}
+
+/** The panel's own element, so a test can say what the dock does not hold. */
+const dockOf = (root: ParentNode) =>
+  root.querySelector<HTMLElement>('[data-testid="dock"]')!
+
+/** Live DocumentApp instances: its toolbar is the only one that offers Stop. */
+const liveRuntimeCount = (root: ParentNode) =>
+  [...root.querySelectorAll('button')].filter(
+    (button) => button.textContent.trim() === 'Stop App',
+  ).length
+
+function message(
+  revision: number,
+  content?: string,
+  documentId = 'app-draft-document',
+): ThreadMessageLike {
   return {
     id: `result-${revision}`,
     role: 'assistant',
@@ -55,10 +107,36 @@ function message(revision: number, content?: string): ThreadMessageLike {
           patchSequence: revision,
           lifecycle: 'ready',
           payload: {
-            documentId: 'app-draft-document',
+            documentId,
             title: 'App',
             revision: { position: revision },
             ...(content && { content, language: 'html' }),
+          },
+        },
+      },
+    ],
+  }
+}
+
+function documentMessage(revision: number): ThreadMessageLike {
+  return {
+    id: `document-${revision}`,
+    role: 'assistant',
+    content: [
+      {
+        type: 'data',
+        name: 'theorem-artifact',
+        data: {
+          artifactId: 'doc-draft-result',
+          artifactRevision: String(revision),
+          artifactKind: 'document',
+          rendererId: 'theorem-document',
+          patchSequence: revision,
+          lifecycle: 'ready',
+          payload: {
+            title: 'Field notes',
+            content: '# Document',
+            language: 'markdown',
           },
         },
       },
@@ -90,7 +168,7 @@ afterEach(async () => {
   useArtifactView.getState().reset()
 })
 
-test('a newly published App revision refreshes source without discarding the open editor draft', async () => {
+test('a published revision refreshes the App in its answer, a stale editor save is refused, and the dock look back never discards the draft', async () => {
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   const store = await appDocumentFixture()
@@ -101,10 +179,16 @@ test('a newly published App revision refreshes source without discarding the ope
   )
   try {
     const { container, rerender } = await render(
-      <Harness messages={[message(1)]} />,
+      <Workspace messages={[message(1, undefined, 'draft-survivor-app')]} />,
     )
-    await waitFor(() => buttonNamed(container, 'Edit source'))
-    await click(buttonNamed(container, 'Edit source')!)
+    // The one live runtime is the answer's; the panel holds a referrer.
+    const answer = await waitFor(() =>
+      container.querySelector<HTMLElement>(
+        '[data-slot="inline-artifact"][data-current="true"]',
+      ),
+    )
+    await waitFor(() => buttonNamed(answer, 'Edit source'))
+    await click(buttonNamed(answer, 'Edit source')!)
     const content = await waitFor(() =>
       container.querySelector<HTMLElement>('.cm-content'),
     )
@@ -120,32 +204,59 @@ test('a newly published App revision refreshes source without discarding the ope
     )
     expect(content.textContent).toContain('My unsaved draft')
     await store.remote('<p>Worker published source</p>')
-    await rerender(<Harness messages={[message(1), message(2)]} />)
+    // The answer's runtime reloads the document; its editor's base revision
+    // is now stale, and saving against it is refused without any write.
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
     await waitFor(() => container.querySelector('[data-revision="2"]'))
-    expect(container.querySelector('.cm-content') === content).toBe(true)
-    expect(content.textContent).toContain('My unsaved draft')
-    await click(container.querySelector('[aria-label="Previous version"]')!)
-    expect(container.textContent).toContain('v1 of 2')
-    expect(container.querySelector('.cm-content') === content).toBe(true)
-    await click(container.querySelector('[aria-label="Next version"]')!)
-    expect(container.textContent).toContain('v2 of 2')
     await click(buttonNamed(container, 'Save source')!)
     await waitFor(() => container.querySelector('[role="alert"]'))
     expect(container.textContent).toContain('changed since you started editing')
     expect(content.textContent).toContain('My unsaved draft')
     expect(store.writes).toHaveLength(0)
     await click(buttonNamed(container, 'Cancel edit')!)
-    await click(buttonNamed(container, 'Edit source')!)
-    expect(container.querySelector('.cm-content')?.textContent).toContain(
-      'Worker published source',
+    // The revision arrives in the conversation: the answer still holds
+    // exactly one live runtime, refreshed to the published source.
+    await rerender(
+      <Workspace
+        messages={[
+          message(1, '<p>Original revision</p>', 'draft-survivor-app'),
+          message(2, undefined, 'draft-survivor-app'),
+        ]}
+      />,
     )
+    await waitFor(() => container.querySelector('[data-revision="2"]'))
+    expect(liveRuntimeCount(container)).toBe(1)
+    const current = await waitFor(() =>
+      container.querySelector<HTMLElement>(
+        '[data-slot="inline-artifact"][data-current="true"]',
+      ),
+    )
+    await click(buttonNamed(current, 'Edit source')!)
+    const reopened = await waitFor(() =>
+      container.querySelector<HTMLElement>('.cm-content'),
+    )
+    expect(reopened.textContent).toContain('Worker published source')
+    // Looking back through the dock never touches the answer's runtime: the
+    // open editor and its draft are not the panel's to discard.
+    await click(
+      dockOf(container).querySelector('[aria-label="Previous version"]')!,
+    )
+    expect(dockOf(container).textContent).toContain('v1 of 2')
+    expect(container.querySelector('.cm-content') === reopened).toBe(true)
+    expect(reopened.textContent).toContain('Worker published source')
+    await click(dockOf(container).querySelector('[aria-label="Next version"]')!)
+    expect(dockOf(container).textContent).toContain('v2 of 2')
+    expect(container.querySelector('.cm-content') === reopened).toBe(true)
+    await click(buttonNamed(container, 'Cancel edit')!)
   } finally {
     get.mockRestore()
     window.location.href = originalUrl
   }
-}, 20_000)
+}, 30_000)
 
-test('an older revision opens its pinned source, labeled, while the live App stays mounted', async () => {
+test('an older revision opens its pinned source, labeled, while the answer keeps the one live runtime', async () => {
   const originalUrl = window.location.href
   window.location.href = 'https://theorem.test/'
   const store = await appDocumentFixture()
@@ -156,34 +267,43 @@ test('an older revision opens its pinned source, labeled, while the live App sta
   )
   try {
     const { container } = await render(
-      <Harness
-        messages={[message(1, '<p>Original revision</p>'), message(2)]}
+      <Workspace
+        messages={[
+          message(1, '<p>Original revision</p>', 'lookback-app'),
+          message(2, undefined, 'lookback-app'),
+        ]}
       />,
     )
-    await waitFor(() => buttonNamed(container, 'Edit source'))
-    await click(container.querySelector('[aria-label="Previous version"]')!)
+    const dock = dockOf(container)
+    const referrer = await waitFor(() =>
+      dock.querySelector<HTMLElement>('[data-slot="artifact-referrer"]'),
+    )
+    await click(dock.querySelector('[aria-label="Previous version"]')!)
     const revision = await waitFor(() =>
-      container.querySelector('[data-slot="app-revision"]'),
+      dock.querySelector<HTMLElement>('[data-slot="app-revision"]'),
     )
     expect(revision.textContent).toContain('Saved revision 1')
     expect(revision.textContent).toContain('not saved')
-    await waitFor(() => revision.querySelector('iframe'), 10_000)
-    expect(revision.querySelector('iframe')?.getAttribute('sandbox')).toBe(
-      BLOCK_SANDBOX,
-    )
+    const frame = await waitFor(() => revision.querySelector('iframe'), 10_000)
+    expect(frame.getAttribute('sandbox')).toBe(BLOCK_SANDBOX)
     expect(compile?.mock.calls.map((call) => call[0])).toContain(
       '<p>Original revision</p>',
     )
-    // The live App is still there, behind the revision.
-    expect(buttonNamed(container, 'Edit source')).toBeDefined()
-    await click(buttonNamed(container, 'Open latest')!)
-    expect(container.querySelector('[data-slot="app-revision"]')).toBeNull()
-    expect(container.textContent).toContain('v2 of 2')
+    // The newest slot keeps its referrer, hidden behind the look back. The
+    // dock itself holds no live runtime: the answer does, exactly one.
+    expect(referrer.isConnected).toBe(true)
+    expect(referrer.closest('div')?.hasAttribute('hidden')).toBe(true)
+    expect(liveRuntimeCount(dock)).toBe(0)
+    expect(liveRuntimeCount(container)).toBe(1)
+    await click(buttonNamed(revision, 'Open latest')!)
+    expect(dock.querySelector('[data-slot="app-revision"]')).toBeNull()
+    expect(dock.textContent).toContain('v2 of 2')
+    expect(referrer.closest('div')?.hasAttribute('hidden')).toBe(false)
   } finally {
     get.mockRestore()
     window.location.href = originalUrl
   }
-}, 20_000)
+}, 30_000)
 
 test("an older revision's frame keeps the page's look as it changes", async () => {
   const originalUrl = window.location.href
@@ -206,13 +326,17 @@ test("an older revision's frame keeps the page's look as it changes", async () =
   try {
     const { container } = await render(
       <Harness
-        messages={[message(1, '<p>Original revision</p>'), message(2)]}
+        messages={[
+          message(1, '<p>Original revision</p>', 'theme-app'),
+          message(2, undefined, 'theme-app'),
+        ]}
       />,
     )
-    await waitFor(() => buttonNamed(container, 'Edit source'))
-    await click(container.querySelector('[aria-label="Previous version"]')!)
+    const dock = dockOf(container)
+    await waitFor(() => dock.querySelector('[data-slot="artifact-referrer"]'))
+    await click(dock.querySelector('[aria-label="Previous version"]')!)
     const revision = await waitFor(() =>
-      container.querySelector('[data-slot="app-revision"]'),
+      dock.querySelector('[data-slot="app-revision"]'),
     )
     const frame = await waitFor(() => revision.querySelector('iframe'), 10_000)
     expect(followed).toContain(frame)
@@ -221,7 +345,7 @@ test("an older revision's frame keeps the page's look as it changes", async () =
     get.mockRestore()
     window.location.href = originalUrl
   }
-}, 20_000)
+}, 30_000)
 
 test('App copy and shared download resolve canonical source rather than the empty artifact placeholder', async () => {
   const originalUrl = window.location.href
@@ -249,7 +373,9 @@ test('App copy and shared download resolve canonical source rather than the empt
   )
   try {
     const { container } = await render(<Harness messages={[message(1)]} />)
-    await waitFor(() => buttonNamed(container, 'Edit source'))
+    await waitFor(() =>
+      dockOf(container).querySelector('[data-slot="artifact-referrer"]'),
+    )
     await click(container.querySelector('[aria-label^="Copy"]')!)
     await waitFor(() => copied.length > 0, 500)
     expect(copied).toEqual(['<!doctype html><h1>Saved App source</h1>'])
@@ -325,7 +451,9 @@ for (const status of [401, 403]) {
     const urls = spyOn(URL, 'createObjectURL')
     try {
       const { container } = await render(<Harness messages={[message(1)]} />)
-      await waitFor(() => buttonNamed(container, 'Edit source'))
+      await waitFor(() =>
+        dockOf(container).querySelector('[data-slot="artifact-referrer"]'),
+      )
       await click(container.querySelector('[aria-label="Copy App source"]')!)
       await waitFor(() =>
         container.querySelector<HTMLButtonElement>('[aria-label="Copied"]'),
@@ -524,28 +652,268 @@ function ThreadHarness({ messages }: { messages: ThreadMessageLike[] }) {
   )
 }
 
-test('an older revision card downloads the source its message pinned, not the current App', async () => {
-  const fetch = spyOn(window, 'fetch')
+test('an older revision in the conversation downloads the source its message pinned, not the current App', async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  const store = await appDocumentFixture()
+  const get = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(async () => Response.json(store.saved()), {
+      preconnect: window.fetch.preconnect,
+    }),
+  )
+  const blobs: Blob[] = []
+  const urls = spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+    blobs.push(blob as Blob)
+    return 'blob:pinned-export'
+  })
+  const anchor = spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(
+    () => {},
+  )
   try {
     const { container } = await render(
       <ThreadHarness
         messages={[
-          message(1, '<p>Original revision</p>'),
-          message(2, '<p>Current revision</p>'),
+          message(1, '<p>Original revision</p>', 'pinned-download-app'),
+          message(2, undefined, 'pinned-download-app'),
         ]}
       />,
     )
+    // A live App belongs to its answer; both revisions offer their download
+    // from the answer's inline artifact, not from a card.
     const downloads = await waitFor(() => {
       const found = container.querySelectorAll<HTMLButtonElement>(
-        '[data-slot="theorem-artifact-card"] [aria-label="Download App source"]',
+        '[data-slot="inline-artifact"] [aria-label="Download App source"]',
       )
       return found.length === 2 ? found : undefined
-    })
+    }, 10_000)
     expect(downloads[0]!.title).toStartWith("Download this revision's source")
     expect(downloads[1]!.title).toStartWith('Download current saved source')
+    // The pinned revision hands over exactly the source its message carried.
+    // (That the pinned handover reads no document is proven at the registry
+    // level, in artifact-registry's older-revision test; in the answer both
+    // instances race their mount reads and their frames' src loads, so call
+    // timing here would only measure scheduling.)
     await click(downloads[0]!)
-    expect(fetch).not.toHaveBeenCalled()
+    await waitFor(() => blobs.length)
+    expect(await blobs[0]!.text()).toBe('<p>Original revision</p>')
   } finally {
-    fetch.mockRestore()
+    anchor.mockRestore()
+    urls.mockRestore()
+    get.mockRestore()
+    window.location.href = originalUrl
+  }
+}, 30_000)
+
+test('the panel of a live App is a referrer and mounts no runtime of its own', async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  // A live App reads its saved document when it mounts. The panel must not
+  // perform that read: no document, no startup, twice.
+  const get = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(
+      async () =>
+        Response.json({ detail: 'unused by the referrer' }, { status: 503 }),
+      { preconnect: window.fetch.preconnect },
+    ),
+  )
+  try {
+    const { container } = await render(
+      <Harness messages={[message(1, undefined, 'referrer-panel-app')]} />,
+    )
+    const referrer = await waitFor(() =>
+      container.querySelector<HTMLElement>('[data-slot="artifact-referrer"]'),
+    )
+    expect(referrer.textContent).toContain('App')
+    expect(buttonNamed(referrer, 'Open in answer')).toBeDefined()
+    // Nothing of a live App appears in the dock.
+    expect(container.querySelector('iframe')).toBeNull()
+    expect(buttonNamed(container, 'Edit source')).toBeUndefined()
+    expect(buttonNamed(container, 'Stop App')).toBeUndefined()
+    expect(get).not.toHaveBeenCalled()
+  } finally {
+    get.mockRestore()
+    window.location.href = originalUrl
+  }
+})
+
+test('the answer and the panel of the same live App hold exactly one runtime', async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  const store = await appDocumentFixture()
+  const get = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(async () => Response.json(store.saved()), {
+      preconnect: window.fetch.preconnect,
+    }),
+  )
+  try {
+    const { container } = await render(
+      <Workspace
+        messages={[message(1, undefined, 'referrer-one-runtime-app')]}
+      />,
+    )
+    // The answer runs the App; the panel refers to that answer.
+    const frame = await waitFor(() => container.querySelector('iframe'), 10_000)
+    expect(frame.getAttribute('sandbox')).toBe(BLOCK_SANDBOX)
+    await waitFor(() =>
+      container.querySelector('[data-slot="artifact-referrer"]'),
+    )
+    expect(container.querySelectorAll('iframe')).toHaveLength(1)
+    expect(liveRuntimeCount(container)).toBe(1)
+    expect(dockOf(container).querySelector('iframe')).toBeNull()
+    expect(buttonNamed(dockOf(container), 'Edit source')).toBeUndefined()
+  } finally {
+    get.mockRestore()
+    window.location.href = originalUrl
   }
 }, 20_000)
+
+test("the referrer focuses the answer's running App instead of starting another", async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  const get = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(
+      async () =>
+        Response.json(
+          { detail: 'load state is not the point' },
+          {
+            status: 503,
+          },
+        ),
+      { preconnect: window.fetch.preconnect },
+    ),
+  )
+  try {
+    const { container } = await render(
+      <Workspace messages={[message(1, undefined, 'referrer-focus-app')]} />,
+    )
+    const answer = await waitFor(() =>
+      container.querySelector<HTMLElement>(
+        '[data-slot="inline-artifact"][data-current="true"]',
+      ),
+    )
+    // A DOM-only test has no viewport layout; record the focus request on the
+    // instance that is already running, as artifact-message.test.tsx does.
+    const scroll = spyOn(answer, 'scrollIntoView').mockImplementation(() => {})
+    try {
+      await click(buttonNamed(dockOf(container), 'Open in answer')!)
+      expect(scroll).toHaveBeenCalledWith({ block: 'center' })
+      expect(document.activeElement).toBe(answer)
+      expect(useArtifactView.getState().openId).toBeUndefined()
+      expect(container.querySelector('iframe')).toBeNull()
+    } finally {
+      scroll.mockRestore()
+    }
+  } finally {
+    get.mockRestore()
+    window.location.href = originalUrl
+  }
+})
+
+test('the referrer goes to the conversation before it focuses, and never starts one here', async () => {
+  const originalUrl = window.location.href
+  window.location.href = 'https://theorem.test/'
+  const get = spyOn(window, 'fetch').mockImplementation(
+    Object.assign(
+      async () =>
+        Response.json(
+          { detail: 'no frame without a source' },
+          {
+            status: 503,
+          },
+        ),
+      { preconnect: window.fetch.preconnect },
+    ),
+  )
+  const messages = [message(1, undefined, 'referrer-away-app')]
+  // Another mode is on screen: the panel is open, its conversation is not.
+  function Page() {
+    const runtime = useExternalStoreRuntime({
+      messages,
+      isRunning: false,
+      onNew: async () => {},
+      convertMessage: (item: ThreadMessageLike) => item,
+    })
+    return (
+      <AssistantRuntimeProvider runtime={runtime}>
+        <Outlet />
+      </AssistantRuntimeProvider>
+    )
+  }
+  function PanelOnlyPage() {
+    return (
+      <div data-testid="dock">
+        <ArtifactPanel artifactId="app-draft-result" onClose={() => {}} />
+      </div>
+    )
+  }
+  function ConversationPage() {
+    return (
+      <>
+        <TheoremPartRenderers />
+        <ThreadPrimitive.Messages
+          components={{ Message: () => <MessagePrimitive.Parts /> }}
+        />
+        <div data-testid="dock">
+          <ArtifactPanel artifactId="app-draft-result" onClose={() => {}} />
+        </div>
+      </>
+    )
+  }
+  const root = createRootRoute({ component: Page })
+  const panelOnly = createRoute({
+    getParentRoute: () => root,
+    path: '/',
+    component: PanelOnlyPage,
+  })
+  const conversation = createRoute({
+    getParentRoute: () => root,
+    path: '/c/$threadId',
+    component: ConversationPage,
+  })
+  root.addChildren([panelOnly, conversation])
+  const router = createRouter({
+    routeTree: root,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  useShell.getState().setChatThreadId('answer-thread')
+  try {
+    await router.load()
+    const { container } = await render(<RouterProvider router={router} />)
+    const referrer = await waitFor(() =>
+      container.querySelector<HTMLElement>('[data-slot="artifact-referrer"]'),
+    )
+    expect(container.querySelector('iframe')).toBeNull()
+    await click(buttonNamed(referrer, 'Open in answer')!)
+    // The conversation comes on screen, and the answer's instance takes focus.
+    await waitFor(
+      () => router.state.location.pathname === '/c/answer-thread',
+      5_000,
+    )
+    const answer = await waitFor(
+      () =>
+        container.querySelector<HTMLElement>(
+          '[data-slot="inline-artifact"][data-current="true"]',
+        ),
+      5_000,
+    )
+    await waitFor(() => document.activeElement === answer, 5_000)
+    // The panel still holds no runtime of its own, whatever the navigation did.
+    const dock = dockOf(container)
+    expect(dock.querySelector('[data-slot="artifact-referrer"]')).not.toBeNull()
+    expect(dock.querySelector('iframe')).toBeNull()
+    expect(liveRuntimeCount(dock)).toBe(0)
+  } finally {
+    useShell.getState().setChatThreadId(undefined)
+    get.mockRestore()
+    window.location.href = originalUrl
+  }
+}, 20_000)
+
+test('a non-live artifact keeps its normal body in the panel', async () => {
+  const { container } = await render(
+    <Harness messages={[documentMessage(1)]} artifactId="doc-draft-result" />,
+  )
+  const heading = await waitFor(() => container.querySelector('h1'))
+  expect(heading.textContent).toBe('Document')
+  expect(container.querySelector('[data-slot="artifact-referrer"]')).toBeNull()
+})

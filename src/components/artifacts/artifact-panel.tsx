@@ -1,4 +1,4 @@
-// SOURCING: ui/button (ghost icon buttons) for header actions, useCopyToClipboard hook; bodies render through the registry (artifact-renderers' ArtifactView)
+// SOURCING: ui/button (ghost icon buttons) for header actions, useCopyToClipboard hook; bodies render through the registry (artifact-renderers' ArtifactView), except a live interactive newest, whose runtime belongs to its answer (artifact-referrer)
 import { appearancePair } from '@/lib/appearance-policy'
 import { useLayoutEffect, useRef } from 'react'
 import { Icon } from '@/components/icons'
@@ -8,7 +8,9 @@ import { cn } from '@/lib/utils'
 import { kindLabel, useThreadArtifacts } from './artifact-model'
 import type { TheoremArtifact } from './artifact-model'
 import { ArtifactActions } from './artifact-actions'
+import { isLive } from './artifact-registry'
 import { ArtifactView } from './artifact-renderers'
+import { ArtifactReferrer } from './artifact-referrer'
 import { useArtifactView } from './artifact-view'
 import { thingProps } from '@/lib/face/things'
 
@@ -69,6 +71,9 @@ export function ArtifactPanel({
   const artifact = versions[index] ?? newest
   if (!artifact || !newest) return null
   const latest = artifact === newest
+  // A live interactive artifact runs in the answer that wrote it; the panel
+  // refers to that one runtime instead of mounting a second (PR #128 P1).
+  const liveNewest = isLive(newest, 'interactive')
   const goTo = (next: number) =>
     select(
       artifactId,
@@ -103,10 +108,16 @@ export function ArtifactPanel({
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-(--appearance-expanded-measure) px-6 py-6">
-          {/* The newest revision stays mounted while an older one is shown,
-              so a live session and an unsaved edit outlast a look back. */}
+          {/* The newest slot stays mounted while an older revision is shown,
+              so the look back costs nothing on the way back. A passive body
+              keeps its unsaved edit; a live interactive one is already kept
+              by its answer, so this slot only refers there. */}
           <div hidden={!latest}>
-            <ArtifactView artifact={newest} distance="interactive" latest />
+            {liveNewest ? (
+              <ArtifactReferrer artifact={newest} />
+            ) : (
+              <ArtifactView artifact={newest} distance="interactive" latest />
+            )}
           </div>
           {!latest && (
             <ArtifactView
