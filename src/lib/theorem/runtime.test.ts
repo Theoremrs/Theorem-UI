@@ -10,7 +10,7 @@ import {
   spyOn,
   test,
 } from 'bun:test'
-import { useAui, useAuiState } from '@assistant-ui/react'
+import { defaultDirectiveFormatter, useAui, useAuiState } from '@assistant-ui/react'
 import { toastManager } from '@/components/coss/toast'
 import { TheoremError } from '@theoremharness/sdk'
 import type { ChatModelRunOptions } from '@assistant-ui/react'
@@ -39,6 +39,7 @@ type Send = {
   webResearch?: boolean
   planning?: boolean
   toolSelection?: { connections: string[]; tools?: string[] }
+  skills?: { ids: string[] }
   model?: { provider: string; model: string }
   executionMode?: string
   responseDetail?: string
@@ -138,7 +139,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
   }
   if (path.endsWith('/messages') && request.method === 'POST') {
     titleEvents.push(`send:${request.headers.get('If-Match')}`)
-    const { text, capabilityScope, webResearch, planning, toolSelection, model, executionMode, ...limits } =
+    const { text, capabilityScope, webResearch, planning, toolSelection, skills, model, executionMode, ...limits } =
       (await request.json()) as Omit<Send, 'key'>
     sends.push({
       key: request.headers.get('Idempotency-Key') ?? '',
@@ -147,6 +148,7 @@ async function theoremApi(input: RequestInfo | URL, init?: RequestInit) {
       ...(webResearch !== undefined ? { webResearch } : {}),
       ...(planning !== undefined ? { planning } : {}),
       ...(toolSelection ? { toolSelection } : {}),
+      ...(skills ? { skills } : {}),
       ...(model ? { model } : {}),
       ...(executionMode ? { executionMode } : {}),
       ...Object.fromEntries(
@@ -774,6 +776,38 @@ async function sendFromComposer(
 test('a send with the default connections carries no toolSelection', async () => {
   await sendFromComposer(`thread-${crypto.randomUUID()}`)
   expect(sends[0]?.toolSelection).toBeUndefined()
+})
+
+test('a skill picked in the draft rides the send as structured ids', async () => {
+  const threadId = `thread-${crypto.randomUUID()}`
+  const directive = defaultDirectiveFormatter.serialize({
+    id: 'mcp:docs/skill://review/SKILL.md',
+    type: 'skill',
+    label: 'review',
+  })
+  function Sender() {
+    const aui = useAui()
+    useEffect(() => {
+      aui.composer.setText(`${directive} Review this change.`)
+      aui.composer.send()
+    }, [aui])
+    return null
+  }
+  await render(
+    createElement(TheoremRuntimeProvider, {
+      projectId: 'project',
+      threadId,
+      onThreadIdChange: () => {},
+      children: createElement(Sender),
+    }),
+  )
+  await waitFor(() => sends.length === 1)
+  expect(sends[0]?.skills).toEqual({ ids: ['mcp:docs/skill://review/SKILL.md'] })
+})
+
+test('a send with no skill pick carries no skills field', async () => {
+  await sendFromComposer(`thread-${crypto.randomUUID()}`)
+  expect(sends[0]?.skills).toBeUndefined()
 })
 
 test("a send carries the conversation's connection choice, and no other conversation's", async () => {
