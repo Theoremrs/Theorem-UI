@@ -126,6 +126,14 @@ export type McpServer = Connection & {
   tools: McpTool[]
   /** The server declared more tools than Theorem keeps; absent before the first discovery. */
   toolsTruncated?: boolean
+  /** The skills the server serves through Skills over MCP (SEP-2640);
+   * absent before the first discovery, empty when it declares none. */
+  skills?: {
+    uri: string
+    name: string
+    description: string
+    dynamic: boolean
+  }[]
   discoveredAt?: string
 }
 

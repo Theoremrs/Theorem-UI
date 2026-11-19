@@ -21,6 +21,7 @@ import { cleanup, render, waitFor } from '../../../test/blocks/render'
 import { GithubSection } from './github-card'
 import { McpServers } from './mcp-servers'
 import { OtherConnections } from './other-connections'
+import { ServerDetail } from './server-detail'
 
 const page = (
   window as unknown as { happyDOM: { setURL: (url: string) => void } }
@@ -708,6 +709,43 @@ test('the GitHub MCP option fills the hosted address and requires a bearer token
       auth: { type: 'bearer', token: 'fixture-token' },
     },
   })
+})
+
+// A server that serves skills beside its tools shows them: the connection's
+// result describes what was added, not only the tool count.
+test("a server's detail lists the skills it serves beside its tools", async () => {
+  servers = [
+    serverFixture({
+      skills: [
+        {
+          uri: 'skill://review/SKILL.md',
+          name: 'review',
+          description: 'Review a change before it lands.',
+          dynamic: false,
+        },
+        {
+          uri: 'skill://generated/SKILL.md',
+          name: 'generated',
+          description: '',
+          dynamic: true,
+        },
+      ],
+    }),
+  ]
+  await mount(<ServerDetail id="mcp:docs" onOpenChange={() => {}} />)
+  await waitFor(() => text().includes('Skills (2)'))
+  expect(text()).toContain('review')
+  expect(text()).toContain('Review a change before it lands.')
+  expect(text()).toContain('generated')
+  expect(text()).toContain('Dynamic')
+  expect(text()).toContain("composer's Skills menu")
+})
+
+test('a server without skills shows no skills section', async () => {
+  servers = [serverFixture()]
+  await mount(<ServerDetail id="mcp:docs" onOpenChange={() => {}} />)
+  await waitFor(() => text().includes('Tools (2)'))
+  expect(text()).not.toContain('Skills (')
 })
 
 test('a server Theorem refuses keeps the form open and shows the refusal in its words', async () => {

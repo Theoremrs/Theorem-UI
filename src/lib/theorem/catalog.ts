@@ -15,11 +15,23 @@ export type SkillEntry = {
   description?: string
   /** The owning plugin's name, absent for a standalone skill. */
   plugin?: string
+  /** Where the skill comes from, when an MCP server serves it (SEP-2640).
+   * The id then carries the connection, so two servers' identically named
+   * skills stay distinct. Absent for native packs and documents. */
+  source?: {
+    kind: 'mcp'
+    connection: string
+    uri: string
+    dynamic: boolean
+  }
 }
 
 type SkillsBody = {
   plugins?: (PluginEntry & { description?: string | null })[]
-  skills?: (Omit<SkillEntry, 'plugin'> & { plugin?: string | null })[]
+  skills?: (Omit<SkillEntry, 'plugin'> & {
+    plugin?: string | null
+    source?: SkillEntry['source'] | null
+  })[]
 }
 
 export const catalogQuery = queryOptions({
@@ -31,9 +43,10 @@ export const catalogQuery = queryOptions({
         ...plugin,
         ...(description ? { description } : {}),
       })),
-      skills: (body.skills ?? []).map(({ plugin, ...skill }) => ({
+      skills: (body.skills ?? []).map(({ plugin, source, ...skill }) => ({
         ...skill,
         ...(plugin ? { plugin } : {}),
+        ...(source ? { source } : {}),
       })),
     }
   },
