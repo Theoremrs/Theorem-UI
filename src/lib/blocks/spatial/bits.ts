@@ -17,7 +17,13 @@ export function wrap(value: unknown, bits: number): number {
   const number = Math.trunc(Number(value))
   if (!Number.isFinite(number)) return 0
   const span = 2 ** bits
-  return ((number % span) + span) % span
+  // Only a negative remainder is brought back into range with the span: at the
+  // widest supported width the span is 2**53, and adding it to an already
+  // nonnegative remainder asks for an integer no JavaScript number holds
+  // exactly, so odd values come back rounded. `+ 0` turns the minus zero a
+  // negative zero leaves into the zero this range starts at.
+  const remainder = number % span
+  return remainder < 0 ? remainder + span : remainder + 0
 }
 
 /** Bit `index` of an unsigned number, 0 or 1. */
