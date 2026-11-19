@@ -6,7 +6,7 @@ import { digestOf, signalText } from '@theorem/runtime'
 import type { ChromeSnapshot, Grounding, PartSnapshot } from './chrome'
 import { dossierContext, groundedContext, observedFacts, referencedMoment } from './dossier'
 import { buildNetwork, ModelState } from './engine'
-import { rippleAdder } from './parts'
+import { register, rippleAdder } from './parts'
 import { CycleTrace, groundCapture } from './trace'
 
 function adder(a: number, b: number, cin = 0) {
@@ -262,6 +262,47 @@ describe('a grounded question carries one moment’s values', () => {
     const facts = context.facts as Array<{ entity: string; key: string; text: string }>
     expect(outputs.find((port) => port.name === 'sum')?.text).toBe('12')
     expect(facts.find((item) => item.entity === 'add' && item.key === 'sum')?.text).toBe('12')
+  })
+
+  it('carries no second value for a name: the interactables the scene stamped are not sent', async () => {
+    // A register asked about at its first moment, by which time the scene has
+    // moved on: recorded there `in` is 3 and the held value 0, while what is
+    // shown now reads `in` 7 and value 3.
+    const model = new ModelState(buildNetwork((m) => m.part(register({ id: 'add', bits: 4 }))))
+    const trace = new CycleTrace(model, 'adder')
+    model.set('add', 'in', 3)
+    let settled = model.settle()
+    trace.record({ kind: 'start' }, settled)
+    settled = model.step(settled)
+    trace.record({ kind: 'step' }, settled)
+    model.set('add', 'in', 7)
+    trace.record({ kind: 'set', path: 'add', key: 'in', value: 7 }, model.settle())
+    trace.show(0)
+    // PartSettings stamps the values as the scene shows them, which can be one
+    // commit behind the moment being grounded; inputs and settings are written
+    // from the part snapshot the question was sent with, live there too.
+    const context = await groundedContext(part, shown(trace, 0, true), {
+      inputs: [{ name: 'in', label: 'In', value: 7, text: '7', editable: true }],
+      settings: [{ name: 'value', value: 3, text: '3', editable: false }],
+      interactables: [{ id: 'add', name: 'part', state: { in: 7, load: 1, value: 3 } }],
+    })
+    // One payload cannot hold two values for the same name at the same moment,
+    // so the displayed stamp goes, as the unavailable path already drops it.
+    expect(context).not.toHaveProperty('interactables')
+    // What the recorded moment has is still said, and said once.
+    const inputs = context.inputs as Array<Record<string, unknown>>
+    const settings = context.settings as Array<Record<string, unknown>>
+    expect(inputs.find((item) => item.name === 'in')).toMatchObject({
+      value: { type: 'integer', text: '3' },
+      text: '3',
+    })
+    expect(settings.find((item) => item.name === 'value')).toMatchObject({
+      value: { type: 'integer', text: '0' },
+      text: '0',
+    })
+    const text = JSON.stringify(context)
+    expect(text).not.toContain('"in":7')
+    expect(text).not.toContain('"value":3')
   })
 })
 

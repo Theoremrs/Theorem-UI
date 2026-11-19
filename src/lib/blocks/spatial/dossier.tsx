@@ -220,11 +220,16 @@ export async function groundedContext(
           return { ...rest, value, text: signalText(value) }
         })
       : list
+  // The interactables the scene stamped are what PartSettings shows now, which
+  // can be a commit behind this moment. Inputs, outputs and settings are
+  // rewritten from the recorded frame above, so keeping the stamp would send
+  // two values for one name; the unavailable path drops it for the same reason.
+  const { interactables: _displayed, ...sent } = context
   return {
-    ...context,
-    ...(context.inputs !== undefined && { inputs: recorded(context.inputs, ports) }),
-    ...(context.outputs !== undefined && { outputs: recorded(context.outputs, ports) }),
-    ...(context.settings !== undefined && { settings: recorded(context.settings, state) }),
+    ...sent,
+    ...(sent.inputs !== undefined && { inputs: recorded(sent.inputs, ports) }),
+    ...(sent.outputs !== undefined && { outputs: recorded(sent.outputs, ports) }),
+    ...(sent.settings !== undefined && { settings: recorded(sent.settings, state) }),
     subject: { kind: 'moment', observation, run: grounding.run } satisfies SubjectRef,
     run: grounding.run,
     observation,
