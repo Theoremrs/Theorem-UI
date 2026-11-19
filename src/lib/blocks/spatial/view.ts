@@ -965,6 +965,13 @@ export function mount(
    */
   async function reveal(observation: ObservationRef): Promise<boolean> {
     if (!(await trace.holds(observation))) return false
+    // A change made while the digest was in flight replaces the run and the
+    // cycles after its fork point; holds checked the capture taken before the
+    // wait, so it can still be true of the old run. Scrubbing now would land
+    // on the new run's cycle at the same index and report the moment shown.
+    // recordingId is unique per run and a re-run always turns it, so this
+    // recheck is the whole guard, and no await separates it from the move.
+    if (trace.recordingId !== observation.runId) return false
     const cycle = Number(observation.index)
     if (cycle === trace.cycle) scrub(null)
     else scrub(cycle)

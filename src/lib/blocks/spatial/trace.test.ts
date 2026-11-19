@@ -91,6 +91,29 @@ describe('a model trace', () => {
     expect(model.states.get('pc')).toEqual({ value: 2 })
   })
 
+  it('still holds an old run\u2019s reference after a re-run replaces it mid-check', async () => {
+    // view.ts's reveal() waits on holds() before moving anywhere. The capture
+    // is taken synchronously, the digest awaited, so this is the state a
+    // change made during that wait leaves behind.
+    const { trace } = counter()
+    const at = (await trace.observation(3))!
+    const holding = trace.holds(at)
+    // Every cycle past the fork point is replaced: the new run\u2019s cycle 3 is
+    // three steps of 3 (pc = 6), not the old run\u2019s three steps of 1 (pc = 3).
+    trace.rerun(0, 'inc', 'b', 3)
+    // The captured settle never changed, so the check that started before the
+    // re-run still says true \u2014 true of the old run, not of where the trace is now.
+    expect(await holding).toBe(true)
+    // The trace is on a new run, and a scrub at the reference\u2019s index would land
+    // on a different state while reporting success. So reveal() rechecks
+    // recordingId against observation.runId after the await and before moving;
+    // holds() alone cannot be the last word.
+    expect(trace.recordingId).not.toBe(at.runId)
+    expect(trace.frame(3)?.values['pc/state']).toEqual({ value: 6 })
+    // And a check started after the re-run sees the replacement for what it is.
+    expect(await trace.holds(at)).toBe(false)
+  })
+
   it('flattens booleans, arrays and flat objects to primitives', () => {
     const into: Record<string, number | string> = {}
     flatten('on', true, into)
