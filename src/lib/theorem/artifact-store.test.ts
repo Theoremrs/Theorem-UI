@@ -110,6 +110,71 @@ test('observations that skip ahead stop the writer instead of leaving a gap', as
   expect(writer.through).toBe(1n)
 })
 
+test('an identical repeat of an observation already written writes nothing and the run continues', async () => {
+  const fake = backend()
+  const writer = new RunWriter(fake.store, run)
+  await writer.append('settlement', observations(0, 2))
+  // The bridge promises that writing the same observations again is safe: an
+  // uncertain response is retried, not lost.
+  await writer.append('settlement', observations(0, 2))
+  await writer.append('settlement', observations(2, 1))
+  expect(fake.log).toEqual([
+    'POST runs',
+    'POST blobs',
+    'POST chunks',
+    'POST blobs',
+    'POST chunks',
+  ])
+  expect(fake.chunks.map((chunk) => chunk.observations)).toEqual([
+    observations(0, 2),
+    observations(2, 1),
+  ])
+  expect(writer.through).toBe(2n)
+  expect(writer.stopped).toBeUndefined()
+})
+
+test('a batch that overlaps what is stored writes only the new observations', async () => {
+  const fake = backend()
+  const writer = new RunWriter(fake.store, run)
+  await writer.append('settlement', observations(0, 2))
+  await writer.append('settlement', observations(1, 3))
+  expect(fake.chunks.map((chunk) => chunk.observations)).toEqual([
+    observations(0, 2),
+    observations(2, 2),
+  ])
+  expect(writer.through).toBe(3n)
+  expect(writer.stopped).toBeUndefined()
+})
+
+test('a repeat that disagrees with what is stored is refused without stopping the run', async () => {
+  const fake = backend()
+  const writer = new RunWriter(fake.store, run)
+  await writer.append('settlement', observations(0, 2))
+  // Same index, another time.
+  const resampled = observations(1, 1).map((observation) => ({
+    ...observation,
+    time: '9',
+  }))
+  await expect(writer.append('settlement', resampled)).rejects.toMatchObject({
+    status: 400,
+    code: 'artifact_chunk_conflict',
+    message: expect.stringContaining('Observation 1'),
+  })
+  // Same index and time, another state.
+  await expect(
+    writer.append('settlement', [
+      { index: '0', time: '0', stateDigest: `sha256:${'f'.repeat(64)}` },
+    ]),
+  ).rejects.toMatchObject({ code: 'artifact_chunk_conflict' })
+  expect(writer.stopped).toBeUndefined()
+  await writer.append('settlement', observations(2, 1))
+  expect(fake.chunks.map((chunk) => chunk.observations)).toEqual([
+    observations(0, 2),
+    observations(2, 1),
+  ])
+  expect(writer.through).toBe(2n)
+})
+
 test('a stale CSRF token is replaced once and the write keeps its idempotency key', async () => {
   const fake = backend({ staleToken: true })
   const stored = await fake.store.putBlob(new TextEncoder().encode('hello'))

@@ -259,15 +259,27 @@ const referenceOf = ({
 /**
  * Writes one run's observations in order: the run first, then chunks from
  * index 0 with no gaps, each chunk's bytes before the chunk. Writes are queued,
- * so callers may append without waiting. An observation out of order, or a
- * failed write, stops the writer: what is stored stays exact, and `through`
- * says how far it reaches.
+ * so callers may append without waiting.
+ *
+ * Repeating an observation the run already holds, with the same index, time and
+ * state digest, is a no-op, so a caller may write the same observations again
+ * after an uncertain response. A repeat that disagrees with what is held is
+ * refused as `artifact_chunk_conflict` and does not stop the writer. A genuine
+ * gap (an index past the next one) or a failed write does stop it: what is
+ * stored stays exact, and `through` says how far it reaches.
  */
 export class RunWriter {
   private next = 0n
   private sequence = 0n
   private queue: Promise<void>
   private failure: Error | undefined
+  /**
+   * What each observation the run holds was, at its index. Indexes are
+   * contiguous from 0, so a repeat is recognized by position and answered with
+   * the reference it repeats. An entry exists for every index below `next` and,
+   * while a batch is being scanned, for every observation that batch accepts.
+   */
+  private readonly accepted: Array<ChunkObservation> = []
 
   constructor(
     private readonly store: ArtifactStore,
@@ -289,39 +301,67 @@ export class RunWriter {
     this.failure ??= error instanceof Error ? error : new Error(String(error))
   }
 
-  /** Queues observations that continue the run exactly where it was left. */
+  /**
+   * Queues the new observations in `observations`, skipping the ones the run
+   * already holds. A batch of nothing but repeats writes nothing and settles
+   * with the writes already queued; a batch that disagrees with what is held is
+   * refused whole, leaving the run as it was. Only a gap, an index past the next
+   * one which no repeat can explain, stops the writer.
+   */
   append(
     domain: string,
     observations: Array<RecordedObservation>,
   ): Promise<void> {
     if (this.failure) return Promise.reject(this.failure)
     if (observations.length === 0) return this.queue
+    const before = this.accepted.length
+    const fresh: Array<RecordedObservation> = []
     let expected = this.next
     for (const observation of observations) {
-      if (BigInt(observation.index) !== expected) {
-        this.stop(
+      const index = BigInt(observation.index)
+      if (index === expected) {
+        // Recorded as it is accepted, so a repeat later in this same batch is
+        // recognized as the moment it repeats.
+        this.accepted[Number(index)] = referenceOf(observation)
+        fresh.push(observation)
+        expected += 1n
+        continue
+      }
+      if (index < expected) {
+        const stored = this.accepted[Number(index)]!
+        if (
+          stored.time === observation.time &&
+          stored.stateDigest === observation.stateDigest
+        )
+          continue
+        this.accepted.length = before
+        return Promise.reject(
           new ArtifactRefused(
             400,
-            'artifact_chunk_out_of_order',
-            `The run continues at observation ${expected}, not ${observation.index}.`,
+            'artifact_chunk_conflict',
+            `Observation ${observation.index} is already written as time ${stored.time} with state ${stored.stateDigest}, not time ${observation.time} with state ${observation.stateDigest}.`,
           ),
         )
-        return Promise.reject(this.failure!)
       }
-      expected += 1n
+      this.stop(
+        new ArtifactRefused(
+          400,
+          'artifact_chunk_out_of_order',
+          `The run continues at observation ${expected}, not ${observation.index}.`,
+        ),
+      )
+      this.accepted.length = before
+      return Promise.reject(this.failure!)
     }
     this.next = expected
+    if (fresh.length === 0) return this.queue
     const chunks: Array<Array<RecordedObservation>> = []
-    for (
-      let start = 0;
-      start < observations.length;
-      start += MAX_CHUNK_OBSERVATIONS
-    )
-      chunks.push(observations.slice(start, start + MAX_CHUNK_OBSERVATIONS))
+    for (let start = 0; start < fresh.length; start += MAX_CHUNK_OBSERVATIONS)
+      chunks.push(fresh.slice(start, start + MAX_CHUNK_OBSERVATIONS))
     this.queue = this.queue.then(async () => {
       if (this.failure) throw this.failure
       // A state is written only as what its digest names.
-      for (const { index, state, stateDigest } of observations)
+      for (const { index, state, stateDigest } of fresh)
         if (
           state !== undefined &&
           (await digestBytes(new TextEncoder().encode(state))) !== stateDigest
