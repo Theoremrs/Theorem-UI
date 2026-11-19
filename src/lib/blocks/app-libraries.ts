@@ -37,7 +37,7 @@ export const APP_LIBRARIES: Record<string, AppLibrary> = {
   '@theorem/spatial': {
     dependencies: {
       ...annotate.dependencies,
-      '@assistant-ui/react': '0.15.30',
+      '@assistant-ui/react': '0.15.36',
       three: '0.187.0',
       elkjs: '0.12.1',
       // Coupled with theorem-proto-emit's Rerun SDK, which writes its recordings.
