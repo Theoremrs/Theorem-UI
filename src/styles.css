@@ -5,8 +5,10 @@
 @import '@fontsource-variable/ibm-plex-sans/wght-italic.css';
 @import '@fontsource-variable/jetbrains-mono';
 @import 'dockview-react/dist/styles/dockview.css';
+@import 'katex/dist/katex.min.css';
 @import './palettes.css';
 @import './appearance.css';
+@import './generative-ui.css';
 /* Captured DOM evidence is output, not a source of application utilities. */
 @source not '../docs/plans/composable-appearance/evidence';
 @source not '../scripts/design-oracles';
