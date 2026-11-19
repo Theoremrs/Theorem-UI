@@ -9,7 +9,9 @@ import {
   SettingsSection,
 } from '@/components/settings/settings-frame'
 import { describeError } from '@/lib/theorem/client'
-import { useCatalogEntries } from '@/lib/theorem/catalog'
+import { skillOrigin, useCatalogEntries } from '@/lib/theorem/catalog'
+import type { SkillEntry } from '@/lib/theorem/catalog'
+import { SkillInstallations } from '@/components/settings/skill-installations'
 
 export const Route = createFileRoute('/settings/plugins')({
   component: PluginsSettings,
@@ -21,6 +23,7 @@ function PluginsSettings() {
       title="Plugins and skills"
       description="What your Theorem has installed for the agent to use."
     >
+      <SkillInstallations />
       <PluginsSection />
       <SkillsSection />
     </SettingsPage>
@@ -37,6 +40,7 @@ function CatalogList({
     name: string
     description?: string
     plugin?: string
+    source?: SkillEntry['source']
   }[]
   Mark: ComponentType<SVGProps<SVGSVGElement>>
   empty: string
@@ -50,7 +54,7 @@ function CatalogList({
           key={item.id}
           Mark={Mark}
           title={item.name}
-          description={[item.plugin, item.description]
+          description={[skillOrigin(item), item.description]
             .filter(Boolean)
             .join(' · ')}
         />
