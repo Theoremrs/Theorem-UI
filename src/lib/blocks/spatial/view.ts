@@ -27,7 +27,7 @@ import {
   
   
 } from './engine'
-import type {Builder, HandleSpec, Network, Part, PartReading, Values, Vec3, Wire} from './engine';
+import type {Builder, HandleSpec, Network, Part, PartReading, Settled, Values, Vec3, Wire} from './engine';
 import { arrangeElk, arrangeStages } from './arrange'
 import type { Arranged } from './arrange'
 import { buildForm, mergedGeometry  } from './form'
@@ -131,7 +131,9 @@ export interface SpatialTrace {
   frames: (from?: number) => Array<TraceFrame>
   /** The exact run and moment of a kept cycle (default: the one shown). */
   ground: (cycle?: number) => Promise<Grounding>
-  /** Shows a cycle as it was (null or the latest: the model as it is now). */
+  /** Shows a cycle as it was read then, from what the recording kept (null or
+   * the latest: the model as it is now, computed from what its parts read
+   * today). */
   scrub: (cycle: number | null) => void
   /** Called after each new cycle and each scrub. */
   subscribe: (listener: () => void) => () => void
@@ -286,6 +288,44 @@ const truthy = (value: unknown) =>
   typeof value === 'number' ? value !== 0 : typeof value === 'boolean' ? value : value != null && value !== ''
 
 const isBit = (value: unknown) => value === 0 || value === 1 || typeof value === 'boolean'
+
+/**
+ * Where a scrub lands, and the settle it shows. Undefined when the scrub would
+ * not move anywhere.
+ *
+ * A kept cycle shows the readings it recorded. A part's compute may read
+ * changing data outside the model — a clock, a draw, a value fetched since the
+ * last cycle — so settling the model again says what its parts read now, which
+ * is not what they saw at the cycle being looked back at. The latest cycle is
+ * not history but where the person is working, so it is settled from the model
+ * as it now stands; creating a new run (a set, a step, a re-run) computes too,
+ * and does so in `set`, `step` and `rerun`, not here.
+ *
+ * The whole decision is out of the mount closure so it can be read, and
+ * checked, without a renderer. `scrub` has no other source of values: what this
+ * returns is what is displayed.
+ */
+export function scrubTarget(
+  trace: CycleTrace,
+  model: ModelState,
+  cycle: number | null,
+  viewing: number | null,
+): { viewing: number | null; settled: Settled } | undefined {
+  const latest = cycle === null || cycle >= trace.cycle
+  const next = latest ? null : Math.max(cycle, trace.first)
+  if (next === viewing) return undefined
+  // The model is put back as it was right after that cycle: every part's state,
+  // every input set, and what each part had settled to. Then the readings come
+  // from the recording, so nothing asks a part to compute the past again, and
+  // what `show` restored is left holding what it restored rather than a fresh
+  // settle's outputs.
+  trace.show(next ?? trace.cycle)
+  return {
+    viewing: next,
+    settled:
+      (next === null ? undefined : trace.settled(next)) ?? model.settle(),
+  }
+}
 
 /**
  * Draws a model into `element` and lets the person handle it. `build`
@@ -878,9 +918,18 @@ export function mount(
   }
 
   // Values.
-  function changed(jump = false) {
-    previous = jump ? model.settle() : settled
-    settled = model.settle()
+  /**
+   * Shows a settle: the one the model has just come to, or `recorded` — the
+   * readings a kept cycle holds, shown rather than computed, because a settle
+   * made now says what the parts read today and not what they saw then.
+   *
+   * `jump` puts the settle on screen at once instead of letting a change travel
+   * through it stage by stage; which parts differ from the ones shown before is
+   * only read while a change is travelling.
+   */
+  function changed(jump = false, recorded?: Settled) {
+    previous = settled
+    settled = recorded ?? model.settle()
     const different = new Set<string>()
     for (const [path, now] of settled.readings) {
       const before = previous.readings.get(path)
@@ -979,12 +1028,10 @@ export function mount(
   }
 
   function scrub(cycle: number | null) {
-    const latest = cycle === null || cycle >= trace.cycle
-    const next = latest ? null : Math.max(cycle, trace.first)
-    if (next === viewing) return
-    trace.show(next ?? trace.cycle)
-    viewing = next
-    changed(true)
+    const target = scrubTarget(trace, model, cycle, viewing)
+    if (!target) return
+    viewing = target.viewing
+    changed(true, target.settled)
     traceChanged()
   }
 
