@@ -199,8 +199,10 @@ async function alignWithDurableBranch(
   const content = user.content.filter((part) => part.type === 'text')
   // A quote carried in from a reply rides the message's metadata; the text
   // turn must still carry the passage, or the question loses its subject.
-  const quoteText = (user.metadata.custom as { quote?: { text?: string } })
-    .quote?.text
+  // Older saved turns and test fixtures may carry no metadata at all.
+  const custom = (user as { metadata?: { custom?: unknown } }).metadata?.custom
+  const quoteText = (custom as { quote?: { text?: string } } | undefined)?.quote
+    ?.text
   const quoted =
     quoteText && !content.some((part) => part.text.includes(quoteText))
       ? [{ type: 'text' as const, text: `> ${quoteText.replace(/\n/g, '\n> ')}` }]
