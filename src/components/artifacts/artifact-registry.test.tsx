@@ -45,6 +45,14 @@ test('an App has a passive thumbnail and a live representation for answers and w
   expect(isLive(app(), 'preview')).toBe(false)
   expect(representationOf(app(), 'interactive').renderer).toBe('theorem-app')
   expect(isLive(app(), 'interactive')).toBe(true)
+  // Only live interactive artifacts belong to their answer and are referred
+  // from the panel; anything else keeps its body there.
+  expect(isLive(part('document', 'markdown', 'Notes'), 'interactive')).toBe(
+    false,
+  )
+  expect(isLive(part('code', 'typescript', 'Lane sim'), 'interactive')).toBe(
+    false,
+  )
 })
 
 test('a contribution whose renderer this build lacks falls to the Theorem card and says why', () => {
@@ -144,7 +152,9 @@ test('a preview and the live frame both run the App open, on an origin of its ow
   for (const interactive of [false, true]) {
     const { policy, sandbox, allow } = await frameOf(interactive)
     expect(policy).toBeNull()
-    expect(sandbox).toEqual(expect.arrayContaining(['allow-scripts', 'allow-forms', 'allow-popups']))
+    expect(sandbox).toEqual(
+      expect.arrayContaining(['allow-scripts', 'allow-forms', 'allow-popups']),
+    )
     expect(sandbox).not.toContain('allow-same-origin')
     expect(allow).toContain('camera')
   }
