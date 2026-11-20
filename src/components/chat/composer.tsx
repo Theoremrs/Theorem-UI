@@ -15,6 +15,7 @@ import {
   ComposerAddAttachment,
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
+import { ComposerVoice } from '@/components/assistant-ui/elements/composer-voice'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
 import { ComposerContextUsage } from '@/components/chat/context-usage'
@@ -182,14 +183,19 @@ export const Composer: FC<{
             className="appearance-composer-editor appearance-reading-plane"
             data-appearance-part="editor-track"
           >
-            <ComposerEditor
-              label="Message input"
-              placeholder="Write a message…"
-              className="aui-composer-input w-full"
-              autoFocus={autoFocus}
-              onFocus={() => attendKit(true)}
-              onBlur={() => attendKit(false)}
-            />
+            <AuiIf condition={(s) => s.composer.dictation == null}>
+              <ComposerEditor
+                label="Message input"
+                placeholder="Write a message…"
+                className="aui-composer-input w-full"
+                autoFocus={autoFocus}
+                onFocus={() => attendKit(true)}
+                onBlur={() => attendKit(false)}
+              />
+            </AuiIf>
+            {/* While the mic listens the editor track becomes the waveform;
+                the transcript lands back in the editor when it commits. */}
+            <ComposerVoice />
           </div>
           <div
             className="appearance-composer-toolbar aui-composer-action-wrapper"
