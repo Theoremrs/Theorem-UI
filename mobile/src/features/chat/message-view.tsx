@@ -1,9 +1,10 @@
-// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them, printed with its stringifyJson (bigint-safe)
+// SOURCING: @assistant-ui/react-native MessageState (each row of ThreadPrimitive.MessagesFlatList); parts as @theoremharness/sdk projects them, drawn or silenced by the web's rules (./parts), printed with its stringifyJson (bigint-safe)
 import { memo, useState } from 'react'
 import { Pressable, StyleSheet, View } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import type { MessageState } from '@assistant-ui/react-native'
 import { stringifyJson } from '@theoremharness/sdk'
+import { openInBrowser } from '@/features/browser/store'
 import { radius, space } from '@/theme/tokens'
 import { StatusLabel, type Tone } from '@/ui/status'
 import { Text } from '@/ui/text'
@@ -12,6 +13,7 @@ import { readApproval } from './approval'
 import { ApprovalCard } from './approval-card'
 import { LinkedText } from './linked-text'
 import { MarkdownText } from './markdown-text'
+import { citationOf, SILENT_PARTS, type Citation } from './parts'
 import { PROPOSE_EVENT } from '../phone-actions/calendar'
 import { EventProposalCard } from '../phone-actions/event-card'
 
@@ -165,6 +167,46 @@ function PartView({ part, runId }: { part: Part; runId: string | undefined }) {
   }
 }
 
+/** A source tag, as the web draws one; a web URL opens in the app's browser. */
+function CitationChip({ citation }: { citation: Citation }) {
+  const { palette } = useTheme()
+  const { url } = citation
+  return (
+    <Pressable
+      disabled={!url}
+      onPress={url ? () => openInBrowser(url) : undefined}
+      accessibilityRole={url ? 'link' : 'text'}
+      accessibilityLabel={`Source: ${citation.label}`}
+      style={({ pressed }) => [
+        styles.chip,
+        { backgroundColor: pressed ? palette.hover : palette.raised, borderColor: palette.lineSeparator },
+      ]}
+    >
+      <Text variant="label" tone="muted" numberOfLines={1}>
+        {citation.label}
+      </Text>
+    </Pressable>
+  )
+}
+
+/** A reply's parts as they draw: silent parts dropped, neighbouring source tags gathered into one row. */
+function replyItems(content: readonly Part[]): (Part | Citation[])[] {
+  const items: (Part | Citation[])[] = []
+  for (const part of content) {
+    if (part.type === 'data' && SILENT_PARTS.has(part.name)) continue
+    if (part.type === 'data' && part.name === 'theorem-citation') {
+      const citation = citationOf(part.data)
+      if (!citation) continue
+      const last = items.at(-1)
+      if (Array.isArray(last)) last.push(citation)
+      else items.push([citation])
+      continue
+    }
+    items.push(part)
+  }
+  return items
+}
+
 /** The files a stored message carries, by the name Theorem kept or, without one, as a plain count. */
 function attachmentNames(message: MessageState): string[] {
   let unnamed = 0
@@ -210,9 +252,17 @@ export const MessageView = memo(function MessageView({ message }: { message: Mes
       accessibilityActions={[{ name: 'copy', label: 'Copy reply' }]}
       onAccessibilityAction={copy}
     >
-      {message.content.map((part, index) => (
-        <PartView key={index} part={part} runId={runId} />
-      ))}
+      {replyItems(message.content).map((item, index) =>
+        Array.isArray(item) ? (
+          <View key={index} style={styles.chips}>
+            {item.map((citation, at) => (
+              <CitationChip key={at} citation={citation} />
+            ))}
+          </View>
+        ) : (
+          <PartView key={index} part={item} runId={runId} />
+        ),
+      )}
       {status ? <StatusLabel {...status} /> : null}
     </View>
   )
@@ -237,6 +287,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.control,
   },
   stepTitle: { flex: 1 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: space.xs },
+  chip: {
+    maxWidth: 256,
+    paddingHorizontal: space.sm,
+    paddingVertical: space.xs,
+    borderRadius: radius.control,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   chevron: { width: 12, textAlign: 'center' },
   stepBody: {
     padding: space.sm,
