@@ -54,7 +54,12 @@ function useElapsed(active: boolean): { seconds: number; tick: number } {
 export function ComposerVoice({ className, ...props }: ComponentProps<'div'>) {
   const dictation = useAuiState((state) => state.composer.dictation)
   const level = useMicLevel((state) => state.level)
-  const recording = dictation?.status.type === 'running'
+  const capturing = useMicLevel((state) => state.capturing)
+  // The waveform and timer show only while the microphone is live. Once the
+  // person stops or the server caps the recording, the session may still be
+  // open awaiting the transcript — that phase shows the transcribing shimmer,
+  // not a live waveform that implies speech is still being heard.
+  const recording = dictation?.status.type === 'running' && capturing
   const { seconds, tick } = useElapsed(recording)
   if (dictation == null) return null
   const minutes = Math.floor(seconds / 60)

@@ -14,6 +14,7 @@
 import { WebSpeechDictationAdapter } from '@assistant-ui/react'
 import type { DictationAdapter } from '@assistant-ui/react'
 import { create } from 'zustand'
+import { toastManager } from '@/components/coss/toast'
 
 /** What the microphone worklet posts: a chunk of 16 kHz mono audio, and how
  *  loud it was. `final` marks the flushed tail sent when a session stops. */
@@ -23,8 +24,14 @@ interface MicChunk {
   final?: boolean
 }
 
-/** How loud the microphone hears, 0..1, while a session listens; 0 otherwise. */
-export const useMicLevel = create<{ level: number }>()(() => ({ level: 0 }))
+/** How loud the microphone hears, 0..1, while a session listens; 0 otherwise.
+ *  `capturing` is true only while the microphone is live: it goes false when
+ *  the person stops or the server caps the recording, so the composer shows
+ *  the transcribing state rather than a live waveform while awaiting text. */
+export const useMicLevel = create<{ level: number; capturing: boolean }>()(() => ({
+  level: 0,
+  capturing: false,
+}))
 
 type Session = DictationAdapter.Session
 type Status = DictationAdapter.Status
@@ -117,7 +124,7 @@ function theoremSession(): Session {
     stream = undefined
     void context?.close().catch(() => {})
     context = undefined
-    useMicLevel.setState({ level: 0 })
+    useMicLevel.setState({ level: 0, capturing: false })
   }
 
   const finish = (reason: 'stopped' | 'cancelled' | 'error') => {
@@ -208,9 +215,13 @@ function theoremSession(): Session {
           // transcript of what was heard still lands via the done event.
           stopping = true
           teardown()
-          if (message.message) {
-            console.info('Dictation length limit:', message.message)
-          }
+          toastManager.add({
+            type: 'info',
+            title: 'Dictation length limit reached',
+            description:
+              message.message ??
+              'Transcribing what was heard; start a new dictation to continue.',
+          })
         } else if (message.event === 'done') {
           if (message.transcript) lastText = message.transcript
           finish('stopped')
@@ -250,6 +261,7 @@ function theoremSession(): Session {
       await context.resume()
       if (over()) return
       setStatus({ type: 'running' })
+      useMicLevel.setState({ capturing: true })
       speechStart.emit()
     } catch (error) {
       if (!over()) {
