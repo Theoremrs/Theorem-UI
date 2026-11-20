@@ -15,6 +15,7 @@ import {
   ComposerAddAttachment,
   ComposerAttachments,
 } from '@/components/assistant-ui/elements/attachment.aui'
+import { ComposerVoice } from '@/components/assistant-ui/elements/composer-voice'
 import { TooltipIconButton } from '@/components/assistant-ui/elements/tooltip-icon-button'
 import { ComposerQuotePreview } from '@/components/assistant-ui/elements/quote.aui'
 import { ComposerContextUsage } from '@/components/chat/context-usage'
@@ -87,6 +88,10 @@ export const Composer: FC<{
   slots?: ComposerSlots | undefined
 }> = ({ autoFocus, layout, slots }) => {
   const aui = useAui()
+  // While the mic listens the editor stays mounted (its draft, undo history,
+  // and the .theorem-composer target the Skills menu writes to all survive)
+  // but is hidden; the waveform takes the editor track instead.
+  const dictating = useAuiState((s) => s.composer.dictation != null)
   // While the composer answers a review, sending submits the review and the
   // chat's own send is left out.
   const review = useComposerReview()
@@ -185,11 +190,14 @@ export const Composer: FC<{
             <ComposerEditor
               label="Message input"
               placeholder="Write a message…"
-              className="aui-composer-input w-full"
+              className={cn('aui-composer-input w-full', dictating && 'hidden')}
               autoFocus={autoFocus}
               onFocus={() => attendKit(true)}
               onBlur={() => attendKit(false)}
             />
+            {/* While the mic listens the editor track becomes the waveform;
+                the transcript lands back in the editor when it commits. */}
+            <ComposerVoice />
           </div>
           <div
             className="appearance-composer-toolbar aui-composer-action-wrapper"
