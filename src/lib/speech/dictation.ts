@@ -145,6 +145,10 @@ function theoremSession(): Session {
     // before the stop so the person's last word is heard, not discarded.
     worklet?.port.postMessage({ command: 'flush' })
     await new Promise((resolve) => setTimeout(resolve, 40))
+    // The last chunk is sent: release the microphone and audio graph now, so
+    // they do not keep capturing and resampling while the server transcribes.
+    // The socket stays open for the transcript; finish() closes it.
+    teardown()
     // Ask the server to flush the decoder; the done event carries the final.
     if (socket?.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({ command: 'stop' }))
@@ -185,7 +189,7 @@ function theoremSession(): Session {
       }
       socket.onmessage = (event: MessageEvent) => {
         if (over() || typeof event.data !== 'string') return
-        let message: { event?: string; text?: string; transcript?: string }
+        let message: { event?: string; text?: string; transcript?: string; message?: string }
         try {
           message = JSON.parse(event.data)
         } catch {
@@ -199,6 +203,14 @@ function theoremSession(): Session {
         } else if (message.event === 'final' && message.text) {
           lastText = message.text
           speech.emit({ transcript: message.text, isFinal: true })
+        } else if (message.event === 'limit') {
+          // The server capped the recording: stop capturing and say so. The
+          // transcript of what was heard still lands via the done event.
+          stopping = true
+          teardown()
+          if (message.message) {
+            console.info('Dictation length limit:', message.message)
+          }
         } else if (message.event === 'done') {
           if (message.transcript) lastText = message.transcript
           finish('stopped')
